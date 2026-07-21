@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { PencilIcon, PlusIcon, ShapesIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +17,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -84,6 +84,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const singular = isCategory ? "category" : "unit";
   const plural = isCategory ? "Categories" : "Units";
+  const showSkeleton = useDelayedLoading(items === undefined);
 
   function openEditor(item: VocabularyItem | "new") {
     setEditing(item);
@@ -162,7 +163,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
         </Button>
       </div>
 
-      {items === undefined ? (
+      {showSkeleton ? (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-14 w-full" />
@@ -196,7 +197,6 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead className="w-28 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -204,11 +204,6 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
               {items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell>
-                    <Badge variant={item.inUse ? "secondary" : "outline"}>
-                      {item.inUse ? "In use" : "Unused"}
-                    </Badge>
-                  </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       <Button

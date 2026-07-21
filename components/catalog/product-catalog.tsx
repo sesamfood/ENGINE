@@ -7,15 +7,15 @@ import {
   ArchiveIcon,
   ArchiveRestoreIcon,
   BoxesIcon,
-  EllipsisIcon,
   PackageOpenIcon,
-  PencilIcon,
   PlusIcon,
   SearchIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useDeferredValue, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,24 +26,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
-  CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Empty,
   EmptyContent,
@@ -63,9 +53,6 @@ type CatalogProduct = {
   name: string;
   status: ProductStatus;
   category: { id: Id<"categories">; name: string } | null;
-  defaultUnit: { id: Id<"units">; name: string } | null;
-  unitCount: number;
-  ingredientCount: number;
   imageUrl: string | null;
 };
 
@@ -101,78 +88,40 @@ function ProductCard({
   onArchive: (product: CatalogProduct) => void;
   onRestore: (product: CatalogProduct) => void;
 }) {
-  const router = useRouter();
-
   return (
-    <Card className="gap-0 py-0 transition-shadow hover:shadow-sm">
+    <Card className="relative gap-0 py-0 transition-shadow hover:shadow-sm">
+      <Link
+        href={`/organization/products/${product.id}`}
+        aria-label={`Edit ${product.name}`}
+        className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
+      />
       <ProductImage product={product} />
-      <CardHeader className="pt-4">
+      <CardHeader className="py-4">
         <CardTitle>{product.name}</CardTitle>
         <CardDescription>
           {product.category?.name ?? "Uncategorized"}
         </CardDescription>
-        <CardAction>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-lg"
-                  aria-label={`Actions for ${product.name}`}
-                />
-              }
-            >
-              <EllipsisIcon />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onClick={() =>
-                    router.push(`/organization/products/${product.id}`)
-                  }
-                >
-                  <PencilIcon />
-                  Edit
-                </DropdownMenuItem>
-                {product.status === "active" ? (
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => onArchive(product)}
-                  >
-                    <ArchiveIcon />
-                    Archive
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onClick={() => onRestore(product)}>
-                    <ArchiveRestoreIcon />
-                    Restore
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <CardAction className="relative z-10">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            className="size-11"
+            aria-label={`${product.status === "active" ? "Archive" : "Restore"} ${product.name}`}
+            onClick={() =>
+              product.status === "active"
+                ? onArchive(product)
+                : onRestore(product)
+            }
+          >
+            {product.status === "active" ? (
+              <ArchiveIcon />
+            ) : (
+              <ArchiveRestoreIcon />
+            )}
+          </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="pb-4">
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">
-            {product.defaultUnit?.name ?? "No default unit"}
-          </Badge>
-          {product.status === "archived" ? (
-            <Badge variant="outline">Archived</Badge>
-          ) : null}
-        </div>
-      </CardContent>
-      <CardFooter className="justify-between text-xs text-muted-foreground">
-        <span>
-          {Math.max(0, product.unitCount - 1)} additional{" "}
-          {product.unitCount - 1 === 1 ? "unit" : "units"}
-        </span>
-        <span>
-          {product.ingredientCount}{" "}
-          {product.ingredientCount === 1 ? "ingredient" : "ingredients"}
-        </span>
-      </CardFooter>
     </Card>
   );
 }
@@ -202,7 +151,8 @@ export function ProductCatalog() {
     null,
   );
   const [isChangingStatus, setIsChangingStatus] = useState(false);
-  const deferredSearch = useDeferredValue(search);
+  const [querySearch, setQuerySearch] = useState("");
+  const [visibleResults, setVisibleResults] = useState<CatalogProduct[]>([]);
   const categories = useQuery(api.catalog.listCategories);
   const archiveProduct = useMutation(api.catalog.archiveProduct);
   const restoreProduct = useMutation(api.catalog.restoreProduct);
@@ -216,10 +166,15 @@ export function ProductCatalog() {
       status,
       categoryId:
         categoryId === "all" ? undefined : (categoryId as Id<"categories">),
-      search: deferredSearch,
+      search: querySearch,
     },
     { initialNumItems: 24 },
   );
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setQuerySearch(search), 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
 
   async function confirmStatusChange() {
     if (!pendingProduct) return;
@@ -241,17 +196,43 @@ export function ProductCatalog() {
   }
 
   const loading = paginationStatus === "LoadingFirstPage";
+  const currentResults = results as CatalogProduct[];
+
+  useEffect(() => {
+    if (!loading) {
+      const frame = window.requestAnimationFrame(() => {
+        setVisibleResults(currentResults);
+      });
+
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [currentResults, loading]);
+
+  const displayedResults = loading ? visibleResults : currentResults;
+  const showSkeleton = useDelayedLoading(
+    loading && displayedResults.length === 0,
+  );
 
   return (
     <div className="flex flex-col gap-7">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex max-w-2xl flex-col gap-2">
-          <h2 className="text-2xl font-semibold tracking-tight">Products</h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Manage the ingredients and stock units used throughout the
-            organization.
-          </p>
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <Button
+          variant="outline"
+          className="min-h-11 px-3"
+          onClick={() => {
+            setStatus((current) =>
+              current === "active" ? "archived" : "active",
+            );
+            setCategoryId("all");
+          }}
+        >
+          {status === "active" ? (
+            <ArchiveIcon data-icon="inline-start" />
+          ) : (
+            <ArchiveRestoreIcon data-icon="inline-start" />
+          )}
+          {status === "active" ? "Archived products" : "Active products"}
+        </Button>
         <Button
           size="lg"
           className="min-h-11 px-4"
@@ -263,23 +244,7 @@ export function ProductCatalog() {
       </div>
 
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <Tabs
-            value={status}
-            onValueChange={(value) => {
-              setStatus(value as ProductStatus);
-              setCategoryId("all");
-            }}
-          >
-            <TabsList className="h-11 w-full p-1 sm:w-fit">
-              <TabsTrigger value="active" className="min-w-28 px-5">
-                Active
-              </TabsTrigger>
-              <TabsTrigger value="archived" className="min-w-28 px-5">
-                Archived
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="flex justify-end">
           <div className="relative w-full lg:max-w-sm">
             <SearchIcon
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -296,15 +261,18 @@ export function ProductCatalog() {
         </div>
 
         <Tabs value={categoryId} onValueChange={setCategoryId}>
-          <TabsList className="h-12 w-full justify-start overflow-x-auto rounded-xl p-1">
-            <TabsTrigger value="all" className="min-w-28 px-5">
+          <TabsList
+            aria-label="Product categories"
+            className="h-14 w-full justify-start overflow-x-auto"
+          >
+            <TabsTrigger value="all" className="min-w-36 px-6">
               All products
             </TabsTrigger>
             {categories?.map((category) => (
               <TabsTrigger
                 key={category.id}
                 value={category.id}
-                className="min-w-28 px-5"
+                className="min-w-36 px-6"
               >
                 {category.name}
               </TabsTrigger>
@@ -313,7 +281,7 @@ export function ProductCatalog() {
         </Tabs>
       </div>
 
-      {loading ? <CatalogSkeleton /> : null}
+      {showSkeleton ? <CatalogSkeleton /> : null}
 
       {!loading && results.length === 0 ? (
         <Empty className="min-h-80 border">
@@ -346,9 +314,9 @@ export function ProductCatalog() {
         </Empty>
       ) : null}
 
-      {!loading && results.length > 0 ? (
+      {!showSkeleton && displayedResults.length > 0 ? (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {(results as CatalogProduct[]).map((product) => (
+          {displayedResults.map((product) => (
             <ProductCard
               key={product.id}
               product={product}

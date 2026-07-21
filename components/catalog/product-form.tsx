@@ -459,9 +459,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               <Badge variant="outline">Archived</Badge>
             ) : null}
           </div>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Define how this product is categorized, counted, and made.
-          </p>
         </div>
       </div>
 
@@ -469,9 +466,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         <Card>
           <CardHeader>
             <CardTitle>Product details</CardTitle>
-            <CardDescription>
-              The name, category, and picture shown throughout the application.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>
@@ -498,9 +492,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   allowCreate
                   ariaLabel="Product category"
                 />
-                <FieldDescription>
-                  New categories become available to the whole organization.
-                </FieldDescription>
                 <FieldError>{errors.category}</FieldError>
               </Field>
 
@@ -548,9 +539,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     ) : null}
                   </div>
                 </div>
-                <FieldDescription>
-                  Optional. JPEG, PNG, WebP, or AVIF up to 10 MB.
-                </FieldDescription>
                 <FieldError>{errors.image}</FieldError>
               </Field>
             </FieldGroup>
@@ -561,10 +549,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           <Card>
             <CardHeader>
               <CardTitle>Units and conversions</CardTitle>
-              <CardDescription>
-                Choose one default unit and express every other unit in that
-                default.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <FieldSet>
@@ -581,7 +565,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     >
                       <Field
                         orientation="horizontal"
-                        className="min-h-11 md:w-auto"
+                        className="min-h-11 md:w-auto md:self-center"
                       >
                         <RadioGroupItem
                           value={row.key}
@@ -592,7 +576,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           Default
                         </FieldLabel>
                       </Field>
-                      <Field>
+                      <Field className="md:self-center">
                         <FieldLabel className="sr-only">Unit</FieldLabel>
                         <CreatableCombobox
                           options={unitOptions}
@@ -671,10 +655,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           <Card>
             <CardHeader>
               <CardTitle>Ingredients</CardTitle>
-              <CardDescription>
-                Add products used to make this product and specify their
-                quantities.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <FieldSet>
@@ -805,13 +785,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         </div>
       </div>
 
-      <div className="sticky bottom-0 -mx-5 flex flex-col gap-3 border-t bg-background/95 px-5 py-4 backdrop-blur sm:-mx-8 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:-mx-12 lg:px-12">
-        <p className="text-sm text-muted-foreground">
-          {unitRows.length} {unitRows.length === 1 ? "unit" : "units"} ·{" "}
-          {ingredientRows.length}{" "}
-          {ingredientRows.length === 1 ? "ingredient" : "ingredients"}
-        </p>
-        <div className="flex gap-2">
+      <div className="sticky bottom-0 -mx-5 flex justify-end border-t bg-background/95 px-5 py-4 backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12">
+        <div className="flex w-full gap-2 sm:w-auto">
           {isSaving ? (
             <Button
               variant="outline"
