@@ -60,7 +60,7 @@ type VocabularyItem = {
 };
 
 function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong";
+  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
@@ -82,8 +82,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const singular = isCategory ? "category" : "unit";
-  const plural = isCategory ? "Categories" : "Units";
+  const singular = isCategory ? "kategori" : "enhed";
+  const plural = isCategory ? "Kategorier" : "Enheder";
   const showSkeleton = useDelayedLoading(items === undefined);
 
   function openEditor(item: VocabularyItem | "new") {
@@ -94,7 +94,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
 
   async function save() {
     if (!name.trim()) {
-      setError(`Enter a ${singular} name`);
+      setError(`Indtast et navn til ${singular}`);
       return;
     }
     setIsSaving(true);
@@ -113,7 +113,9 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           await renameUnit({ unitId: editing.id as Id<"units">, name });
         }
       }
-      toast.success(`${isCategory ? "Category" : "Unit"} saved`);
+      toast.success(
+        `${isCategory ? "Kategorien" : "Enheden"} er gemt`,
+      );
       setEditing(null);
     } catch (caught) {
       setError(messageFrom(caught));
@@ -133,7 +135,9 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
       } else {
         await deleteUnit({ unitId: pendingDelete.id as Id<"units"> });
       }
-      toast.success(`${isCategory ? "Category" : "Unit"} removed`);
+      toast.success(
+        `${isCategory ? "Kategorien" : "Enheden"} er fjernet`,
+      );
       setPendingDelete(null);
     } catch (caught) {
       toast.error(messageFrom(caught));
@@ -149,8 +153,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           <h2 className="text-2xl font-semibold tracking-tight">{plural}</h2>
           <p className="text-sm leading-6 text-muted-foreground">
             {isCategory
-              ? "Organize products into a consistent set of reusable categories."
-              : "Maintain the reusable unit labels available in every product form."}
+              ? "Organiser produkter i et ensartet sæt genanvendelige kategorier."
+              : "Vedligehold de enheder, der kan bruges i alle produktformularer."}
           </p>
         </div>
         <Button
@@ -159,7 +163,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           onClick={() => openEditor("new")}
         >
           <PlusIcon data-icon="inline-start" />
-          New {singular}
+          Ny {singular}
         </Button>
       </div>
 
@@ -177,15 +181,17 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
             <EmptyMedia variant="icon">
               <ShapesIcon />
             </EmptyMedia>
-            <EmptyTitle>No {plural.toLocaleLowerCase()} yet</EmptyTitle>
+            <EmptyTitle>
+              Ingen {plural.toLocaleLowerCase("da")} endnu
+            </EmptyTitle>
             <EmptyDescription>
-              Add one here or create it directly from a product form.
+              Tilføj en her, eller opret den direkte i en produktformular.
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button className="min-h-11 px-4" onClick={() => openEditor("new")}>
               <PlusIcon data-icon="inline-start" />
-              New {singular}
+              Ny {singular}
             </Button>
           </EmptyContent>
         </Empty>
@@ -196,8 +202,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <TableHead>Navn</TableHead>
+                <TableHead className="w-28 text-right">Handlinger</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -209,7 +215,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                       <Button
                         variant="ghost"
                         size="icon-lg"
-                        aria-label={`Rename ${item.name}`}
+                        aria-label={`Omdøb ${item.name}`}
                         onClick={() => openEditor(item)}
                       >
                         <PencilIcon />
@@ -217,7 +223,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                       <Button
                         variant="ghost"
                         size="icon-lg"
-                        aria-label={`Remove ${item.name}`}
+                        aria-label={`Fjern ${item.name}`}
                         disabled={item.inUse}
                         onClick={() => setPendingDelete(item)}
                       >
@@ -241,15 +247,15 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editing === "new" ? `New ${singular}` : `Rename ${singular}`}
+              {editing === "new" ? `Ny ${singular}` : `Omdøb ${singular}`}
             </DialogTitle>
             <DialogDescription>
-              The name is shared across the active organization.
+              Navnet deles på tværs af den aktive organisation.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field data-invalid={Boolean(error)}>
-              <FieldLabel htmlFor={`${kind}-name`}>Name</FieldLabel>
+              <FieldLabel htmlFor={`${kind}-name`}>Navn</FieldLabel>
               <Input
                 id={`${kind}-name`}
                 value={name}
@@ -272,11 +278,11 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
               disabled={isSaving}
               onClick={() => setEditing(null)}
             >
-              Cancel
+              Annuller
             </Button>
             <Button disabled={isSaving} onClick={save}>
               {isSaving ? <Spinner data-icon="inline-start" /> : null}
-              Save
+              Gem
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -290,21 +296,24 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {singular}?</AlertDialogTitle>
+            <AlertDialogTitle>Fjern {singular}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingDelete?.name} will be permanently removed. Only unused
-              {isCategory ? " categories" : " units"} can be removed.
+              {pendingDelete?.name} fjernes permanent. Kun
+              {isCategory ? " kategorier" : " enheder"}, der ikke er i brug,
+              kan fjernes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>
+              Annuller
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={isDeleting}
               onClick={remove}
             >
               {isDeleting ? <Spinner data-icon="inline-start" /> : null}
-              Remove
+              Fjern
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -12,6 +12,7 @@ The system should support practical customization without becoming a general-pur
 
 # Product and interface principles
 
+- Write all user-facing interface text in Danish.
 - Design primarily for tablets and desktop computers. It is important that touch works well in the interface.
 - Keep the product usable on phones with responsive layouts and interactions.
 - Make frequent and important actions prominent, direct, and easy to understand.

@@ -22,14 +22,14 @@ function readOrganizationClaim(value: unknown): OrganizationClaim | null {
 
 export async function requireOrganization(ctx: AuthContext) {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new ConvexError("Not authenticated");
+  if (!identity) throw new ConvexError("Du er ikke logget ind");
 
   const currentClaim = readOrganizationClaim(identity.o);
   const legacyOrganizationId =
     typeof identity.org_id === "string" ? identity.org_id : undefined;
   const organizationId = currentClaim?.id ?? legacyOrganizationId;
 
-  if (!organizationId) throw new ConvexError("No active organization");
+  if (!organizationId) throw new ConvexError("Ingen aktiv organisation");
 
   const role =
     currentClaim?.rol ??
@@ -45,7 +45,7 @@ export async function requireOrganization(ctx: AuthContext) {
 export async function requireOrganizationAdmin(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (auth.role !== "admin" && auth.role !== "org:admin") {
-    throw new ConvexError("Not authorized");
+    throw new ConvexError("Du har ikke adgang");
   }
   return auth;
 }

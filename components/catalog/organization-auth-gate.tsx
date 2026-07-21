@@ -11,7 +11,7 @@ export function OrganizationAuthGate({ children }: { children: ReactNode }) {
     <>
       <Authenticated>{children}</Authenticated>
       <AuthLoading>
-        <div className="flex flex-col gap-5" aria-label="Loading catalog">
+        <div className="flex flex-col gap-5" aria-label="Indlæser katalog">
           <Skeleton className="h-11 w-64 max-w-full" />
           <Skeleton className="h-12 w-full" />
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -24,11 +24,11 @@ export function OrganizationAuthGate({ children }: { children: ReactNode }) {
       <Unauthenticated>
         <Alert variant="destructive">
           <TriangleAlertIcon />
-          <AlertTitle>Catalog connection unavailable</AlertTitle>
+          <AlertTitle>Katalogforbindelsen er ikke tilgængelig</AlertTitle>
           <AlertDescription>
-            Convex could not validate this Clerk session. Enable Clerk&apos;s
-            Convex integration for this instance, then sign out completely and
-            sign back in.
+            Convex kunne ikke validere denne Clerk-session. Aktivér
+            Clerk-integrationen med Convex for denne instans, log derefter helt
+            ud, og log ind igen.
           </AlertDescription>
         </Alert>
       </Unauthenticated>

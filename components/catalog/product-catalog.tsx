@@ -57,7 +57,7 @@ type CatalogProduct = {
 };
 
 function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong";
+  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 function ProductImage({ product }: { product: CatalogProduct }) {
@@ -65,7 +65,7 @@ function ProductImage({ product }: { product: CatalogProduct }) {
     return (
       <div
         role="img"
-        aria-label={`${product.name} product picture`}
+        aria-label={`Produktbillede af ${product.name}`}
         className="aspect-[4/3] w-full bg-muted bg-cover bg-center"
         style={{ backgroundImage: `url("${product.imageUrl}")` }}
       />
@@ -92,14 +92,14 @@ function ProductCard({
     <Card className="relative gap-0 py-0 transition-shadow hover:shadow-sm">
       <Link
         href={`/organization/products/${product.id}`}
-        aria-label={`Edit ${product.name}`}
+        aria-label={`Rediger ${product.name}`}
         className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
       />
       <ProductImage product={product} />
       <CardHeader className="py-4">
         <CardTitle>{product.name}</CardTitle>
         <CardDescription>
-          {product.category?.name ?? "Uncategorized"}
+          {product.category?.name ?? "Uden kategori"}
         </CardDescription>
         <CardAction className="relative z-10">
           <Button
@@ -107,7 +107,7 @@ function ProductCard({
             variant="ghost"
             size="icon-lg"
             className="size-11"
-            aria-label={`${product.status === "active" ? "Archive" : "Restore"} ${product.name}`}
+            aria-label={`${product.status === "active" ? "Arkivér" : "Gendan"} ${product.name}`}
             onClick={() =>
               product.status === "active"
                 ? onArchive(product)
@@ -182,10 +182,10 @@ export function ProductCatalog() {
     try {
       if (pendingProduct.status === "active") {
         await archiveProduct({ productId: pendingProduct.id });
-        toast.success(`${pendingProduct.name} archived`);
+        toast.success(`${pendingProduct.name} er arkiveret`);
       } else {
         await restoreProduct({ productId: pendingProduct.id });
-        toast.success(`${pendingProduct.name} restored`);
+        toast.success(`${pendingProduct.name} er gendannet`);
       }
       setPendingProduct(null);
     } catch (error) {
@@ -231,7 +231,7 @@ export function ProductCatalog() {
           ) : (
             <ArchiveRestoreIcon data-icon="inline-start" />
           )}
-          {status === "active" ? "Archived products" : "Active products"}
+          {status === "active" ? "Arkiverede produkter" : "Aktive produkter"}
         </Button>
         <Button
           size="lg"
@@ -239,7 +239,7 @@ export function ProductCatalog() {
           onClick={() => router.push("/organization/products/new")}
         >
           <PlusIcon data-icon="inline-start" />
-          New product
+          Nyt produkt
         </Button>
       </div>
 
@@ -253,8 +253,8 @@ export function ProductCatalog() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search products"
-              aria-label="Search products"
+              placeholder="Søg efter produkter"
+              aria-label="Søg efter produkter"
               className="h-11 pl-10"
             />
           </div>
@@ -262,11 +262,11 @@ export function ProductCatalog() {
 
         <Tabs value={categoryId} onValueChange={setCategoryId}>
           <TabsList
-            aria-label="Product categories"
+            aria-label="Produktkategorier"
             className="h-14 w-full justify-start overflow-x-auto"
           >
             <TabsTrigger value="all" className="min-w-36 px-6">
-              All products
+              Alle produkter
             </TabsTrigger>
             {categories?.map((category) => (
               <TabsTrigger
@@ -291,13 +291,13 @@ export function ProductCatalog() {
             </EmptyMedia>
             <EmptyTitle>
               {status === "active"
-                ? "No products found"
-                : "No archived products"}
+                ? "Ingen produkter fundet"
+                : "Ingen arkiverede produkter"}
             </EmptyTitle>
             <EmptyDescription>
               {search || categoryId !== "all"
-                ? "Try another search or category."
-                : "Create the first product to start building your organization catalog."}
+                ? "Prøv en anden søgning eller kategori."
+                : "Opret det første produkt for at komme i gang med organisationens katalog."}
             </EmptyDescription>
           </EmptyHeader>
           {status === "active" && !search && categoryId === "all" ? (
@@ -307,7 +307,7 @@ export function ProductCatalog() {
                 onClick={() => router.push("/organization/products/new")}
               >
                 <PlusIcon data-icon="inline-start" />
-                New product
+                Nyt produkt
               </Button>
             </EmptyContent>
           ) : null}
@@ -340,7 +340,7 @@ export function ProductCatalog() {
             {paginationStatus === "LoadingMore" ? (
               <Spinner data-icon="inline-start" />
             ) : null}
-            Load more
+            Indlæs flere
           </Button>
         </div>
       ) : null}
@@ -355,18 +355,18 @@ export function ProductCatalog() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {pendingProduct?.status === "active"
-                ? "Archive product?"
-                : "Restore product?"}
+                ? "Arkivér produkt?"
+                : "Gendan produkt?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingProduct?.status === "active"
-                ? `${pendingProduct.name} will disappear from active product and ingredient pickers. Existing recipes will keep their reference.`
-                : `${pendingProduct?.name} will return to the active catalog and ingredient pickers.`}
+                ? `${pendingProduct.name} forsvinder fra vælgerne for aktive produkter og ingredienser. Eksisterende opskrifter beholder deres reference.`
+                : `${pendingProduct?.name} vender tilbage til det aktive katalog og ingrediensvælgerne.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isChangingStatus}>
-              Cancel
+              Annuller
             </AlertDialogCancel>
             <AlertDialogAction
               variant={
@@ -376,7 +376,7 @@ export function ProductCatalog() {
               onClick={confirmStatusChange}
             >
               {isChangingStatus ? <Spinner data-icon="inline-start" /> : null}
-              {pendingProduct?.status === "active" ? "Archive" : "Restore"}
+              {pendingProduct?.status === "active" ? "Arkivér" : "Gendan"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

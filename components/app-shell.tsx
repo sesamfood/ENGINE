@@ -2,15 +2,12 @@
 
 import { useAuth, useClerk, useOrganization, useUser } from "@clerk/nextjs";
 import {
+  ArrowRightLeftIcon,
   Building2Icon,
-  CalendarDaysIcon,
   ChevronsUpDownIcon,
-  ClipboardListIcon,
-  LayoutDashboardIcon,
   LogOutIcon,
   SettingsIcon,
   StoreIcon,
-  UtensilsIcon,
   UserRoundIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -45,11 +42,14 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const primaryNavigation = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
-  { label: "Staff food", href: "/staff-food", icon: UtensilsIcon },
-  { label: "Orders", href: "/orders", icon: ClipboardListIcon },
-  { label: "History", href: "/history", icon: CalendarDaysIcon },
+  { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
 ];
+
+const organizationNavigation = {
+  label: "Produkter",
+  href: "/organization/products",
+  icon: Building2Icon,
+};
 
 function OrganizationHome() {
   const { organization } = useOrganization();
@@ -57,14 +57,16 @@ function OrganizationHome() {
 
   return (
     <Link
-      href="/"
-      aria-label={organization ? `${organization.name} home` : "Home"}
+      href="/transfers"
+      aria-label={
+        organization ? `${organization.name} startside` : "Startside"
+      }
       className="flex size-12 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {logoUrl ? (
         <span
           role="img"
-          aria-label={organization?.name ?? "Organization"}
+          aria-label={organization?.name ?? "Organisation"}
           className="size-11 rounded-xl bg-contain bg-center bg-no-repeat"
           style={{ backgroundImage: `url("${logoUrl}")` }}
         />
@@ -78,17 +80,25 @@ function OrganizationHome() {
 }
 
 function NavigationList() {
+  const { has, isLoaded, orgId } = useAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
+  const navigation =
+    isLoaded && Boolean(orgId) && has?.({ role: "org:admin" })
+      ? [...primaryNavigation, organizationNavigation]
+      : primaryNavigation;
 
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        <nav aria-label="Main navigation">
+        <nav aria-label="Primær navigation">
           <SidebarMenu>
-            {primaryNavigation.map((item) => {
+            {navigation.map((item) => {
               const Icon = item.icon;
-              const active = pathname === item.href;
+              const active =
+                item === organizationNavigation
+                  ? pathname.startsWith("/organization")
+                  : pathname === item.href;
 
               return (
                 <SidebarMenuItem key={item.href}>
@@ -150,8 +160,8 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const { isMobile, setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
-  const displayName = user?.fullName || user?.firstName || "Profile";
-  const email = user?.primaryEmailAddress?.emailAddress || "Account";
+  const displayName = user?.fullName || user?.firstName || "Profil";
+  const email = user?.primaryEmailAddress?.emailAddress || "Konto";
   const initials =
     [user?.firstName, user?.lastName]
       .filter((value): value is string => Boolean(value))
@@ -180,13 +190,13 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
               type="button"
               variant="ghost"
               size="icon-lg"
-              aria-label="Open profile menu"
+              aria-label="Åbn profilmenu"
             />
           ) : (
             <SidebarMenuButton
               size="lg"
               isActive={accountPageActive}
-              aria-label="Open profile menu"
+              aria-label="Åbn profilmenu"
               className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:p-1!"
             />
           )
@@ -242,16 +252,16 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => goTo("/profile")}>
             <UserRoundIcon />
-            Profile
+            Profil
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => goTo("/settings")}>
             <SettingsIcon />
-            Settings
+            Indstillinger
           </DropdownMenuItem>
           {canManageOrganization ? (
             <DropdownMenuItem onClick={() => goTo("/organization/products")}>
               <Building2Icon />
-              Organization
+              Organisation
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuGroup>
@@ -267,7 +277,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
                 }}
               >
                 <LogOutIcon />
-                Log out
+                Log ud
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </>

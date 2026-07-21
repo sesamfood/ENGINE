@@ -78,7 +78,7 @@ function newKey(prefix: string) {
 }
 
 function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong";
+  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 function parseReference(value: string) {
@@ -204,7 +204,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const productComboboxOptions: ComboboxOption[] = productOptions.map(
     (option) => ({
       value: option.id,
-      label: option.archived ? `${option.name} — archived` : option.name,
+      label: option.archived ? `${option.name} — arkiveret` : option.name,
     }),
   );
 
@@ -214,15 +214,15 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         ?.label ??
       (defaultRow.unitValue?.startsWith("new:")
         ? defaultRow.unitValue.slice(4)
-        : "default unit"))
-    : "default unit";
+        : "standardenhed"))
+    : "standardenhed";
 
   function unitName(row: UnitRow) {
     return (
       unitOptions.find((option) => option.value === row.unitValue)?.label ??
       (row.unitValue?.startsWith("new:")
         ? row.unitValue.slice(4)
-        : "selected unit")
+        : "valgt enhed")
     );
   }
 
@@ -285,11 +285,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   function validate() {
     const nextErrors: Record<string, string> = {};
-    if (!name.trim()) nextErrors.name = "Enter a product name";
-    if (!categoryValue) nextErrors.category = "Choose or create a category";
-    if (unitRows.length === 0) nextErrors.units = "Add at least one unit";
+    if (!name.trim()) nextErrors.name = "Indtast et produktnavn";
+    if (!categoryValue) nextErrors.category = "Vælg eller opret en kategori";
+    if (unitRows.length === 0) nextErrors.units = "Tilføj mindst én enhed";
     if (unitRows.some((row) => !row.unitValue)) {
-      nextErrors.units = "Choose a unit for every row";
+      nextErrors.units = "Vælg en enhed for hver række";
     }
     if (
       unitRows.some(
@@ -297,13 +297,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           !Number.isFinite(Number(row.factor)) || Number(row.factor) <= 0,
       )
     ) {
-      nextErrors.units = "Every conversion must be greater than zero";
+      nextErrors.units = "Alle omregninger skal være større end nul";
     }
     const unitKeys = unitRows.map((row) =>
-      row.unitValue?.toLocaleLowerCase("en"),
+      row.unitValue?.toLocaleLowerCase("da"),
     );
     if (new Set(unitKeys).size !== unitKeys.length) {
-      nextErrors.units = "Each unit can only be added once";
+      nextErrors.units = "Hver enhed kan kun tilføjes én gang";
     }
     if (
       ingredientRows.some(
@@ -315,17 +315,17 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       )
     ) {
       nextErrors.ingredients =
-        "Choose a product, quantity, and unit for every ingredient";
+        "Vælg produkt, mængde og enhed for hver ingrediens";
     }
     const ingredientIds = ingredientRows.map((row) => row.productId);
     if (new Set(ingredientIds).size !== ingredientIds.length) {
-      nextErrors.ingredients = "Each ingredient can only be added once";
+      nextErrors.ingredients = "Hver ingrediens kan kun tilføjes én gang";
     }
     if (imageFile) {
       if (!IMAGE_TYPES.includes(imageFile.type)) {
-        nextErrors.image = "Use a JPEG, PNG, WebP, or AVIF image";
+        nextErrors.image = "Brug et billede i JPEG-, PNG-, WebP- eller AVIF-format";
       } else if (imageFile.size > MAX_IMAGE_SIZE) {
-        nextErrors.image = "Image must be 10 MB or smaller";
+        nextErrors.image = "Billedet må højst være 10 MB";
       }
     }
     setErrors(nextErrors);
@@ -340,7 +340,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       headers: { "Content-Type": imageFile.type },
       body: imageFile,
     });
-    if (!response.ok) throw new Error("Picture upload failed");
+    if (!response.ok) throw new Error("Billedet kunne ikke uploades");
     const { storageId } = (await response.json()) as { storageId: string };
     await setProductImage({
       productId: savedProductId,
@@ -404,12 +404,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           await removeProductImage({ productId });
         }
       } catch (imageError) {
-        toast.error(`Product saved, but ${messageFrom(imageError)}`);
+        toast.error(`Produktet blev gemt, men ${messageFrom(imageError)}`);
         router.push(`/organization/products/${savedProductId}`);
         return;
       }
 
-      toast.success(productId ? "Product updated" : "Product created");
+      toast.success(
+        productId ? "Produktet er opdateret" : "Produktet er oprettet",
+      );
       router.push("/organization/products");
     } catch (caught) {
       toast.error(messageFrom(caught));
@@ -423,14 +425,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Product not found</CardTitle>
+          <CardTitle>Produktet blev ikke fundet</CardTitle>
           <CardDescription>
-            This product does not exist in the active organization.
+            Produktet findes ikke i den aktive organisation.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Link href="/organization/products" className={buttonVariants()}>
-            Back to products
+            Tilbage til produkter
           </Link>
         </CardContent>
       </Card>
@@ -445,7 +447,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       <div className="flex items-start gap-3">
         <Link
           href="/organization/products"
-          aria-label="Back to products"
+          aria-label="Tilbage til produkter"
           className={buttonVariants({ variant: "outline", size: "icon-lg" })}
         >
           <ArrowLeftIcon />
@@ -453,10 +455,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-2xl font-semibold tracking-tight">
-              {productId ? "Edit product" : "New product"}
+              {productId ? "Rediger produkt" : "Nyt produkt"}
             </h2>
             {product?.status === "archived" ? (
-              <Badge variant="outline">Archived</Badge>
+              <Badge variant="outline">Arkiveret</Badge>
             ) : null}
           </div>
         </div>
@@ -465,17 +467,17 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:items-start">
         <Card>
           <CardHeader>
-            <CardTitle>Product details</CardTitle>
+            <CardTitle>Produktdetaljer</CardTitle>
           </CardHeader>
           <CardContent>
             <FieldGroup>
               <Field data-invalid={Boolean(errors.name)}>
-                <FieldLabel htmlFor="product-name">Name</FieldLabel>
+                <FieldLabel htmlFor="product-name">Navn</FieldLabel>
                 <Input
                   id="product-name"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="e.g. Avocado"
+                  placeholder="f.eks. avocado"
                   className="h-11"
                   aria-invalid={Boolean(errors.name)}
                 />
@@ -483,32 +485,32 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               </Field>
 
               <Field data-invalid={Boolean(errors.category)}>
-                <FieldLabel>Category</FieldLabel>
+                <FieldLabel>Kategori</FieldLabel>
                 <CreatableCombobox
                   options={categoryOptions}
                   value={categoryValue}
                   onValueChange={setCategoryValue}
-                  placeholder="Choose or create a category"
+                  placeholder="Vælg eller opret en kategori"
                   allowCreate
-                  ariaLabel="Product category"
+                  ariaLabel="Produktkategori"
                 />
                 <FieldError>{errors.category}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.image)}>
-                <FieldLabel htmlFor="product-picture">Picture</FieldLabel>
+                <FieldLabel htmlFor="product-picture">Billede</FieldLabel>
                 <div className="overflow-hidden rounded-xl border">
                   {shownImage ? (
                     <div
                       role="img"
-                      aria-label="Product picture preview"
+                      aria-label="Forhåndsvisning af produktbillede"
                       className="aspect-[4/3] w-full bg-muted bg-cover bg-center"
                       style={{ backgroundImage: `url("${shownImage}")` }}
                     />
                   ) : (
                     <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
                       <ImageIcon className="size-10" aria-hidden="true" />
-                      <span className="text-sm">No picture selected</span>
+                      <span className="text-sm">Intet billede valgt</span>
                     </div>
                   )}
                   <div className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-center">
@@ -534,7 +536,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         }}
                       >
                         <Trash2Icon data-icon="inline-start" />
-                        Remove
+                        Fjern
                       </Button>
                     ) : null}
                   </div>
@@ -548,11 +550,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Units and conversions</CardTitle>
+              <CardTitle>Enheder og omregninger</CardTitle>
             </CardHeader>
             <CardContent>
               <FieldSet>
-                <FieldLegend className="sr-only">Product units</FieldLegend>
+                <FieldLegend className="sr-only">Produktenheder</FieldLegend>
                 <RadioGroup
                   value={defaultRow?.key}
                   onValueChange={setDefaultUnit}
@@ -570,14 +572,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         <RadioGroupItem
                           value={row.key}
                           id={`${row.key}-default`}
-                          aria-label={`Make ${unitName(row)} the default unit`}
+                          aria-label={`Gør ${unitName(row)} til standardenhed`}
                         />
                         <FieldLabel htmlFor={`${row.key}-default`}>
-                          Default
+                          Standard
                         </FieldLabel>
                       </Field>
                       <Field className="md:self-center">
-                        <FieldLabel className="sr-only">Unit</FieldLabel>
+                        <FieldLabel className="sr-only">Enhed</FieldLabel>
                         <CreatableCombobox
                           options={unitOptions}
                           value={row.unitValue}
@@ -590,16 +592,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                               ),
                             )
                           }
-                          placeholder="Choose or create a unit"
+                          placeholder="Vælg eller opret en enhed"
                           allowCreate
-                          ariaLabel="Product unit"
+                          ariaLabel="Produktenhed"
                         />
                       </Field>
                       <Field>
                         <FieldLabel htmlFor={`${row.key}-factor`}>
                           {row.isDefault
-                            ? "Conversion"
-                            : `1 ${unitName(row)} equals`}
+                            ? "Omregning"
+                            : `1 ${unitName(row)} svarer til`}
                         </FieldLabel>
                         <Input
                           id={`${row.key}-factor`}
@@ -621,7 +623,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           className="h-11"
                         />
                         <FieldDescription>
-                          {row.isDefault ? "Base value" : defaultUnitName}
+                          {row.isDefault ? "Basisværdi" : defaultUnitName}
                         </FieldDescription>
                       </Field>
                       <Button
@@ -629,7 +631,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         variant="ghost"
                         size="icon-lg"
                         className="md:mt-6"
-                        aria-label={`Remove ${unitName(row)}`}
+                        aria-label={`Fjern ${unitName(row)}`}
                         disabled={unitRows.length === 1}
                         onClick={() => removeUnit(row.key)}
                       >
@@ -646,7 +648,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   onClick={addUnit}
                 >
                   <PlusIcon data-icon="inline-start" />
-                  Add unit
+                  Tilføj enhed
                 </Button>
               </FieldSet>
             </CardContent>
@@ -654,15 +656,15 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Ingredients</CardTitle>
+              <CardTitle>Ingredienser</CardTitle>
             </CardHeader>
             <CardContent>
               <FieldSet>
-                <FieldLegend className="sr-only">Ingredients</FieldLegend>
+                <FieldLegend className="sr-only">Ingredienser</FieldLegend>
                 <FieldGroup>
                   {ingredientRows.length === 0 ? (
                     <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
-                      This product has no ingredients yet.
+                      Produktet har endnu ingen ingredienser.
                     </p>
                   ) : null}
                   {ingredientRows.map((row) => {
@@ -675,7 +677,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         className="grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(0,1fr)_8rem_minmax(8rem,0.55fr)_auto] md:items-start"
                       >
                         <Field>
-                          <FieldLabel>Product</FieldLabel>
+                          <FieldLabel>Produkt</FieldLabel>
                           <CreatableCombobox
                             options={productComboboxOptions}
                             value={row.productId}
@@ -695,13 +697,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                                 ),
                               );
                             }}
-                            placeholder="Search products"
-                            ariaLabel="Ingredient product"
+                            placeholder="Søg efter produkter"
+                            ariaLabel="Ingrediensprodukt"
                           />
                         </Field>
                         <Field>
                           <FieldLabel htmlFor={`${row.key}-quantity`}>
-                            Quantity
+                            Mængde
                           </FieldLabel>
                           <Input
                             id={`${row.key}-quantity`}
@@ -723,7 +725,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           />
                         </Field>
                         <Field>
-                          <FieldLabel>Unit</FieldLabel>
+                          <FieldLabel>Enhed</FieldLabel>
                           <Select
                             value={row.unitId}
                             onValueChange={(value) =>
@@ -738,7 +740,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                             disabled={!selectedProduct}
                           >
                             <SelectTrigger className="h-11 w-full">
-                              <SelectValue placeholder="Choose unit" />
+                              <SelectValue placeholder="Vælg enhed" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectGroup>
@@ -756,7 +758,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           variant="ghost"
                           size="icon-lg"
                           className="md:mt-6"
-                          aria-label="Remove ingredient"
+                          aria-label="Fjern ingrediens"
                           onClick={() =>
                             setIngredientRows((current) =>
                               current.filter((item) => item.key !== row.key),
@@ -776,7 +778,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     onClick={addIngredient}
                   >
                     <PlusIcon data-icon="inline-start" />
-                    Add ingredient
+                    Tilføj ingrediens
                   </Button>
                 </FieldGroup>
               </FieldSet>
@@ -794,7 +796,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               className="min-h-11 flex-1 px-4 sm:flex-none"
               disabled
             >
-              Cancel
+              Annuller
             </Button>
           ) : (
             <Link
@@ -805,7 +807,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 className: "min-h-11 flex-1 px-4 sm:flex-none",
               })}
             >
-              Cancel
+              Annuller
             </Link>
           )}
           <Button
@@ -819,7 +821,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             ) : (
               <SaveIcon data-icon="inline-start" />
             )}
-            {productId ? "Save changes" : "Create product"}
+            {productId ? "Gem ændringer" : "Opret produkt"}
           </Button>
         </div>
       </div>

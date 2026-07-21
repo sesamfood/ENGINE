@@ -46,14 +46,14 @@ export function CreatableCombobox({
     inputState.selectionKey === selectionKey ? inputState.value : selectedLabel;
 
   const visibleOptions = useMemo(() => {
-    const query = inputValue.trim().toLocaleLowerCase("en");
+    const query = inputValue.trim().toLocaleLowerCase("da");
     const matches = query
       ? options.filter((option) =>
-          option.label.toLocaleLowerCase("en").includes(query),
+          option.label.toLocaleLowerCase("da").includes(query),
         )
       : options;
     const exactMatch = options.some(
-      (option) => option.label.toLocaleLowerCase("en") === query,
+      (option) => option.label.toLocaleLowerCase("da") === query,
     );
     if (allowCreate && query && !exactMatch) {
       return [
@@ -101,7 +101,7 @@ export function CreatableCombobox({
         disabled={disabled}
       />
       <ComboboxContent>
-        <ComboboxEmpty>No matches found.</ComboboxEmpty>
+        <ComboboxEmpty>Ingen resultater fundet.</ComboboxEmpty>
         <ComboboxList>
           {visibleOptions.map((option) => (
             <ComboboxItem
@@ -114,7 +114,7 @@ export function CreatableCombobox({
                 <PlusIcon aria-hidden="true" />
               ) : null}
               {option.value.startsWith("new:")
-                ? `Create “${option.label}”`
+                ? `Opret “${option.label}”`
                 : option.label}
             </ComboboxItem>
           ))}

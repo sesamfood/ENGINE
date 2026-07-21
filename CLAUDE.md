@@ -1,5 +1,9 @@
 @AGENTS.md
 
+## Interface language
+
+- Write all user-facing interface text in Danish.
+
 <!-- convex-ai-start -->
 
 This project uses [Convex](https://convex.dev) as its backend.

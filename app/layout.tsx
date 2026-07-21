@@ -20,8 +20,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Restaurant operations",
-  description: "Manage daily operations across your restaurant organization.",
+  title: "Restaurantdrift",
+  description: "Administrer den daglige drift i din restaurantorganisation.",
 };
 
 export default function RootLayout({
@@ -31,7 +31,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="da"
       className={cn(
         "h-full",
         "antialiased",

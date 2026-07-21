@@ -5,9 +5,9 @@ import { useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const sections = [
-  { value: "products", label: "Products" },
-  { value: "categories", label: "Categories" },
-  { value: "units", label: "Units" },
+  { value: "products", label: "Produkter" },
+  { value: "categories", label: "Kategorier" },
+  { value: "units", label: "Enheder" },
 ];
 
 export function OrganizationHeader() {
@@ -30,10 +30,10 @@ export function OrganizationHeader() {
     <>
       <header className="flex max-w-3xl flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Organization
+          Organisation
         </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Catalog management
+          Produkter
         </h1>
       </header>
       <Tabs
@@ -43,7 +43,7 @@ export function OrganizationHeader() {
         }
       >
         <TabsList
-          aria-label="Catalog sections"
+          aria-label="Katalogsektioner"
           className="h-14 w-full justify-start overflow-x-auto"
         >
           {sections.map((item) => (

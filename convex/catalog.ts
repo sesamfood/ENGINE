@@ -60,18 +60,18 @@ const ALLOWED_IMAGE_TYPES = new Set([
 
 function normalizeName(value: string, label: string) {
   const name = value.trim().replace(/\s+/g, " ");
-  if (!name) throw new ConvexError(`${label} is required`);
+  if (!name) throw new ConvexError(`${label} skal udfyldes`);
   if (name.length > MAX_NAME_LENGTH) {
     throw new ConvexError(
-      `${label} must be ${MAX_NAME_LENGTH} characters or fewer`,
+      `${label} må højst være ${MAX_NAME_LENGTH} tegn`,
     );
   }
-  return { name, normalizedName: name.toLocaleLowerCase("en") };
+  return { name, normalizedName: name.toLocaleLowerCase("da") };
 }
 
 function requirePositiveNumber(value: number, label: string) {
   if (!Number.isFinite(value) || value <= 0) {
-    throw new ConvexError(`${label} must be greater than zero`);
+    throw new ConvexError(`${label} skal være større end nul`);
   }
 }
 
@@ -91,7 +91,7 @@ async function assertProductNameAvailable(
     .unique();
 
   if (existing && existing._id !== excludingProductId) {
-    throw new ConvexError("A product with this name already exists");
+    throw new ConvexError("Der findes allerede et produkt med dette navn");
   }
 }
 
@@ -103,14 +103,14 @@ async function resolveCategory(
   if (reference.kind === "existing") {
     const category = await ctx.db.get("categories", reference.id);
     if (!category || category.organizationId !== organizationId) {
-      throw new ConvexError("Category not found");
+      throw new ConvexError("Kategorien blev ikke fundet");
     }
     return category._id;
   }
 
   const { name, normalizedName } = normalizeName(
     reference.name,
-    "Category name",
+    "Kategorinavnet",
   );
   const existing = await ctx.db
     .query("categories")
@@ -137,15 +137,15 @@ async function resolveUnits(
   inputs: ProductUnitInput[],
 ) {
   if (inputs.length === 0) {
-    throw new ConvexError("Add at least one unit");
+    throw new ConvexError("Tilføj mindst én enhed");
   }
   if (inputs.length > MAX_CHILD_ROWS) {
-    throw new ConvexError("Too many product units");
+    throw new ConvexError("Produktet har for mange enheder");
   }
 
   const defaultRows = inputs.filter((input) => input.isDefault);
   if (defaultRows.length !== 1) {
-    throw new ConvexError("Choose exactly one default unit");
+    throw new ConvexError("Vælg præcis én standardenhed");
   }
 
   const insertedByName = new Map<string, Id<"units">>();
@@ -156,22 +156,22 @@ async function resolveUnits(
   }> = [];
 
   for (const input of inputs) {
-    requirePositiveNumber(input.factorToDefault, "Conversion factor");
+    requirePositiveNumber(input.factorToDefault, "Omregningsfaktoren");
     if (input.isDefault && input.factorToDefault !== 1) {
-      throw new ConvexError("The default unit conversion must equal 1");
+      throw new ConvexError("Omregningen for standardenheden skal være 1");
     }
 
     let unitId: Id<"units">;
     if (input.unit.kind === "existing") {
       const unit = await ctx.db.get("units", input.unit.id);
       if (!unit || unit.organizationId !== organizationId) {
-        throw new ConvexError("Unit not found");
+        throw new ConvexError("Enheden blev ikke fundet");
       }
       unitId = unit._id;
     } else {
       const { name, normalizedName } = normalizeName(
         input.unit.name,
-        "Unit name",
+        "Enhedsnavnet",
       );
       const inserted = insertedByName.get(normalizedName);
       if (inserted) {
@@ -204,7 +204,7 @@ async function resolveUnits(
   }
 
   if (new Set(resolved.map((row) => row.unitId)).size !== resolved.length) {
-    throw new ConvexError("Each unit can only be added once");
+    throw new ConvexError("Hver enhed kan kun tilføjes én gang");
   }
 
   return resolved;
@@ -218,18 +218,18 @@ async function validateIngredients(
   allowedArchivedProductIds = new Set<Id<"products">>(),
 ) {
   if (ingredients.length > MAX_CHILD_ROWS) {
-    throw new ConvexError("Too many ingredients");
+    throw new ConvexError("Produktet har for mange ingredienser");
   }
   if (
     new Set(ingredients.map((row) => row.productId)).size !== ingredients.length
   ) {
-    throw new ConvexError("Each ingredient can only be added once");
+    throw new ConvexError("Hver ingrediens kan kun tilføjes én gang");
   }
 
   for (const ingredient of ingredients) {
-    requirePositiveNumber(ingredient.quantity, "Ingredient quantity");
+    requirePositiveNumber(ingredient.quantity, "Ingrediensmængden");
     if (productId && ingredient.productId === productId) {
-      throw new ConvexError("A product cannot contain itself");
+      throw new ConvexError("Et produkt kan ikke indeholde sig selv");
     }
 
     const ingredientProduct = await ctx.db.get(
@@ -242,7 +242,7 @@ async function validateIngredients(
       (ingredientProduct.status === "archived" &&
         !allowedArchivedProductIds.has(ingredientProduct._id))
     ) {
-      throw new ConvexError("Ingredient product not found");
+      throw new ConvexError("Ingrediensproduktet blev ikke fundet");
     }
 
     const productUnit = await ctx.db
@@ -255,7 +255,9 @@ async function validateIngredients(
       )
       .unique();
     if (!productUnit) {
-      throw new ConvexError("Choose a unit configured for the ingredient");
+      throw new ConvexError(
+        "Vælg en enhed, der er konfigureret for ingrediensen",
+      );
     }
   }
 }
@@ -272,12 +274,14 @@ async function assertNoRecipeCycle(
   while (queue.length > 0) {
     const current = queue.shift()!;
     if (current === productId) {
-      throw new ConvexError("This recipe would create an ingredient cycle");
+      throw new ConvexError(
+        "Opskriften ville oprette en cirkulær ingrediensreference",
+      );
     }
     if (visited.has(current)) continue;
     visited.add(current);
     if (visited.size > MAX_GRAPH_PRODUCTS) {
-      throw new ConvexError("Recipe graph is too large to validate");
+      throw new ConvexError("Opskriftsstrukturen er for stor til at validere");
     }
 
     const rows = await ctx.db
@@ -317,7 +321,9 @@ async function replaceProductChildren(
       )
       .first();
     if (usedByRecipe) {
-      throw new ConvexError("A unit used by another recipe cannot be removed");
+      throw new ConvexError(
+        "En enhed, der bruges af en anden opskrift, kan ikke fjernes",
+      );
     }
   }
 
@@ -404,7 +410,7 @@ export const listProducts = query({
     if (args.categoryId) {
       const category = await ctx.db.get("categories", args.categoryId);
       if (!category || category.organizationId !== organizationId) {
-        throw new ConvexError("Category not found");
+        throw new ConvexError("Kategorien blev ikke fundet");
       }
     }
 
@@ -648,7 +654,7 @@ export const createProduct = mutation({
   handler: async (ctx, args) => {
     const { organizationId, userIdentifier } =
       await requireOrganizationAdmin(ctx);
-    const { name, normalizedName } = normalizeName(args.name, "Product name");
+    const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
     await assertProductNameAvailable(ctx, organizationId, normalizedName);
     const categoryId = await resolveCategory(
       ctx,
@@ -692,10 +698,10 @@ export const updateProduct = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Product not found");
+      throw new ConvexError("Produktet blev ikke fundet");
     }
 
-    const { name, normalizedName } = normalizeName(args.name, "Product name");
+    const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
     await assertProductNameAvailable(
       ctx,
       organizationId,
@@ -756,7 +762,7 @@ export const archiveProduct = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Product not found");
+      throw new ConvexError("Produktet blev ikke fundet");
     }
     await ctx.db.patch("products", product._id, {
       status: "archived",
@@ -773,7 +779,7 @@ export const restoreProduct = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Product not found");
+      throw new ConvexError("Produktet blev ikke fundet");
     }
     await ctx.db.patch("products", product._id, {
       status: "active",
@@ -788,7 +794,7 @@ export const createCategory = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    const { name, normalizedName } = normalizeName(args.name, "Category name");
+    const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
     const existing = await ctx.db
       .query("categories")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -797,7 +803,7 @@ export const createCategory = mutation({
           .eq("normalizedName", normalizedName),
       )
       .unique();
-    if (existing) throw new ConvexError("This category already exists");
+    if (existing) throw new ConvexError("Kategorien findes allerede");
     return await ctx.db.insert("categories", {
       organizationId,
       name,
@@ -812,9 +818,9 @@ export const renameCategory = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
-      throw new ConvexError("Category not found");
+      throw new ConvexError("Kategorien blev ikke fundet");
     }
-    const { name, normalizedName } = normalizeName(args.name, "Category name");
+    const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
     const existing = await ctx.db
       .query("categories")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -824,7 +830,7 @@ export const renameCategory = mutation({
       )
       .unique();
     if (existing && existing._id !== category._id) {
-      throw new ConvexError("This category already exists");
+      throw new ConvexError("Kategorien findes allerede");
     }
     await ctx.db.patch("categories", category._id, { name, normalizedName });
     return null;
@@ -837,7 +843,7 @@ export const deleteCategory = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
-      throw new ConvexError("Category not found");
+      throw new ConvexError("Kategorien blev ikke fundet");
     }
     const product = await ctx.db
       .query("products")
@@ -845,7 +851,7 @@ export const deleteCategory = mutation({
         q.eq("organizationId", organizationId).eq("categoryId", category._id),
       )
       .first();
-    if (product) throw new ConvexError("This category is still in use");
+    if (product) throw new ConvexError("Kategorien er stadig i brug");
     await ctx.db.delete("categories", category._id);
     return null;
   },
@@ -855,7 +861,7 @@ export const createUnit = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    const { name, normalizedName } = normalizeName(args.name, "Unit name");
+    const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
     const existing = await ctx.db
       .query("units")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -864,7 +870,7 @@ export const createUnit = mutation({
           .eq("normalizedName", normalizedName),
       )
       .unique();
-    if (existing) throw new ConvexError("This unit already exists");
+    if (existing) throw new ConvexError("Enheden findes allerede");
     return await ctx.db.insert("units", {
       organizationId,
       name,
@@ -879,9 +885,9 @@ export const renameUnit = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
-      throw new ConvexError("Unit not found");
+      throw new ConvexError("Enheden blev ikke fundet");
     }
-    const { name, normalizedName } = normalizeName(args.name, "Unit name");
+    const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
     const existing = await ctx.db
       .query("units")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -891,7 +897,7 @@ export const renameUnit = mutation({
       )
       .unique();
     if (existing && existing._id !== unit._id) {
-      throw new ConvexError("This unit already exists");
+      throw new ConvexError("Enheden findes allerede");
     }
     await ctx.db.patch("units", unit._id, { name, normalizedName });
     return null;
@@ -904,7 +910,7 @@ export const deleteUnit = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
-      throw new ConvexError("Unit not found");
+      throw new ConvexError("Enheden blev ikke fundet");
     }
     const productUnit = await ctx.db
       .query("productUnits")
@@ -912,7 +918,7 @@ export const deleteUnit = mutation({
         q.eq("organizationId", organizationId).eq("unitId", unit._id),
       )
       .first();
-    if (productUnit) throw new ConvexError("This unit is still in use");
+    if (productUnit) throw new ConvexError("Enheden er stadig i brug");
     await ctx.db.delete("units", unit._id);
     return null;
   },
@@ -935,10 +941,10 @@ export const setProductImage = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Product not found");
+      throw new ConvexError("Produktet blev ikke fundet");
     }
     const metadata = await ctx.db.system.get("_storage", args.storageId);
-    if (!metadata) throw new ConvexError("Image upload not found");
+    if (!metadata) throw new ConvexError("Billeduploaden blev ikke fundet");
     const attachedProduct = await ctx.db
       .query("products")
       .withIndex("by_imageStorageId", (q) =>
@@ -946,14 +952,16 @@ export const setProductImage = mutation({
       )
       .first();
     if (attachedProduct && attachedProduct._id !== product._id) {
-      throw new ConvexError("Image upload not found");
+      throw new ConvexError("Billeduploaden blev ikke fundet");
     }
     if (
       !metadata.contentType ||
       !ALLOWED_IMAGE_TYPES.has(metadata.contentType) ||
       metadata.size > MAX_IMAGE_SIZE
     ) {
-      throw new ConvexError("Use a JPEG, PNG, WebP, or AVIF image up to 10 MB");
+      throw new ConvexError(
+        "Brug et billede i JPEG-, PNG-, WebP- eller AVIF-format på højst 10 MB",
+      );
     }
 
     if (product.imageStorageId && product.imageStorageId !== args.storageId) {
@@ -973,7 +981,7 @@ export const removeProductImage = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Product not found");
+      throw new ConvexError("Produktet blev ikke fundet");
     }
     if (product.imageStorageId) {
       await ctx.storage.delete(product.imageStorageId);
