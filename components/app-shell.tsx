@@ -1,7 +1,8 @@
 "use client";
 
-import { useClerk, useOrganization, useUser } from "@clerk/nextjs";
+import { useAuth, useClerk, useOrganization, useUser } from "@clerk/nextjs";
 import {
+  Building2Icon,
   CalendarDaysIcon,
   ChevronsUpDownIcon,
   ClipboardListIcon,
@@ -15,11 +16,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -147,6 +144,7 @@ function AccountAvatar({
 }
 
 function ProfileMenu({ compact = false }: { compact?: boolean }) {
+  const { has, isLoaded, orgId } = useAuth();
   const { signOut } = useClerk();
   const { isSignedIn, user } = useUser();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -161,7 +159,12 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
       .join("")
       .slice(0, 2)
       .toUpperCase() || "P";
-  const accountPageActive = pathname === "/profile" || pathname === "/settings";
+  const accountPageActive =
+    pathname === "/profile" ||
+    pathname === "/settings" ||
+    pathname.startsWith("/organization");
+  const canManageOrganization =
+    isLoaded && Boolean(orgId) && has?.({ role: "org:admin" });
 
   function goTo(href: string) {
     setOpenMobile(false);
@@ -245,6 +248,12 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
             <SettingsIcon />
             Settings
           </DropdownMenuItem>
+          {canManageOrganization ? (
+            <DropdownMenuItem onClick={() => goTo("/organization/products")}>
+              <Building2Icon />
+              Organization
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuGroup>
         {isSignedIn ? (
           <>

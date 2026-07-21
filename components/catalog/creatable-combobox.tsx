@@ -1,0 +1,125 @@
+"use client";
+
+import { PlusIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
+
+export type ComboboxOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
+export function CreatableCombobox({
+  options,
+  value,
+  onValueChange,
+  placeholder,
+  allowCreate = false,
+  disabled = false,
+  ariaLabel,
+}: {
+  options: ComboboxOption[];
+  value: string | null;
+  onValueChange: (value: string | null) => void;
+  placeholder: string;
+  allowCreate?: boolean;
+  disabled?: boolean;
+  ariaLabel: string;
+}) {
+  const selectedLabel =
+    options.find((option) => option.value === value)?.label ??
+    (value?.startsWith("new:") ? value.slice(4) : "");
+  const selectionKey = `${value ?? ""}:${selectedLabel}`;
+  const [inputState, setInputState] = useState({
+    selectionKey,
+    value: selectedLabel,
+  });
+  const inputValue =
+    inputState.selectionKey === selectionKey ? inputState.value : selectedLabel;
+
+  const visibleOptions = useMemo(() => {
+    const query = inputValue.trim().toLocaleLowerCase("en");
+    const matches = query
+      ? options.filter((option) =>
+          option.label.toLocaleLowerCase("en").includes(query),
+        )
+      : options;
+    const exactMatch = options.some(
+      (option) => option.label.toLocaleLowerCase("en") === query,
+    );
+    if (allowCreate && query && !exactMatch) {
+      return [
+        ...matches,
+        { value: `new:${inputValue.trim()}`, label: inputValue.trim() },
+      ];
+    }
+    return matches;
+  }, [allowCreate, inputValue, options]);
+
+  const itemValues = visibleOptions.map((option) => option.value);
+
+  return (
+    <Combobox
+      items={itemValues}
+      filteredItems={itemValues}
+      value={value}
+      inputValue={inputValue}
+      onInputValueChange={(nextValue) => {
+        setInputState({ selectionKey, value: nextValue });
+        if (!nextValue) onValueChange(null);
+      }}
+      onValueChange={(nextValue) => {
+        onValueChange(nextValue);
+        const label = visibleOptions.find(
+          (option) => option.value === nextValue,
+        )?.label;
+        if (label) {
+          setInputState({
+            selectionKey: `${nextValue ?? ""}:${label}`,
+            value: label,
+          });
+        }
+      }}
+      disabled={disabled}
+      itemToStringLabel={(itemValue) =>
+        visibleOptions.find((option) => option.value === itemValue)?.label ?? ""
+      }
+    >
+      <ComboboxInput
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        className="h-11 w-full"
+        showClear
+        disabled={disabled}
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>No matches found.</ComboboxEmpty>
+        <ComboboxList>
+          {visibleOptions.map((option) => (
+            <ComboboxItem
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+              className="min-h-10"
+            >
+              {option.value.startsWith("new:") ? (
+                <PlusIcon aria-hidden="true" />
+              ) : null}
+              {option.value.startsWith("new:")
+                ? `Create “${option.label}”`
+                : option.label}
+            </ComboboxItem>
+          ))}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}

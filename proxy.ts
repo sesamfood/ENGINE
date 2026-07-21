@@ -1,6 +1,11 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
-export default clerkMiddleware();
+export default clerkMiddleware(async (auth, request) => {
+  const pathname = request.nextUrl.pathname;
+  if (pathname === "/organization" || pathname.startsWith("/organization/")) {
+    await auth.protect({ role: "org:admin" });
+  }
+});
 
 export const config = {
   matcher: [
