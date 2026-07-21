@@ -263,7 +263,7 @@ export function ProductCatalog() {
         <Tabs value={categoryId} onValueChange={setCategoryId}>
           <TabsList
             aria-label="Produktkategorier"
-            className="h-14 w-full justify-start overflow-x-auto"
+            className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
           >
             <TabsTrigger value="all" className="min-w-36 px-6">
               Alle produkter

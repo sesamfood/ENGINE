@@ -44,7 +44,7 @@ export function OrganizationHeader() {
       >
         <TabsList
           aria-label="Katalogsektioner"
-          className="h-14 w-full justify-start overflow-x-auto"
+          className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
         >
           {sections.map((item) => (
             <TabsTrigger

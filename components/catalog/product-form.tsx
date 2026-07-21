@@ -500,19 +500,24 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               <Field data-invalid={Boolean(errors.image)}>
                 <FieldLabel htmlFor="product-picture">Billede</FieldLabel>
                 <div className="overflow-hidden rounded-xl border">
-                  {shownImage ? (
-                    <div
-                      role="img"
-                      aria-label="Forhåndsvisning af produktbillede"
-                      className="aspect-[4/3] w-full bg-muted bg-cover bg-center"
-                      style={{ backgroundImage: `url("${shownImage}")` }}
-                    />
-                  ) : (
-                    <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
-                      <ImageIcon className="size-10" aria-hidden="true" />
-                      <span className="text-sm">Intet billede valgt</span>
-                    </div>
-                  )}
+                  <label
+                    htmlFor="product-picture"
+                    className="block cursor-pointer"
+                  >
+                    {shownImage ? (
+                      <span
+                        role="img"
+                        aria-label="Forhåndsvisning af produktbillede"
+                        className="block aspect-[4/3] w-full bg-muted bg-cover bg-center"
+                        style={{ backgroundImage: `url("${shownImage}")` }}
+                      />
+                    ) : (
+                      <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
+                        <ImageIcon className="size-10" aria-hidden="true" />
+                        <span className="text-sm">Intet billede valgt</span>
+                      </span>
+                    )}
+                  </label>
                   <div className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-center">
                     <Input
                       id="product-picture"
