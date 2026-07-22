@@ -149,7 +149,7 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
   ({
     baseURL: siteUrl,
-    trustedOrigins: [siteUrl],
+    trustedOrigins: [siteUrl, "https://engine-*-mellonn.vercel.app"],
     database: authComponent.adapter(ctx),
     advanced: {
       database: {

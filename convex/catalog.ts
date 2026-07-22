@@ -69,6 +69,66 @@ function normalizeName(value: string, label: string) {
   return { name, normalizedName: name.toLocaleLowerCase("da") };
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .toLocaleLowerCase("da")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "o")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function editDistance(left: string, right: string) {
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex++) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex++) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] +
+          (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+
+  return previous[right.length];
+}
+
+function fuzzyScore(name: string, search: string) {
+  const normalizedName = normalizeSearch(name);
+  const normalizedSearch = normalizeSearch(search);
+  if (normalizedName.includes(normalizedSearch)) return 0;
+
+  const words = normalizedName.split(" ");
+  let score = 0;
+
+  for (const term of normalizedSearch.split(" ")) {
+    if (term.length < 3) return null;
+    const tolerance = Math.max(1, Math.floor(term.length / 3));
+    let best = Number.POSITIVE_INFINITY;
+
+    for (const word of words) {
+      for (
+        let length = Math.max(1, term.length - tolerance);
+        length <= Math.min(word.length, term.length + tolerance);
+        length++
+      ) {
+        best = Math.min(best, editDistance(term, word.slice(0, length)));
+      }
+    }
+
+    if (best > tolerance) return null;
+    score += best;
+  }
+
+  return score;
+}
+
 function requirePositiveNumber(value: number, label: string) {
   if (!Number.isFinite(value) || value <= 0) {
     throw new ConvexError(`${label} skal være større end nul`);
@@ -416,18 +476,46 @@ export const listProducts = query({
 
     const search = args.search.trim();
     const results = search
-      ? await ctx.db
-          .query("products")
-          .withSearchIndex("search_name", (q) => {
-            const scoped = q
-              .search("name", search)
-              .eq("organizationId", organizationId)
-              .eq("status", args.status);
-            return args.categoryId
-              ? scoped.eq("categoryId", args.categoryId)
-              : scoped;
-          })
-          .paginate(args.paginationOpts)
+      ? await (async () => {
+          // ponytail: scan the tenant catalog until catalog size warrants a trigram index.
+          const products = await (args.categoryId
+            ? ctx.db
+                .query("products")
+                .withIndex(
+                  "by_organizationId_and_status_and_categoryId_and_normalizedName",
+                  (q) =>
+                    q
+                      .eq("organizationId", organizationId)
+                      .eq("status", args.status)
+                      .eq("categoryId", args.categoryId!),
+                )
+            : ctx.db
+                .query("products")
+                .withIndex(
+                  "by_organizationId_and_status_and_normalizedName",
+                  (q) =>
+                    q
+                      .eq("organizationId", organizationId)
+                      .eq("status", args.status),
+                ))
+            .collect();
+          const matches = products
+            .map((product) => ({ product, score: fuzzyScore(product.name, search) }))
+            .filter(
+              (match): match is { product: Doc<"products">; score: number } =>
+                match.score !== null,
+            )
+            .sort((left, right) => left.score - right.score)
+            .map((match) => match.product);
+          const offset = Number(args.paginationOpts.cursor ?? 0);
+          const end = Math.min(offset + args.paginationOpts.numItems, matches.length);
+
+          return {
+            page: matches.slice(offset, end),
+            isDone: end === matches.length,
+            continueCursor: String(end),
+          };
+        })()
       : args.categoryId
         ? await ctx.db
             .query("products")
