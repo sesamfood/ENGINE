@@ -1,6 +1,8 @@
+import { ProfileSettings } from "@/components/profile/profile-settings";
+
 export default function ProfilePage() {
   return (
-    <section className="mx-auto w-full max-w-[96rem]">
+    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-8">
       <div className="flex max-w-2xl flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Konto
@@ -12,6 +14,7 @@ export default function ProfilePage() {
           Administrer dine personlige oplysninger og kontoindstillinger her.
         </p>
       </div>
+      <ProfileSettings />
     </section>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth, useClerk, useOrganization, useUser } from "@clerk/nextjs";
 import {
   ArrowRightLeftIcon,
   Building2Icon,
@@ -10,9 +9,14 @@ import {
   StoreIcon,
   UserRoundIcon,
 } from "lucide-react";
+import { useConvexAuth, useQuery } from "convex/react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { toast } from "sonner";
+import { api } from "@/convex/_generated/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,60 +43,89 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { authClient } from "@/lib/auth-client";
+import { canManageCatalog } from "@/lib/auth-permissions";
 
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
 ];
 
 const organizationNavigation = {
-  label: "Produkter",
-  href: "/organization/products",
+  label: "Organisation",
+  href: "/organization",
   icon: Building2Icon,
 };
 
 function OrganizationHome() {
-  const { organization } = useOrganization();
-  const logoUrl = organization?.imageUrl;
+  const { data: organization } = authClient.useActiveOrganization();
+  const { state, isMobile } = useSidebar();
+  const { isAuthenticated } = useConvexAuth();
+  const branding = useQuery(
+    api.organization.getBranding,
+    organization && isAuthenticated ? {} : "skip",
+  );
+  const logoUrl = organization?.logo;
+  const wideLogoUrl = branding?.wideLogoUrl;
+
+  if (wideLogoUrl && (state === "expanded" || isMobile)) {
+    return (
+      <Link
+        href="/transfers"
+        aria-label={`${organization?.name ?? "Organisation"} startside`}
+        className="flex h-12 w-full min-w-0 items-center justify-center px-2 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <Image
+          src={wideLogoUrl}
+          alt={organization?.name ?? "Organisation"}
+          width={200}
+          height={48}
+          unoptimized
+          className="max-h-10 w-auto max-w-full object-contain"
+        />
+      </Link>
+    );
+  }
 
   return (
     <Link
       href="/transfers"
-      aria-label={
-        organization ? `${organization.name} startside` : "Startside"
-      }
-      className="flex size-12 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      aria-label={organization ? `${organization.name} startside` : "Startside"}
+      className="flex size-12 items-center justify-center focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      {logoUrl ? (
-        <span
-          role="img"
-          aria-label={organization?.name ?? "Organisation"}
-          className="size-11 rounded-xl bg-contain bg-center bg-no-repeat"
-          style={{ backgroundImage: `url("${logoUrl}")` }}
-        />
-      ) : (
-        <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <StoreIcon className="size-5" aria-hidden="true" />
-        </span>
-      )}
+      <div className="relative flex size-11 overflow-hidden bg-primary text-primary-foreground">
+        {logoUrl ? (
+          <Image
+            src={logoUrl}
+            alt={organization?.name ?? "Organisation"}
+            fill
+            unoptimized
+            className="object-cover"
+          />
+        ) : (
+          <span className="flex size-full items-center justify-center">
+            <StoreIcon className="size-5" aria-hidden="true" />
+          </span>
+        )}
+      </div>
     </Link>
   );
 }
 
 function NavigationList() {
-  const { has, isLoaded, orgId } = useAuth();
+  const { data: membership } = authClient.useActiveMemberRole();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
-  const navigation =
-    isLoaded && Boolean(orgId) && has?.({ role: "org:admin" })
-      ? [...primaryNavigation, organizationNavigation]
-      : primaryNavigation;
+  const navigation = canManageCatalog(membership?.role)
+    ? [...primaryNavigation, organizationNavigation]
+    : primaryNavigation;
 
   return (
     <SidebarGroup>
       <SidebarGroupContent>
         <nav aria-label="Primær navigation">
-          <SidebarMenu>
+          <SidebarMenu className="gap-2">
             {navigation.map((item) => {
               const Icon = item.icon;
               const active =
@@ -106,7 +139,7 @@ function NavigationList() {
                     size="lg"
                     isActive={active}
                     tooltip={item.label}
-                    className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:p-3! group-data-[collapsible=icon]:[&_svg]:size-6"
+                    className="text-base [&_svg]:size-4 group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:[&_svg]:size-4"
                     render={
                       <Link
                         href={item.href}
@@ -154,17 +187,17 @@ function AccountAvatar({
 }
 
 function ProfileMenu({ compact = false }: { compact?: boolean }) {
-  const { has, isLoaded, orgId } = useAuth();
-  const { signOut } = useClerk();
-  const { isSignedIn, user } = useUser();
+  const { data: session } = authClient.useSession();
+  const { data: membership } = authClient.useActiveMemberRole();
   const { isMobile, setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
-  const displayName = user?.fullName || user?.firstName || "Profil";
-  const email = user?.primaryEmailAddress?.emailAddress || "Konto";
+  const user = session?.user;
+  const displayName = user?.name || "Profil";
+  const email = user?.email || "Konto";
   const initials =
-    [user?.firstName, user?.lastName]
-      .filter((value): value is string => Boolean(value))
+    displayName
+      .split(/\s+/)
       .map((value) => value[0])
       .join("")
       .slice(0, 2)
@@ -173,12 +206,26 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
     pathname === "/profile" ||
     pathname === "/settings" ||
     pathname.startsWith("/organization");
-  const canManageOrganization =
-    isLoaded && Boolean(orgId) && has?.({ role: "org:admin" });
+  const canManageOrganization = canManageCatalog(membership?.role);
 
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
+  }
+
+  async function signOut() {
+    setOpenMobile(false);
+    try {
+      const result = await authClient.signOut();
+      if (result.error) {
+        toast.error("Du kunne ikke logges ud");
+        return;
+      }
+      router.replace("/login");
+      router.refresh();
+    } catch {
+      toast.error("Du kunne ikke logges ud. Kontrollér forbindelsen");
+    }
   }
 
   return (
@@ -203,7 +250,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
         }
       >
         <AccountAvatar
-          imageUrl={user?.imageUrl}
+          imageUrl={user?.image ?? undefined}
           name={displayName}
           initials={initials}
           className="group-data-[collapsible=icon]:size-10"
@@ -234,7 +281,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
           <DropdownMenuLabel className="p-2">
             <div className="flex items-center gap-3">
               <AccountAvatar
-                imageUrl={user?.imageUrl}
+                imageUrl={user?.image ?? undefined}
                 name={displayName}
                 initials={initials}
                 large
@@ -259,22 +306,19 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
             Indstillinger
           </DropdownMenuItem>
           {canManageOrganization ? (
-            <DropdownMenuItem onClick={() => goTo("/organization/products")}>
+            <DropdownMenuItem onClick={() => goTo("/organization")}>
               <Building2Icon />
               Organisation
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuGroup>
-        {isSignedIn ? (
+        {session ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem
                 variant="destructive"
-                onClick={() => {
-                  setOpenMobile(false);
-                  void signOut({ redirectUrl: "/" });
-                }}
+                onClick={() => void signOut()}
               >
                 <LogOutIcon />
                 Log ud
@@ -287,51 +331,160 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  return (
-    <TooltipProvider>
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "15.5rem",
-            "--sidebar-width-icon": "4rem",
-          } as CSSProperties
+function OrganizationBoundary({
+  children,
+  required,
+}: {
+  children: React.ReactNode;
+  required: boolean;
+}) {
+  const router = useRouter();
+  const organizations = authClient.useListOrganizations();
+  const activeOrganization = authClient.useActiveOrganization();
+  const [activationError, setActivationError] = useState(false);
+  const activeOrganizationId = activeOrganization.data?.id;
+  const firstOrganizationId = organizations.data?.[0]?.id;
+
+  useEffect(() => {
+    if (!required) return;
+    if (organizations.isPending || activeOrganization.isPending) return;
+    if (organizations.error || activeOrganization.error) return;
+    if (activeOrganizationId) return;
+
+    if (!firstOrganizationId) {
+      router.replace("/onboarding");
+      return;
+    }
+
+    void authClient.organization
+      .setActive({ organizationId: firstOrganizationId })
+      .then(({ error }) => {
+        if (error) {
+          setActivationError(true);
+          return;
         }
+        setActivationError(false);
+        router.refresh();
+      })
+      .catch(() => setActivationError(true));
+  }, [
+    activeOrganization.isPending,
+    activeOrganization.error,
+    activeOrganizationId,
+    firstOrganizationId,
+    organizations.isPending,
+    organizations.error,
+    required,
+    router,
+  ]);
+
+  if (!required) return children;
+
+  if (organizations.error || activeOrganization.error || activationError) {
+    return (
+      <main className="grid min-h-screen place-items-center p-6">
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>Organisationen kunne ikke indlæses</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-3">
+            Kontrollér forbindelsen, og prøv igen.
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setActivationError(false);
+                void organizations.refetch();
+                void activeOrganization.refetch();
+              }}
+            >
+              Prøv igen
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </main>
+    );
+  }
+
+  if (
+    organizations.isPending ||
+    activeOrganization.isPending ||
+    !activeOrganizationId
+  ) {
+    return (
+      <main
+        className="grid min-h-screen place-items-center"
+        aria-label="Indlæser organisation"
       >
-        <Sidebar collapsible="icon">
-          <SidebarHeader className="h-24 items-center justify-center">
-            <OrganizationHome />
-          </SidebarHeader>
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
 
-          <SidebarContent>
-            <NavigationList />
-          </SidebarContent>
+  return children;
+}
 
-          <SidebarFooter>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <ProfileMenu />
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
-        </Sidebar>
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const shellless = [
+    "/login",
+    "/signup",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+    "/invitation",
+    "/onboarding",
+  ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
-        <SidebarInset className="min-w-0">
-          <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0">
-            <SidebarTrigger size="icon-lg" />
-            <div className="flex flex-1 justify-center md:hidden">
+  if (shellless) return children;
+
+  const organizationRequired =
+    pathname !== "/profile" && pathname !== "/settings";
+
+  return (
+    <OrganizationBoundary required={organizationRequired}>
+      <TooltipProvider>
+        <SidebarProvider
+          style={
+            {
+              "--sidebar-width": "15.5rem",
+              "--sidebar-width-icon": "4rem",
+            } as CSSProperties
+          }
+        >
+          <Sidebar collapsible="icon">
+            <SidebarHeader className="h-24 items-center justify-center">
               <OrganizationHome />
-            </div>
-            <div className="md:hidden">
-              <ProfileMenu compact />
-            </div>
-          </header>
+            </SidebarHeader>
 
-          <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
-            {children}
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    </TooltipProvider>
+            <SidebarContent>
+              <NavigationList />
+            </SidebarContent>
+
+            <SidebarFooter>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <ProfileMenu />
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarFooter>
+          </Sidebar>
+
+          <SidebarInset className="min-w-0">
+            <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0">
+              <SidebarTrigger size="icon-lg" />
+              <div className="flex flex-1 justify-center md:hidden">
+                <OrganizationHome />
+              </div>
+              <div className="md:hidden">
+                <ProfileMenu compact />
+              </div>
+            </header>
+
+            <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
+              {children}
+            </div>
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
+    </OrganizationBoundary>
   );
 }

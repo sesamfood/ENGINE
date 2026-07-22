@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import { requireCatalogManager, requireOrganization } from "./lib/auth";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -653,7 +653,7 @@ export const createProduct = mutation({
   },
   handler: async (ctx, args) => {
     const { organizationId, userIdentifier } =
-      await requireOrganizationAdmin(ctx);
+      await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
     await assertProductNameAvailable(ctx, organizationId, normalizedName);
     const categoryId = await resolveCategory(
@@ -695,7 +695,7 @@ export const updateProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
   },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -759,7 +759,7 @@ export const updateProduct = mutation({
 export const archiveProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -776,7 +776,7 @@ export const archiveProduct = mutation({
 export const restoreProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -793,7 +793,7 @@ export const restoreProduct = mutation({
 export const createCategory = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
     const existing = await ctx.db
       .query("categories")
@@ -815,7 +815,7 @@ export const createCategory = mutation({
 export const renameCategory = mutation({
   args: { categoryId: v.id("categories"), name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
@@ -840,7 +840,7 @@ export const renameCategory = mutation({
 export const deleteCategory = mutation({
   args: { categoryId: v.id("categories") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
@@ -860,7 +860,7 @@ export const deleteCategory = mutation({
 export const createUnit = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
     const existing = await ctx.db
       .query("units")
@@ -882,7 +882,7 @@ export const createUnit = mutation({
 export const renameUnit = mutation({
   args: { unitId: v.id("units"), name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
       throw new ConvexError("Enheden blev ikke fundet");
@@ -907,7 +907,7 @@ export const renameUnit = mutation({
 export const deleteUnit = mutation({
   args: { unitId: v.id("units") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
       throw new ConvexError("Enheden blev ikke fundet");
@@ -927,7 +927,7 @@ export const deleteUnit = mutation({
 export const generateProductImageUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireOrganizationAdmin(ctx);
+    await requireCatalogManager(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -938,7 +938,7 @@ export const setProductImage = mutation({
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -978,7 +978,7 @@ export const setProductImage = mutation({
 export const removeProductImage = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");

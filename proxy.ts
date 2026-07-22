@@ -1,21 +1,45 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { isAuthenticated } from "@/lib/auth-server";
 
-export default clerkMiddleware(async (auth, request) => {
-  const pathname = request.nextUrl.pathname;
-  if (pathname === "/__clerk" || pathname.startsWith("/__clerk/")) return;
+const publicPaths = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/invitation",
+];
 
-  if (pathname === "/organization" || pathname.startsWith("/organization/")) {
-    await auth.protect({ role: "org:admin" });
-    return;
+export default async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith("/api/auth")) return NextResponse.next();
+
+  const publicPath = publicPaths.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+  const authenticated = await isAuthenticated();
+
+  if (!authenticated && !publicPath) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set(
+      "redirect",
+      `${pathname}${request.nextUrl.search}`,
+    );
+    return NextResponse.redirect(loginUrl);
   }
 
-  await auth.protect();
-});
+  if (authenticated && (pathname === "/login" || pathname === "/signup")) {
+    return NextResponse.redirect(new URL("/onboarding", request.url));
+  }
+
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/__clerk/:path*",
     "/(api|trpc)(.*)",
   ],
 };

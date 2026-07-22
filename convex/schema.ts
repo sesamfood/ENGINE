@@ -2,6 +2,15 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  organizationAssets: defineTable({
+    organizationId: v.string(),
+    logoStorageId: v.optional(v.id("_storage")),
+    wideLogoStorageId: v.optional(v.id("_storage")),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_logoStorageId", ["logoStorageId"])
+    .index("by_wideLogoStorageId", ["wideLogoStorageId"]),
+
   categories: defineTable({
     organizationId: v.string(),
     name: v.string(),

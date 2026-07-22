@@ -128,7 +128,7 @@ function ProductCard({
 
 function CatalogSkeleton() {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {Array.from({ length: 8 }, (_, index) => (
         <Card key={index} className="gap-4 py-0">
           <Skeleton className="aspect-[4/3] w-full rounded-none" />
@@ -315,7 +315,7 @@ export function ProductCatalog() {
       ) : null}
 
       {!showSkeleton && displayedResults.length > 0 ? (
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {displayedResults.map((product) => (
             <ProductCard
               key={product.id}
