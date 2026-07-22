@@ -635,7 +635,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         type="button"
                         variant="ghost"
                         size="icon-lg"
-                        className="md:mt-6"
+                        className="size-11 md:mt-6"
                         aria-label={`Fjern ${unitName(row)}`}
                         disabled={unitRows.length === 1}
                         onClick={() => removeUnit(row.key)}

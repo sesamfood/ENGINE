@@ -26,9 +26,8 @@ export function OrganizationAuthGate({ children }: { children: ReactNode }) {
           <TriangleAlertIcon />
           <AlertTitle>Katalogforbindelsen er ikke tilgængelig</AlertTitle>
           <AlertDescription>
-            Convex kunne ikke validere denne Clerk-session. Aktivér
-            Clerk-integrationen med Convex for denne instans, log derefter helt
-            ud, og log ind igen.
+            Convex kunne ikke validere din session. Log ud, og log derefter ind
+            igen.
           </AlertDescription>
         </Alert>
       </Unauthenticated>

@@ -1,51 +1,40 @@
 import { ConvexError } from "convex/values";
+import {
+  canManageCatalog,
+  canManageOrganization,
+} from "../../lib/auth-permissions";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { authComponent, createAuth } from "../auth";
 
 type AuthContext = QueryCtx | MutationCtx;
-
-type OrganizationClaim = {
-  id: string;
-  rol?: string;
-};
-
-function readOrganizationClaim(value: unknown): OrganizationClaim | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-
-  const claim = value as Record<string, unknown>;
-  if (typeof claim.id !== "string") return null;
-
-  return {
-    id: claim.id,
-    rol: typeof claim.rol === "string" ? claim.rol : undefined,
-  };
-}
 
 export async function requireOrganization(ctx: AuthContext) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
-  const currentClaim = readOrganizationClaim(identity.o);
-  const legacyOrganizationId =
-    typeof identity.org_id === "string" ? identity.org_id : undefined;
-  const organizationId = currentClaim?.id ?? legacyOrganizationId;
-
-  if (!organizationId) throw new ConvexError("Ingen aktiv organisation");
-
-  const role =
-    currentClaim?.rol ??
-    (typeof identity.org_role === "string" ? identity.org_role : undefined);
+  const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+  const member = await auth.api.getActiveMember({ headers }).catch(() => null);
+  if (!member) throw new ConvexError("Ingen aktiv organisation");
 
   return {
-    organizationId,
-    role,
+    organizationId: member.organizationId,
+    role: member.role,
     userIdentifier: identity.tokenIdentifier,
   };
 }
 
+export async function requireCatalogManager(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (!canManageCatalog(auth.role)) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
 export async function requireOrganizationAdmin(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
-  if (auth.role !== "admin" && auth.role !== "org:admin") {
-    throw new ConvexError("Du har ikke adgang");
+  if (!canManageOrganization(auth.role)) {
+    throw new ConvexError("Kun administratorer kan ændre organisationen");
   }
   return auth;
 }

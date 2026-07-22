@@ -21,15 +21,15 @@ The system should support practical customization without becoming a general-pur
 # Technology stack
 
 - Use Next.js for the application and target deployment on Vercel.
-- Use Clerk for authentication, organization management, users, and roles. Treat Clerk organizations as the tenant boundary that enables the white-label model.
+- Use Better Auth for authentication, organization management, users, and roles. Treat Better Auth organizations as the tenant boundary that enables the white-label model.
 - Use Convex for database storage and synchronization.
 - Use shadcn/ui components wherever a suitable component exists. Prefer composing or adapting those components over creating replacements from scratch. Always use the shadcn skill when creating UI.
 
 # Organization and data model
 
-- One Clerk organization represents an entire restaurant chain.
+- One Better Auth organization represents an entire restaurant chain.
 - Restaurant locations belong to and are managed beneath their organization.
-- Scope every organization-owned record to its Clerk organization.
+- Scope every organization-owned record to its Better Auth organization.
 - Never expose or allow access to data across organizations.
 
 # Authentication and authorization
@@ -54,7 +54,7 @@ The system should support practical customization without becoming a general-pur
 
 # Implementation principles
 
-- Do not introduce alternatives to Clerk, Convex, or shadcn/ui without explicit approval.
+- Do not introduce alternatives to Better Auth, Convex, or shadcn/ui without explicit approval.
 - Prefer simple, direct implementations over speculative abstractions.
 - Reuse existing components and patterns before adding new ones.
 - Avoid adding dependencies when the existing stack or platform can solve the problem clearly.

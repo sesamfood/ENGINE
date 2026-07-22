@@ -1,9 +1,9 @@
-import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { getToken } from "@/lib/auth-server";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -24,11 +24,13 @@ export const metadata: Metadata = {
   description: "Administrer den daglige drift i din restaurantorganisation.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialToken = await getToken();
+
   return (
     <html
       lang="da"
@@ -42,12 +44,10 @@ export default function RootLayout({
       )}
     >
       <body className="min-h-full">
-        <ClerkProvider>
-          <ConvexClientProvider>
-            <AppShell>{children}</AppShell>
-            <Toaster position="top-right" richColors />
-          </ConvexClientProvider>
-        </ClerkProvider>
+        <ConvexClientProvider initialToken={initialToken}>
+          <AppShell>{children}</AppShell>
+          <Toaster position="top-right" richColors />
+        </ConvexClientProvider>
       </body>
     </html>
   );

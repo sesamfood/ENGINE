@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import { requireCatalogManager, requireOrganization } from "./lib/auth";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -67,6 +67,66 @@ function normalizeName(value: string, label: string) {
     );
   }
   return { name, normalizedName: name.toLocaleLowerCase("da") };
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .toLocaleLowerCase("da")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "o")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function editDistance(left: string, right: string) {
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex++) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex++) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] +
+          (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+
+  return previous[right.length];
+}
+
+function fuzzyScore(name: string, search: string) {
+  const normalizedName = normalizeSearch(name);
+  const normalizedSearch = normalizeSearch(search);
+  if (normalizedName.includes(normalizedSearch)) return 0;
+
+  const words = normalizedName.split(" ");
+  let score = 0;
+
+  for (const term of normalizedSearch.split(" ")) {
+    if (term.length < 3) return null;
+    const tolerance = Math.max(1, Math.floor(term.length / 3));
+    let best = Number.POSITIVE_INFINITY;
+
+    for (const word of words) {
+      for (
+        let length = Math.max(1, term.length - tolerance);
+        length <= Math.min(word.length, term.length + tolerance);
+        length++
+      ) {
+        best = Math.min(best, editDistance(term, word.slice(0, length)));
+      }
+    }
+
+    if (best > tolerance) return null;
+    score += best;
+  }
+
+  return score;
 }
 
 function requirePositiveNumber(value: number, label: string) {
@@ -416,18 +476,46 @@ export const listProducts = query({
 
     const search = args.search.trim();
     const results = search
-      ? await ctx.db
-          .query("products")
-          .withSearchIndex("search_name", (q) => {
-            const scoped = q
-              .search("name", search)
-              .eq("organizationId", organizationId)
-              .eq("status", args.status);
-            return args.categoryId
-              ? scoped.eq("categoryId", args.categoryId)
-              : scoped;
-          })
-          .paginate(args.paginationOpts)
+      ? await (async () => {
+          // ponytail: scan the tenant catalog until catalog size warrants a trigram index.
+          const products = await (args.categoryId
+            ? ctx.db
+                .query("products")
+                .withIndex(
+                  "by_organizationId_and_status_and_categoryId_and_normalizedName",
+                  (q) =>
+                    q
+                      .eq("organizationId", organizationId)
+                      .eq("status", args.status)
+                      .eq("categoryId", args.categoryId!),
+                )
+            : ctx.db
+                .query("products")
+                .withIndex(
+                  "by_organizationId_and_status_and_normalizedName",
+                  (q) =>
+                    q
+                      .eq("organizationId", organizationId)
+                      .eq("status", args.status),
+                ))
+            .collect();
+          const matches = products
+            .map((product) => ({ product, score: fuzzyScore(product.name, search) }))
+            .filter(
+              (match): match is { product: Doc<"products">; score: number } =>
+                match.score !== null,
+            )
+            .sort((left, right) => left.score - right.score)
+            .map((match) => match.product);
+          const offset = Number(args.paginationOpts.cursor ?? 0);
+          const end = Math.min(offset + args.paginationOpts.numItems, matches.length);
+
+          return {
+            page: matches.slice(offset, end),
+            isDone: end === matches.length,
+            continueCursor: String(end),
+          };
+        })()
       : args.categoryId
         ? await ctx.db
             .query("products")
@@ -653,7 +741,7 @@ export const createProduct = mutation({
   },
   handler: async (ctx, args) => {
     const { organizationId, userIdentifier } =
-      await requireOrganizationAdmin(ctx);
+      await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
     await assertProductNameAvailable(ctx, organizationId, normalizedName);
     const categoryId = await resolveCategory(
@@ -695,7 +783,7 @@ export const updateProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
   },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -759,7 +847,7 @@ export const updateProduct = mutation({
 export const archiveProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -776,7 +864,7 @@ export const archiveProduct = mutation({
 export const restoreProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -793,7 +881,7 @@ export const restoreProduct = mutation({
 export const createCategory = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
     const existing = await ctx.db
       .query("categories")
@@ -815,7 +903,7 @@ export const createCategory = mutation({
 export const renameCategory = mutation({
   args: { categoryId: v.id("categories"), name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
@@ -840,7 +928,7 @@ export const renameCategory = mutation({
 export const deleteCategory = mutation({
   args: { categoryId: v.id("categories") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
@@ -860,7 +948,7 @@ export const deleteCategory = mutation({
 export const createUnit = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
     const existing = await ctx.db
       .query("units")
@@ -882,7 +970,7 @@ export const createUnit = mutation({
 export const renameUnit = mutation({
   args: { unitId: v.id("units"), name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
       throw new ConvexError("Enheden blev ikke fundet");
@@ -907,7 +995,7 @@ export const renameUnit = mutation({
 export const deleteUnit = mutation({
   args: { unitId: v.id("units") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
       throw new ConvexError("Enheden blev ikke fundet");
@@ -927,7 +1015,7 @@ export const deleteUnit = mutation({
 export const generateProductImageUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireOrganizationAdmin(ctx);
+    await requireCatalogManager(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -938,7 +1026,7 @@ export const setProductImage = mutation({
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -978,7 +1066,7 @@ export const setProductImage = mutation({
 export const removeProductImage = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireCatalogManager(ctx);
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
