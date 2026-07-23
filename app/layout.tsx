@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
+import { OrganizationFavicon } from "@/components/organization-favicon";
 import { Toaster } from "@/components/ui/sonner";
 import { getToken } from "@/lib/auth-server";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Restaurantdrift",
+  title: "SESAM ENGINE",
+  applicationName: "SESAM ENGINE",
   description: "Administrer den daglige drift i din restaurantorganisation.",
 };
 
@@ -45,6 +47,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full">
         <ConvexClientProvider initialToken={initialToken}>
+          <OrganizationFavicon />
           <AppShell>{children}</AppShell>
           <Toaster position="top-right" richColors />
         </ConvexClientProvider>
