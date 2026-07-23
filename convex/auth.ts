@@ -24,7 +24,7 @@ type OrganizationMember = {
 };
 
 function getDatabaseAdapter(ctx: GenericCtx<DataModel>) {
-  return authComponent.adapter(ctx)({} as BetterAuthOptions);
+  return authComponent.adapter(ctx)(createAuthOptions(ctx));
 }
 
 function requireAllowedOrganizationRole(role: string) {

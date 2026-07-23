@@ -10,6 +10,7 @@ import {
   PackageOpenIcon,
   PlusIcon,
   SearchIcon,
+  Trash2Icon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -54,6 +55,7 @@ type CatalogProduct = {
   status: ProductStatus;
   category: { id: Id<"categories">; name: string } | null;
   imageUrl: string | null;
+  deletesAt: number | null;
 };
 
 function messageFrom(error: unknown) {
@@ -83,10 +85,12 @@ function ProductCard({
   product,
   onArchive,
   onRestore,
+  onDelete,
 }: {
   product: CatalogProduct;
   onArchive: (product: CatalogProduct) => void;
   onRestore: (product: CatalogProduct) => void;
+  onDelete: (product: CatalogProduct) => void;
 }) {
   return (
     <Card className="relative gap-0 py-0 transition-shadow hover:shadow-sm">
@@ -100,8 +104,11 @@ function ProductCard({
         <CardTitle>{product.name}</CardTitle>
         <CardDescription>
           {product.category?.name ?? "Uden kategori"}
+          {product.deletesAt
+            ? ` · Slettes automatisk ${new Intl.DateTimeFormat("da-DK", { dateStyle: "long" }).format(product.deletesAt)}`
+            : null}
         </CardDescription>
-        <CardAction className="relative z-10">
+        <CardAction className="relative z-10 flex gap-1">
           <Button
             type="button"
             variant="ghost"
@@ -120,6 +127,18 @@ function ProductCard({
               <ArchiveRestoreIcon />
             )}
           </Button>
+          {product.status === "archived" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              className="size-11"
+              aria-label={`Slet ${product.name} permanent`}
+              onClick={() => onDelete(product)}
+            >
+              <Trash2Icon />
+            </Button>
+          ) : null}
         </CardAction>
       </CardHeader>
     </Card>
@@ -150,12 +169,16 @@ export function ProductCatalog() {
   const [pendingProduct, setPendingProduct] = useState<CatalogProduct | null>(
     null,
   );
+  const [pendingDeleteProduct, setPendingDeleteProduct] =
+    useState<CatalogProduct | null>(null);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [querySearch, setQuerySearch] = useState("");
   const [visibleResults, setVisibleResults] = useState<CatalogProduct[]>([]);
   const categories = useQuery(api.catalog.listCategories);
   const archiveProduct = useMutation(api.catalog.archiveProduct);
   const restoreProduct = useMutation(api.catalog.restoreProduct);
+  const deleteProduct = useMutation(api.catalog.deleteProduct);
   const {
     results,
     status: paginationStatus,
@@ -192,6 +215,20 @@ export function ProductCatalog() {
       toast.error(messageFrom(error));
     } finally {
       setIsChangingStatus(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!pendingDeleteProduct) return;
+    setIsDeleting(true);
+    try {
+      await deleteProduct({ productId: pendingDeleteProduct.id });
+      toast.success(`${pendingDeleteProduct.name} er slettet permanent`);
+      setPendingDeleteProduct(null);
+    } catch (error) {
+      toast.error(messageFrom(error));
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -297,7 +334,9 @@ export function ProductCatalog() {
             <EmptyDescription>
               {search || categoryId !== "all"
                 ? "Prøv en anden søgning eller kategori."
-                : "Opret det første produkt for at komme i gang med organisationens katalog."}
+                : status === "active"
+                  ? "Opret det første produkt for at komme i gang med organisationens katalog."
+                  : "Arkiverede produkter vises her, indtil de gendannes eller slettes permanent."}
             </EmptyDescription>
           </EmptyHeader>
           {status === "active" && !search && categoryId === "all" ? (
@@ -322,6 +361,7 @@ export function ProductCatalog() {
               product={product}
               onArchive={setPendingProduct}
               onRestore={setPendingProduct}
+              onDelete={setPendingDeleteProduct}
             />
           ))}
         </div>
@@ -360,7 +400,7 @@ export function ProductCatalog() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingProduct?.status === "active"
-                ? `${pendingProduct.name} forsvinder fra vælgerne for aktive produkter og ingredienser. Eksisterende opskrifter beholder deres reference.`
+                ? `${pendingProduct.name} forsvinder fra vælgerne for aktive produkter og ingredienser. Produktet slettes automatisk permanent efter 30 dage, medmindre det gendannes.`
                 : `${pendingProduct?.name} vender tilbage til det aktive katalog og ingrediensvælgerne.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -377,6 +417,37 @@ export function ProductCatalog() {
             >
               {isChangingStatus ? <Spinner data-icon="inline-start" /> : null}
               {pendingProduct?.status === "active" ? "Arkivér" : "Gendan"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(pendingDeleteProduct)}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setPendingDeleteProduct(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slet produkt permanent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteProduct?.name} og dets billede, enheder og opskrift
+              slettes permanent. Produktet fjernes også som ingrediens fra andre
+              opskrifter. Handlingen kan ikke fortrydes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              Annuller
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={confirmDelete}
+            >
+              {isDeleting ? <Spinner data-icon="inline-start" /> : null}
+              Slet permanent
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

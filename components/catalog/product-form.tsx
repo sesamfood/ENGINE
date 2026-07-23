@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { compressImage } from "@/lib/compress-image";
 import {
   CreatableCombobox,
   type ComboboxOption,
@@ -334,11 +335,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   async function uploadImage(savedProductId: Id<"products">) {
     if (!imageFile) return;
+    const image = await compressImage(imageFile, {
+      maxWidth: 1200,
+      maxHeight: 1200,
+      quality: 0.75,
+    });
     const uploadUrl = await generateUploadUrl({});
     const response = await fetch(uploadUrl, {
       method: "POST",
-      headers: { "Content-Type": imageFile.type },
-      body: imageFile,
+      headers: { "Content-Type": image.type },
+      body: image,
     });
     if (!response.ok) throw new Error("Billedet kunne ikke uploades");
     const { storageId } = (await response.json()) as { storageId: string };

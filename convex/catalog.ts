@@ -1,8 +1,9 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireCatalogManager, requireOrganization } from "./lib/auth";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
@@ -51,6 +52,7 @@ const MAX_NAME_LENGTH = 100;
 const MAX_CHILD_ROWS = 200;
 const MAX_GRAPH_PRODUCTS = 500;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -418,6 +420,60 @@ async function replaceProductChildren(
   }
 }
 
+async function permanentlyDeleteProduct(
+  ctx: MutationCtx,
+  product: Doc<"products">,
+) {
+  const [units, ingredients, recipeReferences] = await Promise.all([
+    ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("ingredientProductId", product._id),
+      )
+      .take(MAX_GRAPH_PRODUCTS + 1),
+  ]);
+
+  if (
+    units.length > MAX_CHILD_ROWS ||
+    ingredients.length > MAX_CHILD_ROWS ||
+    recipeReferences.length > MAX_GRAPH_PRODUCTS
+  ) {
+    throw new ConvexError(
+      "Produktet har for mange relationer til at blive slettet",
+    );
+  }
+
+  for (const row of units) await ctx.db.delete("productUnits", row._id);
+  for (const row of ingredients) {
+    await ctx.db.delete("productIngredients", row._id);
+  }
+  for (const row of recipeReferences) {
+    await ctx.db.delete("productIngredients", row._id);
+  }
+  if (product.imageStorageId) {
+    await ctx.storage.delete(product.imageStorageId);
+  }
+  await ctx.db.delete("products", product._id);
+}
+
 async function hydrateCatalogProduct(ctx: QueryCtx, product: Doc<"products">) {
   const [category, defaultUnit, units, ingredients, imageUrl] =
     await Promise.all([
@@ -455,6 +511,9 @@ async function hydrateCatalogProduct(ctx: QueryCtx, product: Doc<"products">) {
     unitCount: units.length,
     ingredientCount: ingredients.length,
     imageUrl,
+    deletesAt: product.archivedAt
+      ? product.archivedAt + ARCHIVE_RETENTION_MS
+      : null,
   };
 }
 
@@ -852,11 +911,17 @@ export const archiveProduct = mutation({
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
     }
+    const archivedAt = Date.now();
     await ctx.db.patch("products", product._id, {
       status: "archived",
-      archivedAt: Date.now(),
-      updatedAt: Date.now(),
+      archivedAt,
+      updatedAt: archivedAt,
     });
+    await ctx.scheduler.runAfter(
+      ARCHIVE_RETENTION_MS,
+      internal.catalog.deleteExpiredProduct,
+      { productId: product._id, archivedAt },
+    );
     return null;
   },
 });
@@ -874,6 +939,61 @@ export const restoreProduct = mutation({
       archivedAt: undefined,
       updatedAt: Date.now(),
     });
+    return null;
+  },
+});
+
+export const deleteProduct = mutation({
+  args: { productId: v.id("products") },
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (product.status !== "archived") {
+      throw new ConvexError("Produktet skal arkiveres, før det kan slettes");
+    }
+    await permanentlyDeleteProduct(ctx, product);
+    return null;
+  },
+});
+
+export const deleteExpiredProduct = internalMutation({
+  args: { productId: v.id("products"), archivedAt: v.number() },
+  handler: async (ctx, args) => {
+    const product = await ctx.db.get("products", args.productId);
+    if (
+      !product ||
+      product.status !== "archived" ||
+      product.archivedAt !== args.archivedAt
+    ) {
+      return null;
+    }
+    await permanentlyDeleteProduct(ctx, product);
+    return null;
+  },
+});
+
+export const deleteExpiredProducts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const product = await ctx.db
+      .query("products")
+      .withIndex("by_status_and_archivedAt", (q) =>
+        q
+          .eq("status", "archived")
+          .lt("archivedAt", Date.now() - ARCHIVE_RETENTION_MS),
+      )
+      .first();
+    if (!product) return null;
+
+    await permanentlyDeleteProduct(ctx, product);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.catalog.deleteExpiredProducts,
+      {},
+    );
     return null;
   },
 });

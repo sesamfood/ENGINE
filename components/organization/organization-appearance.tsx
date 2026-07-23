@@ -38,9 +38,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 import { canManageOrganization } from "@/lib/auth-permissions";
+import { compressImage } from "@/lib/compress-image";
 import { cn } from "@/lib/utils";
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
+const MAX_LOGO_SOURCE_SIZE = 10 * 1024 * 1024;
 const LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 function getErrorMessage(error: unknown) {
@@ -106,8 +108,8 @@ function LogoUploadCard({
       setError("Brug et logo i JPEG-, PNG- eller WebP-format");
       return;
     }
-    if (nextFile.size > MAX_LOGO_SIZE) {
-      setError("Logoet må højst være 2 MB");
+    if (nextFile.size > MAX_LOGO_SOURCE_SIZE) {
+      setError("Logoet må højst være 10 MB før komprimering");
     }
   }
 
@@ -117,11 +119,18 @@ function LogoUploadCard({
     setError(undefined);
 
     try {
+      const image = await compressImage(file, {
+        maxWidth: wide ? 600 : 256,
+        maxHeight: wide ? 200 : 256,
+      });
+      if (image.size > MAX_LOGO_SIZE) {
+        throw new Error("Logoet kunne ikke komprimeres til under 2 MB");
+      }
       const uploadUrl = await generateUploadUrl({});
       const response = await fetch(uploadUrl, {
         method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
+        headers: { "Content-Type": image.type },
+        body: image,
       });
       if (!response.ok) throw new Error("Logoet kunne ikke uploades");
 
