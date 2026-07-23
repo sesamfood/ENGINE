@@ -2,7 +2,7 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery } from "convex/react";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
@@ -46,7 +46,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type ProductStatus = "active" | "archived";
 type CatalogProduct = {
@@ -164,7 +163,6 @@ function CatalogSkeleton() {
 export function ProductCatalog() {
   const router = useRouter();
   const [status, setStatus] = useState<ProductStatus>("active");
-  const [categoryId, setCategoryId] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [pendingProduct, setPendingProduct] = useState<CatalogProduct | null>(
     null,
@@ -175,7 +173,6 @@ export function ProductCatalog() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [querySearch, setQuerySearch] = useState("");
   const [visibleResults, setVisibleResults] = useState<CatalogProduct[]>([]);
-  const categories = useQuery(api.catalog.listCategories);
   const archiveProduct = useMutation(api.catalog.archiveProduct);
   const restoreProduct = useMutation(api.catalog.restoreProduct);
   const deleteProduct = useMutation(api.catalog.deleteProduct);
@@ -187,8 +184,6 @@ export function ProductCatalog() {
     api.catalog.listProducts,
     {
       status,
-      categoryId:
-        categoryId === "all" ? undefined : (categoryId as Id<"categories">),
       search: querySearch,
     },
     { initialNumItems: 24 },
@@ -252,70 +247,48 @@ export function ProductCatalog() {
 
   return (
     <div className="flex flex-col gap-7">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <Button
-          variant="outline"
-          className="min-h-11 px-3"
-          onClick={() => {
-            setStatus((current) =>
-              current === "active" ? "archived" : "active",
-            );
-            setCategoryId("all");
-          }}
-        >
-          {status === "active" ? (
-            <ArchiveIcon data-icon="inline-start" />
-          ) : (
-            <ArchiveRestoreIcon data-icon="inline-start" />
-          )}
-          {status === "active" ? "Arkiverede produkter" : "Aktive produkter"}
-        </Button>
-        <Button
-          size="lg"
-          className="min-h-11 px-4"
-          onClick={() => router.push("/organization/products/new")}
-        >
-          <PlusIcon data-icon="inline-start" />
-          Nyt produkt
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <div className="flex justify-end">
-          <div className="relative w-full lg:max-w-sm">
-            <SearchIcon
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Søg efter produkter"
-              aria-label="Søg efter produkter"
-              className="h-11 pl-10"
-            />
-          </div>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="relative min-w-0 flex-1">
+          <SearchIcon
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Søg efter produkter"
+            aria-label="Søg efter produkter"
+            className="h-11 pl-10"
+          />
         </div>
-
-        <Tabs value={categoryId} onValueChange={setCategoryId}>
-          <TabsList
-            aria-label="Produktkategorier"
-            className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
+        <div className="flex flex-col gap-3 sm:flex-row md:flex-none">
+          <Button
+            variant="outline"
+            className="min-h-11 px-3"
+            onClick={() =>
+              setStatus((current) =>
+                current === "active" ? "archived" : "active",
+              )
+            }
           >
-            <TabsTrigger value="all" className="min-w-36 px-6">
-              Alle produkter
-            </TabsTrigger>
-            {categories?.map((category) => (
-              <TabsTrigger
-                key={category.id}
-                value={category.id}
-                className="min-w-36 px-6"
-              >
-                {category.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+            {status === "active" ? (
+              <ArchiveIcon data-icon="inline-start" />
+            ) : (
+              <ArchiveRestoreIcon data-icon="inline-start" />
+            )}
+            {status === "active"
+              ? "Arkiverede produkter"
+              : "Aktive produkter"}
+          </Button>
+          <Button
+            size="lg"
+            className="min-h-11 px-4"
+            onClick={() => router.push("/organization/products/new")}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Nyt produkt
+          </Button>
+        </div>
       </div>
 
       {showSkeleton ? <CatalogSkeleton /> : null}
@@ -332,14 +305,14 @@ export function ProductCatalog() {
                 : "Ingen arkiverede produkter"}
             </EmptyTitle>
             <EmptyDescription>
-              {search || categoryId !== "all"
-                ? "Prøv en anden søgning eller kategori."
+              {search
+                ? "Prøv en anden søgning."
                 : status === "active"
                   ? "Opret det første produkt for at komme i gang med organisationens katalog."
                   : "Arkiverede produkter vises her, indtil de gendannes eller slettes permanent."}
             </EmptyDescription>
           </EmptyHeader>
-          {status === "active" && !search && categoryId === "all" ? (
+          {status === "active" && !search ? (
             <EmptyContent>
               <Button
                 className="min-h-11 px-4"

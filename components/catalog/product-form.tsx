@@ -470,13 +470,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:items-start">
-        <Card>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <Card className="xl:h-full">
           <CardHeader>
             <CardTitle>Produktdetaljer</CardTitle>
           </CardHeader>
-          <CardContent>
-            <FieldGroup>
+          <CardContent className="flex flex-1 flex-col">
+            <FieldGroup className="flex-1">
               <Field data-invalid={Boolean(errors.name)}>
                 <FieldLabel htmlFor="product-name">Navn</FieldLabel>
                 <Input
@@ -503,22 +503,25 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 <FieldError>{errors.category}</FieldError>
               </Field>
 
-              <Field data-invalid={Boolean(errors.image)}>
+              <Field
+                className="max-w-xl flex-1"
+                data-invalid={Boolean(errors.image)}
+              >
                 <FieldLabel htmlFor="product-picture">Billede</FieldLabel>
-                <div className="overflow-hidden rounded-xl border">
+                <div className="flex flex-1 flex-col overflow-hidden rounded-xl border">
                   <label
                     htmlFor="product-picture"
-                    className="block cursor-pointer"
+                    className="block min-h-56 flex-1 cursor-pointer"
                   >
                     {shownImage ? (
                       <span
                         role="img"
                         aria-label="Forhåndsvisning af produktbillede"
-                        className="block aspect-[4/3] w-full bg-muted bg-cover bg-center"
+                        className="block h-full min-h-56 w-full bg-muted bg-contain bg-center bg-no-repeat"
                         style={{ backgroundImage: `url("${shownImage}")` }}
                       />
                     ) : (
-                      <span className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
+                      <span className="flex h-full min-h-56 w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
                         <ImageIcon className="size-10" aria-hidden="true" />
                         <span className="text-sm">Intet billede valgt</span>
                       </span>

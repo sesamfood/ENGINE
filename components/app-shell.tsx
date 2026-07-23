@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeftIcon,
   ArrowRightLeftIcon,
   Building2Icon,
   ChevronsUpDownIcon,
@@ -438,6 +439,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const organizationRequired =
     pathname !== "/profile" && pathname !== "/settings";
+  const showOrganizationBack =
+    pathname.startsWith("/organization/") &&
+    !pathname.startsWith("/organization/products/");
 
   return (
     <OrganizationBoundary required={organizationRequired}>
@@ -471,6 +475,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SidebarInset className="min-w-0">
             <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0">
               <SidebarTrigger size="icon-lg" />
+              {showOrganizationBack ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  render={<Link href="/organization" />}
+                  nativeButton={false}
+                >
+                  <ArrowLeftIcon data-icon="inline-start" />
+                  <span className="hidden sm:inline">
+                    Tilbage til organisation
+                  </span>
+                  <span className="sm:hidden">Tilbage</span>
+                </Button>
+              ) : null}
               <div className="flex flex-1 justify-center md:hidden">
                 <OrganizationHome />
               </div>
