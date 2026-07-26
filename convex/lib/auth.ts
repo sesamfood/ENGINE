@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import {
   canManageCatalog,
   canManageOrganization,
+  canManageTransfers,
 } from "../../lib/auth-permissions";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { authComponent, createAuth } from "../auth";
@@ -26,6 +27,14 @@ export async function requireOrganization(ctx: AuthContext) {
 export async function requireCatalogManager(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (!canManageCatalog(auth.role)) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
+export async function requireTransferManager(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (!canManageTransfers(auth.role)) {
     throw new ConvexError("Du har ikke adgang");
   }
   return auth;

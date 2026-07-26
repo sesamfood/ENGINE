@@ -52,28 +52,87 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type VocabularyKind = "category" | "unit";
+type VocabularyKind = "category" | "unit" | "location";
 type VocabularyItem = {
-  id: Id<"categories"> | Id<"units">;
+  id: Id<"categories"> | Id<"units"> | Id<"locations">;
   name: string;
   inUse: boolean;
 };
+
+type RenameOrDeleteArgs =
+  | { categoryId: Id<"categories"> }
+  | { unitId: Id<"units"> }
+  | { locationId: Id<"locations"> };
+
+const vocabularyKinds = {
+  category: {
+    singular: "kategori",
+    plural: "Kategorier",
+    definite: "Kategorien",
+    deleteNoun: " kategorier",
+    description:
+      "Organiser produkter i et ensartet sæt genanvendelige kategorier.",
+    emptyDescription:
+      "Tilføj en her, eller opret den direkte i en produktformular.",
+    list: api.catalog.listCategories,
+    create: api.catalog.createCategory,
+    rename: api.catalog.renameCategory,
+    delete: api.catalog.deleteCategory,
+    argsFor: (id: VocabularyItem["id"]): RenameOrDeleteArgs => ({
+      categoryId: id as Id<"categories">,
+    }),
+  },
+  unit: {
+    singular: "enhed",
+    plural: "Enheder",
+    definite: "Enheden",
+    deleteNoun: " enheder",
+    description:
+      "Vedligehold de enheder, der kan bruges i alle produktformularer.",
+    emptyDescription:
+      "Tilføj en her, eller opret den direkte i en produktformular.",
+    list: api.catalog.listUnits,
+    create: api.catalog.createUnit,
+    rename: api.catalog.renameUnit,
+    delete: api.catalog.deleteUnit,
+    argsFor: (id: VocabularyItem["id"]): RenameOrDeleteArgs => ({
+      unitId: id as Id<"units">,
+    }),
+  },
+  location: {
+    singular: "butik",
+    plural: "Butikker",
+    definite: "Butikken",
+    deleteNoun: " butikker",
+    description: "Vedligehold de butikker, der kan bruges i transfers.",
+    emptyDescription:
+      "Tilføj den første butik for at kunne oprette transfers.",
+    list: api.locations.listLocations,
+    create: api.locations.createLocation,
+    rename: api.locations.renameLocation,
+    delete: api.locations.deleteLocation,
+    argsFor: (id: VocabularyItem["id"]): RenameOrDeleteArgs => ({
+      locationId: id as Id<"locations">,
+    }),
+  },
+} as const;
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
-  const isCategory = kind === "category";
-  const items = useQuery(
-    isCategory ? api.catalog.listCategories : api.catalog.listUnits,
-  ) as VocabularyItem[] | undefined;
-  const createCategory = useMutation(api.catalog.createCategory);
-  const renameCategory = useMutation(api.catalog.renameCategory);
-  const deleteCategory = useMutation(api.catalog.deleteCategory);
-  const createUnit = useMutation(api.catalog.createUnit);
-  const renameUnit = useMutation(api.catalog.renameUnit);
-  const deleteUnit = useMutation(api.catalog.deleteUnit);
+  const config = vocabularyKinds[kind];
+  const items = useQuery(config.list) as VocabularyItem[] | undefined;
+  const create = useMutation(config.create) as (args: {
+    name: string;
+  }) => Promise<unknown>;
+  const rename = useMutation(config.rename) as (
+    args: RenameOrDeleteArgs & { name: string },
+  ) => Promise<unknown>;
+  const removeItem = useMutation(config.delete) as (
+    args: RenameOrDeleteArgs,
+  ) => Promise<unknown>;
   const [editing, setEditing] = useState<VocabularyItem | "new" | null>(null);
   const [pendingDelete, setPendingDelete] = useState<VocabularyItem | null>(
     null,
@@ -82,8 +141,6 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const singular = isCategory ? "kategori" : "enhed";
-  const plural = isCategory ? "Kategorier" : "Enheder";
   const showSkeleton = useDelayedLoading(items === undefined);
 
   function openEditor(item: VocabularyItem | "new") {
@@ -94,28 +151,18 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
 
   async function save() {
     if (!name.trim()) {
-      setError(`Indtast et navn til ${singular}`);
+      setError(`Indtast et navn til ${config.singular}`);
       return;
     }
     setIsSaving(true);
     setError("");
     try {
       if (editing === "new") {
-        if (isCategory) await createCategory({ name });
-        else await createUnit({ name });
+        await create({ name });
       } else if (editing) {
-        if (isCategory) {
-          await renameCategory({
-            categoryId: editing.id as Id<"categories">,
-            name,
-          });
-        } else {
-          await renameUnit({ unitId: editing.id as Id<"units">, name });
-        }
+        await rename({ ...config.argsFor(editing.id), name });
       }
-      toast.success(
-        `${isCategory ? "Kategorien" : "Enheden"} er gemt`,
-      );
+      toast.success(`${config.definite} er gemt`);
       setEditing(null);
     } catch (caught) {
       setError(messageFrom(caught));
@@ -128,16 +175,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
     if (!pendingDelete) return;
     setIsDeleting(true);
     try {
-      if (isCategory) {
-        await deleteCategory({
-          categoryId: pendingDelete.id as Id<"categories">,
-        });
-      } else {
-        await deleteUnit({ unitId: pendingDelete.id as Id<"units"> });
-      }
-      toast.success(
-        `${isCategory ? "Kategorien" : "Enheden"} er fjernet`,
-      );
+      await removeItem(config.argsFor(pendingDelete.id));
+      toast.success(`${config.definite} er fjernet`);
       setPendingDelete(null);
     } catch (caught) {
       toast.error(messageFrom(caught));
@@ -150,11 +189,11 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
     <div className="flex flex-col gap-7">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex max-w-2xl flex-col gap-2">
-          <h2 className="text-2xl font-semibold tracking-tight">{plural}</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            {config.plural}
+          </h2>
           <p className="text-sm leading-6 text-muted-foreground">
-            {isCategory
-              ? "Organiser produkter i et ensartet sæt genanvendelige kategorier."
-              : "Vedligehold de enheder, der kan bruges i alle produktformularer."}
+            {config.description}
           </p>
         </div>
         <Button
@@ -163,7 +202,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           onClick={() => openEditor("new")}
         >
           <PlusIcon data-icon="inline-start" />
-          Ny {singular}
+          Ny {config.singular}
         </Button>
       </div>
 
@@ -182,16 +221,14 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
               <ShapesIcon />
             </EmptyMedia>
             <EmptyTitle>
-              Ingen {plural.toLocaleLowerCase("da")} endnu
+              Ingen {config.plural.toLocaleLowerCase("da")} endnu
             </EmptyTitle>
-            <EmptyDescription>
-              Tilføj en her, eller opret den direkte i en produktformular.
-            </EmptyDescription>
+            <EmptyDescription>{config.emptyDescription}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button className="min-h-11 px-4" onClick={() => openEditor("new")}>
               <PlusIcon data-icon="inline-start" />
-              Ny {singular}
+              Ny {config.singular}
             </Button>
           </EmptyContent>
         </Empty>
@@ -247,7 +284,9 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editing === "new" ? `Ny ${singular}` : `Omdøb ${singular}`}
+              {editing === "new"
+                ? `Ny ${config.singular}`
+                : `Omdøb ${config.singular}`}
             </DialogTitle>
             <DialogDescription>
               Navnet deles på tværs af den aktive organisation.
@@ -296,11 +335,10 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Fjern {singular}?</AlertDialogTitle>
+            <AlertDialogTitle>Fjern {config.singular}?</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete?.name} fjernes permanent. Kun
-              {isCategory ? " kategorier" : " enheder"}, der ikke er i brug,
-              kan fjernes.
+              {config.deleteNoun}, der ikke er i brug, kan fjernes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

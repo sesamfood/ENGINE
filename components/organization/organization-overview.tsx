@@ -1,6 +1,11 @@
 "use client";
 
-import { Building2Icon, PackageIcon, UsersIcon } from "lucide-react";
+import {
+  Building2Icon,
+  PackageIcon,
+  StoreIcon,
+  UsersIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -20,6 +25,13 @@ const sections = [
     description: "Administrer produkter, kategorier og enheder.",
     href: "/organization/products",
     icon: PackageIcon,
+    adminOnly: false,
+  },
+  {
+    title: "Butikker",
+    description: "Administrer de butikker, der bruges i transfers.",
+    href: "/organization/locations",
+    icon: StoreIcon,
     adminOnly: false,
   },
   {

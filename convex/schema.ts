@@ -100,4 +100,46 @@ export default defineSchema({
       "ingredientProductId",
       "unitId",
     ]),
+
+  locations: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+  }).index("by_organizationId_and_normalizedName", [
+    "organizationId",
+    "normalizedName",
+  ]),
+
+  transfers: defineTable({
+    organizationId: v.string(),
+    fromLocationId: v.id("locations"),
+    toLocationId: v.id("locations"),
+    responsibleUserId: v.string(),
+    responsibleName: v.string(),
+    comment: v.optional(v.string()),
+    transferredAt: v.number(),
+    createdBy: v.string(),
+  })
+    .index("by_organizationId_and_transferredAt", [
+      "organizationId",
+      "transferredAt",
+    ])
+    .index("by_organizationId_and_fromLocationId", [
+      "organizationId",
+      "fromLocationId",
+    ])
+    .index("by_organizationId_and_toLocationId", [
+      "organizationId",
+      "toLocationId",
+    ]),
+
+  transferItems: defineTable({
+    organizationId: v.string(),
+    transferId: v.id("transfers"),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+  }).index("by_organizationId_and_transferId", ["organizationId", "transferId"]),
 });
