@@ -2,15 +2,28 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  closestCorners,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  type Announcements,
+  type ScreenReaderInstructions,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useConvex, usePaginatedQuery, useQuery } from "convex/react";
 import { ArrowLeftRightIcon, DownloadIcon, GripVerticalIcon } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
@@ -298,58 +311,224 @@ function downloadTransfersCsv(
 }
 
 type ColumnZone = "included" | "excluded";
-
-type ColumnDragState = {
-  key: string;
-  label: string;
-  pointerId: number;
-  x: number;
-  y: number;
-  offsetX: number;
-  offsetY: number;
-  width: number;
-  height: number;
-  overZone: ColumnZone | null;
+type ExportColumnLists = Record<ColumnZone, string[]>;
+type ExportColumnDropPreview = {
+  columnKey: string;
+  index: number;
+  zone: ColumnZone;
 };
 
-function listsEqual(left: string[], right: string[]) {
+const exportScreenReaderInstructions: ScreenReaderInstructions = {
+  draggable:
+    "Tryk på mellemrum for at flytte kolonnen. Brug piletasterne til at vælge placering, tryk igen for at placere, eller tryk Escape for at annullere.",
+};
+
+const exportAnnouncements: Announcements = {
+  onDragStart({ active }) {
+    return `${exportColumnByKey.get(String(active.id))?.label ?? active.id} er valgt.`;
+  },
+  onDragOver({ active, over }) {
+    if (!over) return;
+    const sourceLabel =
+      exportColumnByKey.get(String(active.id))?.label ?? active.id;
+    const targetLabel =
+      exportColumnByKey.get(String(over.id))?.label ??
+      (over.data.current?.zone === "included"
+        ? "Med i eksporten"
+        : "Ikke med i eksporten");
+    return `${sourceLabel} flyttes til ${targetLabel}.`;
+  },
+  onDragEnd({ active }) {
+    return `${exportColumnByKey.get(String(active.id))?.label ?? active.id} er placeret.`;
+  },
+  onDragCancel({ active }) {
+    return `Flytning af ${exportColumnByKey.get(String(active.id))?.label ?? active.id} blev annulleret.`;
+  },
+};
+
+function isColumnZone(value: unknown): value is ColumnZone {
+  return value === "included" || value === "excluded";
+}
+
+function sameColumnKeys(first: string[], second: string[]) {
   return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
+    first.length === second.length &&
+    first.every((key, index) => key === second[index])
   );
 }
 
-function placeColumn(
-  key: string,
-  included: string[],
-  excluded: string[],
-  zone: ColumnZone,
-  index: number,
-) {
-  const nextIncluded = included.filter((item) => item !== key);
-  const nextExcluded = excluded.filter((item) => item !== key);
-  const target = zone === "included" ? nextIncluded : nextExcluded;
-  const clamped = Math.max(0, Math.min(index, target.length));
-  target.splice(clamped, 0, key);
-  return { included: nextIncluded, excluded: nextExcluded };
+function ExportColumnDragPreview({ columnKey }: { columnKey: string }) {
+  const column = exportColumnByKey.get(columnKey);
+  if (!column) return null;
+
+  return (
+    <div className="flex min-h-11 w-full cursor-grabbing items-center gap-2 rounded-lg border border-primary bg-background px-2 text-left shadow-xl ring-2 ring-primary/20">
+      <span className="flex size-11 shrink-0 items-center justify-center text-muted-foreground">
+        <GripVerticalIcon aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium">
+        {column.label}
+      </span>
+    </div>
+  );
 }
 
-function dropIndexForY(
-  clientY: number,
-  zoneElement: HTMLElement,
-  draggingKey: string,
-) {
-  const rows = [
-    ...zoneElement.querySelectorAll<HTMLElement>("[data-column-key]"),
-  ].filter((row) => row.dataset.columnKey !== draggingKey);
+function ExportColumnDropPlaceholder({ columnKey }: { columnKey: string }) {
+  const column = exportColumnByKey.get(columnKey);
+  if (!column) return null;
 
-  if (rows.length === 0) return 0;
+  return (
+    <li aria-hidden="true">
+      <div className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-dashed border-primary bg-primary/5 px-2 text-left text-primary/70">
+        <span className="flex size-11 shrink-0 items-center justify-center">
+          <GripVerticalIcon />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {column.label}
+        </span>
+      </div>
+    </li>
+  );
+}
 
-  for (let index = 0; index < rows.length; index++) {
-    const rect = rows[index].getBoundingClientRect();
-    if (clientY < rect.top + rect.height / 2) return index;
-  }
-  return rows.length;
+function ExportColumnRow({
+  columnKey,
+  dragActive,
+  index,
+  zone,
+}: {
+  columnKey: string;
+  dragActive: boolean;
+  index: number;
+  zone: ColumnZone;
+}) {
+  const column = exportColumnByKey.get(columnKey);
+  const {
+    attributes,
+    isDragging,
+    isOver,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({
+    id: columnKey,
+    data: { index, zone },
+  });
+
+  if (!column) return null;
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 1 : undefined,
+      }}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        {...attributes}
+        {...listeners}
+        className={cn(
+          "flex min-h-11 w-full touch-none items-center gap-2 rounded-lg border bg-background px-2 text-left shadow-sm transition-[box-shadow,border-color] duration-150 select-none",
+          dragActive
+            ? "cursor-grabbing"
+            : "cursor-grab active:cursor-grabbing",
+          isDragging && "opacity-30",
+          isOver &&
+            !isDragging &&
+            "border-primary bg-primary/5 ring-2 ring-primary/20",
+        )}
+        aria-label={`Flyt ${column.label}`}
+        aria-roledescription="kolonne, der kan flyttes"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center text-muted-foreground">
+          <GripVerticalIcon aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {column.label}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function ExportColumnZone({
+  dragActive,
+  dropPreview,
+  zone,
+  keys,
+  title,
+  emptyLabel,
+}: {
+  dragActive: boolean;
+  dropPreview: ExportColumnDropPreview | null;
+  zone: ColumnZone;
+  keys: string[];
+  title: string;
+  emptyLabel: string;
+}) {
+  const preview = dropPreview?.zone === zone ? dropPreview : null;
+  const { isOver, setNodeRef } = useDroppable({
+    id: `export-zone-${zone}`,
+    data: { zone },
+  });
+
+  return (
+    <section
+      className={cn(
+        "flex min-w-0 flex-col gap-2 rounded-xl border p-2.5 transition-colors",
+        dragActive && "cursor-grabbing",
+        isOver
+          ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+          : "border-border bg-muted/20",
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">{title}</h3>
+        <p className="text-xs text-muted-foreground">
+          {`${keys.length} ${keys.length === 1 ? "kolonne" : "kolonner"}`}
+        </p>
+      </div>
+      <SortableContext items={keys} strategy={verticalListSortingStrategy}>
+        <ul
+          ref={setNodeRef}
+          className={cn(
+            "flex min-h-16 flex-col gap-1.5",
+            keys.length === 0 &&
+              !preview &&
+              "items-center justify-center rounded-lg border border-dashed border-border px-3 py-5 text-center text-sm text-muted-foreground",
+          )}
+          aria-label={title}
+        >
+          {keys.length === 0 && !preview
+            ? emptyLabel
+            : keys.flatMap((key, index) => [
+                preview?.index === index ? (
+                  <ExportColumnDropPlaceholder
+                    key={`${preview.columnKey}-placeholder`}
+                    columnKey={preview.columnKey}
+                  />
+                ) : null,
+                <ExportColumnRow
+                  key={key}
+                  columnKey={key}
+                  dragActive={dragActive}
+                  index={index}
+                  zone={zone}
+                />,
+              ])}
+          {preview && preview.index >= keys.length ? (
+            <ExportColumnDropPlaceholder columnKey={preview.columnKey} />
+          ) : null}
+        </ul>
+      </SortableContext>
+    </section>
+  );
 }
 
 function ExportColumnList({
@@ -361,268 +540,167 @@ function ExportColumnList({
   enabled: string[];
   onChange: (next: { order: string[]; enabled: string[] }) => void;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const ghostRef = useRef<HTMLDivElement>(null);
-  const [included, setIncluded] = useState(() =>
-    order.filter((key) => enabled.includes(key)),
+  const [lists, setLists] = useState<ExportColumnLists>(() => ({
+    included: order.filter((key) => enabled.includes(key)),
+    excluded: order.filter((key) => !enabled.includes(key)),
+  }));
+  const pendingChange = useRef<ExportColumnLists | null>(null);
+  const [activeColumnKey, setActiveColumnKey] = useState<string | null>(null);
+  const [dropPreview, setDropPreview] =
+    useState<ExportColumnDropPreview | null>(null);
+  const included = lists.included;
+  const excluded = lists.excluded;
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 4 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
-  const [excluded, setExcluded] = useState(() =>
-    order.filter((key) => !enabled.includes(key)),
-  );
-  const includedRef = useRef(included);
-  const excludedRef = useRef(excluded);
-  const [drag, setDrag] = useState<ColumnDragState | null>(null);
-  const dragRef = useRef<ColumnDragState | null>(null);
-
-  // Keep the draft lists aligned with saved prefs when not mid-drag.
-  useEffect(() => {
-    if (dragRef.current) return;
-    const nextIncluded = order.filter((key) => enabled.includes(key));
-    const nextExcluded = order.filter((key) => !enabled.includes(key));
-    if (
-      listsEqual(nextIncluded, includedRef.current) &&
-      listsEqual(nextExcluded, excludedRef.current)
-    ) {
-      return;
-    }
-    includedRef.current = nextIncluded;
-    excludedRef.current = nextExcluded;
-    setIncluded(nextIncluded);
-    setExcluded(nextExcluded);
-  }, [order, enabled]);
 
   useEffect(() => {
-    if (!drag) return;
-    const previousUserSelect = document.body.style.userSelect;
-    const previousCursor = document.body.style.cursor;
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "grabbing";
-    return () => {
-      document.body.style.userSelect = previousUserSelect;
-      document.body.style.cursor = previousCursor;
+    if (pendingChange.current) return;
+
+    const next = {
+      included: order.filter((key) => enabled.includes(key)),
+      excluded: order.filter((key) => !enabled.includes(key)),
     };
-  }, [drag]);
-
-  function commitLists(nextIncluded: string[], nextExcluded: string[]) {
-    includedRef.current = nextIncluded;
-    excludedRef.current = nextExcluded;
-    setIncluded(nextIncluded);
-    setExcluded(nextExcluded);
-  }
-
-  function moveGhost(x: number, y: number, offsetX: number, offsetY: number) {
-    const ghost = ghostRef.current;
-    if (!ghost) return;
-    ghost.style.transform = `translate3d(${x - offsetX}px, ${y - offsetY}px, 0) rotate(-1.5deg) scale(1.02)`;
-  }
-
-  function applyHover(clientY: number) {
-    const current = dragRef.current;
-    const root = rootRef.current;
-    if (!current || !root) return;
-
-    const includedZone = root.querySelector<HTMLElement>(
-      '[data-zone="included"]',
+    setLists((current) =>
+      sameColumnKeys(current.included, next.included) &&
+      sameColumnKeys(current.excluded, next.excluded)
+        ? current
+        : next,
     );
-    const excludedZone = root.querySelector<HTMLElement>(
-      '[data-zone="excluded"]',
-    );
-    if (!includedZone || !excludedZone) return;
+  }, [enabled, order]);
 
-    const includedRect = includedZone.getBoundingClientRect();
-    const excludedRect = excludedZone.getBoundingClientRect();
-    const midGap = (includedRect.bottom + excludedRect.top) / 2;
-    const overZone: ColumnZone =
-      clientY >= excludedRect.top
-        ? "excluded"
-        : clientY <= includedRect.bottom
-          ? "included"
-          : clientY < midGap
-            ? "included"
-            : "excluded";
+  useEffect(() => {
+    const next = pendingChange.current;
+    if (!next) return;
 
-    const zoneElement = overZone === "included" ? includedZone : excludedZone;
-    const index = dropIndexForY(clientY, zoneElement, current.key);
-    const next = placeColumn(
-      current.key,
-      includedRef.current,
-      excludedRef.current,
-      overZone,
-      index,
-    );
-
-    if (
-      !listsEqual(next.included, includedRef.current) ||
-      !listsEqual(next.excluded, excludedRef.current)
-    ) {
-      commitLists(next.included, next.excluded);
-    }
-
-    if (current.overZone !== overZone) {
-      const nextDrag = { ...current, overZone };
-      dragRef.current = nextDrag;
-      setDrag(nextDrag);
-    }
-  }
-
-  function finishDrag() {
-    if (!dragRef.current) return;
-    dragRef.current = null;
-    setDrag(null);
+    pendingChange.current = null;
     onChange({
-      order: [...includedRef.current, ...excludedRef.current],
-      enabled: includedRef.current,
+      order: [...next.included, ...next.excluded],
+      enabled: next.included,
     });
-  }
-
-  function startDrag(
-    event: React.PointerEvent<HTMLElement>,
-    key: string,
-    label: string,
-  ) {
-    if (event.button !== 0) return;
-    const row = event.currentTarget.closest<HTMLElement>("[data-column-key]");
-    if (!row) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const rect = row.getBoundingClientRect();
-    const nextDrag: ColumnDragState = {
-      key,
-      label,
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      width: rect.width,
-      height: rect.height,
-      overZone: includedRef.current.includes(key) ? "included" : "excluded",
-    };
-    dragRef.current = nextDrag;
-    setDrag(nextDrag);
-    requestAnimationFrame(() => {
-      moveGhost(nextDrag.x, nextDrag.y, nextDrag.offsetX, nextDrag.offsetY);
-    });
-  }
-
-  function onPointerMove(event: React.PointerEvent<HTMLElement>) {
-    const current = dragRef.current;
-    if (!current || current.pointerId !== event.pointerId) return;
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    current.x = event.clientX;
-    current.y = event.clientY;
-    moveGhost(current.x, current.y, current.offsetX, current.offsetY);
-    applyHover(event.clientY);
-  }
-
-  function renderRow(key: string, zone: ColumnZone) {
-    const column = exportColumnByKey.get(key);
-    if (!column) return null;
-    const isDragging = drag?.key === key;
-
-    return (
-      <li
-        key={key}
-        data-column-key={key}
-        data-zone-item={zone}
-        className={cn(
-          "relative flex min-h-11 touch-none items-center gap-2 rounded-lg border px-2 transition-[box-shadow,opacity,border-color] duration-150 select-none",
-          isDragging
-            ? "border-dashed border-primary/40 bg-muted/40 opacity-40"
-            : "border-border bg-background shadow-sm",
-          drag ? "cursor-grabbing" : "cursor-grab",
-        )}
-        aria-label={`Flyt ${column.label}`}
-        onPointerDown={(event) => startDrag(event, key, column.label)}
-        onPointerMove={onPointerMove}
-        onPointerUp={finishDrag}
-        onPointerCancel={finishDrag}
-      >
-        <span className="flex size-11 shrink-0 items-center justify-center text-muted-foreground">
-          <GripVerticalIcon aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1 truncate font-medium">
-          {column.label}
-        </span>
-      </li>
-    );
-  }
-
-  function renderZone(
-    zone: ColumnZone,
-    keys: string[],
-    title: string,
-    emptyLabel: string,
-  ) {
-    const isActive = drag?.overZone === zone;
-    return (
-      <section
-        data-zone={zone}
-        className={cn(
-          "rounded-xl border p-3 transition-colors",
-          isActive
-            ? "border-primary bg-primary/5"
-            : "border-border bg-muted/20",
-        )}
-      >
-        <div className="mb-2 flex items-baseline justify-between gap-3">
-          <h3 className="text-sm font-medium">{title}</h3>
-          <p className="text-xs text-muted-foreground">
-            {`${keys.length} ${keys.length === 1 ? "kolonne" : "kolonner"}`}
-          </p>
-        </div>
-        <ul
-          className={cn(
-            "flex min-h-16 flex-col gap-1",
-            keys.length === 0 &&
-              "items-center justify-center rounded-lg border border-dashed border-border px-3 py-5 text-center text-sm text-muted-foreground",
-          )}
-          aria-label={title}
-        >
-          {keys.length === 0
-            ? emptyLabel
-            : keys.map((key) => renderRow(key, zone))}
-        </ul>
-      </section>
-    );
-  }
+  }, [lists, onChange]);
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-3">
-      {renderZone(
-        "included",
-        included,
-        "Med i eksporten",
-        "Træk kolonner hertil",
-      )}
-      {renderZone(
-        "excluded",
-        excluded,
-        "Ikke med i eksporten",
-        "Træk kolonner hertil for at skjule dem",
-      )}
-      {drag
+    <DndContext
+      accessibility={{
+        announcements: exportAnnouncements,
+        screenReaderInstructions: exportScreenReaderInstructions,
+      }}
+      collisionDetection={closestCorners}
+      sensors={sensors}
+      onDragStart={({ active }) => {
+        setDropPreview(null);
+        setActiveColumnKey(String(active.id));
+      }}
+      onDragOver={({ active, over }) => {
+        if (!over) {
+          setDropPreview(null);
+          return;
+        }
+
+        const activeKey = String(active.id);
+        const initialGroup = active.data.current?.zone;
+        const group = over.data.current?.zone;
+        if (
+          !isColumnZone(initialGroup) ||
+          !isColumnZone(group) ||
+          initialGroup === group
+        ) {
+          setDropPreview(null);
+          return;
+        }
+
+        const overIndex = lists[group].indexOf(String(over.id));
+        const isBelowOver =
+          overIndex >= 0 &&
+          active.rect.current.translated &&
+          active.rect.current.translated.top > over.rect.top + over.rect.height;
+        const index =
+          overIndex < 0
+            ? lists[group].length
+            : overIndex + (isBelowOver ? 1 : 0);
+        setDropPreview((current) =>
+          current?.columnKey === activeKey &&
+          current.zone === group &&
+          current.index === index
+            ? current
+            : { columnKey: activeKey, index, zone: group },
+        );
+      }}
+      onDragCancel={() => {
+        setActiveColumnKey(null);
+        setDropPreview(null);
+      }}
+      onDragEnd={({ active, over }) => {
+        setActiveColumnKey(null);
+        const preview = dropPreview;
+        setDropPreview(null);
+        if (!over) return;
+
+        const initialGroup = active.data.current?.zone;
+        const group = over.data.current?.zone;
+        const activeKey = String(active.id);
+        if (!isColumnZone(initialGroup) || !isColumnZone(group)) return;
+
+        const initialIndex = lists[initialGroup].indexOf(activeKey);
+        if (initialIndex < 0) return;
+
+        const overIndex = lists[group].indexOf(String(over.id));
+        const index =
+          preview?.columnKey === activeKey && preview.zone === group
+            ? preview.index
+            : overIndex < 0
+              ? lists[group].length
+              : overIndex;
+
+        const next = {
+          included: [...included],
+          excluded: [...excluded],
+        };
+        const [moved] = next[initialGroup].splice(initialIndex, 1);
+        if (!moved) return;
+        next[group].splice(index, 0, moved);
+        pendingChange.current = next;
+        setLists(next);
+      }}
+    >
+      <div
+        className={cn(
+          "grid items-start gap-3 sm:grid-cols-2",
+          activeColumnKey && "cursor-grabbing",
+        )}
+      >
+        <ExportColumnZone
+          dragActive={Boolean(activeColumnKey)}
+          dropPreview={dropPreview}
+          zone="included"
+          keys={included}
+          title="Med i eksporten"
+          emptyLabel="Træk kolonner hertil"
+        />
+        <ExportColumnZone
+          dragActive={Boolean(activeColumnKey)}
+          dropPreview={dropPreview}
+          zone="excluded"
+          keys={excluded}
+          title="Ikke med i eksporten"
+          emptyLabel="Træk kolonner hertil for at skjule dem"
+        />
+      </div>
+      {activeColumnKey
         ? createPortal(
-            <div
-              ref={ghostRef}
-              aria-hidden="true"
-              className="pointer-events-none fixed top-0 left-0 z-[200] flex items-center gap-2 rounded-lg border border-primary bg-background px-2 shadow-lg ring-1 ring-foreground/10 will-change-transform"
-              style={{
-                width: drag.width,
-                height: drag.height,
-              }}
-            >
-              <span className="flex size-11 shrink-0 items-center justify-center text-muted-foreground">
-                <GripVerticalIcon aria-hidden="true" />
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium">
-                {drag.label}
-              </span>
-            </div>,
+            <DragOverlay dropAnimation={null} zIndex={100}>
+              <ExportColumnDragPreview columnKey={activeColumnKey} />
+            </DragOverlay>,
             document.body,
           )
         : null}
-    </div>
+    </DndContext>
   );
 }
 
@@ -867,7 +945,7 @@ export function TransferHistory() {
           if (!open && !isExporting) setIsExportOpen(false);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Eksportér til Excel</DialogTitle>
             <DialogDescription>
@@ -879,8 +957,8 @@ export function TransferHistory() {
             <FieldSet>
               <FieldLegend variant="label">Kolonner</FieldLegend>
               <FieldDescription>
-                Træk kolonner for at ændre rækkefølgen. Træk dem ned i området
-                nedenunder for at lade dem ude af eksporten.
+                Træk kolonner for at ændre rækkefølgen. Flyt dem til “Ikke med i
+                eksporten” for at lade dem ude af eksporten.
               </FieldDescription>
               <ExportColumnList
                 order={columnOrder}
