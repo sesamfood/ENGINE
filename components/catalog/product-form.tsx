@@ -741,6 +741,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         <Field>
                           <FieldLabel>Enhed</FieldLabel>
                           <Select
+                            items={(selectedProduct?.units ?? []).map(
+                              (unit) => ({ value: unit.id, label: unit.name }),
+                            )}
                             value={row.unitId}
                             onValueChange={(value) =>
                               setIngredientRows((current) =>

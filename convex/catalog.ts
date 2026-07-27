@@ -725,6 +725,10 @@ export const listFormOptions = query({
             return {
               id: product._id,
               name: product.name,
+              defaultUnitId: product.defaultUnitId,
+              imageUrl: product.imageStorageId
+                ? await ctx.storage.getUrl(product.imageStorageId)
+                : null,
               units: hydratedUnits.filter((unit) => unit !== null),
             };
           }),

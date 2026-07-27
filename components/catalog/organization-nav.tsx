@@ -23,11 +23,13 @@ export function OrganizationHeader() {
     )?.value ?? "products";
   const title = inCatalog
     ? "Produkter"
-    : pathname.startsWith("/organization/users")
-      ? "Brugere"
-      : pathname === "/organization"
-        ? "Organisation"
-        : "Organisationens oplysninger";
+    : pathname.startsWith("/organization/locations")
+      ? "Butikker"
+      : pathname.startsWith("/organization/users")
+        ? "Brugere"
+        : pathname === "/organization"
+          ? "Organisation"
+          : "Organisationens oplysninger";
 
   useEffect(() => {
     for (const item of catalogSections) {
