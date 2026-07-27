@@ -41,6 +41,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
 type LocationOption = {
   id: Id<"locations">;
@@ -71,6 +72,23 @@ type TransferLine = {
   quantity: number;
 };
 
+export type EditableTransfer = {
+  id: Id<"transfers">;
+  fromLocationId: Id<"locations">;
+  toLocationId: Id<"locations">;
+  responsibleUserId: string;
+  comment: string | null;
+  transferredAt: number;
+  items: Array<{
+    id: Id<"transferItems">;
+    productId: Id<"products">;
+    productName: string;
+    unitId: Id<"units">;
+    unitName: string;
+    quantity: number;
+  }>;
+};
+
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
@@ -93,7 +111,15 @@ function newLineKey() {
   return `line-${crypto.randomUUID()}`;
 }
 
-export function TransferForm() {
+export function TransferForm({
+  transfer,
+  onSaved,
+  onCancel,
+}: {
+  transfer?: EditableTransfer;
+  onSaved?: () => void;
+  onCancel?: () => void;
+}) {
   const { data: session } = authClient.useSession();
   const { data: organization } = authClient.useActiveOrganization();
   const locations = useQuery(api.locations.listLocations) as
@@ -101,16 +127,31 @@ export function TransferForm() {
     | undefined;
   const formOptions = useQuery(api.catalog.listFormOptions, {});
   const createTransfer = useMutation(api.transfers.createTransfer);
-  const [fromLocationId, setFromLocationId] = useState<string | null>(null);
-  const [toLocationId, setToLocationId] = useState<string | null>(null);
+  const updateTransfer = useMutation(api.transfers.updateTransfer);
+  const [fromLocationId, setFromLocationId] = useState<string | null>(
+    transfer?.fromLocationId ?? null,
+  );
+  const [toLocationId, setToLocationId] = useState<string | null>(
+    transfer?.toLocationId ?? null,
+  );
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
-    null,
+    transfer?.responsibleUserId ?? null,
   );
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(transfer?.comment ?? "");
   const [transferredAtLocal, setTransferredAtLocal] = useState(() =>
-    toDatetimeLocalValue(Date.now()),
+    toDatetimeLocalValue(transfer?.transferredAt ?? Date.now()),
   );
-  const [lines, setLines] = useState<TransferLine[]>([]);
+  const [lines, setLines] = useState<TransferLine[]>(() =>
+    (transfer?.items ?? []).map((item) => ({
+      key: item.id,
+      productId: item.productId,
+      productName: item.productName,
+      imageUrl: null,
+      unitId: item.unitId,
+      units: [{ id: item.unitId, name: item.unitName }],
+      quantity: item.quantity,
+    })),
+  );
   const [productToAdd, setProductToAdd] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [membersError, setMembersError] = useState<string>();
@@ -119,6 +160,7 @@ export function TransferForm() {
   const [isSaving, setIsSaving] = useState(false);
   const organizationId = organization?.id;
   const sessionUserId = session?.user.id;
+  const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
 
   useEffect(() => {
     if (!organizationId) return;
@@ -156,7 +198,28 @@ export function TransferForm() {
       active = false;
     };
   }, [organizationId, sessionUserId]);
+
   const products = (formOptions?.products ?? []) as ProductOption[];
+  const displayLines = lines.map((line) => {
+    const product = products.find((option) => option.id === line.productId);
+    if (!product) return line;
+    return {
+      ...line,
+      productName: product.name,
+      imageUrl: product.imageUrl,
+      units: product.units.some((unit) => unit.id === line.unitId)
+        ? product.units
+        : [
+            ...product.units,
+            {
+              id: line.unitId,
+              name:
+                line.units.find((unit) => unit.id === line.unitId)?.name ??
+                "Ukendt enhed",
+            },
+          ],
+    };
+  });
   const addedProductIds = new Set(lines.map((line) => line.productId));
   const productOptions: ComboboxOption[] = products
     .filter((product) => !addedProductIds.has(product.id))
@@ -261,7 +324,7 @@ export function TransferForm() {
     }
     setIsSaving(true);
     try {
-      await createTransfer({
+      const payload = {
         fromLocationId: fromLocationId as Id<"locations">,
         toLocationId: toLocationId as Id<"locations">,
         responsibleUserId,
@@ -272,9 +335,16 @@ export function TransferForm() {
           unitId: line.unitId,
           quantity: line.quantity,
         })),
-      });
-      toast.success("Transferen er gemt");
-      resetForm();
+      };
+      if (transfer) {
+        await updateTransfer({ transferId: transfer.id, ...payload });
+        toast.success("Transferen er opdateret");
+        onSaved?.();
+      } else {
+        await createTransfer(payload);
+        toast.success("Transferen er gemt");
+        resetForm();
+      }
     } catch (caught) {
       toast.error(messageFrom(caught));
     } finally {
@@ -356,11 +426,11 @@ export function TransferForm() {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="transfer-comment">
+                <FieldLabel htmlFor={`${inputIdPrefix}-comment`}>
                   Kommentar (valgfri)
                 </FieldLabel>
                 <Textarea
-                  id="transfer-comment"
+                  id={`${inputIdPrefix}-comment`}
                   value={comment}
                   onChange={(event) => setComment(event.target.value)}
                   placeholder="Kommentar"
@@ -369,9 +439,11 @@ export function TransferForm() {
               </Field>
 
               <Field data-invalid={Boolean(errors.transferredAt)}>
-                <FieldLabel htmlFor="transfer-at">Tidspunkt</FieldLabel>
+                <FieldLabel htmlFor={`${inputIdPrefix}-at`}>
+                  Tidspunkt
+                </FieldLabel>
                 <Input
-                  id="transfer-at"
+                  id={`${inputIdPrefix}-at`}
                   type="datetime-local"
                   value={transferredAtLocal}
                   onChange={(event) => setTransferredAtLocal(event.target.value)}
@@ -408,7 +480,7 @@ export function TransferForm() {
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
-                {lines.map((line) => (
+                {displayLines.map((line) => (
                   <li
                     key={line.key}
                     className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(8rem,0.45fr)_auto_auto] sm:items-center"
@@ -561,24 +633,46 @@ export function TransferForm() {
         </Card>
       </div>
 
-      <div className="sticky bottom-0 -mx-5 flex flex-col gap-3 border-t bg-background/95 px-5 py-4 backdrop-blur sm:-mx-8 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:-mx-12 lg:px-12">
+      <div
+        className={cn(
+          "sticky bottom-0 flex flex-col gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between",
+          transfer
+            ? "-mx-4 px-4"
+            : "-mx-5 px-5 sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12",
+        )}
+      >
         <p className="text-sm text-muted-foreground">
           {lineCount} {lineCount === 1 ? "varelinje" : "varelinjer"} ·{" "}
           {totalQuantity} enheder i alt
         </p>
-        <Button
-          size="lg"
-          className="min-h-11 px-5"
-          disabled={isSaving || locations === undefined}
-          onClick={save}
-        >
-          {isSaving ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <SaveIcon data-icon="inline-start" />
-          )}
-          Gem transfer
-        </Button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="min-h-11 px-5"
+              disabled={isSaving}
+              onClick={onCancel}
+            >
+              Annuller
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="lg"
+            className="min-h-11 px-5"
+            disabled={isSaving || locations === undefined}
+            onClick={save}
+          >
+            {isSaving ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <SaveIcon data-icon="inline-start" />
+            )}
+            {transfer ? "Gem ændringer" : "Gem transfer"}
+          </Button>
+        </div>
       </div>
     </div>
   );

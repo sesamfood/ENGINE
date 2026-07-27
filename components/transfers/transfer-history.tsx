@@ -21,12 +21,37 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useConvex, usePaginatedQuery, useQuery } from "convex/react";
-import { ArrowLeftRightIcon, DownloadIcon, GripVerticalIcon } from "lucide-react";
+import {
+  useConvex,
+  useMutation,
+  usePaginatedQuery,
+  useQuery,
+} from "convex/react";
+import {
+  ArrowLeftRightIcon,
+  DownloadIcon,
+  GripVerticalIcon,
+  PencilIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
+import {
+  TransferForm,
+  type EditableTransfer,
+} from "@/components/transfers/transfer-form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -47,12 +72,12 @@ import {
 import {
   Field,
   FieldContent,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -77,19 +102,10 @@ type TransferListRow = {
   totalQuantity: number;
 };
 
-type TransferDetail = {
-  id: Id<"transfers">;
-  transferredAt: number;
+type TransferDetail = EditableTransfer & {
   fromLocationName: string;
   toLocationName: string;
   responsibleName: string;
-  comment: string | null;
-  items: Array<{
-    id: Id<"transferItems">;
-    productName: string;
-    unitName: string;
-    quantity: number;
-  }>;
 };
 
 type ExportRow = {
@@ -710,8 +726,12 @@ export function TransferHistory() {
   const [toDate, setToDate] = useState(defaultToDate);
   const [selectedTransferId, setSelectedTransferId] =
     useState<Id<"transfers"> | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const deleteTransfer = useMutation(api.transfers.deleteTransfer);
   const exportPrefs = useSyncExternalStore(
     subscribeExportPrefs,
     getExportPrefsSnapshot,
@@ -798,7 +818,24 @@ export function TransferHistory() {
   }
 
   function openTransfer(transferId: Id<"transfers">) {
+    setIsEditing(false);
     setSelectedTransferId(transferId);
+  }
+
+  async function confirmDelete() {
+    if (!selectedTransferId) return;
+    setIsDeleting(true);
+    try {
+      await deleteTransfer({ transferId: selectedTransferId });
+      toast.success("Transferen er slettet");
+      setIsDeleteOpen(false);
+      setSelectedTransferId(null);
+      setIsEditing(false);
+    } catch (caught) {
+      toast.error(messageFrom(caught));
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -881,7 +918,15 @@ export function TransferHistory() {
                 <TableHead>Fra butik</TableHead>
                 <TableHead>Til butik</TableHead>
                 <TableHead>Ansvarlig</TableHead>
-                <TableHead className="text-right">Antal enheder</TableHead>
+                <TableHead>
+                  <span className="flex items-center justify-end gap-1">
+                    Antal enheder
+                    <HelpTooltip
+                      label="Antal enheder"
+                      content="Summen af de registrerede mængder i transferen. Varerne kan være registreret med forskellige enheder."
+                    />
+                  </span>
+                </TableHead>
                 <TableHead>Kommentar</TableHead>
               </TableRow>
             </TableHeader>
@@ -955,11 +1000,16 @@ export function TransferHistory() {
 
           <FieldGroup>
             <FieldSet>
-              <FieldLegend variant="label">Kolonner</FieldLegend>
-              <FieldDescription>
-                Træk kolonner for at ændre rækkefølgen. Flyt dem til “Ikke med i
-                eksporten” for at lade dem ude af eksporten.
-              </FieldDescription>
+              <FieldLegend
+                variant="label"
+                className="flex items-center gap-1"
+              >
+                Kolonner
+                <HelpTooltip
+                  label="Kolonner"
+                  content="Træk kolonner for at ændre rækkefølgen. Flyt dem til “Ikke med i eksporten” for at udelade dem fra eksporten."
+                />
+              </FieldLegend>
               <ExportColumnList
                 order={columnOrder}
                 enabled={enabledColumns}
@@ -968,7 +1018,16 @@ export function TransferHistory() {
             </FieldSet>
 
             <FieldSet>
-              <FieldLegend variant="label">Enheder</FieldLegend>
+              <FieldLegend
+                variant="label"
+                className="flex items-center gap-1"
+              >
+                Enheder
+                <HelpTooltip
+                  label="Enheder"
+                  content="Alle linjer omregnes til den standardenhed, produktet er oprettet med, så antallene kan sammenlignes."
+                />
+              </FieldLegend>
               <Field orientation="horizontal">
                 <Checkbox
                   id="export-default-unit"
@@ -981,10 +1040,6 @@ export function TransferHistory() {
                   <FieldLabel htmlFor="export-default-unit">
                     Omregn til produktets standardenhed
                   </FieldLabel>
-                  <FieldDescription>
-                    Alle linjer omregnes til den standardenhed, produktet er
-                    oprettet med, så antallene kan sammenlignes.
-                  </FieldDescription>
                 </FieldContent>
               </Field>
             </FieldSet>
@@ -1016,12 +1071,23 @@ export function TransferHistory() {
       <Dialog
         open={selectedTransferId !== null}
         onOpenChange={(open) => {
-          if (!open) setSelectedTransferId(null);
+          if (!open) {
+            setSelectedTransferId(null);
+            setIsEditing(false);
+          }
         }}
       >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent
+          className={
+            isEditing
+              ? "max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-5xl"
+              : "sm:max-w-2xl"
+          }
+        >
           <DialogHeader>
-            <DialogTitle>Transfer</DialogTitle>
+            <DialogTitle>
+              {isEditing ? "Rediger transfer" : "Transfer"}
+            </DialogTitle>
             <DialogDescription>
               {transferDetail
                 ? `${dateTimeFormatter.format(transferDetail.transferredAt)} · ${transferDetail.fromLocationName} → ${transferDetail.toLocationName}`
@@ -1029,7 +1095,7 @@ export function TransferHistory() {
             </DialogDescription>
           </DialogHeader>
 
-          {transferDetail === undefined ? (
+          {!isEditing && transferDetail === undefined ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 3 }, (_, index) => (
                 <Skeleton key={index} className="h-10 w-full" />
@@ -1037,13 +1103,22 @@ export function TransferHistory() {
             </div>
           ) : null}
 
-          {transferDetail === null ? (
+          {!isEditing && transferDetail === null ? (
             <p className="text-sm text-muted-foreground">
               Transferen blev ikke fundet.
             </p>
           ) : null}
 
-          {transferDetail ? (
+          {transferDetail && isEditing ? (
+            <TransferForm
+              key={transferDetail.id}
+              transfer={transferDetail}
+              onCancel={() => setIsEditing(false)}
+              onSaved={() => setIsEditing(false)}
+            />
+          ) : null}
+
+          {transferDetail && !isEditing ? (
             <div className="flex flex-col gap-4">
               <dl className="grid gap-2 text-sm sm:grid-cols-2">
                 <div>
@@ -1085,8 +1160,60 @@ export function TransferHistory() {
               </div>
             </div>
           ) : null}
+
+          {transferDetail && !isEditing ? (
+            <DialogFooter className="sm:justify-between">
+              <Button
+                variant="destructive"
+                size="lg"
+                className="min-h-11 px-5"
+                onClick={() => setIsDeleteOpen(true)}
+              >
+                <Trash2Icon data-icon="inline-start" />
+                Slet transfer
+              </Button>
+              <Button
+                size="lg"
+                className="min-h-11 px-5"
+                onClick={() => setIsEditing(true)}
+              >
+                <PencilIcon data-icon="inline-start" />
+                Rediger transfer
+              </Button>
+            </DialogFooter>
+          ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={isDeleteOpen}
+        onOpenChange={(open) => {
+          if (!isDeleting) setIsDeleteOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slet transfer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Transferen og alle dens varelinjer slettes permanent. Handlingen
+              kan ikke fortrydes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              Annuller
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={() => void confirmDelete()}
+            >
+              {isDeleting ? <Spinner data-icon="inline-start" /> : null}
+              Slet transfer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
