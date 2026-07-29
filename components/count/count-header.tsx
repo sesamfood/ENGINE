@@ -7,6 +7,7 @@ import {
   LockKeyholeIcon,
   MapPinIcon,
 } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -110,6 +111,7 @@ function CountHeaderControls({
 }
 
 export function CountHeader() {
+  const pathname = usePathname();
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
@@ -150,20 +152,29 @@ export function CountHeader() {
     locationId ? { locationId, now: queryNow } : "skip",
   );
   const submitted = state?.count?.status === "submitted";
+  const withinWindow = state
+    ? now >= state.opensAt && now < state.closesAt
+    : false;
   const statusTitle = submitted
     ? "Count er registreret"
+    : state?.outsideWindowAllowed
+      ? "Count er altid åben"
     : state?.isOpen
       ? "Count er åben"
       : "Count er låst";
   const statusDescription =
     state
       ? submitted
-        ? state.count?.submittedAt
-          ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
-          : "Denne måneds count kan ikke ændres."
-        : state.isOpen
-          ? `Vinduet lukker om ${countdown(state.closesAt, now)}.`
-          : `Næste vindue åbner om ${countdown(state.opensAt, now)}.`
+          ? state.count?.submittedAt
+            ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
+            : "Denne måneds count kan ikke ændres."
+        : state.outsideWindowAllowed
+          ? "Count kan registreres når som helst."
+          : withinWindow
+            ? `Vinduet lukker om ${countdown(state.closesAt, now)}.`
+            : state.isOpen
+              ? "Første count kan registreres uden for det normale count-vindue."
+              : `Næste vindue åbner om ${countdown(state.opensAt, now)}.`
       : "Vælg en location for at se count-vinduet.";
   const locationItems =
     locations?.map((location) => ({
@@ -195,17 +206,19 @@ export function CountHeader() {
           )
         : null}
 
-      <Alert>
-        {submitted ? (
-          <CheckCircle2Icon />
-        ) : state?.isOpen ? (
-          <Clock3Icon />
-        ) : (
-          <LockKeyholeIcon />
-        )}
-        <AlertTitle>{statusTitle}</AlertTitle>
-        <AlertDescription>{statusDescription}</AlertDescription>
-      </Alert>
+      {pathname === "/count" ? (
+        <Alert>
+          {submitted ? (
+            <CheckCircle2Icon />
+          ) : state?.isOpen ? (
+            <Clock3Icon />
+          ) : (
+            <LockKeyholeIcon />
+          )}
+          <AlertTitle>{statusTitle}</AlertTitle>
+          <AlertDescription>{statusDescription}</AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }

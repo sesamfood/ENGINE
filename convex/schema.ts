@@ -149,6 +149,7 @@ export default defineSchema({
     organizationId: v.string(),
     closeMinuteOfDay: v.number(),
     openMinuteOfDay: v.number(),
+    allowOutsideWindow: v.optional(v.boolean()),
   }).index("by_organizationId", ["organizationId"]),
 
   counts: defineTable({

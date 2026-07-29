@@ -23,6 +23,7 @@ const MAX_SEARCH_LENGTH = 100;
 const settingsValidator = v.object({
   closeMinuteOfDay: v.number(),
   openMinuteOfDay: v.number(),
+  allowOutsideWindow: v.boolean(),
 });
 
 const countSummaryValidator = v.object({
@@ -37,6 +38,7 @@ const countStateValidator = v.object({
   opensAt: v.number(),
   closesAt: v.number(),
   isOpen: v.boolean(),
+  outsideWindowAllowed: v.boolean(),
   count: v.union(countSummaryValidator, v.null()),
   totalProducts: v.number(),
   countedProducts: v.number(),
@@ -78,11 +80,14 @@ const locationStockValidator = v.object({
 });
 
 type CountContext = QueryCtx | MutationCtx;
+type CountConfiguration = CountSettings & {
+  allowOutsideWindow: boolean;
+};
 
 async function getSettings(
   ctx: CountContext,
   organizationId: string,
-): Promise<CountSettings> {
+): Promise<CountConfiguration> {
   const settings = await ctx.db
     .query("countSettings")
     .withIndex("by_organizationId", (q) =>
@@ -93,8 +98,9 @@ async function getSettings(
     ? {
         closeMinuteOfDay: settings.closeMinuteOfDay,
         openMinuteOfDay: settings.openMinuteOfDay,
+        allowOutsideWindow: settings.allowOutsideWindow ?? false,
       }
-    : DEFAULT_COUNT_SETTINGS;
+    : { ...DEFAULT_COUNT_SETTINGS, allowOutsideWindow: false };
 }
 
 async function requireLocation(
@@ -272,8 +278,10 @@ export const getCountState = query({
       opensAt: window.opensAt,
       closesAt: window.closesAt,
       isOpen:
+        settings.allowOutsideWindow ||
         !hasSubmitted ||
         windowIsOpen(args.now, window.opensAt, window.closesAt),
+      outsideWindowAllowed: settings.allowOutsideWindow,
       count: count
         ? {
             id: count._id,
@@ -439,6 +447,7 @@ export const setCountQuantity = mutation({
       hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
     if (
+      !settings.allowOutsideWindow &&
       hasSubmitted &&
       !windowIsOpen(now, window.opensAt, window.closesAt)
     ) {
@@ -507,6 +516,7 @@ export const submitCount = mutation({
       hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
     if (
+      !settings.allowOutsideWindow &&
       hasSubmitted &&
       !windowIsOpen(now, window.opensAt, window.closesAt)
     ) {

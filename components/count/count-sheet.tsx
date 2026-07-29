@@ -49,12 +49,21 @@ import {
 } from "@/components/ui/card";
 import { CountNavigation } from "@/components/count/count-navigation";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
@@ -85,6 +94,7 @@ import {
   useCountLocation,
   useCountOrder,
 } from "@/lib/count-prefs";
+import { cn } from "@/lib/utils";
 
 type CountUnit = {
   id: Id<"units">;
@@ -215,6 +225,7 @@ function ProductCard({
   onSelectedUnitChange: (unitId: Id<"units">) => void;
   onQuantityChange: (unit: CountUnit, quantity: number) => void;
 }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
   const disabled = Boolean(disabledReason);
   const selectedUnit =
     product.units.find((unit) => unit.id === selectedUnitId) ??
@@ -224,71 +235,130 @@ function ProductCard({
     label: unit.name,
   }));
   return (
-    <Card className="h-full gap-0 py-0 [--card-spacing:--spacing(3)] lg:[--card-spacing:--spacing(4)]">
-      {product.imageUrl ? (
-        <div
-          role="img"
-          aria-label={`Produktbillede af ${product.name}`}
-          className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
-          style={{ backgroundImage: `url("${product.imageUrl}")` }}
-        />
-      ) : (
-        <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
-          <PackageOpenIcon className="size-10 lg:size-12" aria-hidden="true" />
-        </div>
-      )}
-      <CardHeader className="py-3 lg:py-4">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <CardTitle className="min-w-0 flex-1 truncate">
-            {product.name}
-          </CardTitle>
-          <CardDescription className="max-w-[45%] shrink-0 truncate">
-            {product.category?.name ?? "Uden kategori"}
-          </CardDescription>
-        </div>
-        {editingOrder ? <CardAction>{dragHandle}</CardAction> : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2 pb-3 lg:gap-3 lg:pb-4">
-        {selectedUnit ? (
-          <>
-            <UnavailableTooltip reason={disabledReason}>
-              <Select
-                items={unitItems}
-                value={selectedUnit.id}
-                onValueChange={(value) =>
-                  onSelectedUnitChange(value as Id<"units">)
-                }
-                disabled={disabled}
-              >
-                <SelectTrigger className="h-11 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    {unitItems.map((unit) => (
-                      <SelectItem key={unit.value} value={unit.value}>
-                        {unit.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </UnavailableTooltip>
-            <UnavailableTooltip reason={disabledReason}>
-              <QuantityControl
-                productName={product.name}
-                unitName={selectedUnit.name}
-                quantity={quantityFor(selectedUnit)}
-                disabled={disabled}
-                onChange={(quantity) =>
-                  onQuantityChange(selectedUnit, quantity)
-                }
+    <Dialog
+      open={dialogOpen}
+      onOpenChange={(open) => {
+        if (!open || (!disabled && !editingOrder)) setDialogOpen(open);
+      }}
+    >
+      <Card
+        className={cn(
+          "h-full gap-0 py-0 [--card-spacing:--spacing(3)] lg:[--card-spacing:--spacing(4)]",
+          !editingOrder &&
+            !disabled &&
+            "transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm",
+        )}
+      >
+        <UnavailableTooltip reason={editingOrder ? null : disabledReason}>
+          <div className="relative">
+            {product.imageUrl ? (
+              <div
+                role="img"
+                aria-label={`Produktbillede af ${product.name}`}
+                className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
+                style={{ backgroundImage: `url("${product.imageUrl}")` }}
               />
-            </UnavailableTooltip>
-          </>
-        ) : null}
-      </CardContent>
-    </Card>
+            ) : (
+              <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
+                <PackageOpenIcon
+                  className="size-10 lg:size-12"
+                  aria-hidden="true"
+                />
+              </div>
+            )}
+            <CardHeader className="py-3 lg:py-4">
+              <div className="flex min-w-0 items-baseline gap-2">
+                <CardTitle className="min-w-0 flex-1 truncate">
+                  {product.name}
+                </CardTitle>
+                <CardDescription className="max-w-[45%] shrink-0 truncate">
+                  {product.category?.name ?? "Uden kategori"}
+                </CardDescription>
+              </div>
+              {editingOrder ? <CardAction>{dragHandle}</CardAction> : null}
+            </CardHeader>
+            {!editingOrder ? (
+              <button
+                type="button"
+                data-card-trigger
+                className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
+                aria-label={`Tæl ${product.name} i flere enheder`}
+                disabled={disabled}
+                onClick={() => setDialogOpen(true)}
+              />
+            ) : null}
+          </div>
+        </UnavailableTooltip>
+        <CardContent className="flex flex-col gap-2 pb-3 lg:gap-3 lg:pb-4">
+            {selectedUnit ? (
+              <>
+                <UnavailableTooltip reason={disabledReason}>
+                  <Select
+                    items={unitItems}
+                    value={selectedUnit.id}
+                    onValueChange={(value) =>
+                      onSelectedUnitChange(value as Id<"units">)
+                    }
+                    disabled={disabled}
+                  >
+                    <SelectTrigger className="h-11 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {unitItems.map((unit) => (
+                          <SelectItem key={unit.value} value={unit.value}>
+                            {unit.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </UnavailableTooltip>
+                <UnavailableTooltip reason={disabledReason}>
+                  <QuantityControl
+                    productName={product.name}
+                    unitName={selectedUnit.name}
+                    quantity={quantityFor(selectedUnit)}
+                    disabled={disabled}
+                    onChange={(quantity) =>
+                      onQuantityChange(selectedUnit, quantity)
+                    }
+                  />
+                </UnavailableTooltip>
+              </>
+            ) : null}
+        </CardContent>
+      </Card>
+
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{product.name}</DialogTitle>
+          <DialogDescription>
+            Registrér beholdningen i alle relevante enheder.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          {product.units.map((unit) => (
+            <Field key={unit.id} orientation="responsive">
+              <FieldLabel className="@md/field-group:min-w-24">
+                {unit.name}
+              </FieldLabel>
+              <div className="w-full @md/field-group:w-56">
+                <QuantityControl
+                  productName={product.name}
+                  unitName={unit.name}
+                  quantity={quantityFor(unit)}
+                  disabled={disabled}
+                  onChange={(quantity) => onQuantityChange(unit, quantity)}
+                />
+              </div>
+            </Field>
+          ))}
+        </FieldGroup>
+        <DialogFooter showCloseButton />
+      </DialogContent>
+    </Dialog>
   );
 }
 

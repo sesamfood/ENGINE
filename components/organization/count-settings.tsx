@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
@@ -23,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { canManageOrganization } from "@/lib/auth-permissions";
@@ -57,6 +59,9 @@ export function CountSettings() {
     closeTime: string;
     openTime: string;
   } | null>(null);
+  const [draftAllowOutsideWindow, setDraftAllowOutsideWindow] = useState<
+    boolean | null
+  >(null);
   const [previewNow] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
   const closeTime =
@@ -65,6 +70,8 @@ export function CountSettings() {
   const openTime =
     draftTimes?.openTime ??
     (settings ? timeValue(settings.openMinuteOfDay) : "");
+  const allowOutsideWindow =
+    draftAllowOutsideWindow ?? settings?.allowOutsideWindow ?? false;
 
   const preview = useMemo(() => {
     const closeMinuteOfDay = minuteValue(closeTime);
@@ -98,8 +105,12 @@ export function CountSettings() {
     }
     setSaving(true);
     try {
-      await saveSettings({ closeMinuteOfDay, openMinuteOfDay });
-      toast.success("Count-vinduet er gemt");
+      await saveSettings({
+        closeMinuteOfDay,
+        openMinuteOfDay,
+        allowOutsideWindow,
+      });
+      toast.success("Count-indstillingerne er gemt");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -110,14 +121,30 @@ export function CountSettings() {
   return (
     <Card className="max-w-2xl">
       <CardHeader>
-        <CardTitle>Count-vindue</CardTitle>
+        <CardTitle>Count-indstillinger</CardTitle>
         <CardDescription>
-          Count åbner ved lukketid på månedens sidste dag og låses ved
-          åbningstid næste morgen.
+          Vælg om count altid er tilgængelig eller kun åbner i det planlagte
+          count-vindue.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <FieldGroup>
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel htmlFor="count-outside-window">
+                Tillad count uden for count-vinduet
+              </FieldLabel>
+              <FieldDescription>
+                Medarbejdere kan registrere månedens count når som helst.
+              </FieldDescription>
+            </FieldContent>
+            <Switch
+              id="count-outside-window"
+              aria-label="Tillad count uden for count-vinduet"
+              checked={allowOutsideWindow}
+              onCheckedChange={setDraftAllowOutsideWindow}
+            />
+          </Field>
           <Field>
             <FieldLabel htmlFor="count-close-time">Lukketid</FieldLabel>
             <Input
@@ -170,7 +197,7 @@ export function CountSettings() {
       <CardFooter className="justify-end">
         <Button disabled={saving || !preview} onClick={() => void save()}>
           {saving ? <Spinner data-icon="inline-start" /> : null}
-          Gem count-vindue
+          Gem count-indstillinger
         </Button>
       </CardFooter>
     </Card>
