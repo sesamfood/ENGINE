@@ -3,7 +3,6 @@
 import { useQuery } from "convex/react";
 import {
   CheckCircle2Icon,
-  Clock3Icon,
   LockKeyholeIcon,
   MapPinIcon,
 } from "lucide-react";
@@ -152,29 +151,16 @@ export function CountHeader() {
     locationId ? { locationId, now: queryNow } : "skip",
   );
   const submitted = state?.count?.status === "submitted";
-  const withinWindow = state
-    ? now >= state.opensAt && now < state.closesAt
-    : false;
   const statusTitle = submitted
     ? "Count er registreret"
-    : state?.outsideWindowAllowed
-      ? "Count er altid åben"
-    : state?.isOpen
-      ? "Count er åben"
-      : "Count er låst";
+    : "Count er låst";
   const statusDescription =
     state
       ? submitted
           ? state.count?.submittedAt
             ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
             : "Denne måneds count kan ikke ændres."
-        : state.outsideWindowAllowed
-          ? "Count kan registreres når som helst."
-          : withinWindow
-            ? `Vinduet lukker om ${countdown(state.closesAt, now)}.`
-            : state.isOpen
-              ? "Første count kan registreres uden for det normale count-vindue."
-              : `Næste vindue åbner om ${countdown(state.opensAt, now)}.`
+        : `Næste vindue åbner om ${countdown(state.opensAt, now)}.`
       : "Vælg en location for at se count-vinduet.";
   const locationItems =
     locations?.map((location) => ({
@@ -206,12 +192,10 @@ export function CountHeader() {
           )
         : null}
 
-      {pathname === "/count" ? (
+      {pathname === "/count" && state && (submitted || !state.isOpen) ? (
         <Alert>
           {submitted ? (
             <CheckCircle2Icon />
-          ) : state?.isOpen ? (
-            <Clock3Icon />
           ) : (
             <LockKeyholeIcon />
           )}

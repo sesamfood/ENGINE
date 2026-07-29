@@ -41,7 +41,6 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -226,6 +225,9 @@ function ProductCard({
   onQuantityChange: (unit: CountUnit, quantity: number) => void;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [draftQuantities, setDraftQuantities] = useState<
+    Record<string, number>
+  >({});
   const disabled = Boolean(disabledReason);
   const selectedUnit =
     product.units.find((unit) => unit.id === selectedUnitId) ??
@@ -234,11 +236,37 @@ function ProductCard({
     value: unit.id,
     label: unit.name,
   }));
+
+  function openDialog() {
+    setDraftQuantities(
+      Object.fromEntries(
+        product.units.map((unit) => [unit.id, quantityFor(unit)]),
+      ),
+    );
+    setDialogOpen(true);
+  }
+
+  function closeDialog() {
+    setDialogOpen(false);
+    setDraftQuantities({});
+  }
+
+  function confirmDialog(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    for (const unit of product.units) {
+      const quantity = draftQuantities[unit.id] ?? quantityFor(unit);
+      if (quantity !== quantityFor(unit)) {
+        onQuantityChange(unit, quantity);
+      }
+    }
+    closeDialog();
+  }
+
   return (
     <Dialog
       open={dialogOpen}
       onOpenChange={(open) => {
-        if (!open || (!disabled && !editingOrder)) setDialogOpen(open);
+        if (!open) closeDialog();
       }}
     >
       <Card
@@ -266,6 +294,9 @@ function ProductCard({
                 />
               </div>
             )}
+            {editingOrder && dragHandle ? (
+              <div className="absolute left-2 top-2">{dragHandle}</div>
+            ) : null}
             <CardHeader className="py-3 lg:py-4">
               <div className="flex min-w-0 items-baseline gap-2">
                 <CardTitle className="min-w-0 flex-1 truncate">
@@ -275,7 +306,6 @@ function ProductCard({
                   {product.category?.name ?? "Uden kategori"}
                 </CardDescription>
               </div>
-              {editingOrder ? <CardAction>{dragHandle}</CardAction> : null}
             </CardHeader>
             {!editingOrder ? (
               <button
@@ -284,79 +314,93 @@ function ProductCard({
                 className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
                 aria-label={`Tæl ${product.name} i flere enheder`}
                 disabled={disabled}
-                onClick={() => setDialogOpen(true)}
+                onClick={openDialog}
               />
             ) : null}
           </div>
         </UnavailableTooltip>
         <CardContent className="flex flex-col gap-2 pb-3 lg:gap-3 lg:pb-4">
-            {selectedUnit ? (
-              <>
-                <UnavailableTooltip reason={disabledReason}>
-                  <Select
-                    items={unitItems}
-                    value={selectedUnit.id}
-                    onValueChange={(value) =>
-                      onSelectedUnitChange(value as Id<"units">)
-                    }
-                    disabled={disabled}
-                  >
-                    <SelectTrigger className="h-11 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent alignItemWithTrigger={false}>
-                      <SelectGroup>
-                        {unitItems.map((unit) => (
-                          <SelectItem key={unit.value} value={unit.value}>
-                            {unit.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </UnavailableTooltip>
-                <UnavailableTooltip reason={disabledReason}>
-                  <QuantityControl
-                    productName={product.name}
-                    unitName={selectedUnit.name}
-                    quantity={quantityFor(selectedUnit)}
-                    disabled={disabled}
-                    onChange={(quantity) =>
-                      onQuantityChange(selectedUnit, quantity)
-                    }
-                  />
-                </UnavailableTooltip>
-              </>
-            ) : null}
+          {selectedUnit ? (
+            <>
+              <UnavailableTooltip reason={disabledReason}>
+                <Select
+                  items={unitItems}
+                  value={selectedUnit.id}
+                  onValueChange={(value) =>
+                    onSelectedUnitChange(value as Id<"units">)
+                  }
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-11 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {unitItems.map((unit) => (
+                        <SelectItem key={unit.value} value={unit.value}>
+                          {unit.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </UnavailableTooltip>
+              <UnavailableTooltip reason={disabledReason}>
+                <QuantityControl
+                  productName={product.name}
+                  unitName={selectedUnit.name}
+                  quantity={quantityFor(selectedUnit)}
+                  disabled={disabled}
+                  onChange={(quantity) =>
+                    onQuantityChange(selectedUnit, quantity)
+                  }
+                />
+              </UnavailableTooltip>
+            </>
+          ) : null}
         </CardContent>
       </Card>
 
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{product.name}</DialogTitle>
-          <DialogDescription>
-            Registrér beholdningen i alle relevante enheder.
-          </DialogDescription>
-        </DialogHeader>
-        <FieldGroup>
-          {product.units.map((unit) => (
-            <Field key={unit.id} orientation="responsive">
-              <FieldLabel className="@md/field-group:min-w-24">
-                {unit.name}
-              </FieldLabel>
-              <div className="w-full @md/field-group:w-56">
-                <QuantityControl
-                  productName={product.name}
-                  unitName={unit.name}
-                  quantity={quantityFor(unit)}
-                  disabled={disabled}
-                  onChange={(quantity) => onQuantityChange(unit, quantity)}
-                />
-              </div>
-            </Field>
-          ))}
-        </FieldGroup>
-        <DialogFooter showCloseButton />
+      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+        <form className="flex flex-col gap-4" onSubmit={confirmDialog}>
+          <DialogHeader>
+            <DialogTitle>{product.name}</DialogTitle>
+            <DialogDescription>
+              Registrér beholdningen i alle relevante enheder.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            {product.units.map((unit) => (
+              <Field key={unit.id} orientation="responsive">
+                <FieldLabel className="@md/field-group:min-w-24">
+                  {unit.name}
+                </FieldLabel>
+                <div className="w-full @md/field-group:w-56">
+                  <QuantityControl
+                    productName={product.name}
+                    unitName={unit.name}
+                    quantity={
+                      draftQuantities[unit.id] ?? quantityFor(unit)
+                    }
+                    disabled={disabled}
+                    onChange={(quantity) =>
+                      setDraftQuantities((current) => ({
+                        ...current,
+                        [unit.id]: quantity,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+            ))}
+          </FieldGroup>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeDialog}>
+              Annuller
+            </Button>
+            <Button type="submit">Bekræft</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
