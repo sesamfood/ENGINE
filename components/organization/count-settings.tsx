@@ -83,7 +83,7 @@ export function CountSettings() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre optællingsvinduet.
+          Kun administratorer kan ændre count-vinduet.
         </AlertDescription>
       </Alert>
     );
@@ -99,7 +99,7 @@ export function CountSettings() {
     setSaving(true);
     try {
       await saveSettings({ closeMinuteOfDay, openMinuteOfDay });
-      toast.success("Optællingsvinduet er gemt");
+      toast.success("Count-vinduet er gemt");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -110,9 +110,9 @@ export function CountSettings() {
   return (
     <Card className="max-w-2xl">
       <CardHeader>
-        <CardTitle>Optællingsvindue</CardTitle>
+        <CardTitle>Count-vindue</CardTitle>
         <CardDescription>
-          Optællingen åbner ved lukketid på månedens sidste dag og låses ved
+          Count åbner ved lukketid på månedens sidste dag og låses ved
           åbningstid næste morgen.
         </CardDescription>
       </CardHeader>
@@ -133,7 +133,7 @@ export function CountSettings() {
               className="h-11"
             />
             <FieldDescription>
-              Her åbner månedens optælling.
+              Her åbner månedens count.
             </FieldDescription>
           </Field>
           <Field>
@@ -151,7 +151,7 @@ export function CountSettings() {
               className="h-11"
             />
             <FieldDescription>
-              Her låses optællingen næste dag.
+              Her låses count næste dag.
             </FieldDescription>
           </Field>
         </FieldGroup>
@@ -159,7 +159,7 @@ export function CountSettings() {
         {preview ? (
           <Alert>
             <Clock3Icon />
-            <AlertTitle>Næste optællingsvindue</AlertTitle>
+            <AlertTitle>Næste count-vindue</AlertTitle>
             <AlertDescription>
               {dateFormatter.format(preview.opensAt)} til{" "}
               {dateFormatter.format(preview.closesAt)}.
@@ -170,7 +170,7 @@ export function CountSettings() {
       <CardFooter className="justify-end">
         <Button disabled={saving || !preview} onClick={() => void save()}>
           {saving ? <Spinner data-icon="inline-start" /> : null}
-          Gem optællingsvindue
+          Gem count-vindue
         </Button>
       </CardFooter>
     </Card>

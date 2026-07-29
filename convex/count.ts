@@ -147,7 +147,7 @@ async function getCountItems(
     )
     .take(MAX_COUNT_ITEMS + 1);
   if (items.length > MAX_COUNT_ITEMS) {
-    throw new ConvexError("Optællingen har for mange enhedslinjer");
+    throw new ConvexError("Count har for mange enhedslinjer");
   }
   return items;
 }
@@ -406,7 +406,7 @@ export const setCountQuantity = mutation({
     const periodKey = activePeriod(now, settings);
     const window = countWindow(periodKey, settings);
     if (!windowIsOpen(now, window.opensAt, window.closesAt)) {
-      throw new ConvexError("Optællingsvinduet er lukket");
+      throw new ConvexError("Count-vinduet er lukket");
     }
     let count = await getCount(
       ctx,
@@ -415,7 +415,7 @@ export const setCountQuantity = mutation({
       periodKey,
     );
     if (count?.status === "submitted") {
-      throw new ConvexError("Optællingen er allerede registreret");
+      throw new ConvexError("Count er allerede registreret");
     }
     if (!count && args.quantity === 0) return null;
     if (!count) {
@@ -472,7 +472,7 @@ export const submitCount = mutation({
     const periodKey = activePeriod(now, settings);
     const window = countWindow(periodKey, settings);
     if (!windowIsOpen(now, window.opensAt, window.closesAt)) {
-      throw new ConvexError("Optællingsvinduet er lukket");
+      throw new ConvexError("Count-vinduet er lukket");
     }
     const count = await getCount(
       ctx,
@@ -484,7 +484,7 @@ export const submitCount = mutation({
       throw new ConvexError("Indtast mindst én mængde før registrering");
     }
     if (count.status === "submitted") {
-      throw new ConvexError("Optællingen er allerede registreret");
+      throw new ConvexError("Count er allerede registreret");
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     if (items.length === 0) {
@@ -502,7 +502,7 @@ export const submitCount = mutation({
       );
       if (quantity === null) {
         throw new ConvexError(
-          "En produkt-enhed er ændret. Opdatér optællingen og prøv igen",
+          "En produkt-enhed er ændret. Opdatér count og prøv igen",
         );
       }
       totals.set(

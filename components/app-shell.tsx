@@ -49,6 +49,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authClient } from "@/lib/auth-client";
 import { canManageCatalog } from "@/lib/auth-permissions";
+import { cn } from "@/lib/utils";
 
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
@@ -445,6 +446,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showOrganizationBack =
     pathname.startsWith("/organization/") &&
     !pathname.startsWith("/organization/products/");
+  const showCountHeader =
+    pathname === "/count" || pathname.startsWith("/count/");
 
   return (
     <OrganizationBoundary required={organizationRequired}>
@@ -476,8 +479,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Sidebar>
 
           <SidebarInset className="min-w-0">
-            <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0">
+            <header
+              className={cn(
+                "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
+                showCountHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+              )}
+            >
               <SidebarTrigger size="icon-lg" />
+              {showCountHeader ? (
+                <div
+                  id="count-shell-header"
+                  className="hidden min-w-0 flex-1 md:block"
+                />
+              ) : null}
               {showOrganizationBack ? (
                 <Button
                   variant="outline"

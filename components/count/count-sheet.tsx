@@ -21,7 +21,6 @@ import { useMutation, useQuery } from "convex/react";
 import {
   BoxesIcon,
   GripVerticalIcon,
-  Layers3Icon,
   MinusIcon,
   PackageOpenIcon,
   PlusIcon,
@@ -39,7 +38,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -49,14 +47,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { CountNavigation } from "@/components/count/count-navigation";
 import {
   Empty,
   EmptyDescription,
@@ -79,7 +70,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSidebar } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
@@ -182,7 +172,6 @@ function ProductCard({
   quantityFor,
   onSelectedUnitChange,
   onQuantityChange,
-  onOpenUnits,
 }: {
   product: CountProduct;
   selectedUnitId: Id<"units">;
@@ -192,7 +181,6 @@ function ProductCard({
   quantityFor: (unit: CountUnit) => number;
   onSelectedUnitChange: (unitId: Id<"units">) => void;
   onQuantityChange: (unit: CountUnit, quantity: number) => void;
-  onOpenUnits: () => void;
 }) {
   const selectedUnit =
     product.units.find((unit) => unit.id === selectedUnitId) ??
@@ -201,32 +189,32 @@ function ProductCard({
     value: unit.id,
     label: unit.name,
   }));
-  const additionalUnits = product.units.filter(
-    (unit) => unit.id !== selectedUnit?.id && quantityFor(unit) > 0,
-  );
-
   return (
-    <Card className="h-full gap-0 py-0">
+    <Card className="h-full gap-0 py-0 [--card-spacing:--spacing(3)] lg:[--card-spacing:--spacing(4)]">
       {product.imageUrl ? (
         <div
           role="img"
           aria-label={`Produktbillede af ${product.name}`}
-          className="aspect-[4/3] w-full bg-muted bg-cover bg-center"
+          className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
           style={{ backgroundImage: `url("${product.imageUrl}")` }}
         />
       ) : (
-        <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted text-muted-foreground">
-          <PackageOpenIcon className="size-12" aria-hidden="true" />
+        <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
+          <PackageOpenIcon className="size-10 lg:size-12" aria-hidden="true" />
         </div>
       )}
-      <CardHeader className="py-4">
-        <CardTitle>{product.name}</CardTitle>
-        <CardDescription>
-          {product.category?.name ?? "Uden kategori"}
-        </CardDescription>
+      <CardHeader className="py-3 lg:py-4">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <CardTitle className="min-w-0 flex-1 truncate">
+            {product.name}
+          </CardTitle>
+          <CardDescription className="max-w-[45%] shrink-0 truncate">
+            {product.category?.name ?? "Uden kategori"}
+          </CardDescription>
+        </div>
         {editingOrder ? <CardAction>{dragHandle}</CardAction> : null}
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 pb-4">
+      <CardContent className="flex flex-col gap-2 pb-3 lg:gap-3 lg:pb-4">
         {selectedUnit ? (
           <>
             <Select
@@ -261,26 +249,6 @@ function ProductCard({
             />
           </>
         ) : null}
-
-        <div className="flex min-h-8 flex-wrap items-center gap-2">
-          {additionalUnits.map((unit) => (
-            <Badge key={unit.id} variant="outline">
-              {quantityFor(unit)} {unit.name}
-            </Badge>
-          ))}
-          {product.units.length > 1 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              onClick={onOpenUnits}
-            >
-              <Layers3Icon data-icon="inline-start" />
-              Flere enheder
-            </Button>
-          ) : null}
-        </div>
       </CardContent>
     </Card>
   );
@@ -332,10 +300,10 @@ function SortableProduct({
 
 function CountSkeleton() {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:gap-5 xl:grid-cols-4">
       {Array.from({ length: 8 }, (_, index) => (
         <Card key={index} className="gap-4 py-0">
-          <Skeleton className="aspect-[4/3] w-full rounded-none" />
+          <Skeleton className="aspect-video w-full rounded-none lg:aspect-[4/3]" />
           <CardHeader className="pb-4">
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="h-11 w-full" />
@@ -349,7 +317,6 @@ function CountSkeleton() {
 
 export function CountSheet() {
   const organization = authClient.useActiveOrganization();
-  const sidebar = useSidebar();
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
   const savedOrder = useCountOrder(organizationId);
@@ -362,7 +329,6 @@ export function CountSheet() {
     {},
   );
   const [overrides, setOverrides] = useState<Record<string, number>>({});
-  const [unitsProductId, setUnitsProductId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const pendingValues = useRef(new Map<string, QuantityPayload>());
@@ -525,9 +491,6 @@ export function CountSheet() {
   const locked = !state?.isOpen || state.count?.status === "submitted";
   const quantityFor = (product: CountProduct, unit: CountUnit) =>
     overrides[`${product.id}:${unit.id}`] ?? unit.quantity;
-  const dialogProduct = displayedProducts.find(
-    (product) => product.id === unitsProductId,
-  );
   const hasQuantity =
     (state?.countedProducts ?? 0) > 0 ||
     displayedProducts.some((product) =>
@@ -536,11 +499,11 @@ export function CountSheet() {
   const disabledReason = !locationId
     ? "Vælg en location"
     : !state
-      ? "Optællingen indlæses"
+      ? "Count indlæses"
       : state.count?.status === "submitted"
-        ? "Optællingen er allerede registreret"
+        ? "Count er allerede registreret"
         : !state.isOpen
-          ? "Optællingsvinduet er lukket"
+          ? "Count-vinduet er lukket"
           : !hasQuantity
             ? "Indtast mindst én mængde"
             : null;
@@ -552,7 +515,7 @@ export function CountSheet() {
       await flushPending();
       await submitCount({ locationId });
       setConfirmOpen(false);
-      toast.success("Optællingen er registreret");
+      toast.success("Count er registreret");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -580,7 +543,7 @@ export function CountSheet() {
 
   return (
     <div className="flex flex-col gap-7 pb-28">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <InputGroup className="h-11 min-w-0 flex-1">
           <InputGroupAddon>
             <SearchIcon aria-hidden="true" />
@@ -595,16 +558,18 @@ export function CountSheet() {
             aria-label="Søg efter produkter"
           />
         </InputGroup>
-        <Button
-          type="button"
-          variant={editingOrder ? "default" : "outline"}
-          className="min-h-11"
-          disabled={categoryId !== "all" || Boolean(search) || locked}
-          onClick={() => setEditingOrder((current) => !current)}
-        >
-          <GripVerticalIcon data-icon="inline-start" />
-          {editingOrder ? "Afslut rækkefølge" : "Redigér rækkefølge"}
-        </Button>
+        {categoryId === "all" && !search ? (
+          <Button
+            type="button"
+            variant={editingOrder ? "default" : "outline"}
+            className="min-h-11"
+            disabled={locked}
+            onClick={() => setEditingOrder((current) => !current)}
+          >
+            <GripVerticalIcon data-icon="inline-start" />
+            {editingOrder ? "Afslut rækkefølge" : "Redigér rækkefølge"}
+          </Button>
+        ) : null}
       </div>
 
       <Tabs
@@ -613,19 +578,20 @@ export function CountSheet() {
           setCategoryId(value);
           setEditingOrder(false);
         }}
+        className="w-full min-w-0"
       >
         <TabsList
           aria-label="Produktkategorier"
-          className="h-12 max-w-full justify-start overflow-x-auto"
+          className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
         >
-          <TabsTrigger value="all" className="min-w-24 px-4">
+          <TabsTrigger value="all" className="min-w-24 shrink-0 px-4">
             Alle
           </TabsTrigger>
           {categories?.map((category) => (
             <TabsTrigger
               key={category.id}
               value={category.id}
-              className="min-w-28 px-4"
+              className="min-w-28 shrink-0 px-4"
             >
               {category.name}
             </TabsTrigger>
@@ -661,7 +627,7 @@ export function CountSheet() {
             items={displayedProducts.map((product) => product.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:gap-5 xl:grid-cols-4">
               {displayedProducts.map((product) => {
                 const selectedUnitId =
                   (selectedUnits[product.id] as Id<"units"> | undefined) ??
@@ -683,7 +649,6 @@ export function CountSheet() {
                     onQuantityChange={(unit, quantity) =>
                       changeQuantity(product, unit, quantity)
                     }
-                    onOpenUnits={() => setUnitsProductId(product.id)}
                   />
                 );
                 return editingOrder ? (
@@ -699,83 +664,35 @@ export function CountSheet() {
         </DndContext>
       ) : null}
 
-      <div
-        className="fixed inset-x-0 bottom-0 z-10 border-t bg-background/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm md:right-0"
-        style={{
-          left: sidebar.isMobile
-            ? 0
-            : sidebar.state === "collapsed"
-              ? "var(--sidebar-width-icon)"
-              : "var(--sidebar-width)",
-        }}
-      >
-        <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            {disabledReason ??
-              `${state?.countedProducts ?? 0} af ${state?.totalProducts ?? 0} produkter har en mængde`}
-          </p>
+      <CountNavigation
+        action={
           <Button
             type="button"
             size="lg"
-            className="min-h-11 px-6"
+            className="min-h-11 shrink-0 px-4 sm:px-6"
             disabled={Boolean(disabledReason) || submitting}
             onClick={() => setConfirmOpen(true)}
+            title={disabledReason ?? undefined}
           >
             {submitting ? <Spinner data-icon="inline-start" /> : null}
             Registrér count
           </Button>
-        </div>
-      </div>
-
-      <Dialog
-        open={Boolean(dialogProduct)}
-        onOpenChange={(open) => {
-          if (!open) setUnitsProductId(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{dialogProduct?.name}</DialogTitle>
-            <DialogDescription>
-              Indtast de enheder, der findes på lageret.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto py-1">
-            {dialogProduct?.units.map((unit) => (
-              <div
-                key={unit.id}
-                className="grid gap-2 sm:grid-cols-[minmax(7rem,1fr)_minmax(12rem,1.5fr)] sm:items-center"
-              >
-                <p className="font-medium">{unit.name}</p>
-                <QuantityControl
-                  productName={dialogProduct.name}
-                  unitName={unit.name}
-                  quantity={quantityFor(dialogProduct, unit)}
-                  disabled={locked}
-                  onChange={(quantity) =>
-                    changeQuantity(dialogProduct, unit, quantity)
-                  }
-                />
-              </div>
-            ))}
-          </div>
-          <DialogFooter showCloseButton />
-        </DialogContent>
-      </Dialog>
+        }
+      />
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Registrér optællingen?</AlertDialogTitle>
+            <AlertDialogTitle>Registrér count?</AlertDialogTitle>
             <AlertDialogDescription>
               Lageret overskrives for de produkter, der har en mængde i denne
-              optælling. Produkter uden en mængde beholder deres nuværende lager.
-              Optællingen kan ikke ændres bagefter.
+              count. Produkter uden en mængde beholder deres nuværende lager.
+              Denne count kan ikke ændres bagefter.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={submitting}>
-              Fortsæt optælling
+              Fortsæt count
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={submitting}

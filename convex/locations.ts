@@ -222,7 +222,7 @@ export const deleteLocation = mutation({
           )
           .first();
     if (count || stock) {
-      throw new ConvexError("Locationen har optællinger eller lagerbeholdning");
+      throw new ConvexError("Locationen har counts eller lagerbeholdning");
     }
     await ctx.db.delete("locations", location._id);
     return null;

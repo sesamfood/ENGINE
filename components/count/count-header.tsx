@@ -7,8 +7,8 @@ import {
   LockKeyholeIcon,
   MapPinIcon,
 } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
@@ -19,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
@@ -46,18 +45,88 @@ function countdown(target: number, now: number) {
   return `${rest} sek`;
 }
 
+function CountHeaderControls({
+  locationId,
+  locations,
+  locationItems,
+  organizationId,
+  periodKey,
+}: {
+  locationId: Id<"locations"> | null;
+  locations:
+    | Array<{ id: Id<"locations">; name: string }>
+    | undefined;
+  locationItems: Array<{ value: Id<"locations">; label: string }>;
+  organizationId: string | undefined;
+  periodKey: string | undefined;
+}) {
+  return (
+    <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
+      <div className="flex min-w-0 flex-col gap-2">
+        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+          Lagerstyring
+        </p>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Count
+          </h1>
+          {periodKey ? (
+            <p className="text-lg capitalize text-muted-foreground">
+              {formatPeriod(periodKey)}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <Field>
+        <FieldLabel>Location</FieldLabel>
+        <Select
+          items={locationItems}
+          value={locationId}
+          onValueChange={(value) => {
+            if (organizationId) {
+              setCountLocation(organizationId, value as string);
+            }
+          }}
+          disabled={!locations || locations.length === 0}
+        >
+          <SelectTrigger className="h-11 w-full">
+            <MapPinIcon aria-hidden="true" />
+            <SelectValue placeholder="Vælg location" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              {locationItems.map((location) => (
+                <SelectItem key={location.value} value={location.value}>
+                  {location.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
+    </div>
+  );
+}
+
 export function CountHeader() {
-  const router = useRouter();
-  const pathname = usePathname();
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
   const locations = useQuery(api.locations.listLocationOptions);
   const [now, setNow] = useState(() => Date.now());
+  const [desktopTarget, setDesktopTarget] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setDesktopTarget(document.getElementById("count-shell-header"));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -82,20 +151,20 @@ export function CountHeader() {
   );
   const submitted = state?.count?.status === "submitted";
   const statusTitle = submitted
-    ? "Optællingen er registreret"
+    ? "Count er registreret"
     : state?.isOpen
-      ? "Optællingen er åben"
-      : "Optællingen er låst";
+      ? "Count er åben"
+      : "Count er låst";
   const statusDescription =
     state
       ? submitted
         ? state.count?.submittedAt
           ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
-          : "Denne måneds optælling kan ikke ændres."
+          : "Denne måneds count kan ikke ændres."
         : state.isOpen
           ? `Vinduet lukker om ${countdown(state.closesAt, now)}.`
           : `Næste vindue åbner om ${countdown(state.opensAt, now)}.`
-      : "Vælg en location for at se optællingsvinduet.";
+      : "Vælg en location for at se count-vinduet.";
   const locationItems =
     locations?.map((location) => ({
       value: location.id,
@@ -104,51 +173,27 @@ export function CountHeader() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-end">
-        <header className="flex min-w-0 flex-col gap-2">
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-            Lagerstyring
-          </p>
-          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Count
-            </h1>
-            {state ? (
-              <p className="text-lg capitalize text-muted-foreground">
-                {formatPeriod(state.periodKey)}
-              </p>
-            ) : null}
-          </div>
-        </header>
-
-        <Field>
-          <FieldLabel>Location</FieldLabel>
-          <Select
-            items={locationItems}
-            value={locationId}
-            onValueChange={(value) => {
-              if (organizationId) {
-                setCountLocation(organizationId, value as string);
-              }
-            }}
-            disabled={!locations || locations.length === 0}
-          >
-            <SelectTrigger className="h-11 w-full">
-              <MapPinIcon aria-hidden="true" />
-              <SelectValue placeholder="Vælg location" />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                {locationItems.map((location) => (
-                  <SelectItem key={location.value} value={location.value}>
-                    {location.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
+      <header className="md:hidden">
+        <CountHeaderControls
+          locationId={locationId}
+          locations={locations}
+          locationItems={locationItems}
+          organizationId={organizationId}
+          periodKey={state?.periodKey}
+        />
+      </header>
+      {desktopTarget
+        ? createPortal(
+            <CountHeaderControls
+              locationId={locationId}
+              locations={locations}
+              locationItems={locationItems}
+              organizationId={organizationId}
+              periodKey={state?.periodKey}
+            />,
+            desktopTarget,
+          )
+        : null}
 
       <Alert>
         {submitted ? (
@@ -161,27 +206,6 @@ export function CountHeader() {
         <AlertTitle>{statusTitle}</AlertTitle>
         <AlertDescription>{statusDescription}</AlertDescription>
       </Alert>
-
-      <Tabs
-        value={pathname.startsWith("/count/stock") ? "stock" : "count"}
-        onValueChange={(value) =>
-          router.push(value === "stock" ? "/count/stock" : "/count", {
-            scroll: false,
-          })
-        }
-      >
-        <TabsList
-          aria-label="Countsektioner"
-          className="h-14 w-full justify-start"
-        >
-          <TabsTrigger value="count" className="min-w-36 px-6">
-            Optælling
-          </TabsTrigger>
-          <TabsTrigger value="stock" className="min-w-36 px-6">
-            Lager
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
     </div>
   );
 }

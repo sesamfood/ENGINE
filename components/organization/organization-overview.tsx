@@ -44,7 +44,7 @@ const sections = [
   },
   {
     title: "Count",
-    description: "Indstil tidspunktet for den månedlige optælling.",
+    description: "Indstil tidspunktet for den månedlige count.",
     href: "/organization/count",
     icon: ClipboardListIcon,
     adminOnly: true,
