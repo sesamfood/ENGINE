@@ -51,6 +51,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type VocabularyKind = "category" | "unit" | "location";
 type VocabularyItem = {
@@ -100,13 +105,13 @@ const vocabularyKinds = {
     }),
   },
   location: {
-    singular: "butik",
-    plural: "Butikker",
-    definite: "Butikken",
-    deleteNoun: " butikker",
-    description: "Vedligehold de butikker, der kan bruges i transfers.",
+    singular: "location",
+    plural: "Locations",
+    definite: "Locationen",
+    deleteNoun: " locations",
+    description: "Vedligehold de locations, der kan bruges i transfers.",
     emptyDescription:
-      "Tilføj den første butik for at kunne oprette transfers.",
+      "Tilføj den første location for at kunne oprette transfers.",
     list: api.locations.listLocations,
     create: api.locations.createLocation,
     rename: api.locations.renameLocation,
@@ -257,15 +262,42 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                       >
                         <PencilIcon />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-lg"
-                        aria-label={`Fjern ${item.name}`}
-                        disabled={item.inUse}
-                        onClick={() => setPendingDelete(item)}
-                      >
-                        <Trash2Icon />
-                      </Button>
+                      {kind === "location" && item.inUse ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <span
+                                className="inline-flex"
+                                tabIndex={0}
+                                aria-label={`Hvorfor ${item.name} ikke kan fjernes`}
+                              />
+                            }
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon-lg"
+                              aria-label={`Fjern ${item.name}`}
+                              disabled
+                            >
+                              <Trash2Icon />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Denne location bruges i en transfer og kan derfor
+                            ikke fjernes.
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon-lg"
+                          aria-label={`Fjern ${item.name}`}
+                          disabled={item.inUse}
+                          onClick={() => setPendingDelete(item)}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

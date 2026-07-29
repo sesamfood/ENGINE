@@ -2,7 +2,7 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   MinusIcon,
   PackageOpenIcon,
@@ -10,7 +10,7 @@ import {
   SaveIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   CreatableCombobox,
@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardHeader,
   CardTitle,
@@ -56,6 +57,11 @@ type ProductOption = {
   units: Array<{ id: Id<"units">; name: string }>;
 };
 
+type ProductSearchOption = {
+  id: Id<"products">;
+  name: string;
+};
+
 type MemberOption = {
   id: string;
   userId: string;
@@ -69,6 +75,7 @@ type TransferLine = {
   imageUrl: string | null;
   unitId: Id<"units">;
   units: Array<{ id: Id<"units">; name: string }>;
+  unitsLoaded: boolean;
   quantity: number;
 };
 
@@ -120,12 +127,17 @@ export function TransferForm({
   onSaved?: () => void;
   onCancel?: () => void;
 }) {
+  const convex = useConvex();
   const { data: session } = authClient.useSession();
   const { data: organization } = authClient.useActiveOrganization();
-  const locations = useQuery(api.locations.listLocations) as
+  const locations = useQuery(api.locations.listLocationOptions) as
     | LocationOption[]
     | undefined;
-  const formOptions = useQuery(api.catalog.listFormOptions, {});
+  const [productSearch, setProductSearch] = useState("");
+  const deferredProductSearch = useDeferredValue(productSearch);
+  const productResults = useQuery(api.transfers.searchTransferProducts, {
+    search: deferredProductSearch,
+  });
   const createTransfer = useMutation(api.transfers.createTransfer);
   const updateTransfer = useMutation(api.transfers.updateTransfer);
   const [fromLocationId, setFromLocationId] = useState<string | null>(
@@ -149,6 +161,7 @@ export function TransferForm({
       imageUrl: null,
       unitId: item.unitId,
       units: [{ id: item.unitId, name: item.unitName }],
+      unitsLoaded: false,
       quantity: item.quantity,
     })),
   );
@@ -156,6 +169,7 @@ export function TransferForm({
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [membersError, setMembersError] = useState<string>();
   const [membersLoading, setMembersLoading] = useState(true);
+  const [loadingProductId, setLoadingProductId] = useState<string>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const organizationId = organization?.id;
@@ -165,20 +179,45 @@ export function TransferForm({
   useEffect(() => {
     if (!organizationId) return;
     let active = true;
+    const pageSize = 100;
 
     void (async () => {
       try {
-        const memberResult = await authClient.organization.listMembers({
-          query: { organizationId, limit: 100 },
+        const firstResult = await authClient.organization.listMembers({
+          query: { organizationId, limit: pageSize, offset: 0 },
         });
         if (!active) return;
 
-        if (memberResult.error) {
+        if (firstResult.error) {
           setMembersError("Medlemmer kunne ikke indlæses.");
           return;
         }
 
-        const loaded = memberResult.data?.members ?? [];
+        const firstPage = firstResult.data?.members ?? [];
+        const total = firstResult.data?.total ?? firstPage.length;
+        const remainingOffsets = Array.from(
+          { length: Math.max(0, Math.ceil(total / pageSize) - 1) },
+          (_, index) => (index + 1) * pageSize,
+        );
+        const remainingResults = await Promise.all(
+          remainingOffsets.map((offset) =>
+            authClient.organization.listMembers({
+              query: { organizationId, limit: pageSize, offset },
+            }),
+          ),
+        );
+        if (!active) return;
+        if (remainingResults.some((result) => result.error)) {
+          setMembersError("Medlemmer kunne ikke indlæses.");
+          return;
+        }
+
+        const loaded = [
+          ...firstPage,
+          ...remainingResults.flatMap(
+            (result) => result.data?.members ?? [],
+          ),
+        ];
         setMembersError(undefined);
         setMembers(loaded);
         if (
@@ -199,27 +238,18 @@ export function TransferForm({
     };
   }, [organizationId, sessionUserId]);
 
-  const products = (formOptions?.products ?? []) as ProductOption[];
-  const displayLines = lines.map((line) => {
-    const product = products.find((option) => option.id === line.productId);
-    if (!product) return line;
-    return {
-      ...line,
-      productName: product.name,
-      imageUrl: product.imageUrl,
-      units: product.units.some((unit) => unit.id === line.unitId)
-        ? product.units
-        : [
-            ...product.units,
-            {
-              id: line.unitId,
-              name:
-                line.units.find((unit) => unit.id === line.unitId)?.name ??
-                "Ukendt enhed",
-            },
-          ],
-    };
-  });
+  const products = (productResults ?? []) as ProductSearchOption[];
+  const displayLines = lines;
+  const lineGroups = Array.from(
+    displayLines
+      .reduce((groups, line) => {
+        const group = groups.get(line.productId);
+        if (group) group.push(line);
+        else groups.set(line.productId, [line]);
+        return groups;
+      }, new Map<Id<"products">, TransferLine[]>())
+      .values(),
+  );
   const addedProductIds = new Set(lines.map((line) => line.productId));
   const productOptions: ComboboxOption[] = products
     .filter((product) => !addedProductIds.has(product.id))
@@ -258,22 +288,7 @@ export function TransferForm({
     setErrors({});
   }
 
-  function addProduct(productId: string | null) {
-    if (!productId) return;
-    const product = products.find((option) => option.id === productId);
-    if (!product) return;
-    if (addedProductIds.has(product.id)) {
-      setProductToAdd(null);
-      return;
-    }
-    const unitId =
-      product.units.find((unit) => unit.id === product.defaultUnitId)?.id ??
-      product.units[0]?.id;
-    if (!unitId) {
-      toast.error("Produktet har ingen enheder");
-      setProductToAdd(null);
-      return;
-    }
+  function addLine(product: ProductOption, unitId: Id<"units">) {
     setLines((current) => [
       ...current,
       {
@@ -283,10 +298,10 @@ export function TransferForm({
         imageUrl: product.imageUrl,
         unitId,
         units: product.units,
+        unitsLoaded: true,
         quantity: 1,
       },
     ]);
-    setProductToAdd(null);
     setErrors((current) => {
       const next = { ...current };
       delete next.items;
@@ -294,16 +309,113 @@ export function TransferForm({
     });
   }
 
+  async function addProduct(productId: string | null) {
+    if (!productId) return;
+    if (addedProductIds.has(productId as Id<"products">)) {
+      setProductToAdd(null);
+      return;
+    }
+
+    setLoadingProductId(productId);
+    try {
+      const product = await convex.query(
+        api.transfers.getTransferProductOption,
+        { productId: productId as Id<"products"> },
+      );
+      if (!product) {
+        toast.error("Produktet blev ikke fundet");
+        setProductToAdd(null);
+        return;
+      }
+      const unitId =
+        product.units.find((unit) => unit.id === product.defaultUnitId)?.id ??
+        product.units[0]?.id;
+      if (!unitId) {
+        toast.error("Produktet har ingen enheder");
+        setProductToAdd(null);
+        return;
+      }
+      addLine(product, unitId);
+      setProductToAdd(null);
+    } catch (caught) {
+      toast.error(messageFrom(caught));
+    } finally {
+      setLoadingProductId(undefined);
+    }
+  }
+
+  async function addUnit(productId: Id<"products">) {
+    const existingLine = lines.find((line) => line.productId === productId);
+    if (!existingLine) return;
+
+    setLoadingProductId(productId);
+    try {
+      const product = existingLine.unitsLoaded
+        ? {
+            id: existingLine.productId,
+            name: existingLine.productName,
+            imageUrl: existingLine.imageUrl,
+            units: existingLine.units,
+          }
+        : await convex.query(api.transfers.getTransferProductOption, {
+            productId,
+          });
+      if (!product) {
+        toast.error("Produktet blev ikke fundet");
+        return;
+      }
+
+      const usedUnitIds = new Set(
+        lines
+          .filter((line) => line.productId === productId)
+          .map((line) => line.unitId),
+      );
+      const unit = product.units.find(({ id }) => !usedUnitIds.has(id));
+      setLines((current) => {
+        const enriched = current.map((line) =>
+          line.productId === productId
+            ? {
+                ...line,
+                productName: product.name,
+                imageUrl: product.imageUrl,
+                units: product.units,
+                unitsLoaded: true,
+              }
+            : line,
+        );
+        if (!unit) return enriched;
+        return [
+          ...enriched,
+          {
+            key: newLineKey(),
+            productId: product.id,
+            productName: product.name,
+            imageUrl: product.imageUrl,
+            unitId: unit.id,
+            units: product.units,
+            unitsLoaded: true,
+            quantity: 1,
+          },
+        ];
+      });
+      if (!unit) toast.error("Produktet har ingen flere enheder");
+    } catch (caught) {
+      toast.error(messageFrom(caught));
+    } finally {
+      setLoadingProductId(undefined);
+    }
+  }
+
   function validate() {
     const nextErrors: Record<string, string> = {};
-    if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderbutik";
-    if (!toLocationId) nextErrors.toLocation = "Vælg modtagerbutik";
+    if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderlocation";
+    if (!toLocationId) nextErrors.toLocation = "Vælg modtagerlocation";
     if (
       fromLocationId &&
       toLocationId &&
       fromLocationId === toLocationId
     ) {
-      nextErrors.toLocation = "Fra- og til-butik skal være forskellige";
+      nextErrors.toLocation = "Fra- og til-location skal være forskellige";
     }
     if (!responsibleUserId) nextErrors.responsible = "Vælg en ansvarlig";
     const transferredAt = fromDatetimeLocalValue(transferredAtLocal);
@@ -362,7 +474,7 @@ export function TransferForm({
           <CardContent>
             <FieldGroup>
               <Field data-invalid={Boolean(errors.fromLocation)}>
-                <FieldLabel>Fra butik</FieldLabel>
+                <FieldLabel>Fra location</FieldLabel>
                 <CreatableCombobox
                   options={fromLocationOptions}
                   value={fromLocationId}
@@ -375,15 +487,15 @@ export function TransferForm({
                       return next;
                     });
                   }}
-                  placeholder="Søg efter butik"
-                  ariaLabel="Fra butik"
+                  placeholder="Søg efter location"
+                  ariaLabel="Fra location"
                   disabled={locations === undefined}
                 />
                 <FieldError>{errors.fromLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
-                <FieldLabel>Til butik</FieldLabel>
+                <FieldLabel>Til location</FieldLabel>
                 <CreatableCombobox
                   options={toLocationOptions}
                   value={toLocationId}
@@ -396,8 +508,8 @@ export function TransferForm({
                       return next;
                     });
                   }}
-                  placeholder="Søg efter butik"
-                  ariaLabel="Til butik"
+                  placeholder="Søg efter location"
+                  ariaLabel="Til location"
                   disabled={locations === undefined}
                 />
                 <FieldError>{errors.toLocation}</FieldError>
@@ -459,6 +571,12 @@ export function TransferForm({
         <Card>
           <CardHeader>
             <CardTitle>Varer</CardTitle>
+            <CardAction>
+              <p className="text-sm text-muted-foreground">
+                {lineCount} {lineCount === 1 ? "varelinje" : "varelinjer"} ·{" "}
+                {totalQuantity} enheder i alt
+              </p>
+            </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Field data-invalid={Boolean(errors.items)}>
@@ -466,10 +584,11 @@ export function TransferForm({
               <CreatableCombobox
                 options={productOptions}
                 value={productToAdd}
-                onValueChange={addProduct}
+                onValueChange={(value) => void addProduct(value)}
+                onInputValueChange={setProductSearch}
                 placeholder="Søg efter produkter"
                 ariaLabel="Tilføj vare"
-                disabled={formOptions === undefined}
+                disabled={loadingProductId !== undefined}
               />
               <FieldError>{errors.items}</FieldError>
             </Field>
@@ -480,153 +599,207 @@ export function TransferForm({
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
-                {displayLines.map((line) => (
-                  <li
-                    key={line.key}
-                    className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(8rem,0.45fr)_auto_auto] sm:items-center"
-                  >
-                    {line.imageUrl ? (
-                      <div
-                        role="img"
-                        aria-label={`Produktbillede af ${line.productName}`}
-                        className="size-14 shrink-0 rounded-lg bg-muted bg-cover bg-center"
-                        style={{
-                          backgroundImage: `url("${line.imageUrl}")`,
-                        }}
-                      />
-                    ) : (
-                      <div
-                        className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-                        aria-hidden="true"
-                      >
-                        <PackageOpenIcon className="size-6" />
-                      </div>
-                    )}
+                {lineGroups.map((group) => {
+                  const product = group[0];
+                  const usedUnitIds = new Set(group.map((line) => line.unitId));
+                  const canAddUnit = product.units.some(
+                    (unit) => !usedUnitIds.has(unit.id),
+                  ) || !product.unitsLoaded;
 
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{line.productName}</p>
-                    </div>
-
-                    <Field>
-                      <FieldLabel className="sr-only">
-                        Enhed for {line.productName}
-                      </FieldLabel>
-                      <Select
-                        items={line.units.map((unit) => ({
-                          value: unit.id,
-                          label: unit.name,
-                        }))}
-                        value={line.unitId}
-                        onValueChange={(value) =>
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? {
-                                    ...item,
-                                    unitId: value as Id<"units">,
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      >
-                        <SelectTrigger className="h-11 w-full">
-                          <SelectValue placeholder="Vælg enhed" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {line.units.map((unit) => (
-                              <SelectItem key={unit.id} value={unit.id}>
-                                {unit.name}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-lg"
-                        className="size-11"
-                        aria-label={`Reducer mængde for ${line.productName}`}
-                        disabled={line.quantity <= 1}
-                        onClick={() =>
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? {
-                                    ...item,
-                                    quantity: Math.max(1, item.quantity - 1),
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      >
-                        <MinusIcon />
-                      </Button>
-                      <Input
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        step={1}
-                        value={line.quantity}
-                        aria-label={`Mængde for ${line.productName}`}
-                        className="h-11 w-16 text-center"
-                        onChange={(event) => {
-                          const next = Number(event.target.value);
-                          if (!Number.isFinite(next)) return;
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? {
-                                    ...item,
-                                    quantity: Math.max(1, Math.floor(next)),
-                                  }
-                                : item,
-                            ),
-                          );
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-lg"
-                        className="size-11"
-                        aria-label={`Øg mængde for ${line.productName}`}
-                        onClick={() =>
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? { ...item, quantity: item.quantity + 1 }
-                                : item,
-                            ),
-                          )
-                        }
-                      >
-                        <PlusIcon />
-                      </Button>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      className="size-11"
-                      aria-label={`Fjern ${line.productName}`}
-                      onClick={() =>
-                        setLines((current) =>
-                          current.filter((item) => item.key !== line.key),
-                        )
-                      }
+                  return (
+                    <li
+                      key={product.productId}
+                      className="flex flex-col gap-3 rounded-xl border p-3"
                     >
-                      <Trash2Icon />
-                    </Button>
-                  </li>
-                ))}
+                      <div className="flex items-center gap-3">
+                        {product.imageUrl ? (
+                          <div
+                            role="img"
+                            aria-label={`Produktbillede af ${product.productName}`}
+                            className="size-14 shrink-0 rounded-lg bg-muted bg-cover bg-center"
+                            style={{
+                              backgroundImage: `url("${product.imageUrl}")`,
+                            }}
+                          />
+                        ) : (
+                          <div
+                            className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
+                            aria-hidden="true"
+                          >
+                            <PackageOpenIcon className="size-6" />
+                          </div>
+                        )}
+
+                        <p className="min-w-0 flex-1 truncate font-medium">
+                          {product.productName}
+                        </p>
+
+                        {canAddUnit ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="min-h-11"
+                            disabled={loadingProductId === product.productId}
+                            onClick={() => void addUnit(product.productId)}
+                          >
+                            {loadingProductId === product.productId ? (
+                              <Spinner data-icon="inline-start" />
+                            ) : (
+                              <PlusIcon data-icon="inline-start" />
+                            )}
+                            Tilføj enhed
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <ul className="flex flex-col gap-2">
+                        {group.map((line) => (
+                          <li
+                            key={line.key}
+                            className="grid gap-3 py-2 sm:grid-cols-[minmax(8rem,1fr)_auto_auto] sm:items-center"
+                          >
+                            <Field>
+                              <FieldLabel className="sr-only">
+                                Enhed for {line.productName}
+                              </FieldLabel>
+                              <Select
+                                items={line.units.map((unit) => ({
+                                  value: unit.id,
+                                  label: unit.name,
+                                }))}
+                                value={line.unitId}
+                                onValueChange={(value) =>
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            unitId: value as Id<"units">,
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="h-11 w-full">
+                                  <SelectValue placeholder="Vælg enhed" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectGroup>
+                                    {line.units.map((unit) => (
+                                      <SelectItem
+                                        key={unit.id}
+                                        value={unit.id}
+                                        disabled={
+                                          unit.id !== line.unitId &&
+                                          usedUnitIds.has(unit.id)
+                                        }
+                                      >
+                                        {unit.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon-lg"
+                                className="size-11"
+                                aria-label={`Reducer mængde for ${line.productName}`}
+                                disabled={line.quantity <= 1}
+                                onClick={() =>
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            quantity: Math.max(
+                                              1,
+                                              item.quantity - 1,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <MinusIcon />
+                              </Button>
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                step={1}
+                                value={line.quantity}
+                                aria-label={`Mængde for ${line.productName}`}
+                                className="h-11 w-16 text-center"
+                                onChange={(event) => {
+                                  const next = Number(event.target.value);
+                                  if (!Number.isFinite(next)) return;
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            quantity: Math.max(
+                                              1,
+                                              Math.floor(next),
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  );
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon-lg"
+                                className="size-11"
+                                aria-label={`Øg mængde for ${line.productName}`}
+                                onClick={() =>
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            quantity: item.quantity + 1,
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <PlusIcon />
+                              </Button>
+                            </div>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-lg"
+                              className="size-11"
+                              aria-label={`Fjern ${line.productName} i den valgte enhed`}
+                              onClick={() =>
+                                setLines((current) =>
+                                  current.filter(
+                                    (item) => item.key !== line.key,
+                                  ),
+                                )
+                              }
+                            >
+                              <Trash2Icon />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>
@@ -635,16 +808,12 @@ export function TransferForm({
 
       <div
         className={cn(
-          "sticky bottom-0 flex flex-col gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between",
+          "sticky bottom-0 flex flex-col gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-end",
           transfer
             ? "-mx-4 px-4"
             : "-mx-5 px-5 sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12",
         )}
       >
-        <p className="text-sm text-muted-foreground">
-          {lineCount} {lineCount === 1 ? "varelinje" : "varelinjer"} ·{" "}
-          {totalQuantity} enheder i alt
-        </p>
         <div className="flex flex-col-reverse gap-2 sm:flex-row">
           {onCancel ? (
             <Button
