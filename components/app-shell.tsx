@@ -5,6 +5,7 @@ import {
   ArrowRightLeftIcon,
   Building2Icon,
   ChevronsUpDownIcon,
+  ClipboardListIcon,
   LogOutIcon,
   SettingsIcon,
   StoreIcon,
@@ -51,6 +52,7 @@ import { canManageCatalog } from "@/lib/auth-permissions";
 
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
+  { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
 
 const organizationNavigation = {
@@ -132,7 +134,8 @@ function NavigationList() {
               const active =
                 item === organizationNavigation
                   ? pathname.startsWith("/organization")
-                  : pathname === item.href;
+                  : pathname === item.href ||
+                    pathname.startsWith(`${item.href}/`);
 
               return (
                 <SidebarMenuItem key={item.href}>

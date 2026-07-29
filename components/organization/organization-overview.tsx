@@ -2,6 +2,7 @@
 
 import {
   Building2Icon,
+  ClipboardListIcon,
   PackageIcon,
   StoreIcon,
   UsersIcon,
@@ -39,6 +40,13 @@ const sections = [
     description: "Inviter brugere, og administrer deres roller.",
     href: "/organization/users",
     icon: UsersIcon,
+    adminOnly: true,
+  },
+  {
+    title: "Count",
+    description: "Indstil tidspunktet for den månedlige optælling.",
+    href: "/organization/count",
+    icon: ClipboardListIcon,
     adminOnly: true,
   },
   {

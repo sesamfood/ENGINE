@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireCatalogManager, requireOrganization } from "./lib/auth";
+import { normalizeStock } from "./lib/stock";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -51,6 +52,7 @@ type IngredientInput = {
 const MAX_NAME_LENGTH = 100;
 const MAX_CHILD_ROWS = 200;
 const MAX_GRAPH_PRODUCTS = 500;
+const MAX_PRODUCT_LEDGER_ROWS = 2000;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -424,37 +426,56 @@ async function permanentlyDeleteProduct(
   ctx: MutationCtx,
   product: Doc<"products">,
 ) {
-  const [units, ingredients, recipeReferences] = await Promise.all([
-    ctx.db
-      .query("productUnits")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q
-          .eq("organizationId", product.organizationId)
-          .eq("productId", product._id),
-      )
-      .take(MAX_CHILD_ROWS + 1),
-    ctx.db
-      .query("productIngredients")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q
-          .eq("organizationId", product.organizationId)
-          .eq("productId", product._id),
-      )
-      .take(MAX_CHILD_ROWS + 1),
-    ctx.db
-      .query("productIngredients")
-      .withIndex("by_organizationId_and_ingredientProductId", (q) =>
-        q
-          .eq("organizationId", product.organizationId)
-          .eq("ingredientProductId", product._id),
-      )
-      .take(MAX_GRAPH_PRODUCTS + 1),
-  ]);
+  const [units, ingredients, recipeReferences, countItems, stockRows] =
+    await Promise.all([
+      ctx.db
+        .query("productUnits")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", product.organizationId)
+            .eq("productId", product._id),
+        )
+        .take(MAX_CHILD_ROWS + 1),
+      ctx.db
+        .query("productIngredients")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", product.organizationId)
+            .eq("productId", product._id),
+        )
+        .take(MAX_CHILD_ROWS + 1),
+      ctx.db
+        .query("productIngredients")
+        .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+          q
+            .eq("organizationId", product.organizationId)
+            .eq("ingredientProductId", product._id),
+        )
+        .take(MAX_GRAPH_PRODUCTS + 1),
+      ctx.db
+        .query("countItems")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", product.organizationId)
+            .eq("productId", product._id),
+        )
+        .take(MAX_PRODUCT_LEDGER_ROWS + 1),
+      ctx.db
+        .query("locationStock")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", product.organizationId)
+            .eq("productId", product._id),
+        )
+        .take(MAX_CHILD_ROWS + 1),
+    ]);
 
   if (
     units.length > MAX_CHILD_ROWS ||
     ingredients.length > MAX_CHILD_ROWS ||
-    recipeReferences.length > MAX_GRAPH_PRODUCTS
+    recipeReferences.length > MAX_GRAPH_PRODUCTS ||
+    countItems.length > MAX_PRODUCT_LEDGER_ROWS ||
+    stockRows.length > MAX_CHILD_ROWS
   ) {
     throw new ConvexError(
       "Produktet har for mange relationer til at blive slettet",
@@ -468,6 +489,8 @@ async function permanentlyDeleteProduct(
   for (const row of recipeReferences) {
     await ctx.db.delete("productIngredients", row._id);
   }
+  for (const row of countItems) await ctx.db.delete("countItems", row._id);
+  for (const row of stockRows) await ctx.db.delete("locationStock", row._id);
   if (product.imageStorageId) {
     await ctx.storage.delete(product.imageStorageId);
   }
@@ -889,6 +912,36 @@ export const updateProduct = mutation({
     );
 
     const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
+    if (defaultUnitId !== product.defaultUnitId) {
+      const stockRows = await ctx.db
+        .query("locationStock")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", product._id),
+        )
+        .take(MAX_CHILD_ROWS + 1);
+      if (stockRows.length > MAX_CHILD_ROWS) {
+        throw new ConvexError("Produktet har for mange lagerrelationer");
+      }
+      const oldDefaultUnit = units.find(
+        (unit) => unit.unitId === product.defaultUnitId,
+      );
+      if (stockRows.length > 0 && !oldDefaultUnit) {
+        throw new ConvexError(
+          "Den tidligere standardenhed skal beholdes for at omregne lageret",
+        );
+      }
+      const updatedAt = Date.now();
+      for (const stock of stockRows) {
+        await ctx.db.patch("locationStock", stock._id, {
+          quantity: normalizeStock(
+            stock.quantity * oldDefaultUnit!.factorToDefault,
+          ),
+          updatedAt,
+        });
+      }
+    }
     await replaceProductChildren(
       ctx,
       organizationId,

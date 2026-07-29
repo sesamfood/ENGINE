@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireTransferManager } from "./lib/auth";
+import { requireOrganization, requireTransferManager } from "./lib/auth";
 
 const MAX_NAME_LENGTH = 100;
 const MAX_LOCATIONS = 200;
@@ -38,28 +38,49 @@ export const listLocations = query({
       .take(MAX_LOCATIONS);
 
     return await Promise.all(
-      locations.map(async (location) => ({
-        id: location._id,
-        name: location.name,
-        inUse: Boolean(
-          (await ctx.db
+      locations.map(async (location) => {
+        const [usedAsFrom, usedAsTo, count, stock] = await Promise.all([
+          ctx.db
             .query("transfers")
             .withIndex("by_organizationId_and_fromLocationId", (q) =>
               q
                 .eq("organizationId", organizationId)
                 .eq("fromLocationId", location._id),
             )
-            .first()) ||
-            (await ctx.db
-              .query("transfers")
-              .withIndex("by_organizationId_and_toLocationId", (q) =>
+            .first(),
+          ctx.db
+            .query("transfers")
+            .withIndex("by_organizationId_and_toLocationId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("toLocationId", location._id),
+            )
+            .first(),
+          ctx.db
+            .query("counts")
+            .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", location._id),
+            )
+            .first(),
+          ctx.db
+            .query("locationStock")
+            .withIndex(
+              "by_organizationId_and_locationId_and_productId",
+              (q) =>
                 q
                   .eq("organizationId", organizationId)
-                  .eq("toLocationId", location._id),
-              )
-              .first()),
-        ),
-      })),
+                  .eq("locationId", location._id),
+            )
+            .first(),
+        ]);
+        return {
+          id: location._id,
+          name: location.name,
+          inUse: Boolean(usedAsFrom || usedAsTo || count || stock),
+        };
+      }),
     );
   },
 });
@@ -68,7 +89,7 @@ export const listLocationOptions = query({
   args: {},
   returns: v.array(locationOptionValidator),
   handler: async (ctx) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const { organizationId } = await requireOrganization(ctx);
     const locations = await ctx.db
       .query("locations")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -179,6 +200,29 @@ export const deleteLocation = mutation({
           .first();
     if (usedAsFrom || usedAsTo) {
       throw new ConvexError("Locationen er stadig i brug");
+    }
+    const count = await ctx.db
+      .query("counts")
+      .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", location._id),
+      )
+      .first();
+    const stock = count
+      ? null
+      : await ctx.db
+          .query("locationStock")
+          .withIndex(
+            "by_organizationId_and_locationId_and_productId",
+            (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", location._id),
+          )
+          .first();
+    if (count || stock) {
+      throw new ConvexError("Locationen har optællinger eller lagerbeholdning");
     }
     await ctx.db.delete("locations", location._id);
     return null;
