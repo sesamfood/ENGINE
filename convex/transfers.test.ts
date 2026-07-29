@@ -141,7 +141,7 @@ test("createTransfer rejects identical from and to locations", async () => {
       transferredAt: Date.now(),
       items: [{ productId, unitId, quantity: 2 }],
     }),
-  ).rejects.toThrowError("Fra- og til-butik skal være forskellige");
+  ).rejects.toThrowError("Fra- og til-location skal være forskellige");
 });
 
 test("createTransfer rejects a responsible user who is not a member", async () => {

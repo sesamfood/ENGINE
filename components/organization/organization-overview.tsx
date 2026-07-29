@@ -28,8 +28,8 @@ const sections = [
     adminOnly: false,
   },
   {
-    title: "Butikker",
-    description: "Administrer de butikker, der bruges i transfers.",
+    title: "Locations",
+    description: "Administrer de locations, der bruges i transfers.",
     href: "/organization/locations",
     icon: StoreIcon,
     adminOnly: false,

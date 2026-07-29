@@ -189,10 +189,14 @@ const exportColumns: ExportColumn[] = [
   },
   {
     key: "fromLocation",
-    label: "Fra butik",
+    label: "Fra location",
     value: (row) => row.fromLocationName,
   },
-  { key: "toLocation", label: "Til butik", value: (row) => row.toLocationName },
+  {
+    key: "toLocation",
+    label: "Til location",
+    value: (row) => row.toLocationName,
+  },
   {
     key: "responsible",
     label: "Ansvarlig",
@@ -873,7 +877,7 @@ export function TransferHistory() {
           onClick={() => setIsExportOpen(true)}
         >
           <DownloadIcon data-icon="inline-start" />
-          Eksportér til Excel
+          Eksportér til CSV
         </Button>
       </div>
 
@@ -915,8 +919,8 @@ export function TransferHistory() {
             <TableHeader>
               <TableRow>
                 <TableHead>Tidspunkt</TableHead>
-                <TableHead>Fra butik</TableHead>
-                <TableHead>Til butik</TableHead>
+                <TableHead>Fra location</TableHead>
+                <TableHead>Til location</TableHead>
                 <TableHead>Ansvarlig</TableHead>
                 <TableHead>
                   <span className="flex items-center justify-end gap-1">
@@ -992,7 +996,7 @@ export function TransferHistory() {
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Eksportér til Excel</DialogTitle>
+            <DialogTitle>Eksportér til CSV</DialogTitle>
             <DialogDescription>
               {`Perioden ${dateFormatter.format(startOfDay(fromDate))} – ${dateFormatter.format(endOfDay(toDate))}`}
             </DialogDescription>

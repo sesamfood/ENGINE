@@ -45,7 +45,7 @@ async function locationName(
   locationId: Id<"locations">,
 ): Promise<string> {
   const location = await ctx.db.get("locations", locationId);
-  return location?.name ?? "Ukendt butik";
+  return location?.name ?? "Ukendt location";
 }
 
 async function hydrateTransferHeader(
@@ -105,7 +105,7 @@ async function prepareTransfer(
   existingItems: Doc<"transferItems">[] = [],
 ) {
   if (args.fromLocationId === args.toLocationId) {
-    throw new ConvexError("Fra- og til-butik skal være forskellige");
+    throw new ConvexError("Fra- og til-location skal være forskellige");
   }
   if (!Number.isFinite(args.transferredAt) || args.transferredAt <= 0) {
     throw new ConvexError("Overførselsdatoen er ugyldig");
@@ -125,10 +125,10 @@ async function prepareTransfer(
     ctx.db.get("locations", args.toLocationId),
   ]);
   if (!fromLocation || fromLocation.organizationId !== organizationId) {
-    throw new ConvexError("Butikken blev ikke fundet");
+    throw new ConvexError("Locationen blev ikke fundet");
   }
   if (!toLocation || toLocation.organizationId !== organizationId) {
-    throw new ConvexError("Butikken blev ikke fundet");
+    throw new ConvexError("Locationen blev ikke fundet");
   }
 
   const existingByPair = new Map(

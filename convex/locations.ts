@@ -58,7 +58,10 @@ export const createLocation = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
     const { organizationId } = await requireTransferManager(ctx);
-    const { name, normalizedName } = normalizeName(args.name, "Butiksnavnet");
+    const { name, normalizedName } = normalizeName(
+      args.name,
+      "Navnet på locationen",
+    );
     const existing = await ctx.db
       .query("locations")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -67,7 +70,7 @@ export const createLocation = mutation({
           .eq("normalizedName", normalizedName),
       )
       .unique();
-    if (existing) throw new ConvexError("Butikken findes allerede");
+    if (existing) throw new ConvexError("Locationen findes allerede");
     return await ctx.db.insert("locations", {
       organizationId,
       name,
@@ -82,9 +85,12 @@ export const renameLocation = mutation({
     const { organizationId } = await requireTransferManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
-      throw new ConvexError("Butikken blev ikke fundet");
+      throw new ConvexError("Locationen blev ikke fundet");
     }
-    const { name, normalizedName } = normalizeName(args.name, "Butiksnavnet");
+    const { name, normalizedName } = normalizeName(
+      args.name,
+      "Navnet på locationen",
+    );
     const existing = await ctx.db
       .query("locations")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -94,7 +100,7 @@ export const renameLocation = mutation({
       )
       .unique();
     if (existing && existing._id !== location._id) {
-      throw new ConvexError("Butikken findes allerede");
+      throw new ConvexError("Locationen findes allerede");
     }
     await ctx.db.patch("locations", location._id, { name, normalizedName });
     return null;
@@ -107,7 +113,7 @@ export const deleteLocation = mutation({
     const { organizationId } = await requireTransferManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
-      throw new ConvexError("Butikken blev ikke fundet");
+      throw new ConvexError("Locationen blev ikke fundet");
     }
     const usedAsFrom = await ctx.db
       .query("transfers")
@@ -128,7 +134,7 @@ export const deleteLocation = mutation({
           )
           .first();
     if (usedAsFrom || usedAsTo) {
-      throw new ConvexError("Butikken er stadig i brug");
+      throw new ConvexError("Locationen er stadig i brug");
     }
     await ctx.db.delete("locations", location._id);
     return null;

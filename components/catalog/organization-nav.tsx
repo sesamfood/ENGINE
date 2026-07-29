@@ -24,7 +24,7 @@ export function OrganizationHeader() {
   const title = inCatalog
     ? "Produkter"
     : pathname.startsWith("/organization/locations")
-      ? "Butikker"
+      ? "Locations"
       : pathname.startsWith("/organization/users")
         ? "Brugere"
         : pathname === "/organization"

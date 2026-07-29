@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardHeader,
   CardTitle,
@@ -220,6 +221,16 @@ export function TransferForm({
           ],
     };
   });
+  const lineGroups = Array.from(
+    displayLines
+      .reduce((groups, line) => {
+        const group = groups.get(line.productId);
+        if (group) group.push(line);
+        else groups.set(line.productId, [line]);
+        return groups;
+      }, new Map<Id<"products">, TransferLine[]>())
+      .values(),
+  );
   const addedProductIds = new Set(lines.map((line) => line.productId));
   const productOptions: ComboboxOption[] = products
     .filter((product) => !addedProductIds.has(product.id))
@@ -258,6 +269,26 @@ export function TransferForm({
     setErrors({});
   }
 
+  function addLine(product: ProductOption, unitId: Id<"units">) {
+    setLines((current) => [
+      ...current,
+      {
+        key: newLineKey(),
+        productId: product.id,
+        productName: product.name,
+        imageUrl: product.imageUrl,
+        unitId,
+        units: product.units,
+        quantity: 1,
+      },
+    ]);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.items;
+      return next;
+    });
+  }
+
   function addProduct(productId: string | null) {
     if (!productId) return;
     const product = products.find((option) => option.id === productId);
@@ -274,36 +305,32 @@ export function TransferForm({
       setProductToAdd(null);
       return;
     }
-    setLines((current) => [
-      ...current,
-      {
-        key: newLineKey(),
-        productId: product.id,
-        productName: product.name,
-        imageUrl: product.imageUrl,
-        unitId,
-        units: product.units,
-        quantity: 1,
-      },
-    ]);
+    addLine(product, unitId);
     setProductToAdd(null);
-    setErrors((current) => {
-      const next = { ...current };
-      delete next.items;
-      return next;
-    });
+  }
+
+  function addUnit(productId: Id<"products">) {
+    const product = products.find((option) => option.id === productId);
+    if (!product) return;
+    const usedUnitIds = new Set(
+      lines
+        .filter((line) => line.productId === productId)
+        .map((line) => line.unitId),
+    );
+    const unit = product.units.find(({ id }) => !usedUnitIds.has(id));
+    if (unit) addLine(product, unit.id);
   }
 
   function validate() {
     const nextErrors: Record<string, string> = {};
-    if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderbutik";
-    if (!toLocationId) nextErrors.toLocation = "Vælg modtagerbutik";
+    if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderlocation";
+    if (!toLocationId) nextErrors.toLocation = "Vælg modtagerlocation";
     if (
       fromLocationId &&
       toLocationId &&
       fromLocationId === toLocationId
     ) {
-      nextErrors.toLocation = "Fra- og til-butik skal være forskellige";
+      nextErrors.toLocation = "Fra- og til-location skal være forskellige";
     }
     if (!responsibleUserId) nextErrors.responsible = "Vælg en ansvarlig";
     const transferredAt = fromDatetimeLocalValue(transferredAtLocal);
@@ -362,7 +389,7 @@ export function TransferForm({
           <CardContent>
             <FieldGroup>
               <Field data-invalid={Boolean(errors.fromLocation)}>
-                <FieldLabel>Fra butik</FieldLabel>
+                <FieldLabel>Fra location</FieldLabel>
                 <CreatableCombobox
                   options={fromLocationOptions}
                   value={fromLocationId}
@@ -375,15 +402,15 @@ export function TransferForm({
                       return next;
                     });
                   }}
-                  placeholder="Søg efter butik"
-                  ariaLabel="Fra butik"
+                  placeholder="Søg efter location"
+                  ariaLabel="Fra location"
                   disabled={locations === undefined}
                 />
                 <FieldError>{errors.fromLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
-                <FieldLabel>Til butik</FieldLabel>
+                <FieldLabel>Til location</FieldLabel>
                 <CreatableCombobox
                   options={toLocationOptions}
                   value={toLocationId}
@@ -396,8 +423,8 @@ export function TransferForm({
                       return next;
                     });
                   }}
-                  placeholder="Søg efter butik"
-                  ariaLabel="Til butik"
+                  placeholder="Søg efter location"
+                  ariaLabel="Til location"
                   disabled={locations === undefined}
                 />
                 <FieldError>{errors.toLocation}</FieldError>
@@ -459,6 +486,12 @@ export function TransferForm({
         <Card>
           <CardHeader>
             <CardTitle>Varer</CardTitle>
+            <CardAction>
+              <p className="text-sm text-muted-foreground">
+                {lineCount} {lineCount === 1 ? "varelinje" : "varelinjer"} ·{" "}
+                {totalQuantity} enheder i alt
+              </p>
+            </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Field data-invalid={Boolean(errors.items)}>
@@ -480,153 +513,202 @@ export function TransferForm({
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
-                {displayLines.map((line) => (
-                  <li
-                    key={line.key}
-                    className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(8rem,0.45fr)_auto_auto] sm:items-center"
-                  >
-                    {line.imageUrl ? (
-                      <div
-                        role="img"
-                        aria-label={`Produktbillede af ${line.productName}`}
-                        className="size-14 shrink-0 rounded-lg bg-muted bg-cover bg-center"
-                        style={{
-                          backgroundImage: `url("${line.imageUrl}")`,
-                        }}
-                      />
-                    ) : (
-                      <div
-                        className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-                        aria-hidden="true"
-                      >
-                        <PackageOpenIcon className="size-6" />
-                      </div>
-                    )}
+                {lineGroups.map((group) => {
+                  const product = group[0];
+                  const usedUnitIds = new Set(group.map((line) => line.unitId));
+                  const canAddUnit = product.units.some(
+                    (unit) => !usedUnitIds.has(unit.id),
+                  );
 
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{line.productName}</p>
-                    </div>
-
-                    <Field>
-                      <FieldLabel className="sr-only">
-                        Enhed for {line.productName}
-                      </FieldLabel>
-                      <Select
-                        items={line.units.map((unit) => ({
-                          value: unit.id,
-                          label: unit.name,
-                        }))}
-                        value={line.unitId}
-                        onValueChange={(value) =>
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? {
-                                    ...item,
-                                    unitId: value as Id<"units">,
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      >
-                        <SelectTrigger className="h-11 w-full">
-                          <SelectValue placeholder="Vælg enhed" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {line.units.map((unit) => (
-                              <SelectItem key={unit.id} value={unit.id}>
-                                {unit.name}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-lg"
-                        className="size-11"
-                        aria-label={`Reducer mængde for ${line.productName}`}
-                        disabled={line.quantity <= 1}
-                        onClick={() =>
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? {
-                                    ...item,
-                                    quantity: Math.max(1, item.quantity - 1),
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      >
-                        <MinusIcon />
-                      </Button>
-                      <Input
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        step={1}
-                        value={line.quantity}
-                        aria-label={`Mængde for ${line.productName}`}
-                        className="h-11 w-16 text-center"
-                        onChange={(event) => {
-                          const next = Number(event.target.value);
-                          if (!Number.isFinite(next)) return;
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? {
-                                    ...item,
-                                    quantity: Math.max(1, Math.floor(next)),
-                                  }
-                                : item,
-                            ),
-                          );
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-lg"
-                        className="size-11"
-                        aria-label={`Øg mængde for ${line.productName}`}
-                        onClick={() =>
-                          setLines((current) =>
-                            current.map((item) =>
-                              item.key === line.key
-                                ? { ...item, quantity: item.quantity + 1 }
-                                : item,
-                            ),
-                          )
-                        }
-                      >
-                        <PlusIcon />
-                      </Button>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      className="size-11"
-                      aria-label={`Fjern ${line.productName}`}
-                      onClick={() =>
-                        setLines((current) =>
-                          current.filter((item) => item.key !== line.key),
-                        )
-                      }
+                  return (
+                    <li
+                      key={product.productId}
+                      className="flex flex-col gap-3 rounded-xl border p-3"
                     >
-                      <Trash2Icon />
-                    </Button>
-                  </li>
-                ))}
+                      <div className="flex items-center gap-3">
+                        {product.imageUrl ? (
+                          <div
+                            role="img"
+                            aria-label={`Produktbillede af ${product.productName}`}
+                            className="size-14 shrink-0 rounded-lg bg-muted bg-cover bg-center"
+                            style={{
+                              backgroundImage: `url("${product.imageUrl}")`,
+                            }}
+                          />
+                        ) : (
+                          <div
+                            className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
+                            aria-hidden="true"
+                          >
+                            <PackageOpenIcon className="size-6" />
+                          </div>
+                        )}
+
+                        <p className="min-w-0 flex-1 truncate font-medium">
+                          {product.productName}
+                        </p>
+
+                        {canAddUnit ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="min-h-11"
+                            onClick={() => addUnit(product.productId)}
+                          >
+                            <PlusIcon data-icon="inline-start" />
+                            Tilføj enhed
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <ul className="flex flex-col gap-2">
+                        {group.map((line) => (
+                          <li
+                            key={line.key}
+                            className="grid gap-3 py-2 sm:grid-cols-[minmax(8rem,1fr)_auto_auto] sm:items-center"
+                          >
+                            <Field>
+                              <FieldLabel className="sr-only">
+                                Enhed for {line.productName}
+                              </FieldLabel>
+                              <Select
+                                items={line.units.map((unit) => ({
+                                  value: unit.id,
+                                  label: unit.name,
+                                }))}
+                                value={line.unitId}
+                                onValueChange={(value) =>
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            unitId: value as Id<"units">,
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="h-11 w-full">
+                                  <SelectValue placeholder="Vælg enhed" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectGroup>
+                                    {line.units.map((unit) => (
+                                      <SelectItem
+                                        key={unit.id}
+                                        value={unit.id}
+                                        disabled={
+                                          unit.id !== line.unitId &&
+                                          usedUnitIds.has(unit.id)
+                                        }
+                                      >
+                                        {unit.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon-lg"
+                                className="size-11"
+                                aria-label={`Reducer mængde for ${line.productName}`}
+                                disabled={line.quantity <= 1}
+                                onClick={() =>
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            quantity: Math.max(
+                                              1,
+                                              item.quantity - 1,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <MinusIcon />
+                              </Button>
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                step={1}
+                                value={line.quantity}
+                                aria-label={`Mængde for ${line.productName}`}
+                                className="h-11 w-16 text-center"
+                                onChange={(event) => {
+                                  const next = Number(event.target.value);
+                                  if (!Number.isFinite(next)) return;
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            quantity: Math.max(
+                                              1,
+                                              Math.floor(next),
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  );
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon-lg"
+                                className="size-11"
+                                aria-label={`Øg mængde for ${line.productName}`}
+                                onClick={() =>
+                                  setLines((current) =>
+                                    current.map((item) =>
+                                      item.key === line.key
+                                        ? {
+                                            ...item,
+                                            quantity: item.quantity + 1,
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <PlusIcon />
+                              </Button>
+                            </div>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-lg"
+                              className="size-11"
+                              aria-label={`Fjern ${line.productName} i den valgte enhed`}
+                              onClick={() =>
+                                setLines((current) =>
+                                  current.filter(
+                                    (item) => item.key !== line.key,
+                                  ),
+                                )
+                              }
+                            >
+                              <Trash2Icon />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>
@@ -635,16 +717,12 @@ export function TransferForm({
 
       <div
         className={cn(
-          "sticky bottom-0 flex flex-col gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between",
+          "sticky bottom-0 flex flex-col gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-end",
           transfer
             ? "-mx-4 px-4"
             : "-mx-5 px-5 sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12",
         )}
       >
-        <p className="text-sm text-muted-foreground">
-          {lineCount} {lineCount === 1 ? "varelinje" : "varelinjer"} ·{" "}
-          {totalQuantity} enheder i alt
-        </p>
         <div className="flex flex-col-reverse gap-2 sm:flex-row">
           {onCancel ? (
             <Button
