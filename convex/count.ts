@@ -65,8 +65,15 @@ const locationStockValidator = v.object({
   productId: v.id("products"),
   productName: v.string(),
   categoryName: v.union(v.string(), v.null()),
+  imageUrl: v.union(v.string(), v.null()),
   quantity: v.number(),
   defaultUnitName: v.string(),
+  units: v.array(
+    v.object({
+      name: v.string(),
+      factorToDefault: v.number(),
+    }),
+  ),
   lastCountedAt: v.union(v.number(), v.null()),
 });
 
@@ -133,6 +140,25 @@ async function getCount(
         .eq("periodKey", periodKey),
     )
     .unique();
+}
+
+async function hasSubmittedCount(
+  ctx: CountContext,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const count = await ctx.db
+    .query("counts")
+    .withIndex(
+      "by_organizationId_and_locationId_and_submittedAt",
+      (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", locationId)
+          .gt("submittedAt", 0),
+    )
+    .first();
+  return count !== null;
 }
 
 async function getCountItems(
@@ -226,9 +252,10 @@ export const getCountState = query({
     const settings = await getSettings(ctx, organizationId);
     const periodKey = activePeriod(args.now, settings);
     const window = countWindow(periodKey, settings);
-    const [count, products] = await Promise.all([
+    const [count, products, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
       activeProducts(ctx, organizationId),
+      hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
     const items = count
       ? await getCountItems(ctx, organizationId, count._id)
@@ -244,7 +271,9 @@ export const getCountState = query({
       periodKey,
       opensAt: window.opensAt,
       closesAt: window.closesAt,
-      isOpen: windowIsOpen(args.now, window.opensAt, window.closesAt),
+      isOpen:
+        !hasSubmitted ||
+        windowIsOpen(args.now, window.opensAt, window.closesAt),
       count: count
         ? {
             id: count._id,
@@ -405,15 +434,17 @@ export const setCountQuantity = mutation({
     const settings = await getSettings(ctx, organizationId);
     const periodKey = activePeriod(now, settings);
     const window = countWindow(periodKey, settings);
-    if (!windowIsOpen(now, window.opensAt, window.closesAt)) {
+    const [currentCount, hasSubmitted] = await Promise.all([
+      getCount(ctx, organizationId, args.locationId, periodKey),
+      hasSubmittedCount(ctx, organizationId, args.locationId),
+    ]);
+    if (
+      hasSubmitted &&
+      !windowIsOpen(now, window.opensAt, window.closesAt)
+    ) {
       throw new ConvexError("Count-vinduet er lukket");
     }
-    let count = await getCount(
-      ctx,
-      organizationId,
-      args.locationId,
-      periodKey,
-    );
+    let count = currentCount;
     if (count?.status === "submitted") {
       throw new ConvexError("Count er allerede registreret");
     }
@@ -471,15 +502,16 @@ export const submitCount = mutation({
     const settings = await getSettings(ctx, organizationId);
     const periodKey = activePeriod(now, settings);
     const window = countWindow(periodKey, settings);
-    if (!windowIsOpen(now, window.opensAt, window.closesAt)) {
+    const [count, hasSubmitted] = await Promise.all([
+      getCount(ctx, organizationId, args.locationId, periodKey),
+      hasSubmittedCount(ctx, organizationId, args.locationId),
+    ]);
+    if (
+      hasSubmitted &&
+      !windowIsOpen(now, window.opensAt, window.closesAt)
+    ) {
       throw new ConvexError("Count-vinduet er lukket");
     }
-    const count = await getCount(
-      ctx,
-      organizationId,
-      args.locationId,
-      periodKey,
-    );
     if (!count) {
       throw new ConvexError("Indtast mindst én mængde før registrering");
     }
@@ -539,24 +571,42 @@ export const listLocationStock = query({
 
     return await Promise.all(
       products.map(async (product) => {
-        const [category, defaultUnit, stock] = await Promise.all([
-          ctx.db.get("categories", product.categoryId),
-          ctx.db.get("units", product.defaultUnitId),
-          ctx.db
-            .query("locationStock")
-            .withIndex(
-              "by_organizationId_and_locationId_and_productId",
-              (q) =>
+        const [category, defaultUnit, stock, imageUrl, productUnits] =
+          await Promise.all([
+            ctx.db.get("categories", product.categoryId),
+            ctx.db.get("units", product.defaultUnitId),
+            ctx.db
+              .query("locationStock")
+              .withIndex(
+                "by_organizationId_and_locationId_and_productId",
+                (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("locationId", args.locationId)
+                    .eq("productId", product._id),
+              )
+              .unique(),
+            product.imageStorageId
+              ? ctx.storage.getUrl(product.imageStorageId)
+              : null,
+            ctx.db
+              .query("productUnits")
+              .withIndex("by_organizationId_and_productId", (q) =>
                 q
                   .eq("organizationId", organizationId)
-                  .eq("locationId", args.locationId)
                   .eq("productId", product._id),
-            )
-            .unique(),
-        ]);
+              )
+              .take(MAX_PRODUCT_UNITS + 1),
+          ]);
         if (!defaultUnit || defaultUnit.organizationId !== organizationId) {
           throw new ConvexError("Produktets standardenhed blev ikke fundet");
         }
+        if (productUnits.length > MAX_PRODUCT_UNITS) {
+          throw new ConvexError("Produktet har for mange enheder");
+        }
+        const units = await Promise.all(
+          productUnits.map((row) => ctx.db.get("units", row.unitId)),
+        );
         return {
           productId: product._id,
           productName: product.name,
@@ -564,8 +614,20 @@ export const listLocationStock = query({
             category?.organizationId === organizationId
               ? category.name
               : null,
+          imageUrl,
           quantity: stock?.quantity ?? 0,
           defaultUnitName: defaultUnit.name,
+          units: productUnits.flatMap((row, index) => {
+            const unit = units[index];
+            return unit?.organizationId === organizationId
+              ? [
+                  {
+                    name: unit.name,
+                    factorToDefault: row.factorToDefault,
+                  },
+                ]
+              : [];
+          }),
           lastCountedAt: stock?.lastCountedAt ?? null,
         };
       }),

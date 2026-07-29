@@ -72,6 +72,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
@@ -106,6 +111,34 @@ type QuantityPayload = {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
+}
+
+function UnavailableTooltip({
+  reason,
+  children,
+}: {
+  reason: string | null;
+  children: React.ReactNode;
+}) {
+  if (!reason) return children;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        closeOnClick={false}
+        render={
+          <div
+            className="min-w-0"
+            tabIndex={0}
+            aria-label={`Ikke tilgængelig: ${reason}`}
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{reason}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function QuantityControl({
@@ -166,7 +199,7 @@ function QuantityControl({
 function ProductCard({
   product,
   selectedUnitId,
-  disabled,
+  disabledReason,
   editingOrder,
   dragHandle,
   quantityFor,
@@ -175,13 +208,14 @@ function ProductCard({
 }: {
   product: CountProduct;
   selectedUnitId: Id<"units">;
-  disabled: boolean;
+  disabledReason: string | null;
   editingOrder: boolean;
   dragHandle?: React.ReactNode;
   quantityFor: (unit: CountUnit) => number;
   onSelectedUnitChange: (unitId: Id<"units">) => void;
   onQuantityChange: (unit: CountUnit, quantity: number) => void;
 }) {
+  const disabled = Boolean(disabledReason);
   const selectedUnit =
     product.units.find((unit) => unit.id === selectedUnitId) ??
     product.units[0];
@@ -217,36 +251,40 @@ function ProductCard({
       <CardContent className="flex flex-col gap-2 pb-3 lg:gap-3 lg:pb-4">
         {selectedUnit ? (
           <>
-            <Select
-              items={unitItems}
-              value={selectedUnit.id}
-              onValueChange={(value) =>
-                onSelectedUnitChange(value as Id<"units">)
-              }
-              disabled={disabled}
-            >
-              <SelectTrigger className="h-11 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {unitItems.map((unit) => (
-                    <SelectItem key={unit.value} value={unit.value}>
-                      {unit.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <QuantityControl
-              productName={product.name}
-              unitName={selectedUnit.name}
-              quantity={quantityFor(selectedUnit)}
-              disabled={disabled}
-              onChange={(quantity) =>
-                onQuantityChange(selectedUnit, quantity)
-              }
-            />
+            <UnavailableTooltip reason={disabledReason}>
+              <Select
+                items={unitItems}
+                value={selectedUnit.id}
+                onValueChange={(value) =>
+                  onSelectedUnitChange(value as Id<"units">)
+                }
+                disabled={disabled}
+              >
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {unitItems.map((unit) => (
+                      <SelectItem key={unit.value} value={unit.value}>
+                        {unit.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </UnavailableTooltip>
+            <UnavailableTooltip reason={disabledReason}>
+              <QuantityControl
+                productName={product.name}
+                unitName={selectedUnit.name}
+                quantity={quantityFor(selectedUnit)}
+                disabled={disabled}
+                onChange={(quantity) =>
+                  onQuantityChange(selectedUnit, quantity)
+                }
+              />
+            </UnavailableTooltip>
           </>
         ) : null}
       </CardContent>
@@ -489,6 +527,13 @@ export function CountSheet() {
   }
 
   const locked = !state?.isOpen || state.count?.status === "submitted";
+  const lockedReason = !state
+    ? null
+    : state.count?.status === "submitted"
+      ? "Count er allerede registreret"
+      : !state.isOpen
+        ? "Count-vinduet er lukket"
+        : null;
   const quantityFor = (product: CountProduct, unit: CountUnit) =>
     overrides[`${product.id}:${unit.id}`] ?? unit.quantity;
   const hasQuantity =
@@ -559,16 +604,18 @@ export function CountSheet() {
           />
         </InputGroup>
         {categoryId === "all" && !search ? (
-          <Button
-            type="button"
-            variant={editingOrder ? "default" : "outline"}
-            className="min-h-11"
-            disabled={locked}
-            onClick={() => setEditingOrder((current) => !current)}
-          >
-            <GripVerticalIcon data-icon="inline-start" />
-            {editingOrder ? "Afslut rækkefølge" : "Redigér rækkefølge"}
-          </Button>
+          <UnavailableTooltip reason={lockedReason}>
+            <Button
+              type="button"
+              variant={editingOrder ? "default" : "outline"}
+              className="min-h-11"
+              disabled={locked}
+              onClick={() => setEditingOrder((current) => !current)}
+            >
+              <GripVerticalIcon data-icon="inline-start" />
+              {editingOrder ? "Afslut rækkefølge" : "Redigér rækkefølge"}
+            </Button>
+          </UnavailableTooltip>
         ) : null}
       </div>
 
@@ -636,7 +683,7 @@ export function CountSheet() {
                   <ProductCard
                     product={product}
                     selectedUnitId={selectedUnitId}
-                    disabled={locked}
+                    disabledReason={lockedReason}
                     editingOrder={editingOrder}
                     dragHandle={dragHandle}
                     quantityFor={(unit) => quantityFor(product, unit)}
@@ -666,17 +713,18 @@ export function CountSheet() {
 
       <CountNavigation
         action={
-          <Button
-            type="button"
-            size="lg"
-            className="min-h-11 shrink-0 px-4 sm:px-6"
-            disabled={Boolean(disabledReason) || submitting}
-            onClick={() => setConfirmOpen(true)}
-            title={disabledReason ?? undefined}
-          >
-            {submitting ? <Spinner data-icon="inline-start" /> : null}
-            Registrér count
-          </Button>
+          <UnavailableTooltip reason={disabledReason}>
+            <Button
+              type="button"
+              size="lg"
+              className="min-h-11 shrink-0 px-4 sm:px-6"
+              disabled={Boolean(disabledReason) || submitting}
+              onClick={() => setConfirmOpen(true)}
+            >
+              {submitting ? <Spinner data-icon="inline-start" /> : null}
+              Registrér count
+            </Button>
+          </UnavailableTooltip>
         }
       />
 
