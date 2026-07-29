@@ -164,10 +164,13 @@ const timeFormatter = new Intl.DateTimeFormat("da-DK", {
 });
 
 function escapeCsvValue(value: string) {
-  if (/[;"\r\n]/.test(value)) {
-    return `"${value.replaceAll('"', '""')}"`;
+  const safeValue = /^[\u0000-\u0020\u00a0\ufeff]*[=+\-@]/u.test(value)
+    ? `'${value}`
+    : value;
+  if (/[;"\r\n]/.test(safeValue)) {
+    return `"${safeValue.replaceAll('"', '""')}"`;
   }
-  return value;
+  return safeValue;
 }
 
 type ExportColumn = {
@@ -749,13 +752,17 @@ export function TransferHistory() {
     setExportPrefs({ ...exportPrefs, ...patch });
   }
 
+  const parsedStartAt = fromDate ? startOfDay(fromDate) : NaN;
+  const parsedEndAt = toDate ? endOfDay(toDate) : NaN;
   const rangeError =
-    fromDate && toDate && startOfDay(fromDate) > endOfDay(toDate)
-      ? "Fra-dato skal være før eller samme dag som til-dato"
-      : null;
+    !Number.isFinite(parsedStartAt) || !Number.isFinite(parsedEndAt)
+      ? "Vælg både fra- og til-dato"
+      : parsedStartAt > parsedEndAt
+        ? "Fra-dato skal være før eller samme dag som til-dato"
+        : null;
 
-  const startAt = rangeError ? null : startOfDay(fromDate);
-  const endAt = rangeError ? null : endOfDay(toDate);
+  const startAt = rangeError ? null : parsedStartAt;
+  const endAt = rangeError ? null : parsedEndAt;
 
   const {
     results,
@@ -792,7 +799,7 @@ export function TransferHistory() {
     .map((key) => exportColumnByKey.get(key))
     .filter((column): column is ExportColumn => column !== undefined);
 
-  async function exportToExcel() {
+  async function exportToCsv() {
     if (rangeError || startAt === null || endAt === null) {
       toast.error(rangeError ?? "Vælg en gyldig periode");
       return;
@@ -803,11 +810,29 @@ export function TransferHistory() {
     }
     setIsExporting(true);
     try {
-      const rows = (await convex.query(api.transfers.exportTransfers, {
-        startAt,
-        endAt,
-        inDefaultUnit,
-      })) as ExportRow[];
+      const rows: ExportRow[] = [];
+      let cursor: string | null = null;
+      let isDone = false;
+
+      while (!isDone) {
+        const result: {
+          page: Array<{ rows: ExportRow[] }>;
+          continueCursor: string;
+          isDone: boolean;
+        } = await convex.query(api.transfers.exportTransfers, {
+          paginationOpts: {
+            numItems: 5,
+            cursor,
+            maximumRowsRead: 5,
+          },
+          startAt,
+          endAt,
+          inDefaultUnit,
+        });
+        rows.push(...result.page.flatMap((transfer) => transfer.rows));
+        cursor = result.continueCursor;
+        isDone = result.isDone;
+      }
       if (rows.length === 0) {
         toast.error("Ingen transfers i den valgte periode");
         return;
@@ -846,7 +871,7 @@ export function TransferHistory() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <FieldGroup className="md:flex-row md:items-end">
-          <Field>
+          <Field data-invalid={Boolean(rangeError)}>
             <FieldLabel htmlFor="transfer-from-date">Fra dato</FieldLabel>
             <Input
               id="transfer-from-date"
@@ -855,9 +880,10 @@ export function TransferHistory() {
               onChange={(event) => setFromDate(event.target.value)}
               className="h-11"
               aria-invalid={Boolean(rangeError)}
+              required
             />
           </Field>
-          <Field>
+          <Field data-invalid={Boolean(rangeError)}>
             <FieldLabel htmlFor="transfer-to-date">Til dato</FieldLabel>
             <Input
               id="transfer-to-date"
@@ -866,6 +892,7 @@ export function TransferHistory() {
               onChange={(event) => setToDate(event.target.value)}
               className="h-11"
               aria-invalid={Boolean(rangeError)}
+              required
             />
           </Field>
         </FieldGroup>
@@ -1059,7 +1086,7 @@ export function TransferHistory() {
             </Button>
             <Button
               disabled={isExporting || selectedColumns.length === 0}
-              onClick={() => void exportToExcel()}
+              onClick={() => void exportToCsv()}
             >
               {isExporting ? (
                 <Spinner data-icon="inline-start" />

@@ -21,6 +21,7 @@ export function CreatableCombobox({
   options,
   value,
   onValueChange,
+  onInputValueChange,
   placeholder,
   allowCreate = false,
   disabled = false,
@@ -29,6 +30,7 @@ export function CreatableCombobox({
   options: ComboboxOption[];
   value: string | null;
   onValueChange: (value: string | null) => void;
+  onInputValueChange?: (value: string) => void;
   placeholder: string;
   allowCreate?: boolean;
   disabled?: boolean;
@@ -112,6 +114,7 @@ export function CreatableCombobox({
       onInputValueChange={(nextValue) => {
         setInputState({ selectionKey, value: nextValue });
         setHighlightedValue(undefined);
+        onInputValueChange?.(nextValue);
         if (!nextValue) onValueChange(null);
       }}
       onValueChange={(nextValue) => {

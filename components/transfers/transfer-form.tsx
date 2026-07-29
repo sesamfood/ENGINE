@@ -2,7 +2,7 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   MinusIcon,
   PackageOpenIcon,
@@ -10,7 +10,7 @@ import {
   SaveIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   CreatableCombobox,
@@ -57,6 +57,11 @@ type ProductOption = {
   units: Array<{ id: Id<"units">; name: string }>;
 };
 
+type ProductSearchOption = {
+  id: Id<"products">;
+  name: string;
+};
+
 type MemberOption = {
   id: string;
   userId: string;
@@ -70,6 +75,7 @@ type TransferLine = {
   imageUrl: string | null;
   unitId: Id<"units">;
   units: Array<{ id: Id<"units">; name: string }>;
+  unitsLoaded: boolean;
   quantity: number;
 };
 
@@ -121,12 +127,17 @@ export function TransferForm({
   onSaved?: () => void;
   onCancel?: () => void;
 }) {
+  const convex = useConvex();
   const { data: session } = authClient.useSession();
   const { data: organization } = authClient.useActiveOrganization();
-  const locations = useQuery(api.locations.listLocations) as
+  const locations = useQuery(api.locations.listLocationOptions) as
     | LocationOption[]
     | undefined;
-  const formOptions = useQuery(api.catalog.listFormOptions, {});
+  const [productSearch, setProductSearch] = useState("");
+  const deferredProductSearch = useDeferredValue(productSearch);
+  const productResults = useQuery(api.transfers.searchTransferProducts, {
+    search: deferredProductSearch,
+  });
   const createTransfer = useMutation(api.transfers.createTransfer);
   const updateTransfer = useMutation(api.transfers.updateTransfer);
   const [fromLocationId, setFromLocationId] = useState<string | null>(
@@ -150,6 +161,7 @@ export function TransferForm({
       imageUrl: null,
       unitId: item.unitId,
       units: [{ id: item.unitId, name: item.unitName }],
+      unitsLoaded: false,
       quantity: item.quantity,
     })),
   );
@@ -157,6 +169,7 @@ export function TransferForm({
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [membersError, setMembersError] = useState<string>();
   const [membersLoading, setMembersLoading] = useState(true);
+  const [loadingProductId, setLoadingProductId] = useState<string>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const organizationId = organization?.id;
@@ -166,20 +179,45 @@ export function TransferForm({
   useEffect(() => {
     if (!organizationId) return;
     let active = true;
+    const pageSize = 100;
 
     void (async () => {
       try {
-        const memberResult = await authClient.organization.listMembers({
-          query: { organizationId, limit: 100 },
+        const firstResult = await authClient.organization.listMembers({
+          query: { organizationId, limit: pageSize, offset: 0 },
         });
         if (!active) return;
 
-        if (memberResult.error) {
+        if (firstResult.error) {
           setMembersError("Medlemmer kunne ikke indlæses.");
           return;
         }
 
-        const loaded = memberResult.data?.members ?? [];
+        const firstPage = firstResult.data?.members ?? [];
+        const total = firstResult.data?.total ?? firstPage.length;
+        const remainingOffsets = Array.from(
+          { length: Math.max(0, Math.ceil(total / pageSize) - 1) },
+          (_, index) => (index + 1) * pageSize,
+        );
+        const remainingResults = await Promise.all(
+          remainingOffsets.map((offset) =>
+            authClient.organization.listMembers({
+              query: { organizationId, limit: pageSize, offset },
+            }),
+          ),
+        );
+        if (!active) return;
+        if (remainingResults.some((result) => result.error)) {
+          setMembersError("Medlemmer kunne ikke indlæses.");
+          return;
+        }
+
+        const loaded = [
+          ...firstPage,
+          ...remainingResults.flatMap(
+            (result) => result.data?.members ?? [],
+          ),
+        ];
         setMembersError(undefined);
         setMembers(loaded);
         if (
@@ -200,27 +238,8 @@ export function TransferForm({
     };
   }, [organizationId, sessionUserId]);
 
-  const products = (formOptions?.products ?? []) as ProductOption[];
-  const displayLines = lines.map((line) => {
-    const product = products.find((option) => option.id === line.productId);
-    if (!product) return line;
-    return {
-      ...line,
-      productName: product.name,
-      imageUrl: product.imageUrl,
-      units: product.units.some((unit) => unit.id === line.unitId)
-        ? product.units
-        : [
-            ...product.units,
-            {
-              id: line.unitId,
-              name:
-                line.units.find((unit) => unit.id === line.unitId)?.name ??
-                "Ukendt enhed",
-            },
-          ],
-    };
-  });
+  const products = (productResults ?? []) as ProductSearchOption[];
+  const displayLines = lines;
   const lineGroups = Array.from(
     displayLines
       .reduce((groups, line) => {
@@ -279,6 +298,7 @@ export function TransferForm({
         imageUrl: product.imageUrl,
         unitId,
         units: product.units,
+        unitsLoaded: true,
         quantity: 1,
       },
     ]);
@@ -289,36 +309,101 @@ export function TransferForm({
     });
   }
 
-  function addProduct(productId: string | null) {
+  async function addProduct(productId: string | null) {
     if (!productId) return;
-    const product = products.find((option) => option.id === productId);
-    if (!product) return;
-    if (addedProductIds.has(product.id)) {
+    if (addedProductIds.has(productId as Id<"products">)) {
       setProductToAdd(null);
       return;
     }
-    const unitId =
-      product.units.find((unit) => unit.id === product.defaultUnitId)?.id ??
-      product.units[0]?.id;
-    if (!unitId) {
-      toast.error("Produktet har ingen enheder");
+
+    setLoadingProductId(productId);
+    try {
+      const product = await convex.query(
+        api.transfers.getTransferProductOption,
+        { productId: productId as Id<"products"> },
+      );
+      if (!product) {
+        toast.error("Produktet blev ikke fundet");
+        setProductToAdd(null);
+        return;
+      }
+      const unitId =
+        product.units.find((unit) => unit.id === product.defaultUnitId)?.id ??
+        product.units[0]?.id;
+      if (!unitId) {
+        toast.error("Produktet har ingen enheder");
+        setProductToAdd(null);
+        return;
+      }
+      addLine(product, unitId);
       setProductToAdd(null);
-      return;
+    } catch (caught) {
+      toast.error(messageFrom(caught));
+    } finally {
+      setLoadingProductId(undefined);
     }
-    addLine(product, unitId);
-    setProductToAdd(null);
   }
 
-  function addUnit(productId: Id<"products">) {
-    const product = products.find((option) => option.id === productId);
-    if (!product) return;
-    const usedUnitIds = new Set(
-      lines
-        .filter((line) => line.productId === productId)
-        .map((line) => line.unitId),
-    );
-    const unit = product.units.find(({ id }) => !usedUnitIds.has(id));
-    if (unit) addLine(product, unit.id);
+  async function addUnit(productId: Id<"products">) {
+    const existingLine = lines.find((line) => line.productId === productId);
+    if (!existingLine) return;
+
+    setLoadingProductId(productId);
+    try {
+      const product = existingLine.unitsLoaded
+        ? {
+            id: existingLine.productId,
+            name: existingLine.productName,
+            imageUrl: existingLine.imageUrl,
+            units: existingLine.units,
+          }
+        : await convex.query(api.transfers.getTransferProductOption, {
+            productId,
+          });
+      if (!product) {
+        toast.error("Produktet blev ikke fundet");
+        return;
+      }
+
+      const usedUnitIds = new Set(
+        lines
+          .filter((line) => line.productId === productId)
+          .map((line) => line.unitId),
+      );
+      const unit = product.units.find(({ id }) => !usedUnitIds.has(id));
+      setLines((current) => {
+        const enriched = current.map((line) =>
+          line.productId === productId
+            ? {
+                ...line,
+                productName: product.name,
+                imageUrl: product.imageUrl,
+                units: product.units,
+                unitsLoaded: true,
+              }
+            : line,
+        );
+        if (!unit) return enriched;
+        return [
+          ...enriched,
+          {
+            key: newLineKey(),
+            productId: product.id,
+            productName: product.name,
+            imageUrl: product.imageUrl,
+            unitId: unit.id,
+            units: product.units,
+            unitsLoaded: true,
+            quantity: 1,
+          },
+        ];
+      });
+      if (!unit) toast.error("Produktet har ingen flere enheder");
+    } catch (caught) {
+      toast.error(messageFrom(caught));
+    } finally {
+      setLoadingProductId(undefined);
+    }
   }
 
   function validate() {
@@ -499,10 +584,11 @@ export function TransferForm({
               <CreatableCombobox
                 options={productOptions}
                 value={productToAdd}
-                onValueChange={addProduct}
+                onValueChange={(value) => void addProduct(value)}
+                onInputValueChange={setProductSearch}
                 placeholder="Søg efter produkter"
                 ariaLabel="Tilføj vare"
-                disabled={formOptions === undefined}
+                disabled={loadingProductId !== undefined}
               />
               <FieldError>{errors.items}</FieldError>
             </Field>
@@ -518,7 +604,7 @@ export function TransferForm({
                   const usedUnitIds = new Set(group.map((line) => line.unitId));
                   const canAddUnit = product.units.some(
                     (unit) => !usedUnitIds.has(unit.id),
-                  );
+                  ) || !product.unitsLoaded;
 
                   return (
                     <li
@@ -553,9 +639,14 @@ export function TransferForm({
                             type="button"
                             variant="outline"
                             className="min-h-11"
-                            onClick={() => addUnit(product.productId)}
+                            disabled={loadingProductId === product.productId}
+                            onClick={() => void addUnit(product.productId)}
                           >
-                            <PlusIcon data-icon="inline-start" />
+                            {loadingProductId === product.productId ? (
+                              <Spinner data-icon="inline-start" />
+                            ) : (
+                              <PlusIcon data-icon="inline-start" />
+                            )}
                             Tilføj enhed
                           </Button>
                         ) : null}
