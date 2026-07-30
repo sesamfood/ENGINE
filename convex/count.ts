@@ -1,10 +1,4 @@
 import { ConvexError, v } from "convex/values";
-import {
-  activePeriod,
-  countWindow,
-  DEFAULT_COUNT_SETTINGS,
-  type CountSettings,
-} from "../lib/count-window";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
@@ -14,6 +8,7 @@ import {
   requireOrganizationAdmin,
 } from "./lib/auth";
 import { otherFeaturesLocked } from "./lib/countLock";
+import { getLocationCountWindow } from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
 
 const MAX_PRODUCTS = 500;
@@ -22,8 +17,6 @@ const MAX_COUNT_ITEMS = 5000;
 const MAX_SEARCH_LENGTH = 100;
 
 const settingsValidator = v.object({
-  closeMinuteOfDay: v.number(),
-  openMinuteOfDay: v.number(),
   allowOutsideWindow: v.boolean(),
   lockOtherFeaturesDuringCount: v.boolean(),
 });
@@ -82,7 +75,7 @@ const locationStockValidator = v.object({
 });
 
 type CountContext = QueryCtx | MutationCtx;
-type CountConfiguration = CountSettings & {
+type CountConfiguration = {
   allowOutsideWindow: boolean;
   lockOtherFeaturesDuringCount: boolean;
 };
@@ -99,14 +92,11 @@ async function getSettings(
     .unique();
   return settings
     ? {
-        closeMinuteOfDay: settings.closeMinuteOfDay,
-        openMinuteOfDay: settings.openMinuteOfDay,
         allowOutsideWindow: settings.allowOutsideWindow ?? false,
         lockOtherFeaturesDuringCount:
           settings.lockOtherFeaturesDuringCount ?? false,
       }
     : {
-        ...DEFAULT_COUNT_SETTINGS,
         allowOutsideWindow: false,
         lockOtherFeaturesDuringCount: false,
       };
@@ -126,12 +116,6 @@ async function requireLocation(
 
 function requireNow(now: number) {
   if (!Number.isFinite(now) || now <= 0) {
-    throw new ConvexError("Tidspunktet er ugyldigt");
-  }
-}
-
-function requireMinuteOfDay(value: number) {
-  if (!Number.isInteger(value) || value < 0 || value >= 24 * 60) {
     throw new ConvexError("Tidspunktet er ugyldigt");
   }
 }
@@ -239,8 +223,6 @@ export const setCountSettings = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    requireMinuteOfDay(args.closeMinuteOfDay);
-    requireMinuteOfDay(args.openMinuteOfDay);
     const current = await ctx.db
       .query("countSettings")
       .withIndex("by_organizationId", (q) =>
@@ -280,10 +262,17 @@ export const getCountState = query({
   handler: async (ctx, args) => {
     const { organizationId } = await requireCounter(ctx);
     requireNow(args.now);
-    await requireLocation(ctx, organizationId, args.locationId);
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(args.now, settings);
-    const window = countWindow(periodKey, settings);
+    const [location, settings] = await Promise.all([
+      requireLocation(ctx, organizationId, args.locationId),
+      getSettings(ctx, organizationId),
+    ]);
+    const window = await getLocationCountWindow(
+      ctx,
+      organizationId,
+      location,
+      args.now,
+    );
+    const periodKey = window.periodKey;
     const [count, products, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
       activeProducts(ctx, organizationId),
@@ -333,7 +322,11 @@ export const listCountProducts = query({
   handler: async (ctx, args) => {
     const { organizationId } = await requireCounter(ctx);
     requireNow(args.now);
-    await requireLocation(ctx, organizationId, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const search = args.search.trim();
     if (search.length > MAX_SEARCH_LENGTH) {
       throw new ConvexError("Søgningen er for lang");
@@ -345,8 +338,12 @@ export const listCountProducts = query({
       }
     }
 
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(args.now, settings);
+    const { periodKey } = await getLocationCountWindow(
+      ctx,
+      organizationId,
+      location,
+      args.now,
+    );
     const count = await getCount(
       ctx,
       organizationId,
@@ -442,7 +439,11 @@ export const setCountQuantity = mutation({
     if (!Number.isFinite(args.quantity) || args.quantity < 0) {
       throw new ConvexError("Mængden skal være nul eller større");
     }
-    await requireLocation(ctx, organizationId, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const [product, productUnit] = await Promise.all([
       ctx.db.get("products", args.productId),
       ctx.db
@@ -465,9 +466,11 @@ export const setCountQuantity = mutation({
     }
 
     const now = Date.now();
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(now, settings);
-    const window = countWindow(periodKey, settings);
+    const [settings, window] = await Promise.all([
+      getSettings(ctx, organizationId),
+      getLocationCountWindow(ctx, organizationId, location, now),
+    ]);
+    const periodKey = window.periodKey;
     const [currentCount, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
       hasSubmittedCount(ctx, organizationId, args.locationId),
@@ -532,11 +535,17 @@ export const submitCount = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId, userName } = await requireCounter(ctx);
-    await requireLocation(ctx, organizationId, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const now = Date.now();
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(now, settings);
-    const window = countWindow(periodKey, settings);
+    const [settings, window] = await Promise.all([
+      getSettings(ctx, organizationId),
+      getLocationCountWindow(ctx, organizationId, location, now),
+    ]);
+    const periodKey = window.periodKey;
     const [count, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
       hasSubmittedCount(ctx, organizationId, args.locationId),

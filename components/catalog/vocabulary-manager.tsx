@@ -3,10 +3,17 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
-import { PencilIcon, PlusIcon, ShapesIcon, Trash2Icon } from "lucide-react";
+import {
+  Clock3Icon,
+  PencilIcon,
+  PlusIcon,
+  ShapesIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
+import { LocationOpeningHours } from "@/components/organization/location-opening-hours";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -109,7 +116,8 @@ const vocabularyKinds = {
     plural: "Locations",
     definite: "Locationen",
     deleteNoun: " locations",
-    description: "Vedligehold de locations, der kan bruges i transfers.",
+    description:
+      "Vedligehold de locations, der kan bruges i transfers og count.",
     emptyDescription:
       "Tilføj den første location for at kunne oprette transfers.",
     list: api.locations.listLocations,
@@ -142,6 +150,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
   const [pendingDelete, setPendingDelete] = useState<VocabularyItem | null>(
     null,
   );
+  const [openingHoursLocation, setOpeningHoursLocation] =
+    useState<VocabularyItem | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -245,7 +255,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Navn</TableHead>
-                <TableHead className="w-28 text-right">Handlinger</TableHead>
+                <TableHead className="w-40 text-right">Handlinger</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -254,14 +264,38 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-lg"
-                        aria-label={`Omdøb ${item.name}`}
-                        onClick={() => openEditor(item)}
-                      >
-                        <PencilIcon />
-                      </Button>
+                      {kind === "location" ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-lg"
+                                aria-label={`Redigér åbningstider for ${item.name}`}
+                                onClick={() => setOpeningHoursLocation(item)}
+                              />
+                            }
+                          >
+                            <Clock3Icon />
+                          </TooltipTrigger>
+                          <TooltipContent>Åbningstider</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon-lg"
+                              aria-label={`Omdøb ${item.name}`}
+                              onClick={() => openEditor(item)}
+                            />
+                          }
+                        >
+                          <PencilIcon />
+                        </TooltipTrigger>
+                        <TooltipContent>Omdøb</TooltipContent>
+                      </Tooltip>
                       {kind === "location" && item.inUse ? (
                         <Tooltip>
                           <TooltipTrigger
@@ -288,15 +322,22 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                           </TooltipContent>
                         </Tooltip>
                       ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon-lg"
-                          aria-label={`Fjern ${item.name}`}
-                          disabled={item.inUse}
-                          onClick={() => setPendingDelete(item)}
-                        >
-                          <Trash2Icon />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-lg"
+                                aria-label={`Fjern ${item.name}`}
+                                disabled={item.inUse}
+                                onClick={() => setPendingDelete(item)}
+                              />
+                            }
+                          >
+                            <Trash2Icon />
+                          </TooltipTrigger>
+                          <TooltipContent>Fjern</TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                   </TableCell>
@@ -358,6 +399,17 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {kind === "location" && openingHoursLocation ? (
+        <LocationOpeningHours
+          locationId={openingHoursLocation.id as Id<"locations">}
+          locationName={openingHoursLocation.name}
+          open
+          onOpenChange={(open) => {
+            if (!open) setOpeningHoursLocation(null);
+          }}
+        />
+      ) : null}
 
       <AlertDialog
         open={Boolean(pendingDelete)}

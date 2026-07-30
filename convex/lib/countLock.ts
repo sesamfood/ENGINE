@@ -1,10 +1,7 @@
 import { ConvexError } from "convex/values";
-import {
-  activePeriod,
-  countWindow,
-} from "../../lib/count-window";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { getLocationCountWindow } from "./countWindow";
 
 type CountLockContext = QueryCtx | MutationCtx;
 
@@ -27,8 +24,13 @@ export async function otherFeaturesLocked(
     .unique();
   if (!settings?.lockOtherFeaturesDuringCount) return false;
 
-  const periodKey = activePeriod(now, settings);
-  const window = countWindow(periodKey, settings);
+  const window = await getLocationCountWindow(
+    ctx,
+    organizationId,
+    location,
+    now,
+  );
+  const periodKey = window.periodKey;
   if (now < window.opensAt || now >= window.closesAt) return false;
 
   const count = await ctx.db

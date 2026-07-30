@@ -1,14 +1,29 @@
 export const COUNT_TIME_ZONE = "Europe/Copenhagen";
+export const MAX_SPECIAL_OPENING_DATES = 50;
 
-export type CountSettings = {
-  closeMinuteOfDay: number;
+export type DailyOpeningHours = {
+  closed: boolean;
   openMinuteOfDay: number;
+  closeMinuteOfDay: number;
 };
 
-export const DEFAULT_COUNT_SETTINGS: CountSettings = {
-  closeMinuteOfDay: 22 * 60,
-  openMinuteOfDay: 8 * 60,
+export type WeeklyOpeningHours = DailyOpeningHours & {
+  weekday: number;
 };
+
+export type SpecialOpeningHours = DailyOpeningHours & {
+  date: string;
+};
+
+export const DEFAULT_WEEKLY_OPENING_HOURS: WeeklyOpeningHours[] = Array.from(
+  { length: 7 },
+  (_, weekday) => ({
+    weekday,
+    closed: false,
+    openMinuteOfDay: 8 * 60,
+    closeMinuteOfDay: 22 * 60,
+  }),
+);
 
 const zonedParts = new Intl.DateTimeFormat("en-CA", {
   timeZone: COUNT_TIME_ZONE,
@@ -38,15 +53,13 @@ function partsAt(timestamp: number) {
   };
 }
 
-function zonedTimestamp(
-  year: number,
-  month: number,
-  day: number,
-  minuteOfDay: number,
-) {
+function zonedTimestamp(date: Date, minuteOfDay: number) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
   const hour = Math.floor(minuteOfDay / 60);
   const minute = minuteOfDay % 60;
-  const target = Date.UTC(year, month - 1, day, hour, minute);
+  const target = Date.UTC(year, month, day, hour, minute);
   let candidate = target;
 
   for (let pass = 0; pass < 2; pass++) {
@@ -71,7 +84,7 @@ function parsePeriod(periodKey: string) {
   return { year: Number(match[1]), month: Number(match[2]) };
 }
 
-function periodKey(year: number, month: number) {
+function formatPeriod(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
@@ -83,39 +96,96 @@ function offsetPeriod(year: number, month: number, offset: number) {
   };
 }
 
+function dateKey(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function openingHoursOn(
+  date: Date,
+  weekly: WeeklyOpeningHours[],
+  specials: Map<string, SpecialOpeningHours>,
+) {
+  const special = specials.get(dateKey(date));
+  if (special) return special;
+  const weekday = (date.getUTCDay() + 6) % 7;
+  return (
+    weekly.find((hours) => hours.weekday === weekday) ??
+    DEFAULT_WEEKLY_OPENING_HOURS[weekday]
+  );
+}
+
+function findOpenDay(
+  start: Date,
+  direction: -1 | 1,
+  weekly: WeeklyOpeningHours[],
+  specials: Map<string, SpecialOpeningHours>,
+) {
+  for (
+    let offset = 0;
+    offset <= MAX_SPECIAL_OPENING_DATES * 7 + 7;
+    offset++
+  ) {
+    const date = new Date(start);
+    date.setUTCDate(date.getUTCDate() + offset * direction);
+    const hours = openingHoursOn(date, weekly, specials);
+    if (!hours.closed) return { date, hours };
+  }
+  throw new Error("Locationen har ingen åbne dage");
+}
+
 export function countWindow(
   key: string,
-  settings: CountSettings = DEFAULT_COUNT_SETTINGS,
+  weekly: WeeklyOpeningHours[] = DEFAULT_WEEKLY_OPENING_HOURS,
+  specialOpeningHours: SpecialOpeningHours[] = [],
 ) {
   const { year, month } = parsePeriod(key);
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const specials = new Map(
+    specialOpeningHours.map((hours) => [hours.date, hours]),
+  );
+  const lastOpenDay = findOpenDay(
+    new Date(Date.UTC(year, month, 0)),
+    -1,
+    weekly,
+    specials,
+  );
   const next = offsetPeriod(year, month, 1);
+  const firstOpenDay = findOpenDay(
+    new Date(Date.UTC(next.year, next.month - 1, 1)),
+    1,
+    weekly,
+    specials,
+  );
+  const overnight =
+    lastOpenDay.hours.closeMinuteOfDay <=
+    lastOpenDay.hours.openMinuteOfDay;
+  if (overnight) {
+    lastOpenDay.date.setUTCDate(lastOpenDay.date.getUTCDate() + 1);
+  }
 
   return {
     periodKey: key,
     opensAt: zonedTimestamp(
-      year,
-      month,
-      lastDay,
-      settings.closeMinuteOfDay,
+      lastOpenDay.date,
+      lastOpenDay.hours.closeMinuteOfDay,
     ),
     closesAt: zonedTimestamp(
-      next.year,
-      next.month,
-      1,
-      settings.openMinuteOfDay,
+      firstOpenDay.date,
+      firstOpenDay.hours.openMinuteOfDay,
     ),
   };
 }
 
 export function activePeriod(
   now: number,
-  settings: CountSettings = DEFAULT_COUNT_SETTINGS,
+  weekly: WeeklyOpeningHours[] = DEFAULT_WEEKLY_OPENING_HOURS,
+  specialOpeningHours: SpecialOpeningHours[] = [],
 ) {
   const local = partsAt(now);
   const previous = offsetPeriod(local.year, local.month, -1);
-  const previousKey = periodKey(previous.year, previous.month);
+  const previousKey = formatPeriod(previous.year, previous.month);
 
-  if (now < countWindow(previousKey, settings).closesAt) return previousKey;
-  return periodKey(local.year, local.month);
+  if (now < countWindow(previousKey, weekly, specialOpeningHours).closesAt) {
+    return previousKey;
+  }
+  return formatPeriod(local.year, local.month);
 }

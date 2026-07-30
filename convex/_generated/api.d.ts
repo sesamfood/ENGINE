@@ -15,6 +15,8 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_countLock from "../lib/countLock.js";
+import type * as lib_countWindow from "../lib/countWindow.js";
+import type * as lib_openingHours from "../lib/openingHours.js";
 import type * as lib_stock from "../lib/stock.js";
 import type * as locations from "../locations.js";
 import type * as organization from "../organization.js";
@@ -34,6 +36,8 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/auth": typeof lib_auth;
   "lib/countLock": typeof lib_countLock;
+  "lib/countWindow": typeof lib_countWindow;
+  "lib/openingHours": typeof lib_openingHours;
   "lib/stock": typeof lib_stock;
   locations: typeof locations;
   organization: typeof organization;
