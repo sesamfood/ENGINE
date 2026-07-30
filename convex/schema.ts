@@ -119,6 +119,7 @@ export default defineSchema({
     comment: v.optional(v.string()),
     transferredAt: v.number(),
     createdBy: v.string(),
+    stockApplied: v.optional(v.boolean()),
   })
     .index("by_organizationId_and_transferredAt", [
       "organizationId",
@@ -141,5 +142,71 @@ export default defineSchema({
     unitId: v.id("units"),
     unitName: v.string(),
     quantity: v.number(),
+    factorToDefault: v.optional(v.number()),
   }).index("by_organizationId_and_transferId", ["organizationId", "transferId"]),
+
+  countSettings: defineTable({
+    organizationId: v.string(),
+    closeMinuteOfDay: v.number(),
+    openMinuteOfDay: v.number(),
+    allowOutsideWindow: v.optional(v.boolean()),
+    lockOtherFeaturesDuringCount: v.optional(v.boolean()),
+  }).index("by_organizationId", ["organizationId"]),
+
+  counts: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    periodKey: v.string(),
+    status: v.union(v.literal("open"), v.literal("submitted")),
+    submittedAt: v.optional(v.number()),
+    submittedByName: v.optional(v.string()),
+    createdBy: v.string(),
+  })
+    .index("by_organizationId_and_locationId_and_periodKey", [
+      "organizationId",
+      "locationId",
+      "periodKey",
+    ])
+    .index("by_organizationId_and_locationId_and_submittedAt", [
+      "organizationId",
+      "locationId",
+      "submittedAt",
+    ]),
+
+  countItems: defineTable({
+    organizationId: v.string(),
+    countId: v.id("counts"),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    quantity: v.number(),
+  })
+    .index("by_organizationId_and_countId", ["organizationId", "countId"])
+    .index("by_organizationId_and_countId_and_productId_and_unitId", [
+      "organizationId",
+      "countId",
+      "productId",
+      "unitId",
+    ])
+    .index("by_organizationId_and_productId", [
+      "organizationId",
+      "productId",
+    ]),
+
+  locationStock: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    quantity: v.number(),
+    updatedAt: v.number(),
+    lastCountedAt: v.optional(v.number()),
+  })
+    .index("by_organizationId_and_locationId_and_productId", [
+      "organizationId",
+      "locationId",
+      "productId",
+    ])
+    .index("by_organizationId_and_productId", [
+      "organizationId",
+      "productId",
+    ]),
 });

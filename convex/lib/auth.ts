@@ -1,5 +1,6 @@
 import { ConvexError } from "convex/values";
 import {
+  canCountStock,
   canManageCatalog,
   canManageOrganization,
   canManageTransfers,
@@ -21,6 +22,7 @@ export async function requireOrganization(ctx: AuthContext) {
     organizationId: member.organizationId,
     role: member.role,
     userIdentifier: identity.tokenIdentifier,
+    userName: identity.name?.trim() || identity.email || "Ukendt bruger",
   };
 }
 
@@ -35,6 +37,14 @@ export async function requireCatalogManager(ctx: AuthContext) {
 export async function requireTransferManager(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (!canManageTransfers(auth.role)) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
+export async function requireCounter(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (!canCountStock(auth.role)) {
     throw new ConvexError("Du har ikke adgang");
   }
   return auth;

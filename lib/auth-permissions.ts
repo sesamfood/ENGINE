@@ -21,6 +21,10 @@ export function canManageCatalog(role: string | null | undefined) {
 
 export const canManageTransfers = canManageCatalog;
 
+export function canCountStock(role: string | null | undefined) {
+  return role === "admin" || role === "manager" || role === "member";
+}
+
 export function canManageMembers(role: string | null | undefined) {
   return role === "admin";
 }

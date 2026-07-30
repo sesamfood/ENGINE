@@ -26,8 +26,7 @@ export function OrganizationAuthGate({ children }: { children: ReactNode }) {
           <TriangleAlertIcon />
           <AlertTitle>Katalogforbindelsen er ikke tilgængelig</AlertTitle>
           <AlertDescription>
-            Convex kunne ikke validere din session. Log ud, og log derefter ind
-            igen.
+            Din session kunne ikke valideres. Log ud, og log derefter ind igen.
           </AlertDescription>
         </Alert>
       </Unauthenticated>

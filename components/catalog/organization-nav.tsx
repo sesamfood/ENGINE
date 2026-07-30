@@ -25,6 +25,8 @@ export function OrganizationHeader() {
     ? "Produkter"
     : pathname.startsWith("/organization/locations")
       ? "Locations"
+      : pathname.startsWith("/organization/count")
+        ? "Count"
       : pathname.startsWith("/organization/users")
         ? "Brugere"
         : pathname === "/organization"

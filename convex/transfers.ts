@@ -8,6 +8,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { requireTransferManager } from "./lib/auth";
+import { requireOtherFeaturesUnlocked } from "./lib/countLock";
+import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
 
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_COMMENT_LENGTH = 500;
@@ -213,6 +215,7 @@ async function prepareTransfer(
     unitId: Id<"units">;
     unitName: string;
     quantity: number;
+    factorToDefault?: number;
   }> = [];
 
   for (const item of args.items) {
@@ -256,6 +259,7 @@ async function prepareTransfer(
         unitId: unit._id,
         unitName: unit.name,
         quantity: item.quantity,
+        factorToDefault: productUnit.factorToDefault,
       });
     } else if (existingItem) {
       resolvedItems.push({
@@ -264,6 +268,7 @@ async function prepareTransfer(
         unitId: existingItem.unitId,
         unitName: existingItem.unitName,
         quantity: item.quantity,
+        factorToDefault: existingItem.factorToDefault,
       });
     } else {
       throw new ConvexError("Produktet eller enheden blev ikke fundet");
@@ -293,6 +298,44 @@ async function prepareTransfer(
   return { comment, responsibleName, resolvedItems };
 }
 
+async function applyTransferStock(
+  ctx: MutationCtx,
+  organizationId: string,
+  fromLocationId: Id<"locations">,
+  toLocationId: Id<"locations">,
+  items: Array<{
+    productId: Id<"products">;
+    quantity: number;
+    factorToDefault?: number;
+  }>,
+  direction: 1 | -1,
+) {
+  for (const item of items) {
+    const product = await ctx.db.get("products", item.productId);
+    if (!product || product.organizationId !== organizationId) continue;
+    if (item.factorToDefault === undefined) {
+      throw new ConvexError("Transferens lageromregning mangler");
+    }
+    const delta = normalizeStock(
+      item.quantity * item.factorToDefault * direction,
+    );
+    await addStock(
+      ctx,
+      organizationId,
+      fromLocationId,
+      item.productId,
+      -delta,
+    );
+    await addStock(
+      ctx,
+      organizationId,
+      toLocationId,
+      item.productId,
+      delta,
+    );
+  }
+}
+
 function validateDateRange(startAt: number, endAt: number) {
   if (
     !Number.isFinite(startAt) ||
@@ -311,6 +354,11 @@ export const createTransfer = mutation({
   handler: async (ctx, args) => {
     const { organizationId, userIdentifier } =
       await requireTransferManager(ctx);
+    await requireOtherFeaturesUnlocked(
+      ctx,
+      organizationId,
+      args.fromLocationId,
+    );
     const { comment, responsibleName, resolvedItems } = await prepareTransfer(
       ctx,
       organizationId,
@@ -326,6 +374,7 @@ export const createTransfer = mutation({
       comment,
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
+      stockApplied: true,
     });
 
     for (const item of resolvedItems) {
@@ -337,8 +386,18 @@ export const createTransfer = mutation({
         unitId: item.unitId,
         unitName: item.unitName,
         quantity: item.quantity,
+        factorToDefault: item.factorToDefault,
       });
     }
+
+    await applyTransferStock(
+      ctx,
+      organizationId,
+      args.fromLocationId,
+      args.toLocationId,
+      resolvedItems,
+      1,
+    );
 
     return transferId;
   },
@@ -353,6 +412,11 @@ export const updateTransfer = mutation({
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
+    await requireOtherFeaturesUnlocked(
+      ctx,
+      organizationId,
+      args.fromLocationId,
+    );
 
     const existingItems = await ctx.db
       .query("transferItems")
@@ -374,6 +438,26 @@ export const updateTransfer = mutation({
       existingItems,
     );
 
+    // ponytail: pre-ledger transfers stay neutral; the next submitted count establishes their baseline.
+    if (transfer.stockApplied) {
+      await applyTransferStock(
+        ctx,
+        organizationId,
+        transfer.fromLocationId,
+        transfer.toLocationId,
+        existingItems,
+        -1,
+      );
+      await applyTransferStock(
+        ctx,
+        organizationId,
+        args.fromLocationId,
+        args.toLocationId,
+        resolvedItems,
+        1,
+      );
+    }
+
     await ctx.db.patch("transfers", transfer._id, {
       fromLocationId: args.fromLocationId,
       toLocationId: args.toLocationId,
@@ -394,6 +478,7 @@ export const updateTransfer = mutation({
         unitId: item.unitId,
         unitName: item.unitName,
         quantity: item.quantity,
+        factorToDefault: item.factorToDefault,
       });
     }
 
@@ -410,6 +495,11 @@ export const deleteTransfer = mutation({
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
+    await requireOtherFeaturesUnlocked(
+      ctx,
+      organizationId,
+      transfer.fromLocationId,
+    );
 
     const items = await ctx.db
       .query("transferItems")
@@ -421,6 +511,16 @@ export const deleteTransfer = mutation({
       .take(MAX_TRANSFER_ITEMS + 1);
     if (items.length > MAX_TRANSFER_ITEMS) {
       throw new ConvexError("Transferen har for mange varelinjer");
+    }
+    if (transfer.stockApplied) {
+      await applyTransferStock(
+        ctx,
+        organizationId,
+        transfer.fromLocationId,
+        transfer.toLocationId,
+        items,
+        -1,
+      );
     }
     for (const item of items) {
       await ctx.db.delete("transferItems", item._id);
@@ -606,16 +706,13 @@ export const exportTransfers = query({
       const pairKey = `${item.productId}:${item.unitId}`;
       let factor = factors.get(pairKey);
       if (factor === undefined) {
-        const productUnit = await ctx.db
-          .query("productUnits")
-          .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("productId", item.productId)
-              .eq("unitId", item.unitId),
-          )
-          .unique();
-        factor = productUnit?.factorToDefault ?? null;
+        factor = await toDefaultUnit(
+          ctx,
+          organizationId,
+          item.productId,
+          item.unitId,
+          1,
+        );
         factors.set(pairKey, factor);
       }
 
