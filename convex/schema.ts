@@ -4,6 +4,7 @@ import {
   openingHoursModeValidator,
   weeklyOpeningHoursValidator,
 } from "./lib/openingHours";
+import { countScheduleValidator } from "./lib/countSettings";
 
 export default defineSchema({
   organizationAssets: defineTable({
@@ -170,6 +171,8 @@ export default defineSchema({
     openMinuteOfDay: v.optional(v.number()),
     allowOutsideWindow: v.optional(v.boolean()),
     lockOtherFeaturesDuringCount: v.optional(v.boolean()),
+    requireCountBeforeOpening: v.optional(v.boolean()),
+    countSchedule: v.optional(countScheduleValidator),
   }).index("by_organizationId", ["organizationId"]),
 
   counts: defineTable({
@@ -190,6 +193,11 @@ export default defineSchema({
       "organizationId",
       "locationId",
       "submittedAt",
+    ])
+    .index("by_organizationId_and_locationId_and_status", [
+      "organizationId",
+      "locationId",
+      "status",
     ]),
 
   countItems: defineTable({

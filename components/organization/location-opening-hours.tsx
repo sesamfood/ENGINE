@@ -290,7 +290,7 @@ export function LocationOpeningHours({
         <DialogHeader>
           <DialogTitle>Åbningstider for {locationName}</DialogTitle>
           <DialogDescription>
-            Åbningstiderne bestemmer locationens count-vindue ved månedsskiftet.
+            Åbningstiderne bestemmer count-vinduet på den valgte count-dag.
           </DialogDescription>
         </DialogHeader>
 

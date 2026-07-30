@@ -16,22 +16,20 @@ export async function otherFeaturesLocked(
     throw new ConvexError("Locationen blev ikke fundet");
   }
 
-  const settings = await ctx.db
-    .query("countSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
-  if (!settings?.lockOtherFeaturesDuringCount) return false;
-
   const window = await getLocationCountWindow(
     ctx,
     organizationId,
     location,
     now,
   );
+  if (!window.lockOtherFeaturesDuringCount) return false;
   const periodKey = window.periodKey;
-  if (now < window.opensAt || now >= window.closesAt) return false;
+  if (
+    now < window.opensAt ||
+    (!window.requireCountBeforeOpening && now >= window.closesAt)
+  ) {
+    return false;
+  }
 
   const count = await ctx.db
     .query("counts")
