@@ -228,7 +228,13 @@ function ConnectionCard({
 
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="online-pos-company-id">Firma-id</FieldLabel>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="online-pos-company-id">Firma-id</FieldLabel>
+              <HelpTooltip
+                label="OnlinePOS firma-id"
+                content="Firma-id er virksomhedens id hos OnlinePOS. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt for at få firma-id og API-adgang."
+              />
+            </div>
             <Input
               id="online-pos-company-id"
               type="number"
@@ -247,7 +253,7 @@ function ConnectionCard({
               </FieldLabel>
               <HelpTooltip
                 label="OnlinePOS-token"
-                content="Tokenet bruges kun på serveren og vises ikke igen efter lagring."
+                content="Tokenet udstedes af OnlinePOS til API-adgang. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
               />
             </div>
             <Input
@@ -330,7 +336,7 @@ function ProductMappings({
   onReload: () => void;
 }) {
   const mappingOptions = useQuery(api.onlinePos.listMappingOptions);
-  const setMapping = useMutation(api.onlinePos.setProductMapping);
+  const setMapping = useAction(api.onlinePos.setProductMapping);
   const [savingProductId, setSavingProductId] = useState<Id<"products">>();
   const comboboxOptions = useMemo(
     () =>
@@ -375,7 +381,8 @@ function ProductMappings({
       <CardHeader>
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
-          Vælg hvilket OnlinePOS-produkt hvert lokalt produkt svarer til.
+          Søg i produktlisten fra OnlinePOS, og vælg hvilket produkt hvert
+          lokalt produkt svarer til.
         </CardDescription>
         <CardAction>
           <Button
@@ -441,6 +448,7 @@ function ProductMappings({
                       }
                       placeholder="Søg efter OnlinePOS-produkt"
                       ariaLabel={`OnlinePOS-produkt for ${product.name}`}
+                      allowCreate={false}
                       disabled={savingProductId === product.id}
                     />
                   </TableCell>

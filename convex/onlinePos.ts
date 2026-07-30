@@ -452,19 +452,19 @@ export const listMappingOptions = query({
   },
 });
 
-export const setProductMapping = mutation({
+export const saveProductMapping = internalMutation({
   args: {
+    organizationId: v.string(),
     productId: v.id("products"),
     onlinePosProductId: v.union(v.number(), v.null()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
     const [settings, product, current] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
         .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+          q.eq("organizationId", args.organizationId),
         )
         .unique(),
       ctx.db.get("products", args.productId),
@@ -472,7 +472,7 @@ export const setProductMapping = mutation({
         .query("onlinePosProductMappings")
         .withIndex("by_organizationId_and_productId", (q) =>
           q
-            .eq("organizationId", organizationId)
+            .eq("organizationId", args.organizationId)
             .eq("productId", args.productId),
         )
         .unique(),
@@ -480,7 +480,7 @@ export const setProductMapping = mutation({
     if (!settings?.enabled) {
       throw new ConvexError("OnlinePOS-integrationen er ikke aktiv");
     }
-    if (!product || product.organizationId !== organizationId) {
+    if (!product || product.organizationId !== args.organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
     }
     if (
@@ -499,11 +499,40 @@ export const setProductMapping = mutation({
       });
     } else {
       await ctx.db.insert("onlinePosProductMappings", {
-        organizationId,
+        organizationId: args.organizationId,
         productId: args.productId,
         onlinePosProductId: args.onlinePosProductId,
       });
     }
+    return null;
+  },
+});
+
+export const setProductMapping = action({
+  args: {
+    productId: v.id("products"),
+    onlinePosProductId: v.union(v.number(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId, settings } = await requireEnabledSettings(ctx);
+
+    if (args.onlinePosProductId !== null) {
+      const products = parseProducts(
+        await requestOnlinePos("/getProducts", settings),
+      );
+      if (!products.some((product) => product.id === args.onlinePosProductId)) {
+        throw new ConvexError(
+          "Produktet findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",
+        );
+      }
+    }
+
+    await ctx.runMutation(internal.onlinePos.saveProductMapping, {
+      organizationId,
+      productId: args.productId,
+      onlinePosProductId: args.onlinePosProductId,
+    });
     return null;
   },
 });
