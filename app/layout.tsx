@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { cookies } from "next/headers";
 import { AppShell } from "@/components/app-shell";
 import { BrowserBranding } from "@/components/browser-branding";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { getToken } from "@/lib/auth-server";
 import { cn } from "@/lib/utils";
 import "./globals.css";
@@ -31,7 +33,9 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const initialToken = await getToken();
+  const [initialToken, cookieStore] = await Promise.all([getToken(), cookies()]);
+  const defaultSidebarOpen =
+    cookieStore.get("sidebar_state")?.value !== "false";
 
   return (
     <html
@@ -47,9 +51,13 @@ export default async function RootLayout({
     >
       <body className="min-h-full">
         <ConvexClientProvider initialToken={initialToken}>
-          <BrowserBranding />
-          <AppShell>{children}</AppShell>
-          <Toaster position="top-right" richColors />
+          <TooltipProvider>
+            <BrowserBranding />
+            <AppShell defaultSidebarOpen={defaultSidebarOpen}>
+              {children}
+            </AppShell>
+            <Toaster position="top-right" richColors />
+          </TooltipProvider>
         </ConvexClientProvider>
       </body>
     </html>

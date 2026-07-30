@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -129,11 +128,13 @@ export function CountSettings() {
   return (
     <Card className="max-w-2xl">
       <CardHeader>
-        <CardTitle>Count-indstillinger</CardTitle>
-        <CardDescription>
-          Vælg hvornår count er tilgængelig, og om den øvrige drift skal låses
-          under count-vinduet.
-        </CardDescription>
+        <div className="flex items-center gap-1">
+          <CardTitle>Count-indstillinger</CardTitle>
+          <HelpTooltip
+            label="Count-indstillinger"
+            content="Vælg hvornår count er tilgængelig, og om den øvrige drift skal låses under count-vinduet."
+          />
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <FieldGroup>

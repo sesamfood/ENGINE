@@ -6,10 +6,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -250,19 +250,21 @@ export function OnboardingForm() {
           <form onSubmit={joinOrganization} className="flex flex-col gap-5">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="invitation-code">
-                  Invitationskode
-                </FieldLabel>
+                <div className="flex items-center gap-1">
+                  <FieldLabel htmlFor="invitation-code">
+                    Invitationskode
+                  </FieldLabel>
+                  <HelpTooltip
+                    label="Invitationskode"
+                    content="Indsæt koden fra invitationen. Du kan også indsætte hele invitationslinket."
+                  />
+                </div>
                 <Input
                   id="invitation-code"
                   name="code"
                   autoComplete="off"
                   required
                 />
-                <FieldDescription>
-                  Indsæt koden fra invitationen. Du kan også indsætte hele
-                  invitationslinket.
-                </FieldDescription>
               </Field>
             </FieldGroup>
             <Button
