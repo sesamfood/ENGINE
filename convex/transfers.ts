@@ -8,6 +8,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { requireTransferManager } from "./lib/auth";
+import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
 
 const MAX_TRANSFER_ITEMS = 200;
@@ -353,6 +354,11 @@ export const createTransfer = mutation({
   handler: async (ctx, args) => {
     const { organizationId, userIdentifier } =
       await requireTransferManager(ctx);
+    await requireOtherFeaturesUnlocked(
+      ctx,
+      organizationId,
+      args.fromLocationId,
+    );
     const { comment, responsibleName, resolvedItems } = await prepareTransfer(
       ctx,
       organizationId,
@@ -406,6 +412,11 @@ export const updateTransfer = mutation({
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
+    await requireOtherFeaturesUnlocked(
+      ctx,
+      organizationId,
+      args.fromLocationId,
+    );
 
     const existingItems = await ctx.db
       .query("transferItems")
@@ -484,6 +495,11 @@ export const deleteTransfer = mutation({
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
+    await requireOtherFeaturesUnlocked(
+      ctx,
+      organizationId,
+      transfer.fromLocationId,
+    );
 
     const items = await ctx.db
       .query("transferItems")

@@ -15,9 +15,16 @@ import { useConvexAuth, useQuery } from "convex/react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type CSSProperties } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type CSSProperties,
+} from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -49,6 +56,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authClient } from "@/lib/auth-client";
 import { canManageCatalog } from "@/lib/auth-permissions";
+import { useCountLocation } from "@/lib/count-prefs";
 import { cn } from "@/lib/utils";
 
 const primaryNavigation = [
@@ -62,21 +70,105 @@ const organizationNavigation = {
   icon: Building2Icon,
 };
 
+const FeatureLockContext = createContext(false);
+
+function featureLockExempt(pathname: string) {
+  return (
+    pathname === "/profile" ||
+    pathname === "/settings" ||
+    pathname === "/count" ||
+    pathname.startsWith("/count/") ||
+    pathname === "/organization" ||
+    pathname.startsWith("/organization/")
+  );
+}
+
+function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { isAuthenticated } = useConvexAuth();
+  const organization = authClient.useActiveOrganization();
+  const [now, setNow] = useState(() => Date.now());
+  const organizationId = organization.data?.id;
+  const storedLocationId = useCountLocation(organizationId);
+  const locations = useQuery(
+    api.locations.listLocationOptions,
+    organizationId && isAuthenticated ? {} : "skip",
+  );
+  const locationId = locations?.some(
+    (location) => location.id === storedLocationId,
+  )
+    ? (storedLocationId as Id<"locations">)
+    : (locations?.[0]?.id ?? null);
+  const lockState = useQuery(
+    api.count.getOtherFeaturesLockState,
+    organizationId && isAuthenticated && locationId
+      ? {
+          locationId,
+          now: Math.floor(now / 60_000) * 60_000,
+        }
+      : "skip",
+  );
+  const exempt = featureLockExempt(pathname);
+  const isLocked = lockState?.isLocked ?? false;
+  const lockReady =
+    locations !== undefined && (!locationId || lockState !== undefined);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (isLocked && !exempt) router.replace("/count");
+  }, [exempt, isLocked, router]);
+
+  if (organizationId && isAuthenticated && !lockReady && !exempt) {
+    return (
+      <main
+        className="grid min-h-screen place-items-center"
+        aria-label="Kontrollerer count-status"
+      >
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  if (isLocked && !exempt) {
+    return (
+      <main
+        className="grid min-h-screen place-items-center"
+        aria-label="Åbner count"
+      >
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  return (
+    <FeatureLockContext.Provider value={isLocked}>
+      {children}
+    </FeatureLockContext.Provider>
+  );
+}
+
 function OrganizationHome() {
   const { data: organization } = authClient.useActiveOrganization();
   const { state, isMobile } = useSidebar();
   const { isAuthenticated } = useConvexAuth();
+  const featureLocked = useContext(FeatureLockContext);
   const branding = useQuery(
     api.organization.getBranding,
     organization && isAuthenticated ? {} : "skip",
   );
   const logoUrl = organization?.logo;
   const wideLogoUrl = branding?.wideLogoUrl;
+  const homeHref = featureLocked ? "/count" : "/transfers";
 
   if (wideLogoUrl && (state === "expanded" || isMobile)) {
     return (
       <Link
-        href="/transfers"
+        href={homeHref}
         aria-label={`${organization?.name ?? "Organisation"} startside`}
         className="flex h-12 w-full min-w-0 items-center justify-center px-2 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
@@ -94,7 +186,7 @@ function OrganizationHome() {
 
   return (
     <Link
-      href="/transfers"
+      href={homeHref}
       aria-label={organization ? `${organization.name} startside` : "Startside"}
       className="flex size-12 items-center justify-center focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
@@ -121,9 +213,13 @@ function NavigationList() {
   const { data: membership } = authClient.useActiveMemberRole();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
-  const navigation = canManageCatalog(membership?.role)
-    ? [...primaryNavigation, organizationNavigation]
+  const featureLocked = useContext(FeatureLockContext);
+  const availableNavigation = featureLocked
+    ? primaryNavigation.filter((item) => item.href === "/count")
     : primaryNavigation;
+  const navigation = canManageCatalog(membership?.role)
+    ? [...availableNavigation, organizationNavigation]
+    : availableNavigation;
 
   return (
     <SidebarGroup>
@@ -451,75 +547,77 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <OrganizationBoundary required={organizationRequired}>
-      <TooltipProvider>
-        <SidebarProvider
-          style={
-            {
-              "--sidebar-width": "15.5rem",
-              "--sidebar-width-icon": "4rem",
-            } as CSSProperties
-          }
-        >
-          <Sidebar collapsible="icon">
-            <SidebarHeader className="h-24 items-center justify-center">
-              <OrganizationHome />
-            </SidebarHeader>
-
-            <SidebarContent>
-              <NavigationList />
-            </SidebarContent>
-
-            <SidebarFooter>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <ProfileMenu />
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarFooter>
-          </Sidebar>
-
-          <SidebarInset className="min-w-0">
-            <header
-              className={cn(
-                "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                showCountHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
-              )}
-            >
-              <SidebarTrigger size="icon-lg" />
-              {showCountHeader ? (
-                <div
-                  id="count-shell-header"
-                  className="hidden min-w-0 flex-1 md:block"
-                />
-              ) : null}
-              {showOrganizationBack ? (
-                <Button
-                  variant="outline"
-                  size="lg"
-                  render={<Link href="/organization" />}
-                  nativeButton={false}
-                >
-                  <ArrowLeftIcon data-icon="inline-start" />
-                  <span className="hidden sm:inline">
-                    Tilbage til organisation
-                  </span>
-                  <span className="sm:hidden">Tilbage</span>
-                </Button>
-              ) : null}
-              <div className="flex flex-1 justify-center md:hidden">
+      <FeatureLockBoundary>
+        <TooltipProvider>
+          <SidebarProvider
+            style={
+              {
+                "--sidebar-width": "15.5rem",
+                "--sidebar-width-icon": "4rem",
+              } as CSSProperties
+            }
+          >
+            <Sidebar collapsible="icon">
+              <SidebarHeader className="h-24 items-center justify-center">
                 <OrganizationHome />
-              </div>
-              <div className="md:hidden">
-                <ProfileMenu compact />
-              </div>
-            </header>
+              </SidebarHeader>
 
-            <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
-              {children}
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
-      </TooltipProvider>
+              <SidebarContent>
+                <NavigationList />
+              </SidebarContent>
+
+              <SidebarFooter>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <ProfileMenu />
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarFooter>
+            </Sidebar>
+
+            <SidebarInset className="min-w-0">
+              <header
+                className={cn(
+                  "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
+                  showCountHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+                )}
+              >
+                <SidebarTrigger size="icon-lg" />
+                {showCountHeader ? (
+                  <div
+                    id="count-shell-header"
+                    className="hidden min-w-0 flex-1 md:block"
+                  />
+                ) : null}
+                {showOrganizationBack ? (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    render={<Link href="/organization" />}
+                    nativeButton={false}
+                  >
+                    <ArrowLeftIcon data-icon="inline-start" />
+                    <span className="hidden sm:inline">
+                      Tilbage til organisation
+                    </span>
+                    <span className="sm:hidden">Tilbage</span>
+                  </Button>
+                ) : null}
+                <div className="flex flex-1 justify-center md:hidden">
+                  <OrganizationHome />
+                </div>
+                <div className="md:hidden">
+                  <ProfileMenu compact />
+                </div>
+              </header>
+
+              <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
+                {children}
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
+        </TooltipProvider>
+      </FeatureLockBoundary>
     </OrganizationBoundary>
   );
 }

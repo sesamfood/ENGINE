@@ -13,6 +13,7 @@ import {
   requireOrganization,
   requireOrganizationAdmin,
 } from "./lib/auth";
+import { otherFeaturesLocked } from "./lib/countLock";
 import { setStock, toDefaultUnit } from "./lib/stock";
 
 const MAX_PRODUCTS = 500;
@@ -24,6 +25,7 @@ const settingsValidator = v.object({
   closeMinuteOfDay: v.number(),
   openMinuteOfDay: v.number(),
   allowOutsideWindow: v.boolean(),
+  lockOtherFeaturesDuringCount: v.boolean(),
 });
 
 const countSummaryValidator = v.object({
@@ -82,6 +84,7 @@ const locationStockValidator = v.object({
 type CountContext = QueryCtx | MutationCtx;
 type CountConfiguration = CountSettings & {
   allowOutsideWindow: boolean;
+  lockOtherFeaturesDuringCount: boolean;
 };
 
 async function getSettings(
@@ -99,8 +102,14 @@ async function getSettings(
         closeMinuteOfDay: settings.closeMinuteOfDay,
         openMinuteOfDay: settings.openMinuteOfDay,
         allowOutsideWindow: settings.allowOutsideWindow ?? false,
+        lockOtherFeaturesDuringCount:
+          settings.lockOtherFeaturesDuringCount ?? false,
       }
-    : { ...DEFAULT_COUNT_SETTINGS, allowOutsideWindow: false };
+    : {
+        ...DEFAULT_COUNT_SETTINGS,
+        allowOutsideWindow: false,
+        lockOtherFeaturesDuringCount: false,
+      };
 }
 
 async function requireLocation(
@@ -245,6 +254,23 @@ export const setCountSettings = mutation({
       await ctx.db.insert("countSettings", { organizationId, ...args });
     }
     return null;
+  },
+});
+
+export const getOtherFeaturesLockState = query({
+  args: { locationId: v.id("locations"), now: v.number() },
+  returns: v.object({ isLocked: v.boolean() }),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganization(ctx);
+    requireNow(args.now);
+    return {
+      isLocked: await otherFeaturesLocked(
+        ctx,
+        organizationId,
+        args.locationId,
+        args.now,
+      ),
+    };
   },
 });
 

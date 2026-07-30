@@ -17,10 +17,10 @@ import {
 import {
   Field,
   FieldContent,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -62,6 +62,9 @@ export function CountSettings() {
   const [draftAllowOutsideWindow, setDraftAllowOutsideWindow] = useState<
     boolean | null
   >(null);
+  const [draftLockOtherFeatures, setDraftLockOtherFeatures] = useState<
+    boolean | null
+  >(null);
   const [previewNow] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
   const closeTime =
@@ -72,6 +75,10 @@ export function CountSettings() {
     (settings ? timeValue(settings.openMinuteOfDay) : "");
   const allowOutsideWindow =
     draftAllowOutsideWindow ?? settings?.allowOutsideWindow ?? false;
+  const lockOtherFeaturesDuringCount =
+    draftLockOtherFeatures ??
+    settings?.lockOtherFeaturesDuringCount ??
+    false;
 
   const preview = useMemo(() => {
     const closeMinuteOfDay = minuteValue(closeTime);
@@ -109,6 +116,7 @@ export function CountSettings() {
         closeMinuteOfDay,
         openMinuteOfDay,
         allowOutsideWindow,
+        lockOtherFeaturesDuringCount,
       });
       toast.success("Count-indstillingerne er gemt");
     } catch (error) {
@@ -123,20 +131,23 @@ export function CountSettings() {
       <CardHeader>
         <CardTitle>Count-indstillinger</CardTitle>
         <CardDescription>
-          Vælg om count altid er tilgængelig eller kun åbner i det planlagte
-          count-vindue.
+          Vælg hvornår count er tilgængelig, og om den øvrige drift skal låses
+          under count-vinduet.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <FieldGroup>
           <Field orientation="horizontal">
             <FieldContent>
-              <FieldLabel htmlFor="count-outside-window">
-                Tillad count uden for count-vinduet
-              </FieldLabel>
-              <FieldDescription>
-                Medarbejdere kan registrere månedens count når som helst.
-              </FieldDescription>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="count-outside-window">
+                  Tillad count uden for count-vinduet
+                </FieldLabel>
+                <HelpTooltip
+                  label="Tillad count uden for count-vinduet"
+                  content="Medarbejdere kan registrere månedens count når som helst."
+                />
+              </div>
             </FieldContent>
             <Switch
               id="count-outside-window"
@@ -145,8 +156,33 @@ export function CountSettings() {
               onCheckedChange={setDraftAllowOutsideWindow}
             />
           </Field>
+          <Field orientation="horizontal">
+            <FieldContent>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="count-lock-other-features">
+                  Lås andre funktioner under count
+                </FieldLabel>
+                <HelpTooltip
+                  label="Lås andre funktioner under count"
+                  content="Når count-vinduet åbner, er kun count, lager og indstillinger tilgængelige for den valgte location, indtil dens count er registreret."
+                />
+              </div>
+            </FieldContent>
+            <Switch
+              id="count-lock-other-features"
+              aria-label="Lås andre funktioner under count"
+              checked={lockOtherFeaturesDuringCount}
+              onCheckedChange={setDraftLockOtherFeatures}
+            />
+          </Field>
           <Field>
-            <FieldLabel htmlFor="count-close-time">Lukketid</FieldLabel>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="count-close-time">Lukketid</FieldLabel>
+              <HelpTooltip
+                label="Lukketid"
+                content="Her åbner månedens count."
+              />
+            </div>
             <Input
               id="count-close-time"
               type="time"
@@ -159,12 +195,15 @@ export function CountSettings() {
               }
               className="h-11"
             />
-            <FieldDescription>
-              Her åbner månedens count.
-            </FieldDescription>
           </Field>
           <Field>
-            <FieldLabel htmlFor="count-open-time">Åbningstid</FieldLabel>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="count-open-time">Åbningstid</FieldLabel>
+              <HelpTooltip
+                label="Åbningstid"
+                content="Her låses count næste dag."
+              />
+            </div>
             <Input
               id="count-open-time"
               type="time"
@@ -177,9 +216,6 @@ export function CountSettings() {
               }
               className="h-11"
             />
-            <FieldDescription>
-              Her låses count næste dag.
-            </FieldDescription>
           </Field>
         </FieldGroup>
 
