@@ -17,6 +17,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_countLock from "../lib/countLock.js";
 import type * as lib_stock from "../lib/stock.js";
 import type * as locations from "../locations.js";
+import type * as onlinePos from "../onlinePos.js";
 import type * as organization from "../organization.js";
 import type * as transfers from "../transfers.js";
 
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   "lib/countLock": typeof lib_countLock;
   "lib/stock": typeof lib_stock;
   locations: typeof locations;
+  onlinePos: typeof onlinePos;
   organization: typeof organization;
   transfers: typeof transfers;
 }>;

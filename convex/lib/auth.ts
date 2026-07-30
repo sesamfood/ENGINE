@@ -5,10 +5,10 @@ import {
   canManageOrganization,
   canManageTransfers,
 } from "../../lib/auth-permissions";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { authComponent, createAuth } from "../auth";
 
-type AuthContext = QueryCtx | MutationCtx;
+type AuthContext = QueryCtx | MutationCtx | ActionCtx;
 
 export async function requireOrganization(ctx: AuthContext) {
   const identity = await ctx.auth.getUserIdentity();

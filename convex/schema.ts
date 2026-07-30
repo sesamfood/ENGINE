@@ -11,6 +11,23 @@ export default defineSchema({
     .index("by_logoStorageId", ["logoStorageId"])
     .index("by_wideLogoStorageId", ["wideLogoStorageId"]),
 
+  onlinePosIntegrations: defineTable({
+    organizationId: v.string(),
+    token: v.string(),
+    companyId: v.number(),
+    enabled: v.boolean(),
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
+  onlinePosProductMappings: defineTable({
+    organizationId: v.string(),
+    productId: v.id("products"),
+    onlinePosProductId: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_productId", ["organizationId", "productId"]),
+
   categories: defineTable({
     organizationId: v.string(),
     name: v.string(),

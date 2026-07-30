@@ -4,6 +4,7 @@ import {
   Building2Icon,
   ClipboardListIcon,
   PackageIcon,
+  PlugIcon,
   StoreIcon,
   UsersIcon,
 } from "lucide-react";
@@ -47,6 +48,13 @@ const sections = [
     description: "Indstil tidspunktet for den månedlige count.",
     href: "/organization/count",
     icon: ClipboardListIcon,
+    adminOnly: true,
+  },
+  {
+    title: "Integrationer",
+    description: "Forbind eksterne systemer og administrer dataudveksling.",
+    href: "/organization/integrations",
+    icon: PlugIcon,
     adminOnly: true,
   },
   {
