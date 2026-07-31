@@ -29,10 +29,10 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
-  FieldDescription,
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -223,7 +223,10 @@ function LogoUploadCard({
         </Button>
 
         <Field data-invalid={Boolean(error)}>
-          <FieldLabel htmlFor={inputId}>Vælg billedfil</FieldLabel>
+          <div className="flex items-center gap-1">
+            <FieldLabel htmlFor={inputId}>Vælg billedfil</FieldLabel>
+            <HelpTooltip label="Vælg billedfil" content={guidance} />
+          </div>
           <Input
             ref={inputRef}
             id={inputId}
@@ -249,7 +252,6 @@ function LogoUploadCard({
               {file?.name ?? "Ingen fil valgt"}
             </span>
           </div>
-          <FieldDescription>{guidance}</FieldDescription>
           <FieldError>{error}</FieldError>
         </Field>
       </CardContent>

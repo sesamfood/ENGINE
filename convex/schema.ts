@@ -1,5 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  openingHoursModeValidator,
+  weeklyOpeningHoursValidator,
+} from "./lib/openingHours";
+import { countScheduleValidator } from "./lib/countSettings";
 
 export default defineSchema({
   organizationAssets: defineTable({
@@ -122,9 +127,24 @@ export default defineSchema({
     organizationId: v.string(),
     name: v.string(),
     normalizedName: v.string(),
+    openingHoursMode: v.optional(openingHoursModeValidator),
+    weeklyOpeningHours: v.optional(v.array(weeklyOpeningHoursValidator)),
   }).index("by_organizationId_and_normalizedName", [
     "organizationId",
     "normalizedName",
+  ]),
+
+  locationSpecialOpeningHours: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    date: v.string(),
+    closed: v.boolean(),
+    openMinuteOfDay: v.number(),
+    closeMinuteOfDay: v.number(),
+  }).index("by_organizationId_and_locationId_and_date", [
+    "organizationId",
+    "locationId",
+    "date",
   ]),
 
   transfers: defineTable({
@@ -164,10 +184,12 @@ export default defineSchema({
 
   countSettings: defineTable({
     organizationId: v.string(),
-    closeMinuteOfDay: v.number(),
-    openMinuteOfDay: v.number(),
+    closeMinuteOfDay: v.optional(v.number()),
+    openMinuteOfDay: v.optional(v.number()),
     allowOutsideWindow: v.optional(v.boolean()),
     lockOtherFeaturesDuringCount: v.optional(v.boolean()),
+    requireCountBeforeOpening: v.optional(v.boolean()),
+    countSchedule: v.optional(countScheduleValidator),
   }).index("by_organizationId", ["organizationId"]),
 
   counts: defineTable({
@@ -188,6 +210,11 @@ export default defineSchema({
       "organizationId",
       "locationId",
       "submittedAt",
+    ])
+    .index("by_organizationId_and_locationId_and_status", [
+      "organizationId",
+      "locationId",
+      "status",
     ]),
 
   countItems: defineTable({

@@ -53,7 +53,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { authClient } from "@/lib/auth-client";
 import { canManageCatalog } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
@@ -164,8 +163,13 @@ function OrganizationHome() {
   const logoUrl = organization?.logo;
   const wideLogoUrl = branding?.wideLogoUrl;
   const homeHref = featureLocked ? "/count" : "/transfers";
+  const showWideLogo = state === "expanded" || isMobile;
 
-  if (wideLogoUrl && (state === "expanded" || isMobile)) {
+  if (showWideLogo && branding === undefined) {
+    return <div className="h-12 w-full" />;
+  }
+
+  if (wideLogoUrl && showWideLogo) {
     return (
       <Link
         href={homeHref}
@@ -190,7 +194,12 @@ function OrganizationHome() {
       aria-label={organization ? `${organization.name} startside` : "Startside"}
       className="flex size-12 items-center justify-center focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      <div className="relative flex size-11 overflow-hidden bg-primary text-primary-foreground">
+      <div
+        className={cn(
+          "relative flex size-11 overflow-hidden",
+          !logoUrl && "bg-primary text-primary-foreground",
+        )}
+      >
         {logoUrl ? (
           <Image
             src={logoUrl}
@@ -523,7 +532,13 @@ function OrganizationBoundary({
   return children;
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  defaultSidebarOpen,
+}: {
+  children: React.ReactNode;
+  defaultSidebarOpen: boolean;
+}) {
   const pathname = usePathname();
   const shellless = [
     "/login",
@@ -548,75 +563,74 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <OrganizationBoundary required={organizationRequired}>
       <FeatureLockBoundary>
-        <TooltipProvider>
-          <SidebarProvider
-            style={
-              {
-                "--sidebar-width": "15.5rem",
-                "--sidebar-width-icon": "4rem",
-              } as CSSProperties
-            }
-          >
-            <Sidebar collapsible="icon">
-              <SidebarHeader className="h-24 items-center justify-center">
+        <SidebarProvider
+          defaultOpen={defaultSidebarOpen}
+          style={
+            {
+              "--sidebar-width": "15.5rem",
+              "--sidebar-width-icon": "4rem",
+            } as CSSProperties
+          }
+        >
+          <Sidebar collapsible="icon">
+            <SidebarHeader className="h-24 items-center justify-center">
+              <OrganizationHome />
+            </SidebarHeader>
+
+            <SidebarContent>
+              <NavigationList />
+            </SidebarContent>
+
+            <SidebarFooter>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <ProfileMenu />
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarFooter>
+          </Sidebar>
+
+          <SidebarInset className="min-w-0">
+            <header
+              className={cn(
+                "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
+                showCountHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+              )}
+            >
+              <SidebarTrigger size="icon-lg" />
+              {showCountHeader ? (
+                <div
+                  id="count-shell-header"
+                  className="hidden min-w-0 flex-1 md:block"
+                />
+              ) : null}
+              {showOrganizationBack ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  render={<Link href="/organization" />}
+                  nativeButton={false}
+                >
+                  <ArrowLeftIcon data-icon="inline-start" />
+                  <span className="hidden sm:inline">
+                    Tilbage til organisation
+                  </span>
+                  <span className="sm:hidden">Tilbage</span>
+                </Button>
+              ) : null}
+              <div className="flex flex-1 justify-center md:hidden">
                 <OrganizationHome />
-              </SidebarHeader>
-
-              <SidebarContent>
-                <NavigationList />
-              </SidebarContent>
-
-              <SidebarFooter>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <ProfileMenu />
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarFooter>
-            </Sidebar>
-
-            <SidebarInset className="min-w-0">
-              <header
-                className={cn(
-                  "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                  showCountHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
-                )}
-              >
-                <SidebarTrigger size="icon-lg" />
-                {showCountHeader ? (
-                  <div
-                    id="count-shell-header"
-                    className="hidden min-w-0 flex-1 md:block"
-                  />
-                ) : null}
-                {showOrganizationBack ? (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    render={<Link href="/organization" />}
-                    nativeButton={false}
-                  >
-                    <ArrowLeftIcon data-icon="inline-start" />
-                    <span className="hidden sm:inline">
-                      Tilbage til organisation
-                    </span>
-                    <span className="sm:hidden">Tilbage</span>
-                  </Button>
-                ) : null}
-                <div className="flex flex-1 justify-center md:hidden">
-                  <OrganizationHome />
-                </div>
-                <div className="md:hidden">
-                  <ProfileMenu compact />
-                </div>
-              </header>
-
-              <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
-                {children}
               </div>
-            </SidebarInset>
-          </SidebarProvider>
-        </TooltipProvider>
+              <div className="md:hidden">
+                <ProfileMenu compact />
+              </div>
+            </header>
+
+            <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
+              {children}
+            </div>
+          </SidebarInset>
+        </SidebarProvider>
       </FeatureLockBoundary>
     </OrganizationBoundary>
   );

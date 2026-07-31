@@ -33,6 +33,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -277,10 +278,13 @@ export function MemberManagement() {
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Inviter bruger</CardTitle>
-          <CardDescription>
-            Brugeren modtager et link på e-mail og bliver medlem efter accept.
-          </CardDescription>
+          <div className="flex items-center gap-1">
+            <CardTitle>Inviter bruger</CardTitle>
+            <HelpTooltip
+              label="Inviter bruger"
+              content="Brugeren modtager et link på e-mail og bliver medlem efter accept."
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={invite}>
@@ -467,10 +471,13 @@ export function MemberManagement() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Afventende invitationer</CardTitle>
-          <CardDescription>
-            Invitationer udløber automatisk efter syv dage.
-          </CardDescription>
+          <div className="flex items-center gap-1">
+            <CardTitle>Afventende invitationer</CardTitle>
+            <HelpTooltip
+              label="Afventende invitationer"
+              content="Invitationer udløber automatisk efter syv dage."
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {invitations.length ? (

@@ -1,10 +1,4 @@
 import { ConvexError, v } from "convex/values";
-import {
-  activePeriod,
-  countWindow,
-  DEFAULT_COUNT_SETTINGS,
-  type CountSettings,
-} from "../lib/count-window";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
@@ -14,6 +8,11 @@ import {
   requireOrganizationAdmin,
 } from "./lib/auth";
 import { otherFeaturesLocked } from "./lib/countLock";
+import { countScheduleValidator } from "./lib/countSettings";
+import {
+  getCountConfiguration,
+  getLocationCountWindow,
+} from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
 
 const MAX_PRODUCTS = 500;
@@ -22,10 +21,10 @@ const MAX_COUNT_ITEMS = 5000;
 const MAX_SEARCH_LENGTH = 100;
 
 const settingsValidator = v.object({
-  closeMinuteOfDay: v.number(),
-  openMinuteOfDay: v.number(),
   allowOutsideWindow: v.boolean(),
   lockOtherFeaturesDuringCount: v.boolean(),
+  requireCountBeforeOpening: v.boolean(),
+  countSchedule: countScheduleValidator,
 });
 
 const countSummaryValidator = v.object({
@@ -82,35 +81,6 @@ const locationStockValidator = v.object({
 });
 
 type CountContext = QueryCtx | MutationCtx;
-type CountConfiguration = CountSettings & {
-  allowOutsideWindow: boolean;
-  lockOtherFeaturesDuringCount: boolean;
-};
-
-async function getSettings(
-  ctx: CountContext,
-  organizationId: string,
-): Promise<CountConfiguration> {
-  const settings = await ctx.db
-    .query("countSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
-  return settings
-    ? {
-        closeMinuteOfDay: settings.closeMinuteOfDay,
-        openMinuteOfDay: settings.openMinuteOfDay,
-        allowOutsideWindow: settings.allowOutsideWindow ?? false,
-        lockOtherFeaturesDuringCount:
-          settings.lockOtherFeaturesDuringCount ?? false,
-      }
-    : {
-        ...DEFAULT_COUNT_SETTINGS,
-        allowOutsideWindow: false,
-        lockOtherFeaturesDuringCount: false,
-      };
-}
 
 async function requireLocation(
   ctx: CountContext,
@@ -130,14 +100,54 @@ function requireNow(now: number) {
   }
 }
 
-function requireMinuteOfDay(value: number) {
-  if (!Number.isInteger(value) || value < 0 || value >= 24 * 60) {
-    throw new ConvexError("Tidspunktet er ugyldigt");
-  }
+function windowIsOpen(
+  now: number,
+  window: {
+    opensAt: number;
+    closesAt: number;
+    requireCountBeforeOpening: boolean;
+  },
+) {
+  return (
+    now >= window.opensAt &&
+    (window.requireCountBeforeOpening || now < window.closesAt)
+  );
 }
 
-function windowIsOpen(now: number, opensAt: number, closesAt: number) {
-  return now >= opensAt && now < closesAt;
+function requireCountSchedule(
+  schedule:
+    | { type: "monthly"; day: number }
+    | { type: "interval"; intervalDays: number; anchorDate: string },
+) {
+  if (schedule.type === "monthly") {
+    if (
+      !Number.isInteger(schedule.day) ||
+      schedule.day < 0 ||
+      schedule.day > 31
+    ) {
+      throw new ConvexError("Count-dagen er ugyldig");
+    }
+    return;
+  }
+  if (
+    !Number.isInteger(schedule.intervalDays) ||
+    schedule.intervalDays < 1 ||
+    schedule.intervalDays > 365
+  ) {
+    throw new ConvexError("Intervallet skal være mellem 1 og 365 dage");
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(schedule.anchorDate);
+  if (!match) throw new ConvexError("Første count-dato er ugyldig");
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
+  if (
+    date.getUTCFullYear() !== Number(match[1]) ||
+    date.getUTCMonth() !== Number(match[2]) - 1 ||
+    date.getUTCDate() !== Number(match[3])
+  ) {
+    throw new ConvexError("Første count-dato er ugyldig");
+  }
 }
 
 async function getCount(
@@ -230,7 +240,7 @@ export const getCountSettings = query({
   returns: settingsValidator,
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
-    return await getSettings(ctx, organizationId);
+    return await getCountConfiguration(ctx, organizationId);
   },
 });
 
@@ -239,8 +249,7 @@ export const setCountSettings = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    requireMinuteOfDay(args.closeMinuteOfDay);
-    requireMinuteOfDay(args.openMinuteOfDay);
+    requireCountSchedule(args.countSchedule);
     const current = await ctx.db
       .query("countSettings")
       .withIndex("by_organizationId", (q) =>
@@ -280,10 +289,18 @@ export const getCountState = query({
   handler: async (ctx, args) => {
     const { organizationId } = await requireCounter(ctx);
     requireNow(args.now);
-    await requireLocation(ctx, organizationId, args.locationId);
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(args.now, settings);
-    const window = countWindow(periodKey, settings);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const window = await getLocationCountWindow(
+      ctx,
+      organizationId,
+      location,
+      args.now,
+    );
+    const periodKey = window.periodKey;
     const [count, products, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
       activeProducts(ctx, organizationId),
@@ -304,10 +321,10 @@ export const getCountState = query({
       opensAt: window.opensAt,
       closesAt: window.closesAt,
       isOpen:
-        settings.allowOutsideWindow ||
+        window.allowOutsideWindow ||
         !hasSubmitted ||
-        windowIsOpen(args.now, window.opensAt, window.closesAt),
-      outsideWindowAllowed: settings.allowOutsideWindow,
+        windowIsOpen(args.now, window),
+      outsideWindowAllowed: window.allowOutsideWindow,
       count: count
         ? {
             id: count._id,
@@ -333,7 +350,11 @@ export const listCountProducts = query({
   handler: async (ctx, args) => {
     const { organizationId } = await requireCounter(ctx);
     requireNow(args.now);
-    await requireLocation(ctx, organizationId, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const search = args.search.trim();
     if (search.length > MAX_SEARCH_LENGTH) {
       throw new ConvexError("Søgningen er for lang");
@@ -345,8 +366,12 @@ export const listCountProducts = query({
       }
     }
 
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(args.now, settings);
+    const { periodKey } = await getLocationCountWindow(
+      ctx,
+      organizationId,
+      location,
+      args.now,
+    );
     const count = await getCount(
       ctx,
       organizationId,
@@ -442,7 +467,11 @@ export const setCountQuantity = mutation({
     if (!Number.isFinite(args.quantity) || args.quantity < 0) {
       throw new ConvexError("Mængden skal være nul eller større");
     }
-    await requireLocation(ctx, organizationId, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const [product, productUnit] = await Promise.all([
       ctx.db.get("products", args.productId),
       ctx.db
@@ -465,17 +494,21 @@ export const setCountQuantity = mutation({
     }
 
     const now = Date.now();
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(now, settings);
-    const window = countWindow(periodKey, settings);
+    const window = await getLocationCountWindow(
+      ctx,
+      organizationId,
+      location,
+      now,
+    );
+    const periodKey = window.periodKey;
     const [currentCount, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
       hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
     if (
-      !settings.allowOutsideWindow &&
+      !window.allowOutsideWindow &&
       hasSubmitted &&
-      !windowIsOpen(now, window.opensAt, window.closesAt)
+      !windowIsOpen(now, window)
     ) {
       throw new ConvexError("Count-vinduet er lukket");
     }
@@ -532,19 +565,27 @@ export const submitCount = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId, userName } = await requireCounter(ctx);
-    await requireLocation(ctx, organizationId, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const now = Date.now();
-    const settings = await getSettings(ctx, organizationId);
-    const periodKey = activePeriod(now, settings);
-    const window = countWindow(periodKey, settings);
+    const window = await getLocationCountWindow(
+      ctx,
+      organizationId,
+      location,
+      now,
+    );
+    const periodKey = window.periodKey;
     const [count, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
       hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
     if (
-      !settings.allowOutsideWindow &&
+      !window.allowOutsideWindow &&
       hasSubmitted &&
-      !windowIsOpen(now, window.opensAt, window.closesAt)
+      !windowIsOpen(now, window)
     ) {
       throw new ConvexError("Count-vinduet er lukket");
     }

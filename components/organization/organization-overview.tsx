@@ -45,7 +45,7 @@ const sections = [
   },
   {
     title: "Count",
-    description: "Indstil tidspunktet for den månedlige count.",
+    description: "Indstil frekvens og regler for count-vinduet.",
     href: "/organization/count",
     icon: ClipboardListIcon,
     adminOnly: true,

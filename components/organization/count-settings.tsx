@@ -2,14 +2,13 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { Clock3Icon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -17,34 +16,45 @@ import {
 import {
   Field,
   FieldContent,
+  FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { canManageOrganization } from "@/lib/auth-permissions";
-import { activePeriod, countWindow } from "@/lib/count-window";
+import type { CountSchedule } from "@/lib/count-window";
 
-const dateFormatter = new Intl.DateTimeFormat("da-DK", {
-  dateStyle: "long",
-  timeStyle: "short",
-  timeZone: "Europe/Copenhagen",
-});
+const scheduleOptions = [
+  { value: "monthly", label: "Månedligt" },
+  { value: "interval", label: "Fast interval" },
+];
 
-function timeValue(minuteOfDay: number) {
-  const hours = Math.floor(minuteOfDay / 60);
-  const minutes = minuteOfDay % 60;
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
+const monthlyDayOptions = [
+  { value: "0", label: "Sidste dag i måneden" },
+  ...Array.from({ length: 31 }, (_, index) => ({
+    value: String(index + 1),
+    label: `${index + 1}. dag i måneden`,
+  })),
+];
 
-function minuteValue(value: string) {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+function today() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Copenhagen",
+  }).format(new Date());
 }
 
 function messageFrom(error: unknown) {
@@ -55,41 +65,32 @@ export function CountSettings() {
   const membership = authClient.useActiveMemberRole();
   const settings = useQuery(api.count.getCountSettings);
   const saveSettings = useMutation(api.count.setCountSettings);
-  const [draftTimes, setDraftTimes] = useState<{
-    closeTime: string;
-    openTime: string;
-  } | null>(null);
   const [draftAllowOutsideWindow, setDraftAllowOutsideWindow] = useState<
     boolean | null
   >(null);
   const [draftLockOtherFeatures, setDraftLockOtherFeatures] = useState<
     boolean | null
   >(null);
-  const [previewNow] = useState(() => Date.now());
+  const [draftRequireCount, setDraftRequireCount] = useState<boolean | null>(
+    null,
+  );
+  const [draftSchedule, setDraftSchedule] = useState<CountSchedule | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
-  const closeTime =
-    draftTimes?.closeTime ??
-    (settings ? timeValue(settings.closeMinuteOfDay) : "");
-  const openTime =
-    draftTimes?.openTime ??
-    (settings ? timeValue(settings.openMinuteOfDay) : "");
   const allowOutsideWindow =
     draftAllowOutsideWindow ?? settings?.allowOutsideWindow ?? false;
   const lockOtherFeaturesDuringCount =
     draftLockOtherFeatures ??
     settings?.lockOtherFeaturesDuringCount ??
     false;
-
-  const preview = useMemo(() => {
-    const closeMinuteOfDay = minuteValue(closeTime);
-    const openMinuteOfDay = minuteValue(openTime);
-    if (closeMinuteOfDay === null || openMinuteOfDay === null) return null;
-    const nextSettings = { closeMinuteOfDay, openMinuteOfDay };
-    return countWindow(activePeriod(previewNow, nextSettings), nextSettings);
-  }, [closeTime, openTime, previewNow]);
+  const requireCountBeforeOpening =
+    draftRequireCount ?? settings?.requireCountBeforeOpening ?? true;
+  const countSchedule =
+    draftSchedule ?? settings?.countSchedule ?? { type: "monthly", day: 0 };
 
   if (membership.isPending || !settings) {
-    return <Skeleton className="h-80 w-full max-w-2xl" />;
+    return <Skeleton className="h-72 w-full max-w-2xl" />;
   }
 
   if (!canManageOrganization(membership.data?.role)) {
@@ -104,19 +105,23 @@ export function CountSettings() {
   }
 
   async function save() {
-    const closeMinuteOfDay = minuteValue(closeTime);
-    const openMinuteOfDay = minuteValue(openTime);
-    if (closeMinuteOfDay === null || openMinuteOfDay === null) {
-      toast.error("Vælg gyldige tidspunkter");
+    if (
+      countSchedule.type === "interval" &&
+      (!Number.isInteger(countSchedule.intervalDays) ||
+        countSchedule.intervalDays < 1 ||
+        countSchedule.intervalDays > 365)
+    ) {
+      toast.error("Intervallet skal være mellem 1 og 365 dage");
       return;
     }
+
     setSaving(true);
     try {
       await saveSettings({
-        closeMinuteOfDay,
-        openMinuteOfDay,
         allowOutsideWindow,
         lockOtherFeaturesDuringCount,
+        requireCountBeforeOpening,
+        countSchedule,
       });
       toast.success("Count-indstillingerne er gemt");
     } catch (error) {
@@ -127,13 +132,15 @@ export function CountSettings() {
   }
 
   return (
-    <Card className="max-w-2xl">
+    <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>Count-indstillinger</CardTitle>
-        <CardDescription>
-          Vælg hvornår count er tilgængelig, og om den øvrige drift skal låses
-          under count-vinduet.
-        </CardDescription>
+        <div className="flex items-center gap-1">
+          <CardTitle>Count-indstillinger</CardTitle>
+          <HelpTooltip
+            label="Count-indstillinger"
+            content="Vælg hvornår count skal gennemføres, om det skal være registreret før åbning, og om den øvrige drift skal låses imens."
+          />
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <FieldGroup>
@@ -145,7 +152,7 @@ export function CountSettings() {
                 </FieldLabel>
                 <HelpTooltip
                   label="Tillad count uden for count-vinduet"
-                  content="Medarbejdere kan registrere månedens count når som helst."
+                  content="Medarbejdere kan registrere den aktuelle count når som helst."
                 />
               </div>
             </FieldContent>
@@ -175,63 +182,150 @@ export function CountSettings() {
               onCheckedChange={setDraftLockOtherFeatures}
             />
           </Field>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="count-close-time">Lukketid</FieldLabel>
-              <HelpTooltip
-                label="Lukketid"
-                content="Her åbner månedens count."
-              />
-            </div>
-            <Input
-              id="count-close-time"
-              type="time"
-              value={closeTime}
-              onChange={(event) =>
-                setDraftTimes({
-                  closeTime: event.target.value,
-                  openTime,
-                })
-              }
-              className="h-11"
-            />
-          </Field>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="count-open-time">Åbningstid</FieldLabel>
-              <HelpTooltip
-                label="Åbningstid"
-                content="Her låses count næste dag."
-              />
-            </div>
-            <Input
-              id="count-open-time"
-              type="time"
-              value={openTime}
-              onChange={(event) =>
-                setDraftTimes({
-                  closeTime,
-                  openTime: event.target.value,
-                })
-              }
-              className="h-11"
+          <Field orientation="horizontal">
+            <FieldContent>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="count-required-before-opening">
+                  Kræv count før åbning
+                </FieldLabel>
+                <HelpTooltip
+                  label="Kræv count før åbning"
+                  content="Når indstillingen er slået til, forbliver et count åbent efter locationens åbningstid, indtil det er registreret."
+                />
+              </div>
+            </FieldContent>
+            <Switch
+              id="count-required-before-opening"
+              aria-label="Kræv count før åbning"
+              checked={requireCountBeforeOpening}
+              onCheckedChange={setDraftRequireCount}
             />
           </Field>
         </FieldGroup>
 
-        {preview ? (
-          <Alert>
-            <Clock3Icon />
-            <AlertTitle>Næste count-vindue</AlertTitle>
-            <AlertDescription>
-              {dateFormatter.format(preview.opensAt)} til{" "}
-              {dateFormatter.format(preview.closesAt)}.
-            </AlertDescription>
-          </Alert>
-        ) : null}
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Count-frekvens</FieldLabel>
+            <Select
+              items={scheduleOptions}
+              value={countSchedule.type}
+              onValueChange={(value) =>
+                setDraftSchedule(
+                  value === "interval"
+                    ? {
+                        type: "interval",
+                        intervalDays: 14,
+                        anchorDate: today(),
+                      }
+                    : { type: "monthly", day: 0 },
+                )
+              }
+            >
+              <SelectTrigger className="h-11! w-full sm:max-w-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {scheduleOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Vælg hvornår count-vinduet skal åbne.
+            </FieldDescription>
+          </Field>
+
+          {countSchedule.type === "monthly" ? (
+            <Field>
+              <FieldLabel>Count-dag</FieldLabel>
+              <Select
+                items={monthlyDayOptions}
+                value={String(countSchedule.day)}
+                onValueChange={(value) =>
+                  setDraftSchedule({
+                    type: "monthly",
+                    day: Number(value),
+                  })
+                }
+              >
+                <SelectTrigger className="h-11! w-full sm:max-w-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {monthlyDayOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : (
+            <FieldGroup className="grid sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="count-interval-days">
+                  Interval i dage
+                </FieldLabel>
+                <Input
+                  id="count-interval-days"
+                  type="number"
+                  min={1}
+                  max={365}
+                  className="h-11"
+                  value={countSchedule.intervalDays}
+                  onChange={(event) =>
+                    setDraftSchedule({
+                      ...countSchedule,
+                      intervalDays: Number(event.target.value),
+                    })
+                  }
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="count-anchor-date">
+                  Første count-dato
+                </FieldLabel>
+                <Input
+                  id="count-anchor-date"
+                  type="date"
+                  className="h-11"
+                  value={countSchedule.anchorDate}
+                  onChange={(event) =>
+                    setDraftSchedule({
+                      ...countSchedule,
+                      anchorDate: event.target.value,
+                    })
+                  }
+                />
+              </Field>
+            </FieldGroup>
+          )}
+        </FieldGroup>
+
+        <Alert>
+          <Clock3Icon />
+          <AlertTitle>Count-vinduet følger åbningstiderne</AlertTitle>
+          <AlertDescription>
+            Count åbner, når locationen lukker på den valgte count-dag
+            {requireCountBeforeOpening
+              ? ", og forbliver åbent, indtil det er registreret."
+              : ", og lukker, når locationen åbner igen."}{" "}
+            Åbningstider og særlige datoer ændres under Locations.
+          </AlertDescription>
+        </Alert>
       </CardContent>
       <CardFooter className="justify-end">
-        <Button disabled={saving || !preview} onClick={() => void save()}>
+        <Button
+          className="min-h-11"
+          disabled={saving}
+          onClick={() => void save()}
+        >
           {saving ? <Spinner data-icon="inline-start" /> : null}
           Gem count-indstillinger
         </Button>

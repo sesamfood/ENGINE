@@ -30,8 +30,18 @@ const periodFormatter = new Intl.DateTimeFormat("da-DK", {
   timeZone: "Europe/Copenhagen",
 });
 
+const dateFormatter = new Intl.DateTimeFormat("da-DK", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "Europe/Copenhagen",
+});
+
 function formatPeriod(periodKey: string) {
-  const [year, month] = periodKey.split("-").map(Number);
+  const [year, month, day] = periodKey.split("-").map(Number);
+  if (day) {
+    return dateFormatter.format(Date.UTC(year, month - 1, day));
+  }
   return periodFormatter.format(Date.UTC(year, month - 1, 15));
 }
 
@@ -159,7 +169,7 @@ export function CountHeader() {
       ? submitted
           ? state.count?.submittedAt
             ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
-            : "Denne måneds count kan ikke ændres."
+            : "Denne count kan ikke ændres."
         : `Næste vindue åbner om ${countdown(state.opensAt, now)}.`
       : "Vælg en location for at se count-vinduet.";
   const locationItems =
