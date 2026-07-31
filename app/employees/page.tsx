@@ -1,5 +1,5 @@
-import { WorkfeedEmployees } from "@/components/workfeed/workfeed-employees";
+import { EmployeeScheduling } from "@/components/employees/employee-scheduling";
 
 export default function EmployeesPage() {
-  return <WorkfeedEmployees />;
+  return <EmployeeScheduling />;
 }

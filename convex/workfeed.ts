@@ -1,6 +1,5 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import {
   action,
@@ -10,14 +9,14 @@ import {
   query,
 } from "./_generated/server";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  parseDepartments,
+  requestWorkfeed,
+  type WorkfeedDepartment,
+  type WorkfeedSettings,
+} from "./lib/workfeedApi";
 
-const API_URL =
-  "https://europe-west1-production-eu-327a3.cloudfunctions.net/api";
 const MAX_LOCATIONS = 200;
-const MAX_DEPARTMENTS = 500;
-const MAX_EMPLOYEES = 5_000;
-const MAX_SHIFTS = 10_000;
-const MAX_DAY_MS = 27 * 60 * 60 * 1_000;
 
 const privateSettingsValidator = v.union(
   v.object({
@@ -33,208 +32,12 @@ const departmentValidator = v.object({
   name: v.string(),
 });
 
-const dailyContextValidator = v.union(
-  v.object({
-    apiKey: v.string(),
-    companyId: v.string(),
-    enabled: v.boolean(),
-    locations: v.array(
-      v.object({
-        locationId: v.id("locations"),
-        locationName: v.string(),
-        departmentId: v.string(),
-        departmentName: v.string(),
-      }),
-    ),
-  }),
-  v.null(),
-);
-
-const shiftResultValidator = v.object({
-  id: v.string(),
-  employeeId: v.string(),
-  employeeName: v.string(),
-  imageUrl: v.union(v.string(), v.null()),
-  start: v.number(),
-  end: v.number(),
-});
-
-type WorkfeedSettings = {
-  apiKey: string;
-  companyId: string;
-  enabled: boolean;
-};
-
-type WorkfeedDepartment = {
-  id: string;
-  name: string;
-};
-
-type WorkfeedEmployee = {
-  id: string;
-  name: string;
-  imageUrl: string | null;
-};
-
-type WorkfeedShift = {
-  id: string;
-  employeeId: string;
-  departmentId: string;
-  start: number;
-  end: number;
-};
-
-type DailyContext = WorkfeedSettings & {
-  locations: Array<{
-    locationId: Id<"locations">;
-    locationName: string;
-    departmentId: string;
-    departmentName: string;
-  }>;
-};
-
-type DailyEmployeesResult = {
-  locations: Array<{
-    locationId: Id<"locations">;
-    locationName: string;
-    departmentName: string;
-    shifts: Array<{
-      id: string;
-      employeeId: string;
-      employeeName: string;
-      imageUrl: string | null;
-      start: number;
-      end: number;
-    }>;
-  }>;
-};
-
-function object(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function string(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function requireCredential(value: string, label: string, maxLength: number) {
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > maxLength) {
     throw new ConvexError(`Indtast et gyldigt ${label}`);
   }
   return trimmed;
-}
-
-async function requestWorkfeed(
-  path: string,
-  settings: Pick<WorkfeedSettings, "apiKey" | "companyId">,
-  query?: Record<string, string>,
-) {
-  const url = new URL(
-    `${API_URL}/companies/${encodeURIComponent(settings.companyId)}${path}`,
-  );
-  for (const [key, value] of Object.entries(query ?? {})) {
-    url.searchParams.set(key, value);
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        Authorization: settings.apiKey,
-      },
-    });
-  } catch {
-    throw new ConvexError("Workfeed kunne ikke kontaktes");
-  }
-
-  if (response.status === 401 || response.status === 403) {
-    throw new ConvexError("Workfeed afviste firma-id eller API-nøgle");
-  }
-  if (!response.ok) {
-    throw new ConvexError(`Workfeed svarede med status ${response.status}`);
-  }
-
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    throw new ConvexError("Workfeed returnerede et ugyldigt svar");
-  }
-}
-
-function parseDepartments(payload: unknown): WorkfeedDepartment[] {
-  if (!Array.isArray(payload)) {
-    throw new ConvexError("Workfeed returnerede en ugyldig afdelingsliste");
-  }
-  if (payload.length > MAX_DEPARTMENTS) {
-    throw new ConvexError("Workfeed-kontoen har for mange afdelinger");
-  }
-
-  return payload.flatMap((value) => {
-    const department = object(value);
-    const id = string(department?.id);
-    const name = string(department?.name);
-    if (!id || !name || department?.isDeleted === true) return [];
-    return [{ id, name }];
-  });
-}
-
-function parseEmployees(payload: unknown): WorkfeedEmployee[] {
-  if (!Array.isArray(payload)) {
-    throw new ConvexError("Workfeed returnerede en ugyldig medarbejderliste");
-  }
-  if (payload.length > MAX_EMPLOYEES) {
-    throw new ConvexError("Workfeed-kontoen har for mange medarbejdere");
-  }
-
-  return payload.flatMap((value) => {
-    const employee = object(value);
-    const id = string(employee?.id);
-    if (!id || employee?.isDeleted === true) return [];
-    const name = [string(employee?.firstname), string(employee?.lastname)]
-      .filter(Boolean)
-      .join(" ");
-    const imageUrl = string(employee?.imageURL);
-    return [
-      {
-        id,
-        name: name || "Ukendt medarbejder",
-        imageUrl: imageUrl.startsWith("https://") ? imageUrl : null,
-      },
-    ];
-  });
-}
-
-function parseShifts(payload: unknown): WorkfeedShift[] {
-  if (!Array.isArray(payload)) {
-    throw new ConvexError("Workfeed returnerede en ugyldig vagtliste");
-  }
-  if (payload.length > MAX_SHIFTS) {
-    throw new ConvexError("Der er for mange Workfeed-vagter i perioden");
-  }
-
-  return payload.flatMap((value) => {
-    const shift = object(value);
-    const id = string(shift?.id);
-    const employeeId = string(shift?.employeeID);
-    const departmentId = string(shift?.departmentID);
-    const start = Date.parse(string(shift?.start));
-    const end = Date.parse(string(shift?.end));
-    if (
-      !id ||
-      !employeeId ||
-      !departmentId ||
-      !Number.isFinite(start) ||
-      !Number.isFinite(end) ||
-      end <= start
-    ) {
-      return [];
-    }
-    return [{ id, employeeId, departmentId, start, end }];
-  });
 }
 
 async function requireConnectedSettings(
@@ -360,48 +163,6 @@ export const getPrivateSettings = internalQuery({
   },
 });
 
-export const getDailyContext = internalQuery({
-  args: { organizationId: v.string() },
-  returns: dailyContextValidator,
-  handler: async (ctx, args) => {
-    const settings = await ctx.db
-      .query("workfeedIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .unique();
-    if (!settings) return null;
-    const mappings = await ctx.db
-      .query("workfeedLocationMappings")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .take(MAX_LOCATIONS + 1);
-    if (mappings.length > MAX_LOCATIONS) {
-      throw new ConvexError("Der er for mange Workfeed-koblinger");
-    }
-    const locations = await Promise.all(
-      mappings.map(async (mapping) => {
-        const location = await ctx.db.get("locations", mapping.locationId);
-        return location?.organizationId === args.organizationId
-          ? {
-              locationId: location._id,
-              locationName: location.name,
-              departmentId: mapping.departmentId,
-              departmentName: mapping.departmentName,
-            }
-          : null;
-      }),
-    );
-    return {
-      apiKey: settings.apiKey,
-      companyId: settings.companyId,
-      enabled: settings.enabled,
-      locations: locations.filter((location) => location !== null),
-    };
-  },
-});
-
 export const saveConnection = internalMutation({
   args: {
     organizationId: v.string(),
@@ -447,6 +208,15 @@ export const saveConnection = internalMutation({
         updatedAt: now,
       });
     }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.workfeedSync.enqueueOrganizationSync,
+      {
+        organizationId: args.organizationId,
+        kind: "employees",
+        force: true,
+      },
+    );
     return null;
   },
 });
@@ -466,6 +236,17 @@ export const setEnabledInternal = internalMutation({
       enabled: args.enabled,
       updatedAt: Date.now(),
     });
+    if (args.enabled) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.workfeedSync.enqueueOrganizationSync,
+        {
+          organizationId: args.organizationId,
+          kind: "employees",
+          force: true,
+        },
+      );
+    }
     return null;
   },
 });
@@ -521,6 +302,15 @@ export const saveLocationMappingInternal = internalMutation({
         updatedAt: Date.now(),
       });
     }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.workfeedSync.enqueueOrganizationSync,
+      {
+        organizationId: args.organizationId,
+        kind: "employees",
+        force: true,
+      },
+    );
     return null;
   },
 });
@@ -616,6 +406,11 @@ export const removeLocationMapping = mutation({
       )
       .unique();
     if (mapping) await ctx.db.delete(mapping._id);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.workfeedSync.enqueueOrganizationSync,
+      { organizationId, kind: "employees", force: true },
+    );
     return null;
   },
 });
@@ -645,80 +440,5 @@ export const disconnect = mutation({
     for (const mapping of mappings) await ctx.db.delete(mapping._id);
     if (settings) await ctx.db.delete(settings._id);
     return null;
-  },
-});
-
-export const listDailyEmployees = action({
-  args: { from: v.number(), to: v.number() },
-  returns: v.object({
-    locations: v.array(
-      v.object({
-        locationId: v.id("locations"),
-        locationName: v.string(),
-        departmentName: v.string(),
-        shifts: v.array(shiftResultValidator),
-      }),
-    ),
-  }),
-  handler: async (ctx, args): Promise<DailyEmployeesResult> => {
-    const { organizationId } = await requireOrganization(ctx);
-    if (
-      !Number.isSafeInteger(args.from) ||
-      !Number.isSafeInteger(args.to) ||
-      args.to <= args.from ||
-      args.to - args.from > MAX_DAY_MS
-    ) {
-      throw new ConvexError("Datoen er ugyldig");
-    }
-    const context: DailyContext | null = await ctx.runQuery(
-      internal.workfeed.getDailyContext,
-      {
-        organizationId,
-      },
-    );
-    if (!context?.enabled) {
-      throw new ConvexError("Workfeed-integrationen er ikke aktiv");
-    }
-    if (context.locations.length === 0) return { locations: [] };
-
-    const [shiftPayload, employeePayload] = await Promise.all([
-      requestWorkfeed("/shifts", context, {
-        startFrom: new Date(args.from - 24 * 60 * 60 * 1_000).toISOString(),
-        startTo: new Date(args.to).toISOString(),
-        released: "true",
-      }),
-      requestWorkfeed("/employees", context),
-    ]);
-    const shifts = parseShifts(shiftPayload).filter(
-      (shift) => shift.start < args.to && shift.end > args.from,
-    );
-    const employees = new Map(
-      parseEmployees(employeePayload).map((employee) => [
-        employee.id,
-        employee,
-      ]),
-    );
-
-    return {
-      locations: context.locations.map((location) => ({
-        locationId: location.locationId,
-        locationName: location.locationName,
-        departmentName: location.departmentName,
-        shifts: shifts
-          .filter((shift) => shift.departmentId === location.departmentId)
-          .map((shift) => {
-            const employee = employees.get(shift.employeeId);
-            return {
-              id: shift.id,
-              employeeId: shift.employeeId,
-              employeeName: employee?.name ?? "Ukendt medarbejder",
-              imageUrl: employee?.imageUrl ?? null,
-              start: shift.start,
-              end: shift.end,
-            };
-          })
-          .sort((a, b) => a.start - b.start),
-      })),
-    };
   },
 });

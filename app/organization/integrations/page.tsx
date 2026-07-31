@@ -3,7 +3,7 @@ import { WorkfeedIntegration } from "@/components/organization/workfeed-integrat
 
 export default function OrganizationIntegrationsPage() {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 pb-10">
       <WorkfeedIntegration />
       <OnlinePosIntegration />
     </div>

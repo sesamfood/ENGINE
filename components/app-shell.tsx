@@ -64,7 +64,7 @@ const primaryNavigation = [
   { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
 
-const workfeedNavigation = {
+const employeesNavigation = {
   label: "Medarbejdere",
   href: "/employees",
   icon: UsersRoundIcon,
@@ -227,21 +227,13 @@ function OrganizationHome() {
 
 function NavigationList() {
   const { data: membership } = authClient.useActiveMemberRole();
-  const { data: organization } = authClient.useActiveOrganization();
-  const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const featureLocked = useContext(FeatureLockContext);
-  const workfeedEnabled = useQuery(
-    api.workfeed.isEnabled,
-    organization && isAuthenticated ? {} : "skip",
-  );
-  const primaryWithIntegrations = workfeedEnabled
-    ? [...primaryNavigation, workfeedNavigation]
-    : primaryNavigation;
+  const primaryWithEmployees = [...primaryNavigation, employeesNavigation];
   const availableNavigation = featureLocked
-    ? primaryWithIntegrations.filter((item) => item.href === "/count")
-    : primaryWithIntegrations;
+    ? primaryWithEmployees.filter((item) => item.href === "/count")
+    : primaryWithEmployees;
   const navigation = canManageCatalog(membership?.role)
     ? [...availableNavigation, organizationNavigation]
     : availableNavigation;

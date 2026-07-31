@@ -3,6 +3,8 @@
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Building2Icon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   PlugIcon,
   RefreshCwIcon,
   UnplugIcon,
@@ -36,7 +38,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Empty,
   EmptyDescription,
@@ -108,7 +114,7 @@ function ConnectionCard({
 
   async function saveConnection() {
     if (!companyId.trim()) {
-      toast.error("Indtast Workfeed firma-id");
+      toast.error("Indtast Workfeed CompanyID");
       return;
     }
     if (!apiKey.trim()) {
@@ -151,7 +157,7 @@ function ConnectionCard({
       <CardHeader>
         <CardTitle>Forbindelse</CardTitle>
         <CardDescription>
-          Brug firma-id og API-nøgle fra Workfeed.
+          Brug CompanyID og API-nøgle fra Workfeed.
         </CardDescription>
         <CardAction>
           <Badge variant={settings.connected ? "default" : "secondary"}>
@@ -163,17 +169,17 @@ function ConnectionCard({
         <FieldGroup className="grid md:grid-cols-2">
           <Field>
             <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="workfeed-company-id">Firma-id</FieldLabel>
+              <FieldLabel htmlFor="workfeed-company-id">CompanyID</FieldLabel>
               <HelpTooltip
-                label="Workfeed firma-id"
-                content="Firma-id'et identificerer jeres virksomhed i Workfeed. Kontakt Workfeed, hvis I mangler firma-id eller API-adgang."
+                label="Workfeed CompanyID"
+                content="CompanyID'et identificerer jeres virksomhed i Workfeed. Kontakt Workfeed, hvis I mangler CompanyID eller API-adgang."
               />
             </div>
             <Input
               id="workfeed-company-id"
               value={companyId}
               onChange={(event) => setCompanyIdDraft(event.target.value)}
-              placeholder="Firma-id fra Workfeed"
+              placeholder="CompanyID fra Workfeed"
               autoComplete="off"
               className="h-11"
             />
@@ -267,6 +273,7 @@ function LocationMappings() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [open, setOpen] = useState(false);
   const [savingId, setSavingId] = useState<Id<"locations">>();
 
   async function load() {
@@ -301,22 +308,22 @@ function LocationMappings() {
     };
   }, [listDepartments]);
 
-  async function save(location: Location) {
-    const departmentId = drafts[location.id] ?? location.departmentId;
-    if (!departmentId) {
-      toast.error(`Vælg en Workfeed-afdeling for ${location.name}`);
-      return;
-    }
+  async function save(location: Location, departmentId: string) {
+    const previousDepartmentId =
+      drafts[location.id] ?? location.departmentId ?? "";
+    setDrafts((current) => ({
+      ...current,
+      [location.id]: departmentId,
+    }));
     setSavingId(location.id);
     try {
       await saveMapping({ locationId: location.id, departmentId });
-      setDrafts((current) => {
-        const next = { ...current };
-        delete next[location.id];
-        return next;
-      });
       toast.success(`${location.name} er koblet til Workfeed`);
     } catch (error) {
+      setDrafts((current) => ({
+        ...current,
+        [location.id]: previousDepartmentId,
+      }));
       toast.error(messageFrom(error));
     } finally {
       setSavingId(undefined);
@@ -339,195 +346,206 @@ function LocationMappings() {
   if (!mappings) return <Skeleton className="h-72 w-full" />;
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>Lokationer og afdelinger</CardTitle>
-        <CardDescription>
-          Kobl hver lokation til den afdeling, der har lokationens vagtplan i
-          Workfeed.
-        </CardDescription>
-        <CardAction>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading}
-            onClick={() => void load()}
-          >
-            {loading ? (
-              <Spinner data-icon="inline-start" />
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>Lokationer og afdelinger</CardTitle>
+          <CardDescription>
+            Kobl hver lokation til den afdeling, der har lokationens vagtplan i
+            Workfeed.
+          </CardDescription>
+          <CardAction>
+            <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
+              {open ? "Skjul" : "Vis"}
+              {open ? (
+                <ChevronUpIcon data-icon="inline-end" />
+              ) : (
+                <ChevronDownIcon data-icon="inline-end" />
+              )}
+            </CollapsibleTrigger>
+          </CardAction>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading}
+                onClick={() => void load()}
+              >
+                {loading ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <RefreshCwIcon data-icon="inline-start" />
+                )}
+                Opdatér afdelinger
+              </Button>
+            </div>
+
+            {mappings.limitReached ? (
+              <Alert>
+                <AlertTitle>Kun de første 200 lokationer vises</AlertTitle>
+                <AlertDescription>
+                  Fjern ubrugte lokationer for at se hele listen.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {loadFailed ? (
+              <Alert variant="destructive">
+                <AlertTitle>Afdelingerne kunne ikke hentes</AlertTitle>
+                <AlertDescription>
+                  Kontrollér Workfeed-forbindelsen, og prøv igen.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {mappings.locations.length === 0 ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Building2Icon />
+                  </EmptyMedia>
+                  <EmptyTitle>Ingen lokationer endnu</EmptyTitle>
+                  <EmptyDescription>
+                    Opret en lokation, før du kobler Workfeed-afdelinger.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
-              <RefreshCwIcon data-icon="inline-start" />
-            )}
-            Opdatér afdelinger
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {mappings.limitReached ? (
-          <Alert>
-            <AlertTitle>Kun de første 200 lokationer vises</AlertTitle>
-            <AlertDescription>
-              Fjern ubrugte lokationer for at se hele listen.
-            </AlertDescription>
-          </Alert>
-        ) : null}
+              <div className="grid gap-4 lg:grid-cols-2">
+                {mappings.locations.map((location) => {
+                  const value =
+                    drafts[location.id] ?? location.departmentId ?? "";
+                  const options =
+                    location.departmentId &&
+                    location.departmentName &&
+                    !departments?.some(
+                      (department) => department.id === location.departmentId,
+                    )
+                      ? [
+                          {
+                            id: location.departmentId,
+                            name: location.departmentName,
+                          },
+                          ...(departments ?? []),
+                        ]
+                      : (departments ?? []);
+                  const saving = savingId === location.id;
+                  const connected = Boolean(value);
 
-        {loadFailed ? (
-          <Alert variant="destructive">
-            <AlertTitle>Afdelingerne kunne ikke hentes</AlertTitle>
-            <AlertDescription>
-              Kontrollér Workfeed-forbindelsen, og prøv igen.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        {mappings.locations.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Building2Icon />
-              </EmptyMedia>
-              <EmptyTitle>Ingen lokationer endnu</EmptyTitle>
-              <EmptyDescription>
-                Opret en lokation, før du kobler Workfeed-afdelinger.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {mappings.locations.map((location) => {
-              const value = drafts[location.id] ?? location.departmentId ?? "";
-              const options =
-                location.departmentId &&
-                location.departmentName &&
-                !departments?.some(
-                  (department) => department.id === location.departmentId,
-                )
-                  ? [
-                      {
-                        id: location.departmentId,
-                        name: location.departmentName,
-                      },
-                      ...(departments ?? []),
-                    ]
-                  : (departments ?? []);
-              const saving = savingId === location.id;
-
-              return (
-                <Card key={location.id} size="sm">
-                  <CardHeader>
-                    <CardTitle>{location.name}</CardTitle>
-                    <CardAction>
-                      <Badge
-                        variant={
-                          location.departmentId ? "default" : "secondary"
-                        }
-                      >
-                        {location.departmentId ? "Koblet" : "Ikke koblet"}
-                      </Badge>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent>
-                    <FieldGroup>
-                      <Field data-disabled={!departments || saving}>
-                        <FieldLabel htmlFor={`workfeed-${location.id}`}>
-                          Workfeed-afdeling
-                        </FieldLabel>
-                        <Select
-                          value={value || null}
-                          disabled={!departments || saving}
-                          onValueChange={(departmentId) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [location.id]: departmentId ?? "",
-                            }))
-                          }
-                        >
-                          <SelectTrigger
-                            id={`workfeed-${location.id}`}
-                            className="h-11 w-full"
-                          >
-                            <SelectValue placeholder="Vælg afdeling" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {options.map((department) => {
-                                const usedBy = mappings.locations.find(
-                                  (item) =>
-                                    item.id !== location.id &&
-                                    item.departmentId === department.id,
-                                );
-                                return (
-                                  <SelectItem
-                                    key={department.id}
-                                    value={department.id}
-                                    disabled={Boolean(usedBy)}
+                  return (
+                    <Card key={location.id} size="sm">
+                      <CardHeader>
+                        <CardTitle>{location.name}</CardTitle>
+                        <CardAction>
+                          {connected ? (
+                            <AlertDialog>
+                              <AlertDialogTrigger
+                                render={
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={saving}
+                                  />
+                                }
+                              >
+                                Fjern kobling
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Fjern Workfeed-koblingen for {location.name}?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Lokationen vises ikke længere på
+                                    medarbejdersiden, før en afdeling kobles
+                                    igen.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel disabled={saving}>
+                                    Annuller
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    variant="destructive"
+                                    disabled={saving}
+                                    onClick={() => void remove(location)}
                                   >
-                                    {usedBy
-                                      ? `${department.name} — ${usedBy.name}`
-                                      : department.name}
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    </FieldGroup>
-                  </CardContent>
-                  <CardFooter className="flex-wrap justify-end gap-3">
-                    {location.departmentId ? (
-                      <AlertDialog>
-                        <AlertDialogTrigger
-                          render={
-                            <Button variant="outline" disabled={saving} />
-                          }
-                        >
-                          Fjern kobling
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>
-                              Fjern Workfeed-koblingen for {location.name}?
-                            </AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Lokationen vises ikke længere på
-                              medarbejdersiden, før en afdeling kobles igen.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel disabled={saving}>
-                              Annuller
-                            </AlertDialogCancel>
-                            <AlertDialogAction
-                              variant="destructive"
-                              disabled={saving}
-                              onClick={() => void remove(location)}
+                                    {saving ? (
+                                      <Spinner data-icon="inline-start" />
+                                    ) : null}
+                                    Fjern kobling
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          ) : (
+                            <Badge variant="secondary">Ikke koblet</Badge>
+                          )}
+                        </CardAction>
+                      </CardHeader>
+                      <CardContent>
+                        <FieldGroup>
+                          <Field data-disabled={!departments || saving}>
+                            <FieldLabel htmlFor={`workfeed-${location.id}`}>
+                              Workfeed-afdeling
+                            </FieldLabel>
+                            <Select
+                              items={options.map((department) => ({
+                                value: department.id,
+                                label: department.name,
+                              }))}
+                              value={value || null}
+                              disabled={!departments || saving}
+                              onValueChange={(departmentId) => {
+                                if (departmentId) {
+                                  void save(location, departmentId);
+                                }
+                              }}
                             >
-                              {saving ? (
-                                <Spinner data-icon="inline-start" />
-                              ) : null}
-                              Fjern kobling
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    ) : null}
-                    <Button
-                      disabled={!departments || !value || saving}
-                      onClick={() => void save(location)}
-                    >
-                      {saving ? <Spinner data-icon="inline-start" /> : null}
-                      Gem kobling
-                    </Button>
-                  </CardFooter>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                              <SelectTrigger
+                                id={`workfeed-${location.id}`}
+                                className="h-11 w-full"
+                              >
+                                <SelectValue placeholder="Vælg afdeling" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {options.map((department) => {
+                                    const usedBy = mappings.locations.find(
+                                      (item) =>
+                                        item.id !== location.id &&
+                                        item.departmentId === department.id,
+                                    );
+                                    return (
+                                      <SelectItem
+                                        key={department.id}
+                                        value={department.id}
+                                        disabled={Boolean(usedBy)}
+                                      >
+                                        {usedBy
+                                          ? `${department.name} — ${usedBy.name}`
+                                          : department.name}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                        </FieldGroup>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 
@@ -604,7 +622,7 @@ export function WorkfeedIntegration() {
           </CardAction>
         </CardHeader>
         <CollapsibleContent id="workfeed-integration-settings">
-          <CardContent className="flex flex-col gap-5">
+          <CardContent className="flex flex-col gap-5 pb-4">
             <ConnectionCard
               settings={settings}
               onDisconnected={() => setSetupOpen(false)}
