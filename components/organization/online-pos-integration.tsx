@@ -11,6 +11,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
+import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -34,6 +35,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   Empty,
   EmptyDescription,
@@ -41,13 +43,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,6 +70,8 @@ type OnlinePosProduct = {
 };
 
 type Sale = {
+  locationId: Id<"locations">;
+  locationName: string;
   id: number;
   checkNumber: number;
   date: string;
@@ -108,7 +106,7 @@ function messageFrom(error: unknown) {
 
 function ConnectionCard({
   settings,
-  onDisabled,
+  onDisconnected,
 }: {
   settings: {
     connected: boolean;
@@ -116,15 +114,13 @@ function ConnectionCard({
     companyId: number | null;
     connectedAt: number | null;
   };
-  onDisabled: () => void;
+  onDisconnected: () => void;
 }) {
   const connect = useAction(api.onlinePos.connect);
-  const setEnabled = useAction(api.onlinePos.setEnabled);
   const disconnect = useMutation(api.onlinePos.disconnect);
   const [companyIdDraft, setCompanyIdDraft] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const [changingEnabled, setChangingEnabled] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const companyId = companyIdDraft ?? String(settings.companyId ?? "");
 
@@ -145,29 +141,12 @@ function ConnectionCard({
       setToken("");
       setCompanyIdDraft(null);
       toast.success(
-        `OnlinePOS er forbundet. ${result.productCount} produkter blev fundet.`,
+        `Masterforbindelsen er oprettet. ${result.productCount} produkter blev fundet.`,
       );
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
       setConnecting(false);
-    }
-  }
-
-  async function changeEnabled(enabled: boolean) {
-    setChangingEnabled(true);
-    try {
-      await setEnabled({ enabled });
-      if (!enabled) onDisabled();
-      toast.success(
-        enabled
-          ? "OnlinePOS-integrationen er aktiveret"
-          : "OnlinePOS-integrationen er deaktiveret",
-      );
-    } catch (error) {
-      toast.error(messageFrom(error));
-    } finally {
-      setChangingEnabled(false);
     }
   }
 
@@ -177,8 +156,8 @@ function ConnectionCard({
       await disconnect({});
       setCompanyIdDraft("");
       setToken("");
-      onDisabled();
-      toast.success("Forbindelsen til OnlinePOS er fjernet");
+      onDisconnected();
+      toast.success("OnlinePOS-integrationen er fjernet");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -187,13 +166,15 @@ function ConnectionCard({
   }
 
   return (
-    <Card className="max-w-3xl">
+    <Card className="max-w-5xl">
       <CardHeader>
-        <CardTitle>OnlinePOS</CardTitle>
-        <CardDescription>
-          Forbind organisationen med OnlinePOS for at koble produkter og hente
-          salg.
-        </CardDescription>
+        <CardTitle className="flex items-center gap-1">
+          Masterforbindelse
+          <HelpTooltip
+            label="OnlinePOS-masterforbindelsen"
+            content="Masterens firma-id og token bruges til at hente produktlisten til produktkoblinger. Salg hentes med forbindelsen for hver lokation."
+          />
+        </CardTitle>
         <CardAction>
           <Badge variant={settings.enabled ? "default" : "secondary"}>
             {settings.enabled
@@ -205,34 +186,15 @@ function ConnectionCard({
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        {settings.connected ? (
-          <Field orientation="horizontal">
-            <FieldContent>
-              <FieldLabel htmlFor="online-pos-enabled">
-                Aktivér integration
-              </FieldLabel>
-              <FieldDescription>
-                Produktkoblinger og salg er kun tilgængelige, når integrationen
-                er aktiv.
-              </FieldDescription>
-            </FieldContent>
-            <Switch
-              id="online-pos-enabled"
-              aria-label="Aktivér OnlinePOS-integration"
-              checked={settings.enabled}
-              disabled={changingEnabled}
-              onCheckedChange={(enabled) => void changeEnabled(enabled)}
-            />
-          </Field>
-        ) : null}
-
         <FieldGroup>
           <Field>
             <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="online-pos-company-id">Firma-id</FieldLabel>
+              <FieldLabel htmlFor="online-pos-company-id">
+                Master Firma-id
+              </FieldLabel>
               <HelpTooltip
-                label="OnlinePOS firma-id"
-                content="Firma-id er virksomhedens id hos OnlinePOS. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt for at få firma-id og API-adgang."
+                label="OnlinePOS master firma-id"
+                content="Brug firma-id'et for den OnlinePOS-konto, som indeholder masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt for at få firma-id og API-adgang."
               />
             </div>
             <Input
@@ -249,11 +211,11 @@ function ConnectionCard({
           <Field>
             <div className="flex items-center gap-1">
               <FieldLabel htmlFor="online-pos-token">
-                {settings.connected ? "Nyt token" : "Token"}
+                {settings.connected ? "Nyt mastertoken" : "Mastertoken"}
               </FieldLabel>
               <HelpTooltip
-                label="OnlinePOS-token"
-                content="Tokenet udstedes af OnlinePOS til API-adgang. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
+                label="OnlinePOS mastertoken"
+                content="Brug API-tokenet til OnlinePOS-kontoen med masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
               />
             </div>
             <Input
@@ -293,8 +255,8 @@ function ConnectionCard({
                   Fjern forbindelsen til OnlinePOS?
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Tokenet og alle produktkoblinger slettes. Handlingen kan ikke
-                  fortrydes.
+                  Mastertokenet, alle lokationstokens og alle produktkoblinger
+                  slettes. Handlingen kan ikke fortrydes.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -319,7 +281,7 @@ function ConnectionCard({
           ) : (
             <PlugIcon data-icon="inline-start" />
           )}
-          {settings.connected ? "Opdater forbindelse" : "Forbind OnlinePOS"}
+          {settings.connected ? "Opdater master" : "Forbind master"}
         </Button>
       </CardFooter>
     </Card>
@@ -471,11 +433,15 @@ function ProductMappings({
 
 function SalesList() {
   const listSales = useAction(api.onlinePos.listSales);
+  const locationConnections = useQuery(api.onlinePos.listLocationConnections);
   const [fromDate, setFromDate] = useState(() => dateInput(7));
   const [toDate, setToDate] = useState(() => dateInput(0));
   const [sales, setSales] = useState<Sale[] | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const connectedLocationCount =
+    locationConnections?.locations.filter((location) => location.connected)
+      .length ?? 0;
 
   async function loadSales() {
     const from = new Date(`${fromDate}T00:00:00`).getTime();
@@ -507,10 +473,21 @@ function SalesList() {
       <CardHeader>
         <CardTitle>Salg fra OnlinePOS</CardTitle>
         <CardDescription>
-          Hent salg for en periode på højst 31 dage. Datoerne er inklusive.
+          Hent salg fra alle forbundne lokationer for en periode på højst 31
+          dage. Datoerne er inklusive.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
+        {locationConnections && connectedLocationCount === 0 ? (
+          <Alert>
+            <CircleAlertIcon />
+            <AlertTitle>Ingen lokationer er forbundet</AlertTitle>
+            <AlertDescription>
+              Tilføj firma-id og token til mindst én lokation under
+              Indstillinger, før du henter salg.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <FieldGroup className="grid sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <Field>
             <FieldLabel htmlFor="online-pos-sales-from">Fra dato</FieldLabel>
@@ -532,7 +509,12 @@ function SalesList() {
               className="h-11"
             />
           </Field>
-          <Button disabled={loading} onClick={() => void loadSales()}>
+          <Button
+            disabled={
+              loading || !locationConnections || connectedLocationCount === 0
+            }
+            onClick={() => void loadSales()}
+          >
             {loading ? <Spinner data-icon="inline-start" /> : null}
             Hent salg
           </Button>
@@ -575,6 +557,7 @@ function SalesList() {
             <TableHeader>
               <TableRow>
                 <TableHead>Dato</TableHead>
+                <TableHead>Lokation</TableHead>
                 <TableHead>OnlinePOS-produkt</TableHead>
                 <TableHead>Lokalt produkt</TableHead>
                 <TableHead>Antal</TableHead>
@@ -585,10 +568,13 @@ function SalesList() {
             </TableHeader>
             <TableBody>
               {sales.map((sale) => (
-                <TableRow key={`${sale.id}-${sale.checkNumber}`}>
+                <TableRow
+                  key={`${sale.locationId}-${sale.id}-${sale.checkNumber}`}
+                >
                   <TableCell>
                     {sale.date} {sale.time}
                   </TableCell>
+                  <TableCell>{sale.locationName}</TableCell>
                   <TableCell>{sale.onlinePosProductName}</TableCell>
                   <TableCell>
                     {sale.localProductName ? (
@@ -616,7 +602,10 @@ export function OnlinePosIntegration() {
   const isAdmin = canManageOrganization(membership.data?.role);
   const settings = useQuery(api.onlinePos.getSettings, isAdmin ? {} : "skip");
   const listOnlinePosProducts = useAction(api.onlinePos.listProducts);
+  const setEnabled = useAction(api.onlinePos.setEnabled);
   const [tab, setTab] = useState("connection");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [changingEnabled, setChangingEnabled] = useState(false);
   const [onlinePosProducts, setOnlinePosProducts] = useState<
     OnlinePosProduct[] | null
   >(null);
@@ -631,6 +620,30 @@ export function OnlinePosIntegration() {
       toast.error(messageFrom(error));
     } finally {
       setLoadingProducts(false);
+    }
+  }
+
+  async function changeIntegrationEnabled(enabled: boolean) {
+    setSetupOpen(enabled);
+    if (!settings?.connected) {
+      if (!enabled) setTab("connection");
+      return;
+    }
+
+    setChangingEnabled(true);
+    try {
+      await setEnabled({ enabled });
+      if (!enabled) setTab("connection");
+      toast.success(
+        enabled
+          ? "OnlinePOS-integrationen er aktiveret"
+          : "OnlinePOS-integrationen er deaktiveret",
+      );
+    } catch (error) {
+      setSetupOpen(settings.enabled);
+      toast.error(messageFrom(error));
+    } finally {
+      setChangingEnabled(false);
     }
   }
 
@@ -653,50 +666,96 @@ export function OnlinePosIntegration() {
     return <Skeleton className="h-96 w-full max-w-3xl" />;
   }
 
-  if (!settings.enabled) {
-    return (
-      <ConnectionCard
-        settings={settings}
-        onDisabled={() => setTab("connection")}
-      />
-    );
-  }
+  const integrationOpen = settings.enabled || setupOpen;
 
   return (
-    <Tabs
-      value={tab}
-      onValueChange={(value) => {
-        setTab(value);
-        if (value === "mappings" && !onlinePosProducts && !loadingProducts) {
-          void loadProducts();
-        }
-      }}
-      className="gap-5"
-    >
-      <TabsList
-        aria-label="OnlinePOS-sektioner"
-        className="w-full justify-start"
-      >
-        <TabsTrigger value="connection">Forbindelse</TabsTrigger>
-        <TabsTrigger value="mappings">Produktkoblinger</TabsTrigger>
-        <TabsTrigger value="sales">Salg</TabsTrigger>
-      </TabsList>
-      <TabsContent value="connection">
-        <ConnectionCard
-          settings={settings}
-          onDisabled={() => setTab("connection")}
-        />
-      </TabsContent>
-      <TabsContent value="mappings">
-        <ProductMappings
-          onlinePosProducts={onlinePosProducts}
-          loading={loadingProducts}
-          onReload={() => void loadProducts()}
-        />
-      </TabsContent>
-      <TabsContent value="sales">
-        <SalesList />
-      </TabsContent>
-    </Tabs>
+    <Collapsible open={integrationOpen}>
+      <Card className="max-w-6xl has-data-[slot=card-footer]:pb-(--card-spacing)">
+        <CardHeader>
+          <CardTitle>OnlinePOS</CardTitle>
+          <CardDescription>
+            Hent produkter fra en masterkonto, og hent salg med separate
+            forbindelser for hver lokation.
+          </CardDescription>
+          <CardAction>
+            <Field orientation="horizontal" className="w-auto">
+              <Switch
+                id="online-pos-integration-enabled"
+                aria-controls="online-pos-integration-settings"
+                aria-expanded={integrationOpen}
+                aria-label="Aktivér OnlinePOS-integration"
+                checked={integrationOpen}
+                disabled={changingEnabled}
+                onCheckedChange={(enabled) =>
+                  void changeIntegrationEnabled(enabled)
+                }
+              />
+            </Field>
+          </CardAction>
+        </CardHeader>
+        <CollapsibleContent id="online-pos-integration-settings">
+          <CardContent>
+            {settings.enabled ? (
+              <Tabs
+                value={tab}
+                onValueChange={(value) => {
+                  setTab(value);
+                  if (
+                    value === "mappings" &&
+                    !onlinePosProducts &&
+                    !loadingProducts
+                  ) {
+                    void loadProducts();
+                  }
+                }}
+                className="gap-5"
+              >
+                <TabsList
+                  aria-label="OnlinePOS-sektioner"
+                  className="w-full justify-start"
+                >
+                  <TabsTrigger value="connection">Indstillinger</TabsTrigger>
+                  <TabsTrigger value="mappings">Produktkoblinger</TabsTrigger>
+                  <TabsTrigger value="sales">Salg</TabsTrigger>
+                </TabsList>
+                <TabsContent value="connection">
+                  <div className="flex flex-col gap-5">
+                    <ConnectionCard
+                      settings={settings}
+                      onDisconnected={() => {
+                        setSetupOpen(false);
+                        setTab("connection");
+                      }}
+                    />
+                    <OnlinePosLocationConnections />
+                  </div>
+                </TabsContent>
+                <TabsContent value="mappings">
+                  <ProductMappings
+                    onlinePosProducts={onlinePosProducts}
+                    loading={loadingProducts}
+                    onReload={() => void loadProducts()}
+                  />
+                </TabsContent>
+                <TabsContent value="sales">
+                  <SalesList />
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <div className="flex flex-col gap-5">
+                <ConnectionCard
+                  settings={settings}
+                  onDisconnected={() => {
+                    setSetupOpen(false);
+                    setTab("connection");
+                  }}
+                />
+                <OnlinePosLocationConnections />
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }

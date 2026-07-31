@@ -25,6 +25,20 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
+  onlinePosLocationIntegrations: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    token: v.string(),
+    companyId: v.number(),
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_locationId", [
+      "organizationId",
+      "locationId",
+    ]),
+
   onlinePosProductMappings: defineTable({
     organizationId: v.string(),
     productId: v.id("products"),

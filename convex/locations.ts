@@ -465,6 +465,13 @@ export const deleteLocation = mutation({
     for (const hours of specialOpeningHours) {
       await ctx.db.delete("locationSpecialOpeningHours", hours._id);
     }
+    const onlinePosConnection = await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", location._id),
+      )
+      .unique();
+    if (onlinePosConnection) await ctx.db.delete(onlinePosConnection._id);
     await ctx.db.delete("locations", location._id);
     return null;
   },

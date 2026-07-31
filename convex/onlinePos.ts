@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import {
   action,
@@ -11,6 +12,7 @@ import {
 import { requireOrganizationAdmin } from "./lib/auth";
 
 const API_URL = "https://api.onlinepos.dk/api";
+const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
 const MAX_SALES = 500;
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
@@ -31,6 +33,8 @@ const onlinePosProductValidator = v.object({
 });
 
 const saleValidator = v.object({
+  locationId: v.id("locations"),
+  locationName: v.string(),
   id: v.number(),
   checkNumber: v.number(),
   date: v.string(),
@@ -133,6 +137,29 @@ function parseProducts(payload: unknown): OnlinePosProduct[] {
   });
 }
 
+async function requestSales(
+  settings: { token: string; companyId: number },
+  from: number,
+  to: number,
+) {
+  const body = new URLSearchParams({
+    from: String(Math.floor(from / 1000)),
+    to: String(Math.floor(to / 1000)),
+    map_to_koncern: "true",
+  });
+  const payload = object(
+    await requestOnlinePos("/exportSales", settings, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    }),
+  );
+  if (!Array.isArray(payload?.sales)) {
+    throw new ConvexError("OnlinePOS returnerede en ugyldig salgsliste");
+  }
+  return payload.sales;
+}
+
 async function requireEnabledSettings(ctx: ActionCtx): Promise<{
   organizationId: string;
   settings: { token: string; companyId: number; enabled: boolean };
@@ -176,6 +203,56 @@ export const getSettings = query({
   },
 });
 
+export const listLocationConnections = query({
+  args: {},
+  returns: v.object({
+    locations: v.array(
+      v.object({
+        id: v.id("locations"),
+        name: v.string(),
+        connected: v.boolean(),
+        companyId: v.union(v.number(), v.null()),
+        connectedAt: v.union(v.number(), v.null()),
+      }),
+    ),
+    limitReached: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const [locations, connections] = await Promise.all([
+      ctx.db
+        .query("locations")
+        .withIndex("by_organizationId_and_normalizedName", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS),
+    ]);
+    const byLocationId = new Map(
+      connections.map((connection) => [connection.locationId, connection]),
+    );
+
+    return {
+      locations: locations.slice(0, MAX_LOCATIONS).map((location) => {
+        const connection = byLocationId.get(location._id);
+        return {
+          id: location._id,
+          name: location.name,
+          connected: Boolean(connection),
+          companyId: connection?.companyId ?? null,
+          connectedAt: connection?.connectedAt ?? null,
+        };
+      }),
+      limitReached: locations.length > MAX_LOCATIONS,
+    };
+  },
+});
+
 export const getPrivateSettings = internalQuery({
   args: { organizationId: v.string() },
   returns: privateSettingsValidator,
@@ -199,7 +276,15 @@ export const getPrivateSettings = internalQuery({
 export const getSalesContext = internalQuery({
   args: { organizationId: v.string() },
   returns: v.object({
-    settings: privateSettingsValidator,
+    masterEnabled: v.boolean(),
+    locations: v.array(
+      v.object({
+        id: v.id("locations"),
+        name: v.string(),
+        token: v.string(),
+        companyId: v.number(),
+      }),
+    ),
     mappings: v.array(
       v.object({ onlinePosProductId: v.number(), productName: v.string() }),
     ),
@@ -211,12 +296,23 @@ export const getSalesContext = internalQuery({
         q.eq("organizationId", args.organizationId),
       )
       .unique();
-    const rows = await ctx.db
-      .query("onlinePosProductMappings")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .take(MAX_PRODUCTS);
+    const [rows, locationSettings] = await Promise.all([
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .take(MAX_PRODUCTS),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+    ]);
+    if (locationSettings.length > MAX_LOCATIONS) {
+      throw new ConvexError("Der er for mange OnlinePOS-lokationer");
+    }
     const mappings = await Promise.all(
       rows.map(async (row) => {
         const product = await ctx.db.get("products", row.productId);
@@ -228,17 +324,42 @@ export const getSalesContext = internalQuery({
           : null;
       }),
     );
+    const locations = await Promise.all(
+      locationSettings.map(async (locationSettings) => {
+        const location = await ctx.db.get(
+          "locations",
+          locationSettings.locationId,
+        );
+        return location?.organizationId === args.organizationId
+          ? {
+              id: location._id,
+              name: location.name,
+              token: locationSettings.token,
+              companyId: locationSettings.companyId,
+            }
+          : null;
+      }),
+    );
 
     return {
-      settings: settings
-        ? {
-            token: settings.token,
-            companyId: settings.companyId,
-            enabled: settings.enabled,
-          }
-        : null,
+      masterEnabled: settings?.enabled ?? false,
+      locations: locations.filter((location) => location !== null),
       mappings: mappings.filter((mapping) => mapping !== null),
     };
+  },
+});
+
+export const getLocationName = internalQuery({
+  args: {
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+  },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const location = await ctx.db.get("locations", args.locationId);
+    return location?.organizationId === args.organizationId
+      ? location.name
+      : null;
   },
 });
 
@@ -293,6 +414,51 @@ export const saveConnection = internalMutation({
   },
 });
 
+export const saveLocationConnection = internalMutation({
+  args: {
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    token: v.string(),
+    companyId: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const [location, current] = await Promise.all([
+      ctx.db.get("locations", args.locationId),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("locationId", args.locationId),
+        )
+        .unique(),
+    ]);
+    if (!location || location.organizationId !== args.organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
+    const now = Date.now();
+    if (current) {
+      await ctx.db.patch(current._id, {
+        token: args.token,
+        companyId: args.companyId,
+        connectedAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("onlinePosLocationIntegrations", {
+        organizationId: args.organizationId,
+        locationId: args.locationId,
+        token: args.token,
+        companyId: args.companyId,
+        connectedAt: now,
+        updatedAt: now,
+      });
+    }
+    return null;
+  },
+});
+
 export const setEnabledInternal = internalMutation({
   args: { organizationId: v.string(), enabled: v.boolean() },
   returns: v.null(),
@@ -334,6 +500,39 @@ export const connect = action({
   },
 });
 
+export const connectLocation = action({
+  args: {
+    locationId: v.id("locations"),
+    token: v.string(),
+    companyId: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    requireCompanyId(args.companyId);
+    const token = requireToken(args.token);
+    const locationName: string | null = await ctx.runQuery(
+      internal.onlinePos.getLocationName,
+      { organizationId, locationId: args.locationId },
+    );
+    if (!locationName) throw new ConvexError("Lokationen blev ikke fundet");
+
+    const now = Date.now();
+    await requestSales(
+      { token, companyId: args.companyId },
+      now - 5 * 60 * 1000,
+      now,
+    );
+    await ctx.runMutation(internal.onlinePos.saveLocationConnection, {
+      organizationId,
+      locationId: args.locationId,
+      token,
+      companyId: args.companyId,
+    });
+    return null;
+  },
+});
+
 export const setEnabled = action({
   args: { enabled: v.boolean() },
   returns: v.null(),
@@ -363,7 +562,7 @@ export const disconnect = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    const [settings, mappings] = await Promise.all([
+    const [settings, mappings, locationConnections] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -376,12 +575,42 @@ export const disconnect = mutation({
           q.eq("organizationId", organizationId),
         )
         .take(MAX_PRODUCTS + 1),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
     ]);
     if (mappings.length > MAX_PRODUCTS) {
       throw new ConvexError("Der er for mange produktkoblinger");
     }
+    if (locationConnections.length > MAX_LOCATIONS) {
+      throw new ConvexError("Der er for mange OnlinePOS-lokationer");
+    }
     for (const mapping of mappings) await ctx.db.delete(mapping._id);
+    for (const connection of locationConnections) {
+      await ctx.db.delete(connection._id);
+    }
     if (settings) await ctx.db.delete(settings._id);
+    return null;
+  },
+});
+
+export const disconnectLocation = mutation({
+  args: { locationId: v.id("locations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const connection = await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .unique();
+    if (connection) await ctx.db.delete(connection._id);
     return null;
   },
 });
@@ -555,28 +784,24 @@ export const listSales = action({
 
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const context: {
-      settings: { token: string; companyId: number; enabled: boolean } | null;
+      masterEnabled: boolean;
+      locations: Array<{
+        id: Id<"locations">;
+        name: string;
+        token: string;
+        companyId: number;
+      }>;
       mappings: { onlinePosProductId: number; productName: string }[];
     } = await ctx.runQuery(internal.onlinePos.getSalesContext, {
       organizationId,
     });
-    if (!context.settings?.enabled) {
-      throw new ConvexError("OnlinePOS-integrationen er ikke aktiv");
+    if (!context.masterEnabled) {
+      throw new ConvexError("OnlinePOS-masterforbindelsen er ikke aktiv");
     }
-
-    const body = new URLSearchParams({
-      from: String(Math.floor(args.from / 1000)),
-      to: String(Math.floor(args.to / 1000)),
-    });
-    const payload = object(
-      await requestOnlinePos("/exportSales", context.settings, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body,
-      }),
-    );
-    if (!Array.isArray(payload?.sales)) {
-      throw new ConvexError("OnlinePOS returnerede en ugyldig salgsliste");
+    if (context.locations.length === 0) {
+      throw new ConvexError(
+        "Forbind mindst én lokation til OnlinePOS for at hente salg",
+      );
     }
 
     const names = new Map(
@@ -585,36 +810,44 @@ export const listSales = action({
         mapping.productName,
       ]),
     );
-    const parsed = payload.sales.flatMap((value) => {
-      const line = object(object(value)?.line);
-      const id = number(line?.id);
-      const checkNumber = number(line?.chk);
-      const productId = number(line?.product_id);
-      const amount = number(line?.amount);
-      if (
-        id === null ||
-        checkNumber === null ||
-        productId === null ||
-        amount === null
-      ) {
-        return [];
-      }
-      return [
-        {
-          id,
-          checkNumber,
-          date: string(line?.date),
-          time: string(line?.time),
-          onlinePosProductId: productId,
-          onlinePosProductName: string(line?.product),
-          localProductName: names.get(productId) ?? null,
-          amount,
-          price: string(line?.price),
-          paymentType: string(line?.payment_type),
-          department: string(line?.department),
-        },
-      ];
-    });
+    const byLocation = await Promise.all(
+      context.locations.map(async (location) => {
+        const sales = await requestSales(location, args.from, args.to);
+        return sales.flatMap((value) => {
+          const line = object(object(value)?.line);
+          const id = number(line?.id);
+          const checkNumber = number(line?.chk);
+          const productId = number(line?.product_id);
+          const amount = number(line?.amount);
+          if (
+            id === null ||
+            checkNumber === null ||
+            productId === null ||
+            amount === null
+          ) {
+            return [];
+          }
+          return [
+            {
+              locationId: location.id,
+              locationName: location.name,
+              id,
+              checkNumber,
+              date: string(line?.date),
+              time: string(line?.time),
+              onlinePosProductId: productId,
+              onlinePosProductName: string(line?.product),
+              localProductName: names.get(productId) ?? null,
+              amount,
+              price: string(line?.price),
+              paymentType: string(line?.payment_type),
+              department: string(line?.department),
+            },
+          ];
+        });
+      }),
+    );
+    const parsed = byLocation.flat();
 
     return {
       sales: parsed.slice(0, MAX_SALES),
