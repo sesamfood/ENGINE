@@ -23,6 +23,7 @@ import type * as locations from "../locations.js";
 import type * as onlinePos from "../onlinePos.js";
 import type * as organization from "../organization.js";
 import type * as transfers from "../transfers.js";
+import type * as workfeed from "../workfeed.js";
 
 import type {
   ApiFromModules,
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   onlinePos: typeof onlinePos;
   organization: typeof organization;
   transfers: typeof transfers;
+  workfeed: typeof workfeed;
 }>;
 
 /**

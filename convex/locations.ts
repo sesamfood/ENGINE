@@ -472,6 +472,13 @@ export const deleteLocation = mutation({
       )
       .unique();
     if (onlinePosConnection) await ctx.db.delete(onlinePosConnection._id);
+    const workfeedMapping = await ctx.db
+      .query("workfeedLocationMappings")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", location._id),
+      )
+      .unique();
+    if (workfeedMapping) await ctx.db.delete(workfeedMapping._id);
     await ctx.db.delete("locations", location._id);
     return null;
   },

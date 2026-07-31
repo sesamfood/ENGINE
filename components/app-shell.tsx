@@ -9,6 +9,7 @@ import {
   LogOutIcon,
   SettingsIcon,
   StoreIcon,
+  UsersRoundIcon,
   UserRoundIcon,
 } from "lucide-react";
 import { useConvexAuth, useQuery } from "convex/react";
@@ -62,6 +63,12 @@ const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
   { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
+
+const workfeedNavigation = {
+  label: "Medarbejdere",
+  href: "/employees",
+  icon: UsersRoundIcon,
+};
 
 const organizationNavigation = {
   label: "Organisation",
@@ -220,12 +227,21 @@ function OrganizationHome() {
 
 function NavigationList() {
   const { data: membership } = authClient.useActiveMemberRole();
+  const { data: organization } = authClient.useActiveOrganization();
+  const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const featureLocked = useContext(FeatureLockContext);
-  const availableNavigation = featureLocked
-    ? primaryNavigation.filter((item) => item.href === "/count")
+  const workfeedEnabled = useQuery(
+    api.workfeed.isEnabled,
+    organization && isAuthenticated ? {} : "skip",
+  );
+  const primaryWithIntegrations = workfeedEnabled
+    ? [...primaryNavigation, workfeedNavigation]
     : primaryNavigation;
+  const availableNavigation = featureLocked
+    ? primaryWithIntegrations.filter((item) => item.href === "/count")
+    : primaryWithIntegrations;
   const navigation = canManageCatalog(membership?.role)
     ? [...availableNavigation, organizationNavigation]
     : availableNavigation;

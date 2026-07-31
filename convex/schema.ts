@@ -47,6 +47,32 @@ export default defineSchema({
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_productId", ["organizationId", "productId"]),
 
+  workfeedIntegrations: defineTable({
+    organizationId: v.string(),
+    apiKey: v.string(),
+    companyId: v.string(),
+    enabled: v.boolean(),
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
+  workfeedLocationMappings: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    departmentId: v.string(),
+    departmentName: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_locationId", [
+      "organizationId",
+      "locationId",
+    ])
+    .index("by_organizationId_and_departmentId", [
+      "organizationId",
+      "departmentId",
+    ]),
+
   categories: defineTable({
     organizationId: v.string(),
     name: v.string(),

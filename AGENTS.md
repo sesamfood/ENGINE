@@ -73,3 +73,8 @@ Convex agent skills for common tasks can be installed by running
 `npx convex ai-files install`.
 
 <!-- convex-ai-end -->
+
+# External API documentation
+
+- Workfeed: https://docs.workfeed.io/
+- OnlinePOS: https://speca.io/SimonOnlinePOS/external-api-v2?key=41502b8375f30e56b210877ef797b7e4
