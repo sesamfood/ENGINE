@@ -27,13 +27,15 @@ export function OrganizationHeader() {
       ? "Locations"
       : pathname.startsWith("/organization/integrations")
         ? "Integrationer"
-        : pathname.startsWith("/organization/count")
-          ? "Count"
-          : pathname.startsWith("/organization/users")
-            ? "Brugere"
-            : pathname === "/organization"
-              ? "Organisation"
-              : "Organisationens oplysninger";
+        : pathname.startsWith("/organization/schedule")
+          ? "Vagtplan"
+          : pathname.startsWith("/organization/count")
+            ? "Count"
+            : pathname.startsWith("/organization/users")
+              ? "Brugere"
+              : pathname === "/organization"
+                ? "Organisation"
+                : "Organisationens oplysninger";
 
   useEffect(() => {
     for (const item of catalogSections) {

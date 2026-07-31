@@ -7,30 +7,18 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Clock3Icon,
+  MapPinIcon,
   RefreshCwIcon,
   SearchIcon,
-  Settings2Icon,
   UsersRoundIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -38,6 +26,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -62,7 +51,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { canManageOrganization } from "@/lib/auth-permissions";
+import {
+  setEmployeeLocation,
+  setEmployeeTab,
+  useEmployeeLocation,
+  useEmployeeTab,
+  type EmployeeTab,
+} from "@/lib/employee-prefs";
 import { cn } from "@/lib/utils";
 
 function initials(name: string) {
@@ -100,14 +95,6 @@ function formatDate(value: string, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("da-DK", { timeZone: "UTC", ...options }).format(
     new Date(`${value}T12:00:00Z`),
   );
-}
-
-function formatSync(timestamp: number, timeZone: string) {
-  return new Intl.DateTimeFormat("da-DK", {
-    timeZone,
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(timestamp);
 }
 
 function messageFrom(error: unknown) {
@@ -158,13 +145,11 @@ function ShiftBlock({ shift, timeZone }: { shift: Shift; timeZone: string }) {
 
 function ScheduleTab({
   locationId,
-  setLocationId,
-  locations,
+  hasLocations,
   timeZone,
 }: {
   locationId: Id<"locations"> | null;
-  setLocationId: (value: Id<"locations">) => void;
-  locations: Array<{ id: Id<"locations">; name: string }>;
+  hasLocations: boolean;
   timeZone: string;
 }) {
   const [now, setNow] = useState(() => Date.now());
@@ -180,7 +165,7 @@ function ScheduleTab({
     return () => window.clearInterval(interval);
   }, []);
 
-  if (!locations.length) {
+  if (!hasLocations) {
     return (
       <Empty className="min-h-72 border">
         <EmptyHeader>
@@ -192,7 +177,6 @@ function ScheduleTab({
     );
   }
 
-  const locationItems = locations.map((location) => ({ value: location.id, label: location.name }));
   const selectWeek = (value: string) => {
     setWeekStart(value);
     setSelectedDate(value);
@@ -203,30 +187,16 @@ function ScheduleTab({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <Select
-          items={locationItems}
-          value={locationId}
-          onValueChange={(value) => value && setLocationId(value as Id<"locations">)}
-        >
-          <SelectTrigger className="h-11 w-full sm:w-64" aria-label="Vælg lokation">
-            <SelectValue placeholder="Vælg lokation" />
-          </SelectTrigger>
-          <SelectContent><SelectGroup>{locations.map((location) => (
-            <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
-          ))}</SelectGroup></SelectContent>
-        </Select>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => selectWeek(addDays(weekStart, -7))} aria-label="Forrige uge">
-            <ChevronLeftIcon />
-          </Button>
-          <Button variant="outline" onClick={() => selectWeek(currentMonday)}>Denne uge</Button>
-          <Button variant="outline" size="icon" onClick={() => selectWeek(addDays(weekStart, 7))} aria-label="Næste uge">
-            <ChevronRightIcon />
-          </Button>
-          <Input className="h-9 w-40" type="date" value={weekStart} onChange={(event) => goToWeek(event.target.value)} aria-label="Vælg uge" />
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="icon" onClick={() => selectWeek(addDays(weekStart, -7))} aria-label="Forrige uge">
+          <ChevronLeftIcon />
+        </Button>
+        <Button variant="outline" onClick={() => selectWeek(currentMonday)}>Denne uge</Button>
+        <Button variant="outline" size="icon" onClick={() => selectWeek(addDays(weekStart, 7))} aria-label="Næste uge">
+          <ChevronRightIcon />
+        </Button>
+        <Input className="h-9 w-40" type="date" value={weekStart} onChange={(event) => goToWeek(event.target.value)} aria-label="Vælg uge" />
       </div>
 
       {week === undefined ? (
@@ -236,7 +206,7 @@ function ScheduleTab({
           {week.limitReached ? (
             <Alert><AlertTriangleIcon /><AlertTitle>Visningen er afgrænset</AlertTitle><AlertDescription>Der er flere medarbejdere eller vagter i ugen, end denne visning kan vise.</AlertDescription></Alert>
           ) : null}
-          <div className="hidden overflow-x-auto rounded-xl border md:block">
+          <div className="hidden rounded-xl border md:block">
             <Table className="min-w-[980px] table-fixed">
               <TableHeader><TableRow>
                 <TableHead className="w-52 bg-muted/30">Medarbejder</TableHead>
@@ -256,8 +226,8 @@ function ScheduleTab({
                         <div className="min-w-0"><div className="truncate font-medium">{employee.displayName}</div>{working ? <Badge className="mt-1" variant="secondary">På arbejde nu</Badge> : null}</div>
                       </div>
                     </TableCell>
-                    {week.dates.map((date) => <TableCell key={date} className="h-24 border-l p-2 align-top">
-                      <div className="space-y-2">{employee.shifts.filter((shift) => shift.date === date).map((shift) => <ShiftBlock key={shift.id} shift={shift} timeZone={timeZone} />)}</div>
+                    {week.dates.map((date) => <TableCell key={date} className={cn("h-24 border-l p-2 align-top", date === dateKey(now, timeZone) && "bg-primary/5")}>
+                      <div className="flex flex-col gap-2">{employee.shifts.filter((shift) => shift.date === date).map((shift) => <ShiftBlock key={shift.id} shift={shift} timeZone={timeZone} />)}</div>
                     </TableCell>)}
                   </TableRow>;
                 })}
@@ -266,7 +236,7 @@ function ScheduleTab({
             {!week.employees.length ? <div className="p-10 text-center text-sm text-muted-foreground">Ingen medarbejdere er tilknyttet lokationen i denne uge.</div> : null}
           </div>
 
-          <div className="space-y-3 md:hidden">
+          <div className="flex flex-col gap-3 md:hidden">
             <ToggleGroup value={[selectedDate]} onValueChange={(value) => value[0] && setSelectedDate(value[0])} variant="outline" spacing={0} className="grid w-full grid-cols-7">
               {week.dates.map((date) => <ToggleGroupItem key={date} value={date} className="h-12 min-w-0 flex-col gap-0 px-1">
                 <span className="text-[10px] capitalize">{formatDate(date, { weekday: "short" }).slice(0, 2)}</span><span>{formatDate(date, { day: "numeric" })}</span>
@@ -278,7 +248,7 @@ function ScheduleTab({
               return <Card key={employee.id} size="sm"><CardContent className="flex gap-3">
                 <EmployeeAvatar name={employee.displayName} imageUrl={employee.imageUrl} />
                 <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="font-medium">{employee.displayName}</span>{working ? <Badge variant="secondary">På arbejde nu</Badge> : null}</div>
-                  {shifts.length ? <div className="mt-3 space-y-2">{shifts.map((shift) => <ShiftBlock key={shift.id} shift={shift} timeZone={timeZone} />)}</div> : <p className="mt-1 text-sm text-muted-foreground">Ingen vagt</p>}
+                  {shifts.length ? <div className="mt-3 flex flex-col gap-2">{shifts.map((shift) => <ShiftBlock key={shift.id} shift={shift} timeZone={timeZone} />)}</div> : <p className="mt-1 text-sm text-muted-foreground">Ingen vagt</p>}
                 </div>
               </CardContent></Card>;
             })}
@@ -303,7 +273,7 @@ function DirectoryTab() {
     return () => window.clearTimeout(timeout);
   }, [search]);
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm"><SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-11 pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Søg efter medarbejder" aria-label="Søg efter medarbejder" /></div>
         <ToggleGroup value={[activeOnly ? "active" : "all"]} onValueChange={(value) => value[0] && setActiveOnly(value[0] === "active")} variant="outline" spacing={0}>
@@ -314,7 +284,7 @@ function DirectoryTab() {
         <div className="hidden overflow-hidden rounded-xl border sm:block"><Table><TableHeader><TableRow><TableHead>Medarbejder</TableHead><TableHead>Lokationer</TableHead><TableHead className="text-right">Status</TableHead></TableRow></TableHeader><TableBody>
           {results.map((employee) => <TableRow key={employee.id}><TableCell><div className="flex items-center gap-3"><EmployeeAvatar name={employee.displayName} imageUrl={employee.imageUrl} /><div><div className="font-medium">{employee.displayName}</div><div className="mt-1 text-xs text-muted-foreground sm:hidden">{employee.locations.map((location) => location.name).join(", ") || "Ingen lokation"}</div></div></div></TableCell><TableCell className="hidden text-muted-foreground sm:table-cell">{employee.locations.map((location) => location.name).join(", ") || "Ingen lokation"}</TableCell><TableCell className="text-right"><Badge variant={employee.active ? "secondary" : "outline"}>{employee.active ? "Aktiv" : "Inaktiv"}</Badge></TableCell></TableRow>)}
         </TableBody></Table></div>
-        <div className="space-y-2 sm:hidden">{results.map((employee) => <Card key={employee.id} size="sm"><CardContent className="flex items-start gap-3"><EmployeeAvatar name={employee.displayName} imageUrl={employee.imageUrl} /><div className="min-w-0 flex-1"><div className="font-medium">{employee.displayName}</div><p className="mt-1 text-sm text-muted-foreground">{employee.locations.map((location) => location.name).join(", ") || "Ingen lokation"}</p></div><Badge variant={employee.active ? "secondary" : "outline"}>{employee.active ? "Aktiv" : "Inaktiv"}</Badge></CardContent></Card>)}</div>
+        <div className="flex flex-col gap-2 sm:hidden">{results.map((employee) => <Card key={employee.id} size="sm"><CardContent className="flex items-start gap-3"><EmployeeAvatar name={employee.displayName} imageUrl={employee.imageUrl} /><div className="min-w-0 flex-1"><div className="font-medium">{employee.displayName}</div><p className="mt-1 text-sm text-muted-foreground">{employee.locations.map((location) => location.name).join(", ") || "Ingen lokation"}</p></div><Badge variant={employee.active ? "secondary" : "outline"}>{employee.active ? "Aktiv" : "Inaktiv"}</Badge></CardContent></Card>)}</div>
       </> : <Empty className="min-h-64 border"><EmptyHeader><EmptyMedia variant="icon"><UsersRoundIcon /></EmptyMedia><EmptyTitle>Ingen medarbejdere fundet</EmptyTitle><EmptyDescription>{search ? "Prøv en anden søgning." : "Medarbejdere vises her efter den første synkronisering."}</EmptyDescription></EmptyHeader></Empty>}
       {status === "CanLoadMore" ? <div className="flex justify-center"><Button variant="outline" onClick={() => loadMore(30)}>Vis flere</Button></div> : null}
       {status === "LoadingMore" ? <div className="flex justify-center"><Spinner /></div> : null}
@@ -322,39 +292,14 @@ function DirectoryTab() {
   );
 }
 
-function TimeZoneSettings({ timeZone }: { timeZone: string }) {
-  const { data: membership } = authClient.useActiveMemberRole();
-  const canEdit = canManageOrganization(membership?.role);
-  const setTimeZone = useMutation(api.employees.setTimeZone);
-  const [draft, setDraft] = useState(timeZone);
-  const [saving, setSaving] = useState(false);
-  const zones = useMemo(() => {
-    const supported = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["Europe/Copenhagen", "Europe/Oslo", "Europe/Stockholm", "Europe/Rome", "Europe/London", "UTC"];
-    return supported.map((zone) => ({ value: zone, label: zone.replaceAll("_", " ") }));
-  }, []);
-  if (!canEdit) return null;
-  const save = async () => {
-    setSaving(true);
-    try { await setTimeZone({ timeZone: draft }); toast.success("Tidszonen er gemt"); }
-    catch (error) { toast.error(messageFrom(error)); }
-    finally { setSaving(false); }
-  };
-  return (
-    <Collapsible>
-      <CollapsibleTrigger render={<Button variant="ghost" className="px-0" />}><Settings2Icon data-icon="inline-start" />Tidszoneindstillinger</CollapsibleTrigger>
-      <CollapsibleContent className="pt-3"><Card size="sm"><CardHeader><CardTitle>Tidszone for vagtplan</CardTitle><CardDescription>Bruges til uger, datoer og klokkeslæt for alle medlemmer.</CardDescription></CardHeader><CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="min-w-0 flex-1"><CreatableCombobox options={zones} value={draft} onValueChange={(value) => value && setDraft(value)} placeholder="Søg efter tidszone" ariaLabel="Tidszone" /></div>
-        <Button disabled={saving || draft === timeZone} onClick={() => void save()}>{saving ? <Spinner data-icon="inline-start" /> : null}Gem</Button>
-      </CardContent></Card></CollapsibleContent>
-    </Collapsible>
-  );
-}
-
 export function EmployeeScheduling() {
+  const organization = authClient.useActiveOrganization();
+  const organizationId = organization.data?.id;
   const context = useQuery(api.employees.getContext);
   const locations = useQuery(api.locations.listLocationOptions);
   const requestSync = useMutation(api.employees.requestWorkfeedSync);
-  const [locationId, setLocationId] = useState<Id<"locations"> | null>(null);
+  const selectedTab = useEmployeeTab(organizationId);
+  const storedLocationId = useEmployeeLocation(organizationId);
   const [syncing, setSyncing] = useState(false);
   const [retryAt, setRetryAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -374,19 +319,43 @@ export function EmployeeScheduling() {
     finally { setSyncing(false); }
   };
 
-  if (!context || !locations) return <div className="space-y-5 p-4 sm:p-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-96 w-full" /></div>;
+  if (!context || !locations) return <div className="flex flex-col gap-5"><Skeleton className="h-24 w-full" /><Skeleton className="h-96 w-full" /></div>;
   const effectiveRetryAt = retryAt ?? context.manualSyncRetryAt;
   const cooldown = effectiveRetryAt !== null && effectiveRetryAt > now;
-  const activeLocationId = locations.some((location) => location.id === locationId)
-    ? locationId
+  const activeLocationId = locations.some((location) => location.id === storedLocationId)
+    ? (storedLocationId as Id<"locations">)
     : (locations[0]?.id ?? null);
   const lastSync = context.lastShiftSyncAt ?? context.lastEmployeeSyncAt;
   const stale = Boolean(lastSync && now - lastSync > 45 * 60 * 1_000);
   return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-6 p-4 sm:p-6 lg:p-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div><h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">Medarbejdere</h1><p className="mt-1 text-muted-foreground">Vagtplan og medarbejderoversigt i {context.timeZone.replaceAll("_", " ")}</p></div>
-        {context.workfeedEnabled ? <Button className="h-11" variant="outline" disabled={queued || syncing || cooldown} onClick={() => void request()}>{queued || syncing ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}{queued ? "Synkroniserer" : "Synkronisér nu"}</Button> : null}
+    <main className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
+      <header className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-sm font-semibold uppercase tracking-widest text-primary">Personale</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Medarbejdere</h1>
+            {context.workfeedEnabled ? <Button variant="outline" disabled={queued || syncing || cooldown} onClick={() => void request()}>{queued || syncing ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}{queued ? "Synkroniserer" : "Synkronisér nu"}</Button> : null}
+          </div>
+        </div>
+        <Field>
+          <FieldLabel>Location</FieldLabel>
+          <Select
+            items={locations.map((location) => ({ value: location.id, label: location.name }))}
+            value={activeLocationId}
+            onValueChange={(value) => {
+              if (organizationId && value) setEmployeeLocation(organizationId, value);
+            }}
+            disabled={!locations.length}
+          >
+            <SelectTrigger className="h-11 w-full">
+              <MapPinIcon aria-hidden="true" />
+              <SelectValue placeholder="Vælg location" />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
       </header>
 
       {context.lastError ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>Seneste synkronisering mislykkedes</AlertTitle><AlertDescription>{context.lastError} De senest hentede data vises fortsat.</AlertDescription></Alert>
@@ -394,12 +363,8 @@ export function EmployeeScheduling() {
         : !context.workfeedEnabled ? <Alert><Clock3Icon /><AlertTitle>Synkronisering er slået fra</AlertTitle><AlertDescription>De senest synkroniserede data vises, men opdateres ikke automatisk.</AlertDescription></Alert>
         : stale ? <Alert><Clock3Icon /><AlertTitle>Data kan være forældede</AlertTitle><AlertDescription>Den seneste automatiske synkronisering er ældre end forventet. De senest hentede data vises fortsat.</AlertDescription></Alert> : null}
 
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"><span>{lastSync ? `Senest synkroniseret ${formatSync(lastSync, context.timeZone)}` : "Ikke synkroniseret endnu"}</span><span>Aktiv tidszone: {context.timeZone}</span></div>
-
-      <TimeZoneSettings key={context.timeZone} timeZone={context.timeZone} />
-
       {!context.hasCachedEmployees ? <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><UsersRoundIcon /></EmptyMedia><EmptyTitle>Ingen medarbejderdata endnu</EmptyTitle><EmptyDescription>{context.workfeedEnabled ? "Start en synkronisering for at hente medarbejdere og offentliggjorte vagter." : "Medarbejdere vises her, når en integration har leveret den første synkronisering."}</EmptyDescription></EmptyHeader></Empty>
-        : <Tabs defaultValue="schedule"><TabsList className="w-full sm:w-fit"><TabsTrigger value="schedule" className="h-11 px-5">Vagtplan</TabsTrigger><TabsTrigger value="directory" className="h-11 px-5">Medarbejdere</TabsTrigger></TabsList><TabsContent value="schedule" className="pt-3"><ScheduleTab locationId={activeLocationId} setLocationId={setLocationId} locations={locations} timeZone={context.timeZone} /></TabsContent><TabsContent value="directory" className="pt-3"><DirectoryTab /></TabsContent></Tabs>}
+        : <Tabs value={selectedTab} onValueChange={(value) => organizationId && setEmployeeTab(organizationId, value as EmployeeTab)}><TabsList className="w-full sm:w-fit"><TabsTrigger value="schedule" className="h-11 px-5">Vagtplan</TabsTrigger><TabsTrigger value="directory" className="h-11 px-5">Medarbejdere</TabsTrigger></TabsList><TabsContent value="schedule" className="pt-3"><ScheduleTab locationId={activeLocationId} hasLocations={Boolean(locations.length)} timeZone={context.timeZone} /></TabsContent><TabsContent value="directory" className="pt-3"><DirectoryTab /></TabsContent></Tabs>}
     </main>
   );
 }
