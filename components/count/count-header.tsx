@@ -47,9 +47,13 @@ function formatPeriod(periodKey: string) {
 
 function countdown(target: number, now: number) {
   const seconds = Math.max(0, Math.ceil((target - now) / 1000));
-  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds % 60;
+  if (days > 0) {
+    return `${days} ${days === 1 ? "dag" : "dage"} ${hours} t ${minutes} min`;
+  }
   if (hours > 0) return `${hours} t ${minutes} min`;
   if (minutes > 0) return `${minutes} min ${rest} sek`;
   return `${rest} sek`;

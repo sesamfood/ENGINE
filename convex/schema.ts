@@ -315,6 +315,7 @@ export default defineSchema({
     organizationId: v.string(),
     name: v.string(),
     normalizedName: v.string(),
+    countProductOrder: v.optional(v.array(v.id("products"))),
     openingHoursMode: v.optional(openingHoursModeValidator),
     weeklyOpeningHours: v.optional(v.array(weeklyOpeningHoursValidator)),
   }).index("by_organizationId_and_normalizedName", [

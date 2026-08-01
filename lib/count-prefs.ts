@@ -21,8 +21,8 @@ function locationKey(organizationId: string) {
   return `engine.count.location.${organizationId}`;
 }
 
-function orderKey(organizationId: string) {
-  return `engine.count.order.${organizationId}`;
+function orderKey(organizationId: string, locationId: string) {
+  return `engine.count.order.${organizationId}.${locationId}`;
 }
 
 function readLocation(organizationId?: string) {
@@ -36,22 +36,25 @@ function readLocation(organizationId?: string) {
   }
 }
 
-function readOrder(organizationId?: string) {
-  if (!organizationId) return EMPTY_ORDER;
+function readOrder(organizationId?: string, locationId?: string | null) {
+  if (!organizationId || !locationId) return EMPTY_ORDER;
+  const memoryKey = `${organizationId}:${locationId}`;
   try {
-    const raw = window.localStorage.getItem(orderKey(organizationId));
-    if (orderRaw.get(organizationId) === raw) {
-      return orderMemory.get(organizationId) ?? [];
+    const raw =
+      window.localStorage.getItem(orderKey(organizationId, locationId)) ??
+      window.localStorage.getItem(`engine.count.order.${organizationId}`);
+    if (orderRaw.get(memoryKey) === raw) {
+      return orderMemory.get(memoryKey) ?? [];
     }
     const parsed: unknown = raw ? JSON.parse(raw) : [];
     const order = Array.isArray(parsed)
       ? parsed.filter((value): value is string => typeof value === "string")
       : [];
-    orderRaw.set(organizationId, raw);
-    orderMemory.set(organizationId, order);
+    orderRaw.set(memoryKey, raw);
+    orderMemory.set(memoryKey, order);
     return order;
   } catch {
-    return orderMemory.get(organizationId) ?? [];
+    return orderMemory.get(memoryKey) ?? [];
   }
 }
 
@@ -80,21 +83,29 @@ export function setCountLocation(
   emit();
 }
 
-export function useCountOrder(organizationId?: string) {
+export function useCountOrder(
+  organizationId?: string,
+  locationId?: string | null,
+) {
   return useSyncExternalStore(
     subscribe,
-    () => readOrder(organizationId),
+    () => readOrder(organizationId, locationId),
     () => EMPTY_ORDER,
   );
 }
 
-export function setCountOrder(organizationId: string, order: string[]) {
+export function setCountOrder(
+  organizationId: string,
+  locationId: string,
+  order: string[],
+) {
   const normalized = [...new Set(order)];
-  orderMemory.set(organizationId, normalized);
+  const memoryKey = `${organizationId}:${locationId}`;
+  orderMemory.set(memoryKey, normalized);
   try {
     const raw = JSON.stringify(normalized);
-    window.localStorage.setItem(orderKey(organizationId), raw);
-    orderRaw.set(organizationId, raw);
+    window.localStorage.setItem(orderKey(organizationId, locationId), raw);
+    orderRaw.set(memoryKey, raw);
   } catch {
     // ponytail: private mode / quota — keep this device preference in memory.
   }
