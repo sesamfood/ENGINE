@@ -3,7 +3,6 @@
 import { useQuery } from "convex/react";
 import {
   CheckCircle2Icon,
-  LockKeyholeIcon,
   MapPinIcon,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -44,20 +43,6 @@ function formatPeriod(periodKey: string) {
     return dateFormatter.format(Date.UTC(year, month - 1, day));
   }
   return periodFormatter.format(Date.UTC(year, month - 1, 15));
-}
-
-function countdown(target: number, now: number) {
-  const seconds = Math.max(0, Math.ceil((target - now) / 1000));
-  const days = Math.floor(seconds / 86_400);
-  const hours = Math.floor((seconds % 86_400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const rest = seconds % 60;
-  if (days > 0) {
-    return `${days} ${days === 1 ? "dag" : "dage"} ${hours} t ${minutes} min`;
-  }
-  if (hours > 0) return `${hours} t ${minutes} min`;
-  if (minutes > 0) return `${minutes} min ${rest} sek`;
-  return `${rest} sek`;
 }
 
 function CountHeaderControls({
@@ -167,17 +152,10 @@ export function CountHeader() {
   );
   const state = useLastDefined(queriedState, locationId);
   const submitted = state?.count?.status === "submitted";
-  const statusTitle = submitted
-    ? "Count er registreret"
-    : "Count er låst";
   const statusDescription =
-    state
-      ? submitted
-          ? state.count?.submittedAt
-            ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
-            : "Denne count kan ikke ændres."
-        : `Næste vindue åbner om ${countdown(state.opensAt, now)}.`
-      : "Vælg en location for at se count-vinduet.";
+    state?.count?.submittedAt
+      ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
+      : "Denne count kan ikke ændres.";
   const locationItems =
     locations?.map((location) => ({
       value: location.id,
@@ -208,14 +186,10 @@ export function CountHeader() {
           )
         : null}
 
-      {pathname === "/count" && state && (submitted || !state.isOpen) ? (
+      {pathname === "/count" && submitted ? (
         <Alert className="md:-mt-5">
-          {submitted ? (
-            <CheckCircle2Icon />
-          ) : (
-            <LockKeyholeIcon />
-          )}
-          <AlertTitle>{statusTitle}</AlertTitle>
+          <CheckCircle2Icon />
+          <AlertTitle>Count er registreret</AlertTitle>
           <AlertDescription>{statusDescription}</AlertDescription>
         </Alert>
       ) : null}

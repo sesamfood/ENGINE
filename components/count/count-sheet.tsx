@@ -22,6 +22,7 @@ import {
   BoxesIcon,
   GripVerticalIcon,
   ListRestartIcon,
+  LockKeyholeIcon,
   MinusIcon,
   PackageOpenIcon,
   PlusIcon,
@@ -40,6 +41,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -124,6 +126,20 @@ type QuantityPayload = {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
+}
+
+function countdown(target: number, now: number) {
+  const seconds = Math.max(0, Math.ceil((target - now) / 1000));
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  if (days > 0) {
+    return `${days} ${days === 1 ? "dag" : "dage"} ${hours} t ${minutes} min`;
+  }
+  if (hours > 0) return `${hours} t ${minutes} min`;
+  if (minutes > 0) return `${minutes} min ${rest} sek`;
+  return `${rest} sek`;
 }
 
 function UnavailableTooltip({
@@ -281,48 +297,46 @@ function ProductCard({
             "transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm",
         )}
       >
-        <UnavailableTooltip reason={editingOrder ? null : disabledReason}>
-          <div className="relative">
-            {product.imageUrl ? (
-              <div
-                role="img"
-                aria-label={`Produktbillede af ${product.name}`}
-                className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
-                style={{ backgroundImage: `url("${product.imageUrl}")` }}
+        <div className="relative">
+          {product.imageUrl ? (
+            <div
+              role="img"
+              aria-label={`Produktbillede af ${product.name}`}
+              className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
+              style={{ backgroundImage: `url("${product.imageUrl}")` }}
+            />
+          ) : (
+            <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
+              <PackageOpenIcon
+                className="size-10 lg:size-12"
+                aria-hidden="true"
               />
-            ) : (
-              <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
-                <PackageOpenIcon
-                  className="size-10 lg:size-12"
-                  aria-hidden="true"
-                />
-              </div>
-            )}
-            {editingOrder && dragHandle ? (
-              <div className="absolute left-2 top-2">{dragHandle}</div>
-            ) : null}
-            <CardHeader className="py-3 lg:py-4">
-              <div className="flex min-w-0 items-baseline gap-2">
-                <CardTitle className="min-w-0 flex-1 truncate">
-                  {product.name}
-                </CardTitle>
-                <CardDescription className="max-w-[45%] shrink-0 truncate">
-                  {product.category?.name ?? "Uden kategori"}
-                </CardDescription>
-              </div>
-            </CardHeader>
-            {!editingOrder ? (
-              <button
-                type="button"
-                data-card-trigger
-                className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
-                aria-label={`Tæl ${product.name} i flere enheder`}
-                disabled={disabled}
-                onClick={openDialog}
-              />
-            ) : null}
-          </div>
-        </UnavailableTooltip>
+            </div>
+          )}
+          {editingOrder && dragHandle ? (
+            <div className="absolute left-2 top-2">{dragHandle}</div>
+          ) : null}
+          <CardHeader className="py-3 lg:py-4">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <CardTitle className="min-w-0 flex-1 truncate">
+                {product.name}
+              </CardTitle>
+              <CardDescription className="max-w-[45%] shrink-0 truncate">
+                {product.category?.name ?? "Uden kategori"}
+              </CardDescription>
+            </div>
+          </CardHeader>
+          {!editingOrder ? (
+            <button
+              type="button"
+              data-card-trigger
+              className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
+              aria-label={`Tæl ${product.name} i flere enheder`}
+              disabled={disabled}
+              onClick={openDialog}
+            />
+          ) : null}
+        </div>
         <CardContent className="flex flex-col gap-2 pb-3 lg:gap-3 lg:pb-4">
           {selectedUnit ? (
             <>
@@ -959,6 +973,9 @@ export function CountSheet() {
       : !state.isOpen
         ? "Count-vinduet er lukket"
         : null;
+  const isClosed = Boolean(
+    state && state.count?.status !== "submitted" && !state.isOpen,
+  );
   const quantityFor = (product: CountProduct, unit: CountUnit) =>
     overrides[`${product.id}:${unit.id}`] ?? unit.quantity;
   const hasQuantity =
@@ -1207,18 +1224,32 @@ export function CountSheet() {
 
       <CountNavigation
         action={
-          <UnavailableTooltip reason={disabledReason}>
-            <Button
-              type="button"
-              size="lg"
-              className="min-h-11 shrink-0 px-4 sm:px-6"
-              disabled={Boolean(disabledReason) || submitting}
-              onClick={() => setConfirmOpen(true)}
-            >
-              {submitting ? <Spinner data-icon="inline-start" /> : null}
-              Registrér count
-            </Button>
-          </UnavailableTooltip>
+          <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
+            {isClosed && state ? (
+              <Badge
+                variant="secondary"
+                className="h-auto max-w-36 justify-end py-1 text-right whitespace-normal sm:max-w-none sm:whitespace-nowrap"
+              >
+                <LockKeyholeIcon data-icon="inline-start" />
+                <span>
+                  <span className="hidden lg:inline">Count er låst · </span>
+                  Åbner om {countdown(state.opensAt, now)}
+                </span>
+              </Badge>
+            ) : null}
+            <UnavailableTooltip reason={disabledReason}>
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-11 shrink-0 px-4 sm:px-6"
+                disabled={Boolean(disabledReason) || submitting}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {submitting ? <Spinner data-icon="inline-start" /> : null}
+                Registrér count
+              </Button>
+            </UnavailableTooltip>
+          </div>
         }
       />
 
