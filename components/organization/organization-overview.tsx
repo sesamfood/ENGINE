@@ -2,8 +2,10 @@
 
 import {
   Building2Icon,
+  CalendarClockIcon,
   ClipboardListIcon,
   PackageIcon,
+  PlugIcon,
   StoreIcon,
   UsersIcon,
 } from "lucide-react";
@@ -47,6 +49,20 @@ const sections = [
     description: "Indstil frekvens og regler for count-vinduet.",
     href: "/organization/count",
     icon: ClipboardListIcon,
+    adminOnly: true,
+  },
+  {
+    title: "Vagtplan",
+    description: "Indstil tidszonen for medarbejdernes vagtplan.",
+    href: "/organization/schedule",
+    icon: CalendarClockIcon,
+    adminOnly: true,
+  },
+  {
+    title: "Integrationer",
+    description: "Forbind eksterne systemer og administrer dataudveksling.",
+    href: "/organization/integrations",
+    icon: PlugIcon,
     adminOnly: true,
   },
   {

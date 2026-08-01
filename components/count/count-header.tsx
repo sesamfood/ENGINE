@@ -203,7 +203,7 @@ export function CountHeader() {
         : null}
 
       {pathname === "/count" && state && (submitted || !state.isOpen) ? (
-        <Alert>
+        <Alert className="md:-mt-5">
           {submitted ? (
             <CheckCircle2Icon />
           ) : (
