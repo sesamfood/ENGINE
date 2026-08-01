@@ -640,7 +640,6 @@ export function CountSheet() {
     }
   }
 
-  const locked = !state?.isOpen || state.count?.status === "submitted";
   const lockedReason = !state
     ? null
     : state.count?.status === "submitted"
@@ -718,18 +717,15 @@ export function CountSheet() {
           />
         </InputGroup>
         {categoryId === "all" && !search ? (
-          <UnavailableTooltip reason={lockedReason}>
-            <Button
-              type="button"
-              variant={editingOrder ? "default" : "outline"}
-              className="min-h-11"
-              disabled={locked}
-              onClick={() => setEditingOrder((current) => !current)}
-            >
-              <GripVerticalIcon data-icon="inline-start" />
-              {editingOrder ? "Afslut rækkefølge" : "Redigér rækkefølge"}
-            </Button>
-          </UnavailableTooltip>
+          <Button
+            type="button"
+            variant={editingOrder ? "default" : "outline"}
+            className="min-h-11"
+            onClick={() => setEditingOrder((current) => !current)}
+          >
+            <GripVerticalIcon data-icon="inline-start" />
+            {editingOrder ? "Afslut rækkefølge" : "Redigér rækkefølge"}
+          </Button>
         ) : null}
       </div>
 
