@@ -3,6 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
+  requireCatalogManager,
   requireCounter,
   requireOrganization,
   requireOrganizationAdmin,
@@ -336,6 +337,59 @@ export const getCountState = query({
       totalProducts: products.length,
       countedProducts: countedProductIds.size,
     };
+  },
+});
+
+export const getCountProductOrder = query({
+  args: { locationId: v.id("locations") },
+  returns: v.array(v.id("products")),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCounter(ctx);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    return location.countProductOrder ?? [];
+  },
+});
+
+export const setCountProductOrder = mutation({
+  args: {
+    locationId: v.id("locations"),
+    productIds: v.array(v.id("products")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    if (
+      args.productIds.length > MAX_PRODUCTS ||
+      new Set(args.productIds).size !== args.productIds.length
+    ) {
+      throw new ConvexError("Produktrækkefølgen er ugyldig");
+    }
+    const products = await Promise.all(
+      args.productIds.map((productId) => ctx.db.get("products", productId)),
+    );
+    if (
+      products.some(
+        (product) =>
+          !product ||
+          product.organizationId !== organizationId ||
+          product.status !== "active",
+      )
+    ) {
+      throw new ConvexError("Et produkt blev ikke fundet");
+    }
+    await ctx.db.patch("locations", location._id, {
+      countProductOrder: args.productIds,
+    });
+    return null;
   },
 });
 

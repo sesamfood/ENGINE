@@ -7,7 +7,7 @@ export default function CountLayout({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-8">
+    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4">
       <OrganizationAuthGate>
         <CountHeader />
         {children}
