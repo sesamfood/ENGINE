@@ -96,6 +96,7 @@ import {
   useCountLocation,
   useCountOrder,
 } from "@/lib/count-prefs";
+import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
 
 type CountUnit = {
@@ -711,7 +712,7 @@ function SortableProduct({
 
 function CountSkeleton() {
   return (
-    <div className="grid gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:gap-5 xl:grid-cols-4">
+    <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
       {Array.from({ length: 8 }, (_, index) => (
         <Card key={index} className="gap-4 py-0">
           <Skeleton className="aspect-video w-full rounded-none lg:aspect-[4/3]" />
@@ -770,16 +771,17 @@ export function CountSheet() {
   }, [search]);
 
   const queryNow = Math.floor(now / 60_000) * 60_000;
-  const state = useQuery(
+  const queriedState = useQuery(
     api.count.getCountState,
     locationId ? { locationId, now: queryNow } : "skip",
   );
+  const state = useLastDefined(queriedState, locationId);
   const defaultOrder = useQuery(
     api.count.getCountProductOrder,
     locationId ? { locationId } : "skip",
   );
   const categories = useQuery(api.catalog.listCategories);
-  const products = useQuery(
+  const queriedProducts = useQuery(
     api.count.listCountProducts,
     locationId
       ? {
@@ -793,6 +795,10 @@ export function CountSheet() {
         }
       : "skip",
   ) as CountProduct[] | undefined;
+  const products = useLastDefined(
+    queriedProducts,
+    locationId ? JSON.stringify([locationId, categoryId, querySearch]) : null,
+  );
 
   useEffect(() => {
     if (!products) return;
@@ -1118,7 +1124,7 @@ export function CountSheet() {
             items={displayedProducts.map((product) => product.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:gap-5 xl:grid-cols-4">
+            <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
               {displayedProducts.map((product, position) => {
                 const selectedUnitId =
                   (selectedUnits[product.id] as Id<"units"> | undefined) ??

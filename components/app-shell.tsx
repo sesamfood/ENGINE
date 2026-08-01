@@ -57,6 +57,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 import { canManageCatalog } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
+import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
 
 const primaryNavigation = [
@@ -115,10 +116,14 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
         }
       : "skip",
   );
+  const currentLockState = useLastDefined(
+    lockState,
+    organizationId && locationId ? `${organizationId}:${locationId}` : null,
+  );
   const exempt = featureLockExempt(pathname);
-  const isLocked = lockState?.isLocked ?? false;
+  const isLocked = currentLockState?.isLocked ?? false;
   const lockReady =
-    locations !== undefined && (!locationId || lockState !== undefined);
+    locations !== undefined && (!locationId || currentLockState !== undefined);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);

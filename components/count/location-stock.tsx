@@ -96,7 +96,7 @@ export function LocationStock() {
 
   if (!locations || (locationId && !stock)) {
     return (
-      <div className="grid gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:gap-5 xl:grid-cols-4">
+      <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
         {Array.from({ length: 8 }, (_, index) => (
           <Card key={index} className="gap-4 py-0">
             <Skeleton className="aspect-video w-full rounded-none lg:aspect-[4/3]" />
@@ -168,7 +168,7 @@ export function LocationStock() {
       </div>
 
       {view === "grid" ? (
-        <div className="grid gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:gap-5 xl:grid-cols-4">
+        <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
           {stock?.map((row) => (
             <Card
               key={row.productId}

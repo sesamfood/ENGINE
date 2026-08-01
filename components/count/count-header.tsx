@@ -23,6 +23,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { setCountLocation, useCountLocation } from "@/lib/count-prefs";
+import { useLastDefined } from "@/lib/use-last-defined";
 
 const periodFormatter = new Intl.DateTimeFormat("da-DK", {
   month: "long",
@@ -160,10 +161,11 @@ export function CountHeader() {
     ? (storedLocationId as Id<"locations">)
     : null;
   const queryNow = Math.floor(now / 60_000) * 60_000;
-  const state = useQuery(
+  const queriedState = useQuery(
     api.count.getCountState,
     locationId ? { locationId, now: queryNow } : "skip",
   );
+  const state = useLastDefined(queriedState, locationId);
   const submitted = state?.count?.status === "submitted";
   const statusTitle = submitted
     ? "Count er registreret"
