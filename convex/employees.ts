@@ -283,12 +283,17 @@ export const listWeek = query({
 export const listDirectory = query({
   args: {
     paginationOpts: paginationOptsValidator,
+    locationId: v.id("locations"),
     search: v.string(),
     activeOnly: v.boolean(),
   },
   returns: paginationResultValidator(employeeSummaryValidator),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganization(ctx);
+    const location = await ctx.db.get("locations", args.locationId);
+    if (location?.organizationId !== organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
     const search = args.search.trim().slice(0, 100);
     let result;
     if (search) {
@@ -320,12 +325,25 @@ export const listDirectory = query({
             )
             .paginate(args.paginationOpts);
     }
-    return {
-      ...result,
-      page: await Promise.all(
-        result.page.map((employee) => hydrateEmployee(ctx, organizationId, employee)),
-      ),
-    };
+    const page = await Promise.all(
+      result.page.map(async (employee) => {
+        const assignment = await ctx.db
+          .query("employeeLocationAssignments")
+          .withIndex(
+            "by_organizationId_and_locationId_and_employeeId",
+            (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", args.locationId)
+                .eq("employeeId", employee._id),
+          )
+          .unique();
+        return assignment
+          ? await hydrateEmployee(ctx, organizationId, employee)
+          : null;
+      }),
+    );
+    return { ...result, page: page.filter((employee) => employee !== null) };
   },
 });
 

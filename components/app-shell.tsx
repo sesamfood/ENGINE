@@ -567,6 +567,8 @@ export function AppShell({
     !pathname.startsWith("/organization/products/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
+  const showEmployeesHeader = pathname === "/employees";
+  const showPageHeader = showCountHeader || showEmployeesHeader;
 
   return (
     <OrganizationBoundary required={organizationRequired}>
@@ -602,13 +604,17 @@ export function AppShell({
             <header
               className={cn(
                 "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                showCountHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+                showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
               )}
             >
               <SidebarTrigger size="icon-lg" />
-              {showCountHeader ? (
+              {showPageHeader ? (
                 <div
-                  id="count-shell-header"
+                  id={
+                    showCountHeader
+                      ? "count-shell-header"
+                      : "employees-shell-header"
+                  }
                   className="hidden min-w-0 flex-1 md:block"
                 />
               ) : null}

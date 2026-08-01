@@ -12,7 +12,8 @@ import {
   SearchIcon,
   UsersRoundIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,12 +22,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -127,15 +134,15 @@ function ShiftBlock({ shift, timeZone }: { shift: Shift; timeZone: string }) {
   const endDate = dateKey(shift.endsAt, timeZone);
   const overnight = endDate !== shift.date;
   return (
-    <div className="rounded-lg border bg-muted/40 px-2.5 py-2 text-xs leading-snug">
-      <div className="font-medium tabular-nums">
+    <div className="min-w-0 whitespace-normal rounded-lg border bg-muted/40 px-2.5 py-2 text-xs leading-snug">
+      <div className="whitespace-nowrap font-medium tabular-nums">
         {time.format(shift.startsAt)}–{time.format(shift.endsAt)}
       </div>
       {shift.roleName ? (
         <div className="mt-0.5 truncate text-muted-foreground">{shift.roleName}</div>
       ) : null}
       {overnight ? (
-        <div className="mt-1 text-muted-foreground">
+        <div className="mt-1 break-words text-muted-foreground">
           Slutter {formatDate(endDate, { weekday: "short" }).replace(".", "")} kl. {time.format(shift.endsAt)}
         </div>
       ) : null}
@@ -146,10 +153,12 @@ function ShiftBlock({ shift, timeZone }: { shift: Shift; timeZone: string }) {
 function ScheduleTab({
   locationId,
   hasLocations,
+  syncButton,
   timeZone,
 }: {
   locationId: Id<"locations"> | null;
   hasLocations: boolean;
+  syncButton: ReactNode;
   timeZone: string;
 }) {
   const [now, setNow] = useState(() => Date.now());
@@ -197,6 +206,7 @@ function ScheduleTab({
           <ChevronRightIcon />
         </Button>
         <Input className="h-9 w-40" type="date" value={weekStart} onChange={(event) => goToWeek(event.target.value)} aria-label="Vælg uge" />
+        {syncButton}
       </div>
 
       {week === undefined ? (
@@ -259,23 +269,46 @@ function ScheduleTab({
   );
 }
 
-function DirectoryTab() {
+function DirectoryTab({
+  locationId,
+  syncButton,
+}: {
+  locationId: Id<"locations"> | null;
+  syncButton: ReactNode;
+}) {
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [activeOnly, setActiveOnly] = useState(true);
   const { results, status, loadMore } = usePaginatedQuery(
     api.employees.listDirectory,
-    { search: querySearch, activeOnly },
+    locationId ? { locationId, search: querySearch, activeOnly } : "skip",
     { initialNumItems: 30 },
   );
   useEffect(() => {
     const timeout = window.setTimeout(() => setQuerySearch(search), 250);
     return () => window.clearTimeout(timeout);
   }, [search]);
+  if (!locationId) {
+    return (
+      <Empty className="min-h-64 border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon"><UsersRoundIcon /></EmptyMedia>
+          <EmptyTitle>Ingen lokation valgt</EmptyTitle>
+          <EmptyDescription>Vælg en lokation for at se dens medarbejdere.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-sm"><SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-11 pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Søg efter medarbejder" aria-label="Søg efter medarbejder" /></div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <InputGroup className="h-11 w-full sm:w-80">
+            <InputGroupInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Søg efter medarbejder" aria-label="Søg efter medarbejder" />
+            <InputGroupAddon align="inline-start"><SearchIcon /></InputGroupAddon>
+          </InputGroup>
+          {syncButton}
+        </div>
         <ToggleGroup value={[activeOnly ? "active" : "all"]} onValueChange={(value) => value[0] && setActiveOnly(value[0] === "active")} variant="outline" spacing={0}>
           <ToggleGroupItem value="active">Aktive</ToggleGroupItem><ToggleGroupItem value="all">Alle</ToggleGroupItem>
         </ToggleGroup>
@@ -303,9 +336,16 @@ export function EmployeeScheduling() {
   const [syncing, setSyncing] = useState(false);
   const [retryAt, setRetryAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [desktopTarget, setDesktopTarget] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
+  }, []);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setDesktopTarget(document.getElementById("employees-shell-header"));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
   const queued = context?.syncState === "queued" || context?.syncState === "running";
   const request = async () => {
@@ -327,44 +367,51 @@ export function EmployeeScheduling() {
     : (locations[0]?.id ?? null);
   const lastSync = context.lastShiftSyncAt ?? context.lastEmployeeSyncAt;
   const stale = Boolean(lastSync && now - lastSync > 45 * 60 * 1_000);
+  const header = (
+    <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
+      <div className="flex min-w-0 flex-col gap-2">
+        <p className="text-sm font-semibold uppercase tracking-widest text-primary">Personale</p>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Medarbejdere</h1>
+      </div>
+      <Field>
+        <FieldLabel>Location</FieldLabel>
+        <Select
+          items={locations.map((location) => ({ value: location.id, label: location.name }))}
+          value={activeLocationId}
+          onValueChange={(value) => {
+            if (organizationId && value) setEmployeeLocation(organizationId, value);
+          }}
+          disabled={!locations.length}
+        >
+          <SelectTrigger className="h-11 w-full">
+            <MapPinIcon aria-hidden="true" />
+            <SelectValue placeholder="Vælg location" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
+    </div>
+  );
+  const syncButton = context.workfeedEnabled ? (
+    <Button size="lg" variant="outline" disabled={queued || syncing || cooldown} onClick={() => void request()}>
+      {queued || syncing ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
+      {queued ? "Synkroniserer" : "Synkronisér nu"}
+    </Button>
+  ) : null;
   return (
     <main className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
-      <header className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
-        <div className="flex min-w-0 flex-col gap-2">
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary">Personale</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Medarbejdere</h1>
-            {context.workfeedEnabled ? <Button variant="outline" disabled={queued || syncing || cooldown} onClick={() => void request()}>{queued || syncing ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}{queued ? "Synkroniserer" : "Synkronisér nu"}</Button> : null}
-          </div>
-        </div>
-        <Field>
-          <FieldLabel>Location</FieldLabel>
-          <Select
-            items={locations.map((location) => ({ value: location.id, label: location.name }))}
-            value={activeLocationId}
-            onValueChange={(value) => {
-              if (organizationId && value) setEmployeeLocation(organizationId, value);
-            }}
-            disabled={!locations.length}
-          >
-            <SelectTrigger className="h-11 w-full">
-              <MapPinIcon aria-hidden="true" />
-              <SelectValue placeholder="Vælg location" />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-      </header>
+      <header className="md:hidden">{header}</header>
+      {desktopTarget ? createPortal(header, desktopTarget) : null}
 
       {context.lastError ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>Seneste synkronisering mislykkedes</AlertTitle><AlertDescription>{context.lastError} De senest hentede data vises fortsat.</AlertDescription></Alert>
         : !context.workfeedConnected ? <Alert><Clock3Icon /><AlertTitle>Ingen Workfeed-forbindelse</AlertTitle><AlertDescription>{context.hasCachedEmployees ? "De senest synkroniserede data vises. Automatisk opdatering er stoppet." : "Forbind Workfeed under Organisation → Integrationer for at hente medarbejdere og vagter."}</AlertDescription></Alert>
         : !context.workfeedEnabled ? <Alert><Clock3Icon /><AlertTitle>Synkronisering er slået fra</AlertTitle><AlertDescription>De senest synkroniserede data vises, men opdateres ikke automatisk.</AlertDescription></Alert>
         : stale ? <Alert><Clock3Icon /><AlertTitle>Data kan være forældede</AlertTitle><AlertDescription>Den seneste automatiske synkronisering er ældre end forventet. De senest hentede data vises fortsat.</AlertDescription></Alert> : null}
 
-      {!context.hasCachedEmployees ? <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><UsersRoundIcon /></EmptyMedia><EmptyTitle>Ingen medarbejderdata endnu</EmptyTitle><EmptyDescription>{context.workfeedEnabled ? "Start en synkronisering for at hente medarbejdere og offentliggjorte vagter." : "Medarbejdere vises her, når en integration har leveret den første synkronisering."}</EmptyDescription></EmptyHeader></Empty>
-        : <Tabs value={selectedTab} onValueChange={(value) => organizationId && setEmployeeTab(organizationId, value as EmployeeTab)}><TabsList className="w-full sm:w-fit"><TabsTrigger value="schedule" className="h-11 px-5">Vagtplan</TabsTrigger><TabsTrigger value="directory" className="h-11 px-5">Medarbejdere</TabsTrigger></TabsList><TabsContent value="schedule" className="pt-3"><ScheduleTab locationId={activeLocationId} hasLocations={Boolean(locations.length)} timeZone={context.timeZone} /></TabsContent><TabsContent value="directory" className="pt-3"><DirectoryTab /></TabsContent></Tabs>}
+      {!context.hasCachedEmployees ? <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><UsersRoundIcon /></EmptyMedia><EmptyTitle>Ingen medarbejderdata endnu</EmptyTitle><EmptyDescription>{context.workfeedEnabled ? "Start en synkronisering for at hente medarbejdere og offentliggjorte vagter." : "Medarbejdere vises her, når en integration har leveret den første synkronisering."}</EmptyDescription></EmptyHeader>{syncButton ? <EmptyContent>{syncButton}</EmptyContent> : null}</Empty>
+        : <Tabs value={selectedTab} onValueChange={(value) => organizationId && setEmployeeTab(organizationId, value as EmployeeTab)}><TabsList className="w-full"><TabsTrigger value="schedule" className="px-5">Vagtplan</TabsTrigger><TabsTrigger value="directory" className="px-5">Medarbejdere</TabsTrigger></TabsList><TabsContent value="schedule" className="pt-3"><ScheduleTab locationId={activeLocationId} hasLocations={Boolean(locations.length)} syncButton={syncButton} timeZone={context.timeZone} /></TabsContent><TabsContent value="directory" className="pt-3"><DirectoryTab locationId={activeLocationId} syncButton={syncButton} /></TabsContent></Tabs>}
     </main>
   );
 }
