@@ -212,6 +212,7 @@ export default defineSchema({
     runKind: v.optional(v.union(v.literal("employees"), v.literal("shifts"))),
     runToken: v.optional(v.string()),
     pendingShiftChunks: v.optional(v.number()),
+    shiftChunkHashes: v.optional(v.array(v.string())),
     lastEmployeeAttemptAt: v.optional(v.number()),
     lastEmployeeSuccessAt: v.optional(v.number()),
     lastEmployeeCompanyId: v.optional(v.string()),
