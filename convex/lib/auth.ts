@@ -4,6 +4,8 @@ import {
   canManageCatalog,
   canManageOrganization,
   canManageTransfers,
+  canRegisterWaste,
+  canViewWasteReports,
 } from "../../lib/auth-permissions";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { authComponent, createAuth } from "../auth";
@@ -45,6 +47,22 @@ export async function requireTransferManager(ctx: AuthContext) {
 export async function requireCounter(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (!canCountStock(auth.role)) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
+export async function requireWasteRegistrar(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (!canRegisterWaste(auth.role)) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
+export async function requireWasteReporter(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (!canViewWasteReports(auth.role)) {
     throw new ConvexError("Du har ikke adgang");
   }
   return auth;

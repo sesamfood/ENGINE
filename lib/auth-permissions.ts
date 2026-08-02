@@ -21,12 +21,18 @@ export function canManageCatalog(role: string | null | undefined) {
 
 export const canManageTransfers = canManageCatalog;
 
+export const canViewWasteReports = canManageCatalog;
+
 export function canCountStock(role: string | null | undefined) {
   return role === "admin" || role === "manager" || role === "member";
 }
+
+export const canRegisterWaste = canCountStock;
 
 export function canManageMembers(role: string | null | undefined) {
   return role === "admin";
 }
 
 export const canManageOrganization = canManageMembers;
+
+export const canManageWasteSettings = canManageOrganization;

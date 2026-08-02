@@ -372,6 +372,191 @@ export default defineSchema({
     factorToDefault: v.optional(v.number()),
   }).index("by_organizationId_and_transferId", ["organizationId", "transferId"]),
 
+  wasteSettings: defineTable({
+    organizationId: v.string(),
+    inactivitySeconds: v.number(),
+    popularityPeriod: v.union(
+      v.literal("allTime"),
+      v.literal("30Days"),
+      v.literal("90Days"),
+    ),
+  }).index("by_org", ["organizationId"]),
+
+  wasteRegistrations: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+    quantityKey: v.string(),
+    factorToDefault: v.number(),
+    defaultUnitId: v.id("units"),
+    defaultUnitName: v.string(),
+    defaultQuantity: v.number(),
+    registeredAt: v.number(),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    source: v.union(v.literal("shortcut"), v.literal("custom")),
+    status: v.union(v.literal("active"), v.literal("voided")),
+    activeIn30Days: v.boolean(),
+    activeIn90Days: v.boolean(),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.string()),
+    voidedByName: v.optional(v.string()),
+  })
+    .index("by_org_and_time", [
+      "organizationId",
+      "registeredAt",
+    ])
+    .index("by_org_location_time", [
+      "organizationId",
+      "locationId",
+      "registeredAt",
+    ])
+    .index("by_org_status_time", [
+      "organizationId",
+      "status",
+      "registeredAt",
+    ])
+    .index("by_org_location_status_time", [
+      "organizationId",
+      "locationId",
+      "status",
+      "registeredAt",
+    ])
+    .index(
+      "by_org_location_product_status_time",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "status",
+        "registeredAt",
+      ],
+    )
+    .index(
+      "by_org_location_product_unit_qty_status_time",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "unitId",
+        "quantityKey",
+        "status",
+        "registeredAt",
+      ],
+    ),
+
+  wasteProductStats: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+    topAllTime: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top30Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top90Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_location_product", [
+      "organizationId",
+      "locationId",
+      "productId",
+    ])
+    .index(
+      "by_org_location_all_count",
+      ["organizationId", "locationId", "allTimeCount", "lastRegisteredAt"],
+    )
+    .index(
+      "by_org_location_30_count",
+      ["organizationId", "locationId", "count30Days", "lastRegisteredAt"],
+    )
+    .index(
+      "by_org_location_90_count",
+      ["organizationId", "locationId", "count90Days", "lastRegisteredAt"],
+    ),
+
+  wasteAmountStats: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    quantity: v.number(),
+    quantityKey: v.string(),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index(
+      "by_org_location_product_unit_qty",
+      ["organizationId", "locationId", "productId", "unitId", "quantityKey"],
+    )
+    .index(
+      "by_org_location_product_all_count",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "allTimeCount",
+        "lastRegisteredAt",
+      ],
+    )
+    .index(
+      "by_org_location_product_30_count",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "count30Days",
+        "lastRegisteredAt",
+      ],
+    )
+    .index(
+      "by_org_location_product_90_count",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "count90Days",
+        "lastRegisteredAt",
+      ],
+    ),
+
+  wasteProductConfigs: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    pinnedAt: v.optional(v.number()),
+    pinnedBy: v.optional(v.string()),
+    shortcutOverrides: v.optional(
+      v.array(v.object({ unitId: v.id("units"), quantity: v.number() })),
+    ),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_location_product", [
+      "organizationId",
+      "locationId",
+      "productId",
+    ])
+    .index("by_org_location_pinned", [
+      "organizationId",
+      "locationId",
+      "pinnedAt",
+    ]),
+
   countSettings: defineTable({
     organizationId: v.string(),
     closeMinuteOfDay: v.optional(v.number()),

@@ -9,6 +9,7 @@ import {
   LogOutIcon,
   SettingsIcon,
   StoreIcon,
+  Trash2Icon,
   UsersRoundIcon,
   UserRoundIcon,
 } from "lucide-react";
@@ -62,6 +63,7 @@ import { cn } from "@/lib/utils";
 
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
+  { label: "Waste", href: "/waste", icon: Trash2Icon },
   { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
 
@@ -572,8 +574,10 @@ export function AppShell({
     !pathname.startsWith("/organization/products/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
+  const showWasteHeader =
+    pathname === "/waste" || pathname.startsWith("/waste/");
   const showEmployeesHeader = pathname === "/employees";
-  const showPageHeader = showCountHeader || showEmployeesHeader;
+  const showPageHeader = showCountHeader || showWasteHeader || showEmployeesHeader;
 
   return (
     <OrganizationBoundary required={organizationRequired}>
@@ -618,7 +622,9 @@ export function AppShell({
                   id={
                     showCountHeader
                       ? "count-shell-header"
-                      : "employees-shell-header"
+                      : showWasteHeader
+                        ? "waste-shell-header"
+                        : "employees-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"
                 />
