@@ -17,11 +17,12 @@ import {
 } from "./lib/workfeedApi";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
-const HOUR_MS = 60 * 60 * 1_000;
 const HISTORY_MS = 30 * DAY_MS;
 const FORECAST_MS = 60 * DAY_MS;
 const CHUNK_MS = 7 * DAY_MS;
-const SHIFT_CHUNK_COUNT = Math.ceil((HISTORY_MS + FORECAST_MS) / CHUNK_MS);
+const SHIFT_CHUNK_COUNT = Math.ceil(
+  (HISTORY_MS + FORECAST_MS + DAY_MS) / CHUNK_MS,
+);
 const STUCK_MS = 30 * 60 * 1_000;
 const MAX_LOCATIONS = 200;
 const MAX_ROLES = 1_000;
@@ -120,10 +121,10 @@ function runToken(kind: "employees" | "shifts", now: number) {
 }
 
 function shiftWindow(now: number) {
-  const anchor = Math.floor(now / HOUR_MS) * HOUR_MS;
+  const anchor = Math.floor(now / DAY_MS) * DAY_MS;
   return {
     windowStart: anchor - HISTORY_MS,
-    windowEnd: anchor + FORECAST_MS,
+    windowEnd: anchor + FORECAST_MS + DAY_MS,
   };
 }
 
@@ -182,7 +183,7 @@ async function finishShiftChunk(
   if (nextFrom < args.windowEnd) {
     await ctx.db.patch(status._id, {
       pendingShiftChunks,
-      state: "queued",
+      state: "running",
       updatedAt: now,
       ...hashPatch,
     });
@@ -1034,10 +1035,12 @@ export const syncShiftChunk = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.runMutation(internal.workfeedSync.markRunning, {
-      organizationId: args.organizationId,
-      runToken: args.runToken,
-    });
+    if (args.from === args.windowStart) {
+      await ctx.runMutation(internal.workfeedSync.markRunning, {
+        organizationId: args.organizationId,
+        runToken: args.runToken,
+      });
+    }
     try {
       const requestContext: ShiftRequestContext | null = await ctx.runQuery(
         internal.workfeedSync.getShiftRequestContext,
