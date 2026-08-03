@@ -35,6 +35,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import {
   InputGroup,
   InputGroupAddon,
@@ -310,7 +311,7 @@ export function WasteRegistration() {
     }
     try {
       await setOverride({ locationId, productId: selected.id, shortcuts: shortcutDrafts });
-      toast.success("Hurtigvalg er gemt");
+      toast.success("Shortcuts er gemt");
       setEditingShortcuts(false);
     } catch (error) {
       toast.error(errorMessage(error));
@@ -396,7 +397,7 @@ export function WasteRegistration() {
             <>
               <DialogHeader>
                 <DialogTitle>{selected.name}</DialogTitle>
-                <DialogDescription>{editingShortcuts ? "Vælg de to mængder, der skal vises på produktkortet." : "Angiv den mængde, der er blevet kasseret."}</DialogDescription>
+                <DialogDescription>{editingShortcuts ? "Vælg de to mængder, der skal vises som shortcuts på produktkortet." : "Angiv den mængde, der er blevet kasseret."}</DialogDescription>
               </DialogHeader>
               <div className="relative h-64 overflow-hidden rounded-lg bg-muted">
                 {selected.imageUrl ? (
@@ -413,7 +414,29 @@ export function WasteRegistration() {
                       <Field><FieldLabel>Enhed</FieldLabel><Select items={selected.units.map((unit) => ({ value: unit.id, label: unit.name }))} value={shortcut.unitId} onValueChange={(value) => { const next = [...shortcutDrafts] as [Shortcut, Shortcut]; next[index] = { ...shortcut, unitId: value as Id<"units"> }; setShortcutDrafts(next); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{selected.units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                     </div>
                   ))}
-                  <Button type="button" variant="ghost" onClick={async () => { if (!locationId) return; try { await clearOverride({ locationId, productId: selected.id }); setEditingShortcuts(false); toast.success("Lærte mængder bruges igen"); } catch (error) { toast.error(errorMessage(error)); } }}>Brug lærte mængder</Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={async () => {
+                        if (!locationId) return;
+                        try {
+                          await clearOverride({ locationId, productId: selected.id });
+                          setEditingShortcuts(false);
+                          toast.success("Anbefalede mængder bruges igen");
+                        } catch (error) {
+                          toast.error(errorMessage(error));
+                        }
+                      }}
+                    >
+                      Brug anbefalede mængder
+                    </Button>
+                    <HelpTooltip
+                      label="anbefalede mængder"
+                      content="Fjerner de manuelt valgte shortcuts og bruger igen de to mængder, der anbefales ud fra Waste-registreringerne for denne location."
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-[1fr_10rem] gap-3">
@@ -422,7 +445,7 @@ export function WasteRegistration() {
                 </div>
               )}
               <DialogFooter>
-                {editingShortcuts ? <Button onClick={saveShortcuts}>Gem hurtigvalg</Button> : <><Button variant="outline" onClick={() => setSelectedId(null)}>Annullér</Button>{isAdmin ? <Button variant="outline" onClick={() => setEditingShortcuts(true)}>Redigér hurtigvalg</Button> : null}<Button onClick={() => { const parsed = Number(quantity); if (!unitId || !Number.isFinite(parsed) || parsed <= 0) { toast.error("Angiv en mængde større end 0"); return; } register(selected, { unitId, quantity: parsed }, "custom"); }}>Registrér Waste</Button></>}
+                {editingShortcuts ? <Button onClick={saveShortcuts}>Gem shortcuts</Button> : <><Button variant="outline" onClick={() => setSelectedId(null)}>Annullér</Button>{isAdmin ? <Button variant="outline" onClick={() => setEditingShortcuts(true)}>Redigér shortcuts</Button> : null}<Button onClick={() => { const parsed = Number(quantity); if (!unitId || !Number.isFinite(parsed) || parsed <= 0) { toast.error("Angiv en mængde større end 0"); return; } register(selected, { unitId, quantity: parsed }, "custom"); }}>Registrér Waste</Button></>}
               </DialogFooter>
             </>
           ) : null}

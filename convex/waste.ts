@@ -22,6 +22,7 @@ import { addStock, normalizeStock } from "./lib/stock";
 
 const MAX_PRODUCTS = 500;
 const MAX_CHILD_ROWS = 200;
+const MAX_REBUILD_ROWS = 1_000;
 const MAX_QUANTITY = 1_000_000;
 const UNDO_WINDOW_MS = 30_000;
 const DAYS_30_MS = 30 * 24 * 60 * 60 * 1000;
@@ -32,6 +33,10 @@ const popularityPeriodValidator = v.union(
   v.literal("30Days"),
   v.literal("90Days"),
 );
+const historyScopeValidator = v.union(
+  v.literal("location"),
+  v.literal("organization"),
+);
 const sourceValidator = v.union(v.literal("shortcut"), v.literal("custom"));
 const statusValidator = v.union(v.literal("active"), v.literal("voided"));
 const shortcutValidator = v.object({
@@ -41,6 +46,7 @@ const shortcutValidator = v.object({
 const settingsValidator = v.object({
   inactivitySeconds: v.number(),
   popularityPeriod: popularityPeriodValidator,
+  historyScope: historyScopeValidator,
 });
 const reportRowValidator = v.object({
   id: v.id("wasteRegistrations"),
@@ -131,6 +137,7 @@ async function settingsFor(ctx: WasteContext, organizationId: string) {
   return {
     inactivitySeconds: settings?.inactivitySeconds ?? 30,
     popularityPeriod: settings?.popularityPeriod ?? ("allTime" as const),
+    historyScope: settings?.historyScope ?? ("location" as const),
   };
 }
 
@@ -176,6 +183,76 @@ async function amountStats(
           .eq("quantityKey", registration.quantityKey),
     )
     .unique();
+}
+
+async function organizationProductStats(
+  ctx: WasteContext,
+  organizationId: string,
+  productId: Id<"products">,
+) {
+  return await ctx.db
+    .query("wasteOrganizationProductStats")
+    .withIndex("by_org_product", (q) =>
+      q.eq("organizationId", organizationId).eq("productId", productId),
+    )
+    .unique();
+}
+
+async function organizationAmountStats(
+  ctx: WasteContext,
+  registration: Pick<
+    Doc<"wasteRegistrations">,
+    "organizationId" | "productId" | "unitId" | "quantityKey"
+  >,
+) {
+  return await ctx.db
+    .query("wasteOrganizationAmountStats")
+    .withIndex("by_org_product_unit_qty", (q) =>
+      q
+        .eq("organizationId", registration.organizationId)
+        .eq("productId", registration.productId)
+        .eq("unitId", registration.unitId)
+        .eq("quantityKey", registration.quantityKey),
+    )
+    .unique();
+}
+
+type AmountStat = {
+  unitId: Id<"units">;
+  quantity: number;
+  allTimeCount: number;
+  count30Days: number;
+  count90Days: number;
+  lastRegisteredAt: number;
+};
+
+function countForPeriod(row: AmountStat, period: PopularityPeriod) {
+  return period === "30Days"
+    ? row.count30Days
+    : period === "90Days"
+      ? row.count90Days
+      : row.allTimeCount;
+}
+
+function selectTopAmounts(
+  rows: AmountStat[],
+  period: PopularityPeriod,
+  unitNames: Map<Id<"units">, string>,
+) {
+  return rows
+    .filter((row) => countForPeriod(row, period) > 0)
+    .sort(
+      (a, b) =>
+        countForPeriod(b, period) - countForPeriod(a, period) ||
+        b.lastRegisteredAt - a.lastRegisteredAt ||
+        a.quantity - b.quantity ||
+        (unitNames.get(a.unitId) ?? "").localeCompare(
+          unitNames.get(b.unitId) ?? "",
+          "da",
+        ),
+    )
+    .slice(0, 2)
+    .map((row) => ({ unitId: row.unitId, quantity: row.quantity }));
 }
 
 async function topAmounts(
@@ -234,25 +311,56 @@ async function topAmounts(
       unitNames.set(unitId, unit?.name ?? "");
     }),
   );
-  const count = (row: Doc<"wasteAmountStats">) =>
+  return selectTopAmounts(rows, period, unitNames);
+}
+
+async function topOrganizationAmounts(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+  period: PopularityPeriod,
+) {
+  const rows =
     period === "30Days"
-      ? row.count30Days
+      ? await ctx.db
+          .query("wasteOrganizationAmountStats")
+          .withIndex("by_org_product_30_count", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", productId)
+              .gt("count30Days", 0),
+          )
+          .order("desc")
+          .take(MAX_CHILD_ROWS)
       : period === "90Days"
-        ? row.count90Days
-        : row.allTimeCount;
-  return rows
-    .sort(
-      (a, b) =>
-        count(b) - count(a) ||
-        b.lastRegisteredAt - a.lastRegisteredAt ||
-        a.quantity - b.quantity ||
-        (unitNames.get(a.unitId) ?? "").localeCompare(
-          unitNames.get(b.unitId) ?? "",
-          "da",
-        ),
-    )
-    .slice(0, 2)
-    .map((row) => ({ unitId: row.unitId, quantity: row.quantity }));
+        ? await ctx.db
+            .query("wasteOrganizationAmountStats")
+            .withIndex("by_org_product_90_count", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", productId)
+                .gt("count90Days", 0),
+            )
+            .order("desc")
+            .take(MAX_CHILD_ROWS)
+        : await ctx.db
+            .query("wasteOrganizationAmountStats")
+            .withIndex("by_org_product_all_count", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", productId)
+                .gt("allTimeCount", 0),
+            )
+            .order("desc")
+            .take(MAX_CHILD_ROWS);
+  const unitNames = new Map<Id<"units">, string>();
+  await Promise.all(
+    [...new Set(rows.map((row) => row.unitId))].map(async (unitId) => {
+      const unit = await ctx.db.get("units", unitId);
+      unitNames.set(unitId, unit?.name ?? "");
+    }),
+  );
+  return selectTopAmounts(rows, period, unitNames);
 }
 
 async function refreshTopAmounts(
@@ -281,13 +389,53 @@ async function refreshTopAmounts(
   await ctx.db.patch("wasteProductStats", stats._id, patch);
 }
 
+async function refreshOrganizationTopAmounts(
+  ctx: MutationCtx,
+  registration: Pick<
+    Doc<"wasteRegistrations">,
+    "organizationId" | "productId"
+  >,
+  periods: PopularityPeriod[],
+) {
+  const stats = await organizationProductStats(
+    ctx,
+    registration.organizationId,
+    registration.productId,
+  );
+  if (!stats) return;
+  const patch: Partial<Doc<"wasteOrganizationProductStats">> = {};
+  for (const period of periods) {
+    const top = await topOrganizationAmounts(
+      ctx,
+      registration.organizationId,
+      registration.productId,
+      period,
+    );
+    if (period === "allTime") patch.topAllTime = top;
+    if (period === "30Days") patch.top30Days = top;
+    if (period === "90Days") patch.top90Days = top;
+  }
+  await ctx.db.patch("wasteOrganizationProductStats", stats._id, patch);
+}
+
 async function addRegistrationStats(
   ctx: MutationCtx,
   registration: Doc<"wasteRegistrations">,
 ) {
-  const [currentProduct, currentAmount] = await Promise.all([
+  const [
+    currentProduct,
+    currentAmount,
+    currentOrganizationProduct,
+    currentOrganizationAmount,
+  ] = await Promise.all([
     productStats(ctx, registration),
     amountStats(ctx, registration),
+    organizationProductStats(
+      ctx,
+      registration.organizationId,
+      registration.productId,
+    ),
+    organizationAmountStats(ctx, registration),
   ]);
   if (currentProduct) {
     await ctx.db.patch("wasteProductStats", currentProduct._id, {
@@ -331,7 +479,62 @@ async function addRegistrationStats(
       lastRegisteredAt: registration.registeredAt,
     });
   }
-  await refreshTopAmounts(ctx, registration, ["allTime", "30Days", "90Days"]);
+  if (currentOrganizationProduct) {
+    await ctx.db.patch(
+      "wasteOrganizationProductStats",
+      currentOrganizationProduct._id,
+      {
+        allTimeCount: currentOrganizationProduct.allTimeCount + 1,
+        count30Days: currentOrganizationProduct.count30Days + 1,
+        count90Days: currentOrganizationProduct.count90Days + 1,
+        lastRegisteredAt: registration.registeredAt,
+      },
+    );
+  } else {
+    await ctx.db.insert("wasteOrganizationProductStats", {
+      organizationId: registration.organizationId,
+      productId: registration.productId,
+      allTimeCount: 1,
+      count30Days: 1,
+      count90Days: 1,
+      lastRegisteredAt: registration.registeredAt,
+      topAllTime: [],
+      top30Days: [],
+      top90Days: [],
+    });
+  }
+  if (currentOrganizationAmount) {
+    await ctx.db.patch(
+      "wasteOrganizationAmountStats",
+      currentOrganizationAmount._id,
+      {
+        allTimeCount: currentOrganizationAmount.allTimeCount + 1,
+        count30Days: currentOrganizationAmount.count30Days + 1,
+        count90Days: currentOrganizationAmount.count90Days + 1,
+        lastRegisteredAt: registration.registeredAt,
+      },
+    );
+  } else {
+    await ctx.db.insert("wasteOrganizationAmountStats", {
+      organizationId: registration.organizationId,
+      productId: registration.productId,
+      unitId: registration.unitId,
+      quantity: registration.quantity,
+      quantityKey: registration.quantityKey,
+      allTimeCount: 1,
+      count30Days: 1,
+      count90Days: 1,
+      lastRegisteredAt: registration.registeredAt,
+    });
+  }
+  await Promise.all([
+    refreshTopAmounts(ctx, registration, ["allTime", "30Days", "90Days"]),
+    refreshOrganizationTopAmounts(ctx, registration, [
+      "allTime",
+      "30Days",
+      "90Days",
+    ]),
+  ]);
 }
 
 async function latestActiveRegistration(
@@ -370,19 +573,69 @@ async function latestActiveRegistration(
         .first();
 }
 
+async function latestActiveOrganizationRegistration(
+  ctx: MutationCtx,
+  registration: Doc<"wasteRegistrations">,
+  forAmount: boolean,
+) {
+  return forAmount
+    ? await ctx.db
+        .query("wasteRegistrations")
+        .withIndex("by_org_product_unit_qty_status_time", (q) =>
+          q
+            .eq("organizationId", registration.organizationId)
+            .eq("productId", registration.productId)
+            .eq("unitId", registration.unitId)
+            .eq("quantityKey", registration.quantityKey)
+            .eq("status", "active"),
+        )
+        .order("desc")
+        .first()
+    : await ctx.db
+        .query("wasteRegistrations")
+        .withIndex("by_org_product_status_time", (q) =>
+          q
+            .eq("organizationId", registration.organizationId)
+            .eq("productId", registration.productId)
+            .eq("status", "active"),
+        )
+        .order("desc")
+        .first();
+}
+
 async function decrementStats(
   ctx: MutationCtx,
   registration: Doc<"wasteRegistrations">,
   periods: PopularityPeriod[],
   refreshLatest: boolean,
 ) {
-  const [currentProduct, currentAmount, latestProduct, latestAmount] =
-    await Promise.all([
-      productStats(ctx, registration),
-      amountStats(ctx, registration),
-      refreshLatest ? latestActiveRegistration(ctx, registration, false) : null,
-      refreshLatest ? latestActiveRegistration(ctx, registration, true) : null,
-    ]);
+  const [
+    currentProduct,
+    currentAmount,
+    currentOrganizationProduct,
+    currentOrganizationAmount,
+    latestProduct,
+    latestAmount,
+    latestOrganizationProduct,
+    latestOrganizationAmount,
+  ] = await Promise.all([
+    productStats(ctx, registration),
+    amountStats(ctx, registration),
+    organizationProductStats(
+      ctx,
+      registration.organizationId,
+      registration.productId,
+    ),
+    organizationAmountStats(ctx, registration),
+    refreshLatest ? latestActiveRegistration(ctx, registration, false) : null,
+    refreshLatest ? latestActiveRegistration(ctx, registration, true) : null,
+    refreshLatest
+      ? latestActiveOrganizationRegistration(ctx, registration, false)
+      : null,
+    refreshLatest
+      ? latestActiveOrganizationRegistration(ctx, registration, true)
+      : null,
+  ]);
   if (currentProduct) {
     await ctx.db.patch("wasteProductStats", currentProduct._id, {
       allTimeCount: periods.includes("allTime")
@@ -415,7 +668,50 @@ async function decrementStats(
         : currentAmount.lastRegisteredAt,
     });
   }
-  await refreshTopAmounts(ctx, registration, periods);
+  if (currentOrganizationProduct) {
+    await ctx.db.patch(
+      "wasteOrganizationProductStats",
+      currentOrganizationProduct._id,
+      {
+        allTimeCount: periods.includes("allTime")
+          ? Math.max(0, currentOrganizationProduct.allTimeCount - 1)
+          : currentOrganizationProduct.allTimeCount,
+        count30Days: periods.includes("30Days")
+          ? Math.max(0, currentOrganizationProduct.count30Days - 1)
+          : currentOrganizationProduct.count30Days,
+        count90Days: periods.includes("90Days")
+          ? Math.max(0, currentOrganizationProduct.count90Days - 1)
+          : currentOrganizationProduct.count90Days,
+        lastRegisteredAt: refreshLatest
+          ? (latestOrganizationProduct?.registeredAt ?? 0)
+          : currentOrganizationProduct.lastRegisteredAt,
+      },
+    );
+  }
+  if (currentOrganizationAmount) {
+    await ctx.db.patch(
+      "wasteOrganizationAmountStats",
+      currentOrganizationAmount._id,
+      {
+        allTimeCount: periods.includes("allTime")
+          ? Math.max(0, currentOrganizationAmount.allTimeCount - 1)
+          : currentOrganizationAmount.allTimeCount,
+        count30Days: periods.includes("30Days")
+          ? Math.max(0, currentOrganizationAmount.count30Days - 1)
+          : currentOrganizationAmount.count30Days,
+        count90Days: periods.includes("90Days")
+          ? Math.max(0, currentOrganizationAmount.count90Days - 1)
+          : currentOrganizationAmount.count90Days,
+        lastRegisteredAt: refreshLatest
+          ? (latestOrganizationAmount?.registeredAt ?? 0)
+          : currentOrganizationAmount.lastRegisteredAt,
+      },
+    );
+  }
+  await Promise.all([
+    refreshTopAmounts(ctx, registration, periods),
+    refreshOrganizationTopAmounts(ctx, registration, periods),
+  ]);
 }
 
 function reportRow(registration: Doc<"wasteRegistrations">) {
@@ -467,6 +763,26 @@ export const setSettings = mutation({
       .unique();
     if (current) await ctx.db.patch("wasteSettings", current._id, args);
     else await ctx.db.insert("wasteSettings", { organizationId, ...args });
+    if (
+      args.historyScope === "organization" &&
+      (current?.historyScope ?? "location") !== "organization"
+    ) {
+      const products = await ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+          q.eq("organizationId", organizationId).eq("status", "active"),
+        )
+        .take(MAX_PRODUCTS);
+      await Promise.all(
+        products.map((product) =>
+          ctx.scheduler.runAfter(
+            0,
+            internal.waste.rebuildOrganizationStatsForProduct,
+            { organizationId, productId: product._id },
+          ),
+        ),
+      );
+    }
     return null;
   },
 });
@@ -563,33 +879,56 @@ export const getViewState = query({
     const { organizationId } = await requireWasteRegistrar(ctx);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
-    const stats =
-      settings.popularityPeriod === "30Days"
+    const stats = settings.historyScope === "organization"
+      ? settings.popularityPeriod === "30Days"
+        ? await ctx.db
+            .query("wasteOrganizationProductStats")
+            .withIndex("by_org_30_count", (q) =>
+              q.eq("organizationId", organizationId),
+            )
+            .order("desc")
+            .take(MAX_PRODUCTS)
+        : settings.popularityPeriod === "90Days"
+          ? await ctx.db
+              .query("wasteOrganizationProductStats")
+              .withIndex("by_org_90_count", (q) =>
+                q.eq("organizationId", organizationId),
+              )
+              .order("desc")
+              .take(MAX_PRODUCTS)
+          : await ctx.db
+              .query("wasteOrganizationProductStats")
+              .withIndex("by_org_all_count", (q) =>
+                q.eq("organizationId", organizationId),
+              )
+              .order("desc")
+              .take(MAX_PRODUCTS)
+      : settings.popularityPeriod === "30Days"
         ? await ctx.db
             .query("wasteProductStats")
-            .withIndex(
-              "by_org_location_30_count",
-              (q) =>
-                q.eq("organizationId", organizationId).eq("locationId", args.locationId),
+            .withIndex("by_org_location_30_count", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", args.locationId),
             )
             .order("desc")
             .take(MAX_PRODUCTS)
         : settings.popularityPeriod === "90Days"
           ? await ctx.db
               .query("wasteProductStats")
-              .withIndex(
-                "by_org_location_90_count",
-                (q) =>
-                  q.eq("organizationId", organizationId).eq("locationId", args.locationId),
+              .withIndex("by_org_location_90_count", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("locationId", args.locationId),
               )
               .order("desc")
               .take(MAX_PRODUCTS)
           : await ctx.db
               .query("wasteProductStats")
-              .withIndex(
-                "by_org_location_all_count",
-                (q) =>
-                  q.eq("organizationId", organizationId).eq("locationId", args.locationId),
+              .withIndex("by_org_location_all_count", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("locationId", args.locationId),
               )
               .order("desc")
               .take(MAX_PRODUCTS);
@@ -789,7 +1128,7 @@ export const setShortcutOverride = mutation({
     await requireLocation(ctx, organizationId, args.locationId);
     const product = await requireActiveProduct(ctx, organizationId, args.productId);
     if (args.shortcuts.length !== 2) {
-      throw new ConvexError("Angiv præcis to hurtigvalg");
+      throw new ConvexError("Angiv præcis to shortcuts");
     }
     const normalized = [] as Array<{ unitId: Id<"units">; quantity: number }>;
     for (const shortcut of args.shortcuts) {
@@ -810,7 +1149,7 @@ export const setShortcutOverride = mutation({
       normalized[0].unitId === normalized[1].unitId &&
       normalized[0].quantity === normalized[1].quantity
     ) {
-      throw new ConvexError("Hurtigvalgene skal være forskellige");
+      throw new ConvexError("De to shortcuts skal være forskellige");
     }
     const current = await ctx.db
       .query("wasteProductConfigs")
@@ -952,6 +1291,140 @@ export const expireRegistrationFrom90DayStats = internalMutation({
   },
 });
 
+export const rebuildOrganizationStatsForProduct = internalMutation({
+  args: {
+    organizationId: v.string(),
+    productId: v.id("products"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== args.organizationId) return null;
+    const [locationProducts, locationAmounts, currentProduct, currentAmounts] =
+      await Promise.all([
+        ctx.db
+          .query("wasteProductStats")
+          .withIndex("by_org_product", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("productId", args.productId),
+          )
+          .take(MAX_REBUILD_ROWS + 1),
+        ctx.db
+          .query("wasteAmountStats")
+          .withIndex("by_org_product", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("productId", args.productId),
+          )
+          .take(MAX_REBUILD_ROWS + 1),
+        organizationProductStats(ctx, args.organizationId, args.productId),
+        ctx.db
+          .query("wasteOrganizationAmountStats")
+          .withIndex("by_org_product", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("productId", args.productId),
+          )
+          .take(MAX_REBUILD_ROWS + 1),
+      ]);
+    if (
+      locationProducts.length > MAX_REBUILD_ROWS ||
+      locationAmounts.length > MAX_REBUILD_ROWS ||
+      currentAmounts.length > MAX_REBUILD_ROWS
+    ) {
+      throw new ConvexError(
+        "Organisationens Waste-historik er for stor til at blive samlet automatisk",
+      );
+    }
+    const totals = locationProducts.reduce(
+      (result, row) => ({
+        allTimeCount: result.allTimeCount + row.allTimeCount,
+        count30Days: result.count30Days + row.count30Days,
+        count90Days: result.count90Days + row.count90Days,
+        lastRegisteredAt: Math.max(
+          result.lastRegisteredAt,
+          row.lastRegisteredAt,
+        ),
+      }),
+      {
+        allTimeCount: 0,
+        count30Days: 0,
+        count90Days: 0,
+        lastRegisteredAt: 0,
+      },
+    );
+    const amountsByKey = new Map<
+      string,
+      Omit<Doc<"wasteOrganizationAmountStats">, "_id" | "_creationTime">
+    >();
+    for (const row of locationAmounts) {
+      const key = `${row.unitId}:${row.quantityKey}`;
+      const current = amountsByKey.get(key);
+      amountsByKey.set(key, {
+        organizationId: args.organizationId,
+        productId: args.productId,
+        unitId: row.unitId,
+        quantity: row.quantity,
+        quantityKey: row.quantityKey,
+        allTimeCount: (current?.allTimeCount ?? 0) + row.allTimeCount,
+        count30Days: (current?.count30Days ?? 0) + row.count30Days,
+        count90Days: (current?.count90Days ?? 0) + row.count90Days,
+        lastRegisteredAt: Math.max(
+          current?.lastRegisteredAt ?? 0,
+          row.lastRegisteredAt,
+        ),
+      });
+    }
+    const amounts = [...amountsByKey.values()];
+    const unitNames = new Map<Id<"units">, string>();
+    await Promise.all(
+      [...new Set(amounts.map((row) => row.unitId))].map(async (unitId) => {
+        const unit = await ctx.db.get("units", unitId);
+        unitNames.set(unitId, unit?.name ?? "");
+      }),
+    );
+    if (totals.allTimeCount > 0) {
+      const values = {
+        organizationId: args.organizationId,
+        productId: args.productId,
+        ...totals,
+        topAllTime: selectTopAmounts(amounts, "allTime", unitNames),
+        top30Days: selectTopAmounts(amounts, "30Days", unitNames),
+        top90Days: selectTopAmounts(amounts, "90Days", unitNames),
+      };
+      if (currentProduct) {
+        await ctx.db.replace(
+          "wasteOrganizationProductStats",
+          currentProduct._id,
+          values,
+        );
+      } else {
+        await ctx.db.insert("wasteOrganizationProductStats", values);
+      }
+    } else if (currentProduct) {
+      await ctx.db.delete("wasteOrganizationProductStats", currentProduct._id);
+    }
+    const currentAmountsByKey = new Map(
+      currentAmounts.map((row) => [`${row.unitId}:${row.quantityKey}`, row]),
+    );
+    for (const amount of amounts) {
+      const key = `${amount.unitId}:${amount.quantityKey}`;
+      const current = currentAmountsByKey.get(key);
+      if (current) {
+        await ctx.db.replace("wasteOrganizationAmountStats", current._id, amount);
+        currentAmountsByKey.delete(key);
+      } else {
+        await ctx.db.insert("wasteOrganizationAmountStats", amount);
+      }
+    }
+    for (const stale of currentAmountsByKey.values()) {
+      await ctx.db.delete("wasteOrganizationAmountStats", stale._id);
+    }
+    return null;
+  },
+});
+
 export const cleanupProductData = internalMutation({
   args: {
     organizationId: v.string(),
@@ -960,7 +1433,13 @@ export const cleanupProductData = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const limit = 100;
-    const [productStats, amountStatsRows, configs] = await Promise.all([
+    const [
+      productStats,
+      amountStatsRows,
+      organizationProductStatsRows,
+      organizationAmountStatsRows,
+      configs,
+    ] = await Promise.all([
       ctx.db
         .query("wasteProductStats")
         .withIndex("by_org_product", (q) =>
@@ -978,6 +1457,22 @@ export const cleanupProductData = internalMutation({
         )
         .take(limit),
       ctx.db
+        .query("wasteOrganizationProductStats")
+        .withIndex("by_org_product", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("productId", args.productId),
+        )
+        .take(limit),
+      ctx.db
+        .query("wasteOrganizationAmountStats")
+        .withIndex("by_org_product", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("productId", args.productId),
+        )
+        .take(limit),
+      ctx.db
         .query("wasteProductConfigs")
         .withIndex("by_org_product", (q) =>
           q
@@ -988,10 +1483,18 @@ export const cleanupProductData = internalMutation({
     ]);
     for (const row of productStats) await ctx.db.delete("wasteProductStats", row._id);
     for (const row of amountStatsRows) await ctx.db.delete("wasteAmountStats", row._id);
+    for (const row of organizationProductStatsRows) {
+      await ctx.db.delete("wasteOrganizationProductStats", row._id);
+    }
+    for (const row of organizationAmountStatsRows) {
+      await ctx.db.delete("wasteOrganizationAmountStats", row._id);
+    }
     for (const row of configs) await ctx.db.delete("wasteProductConfigs", row._id);
     if (
       productStats.length === limit ||
       amountStatsRows.length === limit ||
+      organizationProductStatsRows.length === limit ||
+      organizationAmountStatsRows.length === limit ||
       configs.length === limit
     ) {
       await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, args);

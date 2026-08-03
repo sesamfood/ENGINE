@@ -380,6 +380,9 @@ export default defineSchema({
       v.literal("30Days"),
       v.literal("90Days"),
     ),
+    historyScope: v.optional(
+      v.union(v.literal("location"), v.literal("organization")),
+    ),
   }).index("by_org", ["organizationId"]),
 
   wasteRegistrations: defineTable({
@@ -442,6 +445,21 @@ export default defineSchema({
       [
         "organizationId",
         "locationId",
+        "productId",
+        "unitId",
+        "quantityKey",
+        "status",
+        "registeredAt",
+      ],
+    )
+    .index(
+      "by_org_product_status_time",
+      ["organizationId", "productId", "status", "registeredAt"],
+    )
+    .index(
+      "by_org_product_unit_qty_status_time",
+      [
+        "organizationId",
         "productId",
         "unitId",
         "quantityKey",
@@ -534,6 +552,77 @@ export default defineSchema({
         "lastRegisteredAt",
       ],
     ),
+
+  wasteOrganizationProductStats: defineTable({
+    organizationId: v.string(),
+    productId: v.id("products"),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+    topAllTime: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top30Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top90Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_all_count", [
+      "organizationId",
+      "allTimeCount",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_30_count", [
+      "organizationId",
+      "count30Days",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_90_count", [
+      "organizationId",
+      "count90Days",
+      "lastRegisteredAt",
+    ]),
+
+  wasteOrganizationAmountStats: defineTable({
+    organizationId: v.string(),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    quantity: v.number(),
+    quantityKey: v.string(),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_product_unit_qty", [
+      "organizationId",
+      "productId",
+      "unitId",
+      "quantityKey",
+    ])
+    .index("by_org_product_all_count", [
+      "organizationId",
+      "productId",
+      "allTimeCount",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_product_30_count", [
+      "organizationId",
+      "productId",
+      "count30Days",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_product_90_count", [
+      "organizationId",
+      "productId",
+      "count90Days",
+      "lastRegisteredAt",
+    ]),
 
   wasteProductConfigs: defineTable({
     organizationId: v.string(),

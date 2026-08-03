@@ -18,11 +18,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { canManageWasteSettings } from "@/lib/auth-permissions";
 
 type Period = "allTime" | "30Days" | "90Days";
+type HistoryScope = "location" | "organization";
 
 const periodItems = [
   { value: "allTime", label: "Al tid" },
@@ -41,6 +43,7 @@ export function WasteSettings() {
   const saveSettings = useMutation(api.waste.setSettings);
   const [secondsDraft, setSecondsDraft] = useState<string | null>(null);
   const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
+  const [historyScopeDraft, setHistoryScopeDraft] = useState<HistoryScope | null>(null);
   const [saving, setSaving] = useState(false);
 
   if (membership.isPending) return <Skeleton className="h-72 max-w-3xl" />;
@@ -51,6 +54,7 @@ export function WasteSettings() {
 
   const seconds = secondsDraft ?? String(settings.inactivitySeconds);
   const period = periodDraft ?? settings.popularityPeriod;
+  const historyScope = historyScopeDraft ?? settings.historyScope;
 
   async function save() {
     const parsed = Number(seconds);
@@ -60,9 +64,14 @@ export function WasteSettings() {
     }
     setSaving(true);
     try {
-      await saveSettings({ inactivitySeconds: parsed, popularityPeriod: period });
+      await saveSettings({
+        inactivitySeconds: parsed,
+        popularityPeriod: period,
+        historyScope,
+      });
       setSecondsDraft(null);
       setPeriodDraft(null);
+      setHistoryScopeDraft(null);
       toast.success("Waste-indstillingerne er gemt");
     } catch (error) {
       toast.error(message(error));
@@ -85,6 +94,26 @@ export function WasteSettings() {
           <Field orientation="horizontal">
             <FieldContent><FieldLabel>Popularitetsperiode</FieldLabel></FieldContent>
             <Select items={periodItems} value={period} onValueChange={(value) => setPeriodDraft(value as Period)}><SelectTrigger className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{periodItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select>
+          </Field>
+          <Field orientation="horizontal">
+            <FieldContent>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="waste-organization-history">
+                  Brug historik fra hele organisationen
+                </FieldLabel>
+                <HelpTooltip
+                  label="historik fra hele organisationen"
+                  content="Når indstillingen er slået til, bruges Waste fra alle locations til popularitet og anbefalede shortcuts. Når den er slået fra, bruges kun historikken fra den valgte location."
+                />
+              </div>
+            </FieldContent>
+            <Switch
+              id="waste-organization-history"
+              checked={historyScope === "organization"}
+              onCheckedChange={(checked) =>
+                setHistoryScopeDraft(checked ? "organization" : "location")
+              }
+            />
           </Field>
         </FieldGroup>
       </CardContent>
