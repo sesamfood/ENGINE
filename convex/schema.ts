@@ -383,6 +383,12 @@ export default defineSchema({
     historyScope: v.optional(
       v.union(v.literal("location"), v.literal("organization")),
     ),
+    badDeliveryDeductFromStock: v.optional(v.boolean()),
+    badDeliveryShowStockChoice: v.optional(v.boolean()),
+    badDeliveryTo: v.optional(v.array(v.string())),
+    badDeliveryCc: v.optional(v.array(v.string())),
+    badDeliveryBcc: v.optional(v.array(v.string())),
+    badDeliveryEmailSubject: v.optional(v.string()),
   }).index("by_org", ["organizationId"]),
 
   wasteRegistrations: defineTable({
@@ -467,6 +473,95 @@ export default defineSchema({
         "registeredAt",
       ],
     ),
+
+  badDeliveries: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    registeredAt: v.number(),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    comment: v.optional(v.string()),
+    deductFromStock: v.boolean(),
+    itemCount: v.number(),
+    status: v.union(v.literal("active"), v.literal("voided")),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.string()),
+    voidedByName: v.optional(v.string()),
+    to: v.array(v.string()),
+    cc: v.array(v.string()),
+    bcc: v.array(v.string()),
+    emailSubject: v.optional(v.string()),
+    initialNoticeStatus: v.union(
+      v.literal("notConfigured"),
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    initialNoticeAttemptedAt: v.optional(v.number()),
+    initialNoticeSentAt: v.optional(v.number()),
+    initialNoticeProviderId: v.optional(v.string()),
+    initialNoticeFailureMessage: v.optional(v.string()),
+    initialNoticeInFlight: v.optional(v.boolean()),
+    cancellationNoticeStatus: v.union(
+      v.literal("notConfigured"),
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    cancellationNoticeAttemptedAt: v.optional(v.number()),
+    cancellationNoticeSentAt: v.optional(v.number()),
+    cancellationNoticeProviderId: v.optional(v.string()),
+    cancellationNoticeFailureMessage: v.optional(v.string()),
+    cancellationNoticeInFlight: v.optional(v.boolean()),
+  })
+    .index("by_organizationId_and_registeredAt", [
+      "organizationId",
+      "registeredAt",
+    ])
+    .index("by_organizationId_and_locationId_and_registeredAt", [
+      "organizationId",
+      "locationId",
+      "registeredAt",
+    ])
+    .index("by_organizationId_and_status_and_registeredAt", [
+      "organizationId",
+      "status",
+      "registeredAt",
+    ]),
+
+  badDeliveryItems: defineTable({
+    organizationId: v.string(),
+    badDeliveryId: v.id("badDeliveries"),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+    factorToDefault: v.number(),
+    defaultUnitId: v.id("units"),
+    defaultUnitName: v.string(),
+    defaultQuantity: v.number(),
+  }).index("by_organizationId_and_badDeliveryId", [
+    "organizationId",
+    "badDeliveryId",
+  ]),
+
+  badDeliveryAttachments: defineTable({
+    organizationId: v.string(),
+    badDeliveryId: v.id("badDeliveries"),
+    kind: v.union(v.literal("badProducts"), v.literal("deliveryNote")),
+    storageId: v.id("_storage"),
+    contentType: v.string(),
+    fileSize: v.number(),
+  })
+    .index("by_organizationId_and_badDeliveryId", [
+      "organizationId",
+      "badDeliveryId",
+    ])
+    .index("by_storageId", ["storageId"]),
 
   wasteProductStats: defineTable({
     organizationId: v.string(),

@@ -1,6 +1,10 @@
 "use client";
 
-import { ChartNoAxesColumnIcon, Trash2Icon } from "lucide-react";
+import {
+  ChartNoAxesColumnIcon,
+  PackageXIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +17,11 @@ export function WasteNavigation() {
   const sidebar = useSidebar();
   const membership = authClient.useActiveMemberRole();
   const canReport = canViewWasteReports(membership.data?.role);
+  const value = pathname.startsWith("/waste/report")
+    ? "report"
+    : pathname.startsWith("/waste/bad-delivery")
+      ? "badDelivery"
+      : "register";
 
   return (
     <div
@@ -25,19 +34,27 @@ export function WasteNavigation() {
             : "var(--sidebar-width)",
       }}
     >
-      <div className="mx-auto flex w-full max-w-[96rem] items-center">
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
         <Tabs
-          value={pathname.startsWith("/waste/report") ? "report" : "register"}
-          onValueChange={(value) =>
-            router.push(value === "report" ? "/waste/report" : "/waste", {
-              scroll: false,
-            })
-          }
+          value={value}
+          onValueChange={(next) => {
+            const href =
+              next === "report"
+                ? "/waste/report"
+                : next === "badDelivery"
+                  ? "/waste/bad-delivery"
+                  : "/waste";
+            router.push(href, { scroll: false });
+          }}
         >
           <TabsList variant="line" aria-label="Waste-sektioner" className="h-12">
             <TabsTrigger value="register" className="min-w-28 px-4">
               <Trash2Icon data-icon="inline-start" />
               Registrér
+            </TabsTrigger>
+            <TabsTrigger value="badDelivery" className="min-w-28 px-4">
+              <PackageXIcon data-icon="inline-start" />
+              Dårlig levering
             </TabsTrigger>
             {canReport ? (
               <TabsTrigger value="report" className="min-w-28 px-4">
@@ -47,6 +64,12 @@ export function WasteNavigation() {
             ) : null}
           </TabsList>
         </Tabs>
+        {value === "badDelivery" ? (
+          <div
+            id="bad-delivery-primary-action"
+            className="w-full sm:ml-auto sm:w-auto"
+          />
+        ) : null}
       </div>
     </div>
   );

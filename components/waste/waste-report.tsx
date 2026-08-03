@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -56,6 +57,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { canViewWasteReports } from "@/lib/auth-permissions";
+import { downloadCsv } from "@/lib/download-csv";
+import { BadDeliveriesReportSection } from "./bad-deliveries-report-section";
 import { useWasteContext } from "./waste-header";
 
 type Row = {
@@ -127,20 +130,6 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 6 }).format(value);
 }
 
-function csvValue(value: string) {
-  const safe = /^[\u0000-\u0020\u00a0\ufeff]*[=+\-@]/u.test(value) ? `'${value}` : value;
-  return /[;"\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
-}
-
-function downloadCsv(name: string, headers: string[], rows: string[][]) {
-  const csv = `\ufeff${[headers, ...rows].map((row) => row.map(csvValue).join(";")).join("\r\n")}`;
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
@@ -284,6 +273,19 @@ export function WasteReport() {
           {status === "LoadingFirstPage" ? <Skeleton className="h-56" /> : results.length ? <><Table><TableHeader><TableRow><TableHead>Tidspunkt</TableHead><TableHead>Location</TableHead><TableHead>Medarbejder</TableHead><TableHead>Produkt</TableHead><TableHead>Mængde</TableHead><TableHead>Kilde</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{(results as Row[]).map((row) => <TableRow key={row.id} className="cursor-pointer" tabIndex={0} onClick={() => setSelected(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelected(row); }}><TableCell>{formatter.format(row.registeredAt)}</TableCell><TableCell>{row.locationName}</TableCell><TableCell>{row.registeredByName}</TableCell><TableCell>{row.productName}</TableCell><TableCell>{formatNumber(row.quantity)} {row.unitName}</TableCell><TableCell>{row.source === "shortcut" ? "Shortcut" : "Tilpasset"}</TableCell><TableCell><Badge variant={row.status === "active" ? "secondary" : "outline"}>{row.status === "active" ? "Aktiv" : "Annulleret"}</Badge></TableCell></TableRow>)}</TableBody></Table>{status === "CanLoadMore" ? <div className="mt-4 flex justify-center"><Button variant="outline" onClick={() => loadMore(25)}>Indlæs flere</Button></div> : null}</> : <Empty className="min-h-44"><EmptyHeader><EmptyMedia variant="icon"><FileChartColumnIcon /></EmptyMedia><EmptyTitle>Ingen registreringer</EmptyTitle><EmptyDescription>Der er ingen Waste-registreringer i den valgte periode.</EmptyDescription></EmptyHeader></Empty>}
         </CardContent>
       </Card>
+
+      <Separator />
+      <BadDeliveriesReportSection
+        startAt={startAt}
+        endAt={endAt}
+        locationId={
+          location === "all" ? undefined : (location as Id<"locations">)
+        }
+        formatter={formatter}
+        from={from}
+        to={to}
+        rangeValid={rangeValid}
+      />
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}><DialogContent>{selected ? <><DialogHeader><DialogTitle>{selected.productName}</DialogTitle><DialogDescription>{formatter.format(selected.registeredAt)} · {selected.locationName}</DialogDescription></DialogHeader><dl className="grid grid-cols-2 gap-3"><dt className="text-muted-foreground">Medarbejder</dt><dd>{selected.registeredByName}</dd><dt className="text-muted-foreground">Mængde</dt><dd>{formatNumber(selected.quantity)} {selected.unitName}</dd><dt className="text-muted-foreground">Kilde</dt><dd>{selected.source === "shortcut" ? "Shortcut" : "Tilpasset"}</dd><dt className="text-muted-foreground">Status</dt><dd>{selected.status === "active" ? "Aktiv" : "Annulleret"}</dd>{selected.voidedAt ? <><dt className="text-muted-foreground">Annulleret</dt><dd>{formatter.format(selected.voidedAt)}{selected.voidedByName ? ` af ${selected.voidedByName}` : ""}</dd></> : null}</dl><DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Luk</Button>{selected.status === "active" ? <Button variant="destructive" onClick={() => setConfirming(true)}>Annullér registrering</Button> : null}</DialogFooter></> : null}</DialogContent></Dialog>
       <AlertDialog open={confirming} onOpenChange={setConfirming}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Annullér registrering?</AlertDialogTitle><AlertDialogDescription>Lageret bliver tilført den registrerede mængde igen. Auditloggen bevares.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Behold</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={voidSelected}>Annullér registrering</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>

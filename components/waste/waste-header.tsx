@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { MapPinIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -85,6 +85,7 @@ function Controls({
 
 export function WasteHeader({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
@@ -115,6 +116,7 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (pathname.startsWith("/waste/bad-delivery")) return;
     const seconds = viewState?.settings.inactivitySeconds ?? 30;
     let timer = window.setTimeout(reset, seconds * 1000);
     function reset() {
@@ -132,7 +134,7 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
       window.clearTimeout(timer);
       for (const event of events) window.removeEventListener(event, activity, true);
     };
-  }, [router, viewState?.settings.inactivitySeconds]);
+  }, [pathname, router, viewState?.settings.inactivitySeconds]);
 
   const controls = (
     <Controls

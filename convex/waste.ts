@@ -18,6 +18,11 @@ import {
   requireWasteReporter,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
+import {
+  DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
+  validateBadDeliveryEmailSubject,
+  validateBadDeliveryRecipients,
+} from "./lib/badDeliverySettings";
 import { addStock, normalizeStock } from "./lib/stock";
 
 const MAX_PRODUCTS = 500;
@@ -43,10 +48,18 @@ const shortcutValidator = v.object({
   unitId: v.id("units"),
   quantity: v.number(),
 });
-const settingsValidator = v.object({
+const viewSettingsValidator = v.object({
   inactivitySeconds: v.number(),
   popularityPeriod: popularityPeriodValidator,
   historyScope: historyScopeValidator,
+});
+const settingsValidator = viewSettingsValidator.extend({
+  badDeliveryDeductFromStock: v.boolean(),
+  badDeliveryShowStockChoice: v.boolean(),
+  badDeliveryTo: v.array(v.string()),
+  badDeliveryCc: v.array(v.string()),
+  badDeliveryBcc: v.array(v.string()),
+  badDeliveryEmailSubject: v.string(),
 });
 const reportRowValidator = v.object({
   id: v.id("wasteRegistrations"),
@@ -138,6 +151,15 @@ async function settingsFor(ctx: WasteContext, organizationId: string) {
     inactivitySeconds: settings?.inactivitySeconds ?? 30,
     popularityPeriod: settings?.popularityPeriod ?? ("allTime" as const),
     historyScope: settings?.historyScope ?? ("location" as const),
+    badDeliveryDeductFromStock:
+      settings?.badDeliveryDeductFromStock ?? true,
+    badDeliveryShowStockChoice:
+      settings?.badDeliveryShowStockChoice ?? true,
+    badDeliveryTo: settings?.badDeliveryTo ?? [],
+    badDeliveryCc: settings?.badDeliveryCc ?? [],
+    badDeliveryBcc: settings?.badDeliveryBcc ?? [],
+    badDeliveryEmailSubject:
+      settings?.badDeliveryEmailSubject ?? DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
   };
 }
 
@@ -757,12 +779,26 @@ export const setSettings = mutation({
     ) {
       throw new ConvexError("Inaktivitet skal være mellem 5 og 3600 sekunder");
     }
+    const recipients = validateBadDeliveryRecipients({
+      to: args.badDeliveryTo,
+      cc: args.badDeliveryCc,
+      bcc: args.badDeliveryBcc,
+    });
+    const next = {
+      ...args,
+      badDeliveryEmailSubject: validateBadDeliveryEmailSubject(
+        args.badDeliveryEmailSubject,
+      ),
+      badDeliveryTo: recipients.to,
+      badDeliveryCc: recipients.cc,
+      badDeliveryBcc: recipients.bcc,
+    };
     const current = await ctx.db
       .query("wasteSettings")
       .withIndex("by_org", (q) => q.eq("organizationId", organizationId))
       .unique();
-    if (current) await ctx.db.patch("wasteSettings", current._id, args);
-    else await ctx.db.insert("wasteSettings", { organizationId, ...args });
+    if (current) await ctx.db.patch("wasteSettings", current._id, next);
+    else await ctx.db.insert("wasteSettings", { organizationId, ...next });
     if (
       args.historyScope === "organization" &&
       (current?.historyScope ?? "location") !== "organization"
@@ -858,7 +894,7 @@ export const listCatalog = query({
 export const getViewState = query({
   args: { locationId: v.id("locations") },
   returns: v.object({
-    settings: settingsValidator,
+    settings: viewSettingsValidator,
     rankings: v.array(
       v.object({
         productId: v.id("products"),
@@ -939,7 +975,11 @@ export const getViewState = query({
       )
       .take(MAX_PRODUCTS);
     return {
-      settings,
+      settings: {
+        inactivitySeconds: settings.inactivitySeconds,
+        popularityPeriod: settings.popularityPeriod,
+        historyScope: settings.historyScope,
+      },
       rankings: stats
         .filter((row) =>
           settings.popularityPeriod === "30Days"
