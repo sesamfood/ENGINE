@@ -212,6 +212,7 @@ export default defineSchema({
     runKind: v.optional(v.union(v.literal("employees"), v.literal("shifts"))),
     runToken: v.optional(v.string()),
     pendingShiftChunks: v.optional(v.number()),
+    shiftChunkHashes: v.optional(v.array(v.string())),
     lastEmployeeAttemptAt: v.optional(v.number()),
     lastEmployeeSuccessAt: v.optional(v.number()),
     lastEmployeeCompanyId: v.optional(v.string()),
@@ -370,6 +371,377 @@ export default defineSchema({
     quantity: v.number(),
     factorToDefault: v.optional(v.number()),
   }).index("by_organizationId_and_transferId", ["organizationId", "transferId"]),
+
+  wasteSettings: defineTable({
+    organizationId: v.string(),
+    inactivitySeconds: v.number(),
+    popularityPeriod: v.union(
+      v.literal("allTime"),
+      v.literal("30Days"),
+      v.literal("90Days"),
+    ),
+    historyScope: v.optional(
+      v.union(v.literal("location"), v.literal("organization")),
+    ),
+    badDeliveryDeductFromStock: v.optional(v.boolean()),
+    badDeliveryShowStockChoice: v.optional(v.boolean()),
+    badDeliveryTo: v.optional(v.array(v.string())),
+    badDeliveryCc: v.optional(v.array(v.string())),
+    badDeliveryBcc: v.optional(v.array(v.string())),
+    badDeliveryEmailSubject: v.optional(v.string()),
+    badDeliveryEmailBody: v.optional(v.string()),
+  }).index("by_org", ["organizationId"]),
+
+  wasteRegistrations: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+    quantityKey: v.string(),
+    factorToDefault: v.number(),
+    defaultUnitId: v.id("units"),
+    defaultUnitName: v.string(),
+    defaultQuantity: v.number(),
+    registeredAt: v.number(),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    source: v.union(v.literal("shortcut"), v.literal("custom")),
+    status: v.union(v.literal("active"), v.literal("voided")),
+    activeIn30Days: v.boolean(),
+    activeIn90Days: v.boolean(),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.string()),
+    voidedByName: v.optional(v.string()),
+  })
+    .index("by_org_and_time", [
+      "organizationId",
+      "registeredAt",
+    ])
+    .index("by_org_location_time", [
+      "organizationId",
+      "locationId",
+      "registeredAt",
+    ])
+    .index("by_org_status_time", [
+      "organizationId",
+      "status",
+      "registeredAt",
+    ])
+    .index("by_org_location_status_time", [
+      "organizationId",
+      "locationId",
+      "status",
+      "registeredAt",
+    ])
+    .index(
+      "by_org_location_product_status_time",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "status",
+        "registeredAt",
+      ],
+    )
+    .index(
+      "by_org_location_product_unit_qty_status_time",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "unitId",
+        "quantityKey",
+        "status",
+        "registeredAt",
+      ],
+    )
+    .index(
+      "by_org_product_status_time",
+      ["organizationId", "productId", "status", "registeredAt"],
+    )
+    .index(
+      "by_org_product_unit_qty_status_time",
+      [
+        "organizationId",
+        "productId",
+        "unitId",
+        "quantityKey",
+        "status",
+        "registeredAt",
+      ],
+    ),
+
+  badDeliveries: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    registeredAt: v.number(),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    comment: v.optional(v.string()),
+    deductFromStock: v.boolean(),
+    itemCount: v.number(),
+    status: v.union(v.literal("active"), v.literal("voided")),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.string()),
+    voidedByName: v.optional(v.string()),
+    to: v.array(v.string()),
+    cc: v.array(v.string()),
+    bcc: v.array(v.string()),
+    emailSubject: v.optional(v.string()),
+    emailBody: v.optional(v.string()),
+    initialNoticeStatus: v.union(
+      v.literal("notConfigured"),
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    initialNoticeAttemptedAt: v.optional(v.number()),
+    initialNoticeSentAt: v.optional(v.number()),
+    initialNoticeProviderId: v.optional(v.string()),
+    initialNoticeFailureMessage: v.optional(v.string()),
+    initialNoticeInFlight: v.optional(v.boolean()),
+    cancellationNoticeStatus: v.union(
+      v.literal("notConfigured"),
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    cancellationNoticeAttemptedAt: v.optional(v.number()),
+    cancellationNoticeSentAt: v.optional(v.number()),
+    cancellationNoticeProviderId: v.optional(v.string()),
+    cancellationNoticeFailureMessage: v.optional(v.string()),
+    cancellationNoticeInFlight: v.optional(v.boolean()),
+  })
+    .index("by_organizationId_and_registeredAt", [
+      "organizationId",
+      "registeredAt",
+    ])
+    .index("by_organizationId_and_locationId_and_registeredAt", [
+      "organizationId",
+      "locationId",
+      "registeredAt",
+    ])
+    .index("by_organizationId_and_status_and_registeredAt", [
+      "organizationId",
+      "status",
+      "registeredAt",
+    ]),
+
+  badDeliveryItems: defineTable({
+    organizationId: v.string(),
+    badDeliveryId: v.id("badDeliveries"),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+    factorToDefault: v.number(),
+    defaultUnitId: v.id("units"),
+    defaultUnitName: v.string(),
+    defaultQuantity: v.number(),
+  }).index("by_organizationId_and_badDeliveryId", [
+    "organizationId",
+    "badDeliveryId",
+  ]),
+
+  badDeliveryAttachments: defineTable({
+    organizationId: v.string(),
+    badDeliveryId: v.id("badDeliveries"),
+    kind: v.union(v.literal("badProducts"), v.literal("deliveryNote")),
+    storageId: v.id("_storage"),
+    contentType: v.string(),
+    fileSize: v.number(),
+  })
+    .index("by_organizationId_and_badDeliveryId", [
+      "organizationId",
+      "badDeliveryId",
+    ])
+    .index("by_storageId", ["storageId"]),
+
+  wasteProductStats: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+    topAllTime: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top30Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top90Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_location_product", [
+      "organizationId",
+      "locationId",
+      "productId",
+    ])
+    .index(
+      "by_org_location_all_count",
+      ["organizationId", "locationId", "allTimeCount", "lastRegisteredAt"],
+    )
+    .index(
+      "by_org_location_30_count",
+      ["organizationId", "locationId", "count30Days", "lastRegisteredAt"],
+    )
+    .index(
+      "by_org_location_90_count",
+      ["organizationId", "locationId", "count90Days", "lastRegisteredAt"],
+    ),
+
+  wasteAmountStats: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    quantity: v.number(),
+    quantityKey: v.string(),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index(
+      "by_org_location_product_unit_qty",
+      ["organizationId", "locationId", "productId", "unitId", "quantityKey"],
+    )
+    .index(
+      "by_org_location_product_all_count",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "allTimeCount",
+        "lastRegisteredAt",
+      ],
+    )
+    .index(
+      "by_org_location_product_30_count",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "count30Days",
+        "lastRegisteredAt",
+      ],
+    )
+    .index(
+      "by_org_location_product_90_count",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "count90Days",
+        "lastRegisteredAt",
+      ],
+    ),
+
+  wasteOrganizationProductStats: defineTable({
+    organizationId: v.string(),
+    productId: v.id("products"),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+    topAllTime: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top30Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+    top90Days: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_all_count", [
+      "organizationId",
+      "allTimeCount",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_30_count", [
+      "organizationId",
+      "count30Days",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_90_count", [
+      "organizationId",
+      "count90Days",
+      "lastRegisteredAt",
+    ]),
+
+  wasteOrganizationAmountStats: defineTable({
+    organizationId: v.string(),
+    productId: v.id("products"),
+    unitId: v.id("units"),
+    quantity: v.number(),
+    quantityKey: v.string(),
+    allTimeCount: v.number(),
+    count30Days: v.number(),
+    count90Days: v.number(),
+    lastRegisteredAt: v.number(),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_product_unit_qty", [
+      "organizationId",
+      "productId",
+      "unitId",
+      "quantityKey",
+    ])
+    .index("by_org_product_all_count", [
+      "organizationId",
+      "productId",
+      "allTimeCount",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_product_30_count", [
+      "organizationId",
+      "productId",
+      "count30Days",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_product_90_count", [
+      "organizationId",
+      "productId",
+      "count90Days",
+      "lastRegisteredAt",
+    ]),
+
+  wasteProductConfigs: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    pinnedAt: v.optional(v.number()),
+    pinnedBy: v.optional(v.string()),
+    shortcutOverrides: v.optional(
+      v.array(v.object({ unitId: v.id("units"), quantity: v.number() })),
+    ),
+  })
+    .index("by_org_product", ["organizationId", "productId"])
+    .index("by_org_location_product", [
+      "organizationId",
+      "locationId",
+      "productId",
+    ])
+    .index("by_org_location_pinned", [
+      "organizationId",
+      "locationId",
+      "pinnedAt",
+    ]),
 
   countSettings: defineTable({
     organizationId: v.string(),

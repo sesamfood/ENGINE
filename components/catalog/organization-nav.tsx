@@ -31,11 +31,13 @@ export function OrganizationHeader() {
           ? "Vagtplan"
           : pathname.startsWith("/organization/count")
             ? "Count"
-            : pathname.startsWith("/organization/users")
-              ? "Brugere"
-              : pathname === "/organization"
-                ? "Organisation"
-                : "Organisationens oplysninger";
+            : pathname.startsWith("/organization/waste")
+              ? "Waste"
+              : pathname.startsWith("/organization/users")
+                ? "Brugere"
+                : pathname === "/organization"
+                  ? "Organisation"
+                  : "Organisationens oplysninger";
 
   useEffect(() => {
     for (const item of catalogSections) {

@@ -7,8 +7,10 @@ import {
   ChevronsUpDownIcon,
   ClipboardListIcon,
   LogOutIcon,
+  RefreshCwIcon,
   SettingsIcon,
   StoreIcon,
+  Trash2Icon,
   UsersRoundIcon,
   UserRoundIcon,
 } from "lucide-react";
@@ -62,6 +64,7 @@ import { cn } from "@/lib/utils";
 
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
+  { label: "Waste", href: "/waste", icon: Trash2Icon },
   { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
 
@@ -309,7 +312,15 @@ function AccountAvatar({
   );
 }
 
-function ProfileMenu({ compact = false }: { compact?: boolean }) {
+function ProfileMenu({
+  compact = false,
+  signingOut,
+  onSignOut,
+}: {
+  compact?: boolean;
+  signingOut: boolean;
+  onSignOut: () => void;
+}) {
   const { data: session } = authClient.useSession();
   const { data: membership } = authClient.useActiveMemberRole();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -334,21 +345,6 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
-  }
-
-  async function signOut() {
-    setOpenMobile(false);
-    try {
-      const result = await authClient.signOut();
-      if (result.error) {
-        toast.error("Du kunne ikke logges ud");
-        return;
-      }
-      router.replace("/login");
-      router.refresh();
-    } catch {
-      toast.error("Du kunne ikke logges ud. Kontrollér forbindelsen");
-    }
   }
 
   return (
@@ -441,7 +437,11 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
             <DropdownMenuGroup>
               <DropdownMenuItem
                 variant="destructive"
-                onClick={() => void signOut()}
+                disabled={signingOut}
+                onClick={() => {
+                  setOpenMobile(false);
+                  onSignOut();
+                }}
               >
                 <LogOutIcon />
                 Log ud
@@ -507,19 +507,16 @@ function OrganizationBoundary({
     return (
       <main className="grid min-h-screen place-items-center p-6">
         <Alert variant="destructive" className="max-w-md">
-          <AlertTitle>Organisationen kunne ikke indlæses</AlertTitle>
+          <AlertTitle>Siden kunne ikke indlæses</AlertTitle>
           <AlertDescription className="flex flex-col items-start gap-3">
-            Kontrollér forbindelsen, og prøv igen.
+            Genindlæs siden, og prøv igen.
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                setActivationError(false);
-                void organizations.refetch();
-                void activeOrganization.refetch();
-              }}
+              onClick={() => window.location.reload()}
             >
-              Prøv igen
+              <RefreshCwIcon data-icon="inline-start" />
+              Genindlæs siden
             </Button>
           </AlertDescription>
         </Alert>
@@ -553,6 +550,36 @@ export function AppShell({
   defaultSidebarOpen: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (!signingOut) return;
+
+    let cancelled = false;
+    void authClient
+      .signOut()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.error) {
+          setSigningOut(false);
+          toast.error("Du kunne ikke logges ud");
+          return;
+        }
+        router.replace("/login");
+        router.refresh();
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSigningOut(false);
+        toast.error("Du kunne ikke logges ud. Kontrollér forbindelsen");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, signingOut]);
+
   const shellless = [
     "/login",
     "/signup",
@@ -572,8 +599,21 @@ export function AppShell({
     !pathname.startsWith("/organization/products/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
+  const showWasteHeader =
+    pathname === "/waste" || pathname.startsWith("/waste/");
   const showEmployeesHeader = pathname === "/employees";
-  const showPageHeader = showCountHeader || showEmployeesHeader;
+  const showPageHeader = showCountHeader || showWasteHeader || showEmployeesHeader;
+
+  if (signingOut) {
+    return (
+      <main
+        className="grid min-h-screen place-items-center"
+        aria-label="Logger ud"
+      >
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
 
   return (
     <OrganizationBoundary required={organizationRequired}>
@@ -599,7 +639,10 @@ export function AppShell({
             <SidebarFooter>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <ProfileMenu />
+                  <ProfileMenu
+                    signingOut={signingOut}
+                    onSignOut={() => setSigningOut(true)}
+                  />
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarFooter>
@@ -618,7 +661,9 @@ export function AppShell({
                   id={
                     showCountHeader
                       ? "count-shell-header"
-                      : "employees-shell-header"
+                      : showWasteHeader
+                        ? "waste-shell-header"
+                        : "employees-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"
                 />
@@ -641,7 +686,11 @@ export function AppShell({
                 <OrganizationHome />
               </div>
               <div className="md:hidden">
-                <ProfileMenu compact />
+                <ProfileMenu
+                  compact
+                  signingOut={signingOut}
+                  onSignOut={() => setSigningOut(true)}
+                />
               </div>
             </header>
 

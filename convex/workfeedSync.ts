@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import {
   internalAction,
@@ -20,6 +20,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const HISTORY_MS = 30 * DAY_MS;
 const FORECAST_MS = 60 * DAY_MS;
 const CHUNK_MS = 7 * DAY_MS;
+const SHIFT_CHUNK_COUNT = Math.ceil(
+  (HISTORY_MS + FORECAST_MS + DAY_MS) / CHUNK_MS,
+);
 const STUCK_MS = 30 * 60 * 1_000;
 const MAX_LOCATIONS = 200;
 const MAX_ROLES = 1_000;
@@ -63,6 +66,17 @@ const shiftSyncContextValidator = v.union(
   v.null(),
 );
 
+const shiftRequestContextValidator = v.union(
+  v.object({
+    settings: settingsValidator,
+    runToken: v.union(v.string(), v.null()),
+    lastEmployeeCompanyId: v.union(v.string(), v.null()),
+    lastEmployeeSuccessAt: v.union(v.number(), v.null()),
+    shiftChunkHashes: v.array(v.string()),
+  }),
+  v.null(),
+);
+
 type EmployeeSyncContext = {
   settings: WorkfeedSettings;
   locations: Array<{
@@ -82,8 +96,123 @@ type ShiftSyncContext = EmployeeSyncContext & {
   }>;
 };
 
+type ShiftRequestContext = {
+  settings: WorkfeedSettings;
+  runToken: string | null;
+  lastEmployeeCompanyId: string | null;
+  lastEmployeeSuccessAt: number | null;
+  shiftChunkHashes: string[];
+};
+
+type ShiftChunkCompletion = {
+  organizationId: string;
+  companyId: string;
+  runToken: string;
+  windowStart: number;
+  windowEnd: number;
+  from: number;
+  to: number;
+  sourceHash?: string;
+  chunkIndex?: number;
+};
+
 function runToken(kind: "employees" | "shifts", now: number) {
   return `${kind}:${now}`;
+}
+
+function shiftWindow(now: number) {
+  const anchor = Math.floor(now / DAY_MS) * DAY_MS;
+  return {
+    windowStart: anchor - HISTORY_MS,
+    windowEnd: anchor + FORECAST_MS + DAY_MS,
+  };
+}
+
+async function shiftSourceHash(
+  shifts: ReturnType<typeof parseShifts>,
+  companyId: string,
+  lastEmployeeSuccessAt: number | null,
+) {
+  const serializedShifts = shifts
+    .map((shift) =>
+      JSON.stringify([
+        shift.id,
+        shift.employeeId,
+        shift.departmentId,
+        shift.roleId,
+        shift.start,
+        shift.end,
+      ]),
+    )
+    .sort();
+  const value = JSON.stringify([
+    1,
+    companyId,
+    lastEmployeeSuccessAt,
+    serializedShifts,
+  ]);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `v1:${hex}`;
+}
+
+async function finishShiftChunk(
+  ctx: MutationCtx,
+  status: Doc<"workfeedSyncStatus">,
+  args: ShiftChunkCompletion,
+) {
+  const pendingShiftChunks = Math.max(
+    0,
+    (status.pendingShiftChunks ?? 1) - 1,
+  );
+  const shiftChunkHashes = [...(status.shiftChunkHashes ?? [])];
+  if (args.sourceHash !== undefined && args.chunkIndex !== undefined) {
+    shiftChunkHashes[args.chunkIndex] = args.sourceHash;
+  }
+  const hashPatch =
+    args.sourceHash !== undefined && args.chunkIndex !== undefined
+      ? { shiftChunkHashes }
+      : {};
+  const nextFrom = args.to;
+  const now = Date.now();
+  if (nextFrom < args.windowEnd) {
+    await ctx.db.patch(status._id, {
+      pendingShiftChunks,
+      state: "running",
+      updatedAt: now,
+      ...hashPatch,
+    });
+    await ctx.scheduler.runAfter(0, internal.workfeedSync.syncShiftChunk, {
+      organizationId: args.organizationId,
+      runToken: args.runToken,
+      windowStart: args.windowStart,
+      windowEnd: args.windowEnd,
+      from: nextFrom,
+      to: Math.min(nextFrom + CHUNK_MS, args.windowEnd),
+    });
+    return;
+  }
+
+  await ctx.db.patch(status._id, {
+    state: "idle",
+    pendingShiftChunks: 0,
+    lastShiftSuccessAt: now,
+    lastError: undefined,
+    updatedAt: now,
+    ...hashPatch,
+  });
+  await ctx.scheduler.runAfter(0, internal.workfeedSync.pruneShifts, {
+    organizationId: args.organizationId,
+    companyId: args.companyId,
+    windowStart: args.windowStart,
+    windowEnd: args.windowEnd,
+    phase: "before",
+  });
 }
 
 async function startSync(
@@ -129,7 +258,7 @@ async function startSync(
       runToken: token,
       pendingShiftChunks:
         kind === "shifts"
-          ? Math.ceil((HISTORY_MS + FORECAST_MS) / CHUNK_MS)
+          ? SHIFT_CHUNK_COUNT
           : undefined,
       ...(kind === "employees"
         ? { lastEmployeeAttemptAt: now }
@@ -146,9 +275,7 @@ async function startSync(
       ...(kind === "employees"
         ? { lastEmployeeAttemptAt: now }
         : {
-            pendingShiftChunks: Math.ceil(
-              (HISTORY_MS + FORECAST_MS) / CHUNK_MS,
-            ),
+            pendingShiftChunks: SHIFT_CHUNK_COUNT,
             lastShiftAttemptAt: now,
           }),
       updatedAt: now,
@@ -161,8 +288,7 @@ async function startSync(
       runToken: token,
     });
   } else {
-    const windowStart = now - HISTORY_MS;
-    const windowEnd = now + FORECAST_MS;
+    const { windowStart, windowEnd } = shiftWindow(now);
     await ctx.scheduler.runAfter(0, internal.workfeedSync.syncShiftChunk, {
       organizationId,
       runToken: token,
@@ -268,6 +394,39 @@ export const getShiftSyncContext = internalQuery({
         name: role.name,
         active: role.active,
       })),
+    };
+  },
+});
+
+export const getShiftRequestContext = internalQuery({
+  args: { organizationId: v.string() },
+  returns: shiftRequestContextValidator,
+  handler: async (ctx, args): Promise<ShiftRequestContext | null> => {
+    const [settings, status] = await Promise.all([
+      ctx.db
+        .query("workfeedIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .unique(),
+      ctx.db
+        .query("workfeedSyncStatus")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .unique(),
+    ]);
+    if (!settings?.enabled) return null;
+    return {
+      settings: {
+        apiKey: settings.apiKey,
+        companyId: settings.companyId,
+        enabled: settings.enabled,
+      },
+      runToken: status?.runToken ?? null,
+      lastEmployeeCompanyId: status?.lastEmployeeCompanyId ?? null,
+      lastEmployeeSuccessAt: status?.lastEmployeeSuccessAt ?? null,
+      shiftChunkHashes: status?.shiftChunkHashes ?? [],
     };
   },
 });
@@ -670,13 +829,12 @@ export const completeEmployeeSnapshot = internalMutation({
 
     const now = Date.now();
     const shiftToken = runToken("shifts", now);
-    const windowStart = now - HISTORY_MS;
-    const windowEnd = now + FORECAST_MS;
+    const { windowStart, windowEnd } = shiftWindow(now);
     await ctx.db.patch(status._id, {
       state: "queued",
       runKind: "shifts",
       runToken: shiftToken,
-      pendingShiftChunks: Math.ceil((windowEnd - windowStart) / CHUNK_MS),
+      pendingShiftChunks: SHIFT_CHUNK_COUNT,
       lastEmployeeSuccessAt: now,
       lastEmployeeCompanyId: args.companyId,
       lastShiftAttemptAt: now,
@@ -826,7 +984,15 @@ export const upsertShiftBatch = internalMutation({
         : null;
       if (currentShift?.organizationId === args.organizationId) {
         shiftId = currentShift._id;
-        await ctx.db.patch(shiftId, value);
+        if (
+          currentShift.employeeId !== value.employeeId ||
+          currentShift.locationId !== value.locationId ||
+          currentShift.startsAt !== value.startsAt ||
+          currentShift.endsAt !== value.endsAt ||
+          currentShift.roleName !== value.roleName
+        ) {
+          await ctx.db.patch(shiftId, value);
+        }
       } else {
         shiftId = await ctx.db.insert("scheduledShifts", {
           organizationId: args.organizationId,
@@ -869,21 +1035,61 @@ export const syncShiftChunk = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await ctx.runMutation(internal.workfeedSync.markRunning, {
-      organizationId: args.organizationId,
-      runToken: args.runToken,
-    });
+    if (args.from === args.windowStart) {
+      await ctx.runMutation(internal.workfeedSync.markRunning, {
+        organizationId: args.organizationId,
+        runToken: args.runToken,
+      });
+    }
     try {
-      const employeeContext: EmployeeSyncContext | null = await ctx.runQuery(
-        internal.workfeedSync.getEmployeeSyncContext,
+      const requestContext: ShiftRequestContext | null = await ctx.runQuery(
+        internal.workfeedSync.getShiftRequestContext,
         { organizationId: args.organizationId },
       );
-      if (!employeeContext) throw new Error("Workfeed-integrationen er ikke aktiv");
+      if (
+        !requestContext ||
+        requestContext.runToken !== args.runToken ||
+        requestContext.lastEmployeeCompanyId !==
+          requestContext.settings.companyId
+      ) {
+        throw new Error("Medarbejderdata skal synkroniseres først");
+      }
+      const payload = await requestWorkfeed("/shifts", requestContext.settings, {
+        startFrom: new Date(args.from).toISOString(),
+        startTo: new Date(args.to).toISOString(),
+        released: "true",
+      });
+      const sourceShifts = parseShifts(payload);
+      const sourceHash = await shiftSourceHash(
+        sourceShifts,
+        requestContext.settings.companyId,
+        requestContext.lastEmployeeSuccessAt,
+      );
+      const chunkIndex = Math.round((args.from - args.windowStart) / CHUNK_MS);
+      if (
+        chunkIndex < 0 ||
+        chunkIndex >= SHIFT_CHUNK_COUNT ||
+        !Number.isInteger(chunkIndex)
+      ) {
+        throw new Error("Ugyldigt interval i vagtsynkroniseringen");
+      }
+      if (requestContext.shiftChunkHashes[chunkIndex] === sourceHash) {
+        await ctx.runMutation(
+          internal.workfeedSync.skipUnchangedShiftChunk,
+          {
+            ...args,
+            companyId: requestContext.settings.companyId,
+            sourceHash,
+            chunkIndex,
+          },
+        );
+        return null;
+      }
       const context: ShiftSyncContext | null = await ctx.runQuery(
         internal.workfeedSync.getShiftSyncContext,
         {
           organizationId: args.organizationId,
-          companyId: employeeContext.settings.companyId,
+          companyId: requestContext.settings.companyId,
         },
       );
       if (
@@ -893,12 +1099,6 @@ export const syncShiftChunk = internalAction({
       ) {
         throw new Error("Medarbejderdata skal synkroniseres først");
       }
-      const payload = await requestWorkfeed("/shifts", context.settings, {
-        startFrom: new Date(args.from).toISOString(),
-        startTo: new Date(args.to).toISOString(),
-        released: "true",
-      });
-      const sourceShifts = parseShifts(payload);
       const externalEmployeeIds = [...new Set(
         sourceShifts.map((shift) => shift.employeeId),
       )];
@@ -975,6 +1175,8 @@ export const syncShiftChunk = internalAction({
         from: args.from,
         to: args.to,
         cursor: null,
+        sourceHash,
+        chunkIndex,
       });
     } catch (error) {
       await ctx.runMutation(internal.workfeedSync.failSync, {
@@ -983,6 +1185,35 @@ export const syncShiftChunk = internalAction({
         message: workfeedErrorMessage(error),
       });
     }
+    return null;
+  },
+});
+
+export const skipUnchangedShiftChunk = internalMutation({
+  args: {
+    organizationId: v.string(),
+    companyId: v.string(),
+    runToken: v.string(),
+    windowStart: v.number(),
+    windowEnd: v.number(),
+    from: v.number(),
+    to: v.number(),
+    sourceHash: v.string(),
+    chunkIndex: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const status = await ctx.db
+      .query("workfeedSyncStatus")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .unique();
+    if (status?.runToken !== args.runToken) return null;
+    if (status.shiftChunkHashes?.[args.chunkIndex] !== args.sourceHash) {
+      throw new Error("Vagtdata ændrede sig under synkroniseringen");
+    }
+    await finishShiftChunk(ctx, status, args);
     return null;
   },
 });
@@ -997,6 +1228,8 @@ export const cleanupShiftChunk = internalMutation({
     from: v.number(),
     to: v.number(),
     cursor: v.union(v.string(), v.null()),
+    sourceHash: v.optional(v.string()),
+    chunkIndex: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1033,41 +1266,7 @@ export const cleanupShiftChunk = internalMutation({
       return null;
     }
 
-    const pendingShiftChunks = Math.max(
-      0,
-      (status.pendingShiftChunks ?? 1) - 1,
-    );
-    const nextFrom = args.to;
-    if (nextFrom < args.windowEnd) {
-      await ctx.db.patch(status._id, {
-        pendingShiftChunks,
-        state: "queued",
-        updatedAt: Date.now(),
-      });
-      await ctx.scheduler.runAfter(0, internal.workfeedSync.syncShiftChunk, {
-        organizationId: args.organizationId,
-        runToken: args.runToken,
-        windowStart: args.windowStart,
-        windowEnd: args.windowEnd,
-        from: nextFrom,
-        to: Math.min(nextFrom + CHUNK_MS, args.windowEnd),
-      });
-    } else {
-      await ctx.db.patch(status._id, {
-        state: "idle",
-        pendingShiftChunks: 0,
-        lastShiftSuccessAt: Date.now(),
-        lastError: undefined,
-        updatedAt: Date.now(),
-      });
-      await ctx.scheduler.runAfter(0, internal.workfeedSync.pruneShifts, {
-        organizationId: args.organizationId,
-        companyId: args.companyId,
-        windowStart: args.windowStart,
-        windowEnd: args.windowEnd,
-        phase: "before",
-      });
-    }
+    await finishShiftChunk(ctx, status, args);
     return null;
   },
 });

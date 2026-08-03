@@ -491,6 +491,10 @@ async function permanentlyDeleteProduct(
   }
   for (const row of countItems) await ctx.db.delete("countItems", row._id);
   for (const row of stockRows) await ctx.db.delete("locationStock", row._id);
+  await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, {
+    organizationId: product.organizationId,
+    productId: product._id,
+  });
   if (product.imageStorageId) {
     await ctx.storage.delete(product.imageStorageId);
   }

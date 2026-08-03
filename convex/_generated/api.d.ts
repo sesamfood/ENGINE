@@ -9,23 +9,28 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as badDeliveries from "../badDeliveries.js";
+import type * as badDeliveryNotices from "../badDeliveryNotices.js";
 import type * as catalog from "../catalog.js";
 import type * as count from "../count.js";
 import type * as crons from "../crons.js";
 import type * as employees from "../employees.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_badDeliverySettings from "../lib/badDeliverySettings.js";
 import type * as lib_countLock from "../lib/countLock.js";
 import type * as lib_countSettings from "../lib/countSettings.js";
 import type * as lib_countWindow from "../lib/countWindow.js";
 import type * as lib_openingHours from "../lib/openingHours.js";
 import type * as lib_rateLimits from "../lib/rateLimits.js";
+import type * as lib_resend from "../lib/resend.js";
 import type * as lib_stock from "../lib/stock.js";
 import type * as lib_workfeedApi from "../lib/workfeedApi.js";
 import type * as locations from "../locations.js";
 import type * as onlinePos from "../onlinePos.js";
 import type * as organization from "../organization.js";
 import type * as transfers from "../transfers.js";
+import type * as waste from "../waste.js";
 import type * as workfeed from "../workfeed.js";
 import type * as workfeedSync from "../workfeedSync.js";
 
@@ -37,23 +42,28 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  badDeliveries: typeof badDeliveries;
+  badDeliveryNotices: typeof badDeliveryNotices;
   catalog: typeof catalog;
   count: typeof count;
   crons: typeof crons;
   employees: typeof employees;
   http: typeof http;
   "lib/auth": typeof lib_auth;
+  "lib/badDeliverySettings": typeof lib_badDeliverySettings;
   "lib/countLock": typeof lib_countLock;
   "lib/countSettings": typeof lib_countSettings;
   "lib/countWindow": typeof lib_countWindow;
   "lib/openingHours": typeof lib_openingHours;
   "lib/rateLimits": typeof lib_rateLimits;
+  "lib/resend": typeof lib_resend;
   "lib/stock": typeof lib_stock;
   "lib/workfeedApi": typeof lib_workfeedApi;
   locations: typeof locations;
   onlinePos: typeof onlinePos;
   organization: typeof organization;
   transfers: typeof transfers;
+  waste: typeof waste;
   workfeed: typeof workfeed;
   workfeedSync: typeof workfeedSync;
 }>;

@@ -12,8 +12,12 @@ import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
+import { sendResendEmail } from "./lib/resend";
 
 const siteUrl = process.env.SITE_URL!;
+const localLoopbackOrigin = siteUrl?.startsWith("http://localhost:")
+  ? siteUrl.replace("localhost", "127.0.0.1")
+  : null;
 const allowedOrganizationRoles = new Set(["admin", "manager", "member"]);
 
 type OrganizationMember = {
@@ -118,25 +122,7 @@ async function sendEmail(
   message: { to: string; subject: string; html: string },
 ) {
   requireActionCtx(ctx);
-
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from) {
-    throw new Error("RESEND_API_KEY og RESEND_FROM_EMAIL skal være sat");
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from, ...message }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Resend afviste e-mailen med status ${response.status}`);
-  }
+  await sendResendEmail(message);
 }
 
 export const authComponent = createClient<DataModel, typeof authSchema>(
@@ -149,7 +135,11 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
   ({
     baseURL: siteUrl,
-    trustedOrigins: [siteUrl, "https://engine-*-mellonn.vercel.app"],
+    trustedOrigins: [
+      siteUrl,
+      ...(localLoopbackOrigin ? [localLoopbackOrigin] : []),
+      "https://engine-*-mellonn.vercel.app",
+    ],
     database: authComponent.adapter(ctx),
     advanced: {
       database: {

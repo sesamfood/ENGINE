@@ -7,6 +7,7 @@ import {
   PackageIcon,
   PlugIcon,
   StoreIcon,
+  Trash2Icon,
   UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -49,6 +50,13 @@ const sections = [
     description: "Indstil frekvens og regler for count-vinduet.",
     href: "/organization/count",
     icon: ClipboardListIcon,
+    adminOnly: true,
+  },
+  {
+    title: "Waste",
+    description: "Indstil nulstilling og popularitet for Waste.",
+    href: "/organization/waste",
+    icon: Trash2Icon,
     adminOnly: true,
   },
   {
