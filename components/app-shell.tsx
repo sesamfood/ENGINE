@@ -61,6 +61,7 @@ import { canManageCatalog } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
+import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
 
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
@@ -542,6 +543,34 @@ function OrganizationBoundary({
   return children;
 }
 
+function OrganizationTheme({ children }: { children: React.ReactNode }) {
+  const organization = authClient.useActiveOrganization();
+  const { isAuthenticated } = useConvexAuth();
+  const branding = useQuery(
+    api.organization.getBranding,
+    organization.data && isAuthenticated ? {} : "skip",
+  );
+
+  useEffect(() => {
+    if (!branding?.theme) return;
+    const root = document.documentElement;
+    const variables = getOrganizationThemeCssVariables(branding.theme);
+    const previous = new Map<string, string>();
+    for (const [name, value] of Object.entries(variables)) {
+      previous.set(name, root.style.getPropertyValue(name));
+      root.style.setProperty(name, value);
+    }
+    return () => {
+      for (const [name, value] of previous) {
+        if (value) root.style.setProperty(name, value);
+        else root.style.removeProperty(name);
+      }
+    };
+  }, [branding?.theme]);
+
+  return children;
+}
+
 export function AppShell({
   children,
   defaultSidebarOpen,
@@ -617,8 +646,9 @@ export function AppShell({
 
   return (
     <OrganizationBoundary required={organizationRequired}>
-      <FeatureLockBoundary>
-        <SidebarProvider
+      <OrganizationTheme>
+        <FeatureLockBoundary>
+          <SidebarProvider
           defaultOpen={defaultSidebarOpen}
           style={
             {
@@ -698,8 +728,9 @@ export function AppShell({
               {children}
             </div>
           </SidebarInset>
-        </SidebarProvider>
-      </FeatureLockBoundary>
+          </SidebarProvider>
+        </FeatureLockBoundary>
+      </OrganizationTheme>
     </OrganizationBoundary>
   );
 }

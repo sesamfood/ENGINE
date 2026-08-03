@@ -5,12 +5,14 @@ import {
   weeklyOpeningHoursValidator,
 } from "./lib/openingHours";
 import { countScheduleValidator } from "./lib/countSettings";
+import { organizationThemeValidator } from "./lib/organizationTheme";
 
 export default defineSchema({
   organizationAssets: defineTable({
     organizationId: v.string(),
     logoStorageId: v.optional(v.id("_storage")),
     wideLogoStorageId: v.optional(v.id("_storage")),
+    theme: v.optional(organizationThemeValidator),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_logoStorageId", ["logoStorageId"])

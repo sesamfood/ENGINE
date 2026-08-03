@@ -1,12 +1,21 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  getOrganizationThemeError,
+  normalizeOrganizationTheme,
+  organizationThemeValidator,
+} from "./lib/organizationTheme";
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const organizationBrandingValidator = v.object({
+  wideLogoUrl: v.union(v.string(), v.null()),
+  theme: v.union(organizationThemeValidator, v.null()),
+});
 
 async function requireValidLogo(ctx: MutationCtx, storageId: Id<"_storage">) {
   const metadata = await ctx.db.system.get("_storage", storageId);
@@ -52,7 +61,7 @@ async function requireUnusedByAnotherOrganization(
 
 export const getBranding = query({
   args: {},
-  returns: v.object({ wideLogoUrl: v.union(v.string(), v.null()) }),
+  returns: organizationBrandingValidator,
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
     const asset = await ctx.db
@@ -64,7 +73,48 @@ export const getBranding = query({
     const wideLogoUrl = asset?.wideLogoStorageId
       ? await ctx.storage.getUrl(asset.wideLogoStorageId)
       : null;
-    return { wideLogoUrl };
+    return { wideLogoUrl, theme: asset?.theme ?? null };
+  },
+});
+
+export const getBrandingForEmail = internalQuery({
+  args: { organizationId: v.string() },
+  returns: organizationBrandingValidator,
+  handler: async (ctx, args) => {
+    const asset = await ctx.db
+      .query("organizationAssets")
+      .withIndex("by_organizationId", (query) =>
+        query.eq("organizationId", args.organizationId),
+      )
+      .unique();
+    const wideLogoUrl = asset?.wideLogoStorageId
+      ? await ctx.storage.getUrl(asset.wideLogoStorageId)
+      : null;
+    return { wideLogoUrl, theme: asset?.theme ?? null };
+  },
+});
+
+export const setTheme = mutation({
+  args: { theme: organizationThemeValidator },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const theme = normalizeOrganizationTheme(args.theme);
+    const error = getOrganizationThemeError(theme);
+    if (error) throw new ConvexError(error);
+
+    const asset = await ctx.db
+      .query("organizationAssets")
+      .withIndex("by_organizationId", (query) =>
+        query.eq("organizationId", organizationId),
+      )
+      .unique();
+    if (asset) {
+      await ctx.db.patch("organizationAssets", asset._id, { theme });
+    } else {
+      await ctx.db.insert("organizationAssets", { organizationId, theme });
+    }
+    return null;
   },
 });
 
@@ -166,7 +216,7 @@ export const removeLogo = mutation({
         );
         if (logo) await ctx.storage.delete(currentAsset.logoStorageId);
       }
-      if (currentAsset.wideLogoStorageId) {
+      if (currentAsset.wideLogoStorageId || currentAsset.theme) {
         await ctx.db.patch("organizationAssets", currentAsset._id, {
           logoStorageId: undefined,
         });
@@ -251,7 +301,7 @@ export const removeWideLogo = mutation({
         );
         if (logo) await ctx.storage.delete(currentAsset.wideLogoStorageId);
       }
-      if (currentAsset.logoStorageId) {
+      if (currentAsset.logoStorageId || currentAsset.theme) {
         await ctx.db.patch("organizationAssets", currentAsset._id, {
           wideLogoStorageId: undefined,
         });

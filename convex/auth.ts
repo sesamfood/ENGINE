@@ -8,11 +8,12 @@ import {
   organizationAccessControl,
   organizationRoles,
 } from "../lib/auth-permissions";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
 import {
+  type AuthEmailBranding,
   createInvitationEmail,
   createPasswordResetEmail,
   createVerificationEmail,
@@ -116,6 +117,34 @@ async function sendEmail(
   await sendResendEmail(message);
 }
 
+async function getOrganizationEmailBranding(
+  ctx: GenericCtx<DataModel>,
+  organizationId: string,
+) {
+  const actionCtx = requireActionCtx(ctx);
+  return await actionCtx.runQuery(
+    internal.organization.getBrandingForEmail,
+    { organizationId },
+  );
+}
+
+async function getUserEmailBranding(
+  ctx: GenericCtx<DataModel>,
+  userId: string,
+): Promise<AuthEmailBranding | null> {
+  const memberships = await getDatabaseAdapter(ctx).findMany<OrganizationMember>(
+    {
+      model: "member",
+      where: [{ field: "userId", value: userId }],
+      limit: 1,
+    },
+  );
+  const organizationId = memberships[0]?.organizationId;
+  return organizationId
+    ? await getOrganizationEmailBranding(ctx, organizationId)
+    : null;
+}
+
 export const authComponent = createClient<DataModel, typeof authSchema>(
   components.betterAuth,
   {
@@ -145,7 +174,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
       resetPasswordTokenExpiresIn: 60 * 60,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
-        const email = createPasswordResetEmail(url);
+        const branding = await getUserEmailBranding(ctx, user.id);
+        const email = createPasswordResetEmail(url, branding);
         await sendEmail(ctx, {
           to: user.email,
           ...email,
@@ -168,7 +198,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
       sendOnSignIn: true,
       expiresIn: 60 * 60,
       sendVerificationEmail: async ({ user, url }) => {
-        const email = createVerificationEmail(url);
+        const branding = await getUserEmailBranding(ctx, user.id);
+        const email = createVerificationEmail(url, branding);
         await sendEmail(ctx, {
           to: user.email,
           ...email,
@@ -213,11 +244,16 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         },
         sendInvitationEmail: async (data) => {
           const invitationUrl = `${siteUrl}/invitation/${data.id}`;
+          const branding = await getOrganizationEmailBranding(
+            ctx,
+            data.organization.id,
+          );
           const email = createInvitationEmail(
             data.inviter.user.name,
             data.organization.name,
             data.id,
             invitationUrl,
+            branding,
           );
           await sendEmail(ctx, {
             to: data.email,

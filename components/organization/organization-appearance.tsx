@@ -40,6 +40,7 @@ import { authClient } from "@/lib/auth-client";
 import { canManageOrganization } from "@/lib/auth-permissions";
 import { compressImage } from "@/lib/compress-image";
 import { cn } from "@/lib/utils";
+import { OrganizationThemeCard } from "./organization-theme-card";
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
 const MAX_LOGO_SOURCE_SIZE = 10 * 1024 * 1024;
@@ -341,11 +342,11 @@ export function OrganizationAppearance() {
 
   return (
     <div className="flex flex-col gap-8">
-      <h2 className="text-2xl font-semibold tracking-tight">
-        Logoer og identitet
-      </h2>
+      <h2 className="text-2xl font-semibold tracking-tight">Visuel identitet</h2>
 
       <div className="flex flex-col gap-6">
+        <OrganizationThemeCard currentTheme={branding.theme} />
+
         <LogoUploadCard
           name="app-icon"
           title="Appikon"
