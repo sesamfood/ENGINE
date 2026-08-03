@@ -7,6 +7,7 @@ import {
   ChevronsUpDownIcon,
   ClipboardListIcon,
   LogOutIcon,
+  RefreshCwIcon,
   SettingsIcon,
   StoreIcon,
   Trash2Icon,
@@ -506,19 +507,16 @@ function OrganizationBoundary({
     return (
       <main className="grid min-h-screen place-items-center p-6">
         <Alert variant="destructive" className="max-w-md">
-          <AlertTitle>Organisationen kunne ikke indlæses</AlertTitle>
+          <AlertTitle>Siden kunne ikke indlæses</AlertTitle>
           <AlertDescription className="flex flex-col items-start gap-3">
-            Kontrollér forbindelsen, og prøv igen.
+            Genindlæs siden, og prøv igen.
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                setActivationError(false);
-                void organizations.refetch();
-                void activeOrganization.refetch();
-              }}
+              onClick={() => window.location.reload()}
             >
-              Prøv igen
+              <RefreshCwIcon data-icon="inline-start" />
+              Genindlæs siden
             </Button>
           </AlertDescription>
         </Alert>
