@@ -12,6 +12,11 @@ import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
+import {
+  createInvitationEmail,
+  createPasswordResetEmail,
+  createVerificationEmail,
+} from "./lib/authEmail";
 import { sendResendEmail } from "./lib/resend";
 
 const siteUrl = process.env.SITE_URL!;
@@ -103,23 +108,9 @@ async function removeDeletedUserMemberships(
   });
 }
 
-function escapeHtml(value: string) {
-  return value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;",
-      })[character]!,
-  );
-}
-
 async function sendEmail(
   ctx: GenericCtx<DataModel>,
-  message: { to: string; subject: string; html: string },
+  message: { to: string; subject: string; html: string; text: string },
 ) {
   requireActionCtx(ctx);
   await sendResendEmail(message);
@@ -154,10 +145,10 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
       resetPasswordTokenExpiresIn: 60 * 60,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
+        const email = createPasswordResetEmail(url);
         await sendEmail(ctx, {
           to: user.email,
-          subject: "Nulstil din adgangskode",
-          html: `<p>Du har bedt om at nulstille din adgangskode.</p><p><a href="${escapeHtml(url)}">Vælg en ny adgangskode</a></p><p>Linket udløber om en time. Hvis du ikke har bedt om dette, kan du ignorere e-mailen.</p>`,
+          ...email,
         });
       },
     },
@@ -177,10 +168,10 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
       sendOnSignIn: true,
       expiresIn: 60 * 60,
       sendVerificationEmail: async ({ user, url }) => {
+        const email = createVerificationEmail(url);
         await sendEmail(ctx, {
           to: user.email,
-          subject: "Bekræft din e-mail",
-          html: `<p>Bekræft din e-mail for at aktivere din konto.</p><p><a href="${escapeHtml(url)}">Bekræft e-mail</a></p>`,
+          ...email,
         });
       },
     },
@@ -222,10 +213,15 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         },
         sendInvitationEmail: async (data) => {
           const invitationUrl = `${siteUrl}/invitation/${data.id}`;
+          const email = createInvitationEmail(
+            data.inviter.user.name,
+            data.organization.name,
+            data.id,
+            invitationUrl,
+          );
           await sendEmail(ctx, {
             to: data.email,
-            subject: `Invitation til ${data.organization.name}`,
-            html: `<p>${escapeHtml(data.inviter.user.name)} har inviteret dig til ${escapeHtml(data.organization.name)}.</p><p>Invitationskode: <strong>${escapeHtml(data.id)}</strong></p><p><a href="${escapeHtml(invitationUrl)}">Accepter invitationen</a></p>`,
+            ...email,
           });
         },
       }),

@@ -17,6 +17,7 @@ import type * as crons from "../crons.js";
 import type * as employees from "../employees.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_authEmail from "../lib/authEmail.js";
 import type * as lib_badDeliverySettings from "../lib/badDeliverySettings.js";
 import type * as lib_countLock from "../lib/countLock.js";
 import type * as lib_countSettings from "../lib/countSettings.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   employees: typeof employees;
   http: typeof http;
   "lib/auth": typeof lib_auth;
+  "lib/authEmail": typeof lib_authEmail;
   "lib/badDeliverySettings": typeof lib_badDeliverySettings;
   "lib/countLock": typeof lib_countLock;
   "lib/countSettings": typeof lib_countSettings;
