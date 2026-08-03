@@ -1,12 +1,18 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { ImageIcon, PinIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { ImageIcon, PinIcon, SearchIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardFooter, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +28,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
@@ -49,6 +61,16 @@ import { useWasteContext } from "./waste-header";
 type Catalog = NonNullable<ReturnType<typeof useQuery<typeof api.waste.listCatalog>>>;
 type Product = Catalog[number];
 type Shortcut = { unitId: Id<"units">; quantity: number };
+type UndoRegistration = {
+  id: Id<"wasteRegistrations">;
+  productName: string;
+  quantity: number;
+  unitName: string;
+  registeredAt: number;
+  expiresAt: number;
+};
+
+const UNDO_WINDOW_MS = 30_000;
 
 const collator = new Intl.Collator("da", { sensitivity: "base" });
 
@@ -116,6 +138,24 @@ export function WasteRegistration() {
   const [editingShortcuts, setEditingShortcuts] = useState(false);
   const [shortcutDrafts, setShortcutDrafts] = useState<[Shortcut, Shortcut] | null>(null);
   const [recent, setRecent] = useState<string | null>(null);
+  const [undoRegistrations, setUndoRegistrations] = useState<UndoRegistration[]>([]);
+  const [undoingIds, setUndoingIds] = useState<Id<"wasteRegistrations">[]>([]);
+  const [undoDialogOpen, setUndoDialogOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  const hasUndoRegistrations = undoRegistrations.length > 0;
+  useEffect(() => {
+    if (!hasUndoRegistrations) return;
+    const updateUndoWindow = () => {
+      const current = Date.now();
+      setNow(current);
+      setUndoRegistrations((registrations) =>
+        registrations.filter((registration) => registration.expiresAt > current),
+      );
+    };
+    const interval = window.setInterval(updateUndoWindow, 250);
+    return () => window.clearInterval(interval);
+  }, [hasUndoRegistrations]);
 
   const rankMap = useMemo(
     () => new Map(state?.rankings.map((rank) => [rank.productId, rank])),
@@ -191,16 +231,22 @@ export function WasteRegistration() {
       const unit = product.units.find((item) => item.id === shortcut.unitId);
       toast.success(
         `Waste registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
-        {
-          duration: 10_000,
-          action: {
-            label: "Fortryd",
-            onClick: () => {
-              voidWaste({ registrationId: result.registrationId }).catch((error) => toast.error(errorMessage(error)));
-            },
-          },
-        },
+        { duration: 10_000 },
       );
+      setNow(result.registeredAt);
+      setUndoRegistrations((registrations) => [
+        ...registrations.filter(
+          (registration) => registration.expiresAt > result.registeredAt,
+        ),
+        {
+          id: result.registrationId,
+          productName: result.productName,
+          quantity: result.quantity,
+          unitName: result.unitName,
+          registeredAt: result.registeredAt,
+          expiresAt: result.registeredAt + UNDO_WINDOW_MS,
+        },
+      ]);
       setRecent(key);
       window.setTimeout(
         () => setRecent((current) => (current === key ? null : current)),
@@ -210,6 +256,37 @@ export function WasteRegistration() {
     } catch (error) {
       toast.error(errorMessage(error));
     }
+  }
+
+  async function undo(items: UndoRegistration[], closeDialog = false) {
+    if (!items.length) return;
+    const ids = items.map((item) => item.id);
+    setUndoingIds((current) => [...new Set([...current, ...ids])]);
+    const results = await Promise.allSettled(
+      items.map((item) => voidWaste({ registrationId: item.id })),
+    );
+    const succeeded = ids.filter((_, index) => results[index].status === "fulfilled");
+    const failed = results.filter((result) => result.status === "rejected");
+    if (succeeded.length) {
+      setUndoRegistrations((current) =>
+        current.filter((registration) => !succeeded.includes(registration.id)),
+      );
+      toast.success(
+        succeeded.length === 1
+          ? "Waste-registreringen er annulleret"
+          : `${succeeded.length} Waste-registreringer er annulleret`,
+      );
+    }
+    if (failed.length) {
+      const firstError = results.find((result) => result.status === "rejected");
+      toast.error(
+        failed.length === 1 && firstError?.status === "rejected"
+          ? errorMessage(firstError.reason)
+          : `${failed.length} Waste-registreringer kunne ikke annulleres`,
+      );
+    }
+    setUndoingIds((current) => current.filter((id) => !ids.includes(id)));
+    if (closeDialog) setUndoDialogOpen(false);
   }
 
   async function togglePin(product: Product) {
@@ -252,52 +329,59 @@ export function WasteRegistration() {
 
   return (
     <div className="flex flex-col gap-5">
-      <InputGroup className="h-12 max-w-xl">
+      <Tabs value={category} onValueChange={setCategory}>
+        <TabsList className="h-12 w-full justify-start overflow-x-auto" aria-label="Produktkategorier">
+          <TabsTrigger value="all" className="min-w-20 shrink-0 px-4">Alle</TabsTrigger>
+          {categories.map(([id, name]) => <TabsTrigger key={id} value={id} className="min-w-28 shrink-0 px-4">{name}</TabsTrigger>)}
+        </TabsList>
+      </Tabs>
+
+      <InputGroup className="h-12 w-full">
         <InputGroupAddon><SearchIcon /><span className="sr-only">Søg</span></InputGroupAddon>
         <InputGroupInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Søg efter et produkt" aria-label="Søg efter et produkt" />
       </InputGroup>
 
-      <Tabs value={category} onValueChange={setCategory}>
-        <TabsList className="h-12 max-w-full justify-start overflow-x-auto" aria-label="Produktkategorier">
-          <TabsTrigger value="all" className="min-w-20 px-4">Alle</TabsTrigger>
-          {categories.map(([id, name]) => <TabsTrigger key={id} value={id} className="min-w-28 px-4">{name}</TabsTrigger>)}
-        </TabsList>
-      </Tabs>
-
       {products.length ? (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+        <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
           {products.map((product) => {
             const config = configMap.get(product.id);
             const shortcuts = shortcutsFor(product, rankMap.get(product.id)?.learnedShortcuts, config?.shortcutOverrides);
             return (
-              <Card key={product.id} className={cn("relative min-h-64 transition-all hover:bg-muted/30", recent?.startsWith(`${product.id}:`) && "ring-2 ring-primary")}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-lg"
-                  className="absolute right-1 top-1 z-10 size-11 rounded-full bg-background/85"
-                  aria-label={config?.pinnedAt ? `Fjern ${product.name} fra fastgjorte produkter` : `Fastgør ${product.name}`}
-                  aria-pressed={Boolean(config?.pinnedAt)}
-                  onClick={() => togglePin(product)}
-                >
-                  <PinIcon className={cn(config?.pinnedAt && "fill-current text-primary")} />
-                </Button>
-                <button type="button" className="flex min-h-0 flex-1 flex-col text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50" onClick={() => openProduct(product)}>
-                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
-                    {product.imageUrl ? <Image src={product.imageUrl} alt="" fill unoptimized className="object-cover" /> : <div className="grid size-full place-items-center text-muted-foreground"><ImageIcon className="size-8" /></div>}
-                  </div>
-                  <CardHeader className="w-full">
-                    <h2 className="line-clamp-2 text-base font-semibold">{product.name}</h2>
-                    <p className="text-sm text-muted-foreground">{product.category.name}</p>
+              <Card key={product.id} className={cn("relative isolate h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm lg:[--card-spacing:--spacing(4)]", recent?.startsWith(`${product.id}:`) && "ring-2 ring-primary")}>
+                <div className="relative">
+                  {product.imageUrl ? (
+                    <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
+                      <Image src={product.imageUrl} alt="" fill sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw" unoptimized className="object-cover" />
+                    </div>
+                  ) : (
+                    <div className="grid aspect-video w-full place-items-center bg-muted text-muted-foreground lg:aspect-[4/3]"><ImageIcon className="size-10 lg:size-12" /></div>
+                  )}
+                  <CardHeader className="py-3 lg:py-4">
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <CardTitle className="min-w-0 flex-1 truncate">{product.name}</CardTitle>
+                      <CardDescription className="max-w-[45%] shrink-0 truncate">{product.category.name}</CardDescription>
+                    </div>
                   </CardHeader>
-                </button>
-                <CardFooter className="grid grid-cols-2 gap-2">
+                  <button type="button" data-card-trigger className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50" aria-label={`Registrér en anden mængde Waste for ${product.name}`} onClick={() => openProduct(product)} />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-lg"
+                    className="absolute right-1 top-1 z-10 size-11 rounded-full bg-background/85"
+                    aria-label={config?.pinnedAt ? `Fjern ${product.name} fra fastgjorte produkter` : `Fastgør ${product.name}`}
+                    aria-pressed={Boolean(config?.pinnedAt)}
+                    onClick={() => togglePin(product)}
+                  >
+                    <PinIcon className={cn(config?.pinnedAt && "fill-current text-primary")} />
+                  </Button>
+                </div>
+                <CardContent className="grid grid-cols-2 gap-2 pb-3 lg:pb-4">
                   {shortcuts.map((shortcut, index) => {
                     const unit = product.units.find((item) => item.id === shortcut.unitId);
                     const key = `${product.id}:${shortcut.unitId}:${shortcut.quantity}`;
                     return <Button key={`${shortcut.unitId}:${shortcut.quantity}`} variant={index === 0 ? "default" : "outline"} className={cn("h-12 min-w-0 px-2", recent === key && "ring-3 ring-ring/40")} onClick={() => register(product, shortcut, "shortcut")}>{formatQuantity(shortcut.quantity)} {unit?.name}</Button>;
                   })}
-                </CardFooter>
+                </CardContent>
               </Card>
             );
           })}
@@ -314,9 +398,9 @@ export function WasteRegistration() {
                 <DialogTitle>{selected.name}</DialogTitle>
                 <DialogDescription>{editingShortcuts ? "Vælg de to mængder, der skal vises på produktkortet." : "Angiv den mængde, der er blevet kasseret."}</DialogDescription>
               </DialogHeader>
-              <div className="relative h-28 overflow-hidden rounded-lg bg-muted">
+              <div className="relative h-64 overflow-hidden rounded-lg bg-muted">
                 {selected.imageUrl ? (
-                  <Image src={selected.imageUrl} alt="" fill unoptimized className="object-cover" />
+                  <Image src={selected.imageUrl} alt="" fill sizes="(max-width: 640px) 90vw, 32rem" unoptimized className="object-contain" />
                 ) : (
                   <div className="grid size-full place-items-center text-muted-foreground"><ImageIcon className="size-7" /></div>
                 )}
@@ -326,7 +410,7 @@ export function WasteRegistration() {
                   {shortcutDrafts.map((shortcut, index) => (
                     <div key={index} className="grid grid-cols-[1fr_10rem] gap-3">
                       <Field><FieldLabel htmlFor={`waste-shortcut-${index}`}>Mængde {index + 1}</FieldLabel><Input id={`waste-shortcut-${index}`} type="number" min="0.000001" step="any" value={shortcut.quantity} onChange={(event) => { const next = [...shortcutDrafts] as [Shortcut, Shortcut]; next[index] = { ...shortcut, quantity: Number(event.target.value) }; setShortcutDrafts(next); }} /></Field>
-                      <Field><FieldLabel>Enhed</FieldLabel><Select value={shortcut.unitId} onValueChange={(value) => { const next = [...shortcutDrafts] as [Shortcut, Shortcut]; next[index] = { ...shortcut, unitId: value as Id<"units"> }; setShortcutDrafts(next); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{selected.units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                      <Field><FieldLabel>Enhed</FieldLabel><Select items={selected.units.map((unit) => ({ value: unit.id, label: unit.name }))} value={shortcut.unitId} onValueChange={(value) => { const next = [...shortcutDrafts] as [Shortcut, Shortcut]; next[index] = { ...shortcut, unitId: value as Id<"units"> }; setShortcutDrafts(next); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{selected.units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                     </div>
                   ))}
                   <Button type="button" variant="ghost" onClick={async () => { if (!locationId) return; try { await clearOverride({ locationId, productId: selected.id }); setEditingShortcuts(false); toast.success("Lærte mængder bruges igen"); } catch (error) { toast.error(errorMessage(error)); } }}>Brug lærte mængder</Button>
@@ -334,7 +418,7 @@ export function WasteRegistration() {
               ) : (
                 <div className="grid grid-cols-[1fr_10rem] gap-3">
                   <Field><FieldLabel htmlFor="waste-quantity">Mængde</FieldLabel><Input id="waste-quantity" type="number" min="0.000001" max="1000000" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} autoFocus /></Field>
-                  <Field><FieldLabel>Enhed</FieldLabel><Select value={unitId} onValueChange={(value) => setUnitId(value as Id<"units">)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{selected.units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                  <Field><FieldLabel>Enhed</FieldLabel><Select items={selected.units.map((unit) => ({ value: unit.id, label: unit.name }))} value={unitId} onValueChange={(value) => setUnitId(value as Id<"units">)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{selected.units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                 </div>
               )}
               <DialogFooter>
@@ -342,6 +426,91 @@ export function WasteRegistration() {
               </DialogFooter>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {undoRegistrations.length ? (
+        <Button
+          type="button"
+          variant="destructive"
+          size="lg"
+          className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 h-12 px-3 shadow-sm sm:right-4 sm:px-4"
+          disabled={undoingIds.length > 0}
+          onClick={() => {
+            if (undoRegistrations.length === 1) void undo(undoRegistrations);
+            else setUndoDialogOpen(true);
+          }}
+        >
+          <Undo2Icon data-icon="inline-start" />
+          <span className="sm:hidden">
+            {undoRegistrations.length === 1
+              ? "Fortryd"
+              : `Fortryd (${undoRegistrations.length})`}
+          </span>
+          <span className="hidden sm:inline">
+            {undoRegistrations.length === 1
+              ? `Fortryd · ${Math.max(0, Math.ceil((undoRegistrations[0].expiresAt - now) / 1000))} s`
+              : `Fortryd (${undoRegistrations.length}) · ${Math.max(0, Math.ceil((Math.max(...undoRegistrations.map((registration) => registration.expiresAt)) - now) / 1000))} s`}
+          </span>
+        </Button>
+      ) : null}
+
+      <Dialog
+        open={undoDialogOpen && undoRegistrations.length > 0}
+        onOpenChange={setUndoDialogOpen}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
+            <DialogDescription>
+              Fortryd en enkelt registrering eller annullér dem alle. Registreringerne
+              forsvinder automatisk efter 30 sekunder.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
+            {[...undoRegistrations].reverse().map((registration) => (
+              <Field
+                key={registration.id}
+                orientation="horizontal"
+                className="min-h-16 rounded-lg border p-3"
+              >
+                <FieldContent>
+                  <FieldLabel>{registration.productName}</FieldLabel>
+                  <FieldDescription>
+                    {formatQuantity(registration.quantity)} {registration.unitName} ·{" "}
+                    {Math.max(
+                      0,
+                      Math.ceil((registration.expiresAt - now) / 1000),
+                    )}{" "}
+                    sek. tilbage
+                  </FieldDescription>
+                </FieldContent>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-11 shrink-0 px-4"
+                  disabled={undoingIds.includes(registration.id)}
+                  onClick={() => void undo([registration])}
+                >
+                  <Undo2Icon data-icon="inline-start" />
+                  Fortryd
+                </Button>
+              </Field>
+            ))}
+          </FieldGroup>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUndoDialogOpen(false)}>
+              OK
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={undoingIds.length > 0}
+              onClick={() => void undo(undoRegistrations, true)}
+            >
+              <Undo2Icon data-icon="inline-start" />
+              Fortryd alle
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

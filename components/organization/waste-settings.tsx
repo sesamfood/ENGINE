@@ -24,6 +24,12 @@ import { canManageWasteSettings } from "@/lib/auth-permissions";
 
 type Period = "allTime" | "30Days" | "90Days";
 
+const periodItems = [
+  { value: "allTime", label: "Al tid" },
+  { value: "30Days", label: "Seneste 30 dage" },
+  { value: "90Days", label: "Seneste 90 dage" },
+] satisfies Array<{ value: Period; label: string }>;
+
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Indstillingerne kunne ikke gemmes";
 }
@@ -68,10 +74,7 @@ export function WasteSettings() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <div className="flex items-center gap-1">
-          <CardTitle>Waste-indstillinger</CardTitle>
-          <HelpTooltip label="Waste-indstillinger" content="Vælg hvornår registreringssiden nulstilles, og hvilken periode der bruges til populære produkter og lærte hurtigvalg." />
-        </div>
+        <CardTitle>Waste-indstillinger</CardTitle>
       </CardHeader>
       <CardContent>
         <FieldGroup>
@@ -81,7 +84,7 @@ export function WasteSettings() {
           </Field>
           <Field orientation="horizontal">
             <FieldContent><FieldLabel>Popularitetsperiode</FieldLabel></FieldContent>
-            <Select value={period} onValueChange={(value) => setPeriodDraft(value as Period)}><SelectTrigger className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="allTime">Al tid</SelectItem><SelectItem value="30Days">Seneste 30 dage</SelectItem><SelectItem value="90Days">Seneste 90 dage</SelectItem></SelectGroup></SelectContent></Select>
+            <Select items={periodItems} value={period} onValueChange={(value) => setPeriodDraft(value as Period)}><SelectTrigger className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{periodItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select>
           </Field>
         </FieldGroup>
       </CardContent>

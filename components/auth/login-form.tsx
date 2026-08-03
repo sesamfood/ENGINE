@@ -1,5 +1,6 @@
 "use client";
 
+import { EyeIcon, EyeOffIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -7,6 +8,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
@@ -24,6 +31,7 @@ export function LoginForm({
   const router = useRouter();
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,7 +67,13 @@ export function LoginForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-5">
+    <form
+      action="/api/auth/sign-in/email"
+      method="post"
+      onSubmit={submit}
+      className="flex flex-col gap-5"
+    >
+      <input type="hidden" name="callbackURL" value={redirectTo} />
       {verified ? (
         <Alert>
           <AlertDescription>
@@ -97,13 +111,25 @@ export function LoginForm({
         </Field>
         <Field>
           <FieldLabel htmlFor="password">Adgangskode</FieldLabel>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
+          <InputGroup>
+            <InputGroupInput
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              required
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-sm"
+                aria-label={showPassword ? "Skjul adgangskode" : "Vis adgangskode"}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((visible) => !visible)}
+              >
+                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
         </Field>
       </FieldGroup>
       <Button type="submit" size="lg" disabled={pending}>

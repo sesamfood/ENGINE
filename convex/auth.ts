@@ -14,6 +14,9 @@ import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
 
 const siteUrl = process.env.SITE_URL!;
+const localLoopbackOrigin = siteUrl?.startsWith("http://localhost:")
+  ? siteUrl.replace("localhost", "127.0.0.1")
+  : null;
 const allowedOrganizationRoles = new Set(["admin", "manager", "member"]);
 
 type OrganizationMember = {
@@ -149,7 +152,11 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
   ({
     baseURL: siteUrl,
-    trustedOrigins: [siteUrl, "https://engine-*-mellonn.vercel.app"],
+    trustedOrigins: [
+      siteUrl,
+      ...(localLoopbackOrigin ? [localLoopbackOrigin] : []),
+      "https://engine-*-mellonn.vercel.app",
+    ],
     database: authComponent.adapter(ctx),
     advanced: {
       database: {

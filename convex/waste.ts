@@ -647,6 +647,7 @@ export const registerWaste = mutation({
     productName: v.string(),
     unitName: v.string(),
     quantity: v.number(),
+    registeredAt: v.number(),
   }),
   handler: async (ctx, args) => {
     const { organizationId, userIdentifier, userName } =
@@ -718,6 +719,7 @@ export const registerWaste = mutation({
       productName: product.name,
       unitName: unit.name,
       quantity,
+      registeredAt: now,
     };
   },
 });
