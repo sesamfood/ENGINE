@@ -389,6 +389,7 @@ export default defineSchema({
     badDeliveryCc: v.optional(v.array(v.string())),
     badDeliveryBcc: v.optional(v.array(v.string())),
     badDeliveryEmailSubject: v.optional(v.string()),
+    badDeliveryEmailBody: v.optional(v.string()),
   }).index("by_org", ["organizationId"]),
 
   wasteRegistrations: defineTable({
@@ -492,6 +493,7 @@ export default defineSchema({
     cc: v.array(v.string()),
     bcc: v.array(v.string()),
     emailSubject: v.optional(v.string()),
+    emailBody: v.optional(v.string()),
     initialNoticeStatus: v.union(
       v.literal("notConfigured"),
       v.literal("pending"),

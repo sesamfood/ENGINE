@@ -13,6 +13,7 @@ import {
 } from "./_generated/server";
 import { requireWasteRegistrar, requireWasteReporter } from "./lib/auth";
 import {
+  DEFAULT_BAD_DELIVERY_EMAIL_BODY,
   DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
   validateBadDeliveryRecipients,
 } from "./lib/badDeliverySettings";
@@ -152,6 +153,7 @@ const noticePayloadValidator = v.object({
   cc: v.array(v.string()),
   bcc: v.array(v.string()),
   emailSubject: v.string(),
+  emailBody: v.string(),
   timeZone: v.string(),
   items: v.array(
     v.object({
@@ -198,6 +200,8 @@ async function settingsFor(ctx: ReadContext, organizationId: string) {
     bcc: settings?.badDeliveryBcc ?? [],
     emailSubject:
       settings?.badDeliveryEmailSubject ?? DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
+    emailBody:
+      settings?.badDeliveryEmailBody ?? DEFAULT_BAD_DELIVERY_EMAIL_BODY,
   };
 }
 
@@ -503,6 +507,7 @@ export const registerBadDelivery = mutation({
       cc: recipients.cc,
       bcc: recipients.bcc,
       emailSubject: settings.emailSubject,
+      emailBody: settings.emailBody,
       initialNoticeStatus,
       cancellationNoticeStatus: "skipped",
     });
@@ -821,11 +826,10 @@ export const retryBadDeliveryNotice = mutation({
         if (!recipients.to.length) {
           throw new ConvexError("Organisationen har ingen modtagere i Til");
         }
-        if (!delivery.emailSubject) {
-          await ctx.db.patch("badDeliveries", delivery._id, {
-            emailSubject: currentSettings.emailSubject,
-          });
-        }
+        await ctx.db.patch("badDeliveries", delivery._id, {
+          emailSubject: delivery.emailSubject ?? currentSettings.emailSubject,
+          emailBody: delivery.emailBody ?? currentSettings.emailBody,
+        });
       }
       await ctx.db.patch("badDeliveries", delivery._id, {
         ...recipients,
@@ -938,6 +942,7 @@ export const claimNotice = internalMutation({
       bcc: delivery.bcc,
       emailSubject:
         delivery.emailSubject ?? DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
+      emailBody: delivery.emailBody ?? DEFAULT_BAD_DELIVERY_EMAIL_BODY,
       timeZone: scheduleSettings?.timeZone ?? "Europe/Copenhagen",
       items: items.map((item) => ({
         productName: item.productName,

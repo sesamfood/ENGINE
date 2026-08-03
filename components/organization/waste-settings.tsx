@@ -42,6 +42,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { canManageWasteSettings } from "@/lib/auth-permissions";
@@ -51,6 +52,7 @@ type HistoryScope = "location" | "organization";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_SUBJECT_LENGTH = 200;
+const MAX_BODY_LENGTH = 5_000;
 const periodItems = [
   { value: "allTime", label: "Al tid" },
   { value: "30Days", label: "Seneste 30 dage" },
@@ -208,6 +210,7 @@ export function WasteSettings() {
   const [deductDraft, setDeductDraft] = useState<boolean | null>(null);
   const [showChoiceDraft, setShowChoiceDraft] = useState<boolean | null>(null);
   const [subjectDraft, setSubjectDraft] = useState<string | null>(null);
+  const [bodyDraft, setBodyDraft] = useState<string | null>(null);
   const [toDraft, setToDraft] = useState<string[] | null>(null);
   const [ccDraft, setCcDraft] = useState<string[] | null>(null);
   const [bccDraft, setBccDraft] = useState<string[] | null>(null);
@@ -232,6 +235,7 @@ export function WasteSettings() {
   const deduct = deductDraft ?? settings.badDeliveryDeductFromStock;
   const showChoice = showChoiceDraft ?? settings.badDeliveryShowStockChoice;
   const subject = subjectDraft ?? settings.badDeliveryEmailSubject;
+  const body = bodyDraft ?? settings.badDeliveryEmailBody;
   const to = toDraft ?? settings.badDeliveryTo;
   const cc = ccDraft ?? settings.badDeliveryCc;
   const bcc = bccDraft ?? settings.badDeliveryBcc;
@@ -250,6 +254,10 @@ export function WasteSettings() {
     if (!emailSubject || emailSubject.length > MAX_SUBJECT_LENGTH) {
       throw new Error("E-mailens emne skal være mellem 1 og 200 tegn");
     }
+    const emailBody = body.trim();
+    if (!emailBody || emailBody.length > MAX_BODY_LENGTH) {
+      throw new Error("E-mailens indhold skal være mellem 1 og 5000 tegn");
+    }
     return {
       inactivitySeconds,
       popularityPeriod: period,
@@ -260,6 +268,7 @@ export function WasteSettings() {
       badDeliveryCc: recipients.cc,
       badDeliveryBcc: recipients.bcc,
       badDeliveryEmailSubject: emailSubject,
+      badDeliveryEmailBody: emailBody,
     };
   }
 
@@ -276,6 +285,7 @@ export function WasteSettings() {
         setDeductDraft(null);
         setShowChoiceDraft(null);
         setSubjectDraft(null);
+        setBodyDraft(null);
         setToDraft(null);
         setCcDraft(null);
         setBccDraft(null);
@@ -424,6 +434,25 @@ export function WasteSettings() {
                 maxLength={MAX_SUBJECT_LENGTH}
                 onChange={(event) => setSubjectDraft(event.target.value)}
               />
+            </Field>
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="bad-delivery-body">
+                  E-mailens indhold
+                </FieldLabel>
+                <HelpTooltip
+                  label="E-mailens indhold"
+                  content="Gælder den oprindelige meddelelse. Linjeskift bevares. Brug {reference}, {location}, {date}, {registrar}, {products}, {comment} og {stock} til registreringens oplysninger."
+                />
+              </div>
+              <Textarea
+                id="bad-delivery-body"
+                value={body}
+                maxLength={MAX_BODY_LENGTH}
+                rows={10}
+                onChange={(event) => setBodyDraft(event.target.value)}
+              />
+              <FieldDescription>{body.length}/5000 tegn</FieldDescription>
             </Field>
             <RecipientInput
               id="bad-delivery-to"

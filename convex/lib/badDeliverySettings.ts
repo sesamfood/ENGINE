@@ -3,9 +3,30 @@ import { ConvexError } from "convex/values";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_RECIPIENTS = 50;
 const MAX_SUBJECT_LENGTH = 200;
+const MAX_BODY_LENGTH = 5_000;
 
 export const DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT =
   "Dårlig levering – {location} – {date}";
+export const DEFAULT_BAD_DELIVERY_EMAIL_BODY = `Dårlig levering
+
+Reference: {reference}
+Location: {location}
+Tidspunkt: {date}
+Registreret af: {registrar}
+
+Varer:
+{products}
+
+Kommentar: {comment}
+{stock}`;
+
+export function validateBadDeliveryEmailBody(value: string) {
+  const body = value.trim();
+  if (!body || body.length > MAX_BODY_LENGTH) {
+    throw new ConvexError("E-mailens indhold skal være mellem 1 og 5000 tegn");
+  }
+  return body;
+}
 
 export function validateBadDeliveryEmailSubject(value: string) {
   const subject = value.trim();

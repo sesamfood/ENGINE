@@ -19,7 +19,9 @@ import {
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import {
+  DEFAULT_BAD_DELIVERY_EMAIL_BODY,
   DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
+  validateBadDeliveryEmailBody,
   validateBadDeliveryEmailSubject,
   validateBadDeliveryRecipients,
 } from "./lib/badDeliverySettings";
@@ -60,6 +62,7 @@ const settingsValidator = viewSettingsValidator.extend({
   badDeliveryCc: v.array(v.string()),
   badDeliveryBcc: v.array(v.string()),
   badDeliveryEmailSubject: v.string(),
+  badDeliveryEmailBody: v.string(),
 });
 const reportRowValidator = v.object({
   id: v.id("wasteRegistrations"),
@@ -160,6 +163,8 @@ async function settingsFor(ctx: WasteContext, organizationId: string) {
     badDeliveryBcc: settings?.badDeliveryBcc ?? [],
     badDeliveryEmailSubject:
       settings?.badDeliveryEmailSubject ?? DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
+    badDeliveryEmailBody:
+      settings?.badDeliveryEmailBody ?? DEFAULT_BAD_DELIVERY_EMAIL_BODY,
   };
 }
 
@@ -788,6 +793,9 @@ export const setSettings = mutation({
       ...args,
       badDeliveryEmailSubject: validateBadDeliveryEmailSubject(
         args.badDeliveryEmailSubject,
+      ),
+      badDeliveryEmailBody: validateBadDeliveryEmailBody(
+        args.badDeliveryEmailBody,
       ),
       badDeliveryTo: recipients.to,
       badDeliveryCc: recipients.cc,

@@ -39,6 +39,13 @@ function extension(contentType: string) {
         : "webp";
 }
 
+function renderTemplate(template: string, values: Record<string, string>) {
+  return template.replace(
+    /\{([^{}]+)\}/g,
+    (token, key: string) => values[key] ?? token,
+  );
+}
+
 export const sendNotice = internalAction({
   args: {
     badDeliveryId: v.id("badDeliveries"),
@@ -64,12 +71,6 @@ export const sendNotice = internalAction({
             `- ${item.productName}: ${quantities.format(item.quantity)} ${item.unitName}`,
         )
         .join("\n");
-      const productHtml = payload.items
-        .map(
-          (item) =>
-            `<li>${escapeHtml(item.productName)}: ${escapeHtml(quantities.format(item.quantity))} ${escapeHtml(item.unitName)}</li>`,
-        )
-        .join("");
       const stock = payload.deductFromStock
         ? "Varerne er trukket fra lageret."
         : "Varerne er ikke trukket fra lageret.";
@@ -108,12 +109,21 @@ export const sendNotice = internalAction({
       }
       const isCancellation = args.kind === "cancellation";
       const subject = isCancellation ? `ANNULLERET: ${subjectBase}` : subjectBase;
+      const initialText = renderTemplate(payload.emailBody, {
+        reference,
+        location: payload.locationName,
+        date,
+        registrar: payload.registeredByName,
+        products: productText,
+        comment: payload.comment ?? "Ingen kommentar",
+        stock,
+      });
       const text = isCancellation
         ? `Registreringen af dårlig levering er annulleret.\n\nReference: ${reference}\nLocation: ${payload.locationName}\nRegistreret: ${date}\nAnnulleret: ${correction}${payload.voidedByName ? ` af ${payload.voidedByName}` : ""}\n\n${stock}`
-        : `Dårlig levering\n\nReference: ${reference}\nLocation: ${payload.locationName}\nTidspunkt: ${date}\nRegistreret af: ${payload.registeredByName}\n\nVarer:\n${productText}\n\nKommentar: ${payload.comment ?? "Ingen kommentar"}\n${stock}`;
+        : initialText;
       const html = isCancellation
         ? `<h1>Registreringen er annulleret</h1><p><strong>Reference:</strong> ${escapeHtml(reference)}</p><p><strong>Location:</strong> ${escapeHtml(payload.locationName)}<br><strong>Registreret:</strong> ${escapeHtml(date)}<br><strong>Annulleret:</strong> ${escapeHtml(correction)}${payload.voidedByName ? ` af ${escapeHtml(payload.voidedByName)}` : ""}</p><p>${escapeHtml(stock)}</p>`
-        : `<h1>Dårlig levering</h1><p><strong>Reference:</strong> ${escapeHtml(reference)}<br><strong>Location:</strong> ${escapeHtml(payload.locationName)}<br><strong>Tidspunkt:</strong> ${escapeHtml(date)}<br><strong>Registreret af:</strong> ${escapeHtml(payload.registeredByName)}</p><h2>Varer</h2><ul>${productHtml}</ul><p><strong>Kommentar:</strong> ${escapeHtml(payload.comment ?? "Ingen kommentar")}</p><p>${escapeHtml(stock)}</p>`;
+        : `<div>${escapeHtml(initialText).replace(/\r?\n/g, "<br>")}</div>`;
       const providerId = await sendResendEmail(
         {
           to: payload.to,
