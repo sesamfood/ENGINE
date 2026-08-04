@@ -258,7 +258,7 @@ export function ProductCatalog() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Søg efter produkter"
-            aria-label="Søg efter produkter"
+            aria-label="Søg efter produkter eller kategorier"
             className="h-11 pl-10"
           />
         </div>

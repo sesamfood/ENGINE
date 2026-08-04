@@ -1,0 +1,873 @@
+"use client";
+
+import { useConvex, useMutation, useQuery } from "convex/react";
+import {
+  DownloadIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  Trash2Icon,
+  UtensilsIcon,
+} from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { authClient } from "@/lib/auth-client";
+import { canManageStaffFood } from "@/lib/auth-permissions";
+import { downloadCsv } from "@/lib/download-csv";
+
+type Settings = NonNullable<
+  ReturnType<typeof useQuery<typeof api.staffFood.getSettings>>
+>;
+type Tier = Settings["tiers"][number];
+type AllowanceDraft = {
+  categoryId: string;
+  amount: string;
+  productIds: string[];
+};
+type StaffFoodExportRow = {
+  id: Id<"staffFoodRegistrations">;
+  checkoutId: string;
+  registeredAt: number;
+  locationId: Id<"locations">;
+  locationName: string;
+  employeeId: Id<"employees">;
+  employeeName: string;
+  sessionSource: "scheduled" | "manual";
+  workDate: string;
+  shiftDurationMinutes: number;
+  tierMinimumShiftMinutes: number;
+  categoryAllowance: number;
+  categoryId: Id<"categories">;
+  categoryName: string;
+  productId: Id<"products">;
+  productName: string;
+  quantity: number;
+  defaultUnitName: string;
+  status: "active" | "voided";
+  registeredByName: string;
+  voidedAt: number | null;
+};
+
+function message(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Indstillingerne kunne ikke gemmes";
+}
+
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function dateValue(date: Date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function parseDateValue(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day };
+}
+
+function zonedStart(value: string, timeZone: string) {
+  const parts = parseDateValue(value);
+  if (!parts) return Number.NaN;
+  const { year, month, day } = parts;
+  const target = Date.UTC(year, month - 1, day);
+  let guess = target;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = Object.fromEntries(
+      formatter.formatToParts(guess).map((part) => [part.type, part.value]),
+    );
+    const represented = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    guess += target - represented;
+  }
+  return guess;
+}
+
+function zonedEnd(value: string, timeZone: string) {
+  const parts = parseDateValue(value);
+  if (!parts) return Number.NaN;
+  const { year, month, day } = parts;
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return (
+    zonedStart(
+      `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}`,
+      timeZone,
+    ) - 1
+  );
+}
+
+function formatDuration(minutes: number) {
+  return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(
+    minutes / 60,
+  );
+}
+
+export function StaffFoodSettings() {
+  const convex = useConvex();
+  const membership = authClient.useActiveMemberRole();
+  const canManage = canManageStaffFood(membership.data?.role);
+  const settings = useQuery(api.staffFood.getSettings, canManage ? {} : "skip");
+  const locations = useQuery(
+    api.locations.listLocationOptions,
+    canManage ? {} : "skip",
+  );
+  const saveTier = useMutation(api.staffFood.saveTier);
+  const deleteTier = useMutation(api.staffFood.deleteTier);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingId, setEditingId] =
+    useState<Id<"staffFoodRuleTiers"> | null>(null);
+  const [minimumHours, setMinimumHours] = useState("4");
+  const [allowances, setAllowances] = useState<AllowanceDraft[]>([]);
+  const [productSearches, setProductSearches] = useState<Record<number, string>>(
+    {},
+  );
+  const [saving, setSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Tier | null>(null);
+  const now = new Date();
+  const [from, setFrom] = useState(() =>
+    dateValue(new Date(now.getFullYear(), now.getMonth(), 1)),
+  );
+  const [to, setTo] = useState(() => dateValue(now));
+  const [location, setLocation] = useState("all");
+  const [exporting, setExporting] = useState(false);
+
+  const categoryItems =
+    settings?.categories.map((category) => ({
+      value: category.id,
+      label: category.name,
+    })) ?? [];
+  const minimumMinutes = Number(minimumHours) * 60;
+  const minimumValid =
+    Number.isFinite(minimumMinutes) &&
+    minimumMinutes >= 30 &&
+    minimumMinutes <= 1440 &&
+    minimumMinutes % 30 === 0;
+
+  function openEditor(tier?: Tier) {
+    setEditingId(tier?.id ?? null);
+    setMinimumHours(String((tier?.minimumShiftMinutes ?? 240) / 60));
+    setAllowances(
+      tier?.allowances.map((allowance) => ({
+        categoryId: allowance.categoryId,
+        amount: String(allowance.amount),
+        productIds: allowance.products.map((product) => product.id),
+      })) ?? [],
+    );
+    setProductSearches({});
+    setEditorOpen(true);
+  }
+
+  function updateAllowance(index: number, next: Partial<AllowanceDraft>) {
+    setAllowances((current) =>
+      current.map((allowance, allowanceIndex) =>
+        allowanceIndex === index ? { ...allowance, ...next } : allowance,
+      ),
+    );
+  }
+
+  function addAllowance() {
+    const used = new Set(allowances.map((allowance) => allowance.categoryId));
+    const category = settings?.categories.find((item) => !used.has(item.id));
+    if (!category) {
+      toast.info("Alle kategorier er allerede tilføjet");
+      return;
+    }
+    setAllowances((current) => [
+      ...current,
+      { categoryId: category.id, amount: "1", productIds: [] },
+    ]);
+  }
+
+  async function save() {
+    const minimumShiftMinutes = minimumMinutes;
+    if (!minimumValid) {
+      toast.error("Vagtlængden skal være mellem 0,5 og 24 timer");
+      return;
+    }
+    if (!allowances.length || allowances.some((item) => !item.productIds.length)) {
+      toast.error("Tilføj mindst én kategori med mindst ét produkt");
+      return;
+    }
+    if (
+      allowances.some((item) => {
+        const amount = Number(item.amount);
+        return !Number.isInteger(amount) || amount < 1 || amount > 20;
+      })
+    ) {
+      toast.error("Antallet skal være et helt tal mellem 1 og 20");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveTier({
+        ...(editingId ? { tierId: editingId } : {}),
+        minimumShiftMinutes,
+        allowances: allowances.map((allowance) => ({
+          categoryId: allowance.categoryId as Id<"categories">,
+          amount: Number(allowance.amount),
+          productIds: allowance.productIds as Id<"products">[],
+        })),
+      });
+      toast.success(editingId ? "Reglen er gemt" : "Reglen er oprettet");
+      setEditorOpen(false);
+    } catch (error) {
+      toast.error(message(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeTier() {
+    if (!pendingDelete) return;
+    try {
+      await deleteTier({ tierId: pendingDelete.id });
+      toast.success("Reglen er slettet");
+      setPendingDelete(null);
+    } catch (error) {
+      toast.error(message(error));
+    }
+  }
+
+  const timeZone = settings?.timeZone ?? "Europe/Copenhagen";
+  const startAt = zonedStart(from, timeZone);
+  const endAt = zonedEnd(to, timeZone);
+  const rangeValid =
+    Number.isFinite(startAt) &&
+    Number.isFinite(endAt) &&
+    startAt <= endAt &&
+    endAt - startAt <= 366 * 24 * 60 * 60 * 1000;
+
+  async function exportCsv() {
+    if (!rangeValid) {
+      toast.error("Vælg en gyldig periode på højst ét år");
+      return;
+    }
+    setExporting(true);
+    try {
+      const rows: StaffFoodExportRow[] = [];
+      let cursor: string | null = null;
+      let done = false;
+      while (!done) {
+        const result: {
+          page: StaffFoodExportRow[];
+          continueCursor: string;
+          isDone: boolean;
+        } = await convex.query(api.staffFood.exportRegistrations, {
+          paginationOpts: { numItems: 100, cursor },
+          startAt,
+          endAt,
+          ...(location === "all"
+            ? {}
+            : { locationId: location as Id<"locations"> }),
+        });
+        rows.push(...result.page);
+        cursor = result.continueCursor;
+        done = result.isDone;
+      }
+      const formatter = new Intl.DateTimeFormat("da-DK", {
+        dateStyle: "short",
+        timeStyle: "short",
+        timeZone,
+      });
+      downloadCsv(
+        `staff-food-${from}-${to}.csv`,
+        [
+          "Registreret",
+          "Location",
+          "Medarbejder",
+          "Vagttype",
+          "Arbejdsdato",
+          "Vagtlængde (timer)",
+          "Regel fra (timer)",
+          "Kategori",
+          "Produkt",
+          "Antal",
+          "Standardenhed",
+          "Status",
+          "Registreret af",
+          "Annulleret",
+        ],
+        rows.map((row) => [
+          formatter.format(row.registeredAt),
+          row.locationName,
+          row.employeeName,
+          row.sessionSource === "scheduled" ? "Planlagt" : "Manuel",
+          row.workDate,
+          formatDuration(row.shiftDurationMinutes),
+          formatDuration(row.tierMinimumShiftMinutes),
+          row.categoryName,
+          row.productName,
+          String(row.quantity),
+          row.defaultUnitName,
+          row.status === "active" ? "Aktiv" : "Annulleret",
+          row.registeredByName,
+          row.voidedAt ? formatter.format(row.voidedAt) : "",
+        ]),
+      );
+      toast.success("CSV-filen er klar");
+    } catch (error) {
+      toast.error(message(error));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  if (membership.isPending) return <Skeleton className="h-96 max-w-5xl" />;
+  if (!canManage) {
+    return (
+      <Alert variant="destructive" className="max-w-xl">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>
+          Kun administratorer kan ændre Staff food og eksportere rapporter.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  if (!settings || !locations) return <Skeleton className="h-96 max-w-5xl" />;
+
+  return (
+    <div className="flex max-w-5xl flex-col gap-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1">
+            Regler for Staff food
+            <HelpTooltip
+              label="Regler for Staff food"
+              content="Medarbejderen får den regel med den højeste vagtlængde, som vagten opfylder. Reglerne lægges ikke sammen."
+            />
+          </CardTitle>
+          <CardDescription>
+            Angiv hvor lang en vagt skal være, hvor meget medarbejderen må tage
+            fra hver kategori, og hvilke produkter der er tilladt.
+          </CardDescription>
+          <CardAction>
+            <Button onClick={() => openEditor()} disabled={settings.tiers.length >= 10}>
+              <PlusIcon data-icon="inline-start" />
+              Ny regel
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          {settings.tiers.length ? (
+            <div className="flex flex-col gap-3">
+              {settings.tiers.map((tier) => (
+                <Card key={tier.id} size="sm">
+                  <CardHeader>
+                    <CardTitle>
+                      Fra {formatDuration(tier.minimumShiftMinutes)} timer
+                    </CardTitle>
+                    <CardDescription>
+                      {tier.allowances.length} kategori
+                      {tier.allowances.length === 1 ? "" : "er"}
+                    </CardDescription>
+                    <CardAction className="flex gap-2">
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Redigér regel"
+                        onClick={() => openEditor(tier)}
+                      >
+                        <PencilIcon />
+                      </Button>
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Slet regel"
+                        onClick={() => setPendingDelete(tier)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap gap-2">
+                    {tier.allowances.map((allowance) => (
+                      <Badge key={allowance.categoryId} variant="secondary">
+                        {allowance.amount} fra {allowance.categoryName} ·{" "}
+                        {allowance.products.length} produkter
+                      </Badge>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Empty className="min-h-64 border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <UtensilsIcon />
+                </EmptyMedia>
+                <EmptyTitle>Ingen regler endnu</EmptyTitle>
+                <EmptyDescription>
+                  Opret den første regel for at aktivere Staff food.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button onClick={() => openEditor()}>
+                  <PlusIcon data-icon="inline-start" />
+                  Opret regel
+                </Button>
+              </EmptyContent>
+            </Empty>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Eksportér registreringer</CardTitle>
+          <CardDescription>
+            Hent aktive og annullerede registreringer som en CSV-fil.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup className="grid sm:grid-cols-3">
+            <Field data-invalid={!rangeValid}>
+              <FieldLabel htmlFor="staff-food-from">Fra</FieldLabel>
+              <Input
+                id="staff-food-from"
+                type="date"
+                value={from}
+                aria-invalid={!rangeValid}
+                onChange={(event) => setFrom(event.target.value)}
+              />
+            </Field>
+            <Field data-invalid={!rangeValid}>
+              <FieldLabel htmlFor="staff-food-to">Til</FieldLabel>
+              <Input
+                id="staff-food-to"
+                type="date"
+                value={to}
+                aria-invalid={!rangeValid}
+                onChange={(event) => setTo(event.target.value)}
+              />
+              {!rangeValid ? (
+                <FieldError>Vælg en periode på højst ét år.</FieldError>
+              ) : null}
+            </Field>
+            <Field>
+              <FieldLabel>Location</FieldLabel>
+              <Select
+                items={[
+                  { value: "all", label: "Alle locations" },
+                  ...locations.map((item) => ({ value: item.id, label: item.name })),
+                ]}
+                value={location}
+                onValueChange={(value) => setLocation(value ?? "all")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="all">Alle locations</SelectItem>
+                    {locations.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
+        </CardContent>
+        <CardFooter className="justify-end">
+          <Button
+            variant="outline"
+            disabled={!rangeValid || exporting}
+            onClick={() => void exportCsv()}
+          >
+            {exporting ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <DownloadIcon data-icon="inline-start" />
+            )}
+            Eksportér CSV
+          </Button>
+        </CardFooter>
+      </Card>
+
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:w-[calc(100%-4rem)] sm:max-w-5xl">
+          <DialogHeader className="px-5 pt-5">
+            <DialogTitle>
+              {editingId ? "Redigér regel" : "Ny regel"}
+            </DialogTitle>
+            <DialogDescription>
+              Den højeste matchende regel erstatter kortere regler.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-col gap-5 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-5 [&>*]:shrink-0">
+            <Field data-invalid={!minimumValid}>
+              <FieldLabel htmlFor="staff-food-minimum-hours">
+                Minimum vagtlængde i timer
+              </FieldLabel>
+              <Input
+                id="staff-food-minimum-hours"
+                type="number"
+                min={0.5}
+                max={24}
+                step={0.5}
+                value={minimumHours}
+                aria-invalid={!minimumValid}
+                onChange={(event) => setMinimumHours(event.target.value)}
+                className="h-11 max-w-48"
+              />
+              <FieldDescription>
+                Mellem 0,5 og 24 timer i halve timer.
+              </FieldDescription>
+              {!minimumValid ? (
+                <FieldError>Vælg hele eller halve timer mellem 0,5 og 24.</FieldError>
+              ) : null}
+            </Field>
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-medium">Kategori-regler</h3>
+                <p className="text-sm text-muted-foreground">
+                  Mængden deles mellem alle valgte produkter i kategorien.
+                </p>
+              </div>
+              <Button variant="outline" onClick={addAllowance}>
+                <PlusIcon data-icon="inline-start" />
+                Tilføj kategori
+              </Button>
+            </div>
+
+            {allowances.map((allowance, index) => {
+              const search = productSearches[index]?.trim().toLocaleLowerCase("da") ?? "";
+              const amount = Number(allowance.amount);
+              const amountValid =
+                Number.isInteger(amount) && amount >= 1 && amount <= 20;
+              const products = settings.products.filter(
+                (product) =>
+                  product.categoryId === allowance.categoryId &&
+                  (!search || product.name.toLocaleLowerCase("da").includes(search)) &&
+                  (product.status === "active" || allowance.productIds.includes(product.id)),
+              );
+              const selectableProducts = products.filter(
+                (product) => product.status === "active",
+              );
+              const selectableIds = new Set<string>(
+                selectableProducts.map((product) => product.id),
+              );
+              const selectedVisibleCount = selectableProducts.filter(
+                (product) => allowance.productIds.includes(product.id),
+              ).length;
+              const allVisibleSelected =
+                selectableProducts.length > 0 &&
+                selectedVisibleCount === selectableProducts.length;
+              return (
+                <Card key={`${allowance.categoryId}:${index}`}>
+                  <CardHeader>
+                    <CardTitle>Kategori {index + 1}</CardTitle>
+                    <CardAction>
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Fjern kategori"
+                        onClick={() =>
+                          setAllowances((current) =>
+                            current.filter((_, allowanceIndex) => allowanceIndex !== index),
+                          )
+                        }
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-5">
+                    <FieldGroup className="grid sm:grid-cols-[minmax(0,1fr)_10rem]">
+                      <Field data-invalid={!amountValid}>
+                        <FieldLabel>Kategori</FieldLabel>
+                        <Select
+                          items={categoryItems}
+                          value={allowance.categoryId}
+                          onValueChange={(value) =>
+                            updateAllowance(index, {
+                              categoryId: value as string,
+                              productIds: [],
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {settings.categories.map((category) => (
+                                <SelectItem
+                                  key={category.id}
+                                  value={category.id}
+                                  disabled={allowances.some(
+                                    (item, allowanceIndex) =>
+                                      allowanceIndex !== index &&
+                                      item.categoryId === category.id,
+                                  )}
+                                >
+                                  {category.name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor={`staff-food-amount-${index}`}>
+                          Antal
+                        </FieldLabel>
+                        <Input
+                          id={`staff-food-amount-${index}`}
+                          type="number"
+                          min={1}
+                          max={20}
+                          step={1}
+                          value={allowance.amount}
+                          aria-invalid={!amountValid}
+                          onChange={(event) =>
+                            updateAllowance(index, { amount: event.target.value })
+                          }
+                        />
+                        {!amountValid ? (
+                          <FieldError>Vælg et helt tal mellem 1 og 20.</FieldError>
+                        ) : null}
+                      </Field>
+                    </FieldGroup>
+
+                    <FieldSet>
+                      <FieldLegend>
+                        Tilladte produkter ({allowance.productIds.length})
+                      </FieldLegend>
+                      <InputGroup className="h-10">
+                        <InputGroupInput
+                          value={productSearches[index] ?? ""}
+                          onChange={(event) =>
+                            setProductSearches((current) => ({
+                              ...current,
+                              [index]: event.target.value,
+                            }))
+                          }
+                          placeholder="Søg i kategorien"
+                          aria-label="Søg efter produkter"
+                        />
+                        <InputGroupAddon align="inline-start">
+                          <SearchIcon />
+                        </InputGroupAddon>
+                      </InputGroup>
+                      {products.length ? (
+                        <div className="grid max-h-64 gap-2 overflow-y-auto rounded-lg border p-3 sm:grid-cols-2">
+                          <label className="col-span-full flex min-h-10 cursor-pointer items-center gap-3 border-b px-2 pb-2 font-medium">
+                            <Checkbox
+                              checked={allVisibleSelected}
+                              indeterminate={
+                                selectedVisibleCount > 0 && !allVisibleSelected
+                              }
+                              disabled={!selectableProducts.length}
+                              onCheckedChange={(next) =>
+                                updateAllowance(index, {
+                                  productIds: next
+                                    ? Array.from(
+                                        new Set([
+                                          ...allowance.productIds,
+                                          ...selectableIds,
+                                        ]),
+                                      )
+                                    : allowance.productIds.filter(
+                                        (id) => !selectableIds.has(id),
+                                      ),
+                                })
+                              }
+                            />
+                            <span className="flex-1">Vælg alle</span>
+                            <span className="text-sm font-normal text-muted-foreground">
+                              {selectableProducts.length}
+                            </span>
+                          </label>
+                          {products.map((product) => {
+                            const checked = allowance.productIds.includes(product.id);
+                            return (
+                              <label
+                                key={product.id}
+                                className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-muted/50"
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(next) =>
+                                    updateAllowance(index, {
+                                      productIds: next
+                                        ? [...allowance.productIds, product.id]
+                                        : allowance.productIds.filter(
+                                            (id) => id !== product.id,
+                                          ),
+                                    })
+                                  }
+                                />
+                                <span className="min-w-0 flex-1 truncate text-sm">
+                                  {product.name}
+                                </span>
+                                {product.status === "archived" ? (
+                                  <Badge variant="outline">Arkiveret</Badge>
+                                ) : null}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Ingen produkter fundet i kategorien.
+                        </p>
+                      )}
+                      {!allowance.productIds.length ? (
+                        <FieldError>Vælg mindst ét tilladt produkt.</FieldError>
+                      ) : null}
+                    </FieldSet>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {!allowances.length ? (
+              <Empty className="min-h-44 border">
+                <EmptyHeader>
+                  <EmptyTitle>Tilføj en kategori</EmptyTitle>
+                  <EmptyDescription>
+                    En regel skal have mindst én kategori og ét tilladt produkt.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : null}
+          </div>
+          <DialogFooter className="m-0 px-5 pt-4 pb-5">
+            <Button variant="outline" onClick={() => setEditorOpen(false)}>
+              Annullér
+            </Button>
+            <Button disabled={saving} onClick={() => void save()}>
+              {saving ? <Spinner data-icon="inline-start" /> : null}
+              Gem regel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slet reglen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vagter, der kun matcher denne regel, kan miste deres tilladelse med
+              det samme. Tidligere registreringer bevares.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Behold</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => void removeTier()}
+            >
+              Slet regel
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

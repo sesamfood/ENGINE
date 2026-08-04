@@ -9,6 +9,7 @@ import {
   StoreIcon,
   Trash2Icon,
   UsersIcon,
+  UtensilsIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -57,6 +58,13 @@ const sections = [
     description: "Indstil nulstilling og popularitet for Waste.",
     href: "/organization/waste",
     icon: Trash2Icon,
+    adminOnly: true,
+  },
+  {
+    title: "Staff food",
+    description: "Indstil vagtlængder, kategorier og tilladte produkter.",
+    href: "/organization/staff-food",
+    icon: UtensilsIcon,
     adminOnly: true,
   },
   {

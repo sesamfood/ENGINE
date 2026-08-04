@@ -11,6 +11,7 @@ import {
   SettingsIcon,
   StoreIcon,
   Trash2Icon,
+  UtensilsIcon,
   UsersRoundIcon,
   UserRoundIcon,
 } from "lucide-react";
@@ -66,6 +67,7 @@ import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
   { label: "Waste", href: "/waste", icon: Trash2Icon },
+  { label: "Staff food", href: "/staff-food", icon: UtensilsIcon },
   { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
 
@@ -630,8 +632,18 @@ export function AppShell({
     pathname === "/count" || pathname.startsWith("/count/");
   const showWasteHeader =
     pathname === "/waste" || pathname.startsWith("/waste/");
+  const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees";
-  const showPageHeader = showCountHeader || showWasteHeader || showEmployeesHeader;
+  const showTransfersHeader = pathname === "/transfers";
+  const showOrganizationHeader =
+    pathname === "/organization" || pathname.startsWith("/organization/");
+  const showPageHeader =
+    showCountHeader ||
+    showWasteHeader ||
+    showStaffFoodHeader ||
+    showEmployeesHeader ||
+    showTransfersHeader ||
+    showOrganizationHeader;
 
   if (signingOut) {
     return (
@@ -693,7 +705,13 @@ export function AppShell({
                       ? "count-shell-header"
                       : showWasteHeader
                         ? "waste-shell-header"
-                        : "employees-shell-header"
+                        : showStaffFoodHeader
+                          ? "staff-food-shell-header"
+                          : showEmployeesHeader
+                            ? "employees-shell-header"
+                            : showTransfersHeader
+                              ? "transfers-shell-header"
+                              : "organization-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"
                 />
@@ -724,7 +742,14 @@ export function AppShell({
               </div>
             </header>
 
-            <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
+            <div
+              className={cn(
+                "flex-1",
+                showPageHeader
+                  ? "p-4"
+                  : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
+              )}
+            >
               {children}
             </div>
           </SidebarInset>

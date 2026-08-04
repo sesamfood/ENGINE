@@ -31,6 +31,7 @@ import type * as lib_workfeedApi from "../lib/workfeedApi.js";
 import type * as locations from "../locations.js";
 import type * as onlinePos from "../onlinePos.js";
 import type * as organization from "../organization.js";
+import type * as staffFood from "../staffFood.js";
 import type * as transfers from "../transfers.js";
 import type * as waste from "../waste.js";
 import type * as workfeed from "../workfeed.js";
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   locations: typeof locations;
   onlinePos: typeof onlinePos;
   organization: typeof organization;
+  staffFood: typeof staffFood;
   transfers: typeof transfers;
   waste: typeof waste;
   workfeed: typeof workfeed;

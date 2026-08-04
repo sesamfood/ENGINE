@@ -461,7 +461,14 @@ async function permanentlyDeleteProduct(
   ctx: MutationCtx,
   product: Doc<"products">,
 ) {
-  const [units, ingredients, recipeReferences, countItems, stockRows] =
+  const [
+    units,
+    ingredients,
+    recipeReferences,
+    countItems,
+    stockRows,
+    staffFoodRules,
+  ] =
     await Promise.all([
       ctx.db
         .query("productUnits")
@@ -503,6 +510,14 @@ async function permanentlyDeleteProduct(
             .eq("productId", product._id),
         )
         .take(MAX_CHILD_ROWS + 1),
+      ctx.db
+        .query("staffFoodRuleProducts")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", product.organizationId)
+            .eq("productId", product._id),
+        )
+        .take(MAX_CHILD_ROWS + 1),
     ]);
 
   if (
@@ -510,7 +525,8 @@ async function permanentlyDeleteProduct(
     ingredients.length > MAX_CHILD_ROWS ||
     recipeReferences.length > MAX_GRAPH_PRODUCTS ||
     countItems.length > MAX_PRODUCT_LEDGER_ROWS ||
-    stockRows.length > MAX_CHILD_ROWS
+    stockRows.length > MAX_CHILD_ROWS ||
+    staffFoodRules.length > MAX_CHILD_ROWS
   ) {
     throw new ConvexError(
       "Produktet har for mange relationer til at blive slettet",
@@ -526,6 +542,9 @@ async function permanentlyDeleteProduct(
   }
   for (const row of countItems) await ctx.db.delete("countItems", row._id);
   for (const row of stockRows) await ctx.db.delete("locationStock", row._id);
+  for (const row of staffFoodRules) {
+    await ctx.db.delete("staffFoodRuleProducts", row._id);
+  }
   await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, {
     organizationId: product.organizationId,
     productId: product._id,
@@ -599,33 +618,54 @@ export const listProducts = query({
     const results = search
       ? await (async () => {
           // ponytail: scan the tenant catalog until catalog size warrants a trigram index.
-          const products = await (
-            args.categoryId
-              ? ctx.db
-                  .query("products")
-                  .withIndex(
-                    "by_organizationId_and_status_and_categoryId_and_normalizedName",
-                    (q) =>
-                      q
-                        .eq("organizationId", organizationId)
-                        .eq("status", args.status)
-                        .eq("categoryId", args.categoryId!),
-                  )
-              : ctx.db
-                  .query("products")
-                  .withIndex(
-                    "by_organizationId_and_status_and_normalizedName",
-                    (q) =>
-                      q
-                        .eq("organizationId", organizationId)
-                        .eq("status", args.status),
-                  )
-          ).collect();
+          const products = await (args.categoryId
+            ? ctx.db
+                .query("products")
+                .withIndex(
+                  "by_organizationId_and_status_and_categoryId_and_normalizedName",
+                  (q) =>
+                    q
+                      .eq("organizationId", organizationId)
+                      .eq("status", args.status)
+                      .eq("categoryId", args.categoryId!),
+                )
+            : ctx.db
+                .query("products")
+                .withIndex(
+                  "by_organizationId_and_status_and_normalizedName",
+                  (q) =>
+                    q
+                      .eq("organizationId", organizationId)
+                      .eq("status", args.status),
+                ))
+            .collect();
+          const categoryNames = new Map(
+            await Promise.all(
+              Array.from(new Set(products.map((product) => product.categoryId))).map(
+                async (categoryId) => {
+                  const category = await ctx.db.get("categories", categoryId);
+                  return [categoryId, category?.name ?? ""] as const;
+                },
+              ),
+            ),
+          );
           const matches = products
-            .map((product) => ({
-              product,
-              score: fuzzyScore(product.name, search),
-            }))
+            .map((product) => {
+              const productScore = fuzzyScore(product.name, search);
+              const categoryScore = fuzzyScore(
+                categoryNames.get(product.categoryId) ?? "",
+                search,
+              );
+              return {
+                product,
+                score:
+                  productScore === null
+                    ? categoryScore
+                    : categoryScore === null
+                      ? productScore
+                      : Math.min(productScore, categoryScore),
+              };
+            })
             .filter(
               (match): match is { product: Doc<"products">; score: number } =>
                 match.score !== null,
@@ -1543,13 +1583,28 @@ export const deleteCategory = mutation({
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
     }
-    const product = await ctx.db
-      .query("products")
-      .withIndex("by_organizationId_and_categoryId", (q) =>
-        q.eq("organizationId", organizationId).eq("categoryId", category._id),
-      )
-      .first();
+    const [product, staffFoodAllowance] = await Promise.all([
+      ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_categoryId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("categoryId", category._id),
+        )
+        .first(),
+      ctx.db
+        .query("staffFoodRuleAllowances")
+        .withIndex("by_organizationId_and_categoryId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("categoryId", category._id),
+        )
+        .first(),
+    ]);
     if (product) throw new ConvexError("Kategorien er stadig i brug");
+    if (staffFoodAllowance) {
+      throw new ConvexError("Kategorien bruges stadig i Staff food");
+    }
     await ctx.db.delete("categories", category._id);
     return null;
   },

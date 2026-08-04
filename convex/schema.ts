@@ -144,6 +144,130 @@ export default defineSchema({
       "startsAt",
     ]),
 
+  staffFoodRuleTiers: defineTable({
+    organizationId: v.string(),
+    minimumShiftMinutes: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_minimumShiftMinutes", [
+    "organizationId",
+    "minimumShiftMinutes",
+  ]),
+
+  staffFoodRuleAllowances: defineTable({
+    organizationId: v.string(),
+    tierId: v.id("staffFoodRuleTiers"),
+    categoryId: v.id("categories"),
+    amount: v.number(),
+  })
+    .index("by_organizationId_and_tierId", ["organizationId", "tierId"])
+    .index("by_organizationId_and_tierId_and_categoryId", [
+      "organizationId",
+      "tierId",
+      "categoryId",
+    ])
+    .index("by_organizationId_and_categoryId", [
+      "organizationId",
+      "categoryId",
+    ]),
+
+  staffFoodRuleProducts: defineTable({
+    organizationId: v.string(),
+    allowanceId: v.id("staffFoodRuleAllowances"),
+    productId: v.id("products"),
+  })
+    .index("by_organizationId_and_allowanceId", [
+      "organizationId",
+      "allowanceId",
+    ])
+    .index("by_organizationId_and_allowanceId_and_productId", [
+      "organizationId",
+      "allowanceId",
+      "productId",
+    ])
+    .index("by_organizationId_and_productId", [
+      "organizationId",
+      "productId",
+    ]),
+
+  staffFoodSessions: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    employeeId: v.id("employees"),
+    source: v.union(v.literal("scheduled"), v.literal("manual")),
+    scheduledShiftId: v.optional(v.id("scheduledShifts")),
+    workDate: v.string(),
+    startsAt: v.optional(v.number()),
+    endsAt: v.optional(v.number()),
+    durationMinutes: v.number(),
+    createdAt: v.number(),
+    createdBy: v.string(),
+  })
+    .index("by_organizationId_and_scheduledShiftId", [
+      "organizationId",
+      "scheduledShiftId",
+    ])
+    .index(
+      "by_org_location_employee_date_source",
+      ["organizationId", "locationId", "employeeId", "workDate", "source"],
+    ),
+
+  staffFoodRegistrations: defineTable({
+    organizationId: v.string(),
+    checkoutId: v.string(),
+    sessionId: v.id("staffFoodSessions"),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    employeeId: v.id("employees"),
+    employeeName: v.string(),
+    sessionSource: v.union(v.literal("scheduled"), v.literal("manual")),
+    workDate: v.string(),
+    shiftDurationMinutes: v.number(),
+    tierMinimumShiftMinutes: v.number(),
+    categoryAllowance: v.number(),
+    categoryId: v.id("categories"),
+    categoryName: v.string(),
+    productId: v.id("products"),
+    productName: v.string(),
+    quantity: v.number(),
+    defaultUnitId: v.id("units"),
+    defaultUnitName: v.string(),
+    defaultQuantity: v.number(),
+    registeredAt: v.number(),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    status: v.union(v.literal("active"), v.literal("voided")),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.string()),
+    voidedByName: v.optional(v.string()),
+  })
+    .index("by_organizationId_and_checkoutId", [
+      "organizationId",
+      "checkoutId",
+    ])
+    .index("by_organizationId_and_sessionId_and_registeredAt", [
+      "organizationId",
+      "sessionId",
+      "registeredAt",
+    ])
+    .index(
+      "by_organizationId_and_sessionId_and_status_and_categoryId",
+      ["organizationId", "sessionId", "status", "categoryId"],
+    )
+    .index("by_organizationId_and_registeredAt", [
+      "organizationId",
+      "registeredAt",
+    ])
+    .index("by_organizationId_and_locationId_and_registeredAt", [
+      "organizationId",
+      "locationId",
+      "registeredAt",
+    ])
+    .index("by_organizationId_and_employeeId_and_registeredAt", [
+      "organizationId",
+      "employeeId",
+      "registeredAt",
+    ]),
+
   workfeedEmployeeMappings: defineTable({
     organizationId: v.string(),
     companyId: v.string(),
