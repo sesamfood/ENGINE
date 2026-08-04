@@ -1,4 +1,7 @@
-import { paginationOptsValidator } from "convex/server";
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -29,6 +32,40 @@ const ingredientInputValidator = v.object({
   productId: v.id("products"),
   quantity: v.number(),
   unitId: v.id("units"),
+});
+
+const productExportValidator = v.object({
+  sourceId: v.id("products"),
+  name: v.string(),
+  status: statusValidator,
+  category: v.string(),
+  units: v.array(
+    v.object({
+      name: v.string(),
+      factorToDefault: v.number(),
+      isDefault: v.boolean(),
+    }),
+  ),
+  ingredients: v.array(
+    v.object({
+      sourceProductId: v.id("products"),
+      quantity: v.number(),
+      unit: v.string(),
+    }),
+  ),
+  imageUrl: v.union(v.string(), v.null()),
+});
+
+const importedProductUnitValidator = v.object({
+  name: v.string(),
+  factorToDefault: v.number(),
+  isDefault: v.boolean(),
+});
+
+const importedIngredientValidator = v.object({
+  productId: v.id("products"),
+  quantity: v.number(),
+  unitName: v.string(),
 });
 
 type CategoryReference =
@@ -66,9 +103,7 @@ function normalizeName(value: string, label: string) {
   const name = value.trim().replace(/\s+/g, " ");
   if (!name) throw new ConvexError(`${label} skal udfyldes`);
   if (name.length > MAX_NAME_LENGTH) {
-    throw new ConvexError(
-      `${label} må højst være ${MAX_NAME_LENGTH} tegn`,
-    );
+    throw new ConvexError(`${label} må højst være ${MAX_NAME_LENGTH} tegn`);
   }
   return { name, normalizedName: name.toLocaleLowerCase("da") };
 }
@@ -638,7 +673,10 @@ export const listProducts = query({
             .sort((left, right) => left.score - right.score)
             .map((match) => match.product);
           const offset = Number(args.paginationOpts.cursor ?? 0);
-          const end = Math.min(offset + args.paginationOpts.numItems, matches.length);
+          const end = Math.min(
+            offset + args.paginationOpts.numItems,
+            matches.length,
+          );
 
           return {
             page: matches.slice(offset, end),
@@ -669,6 +707,109 @@ export const listProducts = query({
       ...results,
       page: await Promise.all(
         results.page.map((product) => hydrateCatalogProduct(ctx, product)),
+      ),
+    };
+  },
+});
+
+export const exportProducts = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(productExportValidator),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    if (args.paginationOpts.numItems > 25) {
+      throw new ConvexError("Der kan højst eksporteres 25 produkter ad gangen");
+    }
+
+    const results = await ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .paginate(args.paginationOpts);
+
+    return {
+      ...results,
+      page: await Promise.all(
+        results.page.map(async (product) => {
+          const [category, unitRows, ingredientRows, imageUrl] =
+            await Promise.all([
+              ctx.db.get("categories", product.categoryId),
+              ctx.db
+                .query("productUnits")
+                .withIndex("by_organizationId_and_productId", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("productId", product._id),
+                )
+                .take(MAX_CHILD_ROWS),
+              ctx.db
+                .query("productIngredients")
+                .withIndex("by_organizationId_and_productId", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("productId", product._id),
+                )
+                .take(MAX_CHILD_ROWS),
+              product.imageStorageId
+                ? ctx.storage.getUrl(product.imageStorageId)
+                : Promise.resolve(null),
+            ]);
+          if (!category || category.organizationId !== organizationId) {
+            throw new ConvexError(
+              `Kategorien til ${product.name} blev ikke fundet`,
+            );
+          }
+
+          const units = await Promise.all(
+            unitRows.map(async (row) => {
+              const unit = await ctx.db.get("units", row.unitId);
+              if (!unit || unit.organizationId !== organizationId) {
+                throw new ConvexError(
+                  `En enhed til ${product.name} blev ikke fundet`,
+                );
+              }
+              return {
+                name: unit.name,
+                factorToDefault: row.factorToDefault,
+                isDefault: row.unitId === product.defaultUnitId,
+              };
+            }),
+          );
+          const ingredients = await Promise.all(
+            ingredientRows.map(async (row) => {
+              const [ingredientProduct, unit] = await Promise.all([
+                ctx.db.get("products", row.ingredientProductId),
+                ctx.db.get("units", row.unitId),
+              ]);
+              if (
+                !ingredientProduct ||
+                ingredientProduct.organizationId !== organizationId ||
+                !unit ||
+                unit.organizationId !== organizationId
+              ) {
+                throw new ConvexError(
+                  `En ingrediens til ${product.name} blev ikke fundet`,
+                );
+              }
+              return {
+                sourceProductId: ingredientProduct._id,
+                quantity: row.quantity,
+                unit: unit.name,
+              };
+            }),
+          );
+
+          return {
+            sourceId: product._id,
+            name: product.name,
+            status: product.status,
+            category: category.name,
+            units,
+            ingredients,
+            imageUrl,
+          };
+        }),
       ),
     };
   },
@@ -874,8 +1015,7 @@ export const createProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
   },
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } =
-      await requireCatalogManager(ctx);
+    const { organizationId, userIdentifier } = await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
     await assertProductNameAvailable(ctx, organizationId, normalizedName);
     const categoryId = await resolveCategory(
@@ -905,6 +1045,297 @@ export const createProduct = mutation({
       args.ingredients,
     );
     return productId;
+  },
+});
+
+export const importProduct = mutation({
+  args: {
+    name: v.string(),
+    category: v.string(),
+    units: v.array(importedProductUnitValidator),
+    overwrite: v.boolean(),
+  },
+  returns: v.object({
+    productId: v.id("products"),
+    status: v.union(
+      v.literal("created"),
+      v.literal("skipped"),
+      v.literal("overwritten"),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const { organizationId, userIdentifier } = await requireCatalogManager(ctx);
+    const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
+    const existing = await ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("normalizedName", normalizedName),
+      )
+      .unique();
+    if (existing && !args.overwrite) {
+      return { productId: existing._id, status: "skipped" as const };
+    }
+
+    const categoryId = await resolveCategory(ctx, organizationId, {
+      kind: "new",
+      name: args.category,
+    });
+    const units = await resolveUnits(
+      ctx,
+      organizationId,
+      args.units.map((unit) => ({
+        unit: { kind: "new" as const, name: unit.name },
+        factorToDefault: unit.factorToDefault,
+        isDefault: unit.isDefault,
+      })),
+    );
+    const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
+
+    if (existing) {
+      const [
+        existingUnits,
+        stockRows,
+        recipeReferences,
+        countItems,
+        wasteConfigs,
+      ] = await Promise.all([
+        ctx.db
+          .query("productUnits")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", existing._id),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+        ctx.db
+          .query("locationStock")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", existing._id),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+        ctx.db
+          .query("productIngredients")
+          .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("ingredientProductId", existing._id),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+        ctx.db
+          .query("countItems")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", existing._id),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+        ctx.db
+          .query("wasteProductConfigs")
+          .withIndex("by_org_product", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", existing._id),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+      ]);
+      if (
+        existingUnits.length > MAX_CHILD_ROWS ||
+        stockRows.length > MAX_CHILD_ROWS ||
+        recipeReferences.length > MAX_CHILD_ROWS ||
+        countItems.length > MAX_CHILD_ROWS ||
+        wasteConfigs.length > MAX_CHILD_ROWS
+      ) {
+        throw new ConvexError(
+          `Produktet ${name} har for mange relationer til at blive overskrevet`,
+        );
+      }
+
+      const oldUnits = new Map(
+        existingUnits.map((unit) => [unit.unitId, unit.factorToDefault]),
+      );
+      const nextUnitIds = new Set(units.map((unit) => unit.unitId));
+      const bridge =
+        units.find(
+          (unit) => unit.unitId === defaultUnitId && oldUnits.has(unit.unitId),
+        ) ??
+        units.find(
+          (unit) =>
+            unit.unitId === existing.defaultUnitId && oldUnits.has(unit.unitId),
+        ) ??
+        units.find((unit) => oldUnits.has(unit.unitId));
+      const conversion = bridge
+        ? bridge.factorToDefault / oldUnits.get(bridge.unitId)!
+        : null;
+      const removedUnitReferences = recipeReferences.filter(
+        (row) => !nextUnitIds.has(row.unitId),
+      );
+      const openCountItems = (
+        await Promise.all(
+          countItems.map(async (item) => ({
+            item,
+            count: await ctx.db.get("counts", item.countId),
+          })),
+        )
+      ).filter(
+        ({ item, count }) =>
+          !nextUnitIds.has(item.unitId) &&
+          count?.organizationId === organizationId &&
+          count.status === "open",
+      );
+      const configsWithRemovedUnits = wasteConfigs.filter((config) =>
+        config.shortcutOverrides?.some(
+          (shortcut) => !nextUnitIds.has(shortcut.unitId),
+        ),
+      );
+
+      if (
+        (stockRows.length > 0 ||
+          removedUnitReferences.length > 0 ||
+          openCountItems.length > 0 ||
+          configsWithRemovedUnits.length > 0) &&
+        !conversion
+      ) {
+        throw new ConvexError(
+          `Produktet ${name} skal beholde mindst én enhed for at omregne eksisterende mængder`,
+        );
+      }
+      if (conversion) {
+        requirePositiveNumber(conversion, "Enhedsomregningen");
+      }
+
+      const updatedAt = Date.now();
+      for (const stock of stockRows) {
+        await ctx.db.patch("locationStock", stock._id, {
+          quantity: normalizeStock(stock.quantity * conversion!),
+          updatedAt,
+        });
+      }
+      for (const reference of removedUnitReferences) {
+        const oldFactor = oldUnits.get(reference.unitId);
+        if (!oldFactor) {
+          throw new ConvexError(
+            `En opskrift for ${name} bruger en ugyldig enhed`,
+          );
+        }
+        const quantity = reference.quantity * oldFactor * conversion!;
+        requirePositiveNumber(quantity, "Den omregnede ingrediensmængde");
+        await ctx.db.patch("productIngredients", reference._id, {
+          quantity,
+          unitId: defaultUnitId,
+        });
+      }
+      for (const { item } of openCountItems) {
+        const oldFactor = oldUnits.get(item.unitId)!;
+        const quantity = item.quantity * oldFactor * conversion!;
+        requirePositiveNumber(quantity, "Den omregnede count-mængde");
+        await ctx.db.patch("countItems", item._id, {
+          quantity,
+          unitId: defaultUnitId,
+        });
+      }
+      for (const config of configsWithRemovedUnits) {
+        await ctx.db.patch("wasteProductConfigs", config._id, {
+          shortcutOverrides: config.shortcutOverrides!.map((shortcut) => {
+            if (nextUnitIds.has(shortcut.unitId)) return shortcut;
+            const quantity =
+              shortcut.quantity * oldUnits.get(shortcut.unitId)! * conversion!;
+            requirePositiveNumber(quantity, "Den omregnede shortcut-mængde");
+            return { unitId: defaultUnitId, quantity };
+          }),
+        });
+      }
+
+      await replaceProductChildren(
+        ctx,
+        organizationId,
+        existing._id,
+        units,
+        [],
+      );
+      await ctx.db.patch("products", existing._id, {
+        name,
+        normalizedName,
+        categoryId,
+        defaultUnitId,
+        status: "active",
+        archivedAt: undefined,
+        updatedAt,
+      });
+      return { productId: existing._id, status: "overwritten" as const };
+    }
+
+    const productId = await ctx.db.insert("products", {
+      organizationId,
+      name,
+      normalizedName,
+      categoryId,
+      defaultUnitId,
+      status: "active",
+      createdBy: userIdentifier,
+      updatedAt: Date.now(),
+    });
+    await replaceProductChildren(ctx, organizationId, productId, units, []);
+    return { productId, status: "created" as const };
+  },
+});
+
+export const importProductIngredients = mutation({
+  args: {
+    productId: v.id("products"),
+    ingredients: v.array(importedIngredientValidator),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+
+    const ingredients: IngredientInput[] = [];
+    for (const input of args.ingredients) {
+      const { normalizedName } = normalizeName(input.unitName, "Enhedsnavnet");
+      const unit = await ctx.db
+        .query("units")
+        .withIndex("by_organizationId_and_normalizedName", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("normalizedName", normalizedName),
+        )
+        .unique();
+      if (!unit) throw new ConvexError("Ingrediensenheden blev ikke fundet");
+      ingredients.push({
+        productId: input.productId,
+        quantity: input.quantity,
+        unitId: unit._id,
+      });
+    }
+
+    await validateIngredients(ctx, organizationId, ingredients, product._id);
+    await assertNoRecipeCycle(ctx, organizationId, product._id, ingredients);
+    const existing = await ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS);
+    for (const row of existing) {
+      await ctx.db.delete("productIngredients", row._id);
+    }
+    for (const ingredient of ingredients) {
+      await ctx.db.insert("productIngredients", {
+        organizationId,
+        productId: product._id,
+        ingredientProductId: ingredient.productId,
+        quantity: ingredient.quantity,
+        unitId: ingredient.unitId,
+      });
+    }
+    return null;
   },
 });
 
@@ -964,9 +1395,7 @@ export const updateProduct = mutation({
       const stockRows = await ctx.db
         .query("locationStock")
         .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("productId", product._id),
+          q.eq("organizationId", organizationId).eq("productId", product._id),
         )
         .take(MAX_CHILD_ROWS + 1);
       if (stockRows.length > MAX_CHILD_ROWS) {
@@ -1094,11 +1523,7 @@ export const deleteExpiredProducts = internalMutation({
     if (!product) return null;
 
     await permanentlyDeleteProduct(ctx, product);
-    await ctx.scheduler.runAfter(
-      0,
-      internal.catalog.deleteExpiredProducts,
-      {},
-    );
+    await ctx.scheduler.runAfter(0, internal.catalog.deleteExpiredProducts, {});
     return null;
   },
 });

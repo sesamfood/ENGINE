@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ProductImportExport } from "@/components/catalog/product-import-export";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
 import {
   AlertDialog,
@@ -262,6 +263,7 @@ export function ProductCatalog() {
           />
         </div>
         <div className="flex flex-col gap-3 sm:flex-row md:flex-none">
+          <ProductImportExport />
           <Button
             variant="outline"
             className="min-h-11 px-3"
