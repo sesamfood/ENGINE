@@ -634,11 +634,16 @@ export function AppShell({
     pathname === "/waste" || pathname.startsWith("/waste/");
   const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees";
+  const showTransfersHeader = pathname === "/transfers";
+  const showOrganizationHeader =
+    pathname === "/organization" || pathname.startsWith("/organization/");
   const showPageHeader =
     showCountHeader ||
     showWasteHeader ||
     showStaffFoodHeader ||
-    showEmployeesHeader;
+    showEmployeesHeader ||
+    showTransfersHeader ||
+    showOrganizationHeader;
 
   if (signingOut) {
     return (
@@ -702,7 +707,11 @@ export function AppShell({
                         ? "waste-shell-header"
                         : showStaffFoodHeader
                           ? "staff-food-shell-header"
-                        : "employees-shell-header"
+                          : showEmployeesHeader
+                            ? "employees-shell-header"
+                            : showTransfersHeader
+                              ? "transfers-shell-header"
+                              : "organization-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"
                 />
@@ -733,7 +742,14 @@ export function AppShell({
               </div>
             </header>
 
-            <div className="flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-11">
+            <div
+              className={cn(
+                "flex-1",
+                showPageHeader
+                  ? "p-4"
+                  : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
+              )}
+            >
               {children}
             </div>
           </SidebarInset>

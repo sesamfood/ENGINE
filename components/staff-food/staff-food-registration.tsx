@@ -676,7 +676,7 @@ export function StaffFoodRegistration() {
                                         <ImageIcon className="size-10 lg:size-12" />
                                       </div>
                                     )}
-                                    <CardHeader className="py-3 lg:py-4">
+                                    <CardHeader className="py-2.5">
                                       <CardTitle className="truncate">
                                         {product.name}
                                       </CardTitle>

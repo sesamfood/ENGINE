@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const catalogSections = [
@@ -13,6 +14,7 @@ const catalogSections = [
 export function OrganizationHeader() {
   const pathname = usePathname();
   const router = useRouter();
+  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const inCatalog = catalogSections.some((item) =>
     pathname.startsWith(`/organization/${item.value}`),
   );
@@ -47,18 +49,30 @@ export function OrganizationHeader() {
     }
   }, [router]);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setHeaderTarget(document.getElementById("organization-shell-header"));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   if (onProductForm) return null;
+
+  const header = (
+    <div className="flex min-w-0 flex-col gap-2">
+      <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+        Administration
+      </p>
+      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+        {title}
+      </h1>
+    </div>
+  );
 
   return (
     <>
-      <header className="flex max-w-3xl flex-col gap-3">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Administration
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          {title}
-        </h1>
-      </header>
+      <header className="md:hidden">{header}</header>
+      {headerTarget ? createPortal(header, headerTarget) : null}
 
       {inCatalog ? (
         <Tabs

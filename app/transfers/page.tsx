@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { TransferForm } from "@/components/transfers/transfer-form";
 import { TransferHistory } from "@/components/transfers/transfer-history";
@@ -51,16 +53,33 @@ function TransfersContent() {
 }
 
 export default function TransfersPage() {
-  return (
-    <section className="mx-auto w-full max-w-[96rem]">
+  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setHeaderTarget(document.getElementById("transfers-shell-header"));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const header = (
+    <div className="flex min-w-0 flex-col gap-2">
+      <p className="text-sm font-semibold uppercase tracking-widest text-primary">
+        Lagerstyring
+      </p>
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
         Transfers
       </h1>
-      <div className="mt-8">
-        <OrganizationAuthGate>
-          <TransfersContent />
-        </OrganizationAuthGate>
-      </div>
+    </div>
+  );
+
+  return (
+    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4">
+      <header className="md:hidden">{header}</header>
+      {headerTarget ? createPortal(header, headerTarget) : null}
+      <OrganizationAuthGate>
+        <TransfersContent />
+      </OrganizationAuthGate>
     </section>
   );
 }
