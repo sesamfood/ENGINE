@@ -3,7 +3,9 @@ import {
   canCountStock,
   canManageCatalog,
   canManageOrganization,
+  canManageStaffFood,
   canManageTransfers,
+  canRegisterStaffFood,
   canRegisterWaste,
   canViewWasteReports,
 } from "../../lib/auth-permissions";
@@ -60,6 +62,14 @@ export async function requireWasteRegistrar(ctx: AuthContext) {
   return auth;
 }
 
+export async function requireStaffFoodRegistrar(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (!canRegisterStaffFood(auth.role)) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
 export async function requireWasteReporter(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (!canViewWasteReports(auth.role)) {
@@ -72,6 +82,14 @@ export async function requireOrganizationAdmin(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (!canManageOrganization(auth.role)) {
     throw new ConvexError("Kun administratorer kan ændre organisationen");
+  }
+  return auth;
+}
+
+export async function requireStaffFoodManager(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (!canManageStaffFood(auth.role)) {
+    throw new ConvexError("Kun administratorer kan ændre personalemad");
   }
   return auth;
 }

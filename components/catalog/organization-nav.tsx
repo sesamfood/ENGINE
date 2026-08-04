@@ -29,6 +29,8 @@ export function OrganizationHeader() {
         ? "Integrationer"
         : pathname.startsWith("/organization/schedule")
           ? "Vagtplan"
+          : pathname.startsWith("/organization/staff-food")
+            ? "Personalemad"
           : pathname.startsWith("/organization/count")
             ? "Count"
             : pathname.startsWith("/organization/waste")

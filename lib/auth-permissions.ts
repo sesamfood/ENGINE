@@ -29,6 +29,8 @@ export function canCountStock(role: string | null | undefined) {
 
 export const canRegisterWaste = canCountStock;
 
+export const canRegisterStaffFood = canCountStock;
+
 export function canManageMembers(role: string | null | undefined) {
   return role === "admin";
 }
@@ -36,3 +38,5 @@ export function canManageMembers(role: string | null | undefined) {
 export const canManageOrganization = canManageMembers;
 
 export const canManageWasteSettings = canManageOrganization;
+
+export const canManageStaffFood = canManageOrganization;

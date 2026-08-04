@@ -11,6 +11,7 @@ import {
   SettingsIcon,
   StoreIcon,
   Trash2Icon,
+  UtensilsIcon,
   UsersRoundIcon,
   UserRoundIcon,
 } from "lucide-react";
@@ -66,6 +67,7 @@ import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
   { label: "Waste", href: "/waste", icon: Trash2Icon },
+  { label: "Personalemad", href: "/staff-food", icon: UtensilsIcon },
   { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
 
@@ -630,8 +632,13 @@ export function AppShell({
     pathname === "/count" || pathname.startsWith("/count/");
   const showWasteHeader =
     pathname === "/waste" || pathname.startsWith("/waste/");
+  const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees";
-  const showPageHeader = showCountHeader || showWasteHeader || showEmployeesHeader;
+  const showPageHeader =
+    showCountHeader ||
+    showWasteHeader ||
+    showStaffFoodHeader ||
+    showEmployeesHeader;
 
   if (signingOut) {
     return (
@@ -693,6 +700,8 @@ export function AppShell({
                       ? "count-shell-header"
                       : showWasteHeader
                         ? "waste-shell-header"
+                        : showStaffFoodHeader
+                          ? "staff-food-shell-header"
                         : "employees-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"
