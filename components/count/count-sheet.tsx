@@ -135,10 +135,24 @@ function countdown(target: number, now: number) {
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds % 60;
   if (days > 0) {
-    return `${days} ${days === 1 ? "dag" : "dage"} ${hours} t ${minutes} min`;
+    return [
+      `${days} ${days === 1 ? "dag" : "dage"}`,
+      hours > 0 ? `${hours} t` : null,
+      minutes > 0 ? `${minutes} min` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
-  if (hours > 0) return `${hours} t ${minutes} min`;
-  if (minutes > 0) return `${minutes} min ${rest} sek`;
+  if (hours > 0) {
+    return [`${hours} t`, minutes > 0 ? `${minutes} min` : null]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (minutes > 0) {
+    return [`${minutes} min`, rest > 0 ? `${rest} sek` : null]
+      .filter(Boolean)
+      .join(" ");
+  }
   return `${rest} sek`;
 }
 
