@@ -67,7 +67,7 @@ import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme
 const primaryNavigation = [
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
   { label: "Waste", href: "/waste", icon: Trash2Icon },
-  { label: "Personalemad", href: "/staff-food", icon: UtensilsIcon },
+  { label: "Staff food", href: "/staff-food", icon: UtensilsIcon },
   { label: "Count", href: "/count", icon: ClipboardListIcon },
 ];
 

@@ -177,7 +177,7 @@ async function requireSession(
 ) {
   const session = await ctx.db.get("staffFoodSessions", sessionId);
   if (!session || session.organizationId !== organizationId) {
-    throw new ConvexError("Personalemad-sessionen blev ikke fundet");
+    throw new ConvexError("Staff food-sessionen blev ikke fundet");
   }
   return session;
 }
@@ -537,7 +537,7 @@ export const getSessionState = query({
       !location ||
       location.organizationId !== organizationId
     ) {
-      throw new ConvexError("Personalemad-sessionen er ugyldig");
+      throw new ConvexError("Staff food-sessionen er ugyldig");
     }
 
     const activeRows = rows
@@ -718,7 +718,7 @@ export const register = mutation({
       requireLocation(ctx, organizationId, session.locationId),
       ctx.db.get("employees", session.employeeId),
     ]);
-    if (!tier) throw new ConvexError("Vagten udløser ingen personalemad-regel");
+    if (!tier) throw new ConvexError("Vagten udløser ingen Staff food-regel");
     if (!employee || employee.organizationId !== organizationId) {
       throw new ConvexError("Medarbejderen blev ikke fundet");
     }

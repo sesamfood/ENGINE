@@ -30,7 +30,7 @@ export function OrganizationHeader() {
         : pathname.startsWith("/organization/schedule")
           ? "Vagtplan"
           : pathname.startsWith("/organization/staff-food")
-            ? "Personalemad"
+            ? "Staff food"
           : pathname.startsWith("/organization/count")
             ? "Count"
             : pathname.startsWith("/organization/waste")

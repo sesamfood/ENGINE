@@ -366,7 +366,7 @@ export function StaffFoodSettings() {
         timeZone,
       });
       downloadCsv(
-        `personalemad-${from}-${to}.csv`,
+        `staff-food-${from}-${to}.csv`,
         [
           "Registreret",
           "Location",
@@ -414,7 +414,7 @@ export function StaffFoodSettings() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre personalemad og eksportere rapporter.
+          Kun administratorer kan ændre Staff food og eksportere rapporter.
         </AlertDescription>
       </Alert>
     );
@@ -426,9 +426,9 @@ export function StaffFoodSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-1">
-            Regler for personalemad
+            Regler for Staff food
             <HelpTooltip
-              label="Regler for personalemad"
+              label="Regler for Staff food"
               content="Medarbejderen får den regel med den højeste vagtlængde, som vagten opfylder. Reglerne lægges ikke sammen."
             />
           </CardTitle>
@@ -494,7 +494,7 @@ export function StaffFoodSettings() {
                 </EmptyMedia>
                 <EmptyTitle>Ingen regler endnu</EmptyTitle>
                 <EmptyDescription>
-                  Opret den første regel for at aktivere Personalemad.
+                  Opret den første regel for at aktivere Staff food.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -540,7 +540,7 @@ export function StaffFoodSettings() {
                 <FieldError>Vælg en periode på højst ét år.</FieldError>
               ) : null}
             </Field>
-            <Field data-invalid={!minimumValid}>
+            <Field>
               <FieldLabel>Location</FieldLabel>
               <Select
                 items={[
@@ -584,7 +584,7 @@ export function StaffFoodSettings() {
       </Card>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-hidden p-0">
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:w-[calc(100%-4rem)] sm:max-w-5xl">
           <DialogHeader className="px-5 pt-5">
             <DialogTitle>
               {editingId ? "Redigér regel" : "Ny regel"}
@@ -593,8 +593,8 @@ export function StaffFoodSettings() {
               Den højeste matchende regel erstatter kortere regler.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-5 pb-5">
-            <Field>
+          <div className="flex min-h-0 flex-col gap-5 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-5 [&>*]:shrink-0">
+            <Field data-invalid={!minimumValid}>
               <FieldLabel htmlFor="staff-food-minimum-hours">
                 Minimum vagtlængde i timer
               </FieldLabel>
@@ -641,6 +641,18 @@ export function StaffFoodSettings() {
                   (!search || product.name.toLocaleLowerCase("da").includes(search)) &&
                   (product.status === "active" || allowance.productIds.includes(product.id)),
               );
+              const selectableProducts = products.filter(
+                (product) => product.status === "active",
+              );
+              const selectableIds = new Set<string>(
+                selectableProducts.map((product) => product.id),
+              );
+              const selectedVisibleCount = selectableProducts.filter(
+                (product) => allowance.productIds.includes(product.id),
+              ).length;
+              const allVisibleSelected =
+                selectableProducts.length > 0 &&
+                selectedVisibleCount === selectableProducts.length;
               return (
                 <Card key={`${allowance.categoryId}:${index}`}>
                   <CardHeader>
@@ -740,6 +752,33 @@ export function StaffFoodSettings() {
                       </InputGroup>
                       {products.length ? (
                         <div className="grid max-h-64 gap-2 overflow-y-auto rounded-lg border p-3 sm:grid-cols-2">
+                          <label className="col-span-full flex min-h-10 cursor-pointer items-center gap-3 border-b px-2 pb-2 font-medium">
+                            <Checkbox
+                              checked={allVisibleSelected}
+                              indeterminate={
+                                selectedVisibleCount > 0 && !allVisibleSelected
+                              }
+                              disabled={!selectableProducts.length}
+                              onCheckedChange={(next) =>
+                                updateAllowance(index, {
+                                  productIds: next
+                                    ? Array.from(
+                                        new Set([
+                                          ...allowance.productIds,
+                                          ...selectableIds,
+                                        ]),
+                                      )
+                                    : allowance.productIds.filter(
+                                        (id) => !selectableIds.has(id),
+                                      ),
+                                })
+                              }
+                            />
+                            <span className="flex-1">Vælg alle</span>
+                            <span className="text-sm font-normal text-muted-foreground">
+                              {selectableProducts.length}
+                            </span>
+                          </label>
                           {products.map((product) => {
                             const checked = allowance.productIds.includes(product.id);
                             return (
@@ -794,7 +833,7 @@ export function StaffFoodSettings() {
               </Empty>
             ) : null}
           </div>
-          <DialogFooter className="px-5">
+          <DialogFooter className="m-0 px-5 pt-4 pb-5">
             <Button variant="outline" onClick={() => setEditorOpen(false)}>
               Annullér
             </Button>

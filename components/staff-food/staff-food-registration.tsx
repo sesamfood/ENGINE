@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import {
+  CheckIcon,
   CheckCircle2Icon,
   Clock3Icon,
   ImageIcon,
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -62,7 +64,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
+import { useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -71,6 +73,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { canManageStaffFood } from "@/lib/auth-permissions";
 import { setCountLocation } from "@/lib/count-prefs";
+import { useLastDefined } from "@/lib/use-last-defined";
+import { cn } from "@/lib/utils";
 import { setWasteLocation, useWasteLocation } from "@/lib/waste-prefs";
 
 type Picker = NonNullable<
@@ -98,7 +102,7 @@ function initials(name: string) {
 function message(error: unknown) {
   return error instanceof Error
     ? error.message
-    : "Personalemaden kunne ikke registreres";
+    : "Staff food kunne ikke registreres";
 }
 
 function formatDuration(minutes: number) {
@@ -175,12 +179,14 @@ function StaffFoodHeader({
   organizationId,
   employeeName,
   onLocationChange,
+  onEmployeeChange,
 }: {
   locationId: Id<"locations"> | null;
   locations: Array<{ id: Id<"locations">; name: string }> | undefined;
   organizationId?: string;
   employeeName?: string;
   onLocationChange: () => void;
+  onEmployeeChange: () => void;
 }) {
   const items =
     locations?.map((location) => ({
@@ -188,54 +194,70 @@ function StaffFoodHeader({
       label: location.name,
     })) ?? [];
   return (
-    <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
+    <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Personale
         </p>
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Personalemad
-          </h1>
-          {employeeName ? (
-            <p className="text-lg text-muted-foreground">{employeeName}</p>
-          ) : null}
-        </div>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Staff food
+        </h1>
       </div>
-      <Field>
-        <FieldLabel>Location</FieldLabel>
-        <Select
-          items={items}
-          value={locationId}
-          onValueChange={(value) => {
-            if (!organizationId) return;
-            onLocationChange();
-            setWasteLocation(organizationId, value as string);
-            setCountLocation(organizationId, value as string);
-          }}
-          disabled={!locations?.length}
-        >
-          <SelectTrigger className="h-11 w-full">
-            <MapPinIcon aria-hidden="true" />
-            <SelectValue placeholder="Vælg location" />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            <SelectGroup>
-              {items.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </Field>
+      <div
+        className={cn(
+          "grid gap-3",
+          employeeName ? "sm:grid-cols-2 md:w-[34rem]" : "md:w-80",
+        )}
+      >
+        {employeeName ? (
+          <Field>
+            <FieldLabel>Medarbejder</FieldLabel>
+            <Button
+              variant="outline"
+              className="h-11 w-full justify-start px-3"
+              onClick={onEmployeeChange}
+            >
+              <UserRoundIcon data-icon="inline-start" />
+              <span className="truncate">{employeeName}</span>
+            </Button>
+          </Field>
+        ) : null}
+        <Field>
+          <FieldLabel>Location</FieldLabel>
+          <Select
+            items={items}
+            value={locationId}
+            onValueChange={(value) => {
+              if (!organizationId) return;
+              onLocationChange();
+              setWasteLocation(organizationId, value as string);
+              setCountLocation(organizationId, value as string);
+            }}
+            disabled={!locations?.length}
+          >
+            <SelectTrigger className="h-11 w-full">
+              <MapPinIcon aria-hidden="true" />
+              <SelectValue placeholder="Vælg location" />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                {items.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
     </div>
   );
 }
 
 export function StaffFoodRegistration() {
   const router = useRouter();
+  const sidebar = useSidebar();
   const organization = authClient.useActiveOrganization();
   const membership = authClient.useActiveMemberRole();
   const organizationId = organization.data?.id;
@@ -251,8 +273,9 @@ export function StaffFoodRegistration() {
   const [manualDuration, setManualDuration] = useState("240");
   const [starting, setStarting] = useState(false);
   const [basket, setBasket] = useState<Record<string, number>>({});
-  const [categoryId, setCategoryId] = useState<string>("");
+  const [categoryId, setCategoryId] = useState("all");
   const [submitting, setSubmitting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState(false);
   const startSession = useMutation(api.staffFood.startSession);
   const register = useMutation(api.staffFood.register);
@@ -264,20 +287,26 @@ export function StaffFoodRegistration() {
     ? (storedLocationId as Id<"locations">)
     : (locations?.[0]?.id ?? null);
   const queryNow = Math.floor(now / 30_000) * 30_000;
-  const picker = useQuery(
+  const queriedPicker = useQuery(
     api.staffFood.getPicker,
     locationId ? { locationId, now: queryNow } : "skip",
   );
-  const searchResults = useQuery(
+  const picker = useLastDefined(queriedPicker, locationId);
+  const queriedSearchResults = useQuery(
     api.staffFood.searchEmployees,
     locationId && searchValue
       ? { locationId, search: searchValue, now: queryNow }
       : "skip",
   );
-  const state = useQuery(
+  const searchResults = useLastDefined(
+    queriedSearchResults,
+    locationId && searchValue ? `${locationId}:${searchValue}` : null,
+  );
+  const queriedState = useQuery(
     api.staffFood.getSessionState,
     sessionId ? { sessionId, now: queryNow } : "skip",
   );
+  const state = useLastDefined(queriedState, sessionId);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -306,9 +335,10 @@ export function StaffFoodRegistration() {
   }, [locations, organizationId, storedLocationId]);
 
   const effectiveCategoryId =
+    categoryId === "all" ||
     state?.allowances.some((item) => item.categoryId === categoryId)
       ? categoryId
-      : (state?.allowances[0]?.categoryId ?? "");
+      : "all";
 
   const header = (
     <StaffFoodHeader
@@ -319,6 +349,16 @@ export function StaffFoodRegistration() {
       onLocationChange={() => {
         setSessionId(null);
         setBasket({});
+        setConfirming(false);
+        setCategoryId("all");
+        setManualEmployee(null);
+        setSearch("");
+      }}
+      onEmployeeChange={() => {
+        setSessionId(null);
+        setBasket({});
+        setConfirming(false);
+        setCategoryId("all");
         setManualEmployee(null);
         setSearch("");
       }}
@@ -333,6 +373,7 @@ export function StaffFoodRegistration() {
         selection: { kind: "scheduled", locationId, shiftId: shift.shiftId },
       });
       setSessionId(id);
+      setCategoryId("all");
       setSearch("");
     } catch (error) {
       toast.error(message(error));
@@ -364,6 +405,7 @@ export function StaffFoodRegistration() {
         },
       });
       setSessionId(id);
+      setCategoryId("all");
       setManualEmployee(null);
       setSearch("");
     } catch (error) {
@@ -392,6 +434,18 @@ export function StaffFoodRegistration() {
     });
   }
 
+  function toggleSingleProduct(product: Product) {
+    setBasket((current) => {
+      const next = { ...current };
+      const selected = (current[product.id] ?? 0) > 0;
+      for (const item of state?.products ?? []) {
+        if (item.categoryId === product.categoryId) delete next[item.id];
+      }
+      if (!selected) next[product.id] = 1;
+      return next;
+    });
+  }
+
   async function submit() {
     if (!sessionId) return;
     const items = Object.entries(basket).map(([productId, quantity]) => ({
@@ -402,9 +456,10 @@ export function StaffFoodRegistration() {
     setSubmitting(true);
     try {
       const result = await register({ sessionId, items });
+      setConfirming(false);
       setSuccess(true);
       setBasket({});
-      toast.success("Personalemaden er registreret", {
+      toast.success("Staff food er registreret", {
         duration: 30_000,
         action: {
           label: "Fortryd",
@@ -431,12 +486,16 @@ export function StaffFoodRegistration() {
       }),
     [basket, state],
   );
-  const activeProducts =
-    state?.products.filter(
-      (product) => product.categoryId === effectiveCategoryId,
+  const visibleAllowances =
+    state?.allowances.filter(
+      (allowance) =>
+        effectiveCategoryId === "all" ||
+        allowance.categoryId === effectiveCategoryId,
     ) ?? [];
-  const selectedAllowance = state?.allowances.find(
-    (allowance) => allowance.categoryId === effectiveCategoryId,
+  const hasVisibleProducts = visibleAllowances.some((allowance) =>
+    state?.products.some(
+      (product) => product.categoryId === allowance.categoryId,
+    ),
   );
   const canManage = canManageStaffFood(membership.data?.role);
 
@@ -450,7 +509,7 @@ export function StaffFoodRegistration() {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 pb-72 lg:pb-0">
+    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 pb-32 sm:pb-24">
       <header className="md:hidden">{header}</header>
       {headerTarget ? createPortal(header, headerTarget) : null}
 
@@ -462,7 +521,7 @@ export function StaffFoodRegistration() {
             </EmptyMedia>
             <EmptyTitle>Ingen locations endnu</EmptyTitle>
             <EmptyDescription>
-              Opret en location, før personalemad kan registreres.
+              Opret en location, før Staff food kan registreres.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -474,7 +533,7 @@ export function StaffFoodRegistration() {
             <EmptyMedia variant="icon">
               <UtensilsIcon />
             </EmptyMedia>
-            <EmptyTitle>Personalemad er ikke sat op endnu</EmptyTitle>
+            <EmptyTitle>Staff food er ikke sat op endnu</EmptyTitle>
             <EmptyDescription>
               En administrator skal oprette mindst én regel for vagtlængde,
               kategorier og produkter.
@@ -494,7 +553,7 @@ export function StaffFoodRegistration() {
             <span className="grid size-16 place-items-center rounded-full bg-primary text-primary-foreground">
               <CheckCircle2Icon className="size-8" />
             </span>
-            <h2 className="text-2xl font-semibold">Personalemaden er registreret</h2>
+            <h2 className="text-2xl font-semibold">Staff food er registreret</h2>
             <p className="text-muted-foreground">Du sendes tilbage til Waste.</p>
           </div>
         </div>
@@ -520,7 +579,7 @@ export function StaffFoodRegistration() {
                 <EmptyTitle>Vagten udløser ingen regel</EmptyTitle>
                 <EmptyDescription>
                   Vagtlængden på {formatDuration(state.session.durationMinutes)}
-                  er kortere end den første personalemad-regel.
+                  er kortere end den første Staff food-regel.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -530,34 +589,13 @@ export function StaffFoodRegistration() {
               </EmptyContent>
             </Empty>
           ) : (
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <>
               <div className="flex min-w-0 flex-col gap-5">
-                <Card size="sm">
-                  <CardContent className="flex flex-wrap items-center gap-3">
-                    <EmployeeAvatar
-                      name={state.session.employeeName}
-                      imageUrl={state.session.employeeImageUrl}
-                      large
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">
-                        {state.session.employeeName}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {state.session.source === "scheduled"
-                          ? "Planlagt vagt"
-                          : "Erstatningsvagt"}{" "}
-                        · {formatDuration(state.session.durationMinutes)}
-                      </p>
-                    </div>
-                    <Button variant="outline" onClick={() => setSessionId(null)}>
-                      Skift medarbejder
-                    </Button>
-                  </CardContent>
-                </Card>
-
                 <Tabs value={effectiveCategoryId} onValueChange={setCategoryId}>
-                  <TabsList className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden">
+                  <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden">
+                    <TabsTrigger value="all" className="min-w-20 shrink-0 px-4">
+                      Alle
+                    </TabsTrigger>
                     {state.allowances.map((allowance) => {
                       const reserved = basketProducts
                         .filter(
@@ -569,11 +607,11 @@ export function StaffFoodRegistration() {
                         <TabsTrigger
                           key={allowance.categoryId}
                           value={allowance.categoryId}
-                          className="min-w-40 px-5"
+                          className="min-w-28 shrink-0 px-4"
                         >
                           {allowance.categoryName}
                           <Badge variant="secondary">
-                            {Math.max(0, allowance.remaining - reserved)} tilbage
+                            {Math.max(0, allowance.remaining - reserved)}
                           </Badge>
                         </TabsTrigger>
                       );
@@ -581,63 +619,115 @@ export function StaffFoodRegistration() {
                   </TabsList>
                 </Tabs>
 
-                {activeProducts.length ? (
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                    {activeProducts.map((product) => {
-                      const quantity = basket[product.id] ?? 0;
+                {hasVisibleProducts ? (
+                  <div className="flex flex-col gap-7">
+                    {visibleAllowances.map((allowance) => {
+                      const products = state.products.filter(
+                        (product) =>
+                          product.categoryId === allowance.categoryId,
+                      );
+                      if (!products.length) return null;
                       const reserved = basketProducts
                         .filter(
-                          ({ product: item }) =>
-                            item.categoryId === product.categoryId,
+                          ({ product }) =>
+                            product.categoryId === allowance.categoryId,
                         )
                         .reduce((total, item) => total + item.quantity, 0);
                       const canAdd =
-                        state.session.active &&
-                        Boolean(selectedAllowance) &&
-                        reserved < (selectedAllowance?.remaining ?? 0);
+                        state.session.active && reserved < allowance.remaining;
+
                       return (
-                        <Card key={product.id} className="min-h-72">
-                          <div
-                            className="mx-4 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-muted bg-contain bg-center bg-no-repeat"
-                            style={
-                              product.imageUrl
-                                ? { backgroundImage: `url("${product.imageUrl}")` }
-                                : undefined
-                            }
-                          >
-                            {!product.imageUrl ? (
-                              <ImageIcon className="size-8 text-muted-foreground" />
-                            ) : null}
-                          </div>
-                          <CardHeader>
-                            <CardTitle>{product.name}</CardTitle>
-                            <CardDescription>
-                              Standard: {product.defaultUnitName}
-                            </CardDescription>
-                          </CardHeader>
-                          <CardFooter className="mt-auto justify-between">
-                            <Button
-                              size="icon-lg"
-                              variant="outline"
-                              aria-label={`Fjern én ${product.name}`}
-                              disabled={!quantity}
-                              onClick={() => changeProduct(product, -1)}
-                            >
-                              <MinusIcon />
-                            </Button>
-                            <span className="text-lg font-semibold tabular-nums">
-                              {quantity}
+                        <section
+                          key={allowance.categoryId}
+                          className="flex flex-col gap-3"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">
+                              {allowance.categoryName}
+                            </h2>
+                            <span className="text-sm text-muted-foreground">
+                              {Math.max(0, allowance.remaining - reserved)} tilbage
                             </span>
-                            <Button
-                              size="icon-lg"
-                              aria-label={`Tilføj én ${product.name}`}
-                              disabled={!canAdd}
-                              onClick={() => changeProduct(product, 1)}
-                            >
-                              <PlusIcon />
-                            </Button>
-                          </CardFooter>
-                        </Card>
+                          </div>
+                          <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+                            {products.map((product) => {
+                              const quantity = basket[product.id] ?? 0;
+                              const unavailable = !canAdd && quantity === 0;
+                              return (
+                                <Card
+                                  key={product.id}
+                                  className={cn(
+                                    "h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-[opacity,filter,box-shadow] lg:[--card-spacing:--spacing(4)]",
+                                    unavailable && "opacity-40 grayscale",
+                                  )}
+                                >
+                                  <div className="relative">
+                                    {product.imageUrl ? (
+                                      <div
+                                        role="img"
+                                        aria-label={`Produktbillede af ${product.name}`}
+                                        className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
+                                        style={{
+                                          backgroundImage: `url("${product.imageUrl}")`,
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
+                                        <ImageIcon className="size-10 lg:size-12" />
+                                      </div>
+                                    )}
+                                    <CardHeader className="py-3 lg:py-4">
+                                      <CardTitle className="truncate">
+                                        {product.name}
+                                      </CardTitle>
+                                    </CardHeader>
+                                  </div>
+                                  {allowance.amount === 1 ? (
+                                    <CardFooter className="mt-auto border-t-0 p-3 pt-0">
+                                      <Button
+                                        size="lg"
+                                        className="h-12 w-full"
+                                        disabled={!canAdd && !quantity}
+                                        onClick={() => toggleSingleProduct(product)}
+                                      >
+                                        {quantity ? (
+                                          <CheckIcon data-icon="inline-start" />
+                                        ) : null}
+                                        {quantity ? "Valgt" : "Vælg"}
+                                      </Button>
+                                    </CardFooter>
+                                  ) : (
+                                    <CardFooter className="mt-auto grid grid-cols-[2.75rem_1fr_2.75rem] p-0">
+                                      <Button
+                                        size="icon-lg"
+                                        variant="ghost"
+                                        className="size-11 rounded-none"
+                                        aria-label={`Fjern én ${product.name}`}
+                                        disabled={!quantity}
+                                        onClick={() => changeProduct(product, -1)}
+                                      >
+                                        <MinusIcon />
+                                      </Button>
+                                      <span className="grid min-h-11 place-items-center border-x text-base font-semibold tabular-nums">
+                                        {quantity}
+                                      </span>
+                                      <Button
+                                        size="icon-lg"
+                                        variant="ghost"
+                                        className="size-11 rounded-none"
+                                        aria-label={`Tilføj én ${product.name}`}
+                                        disabled={!canAdd}
+                                        onClick={() => changeProduct(product, 1)}
+                                      >
+                                        <PlusIcon />
+                                      </Button>
+                                    </CardFooter>
+                                  )}
+                                </Card>
+                              );
+                            })}
+                          </div>
+                        </section>
                       );
                     })}
                   </div>
@@ -655,135 +745,129 @@ export function StaffFoodRegistration() {
                   </Empty>
                 )}
               </div>
-
-              <aside className="fixed inset-x-3 bottom-3 z-20 lg:sticky lg:inset-auto lg:top-28 lg:z-auto lg:self-start">
-                <Card className="max-h-[17rem] shadow-lg lg:max-h-[calc(100vh-9rem)] lg:shadow-none">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShoppingBasketIcon />
-                      Dit valg
-                    </CardTitle>
-                    <CardDescription>
-                      {basketProducts.reduce(
-                        (total, item) => total + item.quantity,
-                        0,
-                      )}{" "}
-                      valgt
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="min-h-0 overflow-y-auto">
-                    <div className="flex flex-col gap-4">
-                      {basketProducts.length ? (
-                        <div className="flex flex-col gap-2">
-                          {basketProducts.map(({ product, quantity }) => (
-                            <div
-                              key={product.id}
-                              className="flex items-center justify-between gap-3 text-sm"
-                            >
-                              <span className="truncate">{product.name}</span>
-                              <span className="font-medium tabular-nums">
-                                {quantity}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Vælg et produkt for at begynde.
-                        </p>
-                      )}
-                      {state.registrations.length ? (
-                        <>
-                          <Separator />
-                          <div className="flex flex-col gap-2">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Allerede registreret
-                            </p>
-                            {state.registrations.map((registration) => (
-                              <div
-                                key={registration.id}
-                                className="flex items-center justify-between gap-3 text-sm"
-                              >
-                                <span className="truncate">
-                                  {registration.productName}
-                                </span>
-                                <span className="tabular-nums">
-                                  {registration.quantity}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      ) : null}
-                      <Separator />
-                      <div className="flex flex-col gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Forbrug
-                        </p>
-                        {state.allowances.map((allowance) => {
-                          const reserved = basketProducts
-                            .filter(
-                              ({ product }) =>
-                                product.categoryId === allowance.categoryId,
-                            )
-                            .reduce(
-                              (total, item) => total + item.quantity,
-                              0,
-                            );
-                          return (
-                            <div
-                              key={allowance.categoryId}
-                              className="flex items-center justify-between gap-3 text-sm"
-                            >
-                              <span className="truncate">
-                                {allowance.categoryName}
-                              </span>
-                              <span className="shrink-0 text-muted-foreground tabular-nums">
-                                {allowance.used} brugt ·{" "}
-                                {Math.max(
-                                  0,
-                                  allowance.remaining - reserved,
-                                )}{" "}
-                                tilbage
-                              </span>
-                            </div>
-                          );
-                        })}
+              <div
+                className="fixed inset-x-0 bottom-0 z-10 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0"
+                style={{
+                  left: sidebar.isMobile
+                    ? 0
+                    : sidebar.state === "collapsed"
+                      ? "var(--sidebar-width-icon)"
+                      : "var(--sidebar-width)",
+                }}
+              >
+                <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 overflow-x-auto">
+                    <ShoppingBasketIcon className="shrink-0" />
+                    {basketProducts.length ? (
+                      <div className="flex min-w-0 items-center gap-2">
+                        {basketProducts.map(({ product, quantity }) => (
+                          <Badge
+                            key={product.id}
+                            variant="secondary"
+                            className="shrink-0"
+                          >
+                            {product.name} × {quantity}
+                          </Badge>
+                        ))}
                       </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        Ingen produkter valgt
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    size="lg"
+                    className="h-12 w-full sm:w-auto sm:min-w-52"
+                    disabled={
+                      !basketProducts.length ||
+                      submitting ||
+                      !state.session.active
+                    }
+                    onClick={() => setConfirming(true)}
+                  >
+                    Registrér Staff food
+                  </Button>
+                </div>
+              </div>
+              <Dialog
+                open={confirming}
+                onOpenChange={(open) => {
+                  if (!submitting) setConfirming(open);
+                }}
+              >
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Bekræft registrering</DialogTitle>
+                    <DialogDescription>
+                      Kontrollér valget, før du registrerer Staff food.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="text-sm text-muted-foreground">
+                        Medarbejder
+                      </span>
+                      <span className="truncate font-medium">
+                        {state.session.employeeName}
+                      </span>
                     </div>
-                  </CardContent>
-                  <CardFooter>
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="text-sm text-muted-foreground">
+                        Location
+                      </span>
+                      <span className="truncate font-medium">
+                        {state.session.locationName}
+                      </span>
+                    </div>
+                  </div>
+                  <Card size="sm">
+                    <CardHeader>
+                      <CardTitle>Valgte produkter</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-2">
+                      {basketProducts.map(({ product, quantity }) => (
+                        <div
+                          key={product.id}
+                          className="flex items-center justify-between gap-3"
+                        >
+                          <span className="min-w-0 truncate font-medium">
+                            {product.name}
+                          </span>
+                          <Badge variant="secondary" className="shrink-0">
+                            {quantity} stk.
+                          </Badge>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                  <DialogFooter>
+                    <DialogClose
+                      render={<Button variant="outline" disabled={submitting} />}
+                    >
+                      Tilbage
+                    </DialogClose>
                     <Button
-                      size="lg"
-                      className="w-full"
-                      disabled={
-                        !basketProducts.length ||
-                        submitting ||
-                        !state.session.active
-                      }
+                      disabled={submitting || !basketProducts.length}
                       onClick={() => void submit()}
                     >
                       {submitting ? <Spinner data-icon="inline-start" /> : null}
-                      Registrér personalemad
+                      Bekræft registrering
                     </Button>
-                  </CardFooter>
-                </Card>
-              </aside>
-            </div>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </>
           )}
         </>
       ) : null}
 
-      <Dialog open={Boolean(picker?.hasRules && !sessionId && locations.length)} onOpenChange={() => {}}>
-        <DialogContent showCloseButton={false} className="max-h-[calc(100vh-2rem)] max-w-3xl overflow-hidden p-0">
-          <DialogHeader className="px-5 pt-5">
-            <DialogTitle className="text-xl">Hvem er du?</DialogTitle>
-            <DialogDescription>
-              Vælg din aktive vagt, eller søg blandt alle medarbejdere, hvis du
-              erstatter en kollega.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-5 pb-5">
+      {picker?.hasRules && !sessionId && locations.length ? (
+        <Card className="mx-auto w-full max-w-3xl">
+          <CardHeader>
+            <CardTitle className="text-xl">Hvem er du?</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5">
             <InputGroup className="h-11">
               <InputGroupInput
                 value={search}
@@ -930,14 +1014,14 @@ export function StaffFoodRegistration() {
                 </EmptyHeader>
               </Empty>
             )}
-          </div>
-          <DialogFooter className="px-5">
+          </CardContent>
+          <CardFooter>
             <p className="mr-auto text-xs text-muted-foreground">
-              Personalemad registreres på den valgte medarbejder og location.
+              Staff food registreres på den valgte medarbejder og location.
             </p>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </CardFooter>
+        </Card>
+      ) : null}
     </section>
   );
 }

@@ -604,8 +604,33 @@ export const listProducts = query({
                       .eq("status", args.status),
                 ))
             .collect();
+          const categoryNames = new Map(
+            await Promise.all(
+              Array.from(new Set(products.map((product) => product.categoryId))).map(
+                async (categoryId) => {
+                  const category = await ctx.db.get("categories", categoryId);
+                  return [categoryId, category?.name ?? ""] as const;
+                },
+              ),
+            ),
+          );
           const matches = products
-            .map((product) => ({ product, score: fuzzyScore(product.name, search) }))
+            .map((product) => {
+              const productScore = fuzzyScore(product.name, search);
+              const categoryScore = fuzzyScore(
+                categoryNames.get(product.categoryId) ?? "",
+                search,
+              );
+              return {
+                product,
+                score:
+                  productScore === null
+                    ? categoryScore
+                    : categoryScore === null
+                      ? productScore
+                      : Math.min(productScore, categoryScore),
+              };
+            })
             .filter(
               (match): match is { product: Doc<"products">; score: number } =>
                 match.score !== null,
@@ -1153,7 +1178,7 @@ export const deleteCategory = mutation({
     ]);
     if (product) throw new ConvexError("Kategorien er stadig i brug");
     if (staffFoodAllowance) {
-      throw new ConvexError("Kategorien bruges stadig i personalemad");
+      throw new ConvexError("Kategorien bruges stadig i Staff food");
     }
     await ctx.db.delete("categories", category._id);
     return null;

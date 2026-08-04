@@ -89,7 +89,7 @@ export async function requireOrganizationAdmin(ctx: AuthContext) {
 export async function requireStaffFoodManager(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (!canManageStaffFood(auth.role)) {
-    throw new ConvexError("Kun administratorer kan ændre personalemad");
+    throw new ConvexError("Kun administratorer kan ændre Staff food");
   }
   return auth;
 }

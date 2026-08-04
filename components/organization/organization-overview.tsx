@@ -61,7 +61,7 @@ const sections = [
     adminOnly: true,
   },
   {
-    title: "Personalemad",
+    title: "Staff food",
     description: "Indstil vagtlængder, kategorier og tilladte produkter.",
     href: "/organization/staff-food",
     icon: UtensilsIcon,
