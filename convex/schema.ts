@@ -940,4 +940,12 @@ export default defineSchema({
       "organizationId",
       "productId",
     ]),
+
+  kioskSettings: defineTable({
+    organizationId: v.string(),
+    enabledPages: v.array(v.string()),
+    homePage: v.string(),
+    inactivitySeconds: v.union(v.number(), v.null()),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
 });

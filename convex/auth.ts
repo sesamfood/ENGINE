@@ -4,6 +4,7 @@ import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { APIError } from "better-auth/api";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { organization } from "better-auth/plugins/organization";
+import { username } from "better-auth/plugins/username";
 import {
   organizationAccessControl,
   organizationRoles,
@@ -31,9 +32,12 @@ type OrganizationMember = {
   organizationId: string;
   role: string;
   userId: string;
+  kioskLocationId?: string | null;
 };
 
-function getDatabaseAdapter(ctx: GenericCtx<DataModel>) {
+export function getDatabaseAdapter(
+  ctx: GenericCtx<DataModel>,
+): ReturnType<ReturnType<typeof authComponent.adapter>> {
   return authComponent.adapter(ctx)(createAuthOptions(ctx));
 }
 
@@ -193,6 +197,47 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         },
       },
     },
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      additionalFields: {
+        isKioskAccount: {
+          type: "boolean",
+          required: false,
+          input: false,
+        },
+        kioskModeEnabled: {
+          type: "boolean",
+          required: false,
+          input: false,
+        },
+      },
+    },
+    databaseHooks: {
+      session: {
+        create: {
+          before: async (session) => {
+            const memberships = await getDatabaseAdapter(
+              ctx,
+            ).findMany<OrganizationMember>({
+              model: "member",
+              where: [{ field: "userId", value: session.userId }],
+              limit: 1,
+            });
+            const membership = memberships[0];
+            if (!membership?.kioskLocationId) return;
+            return {
+              data: {
+                ...session,
+                activeOrganizationId: membership.organizationId,
+                isKioskAccount: true,
+                kioskModeEnabled: true,
+              },
+            };
+          },
+        },
+      },
+    },
     emailVerification: {
       sendOnSignUp: true,
       sendOnSignIn: true,
@@ -210,11 +255,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
       enabled: true,
       storage: "database",
     },
-    session: {
-      expiresIn: 60 * 60 * 24 * 7,
-      updateAge: 60 * 60 * 24,
-    },
     plugins: [
+      username(),
       organization({
         ac: organizationAccessControl,
         roles: organizationRoles,
@@ -224,6 +266,17 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         invitationExpiresIn: 60 * 60 * 24 * 7,
         cancelPendingInvitationsOnReInvite: true,
         requireEmailVerificationOnInvitation: true,
+        schema: {
+          member: {
+            additionalFields: {
+              kioskLocationId: {
+                type: "string",
+                required: false,
+                input: false,
+              },
+            },
+          },
+        },
         organizationHooks: {
           beforeCreateOrganization: async ({ user }) => {
             await requireNoOrganizationMembership(ctx, user.id);

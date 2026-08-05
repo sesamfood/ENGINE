@@ -6,6 +6,7 @@ import {
   ClipboardListIcon,
   PackageIcon,
   PlugIcon,
+  MonitorCogIcon,
   StoreIcon,
   Trash2Icon,
   UsersIcon,
@@ -44,6 +45,13 @@ const sections = [
     description: "Inviter brugere, og administrer deres roller.",
     href: "/organization/users",
     icon: UsersIcon,
+    adminOnly: true,
+  },
+  {
+    title: "Kiosk",
+    description: "Vælg kiosksider, og administrer locationsbundne konti.",
+    href: "/organization/kiosk",
+    icon: MonitorCogIcon,
     adminOnly: true,
   },
   {

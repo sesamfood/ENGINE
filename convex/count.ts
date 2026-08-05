@@ -5,6 +5,8 @@ import { mutation, query } from "./_generated/server";
 import {
   requireCatalogManager,
   requireCounter,
+  requireKioskLocation,
+  requireNormalOrganization,
   requireOrganization,
   requireOrganizationAdmin,
 } from "./lib/auth";
@@ -240,7 +242,7 @@ export const getCountSettings = query({
   args: {},
   returns: settingsValidator,
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganization(ctx);
+    const { organizationId } = await requireNormalOrganization(ctx);
     return await getCountConfiguration(ctx, organizationId);
   },
 });
@@ -271,7 +273,9 @@ export const getOtherFeaturesLockState = query({
   args: { locationId: v.id("locations"), now: v.number() },
   returns: v.object({ isLocked: v.boolean() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganization(ctx);
+    const auth = await requireOrganization(ctx);
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     requireNow(args.now);
     return {
       isLocked: await otherFeaturesLocked(
@@ -288,7 +292,9 @@ export const getCountState = query({
   args: { locationId: v.id("locations"), now: v.number() },
   returns: countStateValidator,
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCounter(ctx);
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     requireNow(args.now);
     const location = await requireLocation(
       ctx,
@@ -344,7 +350,9 @@ export const getCountProductOrder = query({
   args: { locationId: v.id("locations") },
   returns: v.array(v.id("products")),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCounter(ctx);
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     const location = await requireLocation(
       ctx,
       organizationId,
@@ -402,7 +410,9 @@ export const listCountProducts = query({
   },
   returns: v.array(countProductValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCounter(ctx);
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     requireNow(args.now);
     const location = await requireLocation(
       ctx,
@@ -517,7 +527,9 @@ export const setCountQuantity = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } = await requireCounter(ctx);
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId, userIdentifier } = auth;
+    requireKioskLocation(auth, args.locationId);
     if (!Number.isFinite(args.quantity) || args.quantity < 0) {
       throw new ConvexError("Mængden skal være nul eller større");
     }
@@ -618,7 +630,9 @@ export const submitCount = mutation({
   args: { locationId: v.id("locations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, userName } = await requireCounter(ctx);
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId, userName } = auth;
+    requireKioskLocation(auth, args.locationId);
     const location = await requireLocation(
       ctx,
       organizationId,
@@ -696,7 +710,9 @@ export const listLocationStock = query({
   args: { locationId: v.id("locations") },
   returns: v.array(locationStockValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCounter(ctx);
+    const auth = await requireCounter(ctx, "count.stock");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const products = await activeProducts(ctx, organizationId);
 

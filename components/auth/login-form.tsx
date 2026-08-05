@@ -40,22 +40,28 @@ export function LoginForm({
 
     try {
       const form = new FormData(event.currentTarget);
-      const result = await authClient.signIn.email({
-        email: String(form.get("email")),
+      const identifier = String(form.get("identifier")).trim();
+      const destination = identifier.includes("@") ? redirectTo : "/";
+      const credentials = {
         password: String(form.get("password")),
-        callbackURL: `${window.location.origin}${redirectTo}`,
-      });
+        callbackURL: `${window.location.origin}${destination}`,
+      };
+      const result = identifier.includes("@")
+        ? await authClient.signIn.email({ email: identifier, ...credentials })
+        : await authClient.signIn.username({ username: identifier, ...credentials });
 
       if (result.error) {
         setError(
           result.error.code === "EMAIL_NOT_VERIFIED"
             ? "Bekræft din e-mail, før du logger ind. Vi har sendt et nyt link."
-            : "E-mail eller adgangskode er forkert.",
+            : identifier.includes("@")
+              ? "E-mail eller adgangskode er forkert."
+              : "Brugernavn eller adgangskode er forkert. Kontakt en administrator, hvis du har glemt adgangskoden.",
         );
         return;
       }
 
-      router.replace(redirectTo);
+      router.replace(destination);
       router.refresh();
     } catch {
       setError(
@@ -100,12 +106,12 @@ export function LoginForm({
       ) : null}
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="email">E-mail</FieldLabel>
+          <FieldLabel htmlFor="identifier">E-mail eller brugernavn</FieldLabel>
           <Input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
+            id="identifier"
+            name="identifier"
+            type="text"
+            autoComplete="username"
             required
           />
         </Field>

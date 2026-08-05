@@ -2,6 +2,8 @@
 
 import { BoxesIcon, ClipboardListIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { ReactNode } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +12,9 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const sidebar = useSidebar();
+  const kiosk = useQuery(api.kiosk.getRuntimeContext);
+  const showCount = !kiosk?.kioskModeEnabled || pathname === "/count" || kiosk.settings?.enabledPages.includes("count.register");
+  const showStock = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("count.stock");
 
   return (
     <div
@@ -37,14 +42,14 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
             aria-label="Countsektioner"
             className="h-12 max-w-full justify-start"
           >
-            <TabsTrigger value="count" className="min-w-28 px-4">
+            {showCount ? <TabsTrigger value="count" className="min-w-28 px-4">
               <ClipboardListIcon data-icon="inline-start" />
               Count
-            </TabsTrigger>
-            <TabsTrigger value="stock" className="min-w-24 px-4">
+            </TabsTrigger> : null}
+            {showStock ? <TabsTrigger value="stock" className="min-w-24 px-4">
               <BoxesIcon data-icon="inline-start" />
               Lager
-            </TabsTrigger>
+            </TabsTrigger> : null}
           </TabsList>
         </Tabs>
         {action}

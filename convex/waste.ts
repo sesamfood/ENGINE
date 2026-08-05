@@ -13,6 +13,7 @@ import {
 } from "./_generated/server";
 import { canViewWasteReports } from "../lib/auth-permissions";
 import {
+  requireKioskLocation,
   requireOrganizationAdmin,
   requireWasteRegistrar,
   requireWasteReporter,
@@ -850,7 +851,7 @@ export const listCatalog = query({
     }),
   ),
   handler: async (ctx) => {
-    const { organizationId } = await requireWasteRegistrar(ctx);
+    const { organizationId } = await requireWasteRegistrar(ctx, "waste.register");
     const products = await ctx.db
       .query("products")
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
@@ -920,7 +921,9 @@ export const getViewState = query({
     ),
   }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteRegistrar(ctx);
+    const auth = await requireWasteRegistrar(ctx, "waste.register");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
     const stats = settings.historyScope === "organization"
@@ -1037,8 +1040,9 @@ export const registerWaste = mutation({
     registeredAt: v.number(),
   }),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier, userName } =
-      await requireWasteRegistrar(ctx);
+    const auth = await requireWasteRegistrar(ctx, "waste.register");
+    const { organizationId, userIdentifier, userName } = auth;
+    requireKioskLocation(auth, args.locationId);
     await requireOtherFeaturesUnlocked(ctx, organizationId, args.locationId);
     const quantity = requireQuantity(args.quantity);
     const [location, product, productUnit, unit] = await Promise.all([
@@ -1119,7 +1123,9 @@ export const setPinned = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } = await requireWasteRegistrar(ctx);
+    const auth = await requireWasteRegistrar(ctx, "waste.register");
+    const { organizationId, userIdentifier } = auth;
+    requireKioskLocation(auth, args.locationId);
     await Promise.all([
       requireLocation(ctx, organizationId, args.locationId),
       requireActiveProduct(ctx, organizationId, args.productId),
@@ -1256,11 +1262,15 @@ export const voidWasteRegistration = mutation({
   args: { registrationId: v.id("wasteRegistrations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requireWasteRegistrar(ctx);
+    const auth = await requireWasteRegistrar(ctx, [
+      "waste.register",
+      "waste.report",
+    ]);
     const registration = await ctx.db.get("wasteRegistrations", args.registrationId);
     if (!registration || registration.organizationId !== auth.organizationId) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
+    requireKioskLocation(auth, registration.locationId);
     if (registration.status === "voided") {
       throw new ConvexError("Registreringen er allerede annulleret");
     }
@@ -1560,18 +1570,21 @@ export const listRegistrations = query({
   },
   returns: paginationResultValidator(reportRowValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteReporter(ctx);
+    const auth = await requireWasteReporter(ctx);
+    const { organizationId } = auth;
+    const locationId = auth.kioskLocationId ?? args.locationId;
     validateRange(args.startAt, args.endAt);
     if (args.locationId) {
+      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
-    const results = args.locationId
+    const results = locationId
       ? await ctx.db
           .query("wasteRegistrations")
           .withIndex("by_org_location_time", (q) =>
             q
               .eq("organizationId", organizationId)
-              .eq("locationId", args.locationId!)
+              .eq("locationId", locationId)
               .gte("registeredAt", args.startAt)
               .lte("registeredAt", args.endAt),
           )
@@ -1601,16 +1614,19 @@ export const exportRegistrations = query({
   },
   returns: paginationResultValidator(reportRowValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteReporter(ctx);
+    const auth = await requireWasteReporter(ctx);
+    const { organizationId } = auth;
+    const locationId = auth.kioskLocationId ?? args.locationId;
     validateRange(args.startAt, args.endAt);
     if (args.paginationOpts.numItems > 100) {
       throw new ConvexError("Eksportsiden er for stor");
     }
     if (args.locationId) {
+      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
     const results = args.activeOnly
-      ? args.locationId
+      ? locationId
         ? await ctx.db
             .query("wasteRegistrations")
             .withIndex(
@@ -1618,7 +1634,7 @@ export const exportRegistrations = query({
               (q) =>
                 q
                   .eq("organizationId", organizationId)
-                  .eq("locationId", args.locationId!)
+                  .eq("locationId", locationId)
                   .eq("status", "active")
                   .gte("registeredAt", args.startAt)
                   .lte("registeredAt", args.endAt),
@@ -1636,13 +1652,13 @@ export const exportRegistrations = query({
             )
             .order("desc")
             .paginate(args.paginationOpts)
-      : args.locationId
+      : locationId
         ? await ctx.db
             .query("wasteRegistrations")
             .withIndex("by_org_location_time", (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("locationId", args.locationId!)
+                .eq("locationId", locationId)
                 .gte("registeredAt", args.startAt)
                 .lte("registeredAt", args.endAt),
             )

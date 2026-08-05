@@ -2,6 +2,7 @@
 
 import { MailPlusIcon, Trash2Icon, UserRoundIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -54,6 +55,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { authClient } from "@/lib/auth-client";
+import { api } from "@/convex/_generated/api";
 import {
   canManageMembers,
   type OrganizationRole,
@@ -110,6 +112,8 @@ export function MemberManagement() {
   const [inviteRole, setInviteRole] = useState<OrganizationRole>("member");
   const [inviting, setInviting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const kioskAccounts = useQuery(api.kiosk.listAccounts);
+  const deleteKioskAccount = useMutation(api.kiosk.deleteAccount);
   const organizationId = organization?.id;
   const memberRole = membership?.role;
 
@@ -215,14 +219,18 @@ export function MemberManagement() {
     if (!organization) return;
     setPendingId(member.id);
     try {
-      const result = await authClient.organization.removeMember({
-        memberIdOrEmail: member.id,
-        organizationId: organization.id,
-      });
-
-      if (result.error) {
-        toast.error("Brugeren kunne ikke fjernes");
-        return;
+      const kioskAccount = kioskAccounts?.find((account) => account.userId === member.userId);
+      if (kioskAccount) {
+        await deleteKioskAccount({ memberId: kioskAccount.memberId });
+      } else {
+        const result = await authClient.organization.removeMember({
+          memberIdOrEmail: member.id,
+          organizationId: organization.id,
+        });
+        if (result.error) {
+          toast.error("Brugeren kunne ikke fjernes");
+          return;
+        }
       }
 
       toast.success("Brugeren er fjernet");
@@ -366,6 +374,7 @@ export function MemberManagement() {
               </TableHeader>
               <TableBody>
                 {members.map((member) => {
+                  const kioskAccount = kioskAccounts?.find((account) => account.userId === member.userId);
                   const isCurrentUser = member.userId === session?.user.id;
                   const isLastAdmin =
                     member.role === "admin" && adminCount === 1;
@@ -391,10 +400,9 @@ export function MemberManagement() {
                             <span className="truncate font-medium">
                               {member.user.name}
                             </span>
-                            <span className="truncate text-sm text-muted-foreground">
-                              {member.user.email}
-                            </span>
+                            <span className="truncate text-sm text-muted-foreground">{kioskAccount ? `${kioskAccount.username} · ${kioskAccount.locationName}` : member.user.email}</span>
                           </div>
+                          {kioskAccount ? <Badge>Kiosk</Badge> : null}
                           {isCurrentUser ? (
                             <Badge variant="secondary">Dig</Badge>
                           ) : null}

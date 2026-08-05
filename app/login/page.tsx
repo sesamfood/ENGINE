@@ -22,7 +22,7 @@ export default async function LoginPage({
   return (
     <AuthCard
       title="Log ind"
-      description="Brug din e-mail og adgangskode for at fortsætte."
+      description="Brug din e-mail eller dit brugernavn og adgangskode for at fortsætte."
     >
       <LoginForm
         redirectTo={safeRedirect(params.redirect)}

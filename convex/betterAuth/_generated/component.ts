@@ -32,12 +32,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             | {
                 data: {
                   createdAt: number;
+                  displayUsername?: null | string;
                   email: string;
                   emailVerified: boolean;
                   image?: null | string;
                   name: string;
                   updatedAt: number;
                   userId?: null | string;
+                  username?: null | string;
                 };
                 model: "user";
               }
@@ -47,6 +49,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   createdAt: number;
                   expiresAt: number;
                   ipAddress?: null | string;
+                  isKioskAccount?: null | boolean;
+                  kioskModeEnabled?: null | boolean;
                   token: string;
                   updatedAt: number;
                   userAgent?: null | string;
@@ -94,6 +98,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             | {
                 data: {
                   createdAt: number;
+                  kioskLocationId?: null | string;
                   organizationId: string;
                   role: string;
                   userId: string;
@@ -147,6 +152,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "image"
                     | "createdAt"
                     | "updatedAt"
+                    | "username"
+                    | "displayUsername"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
@@ -184,6 +191,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "userAgent"
                     | "userId"
                     | "activeOrganizationId"
+                    | "isKioskAccount"
+                    | "kioskModeEnabled"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -313,7 +322,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 where?: Array<{
                   connector?: "AND" | "OR";
                   field:
-                    "organizationId" | "userId" | "role" | "createdAt" | "_id";
+                    | "organizationId"
+                    | "userId"
+                    | "role"
+                    | "createdAt"
+                    | "kioskLocationId"
+                    | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -459,6 +473,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "image"
                     | "createdAt"
                     | "updatedAt"
+                    | "username"
+                    | "displayUsername"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
@@ -496,6 +512,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "userAgent"
                     | "userId"
                     | "activeOrganizationId"
+                    | "isKioskAccount"
+                    | "kioskModeEnabled"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -625,7 +643,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 where?: Array<{
                   connector?: "AND" | "OR";
                   field:
-                    "organizationId" | "userId" | "role" | "createdAt" | "_id";
+                    | "organizationId"
+                    | "userId"
+                    | "role"
+                    | "createdAt"
+                    | "kioskLocationId"
+                    | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -845,12 +868,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "user";
                 update: {
                   createdAt?: number;
+                  displayUsername?: null | string;
                   email?: string;
                   emailVerified?: boolean;
                   image?: null | string;
                   name?: string;
                   updatedAt?: number;
                   userId?: null | string;
+                  username?: null | string;
                 };
                 where?: Array<{
                   connector?: "AND" | "OR";
@@ -861,6 +886,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "image"
                     | "createdAt"
                     | "updatedAt"
+                    | "username"
+                    | "displayUsername"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
@@ -892,6 +919,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   createdAt?: number;
                   expiresAt?: number;
                   ipAddress?: null | string;
+                  isKioskAccount?: null | boolean;
+                  kioskModeEnabled?: null | boolean;
                   token?: string;
                   updatedAt?: number;
                   userAgent?: null | string;
@@ -908,6 +937,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "userAgent"
                     | "userId"
                     | "activeOrganizationId"
+                    | "isKioskAccount"
+                    | "kioskModeEnabled"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -1064,6 +1095,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "member";
                 update: {
                   createdAt?: number;
+                  kioskLocationId?: null | string;
                   organizationId?: string;
                   role?: string;
                   userId?: string;
@@ -1071,7 +1103,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 where?: Array<{
                   connector?: "AND" | "OR";
                   field:
-                    "organizationId" | "userId" | "role" | "createdAt" | "_id";
+                    | "organizationId"
+                    | "userId"
+                    | "role"
+                    | "createdAt"
+                    | "kioskLocationId"
+                    | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -1226,12 +1263,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "user";
                 update: {
                   createdAt?: number;
+                  displayUsername?: null | string;
                   email?: string;
                   emailVerified?: boolean;
                   image?: null | string;
                   name?: string;
                   updatedAt?: number;
                   userId?: null | string;
+                  username?: null | string;
                 };
                 where?: Array<{
                   connector?: "AND" | "OR";
@@ -1242,6 +1281,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "image"
                     | "createdAt"
                     | "updatedAt"
+                    | "username"
+                    | "displayUsername"
                     | "userId"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
@@ -1273,6 +1314,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   createdAt?: number;
                   expiresAt?: number;
                   ipAddress?: null | string;
+                  isKioskAccount?: null | boolean;
+                  kioskModeEnabled?: null | boolean;
                   token?: string;
                   updatedAt?: number;
                   userAgent?: null | string;
@@ -1289,6 +1332,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "userAgent"
                     | "userId"
                     | "activeOrganizationId"
+                    | "isKioskAccount"
+                    | "kioskModeEnabled"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -1445,6 +1490,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 model: "member";
                 update: {
                   createdAt?: number;
+                  kioskLocationId?: null | string;
                   organizationId?: string;
                   role?: string;
                   userId?: string;
@@ -1452,7 +1498,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 where?: Array<{
                   connector?: "AND" | "OR";
                   field:
-                    "organizationId" | "userId" | "role" | "createdAt" | "_id";
+                    | "organizationId"
+                    | "userId"
+                    | "role"
+                    | "createdAt"
+                    | "kioskLocationId"
+                    | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"

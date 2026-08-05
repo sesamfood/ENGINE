@@ -9,13 +9,14 @@ import {
   LogOutIcon,
   RefreshCwIcon,
   SettingsIcon,
+  MonitorIcon,
   StoreIcon,
   Trash2Icon,
   UtensilsIcon,
   UsersRoundIcon,
   UserRoundIcon,
 } from "lucide-react";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -30,6 +31,17 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,18 +75,20 @@ import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
+import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
 
 const primaryNavigation = [
-  { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon },
-  { label: "Waste", href: "/waste", icon: Trash2Icon },
-  { label: "Staff food", href: "/staff-food", icon: UtensilsIcon },
-  { label: "Count", href: "/count", icon: ClipboardListIcon },
+  { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
+  { label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
+  { label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
+  { label: "Count", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
 ];
 
 const employeesNavigation = {
   label: "Medarbejdere",
   href: "/employees",
   icon: UsersRoundIcon,
+  pages: ["employees.schedule", "employees.directory"],
 };
 
 const organizationNavigation = {
@@ -83,7 +97,89 @@ const organizationNavigation = {
   icon: Building2Icon,
 };
 
+type KioskRuntime = NonNullable<
+  ReturnType<typeof useQuery<typeof api.kiosk.getRuntimeContext>>
+>;
+
+const KioskContext = createContext<KioskRuntime | null>(null);
+
 const FeatureLockContext = createContext(false);
+
+function effectiveKioskHome(runtime: KioskRuntime, countLocked: boolean) {
+  if (countLocked) return "/count";
+  const homePage = runtime.settings?.homePage as KioskDestinationId | undefined;
+  return homePage ? kioskDestination(homePage).route : "/transfers";
+}
+
+function KioskRuntimeBoundary({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useConvexAuth();
+  const organization = authClient.useActiveOrganization();
+  const runtime = useQuery(
+    api.kiosk.getRuntimeContext,
+    isAuthenticated && organization.data ? {} : "skip",
+  );
+
+  if (isAuthenticated && organization.data && runtime === undefined) {
+    return (
+      <main className="grid min-h-screen place-items-center" aria-label="Indlæser kiosktilstand">
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  return <KioskContext.Provider value={runtime ?? null}>{children}</KioskContext.Provider>;
+}
+
+function KioskBehavior({ children }: { children: React.ReactNode }) {
+  const runtime = useContext(KioskContext);
+  const countLocked = useContext(FeatureLockContext);
+  const pathname = usePathname();
+  const router = useRouter();
+  const home = runtime ? effectiveKioskHome(runtime, countLocked) : "/transfers";
+
+  useEffect(() => {
+    if (!runtime?.kioskModeEnabled || !runtime.settings) return;
+    if (countLocked) {
+      if (pathname !== "/count") router.replace("/count");
+      return;
+    }
+    const allowed = runtime.settings.enabledPages.some(
+      (page) => kioskDestination(page as KioskDestinationId).route === pathname,
+    );
+    if (!allowed) router.replace(home);
+  }, [countLocked, home, pathname, router, runtime]);
+
+  useEffect(() => {
+    const seconds = runtime?.kioskModeEnabled
+      ? runtime.settings?.inactivitySeconds
+      : null;
+    if (!seconds) return;
+    let timeout = window.setTimeout(() => window.location.replace(home), seconds * 1000);
+    const activity = () => {
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => window.location.replace(home), seconds * 1000);
+    };
+    const visibility = () => {
+      if (document.visibilityState === "visible") activity();
+    };
+    const events: (keyof WindowEventMap)[] = [
+      "pointerdown",
+      "touchstart",
+      "keydown",
+      "scroll",
+      "focus",
+    ];
+    for (const event of events) window.addEventListener(event, activity, { passive: true });
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.clearTimeout(timeout);
+      for (const event of events) window.removeEventListener(event, activity);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [home, runtime?.kioskModeEnabled, runtime?.settings?.inactivitySeconds, runtime?.settings?.updatedAt]);
+
+  return children;
+}
 
 function featureLockExempt(pathname: string) {
   return (
@@ -100,6 +196,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated } = useConvexAuth();
+  const kiosk = useContext(KioskContext);
   const organization = authClient.useActiveOrganization();
   const [now, setNow] = useState(() => Date.now());
   const organizationId = organization.data?.id;
@@ -108,11 +205,11 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     api.locations.listLocationOptions,
     organizationId && isAuthenticated ? {} : "skip",
   );
-  const locationId = locations?.some(
-    (location) => location.id === storedLocationId,
-  )
-    ? (storedLocationId as Id<"locations">)
-    : (locations?.[0]?.id ?? null);
+  const locationId = kiosk?.isKioskAccount
+    ? kiosk.locationId
+    : locations?.some((location) => location.id === storedLocationId)
+      ? (storedLocationId as Id<"locations">)
+      : (locations?.[0]?.id ?? null);
   const lockState = useQuery(
     api.count.getOtherFeaturesLockState,
     organizationId && isAuthenticated && locationId
@@ -174,13 +271,18 @@ function OrganizationHome() {
   const { state, isMobile } = useSidebar();
   const { isAuthenticated } = useConvexAuth();
   const featureLocked = useContext(FeatureLockContext);
+  const kiosk = useContext(KioskContext);
   const branding = useQuery(
     api.organization.getBranding,
     organization && isAuthenticated ? {} : "skip",
   );
   const logoUrl = organization?.logo;
   const wideLogoUrl = branding?.wideLogoUrl;
-  const homeHref = featureLocked ? "/count" : "/transfers";
+  const homeHref = kiosk?.kioskModeEnabled
+    ? effectiveKioskHome(kiosk, featureLocked)
+    : featureLocked
+      ? "/count"
+      : "/transfers";
   const showWideLogo = state === "expanded" || isMobile;
 
   if (showWideLogo && branding === undefined) {
@@ -241,13 +343,27 @@ function NavigationList() {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const featureLocked = useContext(FeatureLockContext);
+  const kiosk = useContext(KioskContext);
   const primaryWithEmployees = [...primaryNavigation, employeesNavigation];
+  const kioskNavigation = kiosk?.kioskModeEnabled
+    ? primaryWithEmployees.flatMap((item) => {
+        if (featureLocked) {
+          return item.href === "/count" ? [{ ...item, href: "/count" }] : [];
+        }
+        const first = item.pages.find((page) =>
+          kiosk.settings?.enabledPages.includes(page),
+        );
+        return first
+          ? [{ ...item, href: kioskDestination(first as KioskDestinationId).route }]
+          : [];
+      })
+    : null;
   const availableNavigation = featureLocked
     ? primaryWithEmployees.filter((item) => item.href === "/count")
     : primaryWithEmployees;
-  const navigation = canManageCatalog(membership?.role)
+  const navigation = kioskNavigation ?? (canManageCatalog(membership?.role)
     ? [...availableNavigation, organizationNavigation]
-    : availableNavigation;
+    : availableNavigation);
 
   return (
     <SidebarGroup>
@@ -326,12 +442,18 @@ function ProfileMenu({
 }) {
   const { data: session } = authClient.useSession();
   const { data: membership } = authClient.useActiveMemberRole();
+  const kiosk = useContext(KioskContext);
   const { isMobile, setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
   const user = session?.user;
   const displayName = user?.name || "Profil";
-  const email = user?.email || "Konto";
+  const email = kiosk?.isKioskAccount
+    ? ((user as typeof user & { displayUsername?: string | null; username?: string | null })
+        ?.displayUsername ??
+      (user as typeof user & { username?: string | null })?.username ??
+      "Kioskkonto")
+    : user?.email || "Konto";
   const initials =
     displayName
       .split(/\s+/)
@@ -455,6 +577,76 @@ function ProfileMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function KioskModeControl() {
+  const kiosk = useContext(KioskContext);
+  const countLocked = useContext(FeatureLockContext);
+  const { state } = useSidebar();
+  const router = useRouter();
+  const setMode = useMutation(api.kiosk.setMode);
+  const [pending, setPending] = useState(false);
+
+  if (!kiosk?.isKioskAccount || state !== "expanded") return null;
+
+  async function change(enabled: boolean) {
+    if (!kiosk) return;
+    setPending(true);
+    try {
+      await setMode({ enabled });
+      if (enabled) router.replace(effectiveKioskHome(kiosk, countLocked));
+      router.refresh();
+    } catch {
+      toast.error("Kiosktilstanden kunne ikke ændres");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (!kiosk.kioskModeEnabled) {
+    return (
+      <Button type="button" variant="outline" className="w-full" disabled={pending} onClick={() => void change(true)}>
+        {pending ? <Spinner data-icon="inline-start" /> : <MonitorIcon data-icon="inline-start" />}
+        Aktivér kiosktilstand
+      </Button>
+    );
+  }
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger render={<Button type="button" variant="outline" className="w-full" disabled={pending} />}>
+        <MonitorIcon data-icon="inline-start" />
+        Deaktivér kiosktilstand
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Deaktivér kiosktilstand?</AlertDialogTitle>
+          <AlertDialogDescription>Du får den normale brugerflade med de adgange, kontoens rolle tillader.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Behold kiosktilstand</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => void change(false)}>Deaktivér kiosktilstand</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
+  const kiosk = useContext(KioskContext);
+  return (
+    <SidebarFooter>
+      <KioskModeControl />
+      {!kiosk?.kioskModeEnabled ? (
+        <SidebarMenu><SidebarMenuItem><ProfileMenu signingOut={signingOut} onSignOut={onSignOut} /></SidebarMenuItem></SidebarMenu>
+      ) : null}
+    </SidebarFooter>
+  );
+}
+
+function MobileAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
+  const kiosk = useContext(KioskContext);
+  return kiosk?.kioskModeEnabled ? null : <ProfileMenu compact signingOut={signingOut} onSignOut={onSignOut} />;
 }
 
 function OrganizationBoundary({
@@ -633,8 +825,8 @@ export function AppShell({
   const showWasteHeader =
     pathname === "/waste" || pathname.startsWith("/waste/");
   const showStaffFoodHeader = pathname === "/staff-food";
-  const showEmployeesHeader = pathname === "/employees";
-  const showTransfersHeader = pathname === "/transfers";
+  const showEmployeesHeader = pathname === "/employees" || pathname.startsWith("/employees/");
+  const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
   const showOrganizationHeader =
     pathname === "/organization" || pathname.startsWith("/organization/");
   const showPageHeader =
@@ -659,7 +851,9 @@ export function AppShell({
   return (
     <OrganizationBoundary required={organizationRequired}>
       <OrganizationTheme>
-        <FeatureLockBoundary>
+        <KioskRuntimeBoundary>
+          <FeatureLockBoundary>
+            <KioskBehavior>
           <SidebarProvider
           defaultOpen={defaultSidebarOpen}
           style={
@@ -678,16 +872,7 @@ export function AppShell({
               <NavigationList />
             </SidebarContent>
 
-            <SidebarFooter>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <ProfileMenu
-                    signingOut={signingOut}
-                    onSignOut={() => setSigningOut(true)}
-                  />
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarFooter>
+            <SidebarAccount signingOut={signingOut} onSignOut={() => setSigningOut(true)} />
           </Sidebar>
 
           <SidebarInset className="min-w-0">
@@ -734,11 +919,7 @@ export function AppShell({
                 <OrganizationHome />
               </div>
               <div className="md:hidden">
-                <ProfileMenu
-                  compact
-                  signingOut={signingOut}
-                  onSignOut={() => setSigningOut(true)}
-                />
+                <MobileAccount signingOut={signingOut} onSignOut={() => setSigningOut(true)} />
               </div>
             </header>
 
@@ -754,7 +935,9 @@ export function AppShell({
             </div>
           </SidebarInset>
           </SidebarProvider>
+            </KioskBehavior>
         </FeatureLockBoundary>
+        </KioskRuntimeBoundary>
       </OrganizationTheme>
     </OrganizationBoundary>
   );

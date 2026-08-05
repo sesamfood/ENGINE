@@ -133,6 +133,7 @@ export function TransferForm({
   const locations = useQuery(api.locations.listLocationOptions) as
     | LocationOption[]
     | undefined;
+  const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const [productSearch, setProductSearch] = useState("");
   const deferredProductSearch = useDeferredValue(productSearch);
   const productResults = useQuery(api.transfers.searchTransferProducts, {
@@ -175,6 +176,13 @@ export function TransferForm({
   const organizationId = organization?.id;
   const sessionUserId = session?.user.id;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
+
+  useEffect(() => {
+    if (!transfer && kiosk?.isKioskAccount && kiosk.locationId) {
+      const timeout = window.setTimeout(() => setFromLocationId(kiosk.locationId));
+      return () => window.clearTimeout(timeout);
+    }
+  }, [kiosk?.isKioskAccount, kiosk?.locationId, transfer]);
 
   useEffect(() => {
     if (!organizationId) return;
@@ -278,7 +286,7 @@ export function TransferForm({
   const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   function resetForm() {
-    setFromLocationId(null);
+    setFromLocationId(kiosk?.isKioskAccount ? kiosk.locationId : null);
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
     setComment("");
@@ -475,7 +483,9 @@ export function TransferForm({
             <FieldGroup>
               <Field data-invalid={Boolean(errors.fromLocation)}>
                 <FieldLabel>Fra location</FieldLabel>
-                <CreatableCombobox
+                {kiosk?.isKioskAccount && fromLocationId === kiosk.locationId ? (
+                  <div className="flex h-11 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div>
+                ) : <CreatableCombobox
                   options={fromLocationOptions}
                   value={fromLocationId}
                   onValueChange={(value) => {
@@ -490,13 +500,15 @@ export function TransferForm({
                   placeholder="Søg efter location"
                   ariaLabel="Fra location"
                   disabled={locations === undefined}
-                />
+                />}
                 <FieldError>{errors.fromLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
                 <FieldLabel>Til location</FieldLabel>
-                <CreatableCombobox
+                {kiosk?.isKioskAccount && toLocationId === kiosk.locationId ? (
+                  <div className="flex h-11 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div>
+                ) : <CreatableCombobox
                   options={toLocationOptions}
                   value={toLocationId}
                   onValueChange={(value) => {
@@ -511,7 +523,7 @@ export function TransferForm({
                   placeholder="Søg efter location"
                   ariaLabel="Til location"
                   disabled={locations === undefined}
-                />
+                />}
                 <FieldError>{errors.toLocation}</FieldError>
               </Field>
 

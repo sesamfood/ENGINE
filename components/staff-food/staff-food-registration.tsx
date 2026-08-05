@@ -180,6 +180,7 @@ function StaffFoodHeader({
   employeeName,
   onLocationChange,
   onEmployeeChange,
+  fixedLocationName,
 }: {
   locationId: Id<"locations"> | null;
   locations: Array<{ id: Id<"locations">; name: string }> | undefined;
@@ -187,6 +188,7 @@ function StaffFoodHeader({
   employeeName?: string;
   onLocationChange: () => void;
   onEmployeeChange: () => void;
+  fixedLocationName?: string;
 }) {
   const items =
     locations?.map((location) => ({
@@ -224,7 +226,9 @@ function StaffFoodHeader({
         ) : null}
         <Field>
           <FieldLabel>Location</FieldLabel>
-          <Select
+          {fixedLocationName ? (
+            <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
+          ) : <Select
             items={items}
             value={locationId}
             onValueChange={(value) => {
@@ -248,7 +252,7 @@ function StaffFoodHeader({
                 ))}
               </SelectGroup>
             </SelectContent>
-          </Select>
+          </Select>}
         </Field>
       </div>
     </div>
@@ -263,6 +267,7 @@ export function StaffFoodRegistration() {
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const locations = useQuery(api.locations.listLocationOptions);
+  const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const [now, setNow] = useState(() => Date.now());
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const [sessionId, setSessionId] =
@@ -281,7 +286,9 @@ export function StaffFoodRegistration() {
   const register = useMutation(api.staffFood.register);
   const voidCheckout = useMutation(api.staffFood.voidCheckout);
 
-  const locationId = locations?.some(
+  const locationId = kiosk?.isKioskAccount
+    ? kiosk.locationId
+    : locations?.some(
     (location) => location.id === storedLocationId,
   )
     ? (storedLocationId as Id<"locations">)
@@ -326,13 +333,13 @@ export function StaffFoodRegistration() {
   }, []);
 
   useEffect(() => {
-    if (!organizationId || !locations) return;
+    if (!organizationId || !locations || kiosk?.isKioskAccount) return;
     if (!locations.some((location) => location.id === storedLocationId)) {
       const fallback = locations[0]?.id ?? null;
       setWasteLocation(organizationId, fallback);
       setCountLocation(organizationId, fallback);
     }
-  }, [locations, organizationId, storedLocationId]);
+  }, [kiosk?.isKioskAccount, locations, organizationId, storedLocationId]);
 
   const effectiveCategoryId =
     categoryId === "all" ||
@@ -346,6 +353,7 @@ export function StaffFoodRegistration() {
       locations={locations}
       organizationId={organizationId}
       employeeName={state?.session.employeeName}
+      fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
       onLocationChange={() => {
         setSessionId(null);
         setBasket({});

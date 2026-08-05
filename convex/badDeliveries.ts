@@ -11,7 +11,11 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { requireWasteRegistrar, requireWasteReporter } from "./lib/auth";
+import {
+  requireKioskLocation,
+  requireWasteRegistrar,
+  requireWasteReporter,
+} from "./lib/auth";
 import {
   DEFAULT_BAD_DELIVERY_EMAIL_BODY,
   DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
@@ -261,7 +265,9 @@ export const getRegistrationConfig = query({
     hasPrimaryRecipients: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteRegistrar(ctx);
+    const auth = await requireWasteRegistrar(ctx, "waste.badDelivery");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
     return {
@@ -276,7 +282,10 @@ export const searchProducts = query({
   args: { search: v.string() },
   returns: v.array(productSearchValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteRegistrar(ctx);
+    const { organizationId } = await requireWasteRegistrar(
+      ctx,
+      "waste.badDelivery",
+    );
     const search = args.search.trim();
     if (search.length > 100) throw new ConvexError("Søgningen er for lang");
     const products = search
@@ -307,7 +316,10 @@ export const getProductOption = query({
   args: { productId: v.id("products") },
   returns: v.union(productOptionValidator, v.null()),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteRegistrar(ctx);
+    const { organizationId } = await requireWasteRegistrar(
+      ctx,
+      "waste.badDelivery",
+    );
     const product = await ctx.db.get("products", args.productId);
     if (
       !product ||
@@ -349,7 +361,7 @@ export const generatePhotoUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    await requireWasteRegistrar(ctx);
+    await requireWasteRegistrar(ctx, "waste.badDelivery");
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -368,8 +380,9 @@ export const registerBadDelivery = mutation({
     initialNoticeStatus: noticeStatusValidator,
   }),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier, userName } =
-      await requireWasteRegistrar(ctx);
+    const auth = await requireWasteRegistrar(ctx, "waste.badDelivery");
+    const { organizationId, userIdentifier, userName } = auth;
+    requireKioskLocation(auth, args.locationId);
     await requireOtherFeaturesUnlocked(ctx, organizationId, args.locationId);
     const location = await requireLocation(ctx, organizationId, args.locationId);
     if (args.items.length < 1 || args.items.length > MAX_ITEMS) {
@@ -557,12 +570,15 @@ export const listBadDeliveries = query({
   },
   returns: paginationResultValidator(headerValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteReporter(ctx);
+    const auth = await requireWasteReporter(ctx);
+    const { organizationId } = auth;
+    const locationId = auth.kioskLocationId ?? args.locationId;
     requireRange(args.startAt, args.endAt);
     if (args.locationId) {
+      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
-    const result = args.locationId
+    const result = locationId
       ? await ctx.db
           .query("badDeliveries")
           .withIndex(
@@ -570,7 +586,7 @@ export const listBadDeliveries = query({
             (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("locationId", args.locationId!)
+                .eq("locationId", locationId)
                 .gte("registeredAt", args.startAt)
                 .lte("registeredAt", args.endAt),
           )
@@ -594,9 +610,11 @@ export const getBadDelivery = query({
   args: { badDeliveryId: v.id("badDeliveries") },
   returns: v.union(detailValidator, v.null()),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteReporter(ctx);
+    const auth = await requireWasteReporter(ctx);
+    const { organizationId } = auth;
     const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
     if (!delivery || delivery.organizationId !== organizationId) return null;
+    requireKioskLocation(auth, delivery.locationId);
     const [items, attachments] = await Promise.all([
       ctx.db
         .query("badDeliveryItems")
@@ -663,7 +681,9 @@ export const exportBadDeliveries = query({
     v.object({ rows: v.array(exportRowValidator) }),
   ),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteReporter(ctx);
+    const auth = await requireWasteReporter(ctx);
+    const { organizationId } = auth;
+    const locationId = auth.kioskLocationId ?? args.locationId;
     requireRange(args.startAt, args.endAt);
     if (
       args.paginationOpts.numItems !== EXPORT_PAGE_SIZE ||
@@ -672,9 +692,10 @@ export const exportBadDeliveries = query({
       throw new ConvexError("Eksportsiden er for stor");
     }
     if (args.locationId) {
+      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
-    const result = args.locationId
+    const result = locationId
       ? await ctx.db
           .query("badDeliveries")
           .withIndex(
@@ -682,7 +703,7 @@ export const exportBadDeliveries = query({
             (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("locationId", args.locationId!)
+                .eq("locationId", locationId)
                 .gte("registeredAt", args.startAt)
                 .lte("registeredAt", args.endAt),
           )
@@ -744,12 +765,13 @@ export const voidBadDelivery = mutation({
   args: { badDeliveryId: v.id("badDeliveries") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier, userName } =
-      await requireWasteReporter(ctx);
+    const auth = await requireWasteReporter(ctx);
+    const { organizationId, userIdentifier, userName } = auth;
     const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
     if (!delivery || delivery.organizationId !== organizationId) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
+    requireKioskLocation(auth, delivery.locationId);
     if (delivery.status !== "active") {
       throw new ConvexError("Registreringen er allerede annulleret");
     }
@@ -803,11 +825,13 @@ export const retryBadDeliveryNotice = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteReporter(ctx);
+    const auth = await requireWasteReporter(ctx);
+    const { organizationId } = auth;
     const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
     if (!delivery || delivery.organizationId !== organizationId) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
+    requireKioskLocation(auth, delivery.locationId);
     if (args.kind === "initial") {
       if (
         delivery.status !== "active" ||

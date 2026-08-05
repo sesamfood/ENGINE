@@ -7,7 +7,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
-import { requireTransferManager } from "./lib/auth";
+import { requireKioskTransfer, requireTransferManager } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
 
@@ -352,8 +352,9 @@ export const createTransfer = mutation({
   args: transferFields,
   returns: v.id("transfers"),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } =
-      await requireTransferManager(ctx);
+    const auth = await requireTransferManager(ctx, "transfers.new");
+    const { organizationId, userIdentifier } = auth;
+    requireKioskTransfer(auth, args.fromLocationId, args.toLocationId);
     await requireOtherFeaturesUnlocked(
       ctx,
       organizationId,
@@ -407,11 +408,14 @@ export const updateTransfer = mutation({
   args: { transferId: v.id("transfers"), ...transferFields },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const auth = await requireTransferManager(ctx, "transfers.history");
+    const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
+    requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
+    requireKioskTransfer(auth, args.fromLocationId, args.toLocationId);
     await requireOtherFeaturesUnlocked(
       ctx,
       organizationId,
@@ -490,11 +494,13 @@ export const deleteTransfer = mutation({
   args: { transferId: v.id("transfers") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const auth = await requireTransferManager(ctx, "transfers.history");
+    const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
+    requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
     await requireOtherFeaturesUnlocked(
       ctx,
       organizationId,
@@ -538,7 +544,8 @@ export const listTransfers = query({
   },
   returns: paginationResultValidator(transferHeaderValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const auth = await requireTransferManager(ctx, "transfers.history");
+    const { organizationId } = auth;
     validateDateRange(args.startAt, args.endAt);
     const results = await ctx.db
       .query("transfers")
@@ -547,6 +554,14 @@ export const listTransfers = query({
           .eq("organizationId", organizationId)
           .gte("transferredAt", args.startAt)
           .lte("transferredAt", args.endAt),
+      )
+      .filter((q) =>
+        auth.kioskLocationId
+          ? q.or(
+              q.eq(q.field("fromLocationId"), auth.kioskLocationId),
+              q.eq(q.field("toLocationId"), auth.kioskLocationId),
+            )
+          : true,
       )
       .order("desc")
       .paginate(args.paginationOpts);
@@ -564,9 +579,11 @@ export const getTransfer = query({
   args: { transferId: v.id("transfers") },
   returns: v.union(transferDetailValidator, v.null()),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const auth = await requireTransferManager(ctx, "transfers.history");
+    const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) return null;
+    requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
 
     const items = await ctx.db
       .query("transferItems")
@@ -599,7 +616,7 @@ export const searchTransferProducts = query({
   args: { search: v.string() },
   returns: v.array(productSearchOptionValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const { organizationId } = await requireTransferManager(ctx, "transfers.new");
     const search = args.search.trim();
     if (search.length > 100) {
       throw new ConvexError("Søgningen er for lang");
@@ -637,7 +654,10 @@ export const getTransferProductOption = query({
   args: { productId: v.id("products") },
   returns: v.union(productOptionValidator, v.null()),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const { organizationId } = await requireTransferManager(ctx, [
+      "transfers.new",
+      "transfers.history",
+    ]);
     const product = await ctx.db.get("products", args.productId);
     if (
       !product ||
@@ -690,7 +710,8 @@ export const exportTransfers = query({
   },
   returns: paginationResultValidator(exportTransferValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx);
+    const auth = await requireTransferManager(ctx, "transfers.history");
+    const { organizationId } = auth;
     validateDateRange(args.startAt, args.endAt);
     if (
       args.paginationOpts.numItems !== EXPORT_PAGE_SIZE ||
@@ -742,6 +763,14 @@ export const exportTransfers = query({
           .eq("organizationId", organizationId)
           .gte("transferredAt", args.startAt)
           .lte("transferredAt", args.endAt),
+      )
+      .filter((q) =>
+        auth.kioskLocationId
+          ? q.or(
+              q.eq(q.field("fromLocationId"), auth.kioskLocationId),
+              q.eq(q.field("toLocationId"), auth.kioskLocationId),
+            )
+          : true,
       )
       .order("desc")
       .paginate(args.paginationOpts);
