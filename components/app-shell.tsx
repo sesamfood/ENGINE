@@ -157,7 +157,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     const seconds = runtime?.kioskModeEnabled
       ? runtime.settings?.inactivitySeconds
       : null;
-    if (!seconds) return;
+    if (!seconds || pathname === home) return;
     let timeout = window.setTimeout(() => window.location.replace(home), seconds * 1000);
     const activity = () => {
       window.clearTimeout(timeout);
@@ -180,7 +180,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       for (const event of events) window.removeEventListener(event, activity);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [home, runtime?.kioskModeEnabled, runtime?.settings?.inactivitySeconds, runtime?.settings?.updatedAt]);
+  }, [home, pathname, runtime?.kioskModeEnabled, runtime?.settings?.inactivitySeconds, runtime?.settings?.updatedAt]);
 
   return children;
 }
