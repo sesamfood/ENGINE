@@ -624,7 +624,7 @@ function KioskModeControl() {
           <AlertDialogDescription>Du får den normale brugerflade med de adgange, kontoens rolle tillader.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Behold kiosktilstand</AlertDialogCancel>
+          <AlertDialogCancel variant="default">Behold kiosktilstand</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={() => void change(false)}>Deaktivér kiosktilstand</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
