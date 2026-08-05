@@ -1657,6 +1657,187 @@ export const renameUnit = mutation({
   },
 });
 
+export const mergeUnits = mutation({
+  args: {
+    sourceUnitId: v.id("units"),
+    targetUnitId: v.id("units"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    if (args.sourceUnitId === args.targetUnitId) {
+      throw new ConvexError("Vælg to forskellige enheder");
+    }
+
+    const [sourceUnit, targetUnit] = await Promise.all([
+      ctx.db.get("units", args.sourceUnitId),
+      ctx.db.get("units", args.targetUnitId),
+    ]);
+    if (
+      !sourceUnit ||
+      sourceUnit.organizationId !== organizationId ||
+      !targetUnit ||
+      targetUnit.organizationId !== organizationId
+    ) {
+      throw new ConvexError("Enheden blev ikke fundet");
+    }
+
+    const sourceProductUnits = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_unitId", (q) =>
+        q.eq("organizationId", organizationId).eq("unitId", sourceUnit._id),
+      )
+      .take(MAX_CHILD_ROWS + 1);
+    if (sourceProductUnits.length > MAX_CHILD_ROWS) {
+      throw new ConvexError(
+        "Enheden bruges af for mange produkter til at blive sammenlagt",
+      );
+    }
+
+    for (const sourceProductUnit of sourceProductUnits) {
+      const [product, targetProductUnit, recipeReferences, countItems, configs] =
+        await Promise.all([
+          ctx.db.get("products", sourceProductUnit.productId),
+          ctx.db
+            .query("productUnits")
+            .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", sourceProductUnit.productId)
+                .eq("unitId", targetUnit._id),
+            )
+            .unique(),
+          ctx.db
+            .query("productIngredients")
+            .withIndex(
+              "by_organizationId_and_ingredientProductId_and_unitId",
+              (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("ingredientProductId", sourceProductUnit.productId)
+                  .eq("unitId", sourceUnit._id),
+            )
+            .take(MAX_CHILD_ROWS + 1),
+          ctx.db
+            .query("countItems")
+            .withIndex("by_organizationId_and_productId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", sourceProductUnit.productId),
+            )
+            .take(MAX_CHILD_ROWS + 1),
+          ctx.db
+            .query("wasteProductConfigs")
+            .withIndex("by_org_product", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", sourceProductUnit.productId),
+            )
+            .take(MAX_CHILD_ROWS + 1),
+        ]);
+
+      if (!product || product.organizationId !== organizationId) {
+        throw new ConvexError("Et produkt til enheden blev ikke fundet");
+      }
+      if (
+        recipeReferences.length > MAX_CHILD_ROWS ||
+        countItems.length > MAX_CHILD_ROWS ||
+        configs.length > MAX_CHILD_ROWS
+      ) {
+        throw new ConvexError(
+          `Produktet ${product.name} har for mange relationer til at flytte enheden`,
+        );
+      }
+      if (
+        targetProductUnit &&
+        targetProductUnit.factorToDefault !== sourceProductUnit.factorToDefault
+      ) {
+        throw new ConvexError(
+          `${sourceUnit.name} og ${targetUnit.name} har forskellige omregninger på ${product.name}`,
+        );
+      }
+
+      for (const reference of recipeReferences) {
+        await ctx.db.patch("productIngredients", reference._id, {
+          unitId: targetUnit._id,
+        });
+      }
+
+      for (const item of countItems) {
+        if (item.unitId !== sourceUnit._id) continue;
+        const count = await ctx.db.get("counts", item.countId);
+        if (
+          count?.organizationId !== organizationId ||
+          count.status !== "open"
+        ) {
+          continue;
+        }
+        const targetItem = await ctx.db
+          .query("countItems")
+          .withIndex(
+            "by_organizationId_and_countId_and_productId_and_unitId",
+            (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("countId", item.countId)
+                .eq("productId", item.productId)
+                .eq("unitId", targetUnit._id),
+          )
+          .unique();
+        if (targetItem) {
+          await ctx.db.patch("countItems", targetItem._id, {
+            quantity: targetItem.quantity + item.quantity,
+          });
+          await ctx.db.delete("countItems", item._id);
+        } else {
+          await ctx.db.patch("countItems", item._id, {
+            unitId: targetUnit._id,
+          });
+        }
+      }
+
+      for (const config of configs) {
+        if (
+          !config.shortcutOverrides?.some(
+            (row) => row.unitId === sourceUnit._id,
+          )
+        ) {
+          continue;
+        }
+        const shortcutOverrides = config.shortcutOverrides.map((row) =>
+          row.unitId === sourceUnit._id
+            ? { ...row, unitId: targetUnit._id }
+            : row,
+        );
+        const duplicates =
+          shortcutOverrides[0]?.unitId === shortcutOverrides[1]?.unitId &&
+          shortcutOverrides[0]?.quantity === shortcutOverrides[1]?.quantity;
+        await ctx.db.patch("wasteProductConfigs", config._id, {
+          shortcutOverrides: duplicates ? undefined : shortcutOverrides,
+        });
+      }
+
+      if (targetProductUnit) {
+        await ctx.db.delete("productUnits", sourceProductUnit._id);
+      } else {
+        await ctx.db.patch("productUnits", sourceProductUnit._id, {
+          unitId: targetUnit._id,
+        });
+      }
+      await ctx.db.patch("products", product._id, {
+        defaultUnitId:
+          product.defaultUnitId === sourceUnit._id
+            ? targetUnit._id
+            : product.defaultUnitId,
+        updatedAt: Date.now(),
+      });
+    }
+
+    await ctx.db.delete("units", sourceUnit._id);
+    return null;
+  },
+});
+
 export const deleteUnit = mutation({
   args: { unitId: v.id("units") },
   handler: async (ctx, args) => {

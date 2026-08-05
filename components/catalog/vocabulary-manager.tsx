@@ -5,6 +5,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import {
   Clock3Icon,
+  MergeIcon,
   PencilIcon,
   PlusIcon,
   ShapesIcon,
@@ -48,6 +49,14 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -146,17 +155,28 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
   const removeItem = useMutation(config.delete) as (
     args: RenameOrDeleteArgs,
   ) => Promise<unknown>;
+  const mergeUnits = useMutation(api.catalog.mergeUnits);
   const [editing, setEditing] = useState<VocabularyItem | "new" | null>(null);
   const [pendingDelete, setPendingDelete] = useState<VocabularyItem | null>(
     null,
   );
   const [openingHoursLocation, setOpeningHoursLocation] =
     useState<VocabularyItem | null>(null);
+  const [pendingMerge, setPendingMerge] = useState<VocabularyItem | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState<Id<"units"> | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [mergeError, setMergeError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
   const showSkeleton = useDelayedLoading(items === undefined);
+  const mergeOptions = (items ?? [])
+    .filter((item) => item.id !== pendingMerge?.id)
+    .map((item) => ({
+      value: item.id as Id<"units">,
+      label: item.name,
+    }));
 
   function openEditor(item: VocabularyItem | "new") {
     setEditing(item);
@@ -197,6 +217,33 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
       toast.error(messageFrom(caught));
     } finally {
       setIsDeleting(false);
+    }
+  }
+
+  function openMerge(item: VocabularyItem) {
+    setPendingMerge(item);
+    setMergeTargetId(null);
+    setMergeError("");
+  }
+
+  async function merge() {
+    if (!pendingMerge || !mergeTargetId) return;
+    const target = items?.find((item) => item.id === mergeTargetId);
+    setIsMerging(true);
+    setMergeError("");
+    try {
+      await mergeUnits({
+        sourceUnitId: pendingMerge.id as Id<"units">,
+        targetUnitId: mergeTargetId,
+      });
+      toast.success(
+        `Enheden er sammenlagt med ${target?.name ?? "den valgte enhed"}`,
+      );
+      setPendingMerge(null);
+    } catch (caught) {
+      setMergeError(messageFrom(caught));
+    } finally {
+      setIsMerging(false);
     }
   }
 
@@ -255,7 +302,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Navn</TableHead>
-                <TableHead className="w-40 text-right">Handlinger</TableHead>
+                <TableHead className="w-48 text-right">Handlinger</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -279,6 +326,24 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                             <Clock3Icon />
                           </TooltipTrigger>
                           <TooltipContent>Åbningstider</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      {kind === "unit" ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-lg"
+                                aria-label={`Sammenlæg ${item.name} med en anden enhed`}
+                                disabled={items.length < 2}
+                                onClick={() => openMerge(item)}
+                              />
+                            }
+                          >
+                            <MergeIcon />
+                          </TooltipTrigger>
+                          <TooltipContent>Sammenlæg</TooltipContent>
                         </Tooltip>
                       ) : null}
                       <Tooltip>
@@ -395,6 +460,74 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
             <Button disabled={isSaving} onClick={save}>
               {isSaving ? <Spinner data-icon="inline-start" /> : null}
               Gem
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(pendingMerge)}
+        onOpenChange={(open) => {
+          if (!open && !isMerging) setPendingMerge(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sammenlæg enheder</DialogTitle>
+            <DialogDescription>
+              Vælg den enhed, som {pendingMerge?.name} skal samles med.
+              Produkter og aktive opsætninger flyttes, og {pendingMerge?.name}
+              {" "}fjernes. Historiske registreringer ændres ikke.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field data-invalid={Boolean(mergeError)}>
+              <FieldLabel htmlFor="unit-merge-target">
+                Behold denne enhed
+              </FieldLabel>
+              <Select
+                items={mergeOptions}
+                value={mergeTargetId}
+                onValueChange={(value) => {
+                  setMergeTargetId(value as Id<"units"> | null);
+                  setMergeError("");
+                }}
+              >
+                <SelectTrigger
+                  id="unit-merge-target"
+                  className="w-full"
+                  aria-invalid={Boolean(mergeError)}
+                >
+                  <SelectValue placeholder="Vælg enhed" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {mergeOptions.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldError>{mergeError}</FieldError>
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={isMerging}
+              onClick={() => setPendingMerge(null)}
+            >
+              Annuller
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!mergeTargetId || isMerging}
+              onClick={merge}
+            >
+              {isMerging ? <Spinner data-icon="inline-start" /> : null}
+              Sammenlæg enheder
             </Button>
           </DialogFooter>
         </DialogContent>

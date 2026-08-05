@@ -948,4 +948,10 @@ export default defineSchema({
     inactivitySeconds: v.union(v.number(), v.null()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  sidebarSettings: defineTable({
+    organizationId: v.string(),
+    itemOrder: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
 });

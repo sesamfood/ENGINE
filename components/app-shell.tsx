@@ -76,15 +76,17 @@ import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
 import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
+import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
 
 const primaryNavigation = [
-  { label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
-  { label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
-  { label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
-  { label: "Count", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
+  { id: "transfers", label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
+  { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
+  { id: "staffFood", label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
+  { id: "count", label: "Count", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
 ];
 
 const employeesNavigation = {
+  id: "employees",
   label: "Medarbejdere",
   href: "/employees",
   icon: UsersRoundIcon,
@@ -92,9 +94,11 @@ const employeesNavigation = {
 };
 
 const organizationNavigation = {
+  id: "organization",
   label: "Organisation",
   href: "/organization",
   icon: Building2Icon,
+  pages: [] as string[],
 };
 
 type KioskRuntime = NonNullable<
@@ -340,15 +344,32 @@ function OrganizationHome() {
 
 function NavigationList() {
   const { data: membership } = authClient.useActiveMemberRole();
+  const organization = authClient.useActiveOrganization();
+  const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const featureLocked = useContext(FeatureLockContext);
   const kiosk = useContext(KioskContext);
-  const primaryWithEmployees = [...primaryNavigation, employeesNavigation];
+  const itemOrder = useQuery(
+    api.navigation.getOrder,
+    organization.data && isAuthenticated ? {} : "skip",
+  );
+  const allNavigation = [
+    ...primaryNavigation,
+    employeesNavigation,
+    organizationNavigation,
+  ];
+  const orderedNavigation = normalizeSidebarOrder(itemOrder).flatMap((id) => {
+    const item = allNavigation.find((candidate) => candidate.id === id);
+    return item ? [item] : [];
+  });
+  const operationalNavigation = orderedNavigation.filter(
+    (item) => item.id !== "organization",
+  );
   const kioskNavigation = kiosk?.kioskModeEnabled
-    ? primaryWithEmployees.flatMap((item) => {
+    ? operationalNavigation.flatMap((item) => {
         if (featureLocked) {
-          return item.href === "/count" ? [{ ...item, href: "/count" }] : [];
+          return item.id === "count" ? [{ ...item, href: "/count" }] : [];
         }
         const first = item.pages.find((page) =>
           kiosk.settings?.enabledPages.includes(page),
@@ -358,12 +379,10 @@ function NavigationList() {
           : [];
       })
     : null;
-  const availableNavigation = featureLocked
-    ? primaryWithEmployees.filter((item) => item.href === "/count")
-    : primaryWithEmployees;
-  const navigation = kioskNavigation ?? (canManageCatalog(membership?.role)
-    ? [...availableNavigation, organizationNavigation]
-    : availableNavigation);
+  const navigation = kioskNavigation ?? orderedNavigation.filter((item) => {
+    if (item.id === "organization") return canManageCatalog(membership?.role);
+    return !featureLocked || item.id === "count";
+  });
 
   return (
     <SidebarGroup>

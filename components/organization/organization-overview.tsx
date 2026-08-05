@@ -4,6 +4,7 @@ import {
   Building2Icon,
   CalendarClockIcon,
   ClipboardListIcon,
+  ListOrderedIcon,
   PackageIcon,
   PlugIcon,
   MonitorCogIcon,
@@ -52,6 +53,13 @@ const sections = [
     description: "Vælg kiosksider, og administrer locationsbundne konti.",
     href: "/organization/kiosk",
     icon: MonitorCogIcon,
+    adminOnly: true,
+  },
+  {
+    title: "Sidemenu",
+    description: "Bestem rækkefølgen af organisationens menupunkter.",
+    href: "/organization/sidebar",
+    icon: ListOrderedIcon,
     adminOnly: true,
   },
   {

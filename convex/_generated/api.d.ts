@@ -30,6 +30,7 @@ import type * as lib_resend from "../lib/resend.js";
 import type * as lib_stock from "../lib/stock.js";
 import type * as lib_workfeedApi from "../lib/workfeedApi.js";
 import type * as locations from "../locations.js";
+import type * as navigation from "../navigation.js";
 import type * as onlinePos from "../onlinePos.js";
 import type * as organization from "../organization.js";
 import type * as staffFood from "../staffFood.js";
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stock": typeof lib_stock;
   "lib/workfeedApi": typeof lib_workfeedApi;
   locations: typeof locations;
+  navigation: typeof navigation;
   onlinePos: typeof onlinePos;
   organization: typeof organization;
   staffFood: typeof staffFood;
