@@ -324,7 +324,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     }
     if (imageFile) {
       if (!IMAGE_TYPES.includes(imageFile.type)) {
-        nextErrors.image = "Brug et billede i JPEG-, PNG-, WebP- eller AVIF-format";
+        nextErrors.image =
+          "Brug et billede i JPEG-, PNG-, WebP- eller AVIF-format";
       } else if (imageFile.size > MAX_IMAGE_SIZE) {
         nextErrors.image = "Billedet må højst være 10 MB";
       }

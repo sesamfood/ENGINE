@@ -18,7 +18,6 @@ import {
   requireWasteRegistrar,
   requireWasteReporter,
 } from "./lib/auth";
-import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import {
   DEFAULT_BAD_DELIVERY_EMAIL_BODY,
   DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
@@ -1043,7 +1042,6 @@ export const registerWaste = mutation({
     const auth = await requireWasteRegistrar(ctx, "waste.register");
     const { organizationId, userIdentifier, userName } = auth;
     requireKioskLocation(auth, args.locationId);
-    await requireOtherFeaturesUnlocked(ctx, organizationId, args.locationId);
     const quantity = requireQuantity(args.quantity);
     const [location, product, productUnit, unit] = await Promise.all([
       requireLocation(ctx, organizationId, args.locationId),
@@ -1281,11 +1279,6 @@ export const voidWasteRegistration = mutation({
     if (!canUndoOwn && !canViewWasteReports(auth.role)) {
       throw new ConvexError("Du har ikke adgang til at annullere registreringen");
     }
-    await requireOtherFeaturesUnlocked(
-      ctx,
-      auth.organizationId,
-      registration.locationId,
-    );
     const periods: PopularityPeriod[] = ["allTime"];
     if (registration.activeIn30Days) periods.push("30Days");
     if (registration.activeIn90Days) periods.push("90Days");

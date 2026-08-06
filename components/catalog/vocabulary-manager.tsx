@@ -73,36 +73,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-type VocabularyKind = "category" | "unit" | "location";
+type VocabularyKind = "unit" | "location";
 type VocabularyItem = {
-  id: Id<"categories"> | Id<"units"> | Id<"locations">;
+  id: Id<"units"> | Id<"locations">;
   name: string;
   inUse: boolean;
 };
 
 type RenameOrDeleteArgs =
-  | { categoryId: Id<"categories"> }
   | { unitId: Id<"units"> }
   | { locationId: Id<"locations"> };
 
 const vocabularyKinds = {
-  category: {
-    singular: "kategori",
-    plural: "Kategorier",
-    definite: "Kategorien",
-    deleteNoun: " kategorier",
-    description:
-      "Organiser produkter i et ensartet sæt genanvendelige kategorier.",
-    emptyDescription:
-      "Tilføj en her, eller opret den direkte i en produktformular.",
-    list: api.catalog.listCategories,
-    create: api.catalog.createCategory,
-    rename: api.catalog.renameCategory,
-    delete: api.catalog.deleteCategory,
-    argsFor: (id: VocabularyItem["id"]): RenameOrDeleteArgs => ({
-      categoryId: id as Id<"categories">,
-    }),
-  },
   unit: {
     singular: "enhed",
     plural: "Enheder",
@@ -476,8 +458,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
             <DialogTitle>Sammenlæg enheder</DialogTitle>
             <DialogDescription>
               Vælg den enhed, som {pendingMerge?.name} skal samles med.
-              Produkter og aktive opsætninger flyttes, og {pendingMerge?.name}
-              {" "}fjernes. Historiske registreringer ændres ikke.
+              Produkter og aktive opsætninger flyttes, og {pendingMerge?.name}{" "}
+              fjernes. Historiske registreringer ændres ikke.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>

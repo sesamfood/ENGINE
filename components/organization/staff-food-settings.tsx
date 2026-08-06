@@ -210,13 +210,14 @@ export function StaffFoodSettings() {
   const saveTier = useMutation(api.staffFood.saveTier);
   const deleteTier = useMutation(api.staffFood.deleteTier);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editingId, setEditingId] =
-    useState<Id<"staffFoodRuleTiers"> | null>(null);
+  const [editingId, setEditingId] = useState<Id<"staffFoodRuleTiers"> | null>(
+    null,
+  );
   const [minimumHours, setMinimumHours] = useState("4");
   const [allowances, setAllowances] = useState<AllowanceDraft[]>([]);
-  const [productSearches, setProductSearches] = useState<Record<number, string>>(
-    {},
-  );
+  const [productSearches, setProductSearches] = useState<
+    Record<number, string>
+  >({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Tier | null>(null);
   const now = new Date();
@@ -280,7 +281,10 @@ export function StaffFoodSettings() {
       toast.error("Vagtlængden skal være mellem 0,5 og 24 timer");
       return;
     }
-    if (!allowances.length || allowances.some((item) => !item.productIds.length)) {
+    if (
+      !allowances.length ||
+      allowances.some((item) => !item.productIds.length)
+    ) {
       toast.error("Tilføj mindst én kategori med mindst ét produkt");
       return;
     }
@@ -437,7 +441,10 @@ export function StaffFoodSettings() {
             fra hver kategori, og hvilke produkter der er tilladt.
           </CardDescription>
           <CardAction>
-            <Button onClick={() => openEditor()} disabled={settings.tiers.length >= 10}>
+            <Button
+              onClick={() => openEditor()}
+              disabled={settings.tiers.length >= 10}
+            >
               <PlusIcon data-icon="inline-start" />
               Ny regel
             </Button>
@@ -545,7 +552,10 @@ export function StaffFoodSettings() {
               <Select
                 items={[
                   { value: "all", label: "Alle locations" },
-                  ...locations.map((item) => ({ value: item.id, label: item.name })),
+                  ...locations.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  })),
                 ]}
                 value={location}
                 onValueChange={(value) => setLocation(value ?? "all")}
@@ -613,7 +623,9 @@ export function StaffFoodSettings() {
                 Mellem 0,5 og 24 timer i halve timer.
               </FieldDescription>
               {!minimumValid ? (
-                <FieldError>Vælg hele eller halve timer mellem 0,5 og 24.</FieldError>
+                <FieldError>
+                  Vælg hele eller halve timer mellem 0,5 og 24.
+                </FieldError>
               ) : null}
             </Field>
 
@@ -631,15 +643,18 @@ export function StaffFoodSettings() {
             </div>
 
             {allowances.map((allowance, index) => {
-              const search = productSearches[index]?.trim().toLocaleLowerCase("da") ?? "";
+              const search =
+                productSearches[index]?.trim().toLocaleLowerCase("da") ?? "";
               const amount = Number(allowance.amount);
               const amountValid =
                 Number.isInteger(amount) && amount >= 1 && amount <= 20;
               const products = settings.products.filter(
                 (product) =>
                   product.categoryId === allowance.categoryId &&
-                  (!search || product.name.toLocaleLowerCase("da").includes(search)) &&
-                  (product.status === "active" || allowance.productIds.includes(product.id)),
+                  (!search ||
+                    product.name.toLocaleLowerCase("da").includes(search)) &&
+                  (product.status === "active" ||
+                    allowance.productIds.includes(product.id)),
               );
               const selectableProducts = products.filter(
                 (product) => product.status === "active",
@@ -664,7 +679,9 @@ export function StaffFoodSettings() {
                         aria-label="Fjern kategori"
                         onClick={() =>
                           setAllowances((current) =>
-                            current.filter((_, allowanceIndex) => allowanceIndex !== index),
+                            current.filter(
+                              (_, allowanceIndex) => allowanceIndex !== index,
+                            ),
                           )
                         }
                       >
@@ -721,11 +738,15 @@ export function StaffFoodSettings() {
                           value={allowance.amount}
                           aria-invalid={!amountValid}
                           onChange={(event) =>
-                            updateAllowance(index, { amount: event.target.value })
+                            updateAllowance(index, {
+                              amount: event.target.value,
+                            })
                           }
                         />
                         {!amountValid ? (
-                          <FieldError>Vælg et helt tal mellem 1 og 20.</FieldError>
+                          <FieldError>
+                            Vælg et helt tal mellem 1 og 20.
+                          </FieldError>
                         ) : null}
                       </Field>
                     </FieldGroup>
@@ -780,7 +801,9 @@ export function StaffFoodSettings() {
                             </span>
                           </label>
                           {products.map((product) => {
-                            const checked = allowance.productIds.includes(product.id);
+                            const checked = allowance.productIds.includes(
+                              product.id,
+                            );
                             return (
                               <label
                                 key={product.id}
@@ -853,8 +876,8 @@ export function StaffFoodSettings() {
           <AlertDialogHeader>
             <AlertDialogTitle>Slet reglen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Vagter, der kun matcher denne regel, kan miste deres tilladelse med
-              det samme. Tidligere registreringer bevares.
+              Vagter, der kun matcher denne regel, kan miste deres tilladelse
+              med det samme. Tidligere registreringer bevares.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

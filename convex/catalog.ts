@@ -8,6 +8,11 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireCatalogManager, requireOrganization } from "./lib/auth";
+import {
+  buildCategoryHierarchy,
+  MAX_CATEGORIES_PER_ORGANIZATION,
+  validateCategoryParentAssignment,
+} from "./lib/categoryHierarchy";
 import { normalizeStock } from "./lib/stock";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
@@ -16,6 +21,31 @@ const categoryReferenceValidator = v.union(
   v.object({ kind: v.literal("existing"), id: v.id("categories") }),
   v.object({ kind: v.literal("new"), name: v.string() }),
 );
+
+const categoryPlacementValidator = v.union(
+  v.object({ kind: v.literal("root") }),
+  v.object({
+    kind: v.literal("child"),
+    parentCategoryId: v.id("categories"),
+  }),
+  v.object({
+    kind: v.literal("parent"),
+    childCategoryId: v.id("categories"),
+  }),
+);
+
+const categoryOptionValidator = v.object({
+  id: v.id("categories"),
+  name: v.string(),
+  parentCategoryId: v.union(v.id("categories"), v.null()),
+  path: v.string(),
+  depth: v.number(),
+});
+
+const managedCategoryValidator = categoryOptionValidator.extend({
+  inUse: v.boolean(),
+  hasChildren: v.boolean(),
+});
 
 const unitReferenceValidator = v.union(
   v.object({ kind: v.literal("existing"), id: v.id("units") }),
@@ -119,6 +149,25 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
+async function loadCategoryHierarchy(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+) {
+  const categories = await ctx.db
+    .query("categories")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .take(MAX_CATEGORIES_PER_ORGANIZATION + 1);
+  if (categories.length > MAX_CATEGORIES_PER_ORGANIZATION) {
+    throw new ConvexError("Organisationen har for mange kategorier");
+  }
+  return {
+    categories,
+    hierarchy: buildCategoryHierarchy(categories, organizationId),
+  };
+}
+
 function editDistance(left: string, right: string) {
   let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
 
@@ -219,6 +268,18 @@ async function resolveCategory(
         .eq("normalizedName", normalizedName),
     )
     .unique();
+
+  if (!existing) {
+    const categories = await ctx.db
+      .query("categories")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_CATEGORIES_PER_ORGANIZATION);
+    if (categories.length >= MAX_CATEGORIES_PER_ORGANIZATION) {
+      throw new ConvexError("Der kan højst oprettes 200 kategorier");
+    }
+  }
 
   return (
     existing?._id ??
@@ -468,57 +529,56 @@ async function permanentlyDeleteProduct(
     countItems,
     stockRows,
     staffFoodRules,
-  ] =
-    await Promise.all([
-      ctx.db
-        .query("productUnits")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_CHILD_ROWS + 1),
-      ctx.db
-        .query("productIngredients")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_CHILD_ROWS + 1),
-      ctx.db
-        .query("productIngredients")
-        .withIndex("by_organizationId_and_ingredientProductId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("ingredientProductId", product._id),
-        )
-        .take(MAX_GRAPH_PRODUCTS + 1),
-      ctx.db
-        .query("countItems")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_PRODUCT_LEDGER_ROWS + 1),
-      ctx.db
-        .query("locationStock")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_CHILD_ROWS + 1),
-      ctx.db
-        .query("staffFoodRuleProducts")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_CHILD_ROWS + 1),
-    ]);
+  ] = await Promise.all([
+    ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("ingredientProductId", product._id),
+      )
+      .take(MAX_GRAPH_PRODUCTS + 1),
+    ctx.db
+      .query("countItems")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_PRODUCT_LEDGER_ROWS + 1),
+    ctx.db
+      .query("locationStock")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("staffFoodRuleProducts")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
+  ]);
 
   if (
     units.length > MAX_CHILD_ROWS ||
@@ -607,6 +667,13 @@ export const listProducts = query({
   },
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganization(ctx);
+    const { hierarchy: categoryHierarchy } = await loadCategoryHierarchy(
+      ctx,
+      organizationId,
+    );
+    const categoryNames = new Map(
+      categoryHierarchy.map((category) => [category.id, category.name]),
+    );
     if (args.categoryId) {
       const category = await ctx.db.get("categories", args.categoryId);
       if (!category || category.organizationId !== organizationId) {
@@ -618,37 +685,28 @@ export const listProducts = query({
     const results = search
       ? await (async () => {
           // ponytail: scan the tenant catalog until catalog size warrants a trigram index.
-          const products = await (args.categoryId
-            ? ctx.db
-                .query("products")
-                .withIndex(
-                  "by_organizationId_and_status_and_categoryId_and_normalizedName",
-                  (q) =>
-                    q
-                      .eq("organizationId", organizationId)
-                      .eq("status", args.status)
-                      .eq("categoryId", args.categoryId!),
-                )
-            : ctx.db
-                .query("products")
-                .withIndex(
-                  "by_organizationId_and_status_and_normalizedName",
-                  (q) =>
-                    q
-                      .eq("organizationId", organizationId)
-                      .eq("status", args.status),
-                ))
-            .collect();
-          const categoryNames = new Map(
-            await Promise.all(
-              Array.from(new Set(products.map((product) => product.categoryId))).map(
-                async (categoryId) => {
-                  const category = await ctx.db.get("categories", categoryId);
-                  return [categoryId, category?.name ?? ""] as const;
-                },
-              ),
-            ),
-          );
+          const products = await (
+            args.categoryId
+              ? ctx.db
+                  .query("products")
+                  .withIndex(
+                    "by_organizationId_and_status_and_categoryId_and_normalizedName",
+                    (q) =>
+                      q
+                        .eq("organizationId", organizationId)
+                        .eq("status", args.status)
+                        .eq("categoryId", args.categoryId!),
+                  )
+              : ctx.db
+                  .query("products")
+                  .withIndex(
+                    "by_organizationId_and_status_and_normalizedName",
+                    (q) =>
+                      q
+                        .eq("organizationId", organizationId)
+                        .eq("status", args.status),
+                  )
+          ).collect();
           const matches = products
             .map((product) => {
               const productScore = fuzzyScore(product.name, search);
@@ -889,13 +947,8 @@ export const listFormOptions = query({
   args: { excludeProductId: v.optional(v.id("products")) },
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganization(ctx);
-    const [categories, units, products] = await Promise.all([
-      ctx.db
-        .query("categories")
-        .withIndex("by_organizationId_and_normalizedName", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .take(MAX_CHILD_ROWS),
+    const [{ hierarchy: categories }, units, products] = await Promise.all([
+      loadCategoryHierarchy(ctx, organizationId),
       ctx.db
         .query("units")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -912,8 +965,9 @@ export const listFormOptions = query({
 
     return {
       categories: categories.map((category) => ({
-        id: category._id,
+        id: category.id,
         name: category.name,
+        path: category.path,
       })),
       units: units.map((unit) => ({ id: unit._id, name: unit.name })),
       products: await Promise.all(
@@ -949,32 +1003,62 @@ export const listFormOptions = query({
   },
 });
 
-export const listCategories = query({
+export const listCategoryOptions = query({
   args: {},
+  returns: v.array(categoryOptionValidator),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
-    const categories = await ctx.db
-      .query("categories")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .take(MAX_CHILD_ROWS);
+    const { hierarchy } = await loadCategoryHierarchy(ctx, organizationId);
+    return hierarchy.map(({ id, name, parentCategoryId, path, depth }) => ({
+      id,
+      name,
+      parentCategoryId,
+      path,
+      depth,
+    }));
+  },
+});
+
+export const listCategories = query({
+  args: {},
+  returns: v.array(managedCategoryValidator),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    const { hierarchy: categories } = await loadCategoryHierarchy(
+      ctx,
+      organizationId,
+    );
 
     return await Promise.all(
-      categories.map(async (category) => ({
-        id: category._id,
-        name: category.name,
-        inUse: Boolean(
-          await ctx.db
+      categories.map(async (category) => {
+        const [product, staffFoodAllowance] = await Promise.all([
+          ctx.db
             .query("products")
             .withIndex("by_organizationId_and_categoryId", (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("categoryId", category._id),
+                .eq("categoryId", category.id),
             )
             .first(),
-        ),
-      })),
+          ctx.db
+            .query("staffFoodRuleAllowances")
+            .withIndex("by_organizationId_and_categoryId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("categoryId", category.id),
+            )
+            .first(),
+        ]);
+        return {
+          id: category.id,
+          name: category.name,
+          parentCategoryId: category.parentCategoryId,
+          path: category.path,
+          depth: category.depth,
+          inUse: Boolean(product || staffFoodAllowance),
+          hasChildren: category.hasChildren,
+        };
+      }),
     );
   },
 });
@@ -1529,29 +1613,71 @@ export const deleteExpiredProducts = internalMutation({
 });
 
 export const createCategory = mutation({
-  args: { name: v.string() },
+  args: { name: v.string(), placement: categoryPlacementValidator },
+  returns: v.id("categories"),
   handler: async (ctx, args) => {
     const { organizationId } = await requireCatalogManager(ctx);
     const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
-    const existing = await ctx.db
-      .query("categories")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("normalizedName", normalizedName),
-      )
-      .unique();
+    const [{ categories }, existing] = await Promise.all([
+      loadCategoryHierarchy(ctx, organizationId),
+      ctx.db
+        .query("categories")
+        .withIndex("by_organizationId_and_normalizedName", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("normalizedName", normalizedName),
+        )
+        .unique(),
+    ]);
     if (existing) throw new ConvexError("Kategorien findes allerede");
-    return await ctx.db.insert("categories", {
+    if (categories.length >= MAX_CATEGORIES_PER_ORGANIZATION) {
+      throw new ConvexError("Der kan højst oprettes 200 kategorier");
+    }
+
+    let parentCategoryId: Id<"categories"> | undefined;
+    let childCategory: Doc<"categories"> | null = null;
+    if (args.placement.kind === "child") {
+      const parent = await ctx.db.get(
+        "categories",
+        args.placement.parentCategoryId,
+      );
+      if (!parent || parent.organizationId !== organizationId) {
+        throw new ConvexError("Overkategorien blev ikke fundet");
+      }
+      parentCategoryId = parent._id;
+    } else if (args.placement.kind === "parent") {
+      childCategory = await ctx.db.get(
+        "categories",
+        args.placement.childCategoryId,
+      );
+      if (!childCategory || childCategory.organizationId !== organizationId) {
+        throw new ConvexError("Kategorien blev ikke fundet");
+      }
+      parentCategoryId = childCategory.parentCategoryId;
+    }
+
+    const categoryId = await ctx.db.insert("categories", {
       organizationId,
       name,
       normalizedName,
+      parentCategoryId,
     });
+    if (childCategory) {
+      await ctx.db.patch("categories", childCategory._id, {
+        parentCategoryId: categoryId,
+      });
+    }
+    return categoryId;
   },
 });
 
-export const renameCategory = mutation({
-  args: { categoryId: v.id("categories"), name: v.string() },
+export const updateCategory = mutation({
+  args: {
+    categoryId: v.id("categories"),
+    name: v.string(),
+    parentCategoryId: v.union(v.id("categories"), v.null()),
+  },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireCatalogManager(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
@@ -1570,37 +1696,60 @@ export const renameCategory = mutation({
     if (existing && existing._id !== category._id) {
       throw new ConvexError("Kategorien findes allerede");
     }
-    await ctx.db.patch("categories", category._id, { name, normalizedName });
+    const { categories } = await loadCategoryHierarchy(ctx, organizationId);
+    validateCategoryParentAssignment(
+      categories,
+      organizationId,
+      category._id,
+      args.parentCategoryId,
+    );
+    if (args.parentCategoryId) {
+      const parent = await ctx.db.get("categories", args.parentCategoryId);
+      if (!parent || parent.organizationId !== organizationId) {
+        throw new ConvexError("Overkategorien blev ikke fundet");
+      }
+    }
+    await ctx.db.patch("categories", category._id, {
+      name,
+      normalizedName,
+      parentCategoryId: args.parentCategoryId ?? undefined,
+    });
     return null;
   },
 });
 
 export const deleteCategory = mutation({
   args: { categoryId: v.id("categories") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireCatalogManager(ctx);
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
     }
-    const [product, staffFoodAllowance] = await Promise.all([
+    const [child, product, staffFoodAllowance] = await Promise.all([
+      ctx.db
+        .query("categories")
+        .withIndex("by_organizationId_and_parentCategoryId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("parentCategoryId", category._id),
+        )
+        .first(),
       ctx.db
         .query("products")
         .withIndex("by_organizationId_and_categoryId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("categoryId", category._id),
+          q.eq("organizationId", organizationId).eq("categoryId", category._id),
         )
         .first(),
       ctx.db
         .query("staffFoodRuleAllowances")
         .withIndex("by_organizationId_and_categoryId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("categoryId", category._id),
+          q.eq("organizationId", organizationId).eq("categoryId", category._id),
         )
         .first(),
     ]);
+    if (child) throw new ConvexError("Kategorien har underkategorier");
     if (product) throw new ConvexError("Kategorien er stadig i brug");
     if (staffFoodAllowance) {
       throw new ConvexError("Kategorien bruges stadig i Staff food");
@@ -1695,46 +1844,51 @@ export const mergeUnits = mutation({
     }
 
     for (const sourceProductUnit of sourceProductUnits) {
-      const [product, targetProductUnit, recipeReferences, countItems, configs] =
-        await Promise.all([
-          ctx.db.get("products", sourceProductUnit.productId),
-          ctx.db
-            .query("productUnits")
-            .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+      const [
+        product,
+        targetProductUnit,
+        recipeReferences,
+        countItems,
+        configs,
+      ] = await Promise.all([
+        ctx.db.get("products", sourceProductUnit.productId),
+        ctx.db
+          .query("productUnits")
+          .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", sourceProductUnit.productId)
+              .eq("unitId", targetUnit._id),
+          )
+          .unique(),
+        ctx.db
+          .query("productIngredients")
+          .withIndex(
+            "by_organizationId_and_ingredientProductId_and_unitId",
+            (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("productId", sourceProductUnit.productId)
-                .eq("unitId", targetUnit._id),
-            )
-            .unique(),
-          ctx.db
-            .query("productIngredients")
-            .withIndex(
-              "by_organizationId_and_ingredientProductId_and_unitId",
-              (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("ingredientProductId", sourceProductUnit.productId)
-                  .eq("unitId", sourceUnit._id),
-            )
-            .take(MAX_CHILD_ROWS + 1),
-          ctx.db
-            .query("countItems")
-            .withIndex("by_organizationId_and_productId", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("productId", sourceProductUnit.productId),
-            )
-            .take(MAX_CHILD_ROWS + 1),
-          ctx.db
-            .query("wasteProductConfigs")
-            .withIndex("by_org_product", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("productId", sourceProductUnit.productId),
-            )
-            .take(MAX_CHILD_ROWS + 1),
-        ]);
+                .eq("ingredientProductId", sourceProductUnit.productId)
+                .eq("unitId", sourceUnit._id),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+        ctx.db
+          .query("countItems")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", sourceProductUnit.productId),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+        ctx.db
+          .query("wasteProductConfigs")
+          .withIndex("by_org_product", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", sourceProductUnit.productId),
+          )
+          .take(MAX_CHILD_ROWS + 1),
+      ]);
 
       if (!product || product.organizationId !== organizationId) {
         throw new ConvexError("Et produkt til enheden blev ikke fundet");

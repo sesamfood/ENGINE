@@ -1,5 +1,5 @@
-import { VocabularyManager } from "@/components/catalog/vocabulary-manager";
+import { CategoryManager } from "@/components/catalog/category-manager";
 
 export default function CategoriesPage() {
-  return <VocabularyManager kind="category" />;
+  return <CategoryManager />;
 }

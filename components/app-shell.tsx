@@ -144,7 +144,9 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!runtime?.kioskModeEnabled || !runtime.settings) return;
     if (countLocked) {
-      if (pathname !== "/count") router.replace("/count");
+      if (pathname !== "/count" && pathname !== "/waste") {
+        router.replace("/count");
+      }
       return;
     }
     const allowed = runtime.settings.enabledPages.some(
@@ -189,6 +191,7 @@ function featureLockExempt(pathname: string) {
   return (
     pathname === "/profile" ||
     pathname === "/settings" ||
+    pathname === "/waste" ||
     pathname === "/count" ||
     pathname.startsWith("/count/") ||
     pathname === "/organization" ||
@@ -369,7 +372,9 @@ function NavigationList() {
   const kioskNavigation = kiosk?.kioskModeEnabled
     ? operationalNavigation.flatMap((item) => {
         if (featureLocked) {
-          return item.id === "count" ? [{ ...item, href: "/count" }] : [];
+          if (item.id === "count") return [{ ...item, href: "/count" }];
+          if (item.id === "waste") return [{ ...item, href: "/waste" }];
+          return [];
         }
         const first = item.pages.find((page) =>
           kiosk.settings?.enabledPages.includes(page),
@@ -381,7 +386,7 @@ function NavigationList() {
     : null;
   const navigation = kioskNavigation ?? orderedNavigation.filter((item) => {
     if (item.id === "organization") return canManageCatalog(membership?.role);
-    return !featureLocked || item.id === "count";
+    return !featureLocked || item.id === "count" || item.id === "waste";
   });
 
   return (

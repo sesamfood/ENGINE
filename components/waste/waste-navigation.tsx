@@ -19,7 +19,7 @@ export function WasteNavigation() {
   const sidebar = useSidebar();
   const membership = authClient.useActiveMemberRole();
   const kiosk = useQuery(api.kiosk.getRuntimeContext);
-  const showRegister = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("waste.register");
+  const showRegister = pathname === "/waste" || !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("waste.register");
   const showBadDelivery = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("waste.badDelivery");
   const canReport = canViewWasteReports(membership.data?.role) || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.report"));
   const value = pathname.startsWith("/waste/report")

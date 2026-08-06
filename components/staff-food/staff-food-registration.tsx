@@ -123,7 +123,10 @@ function EmployeeAvatar({
   large?: boolean;
 }) {
   return (
-    <Avatar size={large ? "lg" : "default"} className={large ? "size-12" : undefined}>
+    <Avatar
+      size={large ? "lg" : "default"}
+      className={large ? "size-12" : undefined}
+    >
       {imageUrl ? <AvatarImage src={imageUrl} alt="" /> : null}
       <AvatarFallback>{initials(name)}</AvatarFallback>
     </Avatar>
@@ -159,7 +162,11 @@ function PickerButton({
       disabled={disabled}
       className="flex min-h-20 w-full items-center gap-3 rounded-xl border bg-card p-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
     >
-      <EmployeeAvatar name={shift.displayName} imageUrl={shift.imageUrl} large />
+      <EmployeeAvatar
+        name={shift.displayName}
+        imageUrl={shift.imageUrl}
+        large
+      />
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="truncate font-medium">{shift.displayName}</span>
         <ShiftTime shift={shift} />
@@ -227,32 +234,37 @@ function StaffFoodHeader({
         <Field>
           <FieldLabel>Location</FieldLabel>
           {fixedLocationName ? (
-            <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
-          ) : <Select
-            items={items}
-            value={locationId}
-            onValueChange={(value) => {
-              if (!organizationId) return;
-              onLocationChange();
-              setWasteLocation(organizationId, value as string);
-              setCountLocation(organizationId, value as string);
-            }}
-            disabled={!locations?.length}
-          >
-            <SelectTrigger className="h-11 w-full">
+            <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium">
               <MapPinIcon aria-hidden="true" />
-              <SelectValue placeholder="Vælg location" />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                {items.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>}
+              {fixedLocationName}
+            </div>
+          ) : (
+            <Select
+              items={items}
+              value={locationId}
+              onValueChange={(value) => {
+                if (!organizationId) return;
+                onLocationChange();
+                setWasteLocation(organizationId, value as string);
+                setCountLocation(organizationId, value as string);
+              }}
+              disabled={!locations?.length}
+            >
+              <SelectTrigger className="h-11 w-full">
+                <MapPinIcon aria-hidden="true" />
+                <SelectValue placeholder="Vælg location" />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {items.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          )}
         </Field>
       </div>
     </div>
@@ -270,11 +282,14 @@ export function StaffFoodRegistration() {
   const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const [now, setNow] = useState(() => Date.now());
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
-  const [sessionId, setSessionId] =
-    useState<Id<"staffFoodSessions"> | null>(null);
+  const [sessionId, setSessionId] = useState<Id<"staffFoodSessions"> | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
   const [searchValue, setSearchValue] = useState("");
-  const [manualEmployee, setManualEmployee] = useState<SearchEmployee | null>(null);
+  const [manualEmployee, setManualEmployee] = useState<SearchEmployee | null>(
+    null,
+  );
   const [manualDuration, setManualDuration] = useState("240");
   const [starting, setStarting] = useState(false);
   const [basket, setBasket] = useState<Record<string, number>>({});
@@ -288,11 +303,9 @@ export function StaffFoodRegistration() {
 
   const locationId = kiosk?.isKioskAccount
     ? kiosk.locationId
-    : locations?.some(
-    (location) => location.id === storedLocationId,
-  )
-    ? (storedLocationId as Id<"locations">)
-    : (locations?.[0]?.id ?? null);
+    : locations?.some((location) => location.id === storedLocationId)
+      ? (storedLocationId as Id<"locations">)
+      : (locations?.[0]?.id ?? null);
   const queryNow = Math.floor(now / 30_000) * 30_000;
   const queriedPicker = useQuery(
     api.staffFood.getPicker,
@@ -353,7 +366,9 @@ export function StaffFoodRegistration() {
       locations={locations}
       organizationId={organizationId}
       employeeName={state?.session.employeeName}
-      fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
+      fixedLocationName={
+        kiosk?.isKioskAccount ? (kiosk.locationName ?? undefined) : undefined
+      }
       onLocationChange={() => {
         setSessionId(null);
         setBasket({});
@@ -549,7 +564,10 @@ export function StaffFoodRegistration() {
           </EmptyHeader>
           {canManage ? (
             <EmptyContent>
-              <Button render={<Link href="/organization/staff-food" />} nativeButton={false}>
+              <Button
+                render={<Link href="/organization/staff-food" />}
+                nativeButton={false}
+              >
                 Åbn indstillinger
               </Button>
             </EmptyContent>
@@ -561,8 +579,12 @@ export function StaffFoodRegistration() {
             <span className="grid size-16 place-items-center rounded-full bg-primary text-primary-foreground">
               <CheckCircle2Icon className="size-8" />
             </span>
-            <h2 className="text-2xl font-semibold">Staff food er registreret</h2>
-            <p className="text-muted-foreground">Du sendes tilbage til Waste.</p>
+            <h2 className="text-2xl font-semibold">
+              Staff food er registreret
+            </h2>
+            <p className="text-muted-foreground">
+              Du sendes tilbage til Waste.
+            </p>
           </div>
         </div>
       ) : sessionId && state === undefined ? (
@@ -654,7 +676,8 @@ export function StaffFoodRegistration() {
                               {allowance.categoryName}
                             </h2>
                             <span className="text-sm text-muted-foreground">
-                              {Math.max(0, allowance.remaining - reserved)} tilbage
+                              {Math.max(0, allowance.remaining - reserved)}{" "}
+                              tilbage
                             </span>
                           </div>
                           <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
@@ -696,7 +719,9 @@ export function StaffFoodRegistration() {
                                         size="lg"
                                         className="h-12 w-full"
                                         disabled={!canAdd && !quantity}
-                                        onClick={() => toggleSingleProduct(product)}
+                                        onClick={() =>
+                                          toggleSingleProduct(product)
+                                        }
                                       >
                                         {quantity ? (
                                           <CheckIcon data-icon="inline-start" />
@@ -712,7 +737,9 @@ export function StaffFoodRegistration() {
                                         className="size-11 rounded-none"
                                         aria-label={`Fjern én ${product.name}`}
                                         disabled={!quantity}
-                                        onClick={() => changeProduct(product, -1)}
+                                        onClick={() =>
+                                          changeProduct(product, -1)
+                                        }
                                       >
                                         <MinusIcon />
                                       </Button>
@@ -725,7 +752,9 @@ export function StaffFoodRegistration() {
                                         className="size-11 rounded-none"
                                         aria-label={`Tilføj én ${product.name}`}
                                         disabled={!canAdd}
-                                        onClick={() => changeProduct(product, 1)}
+                                        onClick={() =>
+                                          changeProduct(product, 1)
+                                        }
                                       >
                                         <PlusIcon />
                                       </Button>
@@ -851,7 +880,9 @@ export function StaffFoodRegistration() {
                   </Card>
                   <DialogFooter>
                     <DialogClose
-                      render={<Button variant="outline" disabled={submitting} />}
+                      render={
+                        <Button variant="outline" disabled={submitting} />
+                      }
                     >
                       Tilbage
                     </DialogClose>
@@ -921,7 +952,9 @@ export function StaffFoodRegistration() {
                       step={0.5}
                       value={Number(manualDuration) / 60}
                       onChange={(event) =>
-                        setManualDuration(String(Number(event.target.value) * 60))
+                        setManualDuration(
+                          String(Number(event.target.value) * 60),
+                        )
                       }
                       className="h-11 max-w-48"
                     />
@@ -931,10 +964,16 @@ export function StaffFoodRegistration() {
                   </Field>
                 </CardContent>
                 <CardFooter className="justify-end gap-2">
-                  <Button variant="outline" onClick={() => setManualEmployee(null)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setManualEmployee(null)}
+                  >
                     Tilbage
                   </Button>
-                  <Button disabled={starting} onClick={() => void chooseManual()}>
+                  <Button
+                    disabled={starting}
+                    onClick={() => void chooseManual()}
+                  >
                     {starting ? <Spinner data-icon="inline-start" /> : null}
                     Fortsæt
                   </Button>

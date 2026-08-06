@@ -1,7 +1,13 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { ImageIcon, PinIcon, SearchIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import {
+  ImageIcon,
+  PinIcon,
+  SearchIcon,
+  Trash2Icon,
+  Undo2Icon,
+} from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -59,7 +65,9 @@ import { canManageWasteSettings } from "@/lib/auth-permissions";
 import { cn } from "@/lib/utils";
 import { useWasteContext } from "./waste-header";
 
-type Catalog = NonNullable<ReturnType<typeof useQuery<typeof api.waste.listCatalog>>>;
+type Catalog = NonNullable<
+  ReturnType<typeof useQuery<typeof api.waste.listCatalog>>
+>;
 type Product = Catalog[number];
 type Shortcut = { unitId: Id<"units">; quantity: number };
 type UndoRegistration = {
@@ -95,11 +103,15 @@ function fuzzyScore(name: string, search: string) {
 }
 
 function formatQuantity(quantity: number) {
-  return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 6 }).format(quantity);
+  return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 6 }).format(
+    quantity,
+  );
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Waste kunne ikke registreres";
+  return error instanceof Error
+    ? error.message
+    : "Waste kunne ikke registreres";
 }
 
 function shortcutsFor(
@@ -113,7 +125,12 @@ function shortcutsFor(
   );
   for (const quantity of [1, 0.5]) {
     if (result.length === 2) break;
-    if (!result.some((item) => item.unitId === product.defaultUnitId && item.quantity === quantity)) {
+    if (
+      !result.some(
+        (item) =>
+          item.unitId === product.defaultUnitId && item.quantity === quantity,
+      )
+    ) {
       result.push({ unitId: product.defaultUnitId, quantity });
     }
   }
@@ -123,7 +140,10 @@ function shortcutsFor(
 export function WasteRegistration() {
   const { locationId, locations } = useWasteContext();
   const catalog = useQuery(api.waste.listCatalog);
-  const state = useQuery(api.waste.getViewState, locationId ? { locationId } : "skip");
+  const state = useQuery(
+    api.waste.getViewState,
+    locationId ? { locationId } : "skip",
+  );
   const registerWaste = useMutation(api.waste.registerWaste);
   const voidWaste = useMutation(api.waste.voidWasteRegistration);
   const setPinned = useMutation(api.waste.setPinned);
@@ -137,9 +157,13 @@ export function WasteRegistration() {
   const [quantity, setQuantity] = useState("1");
   const [unitId, setUnitId] = useState<Id<"units"> | null>(null);
   const [editingShortcuts, setEditingShortcuts] = useState(false);
-  const [shortcutDrafts, setShortcutDrafts] = useState<[Shortcut, Shortcut] | null>(null);
+  const [shortcutDrafts, setShortcutDrafts] = useState<
+    [Shortcut, Shortcut] | null
+  >(null);
   const [recent, setRecent] = useState<string | null>(null);
-  const [undoRegistrations, setUndoRegistrations] = useState<UndoRegistration[]>([]);
+  const [undoRegistrations, setUndoRegistrations] = useState<
+    UndoRegistration[]
+  >([]);
   const [undoingIds, setUndoingIds] = useState<Id<"wasteRegistrations">[]>([]);
   const [undoDialogOpen, setUndoDialogOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -151,7 +175,9 @@ export function WasteRegistration() {
       const current = Date.now();
       setNow(current);
       setUndoRegistrations((registrations) =>
-        registrations.filter((registration) => registration.expiresAt > current),
+        registrations.filter(
+          (registration) => registration.expiresAt > current,
+        ),
       );
     };
     const interval = window.setInterval(updateUndoWindow, 250);
@@ -168,7 +194,9 @@ export function WasteRegistration() {
   );
   const categories = useMemo(() => {
     const map = new Map<string, string>();
-    for (const product of catalog ?? []) map.set(product.category.id, product.category.name);
+    for (const product of catalog ?? []) {
+      map.set(product.category.id, product.category.name);
+    }
     return [...map].sort((a, b) => collator.compare(a[1], b[1]));
   }, [catalog]);
   const normalizedSearch = normalize(search);
@@ -194,17 +222,22 @@ export function WasteRegistration() {
         if (Boolean(aConfig?.pinnedAt) !== Boolean(bConfig?.pinnedAt)) {
           return aConfig?.pinnedAt ? -1 : 1;
         }
-        if (aConfig?.pinnedAt && bConfig?.pinnedAt) return aConfig.pinnedAt - bConfig.pinnedAt;
+        if (aConfig?.pinnedAt && bConfig?.pinnedAt)
+          return aConfig.pinnedAt - bConfig.pinnedAt;
         const aRank = rankMap.get(a.id);
         const bRank = rankMap.get(b.id);
-        if ((aRank?.count ?? 0) !== (bRank?.count ?? 0)) return (bRank?.count ?? 0) - (aRank?.count ?? 0);
+        if ((aRank?.count ?? 0) !== (bRank?.count ?? 0))
+          return (bRank?.count ?? 0) - (aRank?.count ?? 0);
         if ((aRank?.lastRegisteredAt ?? 0) !== (bRank?.lastRegisteredAt ?? 0)) {
-          return (bRank?.lastRegisteredAt ?? 0) - (aRank?.lastRegisteredAt ?? 0);
+          return (
+            (bRank?.lastRegisteredAt ?? 0) - (aRank?.lastRegisteredAt ?? 0)
+          );
         }
         return collator.compare(a.name, b.name);
       });
   }, [catalog, category, configMap, normalizedSearch, rankMap]);
-  const selected = catalog?.find((product) => product.id === selectedId) ?? null;
+  const selected =
+    catalog?.find((product) => product.id === selectedId) ?? null;
   function openProduct(product: Product) {
     const shortcuts = shortcutsFor(
       product,
@@ -218,7 +251,11 @@ export function WasteRegistration() {
     setEditingShortcuts(false);
   }
 
-  async function register(product: Product, shortcut: Shortcut, source: "shortcut" | "custom") {
+  async function register(
+    product: Product,
+    shortcut: Shortcut,
+    source: "shortcut" | "custom",
+  ) {
     if (!locationId) return;
     const key = `${product.id}:${shortcut.unitId}:${shortcut.quantity}`;
     try {
@@ -266,7 +303,9 @@ export function WasteRegistration() {
     const results = await Promise.allSettled(
       items.map((item) => voidWaste({ registrationId: item.id })),
     );
-    const succeeded = ids.filter((_, index) => results[index].status === "fulfilled");
+    const succeeded = ids.filter(
+      (_, index) => results[index].status === "fulfilled",
+    );
     const failed = results.filter((result) => result.status === "rejected");
     if (succeeded.length) {
       setUndoRegistrations((current) =>
@@ -305,12 +344,20 @@ export function WasteRegistration() {
 
   async function saveShortcuts() {
     if (!locationId || !selected || !shortcutDrafts) return;
-    if (shortcutDrafts.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+    if (
+      shortcutDrafts.some(
+        (item) => !Number.isFinite(item.quantity) || item.quantity <= 0,
+      )
+    ) {
       toast.error("Begge mængder skal være større end 0");
       return;
     }
     try {
-      await setOverride({ locationId, productId: selected.id, shortcuts: shortcutDrafts });
+      await setOverride({
+        locationId,
+        productId: selected.id,
+        shortcuts: shortcutDrafts,
+      });
       toast.success("Shortcuts er gemt");
       setEditingShortcuts(false);
     } catch (error) {
@@ -319,68 +366,166 @@ export function WasteRegistration() {
   }
 
   if (!locations || catalog === undefined) {
-    return <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">{Array.from({ length: 10 }, (_, index) => <Skeleton key={index} className="h-72" />)}</div>;
+    return (
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 10 }, (_, index) => (
+          <Skeleton key={index} className="h-72" />
+        ))}
+      </div>
+    );
   }
   if (!locations.length) {
-    return <Empty className="min-h-72"><EmptyHeader><EmptyMedia variant="icon"><Trash2Icon /></EmptyMedia><EmptyTitle>Ingen locations</EmptyTitle><EmptyDescription>Opret en location, før Waste kan registreres.</EmptyDescription></EmptyHeader></Empty>;
+    return (
+      <Empty className="min-h-72">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Trash2Icon />
+          </EmptyMedia>
+          <EmptyTitle>Ingen locations</EmptyTitle>
+          <EmptyDescription>
+            Opret en location, før Waste kan registreres.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
   }
   if (!catalog.length) {
-    return <Empty className="min-h-72"><EmptyHeader><EmptyMedia variant="icon"><Trash2Icon /></EmptyMedia><EmptyTitle>Ingen produkter</EmptyTitle><EmptyDescription>Der er ingen aktive produkter at registrere Waste for.</EmptyDescription></EmptyHeader></Empty>;
+    return (
+      <Empty className="min-h-72">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Trash2Icon />
+          </EmptyMedia>
+          <EmptyTitle>Ingen produkter</EmptyTitle>
+          <EmptyDescription>
+            Der er ingen aktive produkter at registrere Waste for.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
   }
 
   return (
     <div className="flex flex-col gap-5">
       <Tabs value={category} onValueChange={setCategory}>
-        <TabsList className="h-12 w-full justify-start overflow-x-auto" aria-label="Produktkategorier">
-          <TabsTrigger value="all" className="min-w-20 shrink-0 px-4">Alle</TabsTrigger>
-          {categories.map(([id, name]) => <TabsTrigger key={id} value={id} className="min-w-28 shrink-0 px-4">{name}</TabsTrigger>)}
+        <TabsList
+          className="h-12 w-full justify-start overflow-x-auto"
+          aria-label="Produktkategorier"
+        >
+          <TabsTrigger value="all" className="min-w-20 shrink-0 px-4">
+            Alle
+          </TabsTrigger>
+          {categories.map(([id, name]) => (
+            <TabsTrigger key={id} value={id} className="min-w-28 shrink-0 px-4">
+              {name}
+            </TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
 
       <InputGroup className="h-12 w-full">
-        <InputGroupAddon><SearchIcon /><span className="sr-only">Søg</span></InputGroupAddon>
-        <InputGroupInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Søg efter et produkt" aria-label="Søg efter et produkt" />
+        <InputGroupAddon>
+          <SearchIcon />
+          <span className="sr-only">Søg</span>
+        </InputGroupAddon>
+        <InputGroupInput
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Søg efter et produkt"
+          aria-label="Søg efter et produkt"
+        />
       </InputGroup>
 
       {products.length ? (
         <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
           {products.map((product) => {
             const config = configMap.get(product.id);
-            const shortcuts = shortcutsFor(product, rankMap.get(product.id)?.learnedShortcuts, config?.shortcutOverrides);
+            const shortcuts = shortcutsFor(
+              product,
+              rankMap.get(product.id)?.learnedShortcuts,
+              config?.shortcutOverrides,
+            );
             return (
-              <Card key={product.id} className={cn("relative isolate h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm lg:[--card-spacing:--spacing(4)]", recent?.startsWith(`${product.id}:`) && "ring-2 ring-primary")}>
+              <Card
+                key={product.id}
+                className={cn(
+                  "relative isolate h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm lg:[--card-spacing:--spacing(4)]",
+                  recent?.startsWith(`${product.id}:`) && "ring-2 ring-primary",
+                )}
+              >
                 <div className="relative">
                   {product.imageUrl ? (
                     <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
-                      <Image src={product.imageUrl} alt="" fill sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw" unoptimized className="object-cover" />
+                      <Image
+                        src={product.imageUrl}
+                        alt=""
+                        fill
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                        unoptimized
+                        className="object-cover"
+                      />
                     </div>
                   ) : (
-                    <div className="grid aspect-video w-full place-items-center bg-muted text-muted-foreground lg:aspect-[4/3]"><ImageIcon className="size-10 lg:size-12" /></div>
+                    <div className="grid aspect-video w-full place-items-center bg-muted text-muted-foreground lg:aspect-[4/3]">
+                      <ImageIcon className="size-10 lg:size-12" />
+                    </div>
                   )}
                   <CardHeader className="py-3 lg:py-4">
                     <div className="flex min-w-0 items-baseline gap-2">
-                      <CardTitle className="min-w-0 flex-1 truncate">{product.name}</CardTitle>
-                      <CardDescription className="max-w-[45%] shrink-0 truncate">{product.category.name}</CardDescription>
+                      <CardTitle className="min-w-0 flex-1 truncate">
+                        {product.name}
+                      </CardTitle>
+                      <CardDescription className="max-w-[45%] shrink-0 truncate">
+                        {product.category.name}
+                      </CardDescription>
                     </div>
                   </CardHeader>
-                  <button type="button" data-card-trigger className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50" aria-label={`Registrér en anden mængde Waste for ${product.name}`} onClick={() => openProduct(product)} />
+                  <button
+                    type="button"
+                    data-card-trigger
+                    className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    aria-label={`Registrér en anden mængde Waste for ${product.name}`}
+                    onClick={() => openProduct(product)}
+                  />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-lg"
                     className="absolute right-1 top-1 z-10 size-11 rounded-full bg-background/85"
-                    aria-label={config?.pinnedAt ? `Fjern ${product.name} fra fastgjorte produkter` : `Fastgør ${product.name}`}
+                    aria-label={
+                      config?.pinnedAt
+                        ? `Fjern ${product.name} fra fastgjorte produkter`
+                        : `Fastgør ${product.name}`
+                    }
                     aria-pressed={Boolean(config?.pinnedAt)}
                     onClick={() => togglePin(product)}
                   >
-                    <PinIcon className={cn(config?.pinnedAt && "fill-current text-primary")} />
+                    <PinIcon
+                      className={cn(
+                        config?.pinnedAt && "fill-current text-primary",
+                      )}
+                    />
                   </Button>
                 </div>
                 <CardContent className="grid grid-cols-2 gap-2 pb-3 lg:pb-4">
                   {shortcuts.map((shortcut, index) => {
-                    const unit = product.units.find((item) => item.id === shortcut.unitId);
+                    const unit = product.units.find(
+                      (item) => item.id === shortcut.unitId,
+                    );
                     const key = `${product.id}:${shortcut.unitId}:${shortcut.quantity}`;
-                    return <Button key={`${shortcut.unitId}:${shortcut.quantity}`} variant={index === 0 ? "default" : "outline"} className={cn("h-12 min-w-0 px-2", recent === key && "ring-3 ring-ring/40")} onClick={() => register(product, shortcut, "shortcut")}>{formatQuantity(shortcut.quantity)} {unit?.name}</Button>;
+                    return (
+                      <Button
+                        key={`${shortcut.unitId}:${shortcut.quantity}`}
+                        variant={index === 0 ? "default" : "outline"}
+                        className={cn(
+                          "h-12 min-w-0 px-2",
+                          recent === key && "ring-3 ring-ring/40",
+                        )}
+                        onClick={() => register(product, shortcut, "shortcut")}
+                      >
+                        {formatQuantity(shortcut.quantity)} {unit?.name}
+                      </Button>
+                    );
                   })}
                 </CardContent>
               </Card>
@@ -388,30 +533,109 @@ export function WasteRegistration() {
           })}
         </div>
       ) : (
-        <Empty className="min-h-56"><EmptyHeader><EmptyTitle>Ingen produkter fundet</EmptyTitle><EmptyDescription>Prøv et andet søgeord.</EmptyDescription></EmptyHeader></Empty>
+        <Empty className="min-h-56">
+          <EmptyHeader>
+            <EmptyTitle>Ingen produkter fundet</EmptyTitle>
+            <EmptyDescription>Prøv et andet søgeord.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(null)}>
+      <Dialog
+        open={Boolean(selected)}
+        onOpenChange={(open) => !open && setSelectedId(null)}
+      >
         <DialogContent className="sm:max-w-lg">
           {selected ? (
             <>
               <DialogHeader>
                 <DialogTitle>{selected.name}</DialogTitle>
-                <DialogDescription>{editingShortcuts ? "Vælg de to mængder, der skal vises som shortcuts på produktkortet." : "Angiv den mængde, der er blevet kasseret."}</DialogDescription>
+                <DialogDescription>
+                  {editingShortcuts
+                    ? "Vælg de to mængder, der skal vises som shortcuts på produktkortet."
+                    : "Angiv den mængde, der er blevet kasseret."}
+                </DialogDescription>
               </DialogHeader>
               <div className="relative h-64 overflow-hidden rounded-lg bg-muted">
                 {selected.imageUrl ? (
-                  <Image src={selected.imageUrl} alt="" fill sizes="(max-width: 640px) 90vw, 32rem" unoptimized className="object-contain" />
+                  <Image
+                    src={selected.imageUrl}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 90vw, 32rem"
+                    unoptimized
+                    className="object-contain"
+                  />
                 ) : (
-                  <div className="grid size-full place-items-center text-muted-foreground"><ImageIcon className="size-7" /></div>
+                  <div className="grid size-full place-items-center text-muted-foreground">
+                    <ImageIcon className="size-7" />
+                  </div>
                 )}
               </div>
               {editingShortcuts && shortcutDrafts ? (
                 <div className="grid gap-4">
                   {shortcutDrafts.map((shortcut, index) => (
-                    <div key={index} className="grid grid-cols-[1fr_10rem] gap-3">
-                      <Field><FieldLabel htmlFor={`waste-shortcut-${index}`}>Mængde {index + 1}</FieldLabel><Input id={`waste-shortcut-${index}`} type="number" min="0.000001" step="any" value={shortcut.quantity} onChange={(event) => { const next = [...shortcutDrafts] as [Shortcut, Shortcut]; next[index] = { ...shortcut, quantity: Number(event.target.value) }; setShortcutDrafts(next); }} /></Field>
-                      <Field><FieldLabel>Enhed</FieldLabel><Select items={selected.units.map((unit) => ({ value: unit.id, label: unit.name }))} value={shortcut.unitId} onValueChange={(value) => { const next = [...shortcutDrafts] as [Shortcut, Shortcut]; next[index] = { ...shortcut, unitId: value as Id<"units"> }; setShortcutDrafts(next); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{selected.units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                    <div
+                      key={index}
+                      className="grid grid-cols-[1fr_10rem] gap-3"
+                    >
+                      <Field>
+                        <FieldLabel htmlFor={`waste-shortcut-${index}`}>
+                          Mængde {index + 1}
+                        </FieldLabel>
+                        <Input
+                          id={`waste-shortcut-${index}`}
+                          type="number"
+                          min="0.000001"
+                          step="any"
+                          value={shortcut.quantity}
+                          onChange={(event) => {
+                            const next = [...shortcutDrafts] as [
+                              Shortcut,
+                              Shortcut,
+                            ];
+                            next[index] = {
+                              ...shortcut,
+                              quantity: Number(event.target.value),
+                            };
+                            setShortcutDrafts(next);
+                          }}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Enhed</FieldLabel>
+                        <Select
+                          items={selected.units.map((unit) => ({
+                            value: unit.id,
+                            label: unit.name,
+                          }))}
+                          value={shortcut.unitId}
+                          onValueChange={(value) => {
+                            const next = [...shortcutDrafts] as [
+                              Shortcut,
+                              Shortcut,
+                            ];
+                            next[index] = {
+                              ...shortcut,
+                              unitId: value as Id<"units">,
+                            };
+                            setShortcutDrafts(next);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {selected.units.map((unit) => (
+                                <SelectItem key={unit.id} value={unit.id}>
+                                  {unit.name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
                     </div>
                   ))}
                   <div className="flex items-center gap-1">
@@ -422,7 +646,10 @@ export function WasteRegistration() {
                       onClick={async () => {
                         if (!locationId) return;
                         try {
-                          await clearOverride({ locationId, productId: selected.id });
+                          await clearOverride({
+                            locationId,
+                            productId: selected.id,
+                          });
                           setEditingShortcuts(false);
                           toast.success("Anbefalede mængder bruges igen");
                         } catch (error) {
@@ -440,12 +667,86 @@ export function WasteRegistration() {
                 </div>
               ) : (
                 <div className="grid grid-cols-[1fr_10rem] gap-3">
-                  <Field><FieldLabel htmlFor="waste-quantity">Mængde</FieldLabel><Input id="waste-quantity" type="number" min="0.000001" max="1000000" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} autoFocus /></Field>
-                  <Field><FieldLabel>Enhed</FieldLabel><Select items={selected.units.map((unit) => ({ value: unit.id, label: unit.name }))} value={unitId} onValueChange={(value) => setUnitId(value as Id<"units">)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{selected.units.map((unit) => <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                  <Field>
+                    <FieldLabel htmlFor="waste-quantity">Mængde</FieldLabel>
+                    <Input
+                      id="waste-quantity"
+                      type="number"
+                      min="0.000001"
+                      max="1000000"
+                      step="any"
+                      value={quantity}
+                      onChange={(event) => setQuantity(event.target.value)}
+                      autoFocus
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Enhed</FieldLabel>
+                    <Select
+                      items={selected.units.map((unit) => ({
+                        value: unit.id,
+                        label: unit.name,
+                      }))}
+                      value={unitId}
+                      onValueChange={(value) => setUnitId(value as Id<"units">)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {selected.units.map((unit) => (
+                            <SelectItem key={unit.id} value={unit.id}>
+                              {unit.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
                 </div>
               )}
               <DialogFooter>
-                {editingShortcuts ? <Button onClick={saveShortcuts}>Gem shortcuts</Button> : <><Button variant="outline" onClick={() => setSelectedId(null)}>Annullér</Button>{isAdmin ? <Button variant="outline" onClick={() => setEditingShortcuts(true)}>Redigér shortcuts</Button> : null}<Button onClick={() => { const parsed = Number(quantity); if (!unitId || !Number.isFinite(parsed) || parsed <= 0) { toast.error("Angiv en mængde større end 0"); return; } register(selected, { unitId, quantity: parsed }, "custom"); }}>Registrér Waste</Button></>}
+                {editingShortcuts ? (
+                  <Button onClick={saveShortcuts}>Gem shortcuts</Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedId(null)}
+                    >
+                      Annullér
+                    </Button>
+                    {isAdmin ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => setEditingShortcuts(true)}
+                      >
+                        Redigér shortcuts
+                      </Button>
+                    ) : null}
+                    <Button
+                      onClick={() => {
+                        const parsed = Number(quantity);
+                        if (
+                          !unitId ||
+                          !Number.isFinite(parsed) ||
+                          parsed <= 0
+                        ) {
+                          toast.error("Angiv en mængde større end 0");
+                          return;
+                        }
+                        register(
+                          selected,
+                          { unitId, quantity: parsed },
+                          "custom",
+                        );
+                      }}
+                    >
+                      Registrér Waste
+                    </Button>
+                  </>
+                )}
               </DialogFooter>
             </>
           ) : null}
@@ -486,8 +787,8 @@ export function WasteRegistration() {
           <DialogHeader>
             <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
             <DialogDescription>
-              Fortryd en enkelt registrering eller annullér dem alle. Registreringerne
-              forsvinder automatisk efter 30 sekunder.
+              Fortryd en enkelt registrering eller annullér dem alle.
+              Registreringerne forsvinder automatisk efter 30 sekunder.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
@@ -500,7 +801,8 @@ export function WasteRegistration() {
                 <FieldContent>
                   <FieldLabel>{registration.productName}</FieldLabel>
                   <FieldDescription>
-                    {formatQuantity(registration.quantity)} {registration.unitName} ·{" "}
+                    {formatQuantity(registration.quantity)}{" "}
+                    {registration.unitName} ·{" "}
                     {Math.max(
                       0,
                       Math.ceil((registration.expiresAt - now) / 1000),

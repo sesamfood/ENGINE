@@ -20,6 +20,7 @@ import type * as kiosk from "../kiosk.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authEmail from "../lib/authEmail.js";
 import type * as lib_badDeliverySettings from "../lib/badDeliverySettings.js";
+import type * as lib_categoryHierarchy from "../lib/categoryHierarchy.js";
 import type * as lib_countLock from "../lib/countLock.js";
 import type * as lib_countSettings from "../lib/countSettings.js";
 import type * as lib_countWindow from "../lib/countWindow.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/authEmail": typeof lib_authEmail;
   "lib/badDeliverySettings": typeof lib_badDeliverySettings;
+  "lib/categoryHierarchy": typeof lib_categoryHierarchy;
   "lib/countLock": typeof lib_countLock;
   "lib/countSettings": typeof lib_countSettings;
   "lib/countWindow": typeof lib_countWindow;

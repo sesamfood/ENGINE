@@ -67,7 +67,9 @@ export async function requireKioskDestination(
     .unique();
   const pages = Array.isArray(page) ? page : [page];
   if (
-    pages.includes("count.register") &&
+    pages.some(
+      (page) => page === "count.register" || page === "waste.register",
+    ) &&
     auth.kioskLocationId &&
     (await otherFeaturesLocked(
       ctx,

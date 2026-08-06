@@ -411,9 +411,7 @@ function ProductCard({
                   <QuantityControl
                     productName={product.name}
                     unitName={unit.name}
-                    quantity={
-                      draftQuantities[unit.id] ?? quantityFor(unit)
-                    }
+                    quantity={draftQuantities[unit.id] ?? quantityFor(unit)}
                     disabled={disabled}
                     onChange={(quantity) =>
                       setDraftQuantities((current) => ({
@@ -490,7 +488,9 @@ function OrderBuilder({
         </DialogHeader>
         <div className="grid min-h-0 gap-4 sm:grid-cols-2">
           <div className="flex min-h-0 flex-col gap-2">
-            <p className="font-medium">Valgt rækkefølge ({selectedIds.length})</p>
+            <p className="font-medium">
+              Valgt rækkefølge ({selectedIds.length})
+            </p>
             <div className="flex max-h-80 flex-col gap-2 overflow-y-auto rounded-xl border p-2">
               {selectedIds.length ? (
                 selectedIds.map((id, index) => {
@@ -599,7 +599,9 @@ function SortableProduct({
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [placement, setPlacement] = useState("position");
-  const [selectedPosition, setSelectedPosition] = useState(String(position + 1));
+  const [selectedPosition, setSelectedPosition] = useState(
+    String(position + 1),
+  );
   const {
     attributes,
     listeners,
@@ -808,7 +810,7 @@ export function CountSheet() {
     api.count.getCountProductOrder,
     locationId ? { locationId } : "skip",
   );
-  const categories = useQuery(api.catalog.listCategories);
+  const categories = useQuery(api.catalog.listCategoryOptions);
   const queriedProducts = useQuery(
     api.count.listCountProducts,
     locationId
@@ -816,9 +818,7 @@ export function CountSheet() {
           locationId,
           now: queryNow,
           categoryId:
-            categoryId === "all"
-              ? undefined
-              : (categoryId as Id<"categories">),
+            categoryId === "all" ? undefined : (categoryId as Id<"categories">),
           search: querySearch,
         }
       : "skip",
@@ -928,7 +928,9 @@ export function CountSheet() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   function onDragEnd(event: DragEndEvent) {
@@ -1227,9 +1229,7 @@ export function CountSheet() {
               disabled={savingDefaultOrder}
               onClick={() => void publishDefaultOrder()}
             >
-              {savingDefaultOrder ? (
-                <Spinner data-icon="inline-start" />
-              ) : null}
+              {savingDefaultOrder ? <Spinner data-icon="inline-start" /> : null}
               Gør til standard
             </AlertDialogAction>
           </AlertDialogFooter>

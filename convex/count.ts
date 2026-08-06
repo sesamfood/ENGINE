@@ -177,13 +177,11 @@ async function hasSubmittedCount(
 ) {
   const count = await ctx.db
     .query("counts")
-    .withIndex(
-      "by_organizationId_and_locationId_and_submittedAt",
-      (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("locationId", locationId)
-          .gt("submittedAt", 0),
+    .withIndex("by_organizationId_and_locationId_and_submittedAt", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("locationId", locationId)
+        .gt("submittedAt", 0),
     )
     .first();
   return count !== null;
@@ -225,12 +223,8 @@ async function activeProducts(
         .take(MAX_PRODUCTS + 1)
     : await ctx.db
         .query("products")
-        .withIndex(
-          "by_organizationId_and_status_and_normalizedName",
-          (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("status", "active"),
+        .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+          q.eq("organizationId", organizationId).eq("status", "active"),
         )
         .take(MAX_PRODUCTS + 1);
 
@@ -506,8 +500,7 @@ export const listCountProducts = query({
                     id: unit._id,
                     name: unit.name,
                     factorToDefault: row.factorToDefault,
-                    quantity:
-                      quantities.get(`${product._id}:${unit._id}`) ?? 0,
+                    quantity: quantities.get(`${product._id}:${unit._id}`) ?? 0,
                   },
                 ]
               : [];
@@ -682,10 +675,7 @@ export const submitCount = mutation({
           "En produkt-enhed er ændret. Opdatér count og prøv igen",
         );
       }
-      totals.set(
-        item.productId,
-        (totals.get(item.productId) ?? 0) + quantity,
-      );
+      totals.set(item.productId, (totals.get(item.productId) ?? 0) + quantity);
     }
     for (const [productId, quantity] of totals) {
       await setStock(
@@ -758,9 +748,7 @@ export const listLocationStock = query({
           productId: product._id,
           productName: product.name,
           categoryName:
-            category?.organizationId === organizationId
-              ? category.name
-              : null,
+            category?.organizationId === organizationId ? category.name : null,
           imageUrl,
           quantity: stock?.quantity ?? 0,
           defaultUnitName: defaultUnit.name,
