@@ -89,7 +89,7 @@ export async function setStock(
 
   if (current) {
     await ctx.db.patch("locationStock", current._id, next);
-    return;
+    return current;
   }
 
   await ctx.db.insert("locationStock", {
@@ -98,4 +98,5 @@ export async function setStock(
     productId,
     ...next,
   });
+  return null;
 }

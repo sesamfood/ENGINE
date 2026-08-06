@@ -5,9 +5,11 @@ import {
   organizationAccessControl,
   organizationRoles,
 } from "@/lib/auth-permissions";
+import { usernameClient } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
   plugins: [
+    usernameClient(),
     organizationClient({
       ac: organizationAccessControl,
       roles: organizationRoles,

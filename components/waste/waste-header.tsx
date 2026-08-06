@@ -40,7 +40,11 @@ function Controls({
   locationId,
   locations,
   organizationId,
-}: Omit<WasteContextValue, "resetToken"> & { organizationId?: string }) {
+  fixedLocationName,
+}: Omit<WasteContextValue, "resetToken"> & {
+  organizationId?: string;
+  fixedLocationName?: string;
+}) {
   const items =
     locations?.map((location) => ({ value: location.id, label: location.name })) ?? [];
   return (
@@ -53,7 +57,9 @@ function Controls({
       </div>
       <Field>
         <FieldLabel>Location</FieldLabel>
-        <Select
+        {fixedLocationName ? (
+          <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
+        ) : <Select
           items={items}
           value={locationId}
           onValueChange={(value) => {
@@ -77,7 +83,7 @@ function Controls({
               ))}
             </SelectGroup>
           </SelectContent>
-        </Select>
+        </Select>}
       </Field>
     </div>
   );
@@ -90,7 +96,10 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const locations = useQuery(api.locations.listLocationOptions);
-  const locationId = locations?.some((location) => location.id === storedLocationId)
+  const kiosk = useQuery(api.kiosk.getRuntimeContext);
+  const locationId = kiosk?.isKioskAccount
+    ? kiosk.locationId
+    : locations?.some((location) => location.id === storedLocationId)
     ? (storedLocationId as Id<"locations">)
     : (locations?.[0]?.id ?? null);
   const viewState = useQuery(
@@ -101,12 +110,12 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
   const [resetToken, setResetToken] = useState(0);
 
   useEffect(() => {
-    if (!organizationId || !locations) return;
+    if (!organizationId || !locations || kiosk?.isKioskAccount) return;
     if (!locations.some((location) => location.id === storedLocationId)) {
       setWasteLocation(organizationId, locations[0]?.id ?? null);
       setCountLocation(organizationId, locations[0]?.id ?? null);
     }
-  }, [locations, organizationId, storedLocationId]);
+  }, [kiosk?.isKioskAccount, locations, organizationId, storedLocationId]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() =>
@@ -116,6 +125,7 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (kiosk?.kioskModeEnabled) return;
     if (pathname.startsWith("/waste/bad-delivery")) return;
     const seconds = viewState?.settings.inactivitySeconds ?? 30;
     let timer = window.setTimeout(reset, seconds * 1000);
@@ -134,13 +144,14 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
       window.clearTimeout(timer);
       for (const event of events) window.removeEventListener(event, activity, true);
     };
-  }, [pathname, router, viewState?.settings.inactivitySeconds]);
+  }, [kiosk?.kioskModeEnabled, pathname, router, viewState?.settings.inactivitySeconds]);
 
   const controls = (
     <Controls
       locationId={locationId}
       locations={locations}
       organizationId={organizationId}
+      fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
     />
   );
 

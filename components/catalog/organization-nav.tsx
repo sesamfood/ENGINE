@@ -39,6 +39,8 @@ export function OrganizationHeader() {
               ? "Waste"
               : pathname.startsWith("/organization/users")
                 ? "Brugere"
+                : pathname.startsWith("/organization/sidebar")
+                  ? "Sidemenu"
                 : pathname === "/organization"
                   ? "Organisation"
                   : "Organisationens oplysninger";

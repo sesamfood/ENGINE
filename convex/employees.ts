@@ -7,7 +7,14 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  requireEmployeeViewer,
+  requireKioskDestination,
+  requireKioskLocation,
+  requireNormalOrganization,
+  requireOrganization,
+  requireOrganizationAdmin,
+} from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
 
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
@@ -126,7 +133,13 @@ export const getContext = query({
     manualSyncRetryAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganization(ctx);
+    const auth = await requireOrganization(ctx);
+    await requireKioskDestination(ctx, auth, [
+      "employees.schedule",
+      "employees.directory",
+      "waste.report",
+    ]);
+    const { organizationId } = auth;
     const [settings, integration, status, employee, shift, manualLimit] = await Promise.all([
       scheduleSettings(ctx, organizationId),
       ctx.db
@@ -198,7 +211,9 @@ export const listWeek = query({
     limitReached: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganization(ctx);
+    const auth = await requireEmployeeViewer(ctx, "employees.schedule");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     const monday = parseDate(args.weekStart);
     if (monday.getUTCDay() !== 1) {
       throw new ConvexError("Ugestarten skal være en mandag");
@@ -289,7 +304,9 @@ export const listDirectory = query({
   },
   returns: paginationResultValidator(employeeSummaryValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganization(ctx);
+    const auth = await requireEmployeeViewer(ctx, "employees.directory");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
     const location = await ctx.db.get("locations", args.locationId);
     if (location?.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
@@ -338,9 +355,16 @@ export const listDirectory = query({
                 .eq("employeeId", employee._id),
           )
           .unique();
-        return assignment
-          ? await hydrateEmployee(ctx, organizationId, employee)
-          : null;
+        if (!assignment) return null;
+        const hydrated = await hydrateEmployee(ctx, organizationId, employee);
+        return auth.isKioskAccount
+          ? {
+              ...hydrated,
+              locations: hydrated.locations.filter(
+                (item) => item.id === args.locationId,
+              ),
+            }
+          : hydrated;
       }),
     );
     return { ...result, page: page.filter((employee) => employee !== null) };
@@ -385,7 +409,7 @@ export const requestWorkfeedSync = mutation({
     retryAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganization(ctx);
+    const { organizationId } = await requireNormalOrganization(ctx);
     const [integration, status] = await Promise.all([
       ctx.db
         .query("workfeedIntegrations")

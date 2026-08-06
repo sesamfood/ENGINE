@@ -3,7 +3,7 @@
  * To regenerate the schema, from your project root:
  *
  *   cd convex/betterAuth
- *   npx @better-auth/cli@latest generate --output generatedSchema.ts
+ *   npx auth generate --output generatedSchema.ts
  *
  * To customize the schema, generate to an alternate file and import
  * the table definitions to your schema file. See
@@ -21,11 +21,14 @@ export const tables = {
     image: v.optional(v.union(v.null(), v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
+    username: v.optional(v.union(v.null(), v.string())),
+    displayUsername: v.optional(v.union(v.null(), v.string())),
     userId: v.optional(v.union(v.null(), v.string())),
   })
     .index("email_name", ["email","name"])
     .index("name", ["name"])
-    .index("userId", ["userId"]),
+    .index("userId", ["userId"])
+    .index("username", ["username"]),
   session: defineTable({
     expiresAt: v.number(),
     token: v.string(),
@@ -35,6 +38,8 @@ export const tables = {
     userAgent: v.optional(v.union(v.null(), v.string())),
     userId: v.string(),
     activeOrganizationId: v.optional(v.union(v.null(), v.string())),
+    isKioskAccount: v.optional(v.union(v.null(), v.boolean())),
+    kioskModeEnabled: v.optional(v.union(v.null(), v.boolean())),
   })
     .index("expiresAt", ["expiresAt"])
     .index("expiresAt_userId", ["expiresAt","userId"])
@@ -81,6 +86,7 @@ export const tables = {
     userId: v.string(),
     role: v.string(),
     createdAt: v.number(),
+    kioskLocationId: v.optional(v.union(v.null(), v.string())),
   })
     .index("organizationId", ["organizationId"])
     .index("userId", ["userId"])

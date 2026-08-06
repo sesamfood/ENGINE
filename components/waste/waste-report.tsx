@@ -138,6 +138,7 @@ function message(error: unknown) {
 export function WasteReport() {
   const convex = useConvex();
   const membership = authClient.useActiveMemberRole();
+  const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const { locations } = useWasteContext();
   const now = new Date();
   const [from, setFrom] = useState(() => dateValue(new Date(now.getFullYear(), now.getMonth(), 1)));
@@ -147,7 +148,7 @@ export function WasteReport() {
   const [confirming, setConfirming] = useState(false);
   const [exporting, setExporting] = useState(false);
   const voidWaste = useMutation(api.waste.voidWasteRegistration);
-  const canReport = canViewWasteReports(membership.data?.role);
+  const canReport = canViewWasteReports(membership.data?.role) || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.report"));
   const reportContext = useQuery(api.employees.getContext, canReport ? {} : "skip");
   const timeZone = reportContext?.timeZone ?? "Europe/Copenhagen";
   const formatter = useMemo(
@@ -255,7 +256,7 @@ export function WasteReport() {
         <CardContent className="grid gap-4 pt-4 sm:grid-cols-3">
           <Field><FieldLabel htmlFor="waste-from">Fra</FieldLabel><Input id="waste-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
           <Field><FieldLabel htmlFor="waste-to">Til</FieldLabel><Input id="waste-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></Field>
-          <Field><FieldLabel>Location</FieldLabel><Select value={location} onValueChange={(value) => setLocation(value ?? "all")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">Alle locations</SelectItem>{locations?.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+          <Field><FieldLabel>Location</FieldLabel>{kiosk?.isKioskAccount ? <div className="flex h-10 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div> : <Select value={location} onValueChange={(value) => setLocation(value ?? "all")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">Alle locations</SelectItem>{locations?.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectGroup></SelectContent></Select>}</Field>
         </CardContent>
       </Card>
       {!rangeValid ? <Alert variant="destructive"><AlertTitle>Ugyldig periode</AlertTitle><AlertDescription>Fra-dato skal være før eller samme dag som til-dato.</AlertDescription></Alert> : null}

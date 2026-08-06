@@ -31,10 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
@@ -233,9 +230,7 @@ export function LocationStock() {
                   <TableCell className="font-medium">
                     {row.productName}
                   </TableCell>
-                  <TableCell>
-                    {row.categoryName ?? "Uden kategori"}
-                  </TableCell>
+                  <TableCell>{row.categoryName ?? "Uden kategori"}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatStockQuantity(
                       row.quantity,

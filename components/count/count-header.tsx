@@ -51,6 +51,7 @@ function CountHeaderControls({
   locationItems,
   organizationId,
   periodKey,
+  fixedLocationName,
 }: {
   locationId: Id<"locations"> | null;
   locations:
@@ -59,6 +60,7 @@ function CountHeaderControls({
   locationItems: Array<{ value: Id<"locations">; label: string }>;
   organizationId: string | undefined;
   periodKey: string | undefined;
+  fixedLocationName?: string;
 }) {
   return (
     <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
@@ -80,7 +82,9 @@ function CountHeaderControls({
 
       <Field>
         <FieldLabel>Location</FieldLabel>
-        <Select
+        {fixedLocationName ? (
+          <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
+        ) : <Select
           items={locationItems}
           value={locationId}
           onValueChange={(value) => {
@@ -103,7 +107,7 @@ function CountHeaderControls({
               ))}
             </SelectGroup>
           </SelectContent>
-        </Select>
+        </Select>}
       </Field>
     </div>
   );
@@ -115,6 +119,7 @@ export function CountHeader() {
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
   const locations = useQuery(api.locations.listLocationOptions);
+  const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const [now, setNow] = useState(() => Date.now());
   const [desktopTarget, setDesktopTarget] = useState<HTMLElement | null>(null);
 
@@ -131,16 +136,18 @@ export function CountHeader() {
   }, []);
 
   useEffect(() => {
-    if (!organizationId || !locations) return;
+    if (!organizationId || !locations || kiosk?.isKioskAccount) return;
     const valid = locations.some(
       (location) => location.id === storedLocationId,
     );
     if (!valid) {
       setCountLocation(organizationId, locations[0]?.id ?? null);
     }
-  }, [locations, organizationId, storedLocationId]);
+  }, [kiosk?.isKioskAccount, locations, organizationId, storedLocationId]);
 
-  const locationId = locations?.some(
+  const locationId = kiosk?.isKioskAccount
+    ? kiosk.locationId
+    : locations?.some(
     (location) => location.id === storedLocationId,
   )
     ? (storedLocationId as Id<"locations">)
@@ -171,6 +178,7 @@ export function CountHeader() {
           locationItems={locationItems}
           organizationId={organizationId}
           periodKey={state?.periodKey}
+          fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
         />
       </header>
       {desktopTarget
@@ -181,6 +189,7 @@ export function CountHeader() {
               locationItems={locationItems}
               organizationId={organizationId}
               periodKey={state?.periodKey}
+              fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
             />,
             desktopTarget,
           )

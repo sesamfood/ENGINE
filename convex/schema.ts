@@ -68,10 +68,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ])
+    .index("by_organizationId_and_locationId", ["organizationId", "locationId"])
     .index("by_organizationId_and_departmentId", [
       "organizationId",
       "departmentId",
@@ -113,10 +110,7 @@ export default defineSchema({
     locationId: v.id("locations"),
     updatedAt: v.number(),
   })
-    .index("by_organizationId_and_employeeId", [
-      "organizationId",
-      "employeeId",
-    ])
+    .index("by_organizationId_and_employeeId", ["organizationId", "employeeId"])
     .index("by_organizationId_and_locationId_and_employeeId", [
       "organizationId",
       "locationId",
@@ -184,10 +178,7 @@ export default defineSchema({
       "allowanceId",
       "productId",
     ])
-    .index("by_organizationId_and_productId", [
-      "organizationId",
-      "productId",
-    ]),
+    .index("by_organizationId_and_productId", ["organizationId", "productId"]),
 
   staffFoodSessions: defineTable({
     organizationId: v.string(),
@@ -206,10 +197,13 @@ export default defineSchema({
       "organizationId",
       "scheduledShiftId",
     ])
-    .index(
-      "by_org_location_employee_date_source",
-      ["organizationId", "locationId", "employeeId", "workDate", "source"],
-    ),
+    .index("by_org_location_employee_date_source", [
+      "organizationId",
+      "locationId",
+      "employeeId",
+      "workDate",
+      "source",
+    ]),
 
   staffFoodRegistrations: defineTable({
     organizationId: v.string(),
@@ -240,19 +234,18 @@ export default defineSchema({
     voidedBy: v.optional(v.string()),
     voidedByName: v.optional(v.string()),
   })
-    .index("by_organizationId_and_checkoutId", [
-      "organizationId",
-      "checkoutId",
-    ])
+    .index("by_organizationId_and_checkoutId", ["organizationId", "checkoutId"])
     .index("by_organizationId_and_sessionId_and_registeredAt", [
       "organizationId",
       "sessionId",
       "registeredAt",
     ])
-    .index(
-      "by_organizationId_and_sessionId_and_status_and_categoryId",
-      ["organizationId", "sessionId", "status", "categoryId"],
-    )
+    .index("by_organizationId_and_sessionId_and_status_and_categoryId", [
+      "organizationId",
+      "sessionId",
+      "status",
+      "categoryId",
+    ])
     .index("by_organizationId_and_registeredAt", [
       "organizationId",
       "registeredAt",
@@ -352,10 +345,16 @@ export default defineSchema({
     organizationId: v.string(),
     name: v.string(),
     normalizedName: v.string(),
-  }).index("by_organizationId_and_normalizedName", [
-    "organizationId",
-    "normalizedName",
-  ]),
+    parentCategoryId: v.optional(v.id("categories")),
+  })
+    .index("by_organizationId_and_normalizedName", [
+      "organizationId",
+      "normalizedName",
+    ])
+    .index("by_organizationId_and_parentCategoryId", [
+      "organizationId",
+      "parentCategoryId",
+    ]),
 
   units: defineTable({
     organizationId: v.string(),
@@ -496,7 +495,10 @@ export default defineSchema({
     unitName: v.string(),
     quantity: v.number(),
     factorToDefault: v.optional(v.number()),
-  }).index("by_organizationId_and_transferId", ["organizationId", "transferId"]),
+  }).index("by_organizationId_and_transferId", [
+    "organizationId",
+    "transferId",
+  ]),
 
   wasteSettings: defineTable({
     organizationId: v.string(),
@@ -543,63 +545,49 @@ export default defineSchema({
     voidedBy: v.optional(v.string()),
     voidedByName: v.optional(v.string()),
   })
-    .index("by_org_and_time", [
-      "organizationId",
-      "registeredAt",
-    ])
+    .index("by_org_and_time", ["organizationId", "registeredAt"])
     .index("by_org_location_time", [
       "organizationId",
       "locationId",
       "registeredAt",
     ])
-    .index("by_org_status_time", [
-      "organizationId",
-      "status",
-      "registeredAt",
-    ])
+    .index("by_org_status_time", ["organizationId", "status", "registeredAt"])
     .index("by_org_location_status_time", [
       "organizationId",
       "locationId",
       "status",
       "registeredAt",
     ])
-    .index(
-      "by_org_location_product_status_time",
-      [
-        "organizationId",
-        "locationId",
-        "productId",
-        "status",
-        "registeredAt",
-      ],
-    )
-    .index(
-      "by_org_location_product_unit_qty_status_time",
-      [
-        "organizationId",
-        "locationId",
-        "productId",
-        "unitId",
-        "quantityKey",
-        "status",
-        "registeredAt",
-      ],
-    )
-    .index(
-      "by_org_product_status_time",
-      ["organizationId", "productId", "status", "registeredAt"],
-    )
-    .index(
-      "by_org_product_unit_qty_status_time",
-      [
-        "organizationId",
-        "productId",
-        "unitId",
-        "quantityKey",
-        "status",
-        "registeredAt",
-      ],
-    ),
+    .index("by_org_location_product_status_time", [
+      "organizationId",
+      "locationId",
+      "productId",
+      "status",
+      "registeredAt",
+    ])
+    .index("by_org_location_product_unit_qty_status_time", [
+      "organizationId",
+      "locationId",
+      "productId",
+      "unitId",
+      "quantityKey",
+      "status",
+      "registeredAt",
+    ])
+    .index("by_org_product_status_time", [
+      "organizationId",
+      "productId",
+      "status",
+      "registeredAt",
+    ])
+    .index("by_org_product_unit_qty_status_time", [
+      "organizationId",
+      "productId",
+      "unitId",
+      "quantityKey",
+      "status",
+      "registeredAt",
+    ]),
 
   badDeliveries: defineTable({
     organizationId: v.string(),
@@ -715,18 +703,24 @@ export default defineSchema({
       "locationId",
       "productId",
     ])
-    .index(
-      "by_org_location_all_count",
-      ["organizationId", "locationId", "allTimeCount", "lastRegisteredAt"],
-    )
-    .index(
-      "by_org_location_30_count",
-      ["organizationId", "locationId", "count30Days", "lastRegisteredAt"],
-    )
-    .index(
-      "by_org_location_90_count",
-      ["organizationId", "locationId", "count90Days", "lastRegisteredAt"],
-    ),
+    .index("by_org_location_all_count", [
+      "organizationId",
+      "locationId",
+      "allTimeCount",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_location_30_count", [
+      "organizationId",
+      "locationId",
+      "count30Days",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_location_90_count", [
+      "organizationId",
+      "locationId",
+      "count90Days",
+      "lastRegisteredAt",
+    ]),
 
   wasteAmountStats: defineTable({
     organizationId: v.string(),
@@ -741,40 +735,34 @@ export default defineSchema({
     lastRegisteredAt: v.number(),
   })
     .index("by_org_product", ["organizationId", "productId"])
-    .index(
-      "by_org_location_product_unit_qty",
-      ["organizationId", "locationId", "productId", "unitId", "quantityKey"],
-    )
-    .index(
-      "by_org_location_product_all_count",
-      [
-        "organizationId",
-        "locationId",
-        "productId",
-        "allTimeCount",
-        "lastRegisteredAt",
-      ],
-    )
-    .index(
-      "by_org_location_product_30_count",
-      [
-        "organizationId",
-        "locationId",
-        "productId",
-        "count30Days",
-        "lastRegisteredAt",
-      ],
-    )
-    .index(
-      "by_org_location_product_90_count",
-      [
-        "organizationId",
-        "locationId",
-        "productId",
-        "count90Days",
-        "lastRegisteredAt",
-      ],
-    ),
+    .index("by_org_location_product_unit_qty", [
+      "organizationId",
+      "locationId",
+      "productId",
+      "unitId",
+      "quantityKey",
+    ])
+    .index("by_org_location_product_all_count", [
+      "organizationId",
+      "locationId",
+      "productId",
+      "allTimeCount",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_location_product_30_count", [
+      "organizationId",
+      "locationId",
+      "productId",
+      "count30Days",
+      "lastRegisteredAt",
+    ])
+    .index("by_org_location_product_90_count", [
+      "organizationId",
+      "locationId",
+      "productId",
+      "count90Days",
+      "lastRegisteredAt",
+    ]),
 
   wasteOrganizationProductStats: defineTable({
     organizationId: v.string(),
@@ -918,10 +906,18 @@ export default defineSchema({
       "productId",
       "unitId",
     ])
-    .index("by_organizationId_and_productId", [
-      "organizationId",
-      "productId",
-    ]),
+    .index("by_organizationId_and_productId", ["organizationId", "productId"]),
+
+  countReconciliationItems: defineTable({
+    organizationId: v.string(),
+    countId: v.id("counts"),
+    productId: v.id("products"),
+    productName: v.string(),
+    defaultUnitName: v.string(),
+    expectedQuantity: v.number(),
+    countedQuantity: v.number(),
+    expectedSinceAt: v.number(),
+  }).index("by_organizationId_and_countId", ["organizationId", "countId"]),
 
   locationStock: defineTable({
     organizationId: v.string(),
@@ -936,8 +932,19 @@ export default defineSchema({
       "locationId",
       "productId",
     ])
-    .index("by_organizationId_and_productId", [
-      "organizationId",
-      "productId",
-    ]),
+    .index("by_organizationId_and_productId", ["organizationId", "productId"]),
+
+  kioskSettings: defineTable({
+    organizationId: v.string(),
+    enabledPages: v.array(v.string()),
+    homePage: v.string(),
+    inactivitySeconds: v.union(v.number(), v.null()),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
+  sidebarSettings: defineTable({
+    organizationId: v.string(),
+    itemOrder: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
 });

@@ -13,6 +13,7 @@ import {
   UsersRoundIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -58,13 +59,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import {
-  setEmployeeLocation,
-  setEmployeeTab,
-  useEmployeeLocation,
-  useEmployeeTab,
-  type EmployeeTab,
-} from "@/lib/employee-prefs";
+import { setEmployeeLocation, useEmployeeLocation } from "@/lib/employee-prefs";
 import { cn } from "@/lib/utils";
 
 function initials(name: string) {
@@ -327,11 +322,14 @@ function DirectoryTab({
 
 export function EmployeeScheduling() {
   const organization = authClient.useActiveOrganization();
+  const pathname = usePathname();
+  const router = useRouter();
   const organizationId = organization.data?.id;
   const context = useQuery(api.employees.getContext);
   const locations = useQuery(api.locations.listLocationOptions);
+  const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const requestSync = useMutation(api.employees.requestWorkfeedSync);
-  const selectedTab = useEmployeeTab(organizationId);
+  const selectedTab = pathname === "/employees/directory" ? "directory" : "schedule";
   const storedLocationId = useEmployeeLocation(organizationId);
   const [syncing, setSyncing] = useState(false);
   const [retryAt, setRetryAt] = useState<number | null>(null);
@@ -362,7 +360,9 @@ export function EmployeeScheduling() {
   if (!context || !locations) return <div className="flex flex-col gap-5"><Skeleton className="h-24 w-full" /><Skeleton className="h-96 w-full" /></div>;
   const effectiveRetryAt = retryAt ?? context.manualSyncRetryAt;
   const cooldown = effectiveRetryAt !== null && effectiveRetryAt > now;
-  const activeLocationId = locations.some((location) => location.id === storedLocationId)
+  const activeLocationId = kiosk?.isKioskAccount
+    ? kiosk.locationId
+    : locations.some((location) => location.id === storedLocationId)
     ? (storedLocationId as Id<"locations">)
     : (locations[0]?.id ?? null);
   const lastSync = context.lastShiftSyncAt ?? context.lastEmployeeSyncAt;
@@ -375,7 +375,9 @@ export function EmployeeScheduling() {
       </div>
       <Field>
         <FieldLabel>Location</FieldLabel>
-        <Select
+        {kiosk?.isKioskAccount ? (
+          <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{kiosk.locationName}</div>
+        ) : <Select
           items={locations.map((location) => ({ value: location.id, label: location.name }))}
           value={activeLocationId}
           onValueChange={(value) => {
@@ -390,16 +392,18 @@ export function EmployeeScheduling() {
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup>
           </SelectContent>
-        </Select>
+        </Select>}
       </Field>
     </div>
   );
-  const syncButton = context.workfeedEnabled ? (
+  const syncButton = context.workfeedEnabled && !kiosk?.kioskModeEnabled ? (
     <Button size="lg" variant="outline" disabled={queued || syncing || cooldown} onClick={() => void request()}>
       {queued || syncing ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
       {queued ? "Synkroniserer" : "Synkronisér nu"}
     </Button>
   ) : null;
+  const showSchedule = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("employees.schedule");
+  const showDirectory = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("employees.directory");
   return (
     <main className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
       <header className="md:hidden">{header}</header>
@@ -411,7 +415,7 @@ export function EmployeeScheduling() {
         : stale ? <Alert><Clock3Icon /><AlertTitle>Data kan være forældede</AlertTitle><AlertDescription>Den seneste automatiske synkronisering er ældre end forventet. De senest hentede data vises fortsat.</AlertDescription></Alert> : null}
 
       {!context.hasCachedEmployees ? <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><UsersRoundIcon /></EmptyMedia><EmptyTitle>Ingen medarbejderdata endnu</EmptyTitle><EmptyDescription>{context.workfeedEnabled ? "Start en synkronisering for at hente medarbejdere og offentliggjorte vagter." : "Medarbejdere vises her, når en integration har leveret den første synkronisering."}</EmptyDescription></EmptyHeader>{syncButton ? <EmptyContent>{syncButton}</EmptyContent> : null}</Empty>
-        : <Tabs value={selectedTab} onValueChange={(value) => organizationId && setEmployeeTab(organizationId, value as EmployeeTab)}><TabsList className="w-full"><TabsTrigger value="schedule" className="px-5">Vagtplan</TabsTrigger><TabsTrigger value="directory" className="px-5">Medarbejdere</TabsTrigger></TabsList><TabsContent value="schedule" className="pt-3"><ScheduleTab locationId={activeLocationId} hasLocations={Boolean(locations.length)} syncButton={syncButton} timeZone={context.timeZone} /></TabsContent><TabsContent value="directory" className="pt-3"><DirectoryTab locationId={activeLocationId} syncButton={syncButton} /></TabsContent></Tabs>}
+        : <Tabs value={selectedTab} onValueChange={(value) => router.push(value === "directory" ? "/employees/directory" : "/employees")}><TabsList className="w-full">{showSchedule ? <TabsTrigger value="schedule" className="px-5">Vagtplan</TabsTrigger> : null}{showDirectory ? <TabsTrigger value="directory" className="px-5">Medarbejdere</TabsTrigger> : null}</TabsList>{showSchedule ? <TabsContent value="schedule" className="pt-3"><ScheduleTab locationId={activeLocationId} hasLocations={Boolean(locations.length)} syncButton={syncButton} timeZone={context.timeZone} /></TabsContent> : null}{showDirectory ? <TabsContent value="directory" className="pt-3"><DirectoryTab locationId={activeLocationId} syncButton={syncButton} /></TabsContent> : null}</Tabs>}
     </main>
   );
 }

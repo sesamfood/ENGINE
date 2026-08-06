@@ -10,16 +10,16 @@ crons.interval(
   {},
 );
 
-crons.interval(
+crons.cron(
   "synchronize Workfeed shifts",
-  { minutes: 15 },
+  "5,20,35,50 * * * *",
   internal.workfeedSync.dispatchEnabledIntegrations,
   { kind: "shifts", cursor: null },
 );
 
-crons.interval(
+crons.cron(
   "synchronize Workfeed employees",
-  { hours: 6 },
+  "0 */6 * * *",
   internal.workfeedSync.dispatchEnabledIntegrations,
   { kind: "employees", cursor: null },
 );
