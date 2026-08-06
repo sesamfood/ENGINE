@@ -31,6 +31,7 @@ const MAX_PRODUCTS = 500;
 const MAX_CHILD_ROWS = 200;
 const MAX_REBUILD_ROWS = 1_000;
 const MAX_QUANTITY = 1_000_000;
+const MIN_PRODUCT_HISTORY = 20;
 const UNDO_WINDOW_MS = 30_000;
 const DAYS_30_MS = 30 * 24 * 60 * 60 * 1000;
 const DAYS_90_MS = 90 * 24 * 60 * 60 * 1000;
@@ -244,16 +245,19 @@ async function organizationAmountStats(
     .unique();
 }
 
-type AmountStat = {
-  unitId: Id<"units">;
-  quantity: number;
+type PeriodCounts = {
   allTimeCount: number;
   count30Days: number;
   count90Days: number;
+};
+
+type AmountStat = PeriodCounts & {
+  unitId: Id<"units">;
+  quantity: number;
   lastRegisteredAt: number;
 };
 
-function countForPeriod(row: AmountStat, period: PopularityPeriod) {
+function countForPeriod(row: PeriodCounts, period: PopularityPeriod) {
   return period === "30Days"
     ? row.count30Days
     : period === "90Days"
@@ -925,31 +929,8 @@ export const getViewState = query({
     requireKioskLocation(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
-    const stats = settings.historyScope === "organization"
+    const locationStats = settings.historyScope === "location"
       ? settings.popularityPeriod === "30Days"
-        ? await ctx.db
-            .query("wasteOrganizationProductStats")
-            .withIndex("by_org_30_count", (q) =>
-              q.eq("organizationId", organizationId),
-            )
-            .order("desc")
-            .take(MAX_PRODUCTS)
-        : settings.popularityPeriod === "90Days"
-          ? await ctx.db
-              .query("wasteOrganizationProductStats")
-              .withIndex("by_org_90_count", (q) =>
-                q.eq("organizationId", organizationId),
-              )
-              .order("desc")
-              .take(MAX_PRODUCTS)
-          : await ctx.db
-              .query("wasteOrganizationProductStats")
-              .withIndex("by_org_all_count", (q) =>
-                q.eq("organizationId", organizationId),
-              )
-              .order("desc")
-              .take(MAX_PRODUCTS)
-      : settings.popularityPeriod === "30Days"
         ? await ctx.db
             .query("wasteProductStats")
             .withIndex("by_org_location_30_count", (q) =>
@@ -977,7 +958,54 @@ export const getViewState = query({
                   .eq("locationId", args.locationId),
               )
               .order("desc")
-              .take(MAX_PRODUCTS);
+              .take(MAX_PRODUCTS)
+      : null;
+    const organizationStats = settings.popularityPeriod === "30Days"
+      ? await ctx.db
+          .query("wasteOrganizationProductStats")
+          .withIndex("by_org_30_count", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .order("desc")
+          .take(MAX_PRODUCTS)
+      : settings.popularityPeriod === "90Days"
+        ? await ctx.db
+            .query("wasteOrganizationProductStats")
+            .withIndex("by_org_90_count", (q) =>
+              q.eq("organizationId", organizationId),
+            )
+            .order("desc")
+            .take(MAX_PRODUCTS)
+        : await ctx.db
+            .query("wasteOrganizationProductStats")
+            .withIndex("by_org_all_count", (q) =>
+              q.eq("organizationId", organizationId),
+            )
+            .order("desc")
+            .take(MAX_PRODUCTS);
+    const locationByProduct = new Map(
+      (locationStats ?? []).map((row) => [row.productId, row]),
+    );
+    const organizationProductIds = new Set(
+      organizationStats.map((row) => row.productId),
+    );
+    const stats = settings.historyScope === "organization"
+      ? organizationStats
+      : [
+          ...organizationStats.map((organizationRow) => {
+            const locationRow = locationByProduct.get(
+              organizationRow.productId,
+            );
+            return locationRow &&
+              countForPeriod(locationRow, settings.popularityPeriod) >=
+                MIN_PRODUCT_HISTORY
+              ? locationRow
+              : organizationRow;
+          }),
+          ...(locationStats ?? []).filter(
+            (row) => !organizationProductIds.has(row.productId),
+          ),
+        ];
     const configs = await ctx.db
       .query("wasteProductConfigs")
       .withIndex("by_org_location_pinned", (q) =>
