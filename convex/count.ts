@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import {
   requireCatalogManager,
   requireCounter,
@@ -81,6 +81,15 @@ const locationStockValidator = v.object({
     }),
   ),
   lastCountedAt: v.union(v.number(), v.null()),
+});
+
+const reconciliationRowValidator = v.object({
+  productId: v.id("products"),
+  productName: v.string(),
+  defaultUnitName: v.string(),
+  expectedQuantity: v.number(),
+  countedQuantity: v.number(),
+  expectedSinceAt: v.number(),
 });
 
 type CountContext = QueryCtx | MutationCtx;
@@ -678,7 +687,7 @@ export const submitCount = mutation({
       totals.set(item.productId, (totals.get(item.productId) ?? 0) + quantity);
     }
     for (const [productId, quantity] of totals) {
-      await setStock(
+      const previousStock = await setStock(
         ctx,
         organizationId,
         args.locationId,
@@ -686,6 +695,32 @@ export const submitCount = mutation({
         quantity,
         now,
       );
+      if (previousStock?.lastCountedAt) {
+        const product = await ctx.db.get("products", productId);
+        const defaultUnit = product
+          ? await ctx.db.get("units", product.defaultUnitId)
+          : null;
+        if (
+          !product ||
+          product.organizationId !== organizationId ||
+          !defaultUnit ||
+          defaultUnit.organizationId !== organizationId
+        ) {
+          throw new ConvexError(
+            "Produktet eller standardenheden blev ikke fundet",
+          );
+        }
+        await ctx.db.insert("countReconciliationItems", {
+          organizationId,
+          countId: count._id,
+          productId,
+          productName: product.name,
+          defaultUnitName: defaultUnit.name,
+          expectedQuantity: previousStock.quantity,
+          countedQuantity: quantity,
+          expectedSinceAt: previousStock.lastCountedAt,
+        });
+      }
     }
     await ctx.db.patch("counts", count._id, {
       status: "submitted",
@@ -693,6 +728,59 @@ export const submitCount = mutation({
       submittedByName: userName,
     });
     return null;
+  },
+});
+
+export const getWasteReportContext = internalQuery({
+  args: { countId: v.id("counts") },
+  returns: v.object({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    submittedAt: v.number(),
+    rows: v.array(reconciliationRowValidator),
+  }),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    const count = await ctx.db.get("counts", args.countId);
+    if (
+      !count ||
+      count.organizationId !== auth.organizationId ||
+      count.status !== "submitted" ||
+      !count.submittedAt
+    ) {
+      throw new ConvexError("Den registrerede count blev ikke fundet");
+    }
+    requireKioskLocation(auth, count.locationId);
+    const location = await requireLocation(
+      ctx,
+      auth.organizationId,
+      count.locationId,
+    );
+    const rows = await ctx.db
+      .query("countReconciliationItems")
+      .withIndex("by_organizationId_and_countId", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("countId", count._id),
+      )
+      .take(MAX_PRODUCTS + 1);
+    if (rows.length > MAX_PRODUCTS) {
+      throw new ConvexError("Count har for mange produkter");
+    }
+
+    return {
+      organizationId: auth.organizationId,
+      locationId: location._id,
+      locationName: location.name,
+      submittedAt: count.submittedAt,
+      rows: rows.map((row) => ({
+        productId: row.productId,
+        productName: row.productName,
+        defaultUnitName: row.defaultUnitName,
+        expectedQuantity: row.expectedQuantity,
+        countedQuantity: row.countedQuantity,
+        expectedSinceAt: row.expectedSinceAt,
+      })),
+    };
   },
 });
 

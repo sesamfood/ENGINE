@@ -17,9 +17,10 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   BoxesIcon,
+  DownloadIcon,
   GripVerticalIcon,
   ListRestartIcon,
   LockKeyholeIcon,
@@ -98,6 +99,7 @@ import {
   useCountLocation,
   useCountOrder,
 } from "@/lib/count-prefs";
+import { downloadCsv } from "@/lib/download-csv";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
 
@@ -777,11 +779,15 @@ export function CountSheet() {
   const [orderBuilderOpen, setOrderBuilderOpen] = useState(false);
   const [savingDefaultOrder, setSavingDefaultOrder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const pendingValues = useRef(new Map<string, QuantityPayload>());
   const timers = useRef(new Map<string, number>());
   const inFlight = useRef(new Map<string, Promise<null>>());
   const setQuantity = useMutation(api.count.setCountQuantity);
   const submitCount = useMutation(api.count.submitCount);
+  const exportCountWasteReport = useAction(
+    api.onlinePos.exportCountWasteReport,
+  );
   const setDefaultOrder = useMutation(api.count.setCountProductOrder);
   const locations = useQuery(api.locations.listLocationOptions);
   const locationId = locations?.some(
@@ -1026,6 +1032,64 @@ export function CountSheet() {
     }
   }
 
+  async function exportWasteReport() {
+    if (!state?.count?.id) return;
+    setExporting(true);
+    try {
+      const report = await exportCountWasteReport({ countId: state.count.id });
+      if (!report.hasBaseline) {
+        toast.error("Spildrapporten kræver en tidligere registreret count");
+        return;
+      }
+      if (report.rows.length === 0) {
+        toast.success("Der er ingen lagerafvigelser i denne count");
+        return;
+      }
+      const registeredAt = new Intl.DateTimeFormat("da-DK", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(report.submittedAt);
+      const fileDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Europe/Copenhagen",
+      }).format(report.submittedAt);
+      downloadCsv(
+        `spildrapport-${fileDate}.csv`,
+        [
+          "Location",
+          "Count registreret",
+          "Produkt",
+          "Forventet beholdning før salg",
+          "Salg",
+          "Optalt beholdning",
+          "Spild",
+          "Enhed",
+        ],
+        report.rows
+          .toSorted((a, b) => b.wasteQuantity - a.wasteQuantity)
+          .map((row) => [
+            report.locationName,
+            registeredAt,
+            row.productName,
+            String(row.expectedQuantity).replace(".", ","),
+            String(row.salesQuantity).replace(".", ","),
+            String(row.countedQuantity).replace(".", ","),
+            String(row.wasteQuantity).replace(".", ","),
+            row.defaultUnitName,
+          ]),
+      );
+      toast.success("Spildrapporten er klar");
+      if (!report.salesIncluded) {
+        toast.warning(
+          "OnlinePOS-salg er ikke med, fordi lokationen ikke er forbundet",
+        );
+      }
+    } catch (error) {
+      toast.error(messageFrom(error));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (!locations) return <CountSkeleton />;
 
   if (locations.length === 0) {
@@ -1251,18 +1315,36 @@ export function CountSheet() {
                 </span>
               </Badge>
             ) : null}
-            <UnavailableTooltip reason={disabledReason}>
+            {state?.count?.status === "submitted" ? (
               <Button
                 type="button"
                 size="lg"
+                variant="outline"
                 className="min-h-11 shrink-0 px-4 sm:px-6"
-                disabled={Boolean(disabledReason) || submitting}
-                onClick={() => setConfirmOpen(true)}
+                disabled={exporting}
+                onClick={() => void exportWasteReport()}
               >
-                {submitting ? <Spinner data-icon="inline-start" /> : null}
-                Registrér count
+                {exporting ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <DownloadIcon data-icon="inline-start" />
+                )}
+                Eksportér spild
               </Button>
-            </UnavailableTooltip>
+            ) : (
+              <UnavailableTooltip reason={disabledReason}>
+                <Button
+                  type="button"
+                  size="lg"
+                  className="min-h-11 shrink-0 px-4 sm:px-6"
+                  disabled={Boolean(disabledReason) || submitting}
+                  onClick={() => setConfirmOpen(true)}
+                >
+                  {submitting ? <Spinner data-icon="inline-start" /> : null}
+                  Registrér count
+                </Button>
+              </UnavailableTooltip>
+            )}
           </div>
         }
       />

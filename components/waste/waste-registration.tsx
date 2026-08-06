@@ -123,6 +123,7 @@ function shortcutsFor(
   const result = (override ?? learned ?? []).filter(
     (shortcut) => valid.has(shortcut.unitId) && shortcut.quantity > 0,
   );
+  if (override) return result.slice(0, 2);
   for (const quantity of [1, 0.5]) {
     if (result.length === 2) break;
     if (
@@ -157,9 +158,7 @@ export function WasteRegistration() {
   const [quantity, setQuantity] = useState("1");
   const [unitId, setUnitId] = useState<Id<"units"> | null>(null);
   const [editingShortcuts, setEditingShortcuts] = useState(false);
-  const [shortcutDrafts, setShortcutDrafts] = useState<
-    [Shortcut, Shortcut] | null
-  >(null);
+  const [shortcutDrafts, setShortcutDrafts] = useState<Shortcut[] | null>(null);
   const [recent, setRecent] = useState<string | null>(null);
   const [undoRegistrations, setUndoRegistrations] = useState<
     UndoRegistration[]
@@ -247,7 +246,7 @@ export function WasteRegistration() {
     setSelectedId(product.id);
     setQuantity(String(shortcuts[0]?.quantity ?? 1));
     setUnitId(shortcuts[0]?.unitId ?? product.defaultUnitId);
-    setShortcutDrafts([shortcuts[0], shortcuts[1]] as [Shortcut, Shortcut]);
+    setShortcutDrafts(shortcuts);
     setEditingShortcuts(false);
   }
 
@@ -349,7 +348,7 @@ export function WasteRegistration() {
         (item) => !Number.isFinite(item.quantity) || item.quantity <= 0,
       )
     ) {
-      toast.error("Begge mængder skal være større end 0");
+      toast.error("Alle mængder skal være større end 0");
       return;
     }
     try {
@@ -552,7 +551,7 @@ export function WasteRegistration() {
                 <DialogTitle>{selected.name}</DialogTitle>
                 <DialogDescription>
                   {editingShortcuts
-                    ? "Vælg de to mængder, der skal vises som shortcuts på produktkortet."
+                    ? "Vælg en eller to mængder, der skal vises som shortcuts på produktkortet."
                     : "Angiv den mængde, der er blevet kasseret."}
                 </DialogDescription>
               </DialogHeader>
@@ -573,7 +572,7 @@ export function WasteRegistration() {
                 )}
               </div>
               {editingShortcuts && shortcutDrafts ? (
-                <div className="grid gap-4">
+                <FieldGroup className="gap-4">
                   {shortcutDrafts.map((shortcut, index) => (
                     <div
                       key={index}
@@ -590,10 +589,7 @@ export function WasteRegistration() {
                           step="any"
                           value={shortcut.quantity}
                           onChange={(event) => {
-                            const next = [...shortcutDrafts] as [
-                              Shortcut,
-                              Shortcut,
-                            ];
+                            const next = [...shortcutDrafts];
                             next[index] = {
                               ...shortcut,
                               quantity: Number(event.target.value),
@@ -611,10 +607,7 @@ export function WasteRegistration() {
                           }))}
                           value={shortcut.unitId}
                           onValueChange={(value) => {
-                            const next = [...shortcutDrafts] as [
-                              Shortcut,
-                              Shortcut,
-                            ];
+                            const next = [...shortcutDrafts];
                             next[index] = {
                               ...shortcut,
                               unitId: value as Id<"units">,
@@ -636,6 +629,19 @@ export function WasteRegistration() {
                           </SelectContent>
                         </Select>
                       </Field>
+                      {index === 1 ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="col-span-2 justify-self-end"
+                          onClick={() =>
+                            setShortcutDrafts([shortcutDrafts[0]])
+                          }
+                        >
+                          <Trash2Icon data-icon="inline-start" />
+                          Fjern shortcut
+                        </Button>
+                      ) : null}
                     </div>
                   ))}
                   <div className="flex items-center gap-1">
@@ -661,10 +667,10 @@ export function WasteRegistration() {
                     </Button>
                     <HelpTooltip
                       label="anbefalede mængder"
-                      content="Fjerner de manuelt valgte shortcuts og bruger igen de to mængder, der anbefales ud fra Waste-registreringerne for denne location."
+                      content="Fjerner de manuelt valgte shortcuts og bruger igen de to mængder, der anbefales ud fra den Waste-historik, produktet bruger."
                     />
                   </div>
-                </div>
+                </FieldGroup>
               ) : (
                 <div className="grid grid-cols-[1fr_10rem] gap-3">
                   <Field>

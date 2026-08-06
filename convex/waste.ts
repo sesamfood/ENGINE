@@ -1207,8 +1207,8 @@ export const setShortcutOverride = mutation({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     await requireLocation(ctx, organizationId, args.locationId);
     const product = await requireActiveProduct(ctx, organizationId, args.productId);
-    if (args.shortcuts.length !== 2) {
-      throw new ConvexError("Angiv præcis to shortcuts");
+    if (args.shortcuts.length < 1 || args.shortcuts.length > 2) {
+      throw new ConvexError("Angiv en eller to shortcuts");
     }
     const normalized = [] as Array<{ unitId: Id<"units">; quantity: number }>;
     for (const shortcut of args.shortcuts) {
@@ -1226,6 +1226,7 @@ export const setShortcutOverride = mutation({
       normalized.push({ unitId: shortcut.unitId, quantity });
     }
     if (
+      normalized.length === 2 &&
       normalized[0].unitId === normalized[1].unitId &&
       normalized[0].quantity === normalized[1].quantity
     ) {

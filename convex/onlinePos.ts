@@ -10,6 +10,7 @@ import {
   query,
 } from "./_generated/server";
 import { requireOrganizationAdmin } from "./lib/auth";
+import { normalizeStock } from "./lib/stock";
 
 const API_URL = "https://api.onlinepos.dk/api";
 const MAX_LOCATIONS = 200;
@@ -48,6 +49,26 @@ const saleValidator = v.object({
   department: v.string(),
 });
 
+const wasteReportRowValidator = v.object({
+  productName: v.string(),
+  defaultUnitName: v.string(),
+  expectedQuantity: v.number(),
+  salesQuantity: v.number(),
+  countedQuantity: v.number(),
+  wasteQuantity: v.number(),
+});
+
+const copenhagenParts = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Copenhagen",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
 type OnlinePosProduct = {
   id: number;
   name: string;
@@ -73,6 +94,38 @@ function string(value: unknown) {
   return typeof value === "string" || typeof value === "number"
     ? String(value)
     : "";
+}
+
+function saleTimestamp(date: string, time: string) {
+  const dateMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+  const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
+  if (!dateMatch || !timeMatch) return null;
+  const desired = Date.UTC(
+    Number(dateMatch[3]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[1]),
+    Number(timeMatch[1]),
+    Number(timeMatch[2]),
+    Number(timeMatch[3] ?? 0),
+  );
+  let timestamp = desired;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = Object.fromEntries(
+      copenhagenParts
+        .formatToParts(timestamp)
+        .map((part) => [part.type, part.value]),
+    );
+    const displayed = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    timestamp += desired - displayed;
+  }
+  return timestamp;
 }
 
 function requireCompanyId(companyId: number) {
@@ -286,7 +339,11 @@ export const getSalesContext = internalQuery({
       }),
     ),
     mappings: v.array(
-      v.object({ onlinePosProductId: v.number(), productName: v.string() }),
+      v.object({
+        productId: v.id("products"),
+        onlinePosProductId: v.number(),
+        productName: v.string(),
+      }),
     ),
   }),
   handler: async (ctx, args) => {
@@ -318,6 +375,7 @@ export const getSalesContext = internalQuery({
         const product = await ctx.db.get("products", row.productId);
         return product?.organizationId === args.organizationId
           ? {
+              productId: product._id,
               onlinePosProductId: row.onlinePosProductId,
               productName: product.name,
             }
@@ -791,7 +849,11 @@ export const listSales = action({
         token: string;
         companyId: number;
       }>;
-      mappings: { onlinePosProductId: number; productName: string }[];
+      mappings: Array<{
+        productId: Id<"products">;
+        onlinePosProductId: number;
+        productName: string;
+      }>;
     } = await ctx.runQuery(internal.onlinePos.getSalesContext, {
       organizationId,
     });
@@ -852,6 +914,134 @@ export const listSales = action({
     return {
       sales: parsed.slice(0, MAX_SALES),
       truncated: parsed.length > MAX_SALES,
+    };
+  },
+});
+
+export const exportCountWasteReport = action({
+  args: { countId: v.id("counts") },
+  returns: v.object({
+    locationName: v.string(),
+    submittedAt: v.number(),
+    hasBaseline: v.boolean(),
+    salesIncluded: v.boolean(),
+    rows: v.array(wasteReportRowValidator),
+  }),
+  handler: async (ctx, args) => {
+    const report: {
+      organizationId: string;
+      locationId: Id<"locations">;
+      locationName: string;
+      submittedAt: number;
+      rows: Array<{
+        productId: Id<"products">;
+        productName: string;
+        defaultUnitName: string;
+        expectedQuantity: number;
+        countedQuantity: number;
+        expectedSinceAt: number;
+      }>;
+    } = await ctx.runQuery(internal.count.getWasteReportContext, {
+      countId: args.countId,
+    });
+    if (report.rows.length === 0) {
+      return {
+        locationName: report.locationName,
+        submittedAt: report.submittedAt,
+        hasBaseline: false,
+        salesIncluded: false,
+        rows: [],
+      };
+    }
+
+    const context: {
+      masterEnabled: boolean;
+      locations: Array<{
+        id: Id<"locations">;
+        name: string;
+        token: string;
+        companyId: number;
+      }>;
+      mappings: Array<{
+        productId: Id<"products">;
+        onlinePosProductId: number;
+        productName: string;
+      }>;
+    } = await ctx.runQuery(internal.onlinePos.getSalesContext, {
+      organizationId: report.organizationId,
+    });
+    const location = context.locations.find(
+      (candidate) => candidate.id === report.locationId,
+    );
+    const salesByProduct = new Map<Id<"products">, number>();
+    const salesIncluded = context.masterEnabled && Boolean(location);
+
+    if (location && context.masterEnabled) {
+      const productByOnlinePosId = new Map(
+        context.mappings.map((mapping) => [
+          mapping.onlinePosProductId,
+          mapping.productId,
+        ]),
+      );
+      const rowByProduct = new Map(
+        report.rows.map((row) => [row.productId, row]),
+      );
+      const from = Math.min(...report.rows.map((row) => row.expectedSinceAt));
+      const sales = await requestSales(location, from, report.submittedAt);
+      for (const value of sales) {
+        const line = object(object(value)?.line);
+        const onlinePosProductId = number(line?.product_id);
+        const amount = number(line?.amount);
+        const timestamp = saleTimestamp(string(line?.date), string(line?.time));
+        if (
+          onlinePosProductId === null ||
+          amount === null ||
+          timestamp === null
+        ) {
+          continue;
+        }
+        const productId = productByOnlinePosId.get(onlinePosProductId);
+        const row = productId ? rowByProduct.get(productId) : null;
+        if (
+          !productId ||
+          !row ||
+          timestamp < row.expectedSinceAt ||
+          timestamp > report.submittedAt
+        ) {
+          continue;
+        }
+        salesByProduct.set(
+          productId,
+          (salesByProduct.get(productId) ?? 0) + amount,
+        );
+      }
+    }
+
+    return {
+      locationName: report.locationName,
+      submittedAt: report.submittedAt,
+      hasBaseline: true,
+      salesIncluded,
+      rows: report.rows.flatMap((row) => {
+        const salesQuantity = normalizeStock(
+          salesByProduct.get(row.productId) ?? 0,
+        );
+        const wasteQuantity = normalizeStock(
+          row.expectedQuantity - salesQuantity - row.countedQuantity,
+        );
+        return Math.abs(wasteQuantity) < 1e-6
+          ? []
+          : [
+              {
+                productName: row.productName,
+                defaultUnitName: row.defaultUnitName,
+                expectedQuantity: row.expectedQuantity,
+                salesQuantity,
+                countedQuantity: row.countedQuantity,
+                wasteQuantity,
+              },
+            ];
+      }),
     };
   },
 });

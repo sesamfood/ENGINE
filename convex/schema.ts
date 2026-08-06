@@ -908,6 +908,17 @@ export default defineSchema({
     ])
     .index("by_organizationId_and_productId", ["organizationId", "productId"]),
 
+  countReconciliationItems: defineTable({
+    organizationId: v.string(),
+    countId: v.id("counts"),
+    productId: v.id("products"),
+    productName: v.string(),
+    defaultUnitName: v.string(),
+    expectedQuantity: v.number(),
+    countedQuantity: v.number(),
+    expectedSinceAt: v.number(),
+  }).index("by_organizationId_and_countId", ["organizationId", "countId"]),
+
   locationStock: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
