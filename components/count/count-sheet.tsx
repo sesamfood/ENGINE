@@ -390,6 +390,19 @@ function ProductCard({
                   }
                 />
               </UnavailableTooltip>
+              {!editingOrder ? (
+                <UnavailableTooltip reason={disabledReason}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full"
+                    disabled={disabled}
+                    onClick={openDialog}
+                  >
+                    Flere muligheder
+                  </Button>
+                </UnavailableTooltip>
+              ) : null}
             </>
           ) : null}
         </CardContent>
