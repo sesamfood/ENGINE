@@ -54,6 +54,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Field,
+  FieldContent,
+  FieldLabel,
+  FieldTitle,
+} from "@/components/ui/field";
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -69,6 +75,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { authClient } from "@/lib/auth-client";
 import { canManageCatalog } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
@@ -108,6 +115,54 @@ type KioskRuntime = NonNullable<
 const KioskContext = createContext<KioskRuntime | null>(null);
 
 const FeatureLockContext = createContext(false);
+
+const KIOSK_WAKE_LOCK_KEY = "engine.kiosk.keep-screen-on";
+
+function useKioskWakeLock(enabled: boolean) {
+  const supported = typeof navigator !== "undefined" && "wakeLock" in navigator;
+
+  useEffect(() => {
+    if (!enabled || !supported) return;
+    let wakeLock: WakeLockSentinel | null = null;
+    let pending = false;
+    let cancelled = false;
+
+    async function acquire() {
+      if (
+        pending ||
+        document.visibilityState !== "visible" ||
+        (wakeLock && !wakeLock.released)
+      ) {
+        return;
+      }
+      pending = true;
+      try {
+        const lock = await navigator.wakeLock.request("screen");
+        if (cancelled) {
+          await lock.release();
+        } else {
+          wakeLock = lock;
+        }
+      } catch {
+        wakeLock = null;
+      } finally {
+        pending = false;
+      }
+    }
+
+    const handleVisibilityChange = () => void acquire();
+    void acquire();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (wakeLock && !wakeLock.released) void wakeLock.release();
+    };
+  }, [enabled, supported]);
+
+  return supported;
+}
 
 function effectiveKioskHome(runtime: KioskRuntime, countLocked: boolean) {
   if (countLocked) return "/count";
@@ -610,8 +665,26 @@ function KioskModeControl() {
   const router = useRouter();
   const setMode = useMutation(api.kiosk.setMode);
   const [pending, setPending] = useState(false);
+  const [keepScreenOn, setKeepScreenOn] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return window.localStorage.getItem(KIOSK_WAKE_LOCK_KEY) !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const wakeLockSupported = useKioskWakeLock(
+    Boolean(kiosk?.kioskModeEnabled && keepScreenOn),
+  );
 
   if (!kiosk?.isKioskAccount || state !== "expanded") return null;
+
+  function changeKeepScreenOn(checked: boolean) {
+    setKeepScreenOn(checked);
+    try {
+      window.localStorage.setItem(KIOSK_WAKE_LOCK_KEY, String(checked));
+    } catch {}
+  }
 
   async function change(enabled: boolean) {
     if (!kiosk) return;
@@ -637,22 +710,37 @@ function KioskModeControl() {
   }
 
   return (
-    <AlertDialog>
-      <AlertDialogTrigger render={<Button type="button" variant="outline" className="w-full" disabled={pending} />}>
-        <MonitorIcon data-icon="inline-start" />
-        Deaktivér kiosktilstand
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Deaktivér kiosktilstand?</AlertDialogTitle>
-          <AlertDialogDescription>Du får den normale brugerflade med de adgange, kontoens rolle tillader.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel variant="default">Behold kiosktilstand</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={() => void change(false)}>Deaktivér kiosktilstand</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      <FieldLabel htmlFor="kiosk-wake-lock">
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>Hold skærmen tændt</FieldTitle>
+          </FieldContent>
+          <Switch
+            id="kiosk-wake-lock"
+            checked={keepScreenOn}
+            disabled={!wakeLockSupported}
+            onCheckedChange={changeKeepScreenOn}
+          />
+        </Field>
+      </FieldLabel>
+      <AlertDialog>
+        <AlertDialogTrigger render={<Button type="button" variant="outline" className="w-full" disabled={pending} />}>
+          <MonitorIcon data-icon="inline-start" />
+          Deaktivér kiosktilstand
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deaktivér kiosktilstand?</AlertDialogTitle>
+            <AlertDialogDescription>Du får den normale brugerflade med de adgange, kontoens rolle tillader.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="default">Behold kiosktilstand</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => void change(false)}>Deaktivér kiosktilstand</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

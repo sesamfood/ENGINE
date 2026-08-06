@@ -254,6 +254,9 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
     rateLimit: {
       enabled: true,
       storage: "database",
+      customRules: {
+        "/convex/token": false,
+      },
     },
     plugins: [
       username(),
