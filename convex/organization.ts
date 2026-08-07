@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
@@ -11,6 +12,7 @@ import {
 } from "./lib/organizationTheme";
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
+const ACTIVE_SYNC_INTERVAL_MS = 60 * 60 * 1_000;
 const ALLOWED_LOGO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const organizationBrandingValidator = v.object({
   wideLogoUrl: v.union(v.string(), v.null()),
@@ -74,6 +76,64 @@ export const getBranding = query({
       ? await ctx.storage.getUrl(asset.wideLogoStorageId)
       : null;
     return { wideLogoUrl, theme: asset?.theme ?? null };
+  },
+});
+
+export const requestActiveSync = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    const activity = await ctx.db
+      .query("organizationSyncActivity")
+      .withIndex("by_organizationId", (query) =>
+        query.eq("organizationId", organizationId),
+      )
+      .unique();
+    const now = Date.now();
+    if (activity && now - activity.lastRequestedAt < ACTIVE_SYNC_INTERVAL_MS) {
+      return null;
+    }
+
+    const [workfeed, onlinePos] = await Promise.all([
+      ctx.db
+        .query("workfeedIntegrations")
+        .withIndex("by_organizationId", (query) =>
+          query.eq("organizationId", organizationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (query) =>
+          query.eq("organizationId", organizationId),
+        )
+        .unique(),
+    ]);
+    if (!workfeed?.enabled && !onlinePos?.enabled) return null;
+
+    if (activity) {
+      await ctx.db.patch(activity._id, { lastRequestedAt: now });
+    } else {
+      await ctx.db.insert("organizationSyncActivity", {
+        organizationId,
+        lastRequestedAt: now,
+      });
+    }
+    if (workfeed?.enabled) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.workfeedSync.enqueueOrganizationSync,
+        { organizationId, kind: "shifts" },
+      );
+    }
+    if (onlinePos?.enabled) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.enqueueOrganizationSync,
+        { organizationId },
+      );
+    }
+    return null;
   },
 });
 

@@ -11,25 +11,10 @@ crons.interval(
 );
 
 crons.cron(
-  "synchronize Workfeed shifts",
-  "5,20,35,50 * * * *",
-  internal.workfeedSync.dispatchEnabledIntegrations,
-  { kind: "shifts", cursor: null },
-);
-
-crons.cron(
-  "synchronize Workfeed employees",
-  "0 */6 * * *",
+  "daily Workfeed synchronization",
+  "0 3 * * *",
   internal.workfeedSync.dispatchEnabledIntegrations,
   { kind: "employees", cursor: null },
-);
-
-// Incremental OnlinePOS sales; 2h watermark overlap re-reads ~200 late lines cheaply.
-crons.interval(
-  "synchronize OnlinePOS sales",
-  { minutes: 15 },
-  internal.onlinePosSync.dispatchEnabledLocations,
-  { kind: "incremental", cursor: null },
 );
 
 // Convex cron expressions are UTC (not org-local). 05:00 UTC is 06:00 CET /

@@ -256,6 +256,11 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
       storage: "database",
       customRules: {
         "/convex/token": false,
+        "/get-session": false,
+        "/organization/list": false,
+        "/organization/get-full-organization": false,
+        "/organization/get-active-member": false,
+        "/organization/get-active-member-role": false,
       },
     },
     plugins: [

@@ -23,6 +23,11 @@ export default defineSchema({
     .index("by_logoStorageId", ["logoStorageId"])
     .index("by_wideLogoStorageId", ["wideLogoStorageId"]),
 
+  organizationSyncActivity: defineTable({
+    organizationId: v.string(),
+    lastRequestedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   onlinePosIntegrations: defineTable({
     organizationId: v.string(),
     token: v.string(),

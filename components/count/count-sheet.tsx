@@ -110,12 +110,16 @@ type CountUnit = {
   quantity: number;
 };
 
-type CountProduct = {
+type CountCatalogProduct = {
   id: Id<"products">;
   name: string;
   category: { id: Id<"categories">; name: string } | null;
   imageUrl: string | null;
   defaultUnitId: Id<"units">;
+  units: Array<Omit<CountUnit, "quantity">>;
+};
+
+type CountProduct = Omit<CountCatalogProduct, "units"> & {
   units: CountUnit[];
 };
 
@@ -825,6 +829,16 @@ export function CountSheet() {
     locationId ? { locationId, now: queryNow } : "skip",
   );
   const state = useLastDefined(queriedState, locationId);
+  const queriedQuantities = useQuery(
+    api.count.getCountQuantities,
+    locationId && state?.count
+      ? { locationId, countId: state.count.id }
+      : "skip",
+  );
+  const storedQuantities = useLastDefined(
+    queriedQuantities,
+    state?.count?.id ?? null,
+  );
   const defaultOrder = useQuery(
     api.count.getCountProductOrder,
     locationId ? { locationId } : "skip",
@@ -835,17 +849,36 @@ export function CountSheet() {
     locationId
       ? {
           locationId,
-          now: queryNow,
           categoryId:
             categoryId === "all" ? undefined : (categoryId as Id<"categories">),
           search: querySearch,
         }
       : "skip",
-  ) as CountProduct[] | undefined;
-  const products = useLastDefined(
+  ) as CountCatalogProduct[] | undefined;
+  const catalogProducts = useLastDefined(
     queriedProducts,
     locationId ? JSON.stringify([locationId, categoryId, querySearch]) : null,
   );
+  const quantities = useMemo(
+    () => (state?.count ? storedQuantities : state ? [] : undefined),
+    [state, storedQuantities],
+  );
+  const products = useMemo(() => {
+    if (!catalogProducts || !quantities) return undefined;
+    const byUnit = new Map(
+      quantities.map((row) => [
+        `${row.productId}:${row.unitId}`,
+        row.quantity,
+      ]),
+    );
+    return catalogProducts.map((product) => ({
+      ...product,
+      units: product.units.map((unit) => ({
+        ...unit,
+        quantity: byUnit.get(`${product.id}:${unit.id}`) ?? 0,
+      })),
+    }));
+  }, [catalogProducts, quantities]);
 
   useEffect(() => {
     if (!products) return;
@@ -1013,11 +1046,18 @@ export function CountSheet() {
   );
   const quantityFor = (product: CountProduct, unit: CountUnit) =>
     overrides[`${product.id}:${unit.id}`] ?? unit.quantity;
-  const hasQuantity =
-    (state?.countedProducts ?? 0) > 0 ||
-    displayedProducts.some((product) =>
-      product.units.some((unit) => quantityFor(product, unit) > 0),
-    );
+  const allQuantities = new Map(
+    quantities?.map((row) => [
+      `${row.productId}:${row.unitId}`,
+      row.quantity,
+    ]),
+  );
+  for (const [key, quantity] of Object.entries(overrides)) {
+    allQuantities.set(key, quantity);
+  }
+  const hasQuantity = [...allQuantities.values()].some(
+    (quantity) => quantity > 0,
+  );
   const disabledReason = !locationId
     ? "Vælg en location"
     : !state
