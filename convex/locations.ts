@@ -529,7 +529,12 @@ export const cleanupLocationSales = internalMutation({
       )
       .take(LOCATION_SALES_CLEANUP_BATCH);
     for (const row of lines) {
-      await ctx.db.delete("salesLines", row._id);
+      if (
+        row.organizationId === args.organizationId &&
+        row.locationId === args.locationId
+      ) {
+        await ctx.db.delete("salesLines", row._id);
+      }
     }
     if (lines.length === LOCATION_SALES_CLEANUP_BATCH) {
       await ctx.scheduler.runAfter(
@@ -549,7 +554,12 @@ export const cleanupLocationSales = internalMutation({
       )
       .take(LOCATION_SALES_CLEANUP_BATCH);
     for (const row of orders) {
-      await ctx.db.delete("salesOrders", row._id);
+      if (
+        row.organizationId === args.organizationId &&
+        row.locationId === args.locationId
+      ) {
+        await ctx.db.delete("salesOrders", row._id);
+      }
     }
     if (orders.length === LOCATION_SALES_CLEANUP_BATCH) {
       await ctx.scheduler.runAfter(
@@ -569,7 +579,12 @@ export const cleanupLocationSales = internalMutation({
       )
       .take(LOCATION_SALES_CLEANUP_BATCH);
     for (const row of daily) {
-      await ctx.db.delete("salesDaily", row._id);
+      if (
+        row.organizationId === args.organizationId &&
+        row.locationId === args.locationId
+      ) {
+        await ctx.db.delete("salesDaily", row._id);
+      }
     }
     if (daily.length === LOCATION_SALES_CLEANUP_BATCH) {
       await ctx.scheduler.runAfter(

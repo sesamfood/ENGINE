@@ -103,6 +103,7 @@ const currencyFormatter = new Intl.NumberFormat("da-DK", {
 });
 
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
+const SYNC_DISABLED_REASON_ID = "online-pos-sales-sync-disabled-reason";
 
 function dateInput(daysAgo: number) {
   const date = new Date();
@@ -112,6 +113,44 @@ function dateInput(daysAgo: number) {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+function addCalendarDays(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+// Local copy of convex/lib/dashboardMetrics.zonedStart — client cannot import that module.
+function zonedDayStart(value: string, timeZone: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const target = Date.UTC(year, month - 1, day);
+  let guess = target;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = Object.fromEntries(
+      formatter.formatToParts(guess).map((part) => [part.type, part.value]),
+    );
+    const represented = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    guess += target - represented;
+  }
+  return guess;
 }
 
 function messageFrom(error: unknown) {
@@ -141,9 +180,9 @@ function locationCoversRange(
   to: number,
 ) {
   if (location.syncedThroughAt === null) return false;
-  const coverageStart =
+  const historyStart =
     location.backfillThroughAt ?? location.syncedThroughAt;
-  return from < location.syncedThroughAt && to > coverageStart;
+  return historyStart <= from && location.syncedThroughAt >= to;
 }
 
 function periodHasSyncedData(
@@ -155,7 +194,10 @@ function periodHasSyncedData(
   const relevant = locationId
     ? locations.filter((location) => location.id === locationId)
     : locations;
-  return relevant.some((location) => locationCoversRange(location, from, to));
+  return (
+    relevant.length > 0 &&
+    relevant.every((location) => locationCoversRange(location, from, to))
+  );
 }
 
 function ConnectionCard({
@@ -499,11 +541,17 @@ function SalesList() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const from = new Date(`${fromDate}T00:00:00`).getTime();
-  const to = new Date(`${toDate}T00:00:00`).getTime() + 24 * 60 * 60 * 1000;
+  const timeZone = context?.timeZone;
+  const from =
+    timeZone && fromDate ? zonedDayStart(fromDate, timeZone) : Number.NaN;
+  const to =
+    timeZone && toDate
+      ? zonedDayStart(addCalendarDays(toDate, 1), timeZone)
+      : Number.NaN;
   const rangeValid =
     Boolean(fromDate) &&
     Boolean(toDate) &&
+    Boolean(timeZone) &&
     Number.isFinite(from) &&
     Number.isFinite(to) &&
     from < to &&
@@ -540,6 +588,13 @@ function SalesList() {
         location.state === "queued" || location.state === "running",
     ),
   );
+  const syncDisabledReason = cooldown
+    ? context?.manualSyncRetryAt
+      ? `Manuel synkronisering er midlertidigt begrænset. Du kan synkronisere igen ${connectedAtFormatter.format(context.manualSyncRetryAt)}.`
+      : "Manuel synkronisering er midlertidigt begrænset."
+    : anySyncing || syncing
+      ? "En synkronisering kører allerede."
+      : null;
   const connectedLocationCount = context?.locations.length ?? 0;
   const hasCoverage =
     rangeValid &&
@@ -588,6 +643,9 @@ function SalesList() {
               anySyncing ||
               cooldown
             }
+            aria-describedby={
+              syncDisabledReason ? SYNC_DISABLED_REASON_ID : undefined
+            }
             onClick={() => void syncNow()}
           >
             {syncing || anySyncing ? (
@@ -629,7 +687,7 @@ function SalesList() {
         ) : null}
 
         {cooldown && context.manualSyncRetryAt ? (
-          <Alert>
+          <Alert id={SYNC_DISABLED_REASON_ID}>
             <CircleAlertIcon />
             <AlertTitle>Manuel synkronisering er midlertidigt begrænset</AlertTitle>
             <AlertDescription>
@@ -637,6 +695,10 @@ function SalesList() {
               {connectedAtFormatter.format(context.manualSyncRetryAt)}.
             </AlertDescription>
           </Alert>
+        ) : anySyncing || syncing ? (
+          <p id={SYNC_DISABLED_REASON_ID} className="sr-only">
+            {syncDisabledReason}
+          </p>
         ) : null}
 
         {context.locations.length > 0 ? (

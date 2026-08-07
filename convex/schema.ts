@@ -66,6 +66,9 @@ export default defineSchema({
     runToken: v.optional(v.string()),
     syncedThroughAt: v.optional(v.number()),
     backfillThroughAt: v.optional(v.number()),
+    // Set before destroying a day during reconcile; cleared only on success.
+    // Dispatcher retries this dayStart until the rebuild completes.
+    pendingReconcileDayStart: v.optional(v.number()),
     lastAttemptAt: v.optional(v.number()),
     lastSuccessAt: v.optional(v.number()),
     lastError: v.optional(v.string()),

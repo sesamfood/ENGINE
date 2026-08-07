@@ -13,6 +13,10 @@ import { rateLimiter } from "./lib/rateLimits";
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_LOCATIONS = 200;
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
+// Matches staffFood/waste paginated exports; keeps fan-out take(need)×locations bounded.
+const MAX_LIST_ORDERS_PAGE = 100;
+// Cap offset so need = offset + numItems + 1 cannot be driven into the read budget.
+const MAX_LIST_ORDERS_OFFSET = 5_000;
 
 // Money fields (revenue) are integer minor units (øre), same as storage. Callers divide by 100.
 
@@ -62,6 +66,16 @@ function requireSalesRange(from: number, to: number) {
     to - from > MAX_SALES_RANGE_MS
   ) {
     throw new ConvexError("Vælg en periode på højst 31 dage");
+  }
+}
+
+function requireListOrdersPage(paginationOpts: { numItems: number }) {
+  if (
+    !Number.isFinite(paginationOpts.numItems) ||
+    paginationOpts.numItems <= 0 ||
+    paginationOpts.numItems > MAX_LIST_ORDERS_PAGE
+  ) {
+    throw new ConvexError("Siden er for stor");
   }
 }
 
@@ -225,6 +239,7 @@ export const listOrders = query({
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
     requireSalesRange(args.from, args.to);
+    requireListOrdersPage(args.paginationOpts);
 
     if (args.locationId !== null) {
       const locationId = args.locationId;
@@ -264,7 +279,12 @@ export const listOrders = query({
       args.paginationOpts.cursor === null || args.paginationOpts.cursor === ""
         ? 0
         : Number.parseInt(args.paginationOpts.cursor, 10);
-    if (!Number.isSafeInteger(offset) || offset < 0) {
+    if (
+      !Number.isFinite(offset) ||
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      offset > MAX_LIST_ORDERS_OFFSET
+    ) {
       throw new ConvexError("Ugyldig side");
     }
     const need = offset + args.paginationOpts.numItems + 1;

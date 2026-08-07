@@ -251,7 +251,9 @@ export function parseSaleLines(
 }
 
 export function onlinePosErrorMessage(error: unknown) {
-  return error instanceof Error && error.message
-    ? error.message
-    : "OnlinePOS-synkroniseringen mislykkedes";
+  if (error instanceof ConvexError && typeof error.data === "string") {
+    const message = error.data.trim();
+    if (message) return message;
+  }
+  return "OnlinePOS-synkroniseringen mislykkedes";
 }

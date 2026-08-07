@@ -20,6 +20,7 @@ export type ExistingLineState = {
   quantity: number;
   locationId: string;
   dayStart: number;
+  orderNumber: number;
 };
 
 export function dayStartOf(occurredAt: number, timeZone: string): number {
@@ -50,6 +51,8 @@ export function emptyDelta(): SalesDelta {
  * Pure daily-delta arithmetic for sales ingest.
  * `knownOrderKeys` uses {@link orderKey}; `existingLines` is keyed by line externalId.
  * Re-ingesting an identical batch yields a net-zero Map (empty or zeroed buckets).
+ * When a line's order key changes and the old order has no remaining lines in
+ * `existingLines`∪batch, the old day bucket gets `orderCount: -1`.
  */
 export function computeDailySalesDeltas(
   lines: IncomingSaleLine[],
@@ -57,8 +60,13 @@ export function computeDailySalesDeltas(
   existingLines: ReadonlyMap<string, ExistingLineState>,
 ): Map<string, SalesDelta> {
   const deltas = new Map<string, SalesDelta>();
-  const seenOrders = new Set<string>();
+  const countedOrders = new Set(knownOrderKeys);
   const working = new Map(existingLines);
+  const linesPerOrder = new Map<string, number>();
+  for (const state of working.values()) {
+    const key = orderKey(state.locationId, state.dayStart, state.orderNumber);
+    linesPerOrder.set(key, (linesPerOrder.get(key) ?? 0) + 1);
+  }
 
   function add(
     locationId: string,
@@ -76,18 +84,32 @@ export function computeDailySalesDeltas(
 
   for (const line of lines) {
     const key = orderKey(line.locationId, line.dayStart, line.orderNumber);
-    if (!knownOrderKeys.has(key) && !seenOrders.has(key)) {
-      add(line.locationId, line.dayStart, { orderCount: 1 });
-    }
-    seenOrders.add(key);
-
     const existing = working.get(line.externalId);
+
     if (existing) {
+      const oldKey = orderKey(
+        existing.locationId,
+        existing.dayStart,
+        existing.orderNumber,
+      );
+      const remaining = (linesPerOrder.get(oldKey) ?? 0) - 1;
+      linesPerOrder.set(oldKey, remaining);
       add(existing.locationId, existing.dayStart, {
         revenue: -existing.revenue,
         itemCount: -existing.quantity,
       });
+      if (oldKey !== key && remaining === 0 && countedOrders.has(oldKey)) {
+        add(existing.locationId, existing.dayStart, { orderCount: -1 });
+        countedOrders.delete(oldKey);
+      }
     }
+
+    if (!countedOrders.has(key)) {
+      add(line.locationId, line.dayStart, { orderCount: 1 });
+      countedOrders.add(key);
+    }
+    linesPerOrder.set(key, (linesPerOrder.get(key) ?? 0) + 1);
+
     add(line.locationId, line.dayStart, {
       revenue: line.revenue,
       itemCount: line.quantity,
@@ -97,6 +119,7 @@ export function computeDailySalesDeltas(
       quantity: line.quantity,
       locationId: line.locationId,
       dayStart: line.dayStart,
+      orderNumber: line.orderNumber,
     });
   }
 

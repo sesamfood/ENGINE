@@ -113,6 +113,7 @@ function ingest(
       quantity: line.quantity,
       locationId: line.locationId,
       dayStart: line.dayStart,
+      orderNumber: line.orderNumber,
     });
   }
   return deltas;
@@ -159,6 +160,54 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
   const expected = recomputeDay(remaining);
   assert.deepEqual(daily.get(bucket), expected);
   assert.deepEqual(expected, { revenue: 3500, orderCount: 1, itemCount: 3 });
+}
+
+{
+  // Line moves to another local day: old bucket must lose the order, not keep a phantom.
+  const dayA = dayStartOf(parseOne(200, "20.02.2025", "12:00:00", 1, "10,00").occurredAt, TZ);
+  const dayB = dayStartOf(parseOne(201, "21.02.2025", "12:00:00", 1, "10,00").occurredAt, TZ);
+  const bucketA = dayBucketKey(LOCATION, dayA);
+  const bucketB = dayBucketKey(LOCATION, dayB);
+  const knownOrderKeys = new Set<string>();
+  const existingLines = new Map<string, ExistingLineState>();
+  const daily = new Map<string, SalesDelta>();
+
+  ingest(
+    [
+      {
+        externalId: "M1",
+        orderNumber: 900,
+        locationId: LOCATION,
+        dayStart: dayA,
+        revenue: 2500,
+        quantity: 1,
+      },
+    ],
+    knownOrderKeys,
+    existingLines,
+    daily,
+  );
+  assert.deepEqual(daily.get(bucketA), { revenue: 2500, orderCount: 1, itemCount: 1 });
+
+  const move = ingest(
+    [
+      {
+        externalId: "M1",
+        orderNumber: 900,
+        locationId: LOCATION,
+        dayStart: dayB,
+        revenue: 2500,
+        quantity: 1,
+      },
+    ],
+    knownOrderKeys,
+    existingLines,
+    daily,
+  );
+  assert.equal(move.get(bucketA)?.orderCount, -1, "day-move decrements old orderCount");
+  assert.equal(move.get(bucketB)?.orderCount, 1, "day-move increments new orderCount");
+  assert.deepEqual(daily.get(bucketA), { revenue: 0, orderCount: 0, itemCount: 0 });
+  assert.deepEqual(daily.get(bucketB), { revenue: 2500, orderCount: 1, itemCount: 1 });
 }
 
 console.log("check-sales-rollup: ok");

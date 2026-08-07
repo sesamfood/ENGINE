@@ -32,9 +32,11 @@ crons.interval(
   { kind: "incremental", cursor: null },
 );
 
+// Convex cron expressions are UTC (not org-local). 05:00 UTC is 06:00 CET /
+// 07:00 CEST — after typical Copenhagen close-of-business for the prior local day.
 crons.cron(
   "reconcile OnlinePOS sales",
-  "0 4 * * *",
+  "0 5 * * *",
   internal.onlinePosSync.dispatchEnabledLocations,
   { kind: "reconcile", cursor: null },
 );

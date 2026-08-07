@@ -52,6 +52,7 @@ const wasteReportResultValidator = v.object({
   submittedAt: v.number(),
   hasBaseline: v.boolean(),
   salesIncluded: v.boolean(),
+  salesOmittedReason: v.union(v.string(), v.null()),
   rows: v.array(wasteReportRowValidator),
 });
 
@@ -623,6 +624,7 @@ export const buildCountWasteReport = internalQuery({
     submittedAt: number;
     hasBaseline: boolean;
     salesIncluded: boolean;
+    salesOmittedReason: string | null;
     rows: Array<{
       productName: string;
       defaultUnitName: string;
@@ -654,6 +656,7 @@ export const buildCountWasteReport = internalQuery({
         submittedAt: report.submittedAt,
         hasBaseline: false,
         salesIncluded: false,
+        salesOmittedReason: null,
         rows: [],
       };
     }
@@ -662,6 +665,7 @@ export const buildCountWasteReport = internalQuery({
     const to = report.submittedAt;
     const salesByProduct = new Map<Id<"products">, number>();
     let salesIncluded = false;
+    let salesOmittedReason: string | null = null;
 
     const [master, connection, status, mappings] = await Promise.all([
       ctx.db
@@ -691,22 +695,31 @@ export const buildCountWasteReport = internalQuery({
         .withIndex("by_organizationId", (q) =>
           q.eq("organizationId", report.organizationId),
         )
-        .take(MAX_PRODUCTS),
+        .take(MAX_PRODUCTS + 1),
     ]);
 
     // Coverage: syncedThroughAt is the forward watermark; backfillThroughAt (falling
     // back to syncedThroughAt, same as the sync engine) is how far history reaches.
     const historyStart =
       status?.backfillThroughAt ?? status?.syncedThroughAt ?? null;
+    const connected = master?.enabled === true && Boolean(connection);
     const windowCovered =
-      master?.enabled === true &&
-      Boolean(connection) &&
+      connected &&
       status?.syncedThroughAt != null &&
       status.syncedThroughAt >= to &&
       historyStart != null &&
       historyStart <= from;
 
-    if (windowCovered) {
+    if (!connected) {
+      salesOmittedReason =
+        "lokationen er ikke forbundet til OnlinePOS";
+    } else if (!windowCovered) {
+      salesOmittedReason =
+        "synkroniserede salg dækker ikke count-perioden";
+    } else if (mappings.length > MAX_PRODUCTS) {
+      salesOmittedReason =
+        "der er for mange produktkoblinger til at beregne sikkert";
+    } else {
       // onlinePosProductId is a number; salesLines.externalProductId is a string.
       const productByExternalId = new Map(
         mappings.map((mapping) => [
@@ -714,6 +727,11 @@ export const buildCountWasteReport = internalQuery({
           mapping.productId,
         ]),
       );
+      const rowByProduct = new Map(
+        report.rows.map((row) => [row.productId, row]),
+      );
+      // Indexed range is inclusive on both ends, matching old
+      // `timestamp < expectedSinceAt` / `timestamp > submittedAt` exclusion.
       const lines = await ctx.db
         .query("salesLines")
         .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
@@ -724,11 +742,22 @@ export const buildCountWasteReport = internalQuery({
             .lte("occurredAt", to),
         )
         .take(MAX_WASTE_SALES_LINES + 1);
-      if (lines.length <= MAX_WASTE_SALES_LINES) {
+      if (lines.length > MAX_WASTE_SALES_LINES) {
+        salesOmittedReason =
+          "der er for mange salgslinjer til at beregne sikkert";
+      } else {
         salesIncluded = true;
         for (const line of lines) {
           const productId = productByExternalId.get(line.externalProductId);
-          if (!productId) continue;
+          const row = productId ? rowByProduct.get(productId) : null;
+          if (
+            !productId ||
+            !row ||
+            line.occurredAt < row.expectedSinceAt ||
+            line.occurredAt > report.submittedAt
+          ) {
+            continue;
+          }
           salesByProduct.set(
             productId,
             (salesByProduct.get(productId) ?? 0) + line.quantity,
@@ -742,10 +771,11 @@ export const buildCountWasteReport = internalQuery({
       submittedAt: report.submittedAt,
       hasBaseline: true,
       salesIncluded,
+      salesOmittedReason,
       rows: report.rows.flatMap((row) => {
-        const salesQuantity = normalizeStock(
-          salesByProduct.get(row.productId) ?? 0,
-        );
+        const salesQuantity = salesIncluded
+          ? normalizeStock(salesByProduct.get(row.productId) ?? 0)
+          : 0;
         const wasteQuantity = normalizeStock(
           row.expectedQuantity - salesQuantity - row.countedQuantity,
         );
@@ -775,6 +805,7 @@ export const exportCountWasteReport = action({
       submittedAt: number;
       hasBaseline: boolean;
       salesIncluded: boolean;
+      salesOmittedReason: string | null;
       rows: Array<{
         productName: string;
         defaultUnitName: string;

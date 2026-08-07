@@ -1072,7 +1072,7 @@ export function CountSheet() {
           "Count registreret",
           "Produkt",
           "Forventet beholdning før salg",
-          "Salg",
+          report.salesIncluded ? "Salg" : "Salg (ikke medtaget)",
           "Optalt beholdning",
           "Spild",
           "Enhed",
@@ -1084,7 +1084,9 @@ export function CountSheet() {
             registeredAt,
             row.productName,
             String(row.expectedQuantity).replace(".", ","),
-            String(row.salesQuantity).replace(".", ","),
+            report.salesIncluded
+              ? String(row.salesQuantity).replace(".", ",")
+              : "—",
             String(row.countedQuantity).replace(".", ","),
             String(row.wasteQuantity).replace(".", ","),
             row.defaultUnitName,
@@ -1093,7 +1095,9 @@ export function CountSheet() {
       toast.success("Spildrapporten er klar");
       if (!report.salesIncluded) {
         toast.warning(
-          "OnlinePOS-salg er ikke med, fordi lokationen ikke er forbundet",
+          report.salesOmittedReason
+            ? `OnlinePOS-salg er ikke med: ${report.salesOmittedReason}`
+            : "OnlinePOS-salg er ikke med i rapporten",
         );
       }
     } catch (error) {
