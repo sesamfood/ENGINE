@@ -19,7 +19,7 @@ const MAX_NAME_LENGTH = 100;
 const MAX_LOCATIONS = 200;
 // Bounded batch so deleteLocation can finish without blowing the mutation budget;
 // self-reschedules until salesOrders/salesLines/salesDaily are gone.
-const LOCATION_SALES_CLEANUP_BATCH = 50;
+const LOCATION_SALES_CLEANUP_BATCH = 500;
 
 const locationOptionValidator = v.object({
   id: v.id("locations"),
@@ -533,12 +533,7 @@ export const cleanupLocationSales = internalMutation({
       )
       .take(LOCATION_SALES_CLEANUP_BATCH);
     for (const row of lines) {
-      if (
-        row.organizationId === args.organizationId &&
-        row.locationId === args.locationId
-      ) {
-        await ctx.db.delete("salesLines", row._id);
-      }
+      await ctx.db.delete("salesLines", row._id);
     }
     if (lines.length === LOCATION_SALES_CLEANUP_BATCH) {
       await ctx.scheduler.runAfter(
@@ -558,12 +553,7 @@ export const cleanupLocationSales = internalMutation({
       )
       .take(LOCATION_SALES_CLEANUP_BATCH);
     for (const row of orders) {
-      if (
-        row.organizationId === args.organizationId &&
-        row.locationId === args.locationId
-      ) {
-        await ctx.db.delete("salesOrders", row._id);
-      }
+      await ctx.db.delete("salesOrders", row._id);
     }
     if (orders.length === LOCATION_SALES_CLEANUP_BATCH) {
       await ctx.scheduler.runAfter(
@@ -583,12 +573,7 @@ export const cleanupLocationSales = internalMutation({
       )
       .take(LOCATION_SALES_CLEANUP_BATCH);
     for (const row of daily) {
-      if (
-        row.organizationId === args.organizationId &&
-        row.locationId === args.locationId
-      ) {
-        await ctx.db.delete("salesDaily", row._id);
-      }
+      await ctx.db.delete("salesDaily", row._id);
     }
     if (daily.length === LOCATION_SALES_CLEANUP_BATCH) {
       await ctx.scheduler.runAfter(

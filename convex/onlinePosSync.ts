@@ -32,7 +32,7 @@ const DISPATCH_PAGE = 25;
 const DELETE_PAGE = 40;
 const LINE_DELETE_PAGE = 100;
 const PRUNE_PAGE = 50;
-const RECONCILE_TRAILING_DAYS = 7;
+const RECONCILE_TRAILING_DAYS = 1;
 const RECONCILE_MAX_FAIL_RETRIES = 8;
 const RECONCILE_RETRY_BASE_MS = 60_000;
 const RECONCILE_RETRY_MAX_MS = 6 * 60 * 60 * 1_000;
@@ -47,6 +47,11 @@ type SyncContext = {
   reconcileHashes: Array<{ dayStart: number; hash: string }>;
   lineIdsScoped: boolean;
 };
+
+type SalesOrderState = Omit<
+  Doc<"salesOrders">,
+  "_creationTime" | "organizationId" | "source"
+>;
 
 const settingsValidator = v.object({
   token: v.string(),
@@ -99,8 +104,9 @@ function orderExternalId(
   locationId: Id<"locations">,
   dayStart: number,
   orderNumber: number,
+  department: string,
 ) {
-  return `${locationId}:${dayStart}:${orderNumber}`;
+  return `${locationId}:${dayStart}:${orderNumber}:${department}`;
 }
 
 function lineExternalId(
@@ -247,7 +253,6 @@ async function startSync(
   organizationId: string,
   locationId: Id<"locations">,
   options: {
-    force?: boolean;
     mode?: "incremental" | "reconcile";
   } = {},
 ) {
@@ -271,7 +276,6 @@ async function startSync(
     options.mode === "reconcile" || status?.pendingReconcileDayStart != null;
 
   if (
-    !options.force &&
     status &&
     (status.state === "queued" || status.state === "running") &&
     now - status.updatedAt < STUCK_MS
@@ -312,8 +316,6 @@ async function startSync(
 
   if (wantsReconcile) {
     const timeZone = await organizationTimeZone(ctx, organizationId);
-    // ponytail: trailing 7 local days only — voids older than that still slip
-    // through until a manual re-sync or a void webhook.
     await scheduleReconcileWindow(ctx, {
       organizationId,
       locationId,
@@ -338,7 +340,6 @@ async function startSync(
     runToken: token,
     from,
     to,
-    replaceDay: false,
   });
   return true;
 }
@@ -539,7 +540,6 @@ export const completeLocationWindow = internalMutation({
     locationId: v.id("locations"),
     runToken: v.string(),
     to: v.number(),
-    startBackfill: v.boolean(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -576,16 +576,14 @@ export const completeLocationWindow = internalMutation({
       lastSuccessAt: now,
       lastError: undefined,
       updatedAt: now,
-      state: args.startBackfill ? "running" : "idle",
+      state: "running",
       lineIdsScoped: true,
     });
-    if (args.startBackfill) {
-      const updated = {
-        ...status,
-        syncedThroughAt,
-      };
-      await scheduleBackfillIfNeeded(ctx, updated, args.runToken);
-    }
+    const updated = {
+      ...status,
+      syncedThroughAt,
+    };
+    await scheduleBackfillIfNeeded(ctx, updated, args.runToken);
     return null;
   },
 });
@@ -643,22 +641,28 @@ export const ingestSalesBatch = internalMutation({
     const knownOrderKeys = new Set<string>();
     const existingLines = new Map<string, ExistingLineState>();
     const existingLineDocs = new Map<string, Doc<"salesLines">>();
-    const orderCache = new Map<string, Doc<"salesOrders"> | null>();
+    const orderCache = new Map<string, SalesOrderState | null>();
 
     for (const line of lines) {
       const dayStart = dayStartOf(line.occurredAt, args.timeZone);
-      const key = orderKey(args.locationId, dayStart, line.orderNumber);
+      const key = orderKey(
+        args.locationId,
+        dayStart,
+        line.orderNumber,
+        line.department,
+      );
       if (!orderCache.has(key)) {
         const order = await ctx.db
           .query("salesOrders")
           .withIndex(
-            "by_organizationId_and_locationId_and_dayStart_and_orderNumber",
+            "by_org_location_day_order_department",
             (q) =>
               q
                 .eq("organizationId", args.organizationId)
                 .eq("locationId", args.locationId)
                 .eq("dayStart", dayStart)
-                .eq("orderNumber", line.orderNumber),
+                .eq("orderNumber", line.orderNumber)
+                .eq("department", line.department),
           )
           .unique();
         orderCache.set(key, order);
@@ -709,7 +713,23 @@ export const ingestSalesBatch = internalMutation({
               currentOrder?.organizationId === args.organizationId
                 ? currentOrder.orderNumber
                 : line.orderNumber,
+            department:
+              currentOrder?.organizationId === args.organizationId
+                ? currentOrder.department
+                : line.department,
           });
+          if (currentOrder?.organizationId === args.organizationId) {
+            const currentKey = orderKey(
+              currentOrder.locationId,
+              currentOrder.dayStart,
+              currentOrder.orderNumber,
+              currentOrder.department,
+            );
+            if (!orderCache.has(currentKey)) {
+              orderCache.set(currentKey, currentOrder);
+            }
+            knownOrderKeys.add(currentKey);
+          }
         }
       }
     }
@@ -719,24 +739,106 @@ export const ingestSalesBatch = internalMutation({
       return {
         externalId: line.externalId,
         orderNumber: line.orderNumber,
+        department: line.department,
         locationId: args.locationId as string,
         dayStart,
         revenue: line.revenue,
         quantity: line.quantity,
       };
     });
+    const movingLineIdsByOrder = new Map<
+      Id<"salesOrders">,
+      Set<Id<"salesLines">>
+    >();
+    const oldOrderKeyById = new Map<Id<"salesOrders">, string>();
+    for (const line of incoming) {
+      const existing = existingLines.get(line.externalId);
+      const existingDoc = existingLineDocs.get(line.externalId);
+      if (!existing || !existingDoc) continue;
+      const oldKey = orderKey(
+        existing.locationId,
+        existing.dayStart,
+        existing.orderNumber,
+        existing.department,
+      );
+      const nextKey = orderKey(
+        line.locationId,
+        line.dayStart,
+        line.orderNumber,
+        line.department,
+      );
+      if (oldKey === nextKey) continue;
+      const ids = movingLineIdsByOrder.get(existingDoc.orderId) ?? new Set();
+      ids.add(existingDoc._id);
+      movingLineIdsByOrder.set(existingDoc.orderId, ids);
+      oldOrderKeyById.set(existingDoc.orderId, oldKey);
+    }
+    const ordersWithOtherLines = new Set<string>();
+    for (const [orderId, movingIds] of movingLineIdsByOrder) {
+      const storedLines = await ctx.db
+        .query("salesLines")
+        .withIndex("by_organizationId_and_orderId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("orderId", orderId),
+        )
+        .take(movingIds.size + 1);
+      if (storedLines.some((line) => !movingIds.has(line._id))) {
+        ordersWithOtherLines.add(oldOrderKeyById.get(orderId)!);
+      }
+    }
     const deltas = computeDailySalesDeltas(
       incoming,
       knownOrderKeys,
       existingLines,
+      ordersWithOtherLines,
     );
 
     const now = Date.now();
+    const maybeEmptyOrders = new Map<Id<"salesOrders">, string>();
     for (const line of lines) {
       const dayStart = dayStartOf(line.occurredAt, args.timeZone);
-      const key = orderKey(args.locationId, dayStart, line.orderNumber);
+      const key = orderKey(
+        args.locationId,
+        dayStart,
+        line.orderNumber,
+        line.department,
+      );
       let order = orderCache.get(key) ?? null;
       const existingLine = existingLineDocs.get(line.externalId);
+
+      if (existingLine && existingLine.orderId !== order?._id) {
+        const oldOrder = await ctx.db.get("salesOrders", existingLine.orderId);
+        if (
+          oldOrder &&
+          oldOrder.organizationId === args.organizationId &&
+          oldOrder.locationId === args.locationId
+        ) {
+          const nextRevenue = oldOrder.revenue - existingLine.revenue;
+          const nextItemCount = oldOrder.itemCount - existingLine.quantity;
+          const oldKey = orderKey(
+            oldOrder.locationId,
+            oldOrder.dayStart,
+            oldOrder.orderNumber,
+            oldOrder.department,
+          );
+          await ctx.db.patch("salesOrders", oldOrder._id, {
+            revenue: nextRevenue,
+            itemCount: nextItemCount,
+            updatedAt: now,
+          });
+          maybeEmptyOrders.set(oldOrder._id, oldKey);
+          const cached = orderCache.get(oldKey);
+          if (cached) {
+            orderCache.set(oldKey, {
+              ...cached,
+              revenue: nextRevenue,
+              itemCount: nextItemCount,
+              updatedAt: now,
+            });
+          }
+        }
+      }
 
       if (!order) {
         const orderId = await ctx.db.insert("salesOrders", {
@@ -754,10 +856,28 @@ export const ingestSalesBatch = internalMutation({
             args.locationId,
             dayStart,
             line.orderNumber,
+            line.department,
           ),
           updatedAt: now,
         });
-        order = (await ctx.db.get("salesOrders", orderId))!;
+        order = {
+          _id: orderId,
+          locationId: args.locationId,
+          occurredAt: line.occurredAt,
+          dayStart,
+          orderNumber: line.orderNumber,
+          revenue: line.revenue,
+          itemCount: line.quantity,
+          paymentType: line.paymentType,
+          department: line.department,
+          externalId: orderExternalId(
+            args.locationId,
+            dayStart,
+            line.orderNumber,
+            line.department,
+          ),
+          updatedAt: now,
+        };
         orderCache.set(key, order);
         knownOrderKeys.add(key);
       } else {
@@ -767,43 +887,6 @@ export const ingestSalesBatch = internalMutation({
           revenue += line.revenue - existingLine.revenue;
           itemCount += line.quantity - existingLine.quantity;
         } else if (existingLine) {
-          const oldOrder = await ctx.db.get(
-            "salesOrders",
-            existingLine.orderId,
-          );
-          if (
-            oldOrder &&
-            oldOrder.organizationId === args.organizationId &&
-            oldOrder.locationId === args.locationId
-          ) {
-            const nextRevenue = oldOrder.revenue - existingLine.revenue;
-            const nextItemCount = oldOrder.itemCount - existingLine.quantity;
-            const oldKey = orderKey(
-              oldOrder.locationId,
-              oldOrder.dayStart,
-              oldOrder.orderNumber,
-            );
-            if (nextItemCount <= 0) {
-              await ctx.db.delete("salesOrders", oldOrder._id);
-              orderCache.set(oldKey, null);
-              knownOrderKeys.delete(oldKey);
-            } else {
-              await ctx.db.patch("salesOrders", oldOrder._id, {
-                revenue: nextRevenue,
-                itemCount: nextItemCount,
-                updatedAt: now,
-              });
-              const cached = orderCache.get(oldKey);
-              if (cached) {
-                orderCache.set(oldKey, {
-                  ...cached,
-                  revenue: nextRevenue,
-                  itemCount: nextItemCount,
-                  updatedAt: now,
-                });
-              }
-            }
-          }
           revenue += line.revenue;
           itemCount += line.quantity;
         } else {
@@ -811,12 +894,19 @@ export const ingestSalesBatch = internalMutation({
           itemCount += line.quantity;
         }
         const nextOccurredAt = Math.min(order.occurredAt, line.occurredAt);
+        const externalId = orderExternalId(
+          args.locationId,
+          dayStart,
+          line.orderNumber,
+          line.department,
+        );
         if (
           order.revenue !== revenue ||
           order.itemCount !== itemCount ||
           order.occurredAt !== nextOccurredAt ||
           order.paymentType !== line.paymentType ||
-          order.department !== line.department
+          order.department !== line.department ||
+          order.externalId !== externalId
         ) {
           await ctx.db.patch("salesOrders", order._id, {
             revenue,
@@ -824,6 +914,7 @@ export const ingestSalesBatch = internalMutation({
             occurredAt: nextOccurredAt,
             paymentType: line.paymentType,
             department: line.department,
+            externalId,
             updatedAt: now,
           });
           order = {
@@ -833,15 +924,21 @@ export const ingestSalesBatch = internalMutation({
             occurredAt: nextOccurredAt,
             paymentType: line.paymentType,
             department: line.department,
+            externalId,
             updatedAt: now,
           };
           orderCache.set(key, order);
         }
       }
 
+      const targetOrder = order;
+      if (!targetOrder) {
+        throw new ConvexError("Salgsordren kunne ikke gemmes");
+      }
+
       if (existingLine) {
         if (
-          existingLine.orderId !== order._id ||
+          existingLine.orderId !== targetOrder._id ||
           existingLine.occurredAt !== line.occurredAt ||
           existingLine.externalProductId !== line.externalProductId ||
           existingLine.productName !== line.productName ||
@@ -851,7 +948,7 @@ export const ingestSalesBatch = internalMutation({
           existingLine.externalId !== line.externalId
         ) {
           await ctx.db.patch("salesLines", existingLine._id, {
-            orderId: order._id,
+            orderId: targetOrder._id,
             occurredAt: line.occurredAt,
             externalProductId: line.externalProductId,
             productName: line.productName,
@@ -862,7 +959,7 @@ export const ingestSalesBatch = internalMutation({
           });
           existingLineDocs.set(line.externalId, {
             ...existingLine,
-            orderId: order._id,
+            orderId: targetOrder._id,
             occurredAt: line.occurredAt,
             externalProductId: line.externalProductId,
             productName: line.productName,
@@ -873,10 +970,10 @@ export const ingestSalesBatch = internalMutation({
           });
         }
       } else {
-        const lineId = await ctx.db.insert("salesLines", {
+        await ctx.db.insert("salesLines", {
           organizationId: args.organizationId,
           locationId: args.locationId,
-          orderId: order._id,
+          orderId: targetOrder._id,
           occurredAt: line.occurredAt,
           externalProductId: line.externalProductId,
           productName: line.productName,
@@ -886,10 +983,6 @@ export const ingestSalesBatch = internalMutation({
           source: SOURCE,
           externalId: line.externalId,
         });
-        existingLineDocs.set(
-          line.externalId,
-          (await ctx.db.get("salesLines", lineId))!,
-        );
       }
       existingLines.set(line.externalId, {
         revenue: line.revenue,
@@ -897,7 +990,23 @@ export const ingestSalesBatch = internalMutation({
         locationId: args.locationId,
         dayStart,
         orderNumber: line.orderNumber,
+        department: line.department,
       });
+    }
+
+    for (const [orderId, key] of maybeEmptyOrders) {
+      const remainingLine = await ctx.db
+        .query("salesLines")
+        .withIndex("by_organizationId_and_orderId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("orderId", orderId),
+        )
+        .first();
+      if (remainingLine) continue;
+      await ctx.db.delete("salesOrders", orderId);
+      orderCache.set(key, null);
+      knownOrderKeys.delete(key);
     }
 
     for (const [bucket, delta] of deltas) {
@@ -953,7 +1062,6 @@ export const syncLocationWindow = internalAction({
     runToken: v.string(),
     from: v.number(),
     to: v.number(),
-    replaceDay: v.boolean(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -993,7 +1101,6 @@ export const syncLocationWindow = internalAction({
         locationId: args.locationId,
         runToken: args.runToken,
         to: args.to,
-        startBackfill: !args.replaceDay,
       });
     } catch (error) {
       await ctx.runMutation(internal.onlinePosSync.failSync, {
@@ -1077,11 +1184,14 @@ export const resetDayRollup = internalMutation({
   args: {
     organizationId: v.string(),
     locationId: v.id("locations"),
+    runToken: v.string(),
     dayStart: v.number(),
     timeZone: v.string(),
   },
-  returns: v.null(),
+  returns: v.boolean(),
   handler: async (ctx, args) => {
+    const status = await getStatus(ctx, args.organizationId, args.locationId);
+    if (status?.runToken !== args.runToken) return false;
     const daily = await ctx.db
       .query("salesDaily")
       .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
@@ -1111,7 +1221,7 @@ export const resetDayRollup = internalMutation({
         updatedAt: now,
       });
     }
-    return null;
+    return true;
   },
 });
 
@@ -1122,20 +1232,21 @@ export const markReconcilePending = internalMutation({
     runToken: v.string(),
     dayStart: v.number(),
   },
-  returns: v.null(),
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) return null;
+    if (status?.runToken !== args.runToken) return false;
     await ctx.db.patch("onlinePosSyncStatus", status._id, {
       pendingReconcileDayStart: args.dayStart,
       state: "running",
       updatedAt: Date.now(),
     });
-    return null;
+    return true;
   },
 });
 
 const deleteDayPageResultValidator = v.object({
+  active: v.boolean(),
   isDone: v.boolean(),
   continueCursor: v.string(),
 });
@@ -1152,13 +1263,13 @@ export const deleteDayOrdersPage = internalMutation({
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
     if (status?.runToken !== args.runToken) {
-      return { isDone: true, continueCursor: "" };
+      return { active: false, isDone: true, continueCursor: "" };
     }
 
     const result = await ctx.db
       .query("salesOrders")
       .withIndex(
-        "by_organizationId_and_locationId_and_dayStart_and_orderNumber",
+        "by_org_location_day_order_department",
         (q) =>
           q
             .eq("organizationId", args.organizationId)
@@ -1186,6 +1297,7 @@ export const deleteDayOrdersPage = internalMutation({
     }
 
     return {
+      active: true,
       isDone: result.isDone,
       continueCursor: result.continueCursor,
     };
@@ -1313,16 +1425,24 @@ export const reconcileDayWindow = internalAction({
         return null;
       }
 
-      await ctx.runMutation(internal.onlinePosSync.markReconcilePending, {
-        organizationId: args.organizationId,
-        locationId: args.locationId,
-        runToken: args.runToken,
-        dayStart: args.dayStart,
-      });
+      const active: boolean = await ctx.runMutation(
+        internal.onlinePosSync.markReconcilePending,
+        {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          runToken: args.runToken,
+          dayStart: args.dayStart,
+        },
+      );
+      if (!active) return null;
 
       let cursor: string | null = null;
       for (;;) {
-        const page: { isDone: boolean; continueCursor: string } =
+        const page: {
+          active: boolean;
+          isDone: boolean;
+          continueCursor: string;
+        } =
           await ctx.runMutation(internal.onlinePosSync.deleteDayOrdersPage, {
             organizationId: args.organizationId,
             locationId: args.locationId,
@@ -1330,16 +1450,22 @@ export const reconcileDayWindow = internalAction({
             dayStart: args.dayStart,
             cursor,
           });
+        if (!page.active) return null;
         if (page.isDone) break;
         cursor = page.continueCursor;
       }
 
-      await ctx.runMutation(internal.onlinePosSync.resetDayRollup, {
-        organizationId: args.organizationId,
-        locationId: args.locationId,
-        dayStart: args.dayStart,
-        timeZone: context.timeZone,
-      });
+      const reset: boolean = await ctx.runMutation(
+        internal.onlinePosSync.resetDayRollup,
+        {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          runToken: args.runToken,
+          dayStart: args.dayStart,
+          timeZone: context.timeZone,
+        },
+      );
+      if (!reset) return null;
 
       for (let index = 0; index < lines.length; index += LINE_BATCH_SIZE) {
         const batch: OnlinePosSaleLine[] = lines.slice(

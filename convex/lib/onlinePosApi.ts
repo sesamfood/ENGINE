@@ -209,44 +209,61 @@ export function parseSaleLines(
     throw new ConvexError("Der er for mange OnlinePOS-salgslinjer i perioden");
   }
 
-  return payload.flatMap((value) => {
+  const ids = new Set<string>();
+  return payload.map((value, index) => {
     const line = object(object(value)?.line);
     const id = number(line?.id);
     const chk = number(line?.chk);
     const productId = number(line?.product_id);
     const amount = number(line?.amount);
     const price = priceNumber(line?.price);
+    const department = string(line?.department).trim();
     if (
       id === null ||
+      !Number.isInteger(id) ||
       chk === null ||
+      !Number.isInteger(chk) ||
       productId === null ||
+      !Number.isInteger(productId) ||
       amount === null ||
-      price === null
+      price === null ||
+      !department
     ) {
-      return [];
+      throw new ConvexError(
+        `OnlinePOS returnerede en ugyldig salgslinje ved indeks ${index}`,
+      );
     }
     const occurredAt = saleTimestamp(
       string(line?.date),
       string(line?.time),
       timeZone,
     );
-    if (occurredAt === null) return [];
+    if (occurredAt === null) {
+      throw new ConvexError(
+        `OnlinePOS returnerede en ugyldig salgslinje ved indeks ${index}`,
+      );
+    }
+    const externalId = String(id);
+    if (ids.has(externalId)) {
+      throw new ConvexError(
+        `OnlinePOS returnerede et dubleret salgslinje-id ved indeks ${index}`,
+      );
+    }
+    ids.add(externalId);
     const unitPrice = Math.round(price * 100);
     const quantity = amount;
-    return [
-      {
-        externalId: String(id),
-        orderNumber: chk,
-        occurredAt,
-        externalProductId: String(productId),
-        productName: string(line?.product),
-        quantity,
-        unitPrice,
-        revenue: Math.round(quantity * unitPrice),
-        paymentType: string(line?.payment_type),
-        department: string(line?.department),
-      },
-    ];
+    return {
+      externalId,
+      orderNumber: chk,
+      occurredAt,
+      externalProductId: String(productId),
+      productName: string(line?.product),
+      quantity,
+      unitPrice,
+      revenue: Math.round(quantity * unitPrice),
+      paymentType: string(line?.payment_type),
+      department,
+    };
   });
 }
 

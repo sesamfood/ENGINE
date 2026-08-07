@@ -69,7 +69,7 @@ export default defineSchema({
     // Set before destroying a day during reconcile; cleared only on success.
     // Dispatcher retries this dayStart until the rebuild completes.
     pendingReconcileDayStart: v.optional(v.number()),
-    // Keep at most RECONCILE_TRAILING_DAYS (7) entries; replace by dayStart.
+    // Keep the latest reconciled day hash; replace by dayStart.
     reconcileHashes: v.optional(
       v.array(v.object({ dayStart: v.number(), hash: v.string() })),
     ),
@@ -114,17 +114,16 @@ export default defineSchema({
       "organizationId",
       "occurredAt",
     ])
-    .index("by_organizationId_and_source_and_externalId", [
-      "organizationId",
-      "source",
-      "externalId",
-    ])
-    .index("by_organizationId_and_locationId_and_dayStart_and_orderNumber", [
-      "organizationId",
-      "locationId",
-      "dayStart",
-      "orderNumber",
-    ])
+    .index(
+      "by_org_location_day_order_department",
+      [
+        "organizationId",
+        "locationId",
+        "dayStart",
+        "orderNumber",
+        "department",
+      ],
+    )
     .index("by_occurredAt", ["occurredAt"]),
 
   salesLines: defineTable({
@@ -162,9 +161,7 @@ export default defineSchema({
     orderCount: v.number(),
     itemCount: v.number(),
     updatedAt: v.number(),
-  })
-    .index("by_organizationId_and_dayStart", ["organizationId", "dayStart"])
-    .index("by_organizationId_and_locationId_and_dayStart", [
+  }).index("by_organizationId_and_locationId_and_dayStart", [
       "organizationId",
       "locationId",
       "dayStart",

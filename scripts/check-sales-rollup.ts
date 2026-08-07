@@ -107,13 +107,21 @@ function ingest(
   const deltas = computeDailySalesDeltas(lines, knownOrderKeys, existingLines);
   applyDeltas(daily, deltas);
   for (const line of lines) {
-    knownOrderKeys.add(orderKey(line.locationId, line.dayStart, line.orderNumber));
+    knownOrderKeys.add(
+      orderKey(
+        line.locationId,
+        line.dayStart,
+        line.orderNumber,
+        line.department,
+      ),
+    );
     existingLines.set(line.externalId, {
       revenue: line.revenue,
       quantity: line.quantity,
       locationId: line.locationId,
       dayStart: line.dayStart,
       orderNumber: line.orderNumber,
+      department: line.department,
     });
   }
   return deltas;
@@ -126,7 +134,14 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
   for (const line of lines) {
     revenue += line.revenue;
     itemCount += line.quantity;
-    orders.add(orderKey(line.locationId, line.dayStart, line.orderNumber));
+    orders.add(
+      orderKey(
+        line.locationId,
+        line.dayStart,
+        line.orderNumber,
+        line.department,
+      ),
+    );
   }
   return { revenue, orderCount: orders.size, itemCount };
 }
@@ -135,9 +150,9 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
   const dayStart = dayStartOf(parseOne(100, "20.02.2025", "12:00:00", 1, "10,00").occurredAt, TZ);
   const bucket = dayBucketKey(LOCATION, dayStart);
   const batch: IncomingSaleLine[] = [
-    { externalId: "L1", orderNumber: 501, locationId: LOCATION, dayStart, revenue: 2500, quantity: 2 },
-    { externalId: "L2", orderNumber: 501, locationId: LOCATION, dayStart, revenue: 1000, quantity: 1 },
-    { externalId: "L3", orderNumber: 502, locationId: LOCATION, dayStart, revenue: 5000, quantity: 4 },
+    { externalId: "L1", orderNumber: 501, department: "bar", locationId: LOCATION, dayStart, revenue: 2500, quantity: 2 },
+    { externalId: "L2", orderNumber: 501, department: "bar", locationId: LOCATION, dayStart, revenue: 1000, quantity: 1 },
+    { externalId: "L3", orderNumber: 502, department: "bar", locationId: LOCATION, dayStart, revenue: 5000, quantity: 4 },
   ];
   const knownOrderKeys = new Set<string>();
   const existingLines = new Map<string, ExistingLineState>();
@@ -177,6 +192,7 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
       {
         externalId: "M1",
         orderNumber: 900,
+        department: "bar",
         locationId: LOCATION,
         dayStart: dayA,
         revenue: 2500,
@@ -194,6 +210,7 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
       {
         externalId: "M1",
         orderNumber: 900,
+        department: "bar",
         locationId: LOCATION,
         dayStart: dayB,
         revenue: 2500,

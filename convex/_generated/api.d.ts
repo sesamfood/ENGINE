@@ -29,6 +29,7 @@ import type * as lib_countWindow from "../lib/countWindow.js";
 import type * as lib_dashboardMetrics from "../lib/dashboardMetrics.js";
 import type * as lib_dashboardShareCrypto from "../lib/dashboardShareCrypto.js";
 import type * as lib_dashboardValidators from "../lib/dashboardValidators.js";
+import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
 import type * as lib_openingHours from "../lib/openingHours.js";
 import type * as lib_organizationTheme from "../lib/organizationTheme.js";
 import type * as lib_rateLimits from "../lib/rateLimits.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dashboardMetrics": typeof lib_dashboardMetrics;
   "lib/dashboardShareCrypto": typeof lib_dashboardShareCrypto;
   "lib/dashboardValidators": typeof lib_dashboardValidators;
+  "lib/onlinePosApi": typeof lib_onlinePosApi;
   "lib/openingHours": typeof lib_openingHours;
   "lib/organizationTheme": typeof lib_organizationTheme;
   "lib/rateLimits": typeof lib_rateLimits;

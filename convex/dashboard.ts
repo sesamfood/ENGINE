@@ -189,10 +189,6 @@ export const saveConfig = mutation({
     const data = { widgets: args.widgets, scope: args.scope, range: args.range, updatedAt: Date.now() };
     if (current) await ctx.db.patch(current._id, data);
     else await ctx.db.insert("dashboards", { organizationId, userIdentifier, ...data });
-    await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
-      table: "dashboards",
-      cursor: null,
-    });
     return null;
   },
 });
@@ -305,10 +301,6 @@ export const createShare = action({
       createdBy: userIdentifier,
       expiresAt: args.expiresAt,
     });
-    await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
-      table: "dashboards",
-      cursor: null,
-    });
     return { token };
   },
 });
@@ -358,7 +350,6 @@ export const migrateOnlinePosTurnoverWidgets = internalMutation({
   args: {
     table: v.union(v.literal("dashboards"), v.literal("dashboardShares")),
     cursor: v.union(v.string(), v.null()),
-    anyChanged: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -366,7 +357,6 @@ export const migrateOnlinePosTurnoverWidgets = internalMutation({
       numItems: MIGRATE_PAGE_SIZE,
       cursor: args.cursor,
     });
-    let anyChanged = args.anyChanged === true;
     for (const document of result.page) {
       let changed = false;
       const widgets = document.widgets.map((widget) => {
@@ -375,7 +365,6 @@ export const migrateOnlinePosTurnoverWidgets = internalMutation({
         return { ...widget, metricId: "salesRevenue" as const };
       });
       if (changed) {
-        anyChanged = true;
         await ctx.db.patch(document._id, { widgets });
       }
     }
@@ -383,7 +372,6 @@ export const migrateOnlinePosTurnoverWidgets = internalMutation({
       await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
         table: args.table,
         cursor: result.continueCursor,
-        anyChanged,
       });
       return null;
     }
@@ -391,12 +379,9 @@ export const migrateOnlinePosTurnoverWidgets = internalMutation({
       await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
         table: "dashboardShares",
         cursor: null,
-        anyChanged,
       });
       return null;
     }
-    // Fleet already clean: one scan per user-driven kick, then stop.
-    if (anyChanged !== true) return null;
     return null;
   },
 });

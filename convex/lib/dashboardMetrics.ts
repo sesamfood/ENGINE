@@ -51,6 +51,14 @@ function addDays(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function daysBetween(from: string, to: string) {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00.000Z`) -
+      Date.parse(`${from}T00:00:00.000Z`)) /
+      DAY_MS,
+  );
+}
+
 export function zonedStart(value: string, timeZone: string) {
   const [year, month, day] = value.split("-").map(Number);
   const target = Date.UTC(year, month - 1, day);
@@ -120,13 +128,14 @@ export function resolveDashboardRange(
 
   const from = zonedStart(fromDate, timeZone);
   const to = zonedStart(addDays(toDate, 1), timeZone);
-  if (to - from > 366 * DAY_MS) {
+  const dayCount = daysBetween(fromDate, toDate) + 1;
+  if (dayCount > 366) {
     throw new ConvexError("Dashboardperioden må højst være ét år");
   }
   return {
     from,
     to,
-    previousFrom: from - (to - from),
+    previousFrom: zonedStart(addDays(fromDate, -dayCount), timeZone),
     previousTo: from,
     timeZone,
   };
@@ -515,43 +524,31 @@ const locationComparison: MetricComputer = async (ctx, params) => {
 };
 
 async function salesDailyRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  // Empty selection should not happen (resolveMetricParams requires ≥1); keep
-  // the org-wide path as a safe fallback.
-  if (params.locations.length === 0) {
-    const rows = await ctx.db
+  const rows: Doc<"salesDaily">[] = [];
+  let truncated = false;
+  for (const location of params.locations) {
+    const remaining = MAX_ROWS - rows.length;
+    if (remaining === 0) {
+      truncated = true;
+      break;
+    }
+    const locationRows = await ctx.db
       .query("salesDaily")
-      .withIndex("by_organizationId_and_dayStart", (q) =>
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
         q
           .eq("organizationId", params.organizationId)
+          .eq("locationId", location.id)
           .gte("dayStart", params.previousFrom)
           .lt("dayStart", params.to),
       )
-      .take(MAX_ROWS + 1);
-    return {
-      rows: rows.slice(0, MAX_ROWS),
-      truncated: rows.length > MAX_ROWS,
-    };
+      .take(remaining + 1);
+    rows.push(...locationRows.slice(0, remaining));
+    if (locationRows.length > remaining) {
+      truncated = true;
+      break;
+    }
   }
-  // Per selected location so a subset is not truncated by unrelated rows.
-  const parts = await Promise.all(
-    params.locations.map((location) =>
-      ctx.db
-        .query("salesDaily")
-        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
-          q
-            .eq("organizationId", params.organizationId)
-            .eq("locationId", location.id)
-            .gte("dayStart", params.previousFrom)
-            .lt("dayStart", params.to),
-        )
-        .take(MAX_ROWS + 1),
-    ),
-  );
-  const combined = parts.flat();
-  return {
-    rows: combined.slice(0, MAX_ROWS),
-    truncated: combined.length > MAX_ROWS,
-  };
+  return { rows, truncated };
 }
 
 const salesRevenue: MetricComputer = async (ctx, params) => {

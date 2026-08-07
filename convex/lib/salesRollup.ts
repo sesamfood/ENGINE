@@ -9,6 +9,7 @@ export type SalesDelta = {
 export type IncomingSaleLine = {
   externalId: string;
   orderNumber: number;
+  department: string;
   locationId: string;
   dayStart: number;
   revenue: number;
@@ -21,22 +22,20 @@ export type ExistingLineState = {
   locationId: string;
   dayStart: number;
   orderNumber: number;
+  department: string;
 };
 
 export function dayStartOf(occurredAt: number, timeZone: string): number {
   return zonedStart(dateKey(occurredAt, timeZone), timeZone);
 }
 
-export function dateOfDay(occurredAt: number, timeZone: string): string {
-  return dateKey(occurredAt, timeZone);
-}
-
 export function orderKey(
   locationId: string,
   dayStart: number,
   orderNumber: number,
+  department: string,
 ) {
-  return `${locationId}:${dayStart}:${orderNumber}`;
+  return `${locationId}:${dayStart}:${orderNumber}:${department}`;
 }
 
 export function dayBucketKey(locationId: string, dayStart: number) {
@@ -51,20 +50,27 @@ export function emptyDelta(): SalesDelta {
  * Pure daily-delta arithmetic for sales ingest.
  * `knownOrderKeys` uses {@link orderKey}; `existingLines` is keyed by line externalId.
  * Re-ingesting an identical batch yields a net-zero Map (empty or zeroed buckets).
- * When a line's order key changes and the old order has no remaining lines in
- * `existingLines`∪batch, the old day bucket gets `orderCount: -1`.
+ * When a line's order key changes and the old order has no remaining stored or
+ * batched lines, the old day bucket gets `orderCount: -1`.
  */
 export function computeDailySalesDeltas(
   lines: IncomingSaleLine[],
   knownOrderKeys: ReadonlySet<string>,
   existingLines: ReadonlyMap<string, ExistingLineState>,
+  ordersWithOtherLines: ReadonlySet<string> = new Set(),
 ): Map<string, SalesDelta> {
   const deltas = new Map<string, SalesDelta>();
   const countedOrders = new Set(knownOrderKeys);
   const working = new Map(existingLines);
   const linesPerOrder = new Map<string, number>();
+  for (const key of ordersWithOtherLines) linesPerOrder.set(key, 1);
   for (const state of working.values()) {
-    const key = orderKey(state.locationId, state.dayStart, state.orderNumber);
+    const key = orderKey(
+      state.locationId,
+      state.dayStart,
+      state.orderNumber,
+      state.department,
+    );
     linesPerOrder.set(key, (linesPerOrder.get(key) ?? 0) + 1);
   }
 
@@ -83,7 +89,12 @@ export function computeDailySalesDeltas(
   }
 
   for (const line of lines) {
-    const key = orderKey(line.locationId, line.dayStart, line.orderNumber);
+    const key = orderKey(
+      line.locationId,
+      line.dayStart,
+      line.orderNumber,
+      line.department,
+    );
     const existing = working.get(line.externalId);
 
     if (existing) {
@@ -91,6 +102,7 @@ export function computeDailySalesDeltas(
         existing.locationId,
         existing.dayStart,
         existing.orderNumber,
+        existing.department,
       );
       const remaining = (linesPerOrder.get(oldKey) ?? 0) - 1;
       linesPerOrder.set(oldKey, remaining);
@@ -120,6 +132,7 @@ export function computeDailySalesDeltas(
       locationId: line.locationId,
       dayStart: line.dayStart,
       orderNumber: line.orderNumber,
+      department: line.department,
     });
   }
 
