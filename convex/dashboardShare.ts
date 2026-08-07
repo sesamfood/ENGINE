@@ -13,7 +13,6 @@ import {
 import { dashboardMetricComputers, resolveMetricParams } from "./lib/dashboardMetrics";
 import { equalSecrets, hashDashboardPassword } from "./lib/dashboardShareCrypto";
 import { rateLimiter } from "./lib/rateLimits";
-import { normalizeStoredWidgets } from "./dashboard";
 
 const unlockShareValidator = v.union(
   v.object({
@@ -69,7 +68,7 @@ export const getPublicMeta = query({
     if (!share || !active(share)) return null;
     const requiresPassword =
       Boolean(share.passwordHash) ||
-      normalizeStoredWidgets(share.widgets).some(
+      share.widgets.some(
         (widget) => metricRegistry[widget.metricId]?.adminOnly,
       );
     return {
@@ -97,7 +96,7 @@ export const getShareForUnlock = internalQuery({
           expiresAt: share.expiresAt,
           revokedAt: share.revokedAt ?? null,
           requiresPassword: Boolean(share.passwordHash) ||
-            normalizeStoredWidgets(share.widgets).some(
+            share.widgets.some(
               (widget) => metricRegistry[widget.metricId]?.adminOnly,
             ),
         }
@@ -164,7 +163,7 @@ export const getSharedConfig = query({
   handler: async (ctx, args) => {
     const share = await requireShare(ctx, args.token, args.accessKey);
     return {
-      widgets: normalizeStoredWidgets(share.widgets),
+      widgets: share.widgets,
       scope: share.scope,
       range: share.range,
       updatedAt: share._creationTime,
@@ -182,8 +181,7 @@ export const getSharedMetric = query({
   returns: metricResultValidator,
   handler: async (ctx, args) => {
     const share = await requireShare(ctx, args.token, args.accessKey);
-    const widgets = normalizeStoredWidgets(share.widgets);
-    const widget = widgets.find(
+    const widget = share.widgets.find(
       (candidate) =>
         candidate.metricId === args.metricId &&
         candidate.visualization === args.visualization,

@@ -14,7 +14,6 @@ import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
 import type {
   DashboardConfig,
   DashboardScope,
-  MetricId,
   WidgetInstance,
 } from "../lib/dashboard/types";
 import {
@@ -42,7 +41,6 @@ import {
 const MAX_WIDGETS = 24;
 const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
-const MIGRATE_PAGE_SIZE = 50;
 
 const shareSummaryValidator = v.object({
   id: v.id("dashboardShares"),
@@ -54,28 +52,6 @@ const shareSummaryValidator = v.object({
   revokedAt: v.union(v.number(), v.null()),
   requiresPassword: v.boolean(),
 });
-
-export function normalizeWidgetMetricId(metricId: string): MetricId {
-  return metricId === "onlinePosTurnover"
-    ? "salesRevenue"
-    : (metricId as MetricId);
-}
-
-export function normalizeStoredWidgets(
-  widgets: Array<{
-    key: string;
-    metricId: string;
-    visualization: WidgetInstance["visualization"];
-    size: WidgetInstance["size"];
-    position?: WidgetInstance["position"];
-    options?: WidgetInstance["options"];
-  }>,
-): WidgetInstance[] {
-  return widgets.map((widget) => ({
-    ...widget,
-    metricId: normalizeWidgetMetricId(widget.metricId),
-  }));
-}
 
 function validateWidgets(widgets: WidgetInstance[], role: string) {
   if (widgets.length > MAX_WIDGETS) {
@@ -141,7 +117,7 @@ async function validateScope(
 function configFromDocument(document: Doc<"dashboards"> | null): DashboardConfig {
   return document
     ? {
-        widgets: normalizeStoredWidgets(document.widgets),
+        widgets: document.widgets,
         scope: document.scope,
         range: document.range,
         updatedAt: document.updatedAt,
@@ -325,7 +301,7 @@ export const listShares = query({
       revokedAt: share.revokedAt ?? null,
       requiresPassword:
         Boolean(share.passwordHash) ||
-        normalizeStoredWidgets(share.widgets).some(
+        share.widgets.some(
           (widget) => metricRegistry[widget.metricId]?.adminOnly,
         ),
     }));
@@ -342,46 +318,6 @@ export const revokeShare = mutation({
       throw new ConvexError("Delingen blev ikke fundet");
     }
     if (!share.revokedAt) await ctx.db.patch(share._id, { revokedAt: Date.now() });
-    return null;
-  },
-});
-
-export const migrateOnlinePosTurnoverWidgets = internalMutation({
-  args: {
-    table: v.union(v.literal("dashboards"), v.literal("dashboardShares")),
-    cursor: v.union(v.string(), v.null()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const result = await ctx.db.query(args.table).paginate({
-      numItems: MIGRATE_PAGE_SIZE,
-      cursor: args.cursor,
-    });
-    for (const document of result.page) {
-      let changed = false;
-      const widgets = document.widgets.map((widget) => {
-        if (widget.metricId !== "onlinePosTurnover") return widget;
-        changed = true;
-        return { ...widget, metricId: "salesRevenue" as const };
-      });
-      if (changed) {
-        await ctx.db.patch(document._id, { widgets });
-      }
-    }
-    if (!result.isDone) {
-      await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
-        table: args.table,
-        cursor: result.continueCursor,
-      });
-      return null;
-    }
-    if (args.table === "dashboards") {
-      await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
-        table: "dashboardShares",
-        cursor: null,
-      });
-      return null;
-    }
     return null;
   },
 });
