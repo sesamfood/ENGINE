@@ -13,10 +13,8 @@ import { rateLimiter } from "./lib/rateLimits";
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_LOCATIONS = 200;
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
-// Matches staffFood/waste paginated exports; keeps fan-out take(need)×locations bounded.
+// Matches staffFood/waste paginated exports; caps client page size.
 const MAX_LIST_ORDERS_PAGE = 100;
-// Cap offset so need = offset + numItems + 1 cannot be driven into the read budget.
-const MAX_LIST_ORDERS_OFFSET = 5_000;
 
 // Money fields (revenue) are integer minor units (øre), same as storage. Callers divide by 100.
 
@@ -264,8 +262,7 @@ export const listOrders = query({
       };
     }
 
-    // No by_organizationId_and_occurredAt: fan out per connected location and merge.
-    // ponytail: offset merge caps at MAX_LOCATIONS indexed reads per page; upgrade: org+occurredAt index.
+    // All locations: one org+occurredAt range so usePaginatedQuery stays native.
     const connections = await ctx.db
       .query("onlinePosLocationIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -275,62 +272,33 @@ export const listOrders = query({
     if (connections.length > MAX_LOCATIONS) {
       throw new ConvexError("Der er for mange OnlinePOS-lokationer");
     }
-    const offset =
-      args.paginationOpts.cursor === null || args.paginationOpts.cursor === ""
-        ? 0
-        : Number.parseInt(args.paginationOpts.cursor, 10);
-    if (
-      !Number.isFinite(offset) ||
-      !Number.isSafeInteger(offset) ||
-      offset < 0 ||
-      offset > MAX_LIST_ORDERS_OFFSET
-    ) {
-      throw new ConvexError("Ugyldig side");
-    }
-    const need = offset + args.paginationOpts.numItems + 1;
-    const locationIds = connections.map((row) => row.locationId);
-    const [locationDocs, orderBatches] = await Promise.all([
-      Promise.all(locationIds.map((id) => ctx.db.get("locations", id))),
-      Promise.all(
-        locationIds.map((locationId) =>
-          ctx.db
-            .query("salesOrders")
-            .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("locationId", locationId)
-                .gte("occurredAt", args.from)
-                .lt("occurredAt", args.to),
-            )
-            .order("desc")
-            .take(need),
-        ),
-      ),
-    ]);
+    const locationDocs = await Promise.all(
+      connections.map((row) => ctx.db.get("locations", row.locationId)),
+    );
     const locationNameById = new Map<Id<"locations">, string>();
     for (const location of locationDocs) {
       if (location?.organizationId === organizationId) {
         locationNameById.set(location._id, location.name);
       }
     }
-    const merged = orderBatches
-      .flat()
-      .filter((order) => locationNameById.has(order.locationId))
-      .sort(
-        (left, right) =>
-          right.occurredAt - left.occurredAt ||
-          right._creationTime - left._creationTime,
-      );
-    const pageRows = merged.slice(offset, offset + args.paginationOpts.numItems);
-    const isDone = merged.length <= offset + args.paginationOpts.numItems;
+    const result = await ctx.db
+      .query("salesOrders")
+      .withIndex("by_organizationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .gte("occurredAt", args.from)
+          .lt("occurredAt", args.to),
+      )
+      .order("desc")
+      .paginate(args.paginationOpts);
     return {
-      page: pageRows.map((order) =>
-        mapOrder(order, locationNameById.get(order.locationId)!),
+      ...result,
+      page: result.page.map((order) =>
+        mapOrder(
+          order,
+          locationNameById.get(order.locationId) ?? "Ukendt lokation",
+        ),
       ),
-      isDone,
-      continueCursor: isDone
-        ? ""
-        : String(offset + args.paginationOpts.numItems),
     };
   },
 });

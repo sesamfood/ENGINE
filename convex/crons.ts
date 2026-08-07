@@ -48,13 +48,4 @@ crons.interval(
   { cursor: null },
 );
 
-// ponytail: Idempotent widen→narrow migration kickoff. Remove after the
-// onlinePosTurnover literal is dropped from storedMetricIdValidator.
-crons.interval(
-  "migrate onlinePosTurnover widgets",
-  { hours: 24 },
-  internal.dashboard.migrateOnlinePosTurnoverWidgets,
-  { table: "dashboards", cursor: null },
-);
-
 export default crons;

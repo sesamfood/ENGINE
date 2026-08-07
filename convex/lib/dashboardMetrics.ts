@@ -515,19 +515,42 @@ const locationComparison: MetricComputer = async (ctx, params) => {
 };
 
 async function salesDailyRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  const selected = new Set(params.locations.map((location) => location.id));
-  const rows = await ctx.db
-    .query("salesDaily")
-    .withIndex("by_organizationId_and_dayStart", (q) =>
-      q
-        .eq("organizationId", params.organizationId)
-        .gte("dayStart", params.previousFrom)
-        .lt("dayStart", params.to),
-    )
-    .take(MAX_ROWS + 1);
+  // Empty selection should not happen (resolveMetricParams requires ≥1); keep
+  // the org-wide path as a safe fallback.
+  if (params.locations.length === 0) {
+    const rows = await ctx.db
+      .query("salesDaily")
+      .withIndex("by_organizationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .gte("dayStart", params.previousFrom)
+          .lt("dayStart", params.to),
+      )
+      .take(MAX_ROWS + 1);
+    return {
+      rows: rows.slice(0, MAX_ROWS),
+      truncated: rows.length > MAX_ROWS,
+    };
+  }
+  // Per selected location so a subset is not truncated by unrelated rows.
+  const parts = await Promise.all(
+    params.locations.map((location) =>
+      ctx.db
+        .query("salesDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", location.id)
+            .gte("dayStart", params.previousFrom)
+            .lt("dayStart", params.to),
+        )
+        .take(MAX_ROWS + 1),
+    ),
+  );
+  const combined = parts.flat();
   return {
-    rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS),
-    truncated: rows.length > MAX_ROWS,
+    rows: combined.slice(0, MAX_ROWS),
+    truncated: combined.length > MAX_ROWS,
   };
 }
 

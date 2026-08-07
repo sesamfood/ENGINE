@@ -33,6 +33,9 @@ const DELETE_PAGE = 40;
 const LINE_DELETE_PAGE = 100;
 const PRUNE_PAGE = 50;
 const RECONCILE_TRAILING_DAYS = 7;
+const RECONCILE_MAX_FAIL_RETRIES = 8;
+const RECONCILE_RETRY_BASE_MS = 60_000;
+const RECONCILE_RETRY_MAX_MS = 6 * 60 * 60 * 1_000;
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 
 type SyncContext = {
@@ -41,11 +44,18 @@ type SyncContext = {
   runToken: string | null;
   syncedThroughAt: number | null;
   backfillThroughAt: number | null;
+  reconcileHashes: Array<{ dayStart: number; hash: string }>;
+  lineIdsScoped: boolean;
 };
 
 const settingsValidator = v.object({
   token: v.string(),
   companyId: v.number(),
+});
+
+const reconcileHashValidator = v.object({
+  dayStart: v.number(),
+  hash: v.string(),
 });
 
 const syncContextValidator = v.union(
@@ -55,6 +65,8 @@ const syncContextValidator = v.union(
     runToken: v.union(v.string(), v.null()),
     syncedThroughAt: v.union(v.number(), v.null()),
     backfillThroughAt: v.union(v.number(), v.null()),
+    reconcileHashes: v.array(reconcileHashValidator),
+    lineIdsScoped: v.boolean(),
   }),
   v.null(),
 );
@@ -110,6 +122,46 @@ function trailingReconcileDays(now: number, timeZone: string) {
     });
   }
   return days;
+}
+
+async function saleLinesHash(lines: OnlinePosSaleLine[]) {
+  const serialized = lines
+    .map((line) =>
+      JSON.stringify([
+        line.externalId,
+        line.orderNumber,
+        line.occurredAt,
+        line.externalProductId,
+        line.quantity,
+        line.unitPrice,
+        line.revenue,
+        line.paymentType,
+        line.department,
+        line.productName,
+      ]),
+    )
+    .sort();
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(["v1", serialized])),
+  );
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `v1:${hex}`;
+}
+
+function withReconcileHash(
+  hashes: Array<{ dayStart: number; hash: string }> | undefined,
+  dayStart: number,
+  hash: string,
+) {
+  const next = [
+    ...(hashes ?? []).filter((entry) => entry.dayStart !== dayStart),
+    { dayStart, hash },
+  ];
+  next.sort((a, b) => b.dayStart - a.dayStart);
+  return next.slice(0, RECONCILE_TRAILING_DAYS);
 }
 
 async function organizationTimeZone(
@@ -376,6 +428,8 @@ export const getLocationSyncContext = internalQuery({
       runToken: status?.runToken ?? null,
       syncedThroughAt: status?.syncedThroughAt ?? null,
       backfillThroughAt: status?.backfillThroughAt ?? null,
+      reconcileHashes: status?.reconcileHashes ?? [],
+      lineIdsScoped: status?.lineIdsScoped === true,
     };
   },
 });
@@ -469,6 +523,7 @@ export const markRunning = internalMutation({
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
     if (status?.runToken === args.runToken) {
+      if (status.state === "running") return null;
       await ctx.db.patch("onlinePosSyncStatus", status._id, {
         state: "running",
         updatedAt: Date.now(),
@@ -502,6 +557,7 @@ export const completeLocationWindow = internalMutation({
         updatedAt: now,
         state: "queued",
         runToken: token,
+        lineIdsScoped: true,
       });
       const timeZone = await organizationTimeZone(ctx, args.organizationId);
       await scheduleReconcileWindow(ctx, {
@@ -521,6 +577,7 @@ export const completeLocationWindow = internalMutation({
       lastError: undefined,
       updatedAt: now,
       state: args.startBackfill ? "running" : "idle",
+      lineIdsScoped: true,
     });
     if (args.startBackfill) {
       const updated = {
@@ -618,7 +675,7 @@ export const ingestSalesBatch = internalMutation({
           )
           .unique();
         // Migrate pre-scoped provider ids written before location composition.
-        if (!current) {
+        if (!current && status.lineIdsScoped !== true) {
           const providerId = line.externalId.slice(
             args.locationId.length + 1,
           );
@@ -753,48 +810,68 @@ export const ingestSalesBatch = internalMutation({
           revenue += line.revenue;
           itemCount += line.quantity;
         }
-        await ctx.db.patch("salesOrders", order._id, {
-          revenue,
-          itemCount,
-          occurredAt: Math.min(order.occurredAt, line.occurredAt),
-          paymentType: line.paymentType,
-          department: line.department,
-          updatedAt: now,
-        });
-        order = {
-          ...order,
-          revenue,
-          itemCount,
-          occurredAt: Math.min(order.occurredAt, line.occurredAt),
-          paymentType: line.paymentType,
-          department: line.department,
-          updatedAt: now,
-        };
-        orderCache.set(key, order);
+        const nextOccurredAt = Math.min(order.occurredAt, line.occurredAt);
+        if (
+          order.revenue !== revenue ||
+          order.itemCount !== itemCount ||
+          order.occurredAt !== nextOccurredAt ||
+          order.paymentType !== line.paymentType ||
+          order.department !== line.department
+        ) {
+          await ctx.db.patch("salesOrders", order._id, {
+            revenue,
+            itemCount,
+            occurredAt: nextOccurredAt,
+            paymentType: line.paymentType,
+            department: line.department,
+            updatedAt: now,
+          });
+          order = {
+            ...order,
+            revenue,
+            itemCount,
+            occurredAt: nextOccurredAt,
+            paymentType: line.paymentType,
+            department: line.department,
+            updatedAt: now,
+          };
+          orderCache.set(key, order);
+        }
       }
 
       if (existingLine) {
-        await ctx.db.patch("salesLines", existingLine._id, {
-          orderId: order._id,
-          occurredAt: line.occurredAt,
-          externalProductId: line.externalProductId,
-          productName: line.productName,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          revenue: line.revenue,
-          externalId: line.externalId,
-        });
-        existingLineDocs.set(line.externalId, {
-          ...existingLine,
-          orderId: order._id,
-          occurredAt: line.occurredAt,
-          externalProductId: line.externalProductId,
-          productName: line.productName,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          revenue: line.revenue,
-          externalId: line.externalId,
-        });
+        if (
+          existingLine.orderId !== order._id ||
+          existingLine.occurredAt !== line.occurredAt ||
+          existingLine.externalProductId !== line.externalProductId ||
+          existingLine.productName !== line.productName ||
+          existingLine.quantity !== line.quantity ||
+          existingLine.unitPrice !== line.unitPrice ||
+          existingLine.revenue !== line.revenue ||
+          existingLine.externalId !== line.externalId
+        ) {
+          await ctx.db.patch("salesLines", existingLine._id, {
+            orderId: order._id,
+            occurredAt: line.occurredAt,
+            externalProductId: line.externalProductId,
+            productName: line.productName,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            revenue: line.revenue,
+            externalId: line.externalId,
+          });
+          existingLineDocs.set(line.externalId, {
+            ...existingLine,
+            orderId: order._id,
+            occurredAt: line.occurredAt,
+            externalProductId: line.externalProductId,
+            productName: line.productName,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            revenue: line.revenue,
+            externalId: line.externalId,
+          });
+        }
       } else {
         const lineId = await ctx.db.insert("salesLines", {
           organizationId: args.organizationId,
@@ -1122,6 +1199,7 @@ export const completeReconcileDay = internalMutation({
     runToken: v.string(),
     dayStart: v.number(),
     remainingDayStarts: v.array(v.number()),
+    sourceHash: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1130,6 +1208,14 @@ export const completeReconcileDay = internalMutation({
     const now = Date.now();
     const timeZone = await organizationTimeZone(ctx, args.organizationId);
     const nextDayStart = args.remainingDayStarts[0];
+    const reconcileHashes =
+      args.sourceHash !== undefined
+        ? withReconcileHash(
+            status.reconcileHashes,
+            args.dayStart,
+            args.sourceHash,
+          )
+        : status.reconcileHashes;
 
     if (nextDayStart !== undefined) {
       await ctx.db.patch("onlinePosSyncStatus", status._id, {
@@ -1137,6 +1223,9 @@ export const completeReconcileDay = internalMutation({
         state: "queued",
         lastSuccessAt: now,
         lastError: undefined,
+        reconcileFailCount: undefined,
+        lineIdsScoped: true,
+        ...(reconcileHashes !== undefined ? { reconcileHashes } : {}),
         updatedAt: now,
       });
       const nextDate = dateKey(nextDayStart, timeZone);
@@ -1160,6 +1249,9 @@ export const completeReconcileDay = internalMutation({
       state: "idle",
       lastSuccessAt: now,
       lastError: undefined,
+      reconcileFailCount: undefined,
+      lineIdsScoped: true,
+      ...(reconcileHashes !== undefined ? { reconcileHashes } : {}),
       syncedThroughAt: Math.max(
         status.syncedThroughAt ?? 0,
         zonedStart(addDateKey(dateKey(args.dayStart, timeZone), 1), timeZone),
@@ -1205,6 +1297,21 @@ export const reconcileDayWindow = internalAction({
         args.dayEnd,
       );
       const lines = parseSaleLines(payload, context.timeZone);
+      const sourceHash = await saleLinesHash(lines);
+      const storedHash = context.reconcileHashes.find(
+        (entry) => entry.dayStart === args.dayStart,
+      )?.hash;
+      if (storedHash === sourceHash) {
+        await ctx.runMutation(internal.onlinePosSync.completeReconcileDay, {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          runToken: args.runToken,
+          dayStart: args.dayStart,
+          remainingDayStarts: args.remainingDayStarts,
+          sourceHash,
+        });
+        return null;
+      }
 
       await ctx.runMutation(internal.onlinePosSync.markReconcilePending, {
         organizationId: args.organizationId,
@@ -1254,6 +1361,7 @@ export const reconcileDayWindow = internalAction({
         runToken: args.runToken,
         dayStart: args.dayStart,
         remainingDayStarts: args.remainingDayStarts,
+        sourceHash,
       });
     } catch (error) {
       await ctx.runMutation(internal.onlinePosSync.failSync, {
@@ -1279,15 +1387,28 @@ export const failSync = internalMutation({
     const status = await getStatus(ctx, args.organizationId, args.locationId);
     if (status?.runToken === args.runToken) {
       const now = Date.now();
+      const midReconcile = status.pendingReconcileDayStart != null;
+      const reconcileFailCount = midReconcile
+        ? (status.reconcileFailCount ?? 0) + 1
+        : status.reconcileFailCount;
       await ctx.db.patch("onlinePosSyncStatus", status._id, {
         state: "error",
         lastError: args.message.slice(0, 300),
         updatedAt: now,
+        ...(midReconcile ? { reconcileFailCount } : {}),
       });
-      // Mid-reconcile holes must not wait for the next cron — retry promptly.
-      if (status.pendingReconcileDayStart != null) {
+      // Mid-reconcile holes must not wait for the next cron — retry with backoff.
+      if (
+        midReconcile &&
+        reconcileFailCount != null &&
+        reconcileFailCount <= RECONCILE_MAX_FAIL_RETRIES
+      ) {
+        const delay = Math.min(
+          RECONCILE_RETRY_BASE_MS * 2 ** (reconcileFailCount - 1),
+          RECONCILE_RETRY_MAX_MS,
+        );
         await ctx.scheduler.runAfter(
-          60_000,
+          delay,
           internal.onlinePosSync.enqueueLocationSync,
           {
             organizationId: args.organizationId,

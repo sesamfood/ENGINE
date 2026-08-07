@@ -69,6 +69,13 @@ export default defineSchema({
     // Set before destroying a day during reconcile; cleared only on success.
     // Dispatcher retries this dayStart until the rebuild completes.
     pendingReconcileDayStart: v.optional(v.number()),
+    // Keep at most RECONCILE_TRAILING_DAYS (7) entries; replace by dayStart.
+    reconcileHashes: v.optional(
+      v.array(v.object({ dayStart: v.number(), hash: v.string() })),
+    ),
+    reconcileFailCount: v.optional(v.number()),
+    // true after we've written location-scoped line externalIds
+    lineIdsScoped: v.optional(v.boolean()),
     lastAttemptAt: v.optional(v.number()),
     lastSuccessAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
@@ -101,6 +108,10 @@ export default defineSchema({
     .index("by_organizationId_and_locationId_and_occurredAt", [
       "organizationId",
       "locationId",
+      "occurredAt",
+    ])
+    .index("by_organizationId_and_occurredAt", [
+      "organizationId",
       "occurredAt",
     ])
     .index("by_organizationId_and_source_and_externalId", [
