@@ -11,6 +11,8 @@ import {
 } from "./_generated/server";
 import { requireOrganizationAdmin } from "./lib/auth";
 import { normalizeStock } from "./lib/stock";
+import type { MetricResult } from "../lib/dashboard/types";
+import { dateKey, zonedStart } from "./lib/dashboardMetrics";
 
 const API_URL = "https://api.onlinepos.dk/api";
 const MAX_LOCATIONS = 200;
@@ -94,6 +96,12 @@ function string(value: unknown) {
   return typeof value === "string" || typeof value === "number"
     ? String(value)
     : "";
+}
+
+function priceNumber(value: unknown) {
+  const normalized = string(value).trim().replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function saleTimestamp(date: string, time: string) {
@@ -917,6 +925,110 @@ export const listSales = action({
     };
   },
 });
+
+export async function computeOnlinePosTurnover(
+  ctx: ActionCtx,
+  params: {
+    organizationId: string;
+    locations: Array<{ id: Id<"locations">; name: string }>;
+    compare: boolean;
+    from: number;
+    to: number;
+    previousFrom: number;
+    previousTo: number;
+    timeZone: string;
+  },
+): Promise<MetricResult> {
+  const context: {
+    masterEnabled: boolean;
+    locations: Array<{
+      id: Id<"locations">;
+      name: string;
+      token: string;
+      companyId: number;
+    }>;
+    mappings: Array<{
+      productId: Id<"products">;
+      onlinePosProductId: number;
+      productName: string;
+    }>;
+  } = await ctx.runQuery(internal.onlinePos.getSalesContext, {
+    organizationId: params.organizationId,
+  });
+  if (!context.masterEnabled) {
+    throw new ConvexError("OnlinePOS-masterforbindelsen er ikke aktiv");
+  }
+  const selected = new Set(params.locations.map((location) => location.id));
+  const connected = context.locations.filter((location) => selected.has(location.id));
+  if (connected.length === 0) {
+    throw new ConvexError("Ingen af de valgte locations er forbundet til OnlinePOS");
+  }
+
+  async function rowsFor(from: number, to: number) {
+    const parts = await Promise.all(
+      connected.map(async (location) => {
+        const sales = await requestSales(location, from, to);
+        return {
+          rows: sales.flatMap((value) => {
+            const line = object(object(value)?.line);
+            const amount = number(line?.amount);
+            const price = priceNumber(line?.price);
+            const timestamp = saleTimestamp(string(line?.date), string(line?.time));
+            if (amount === null || price === null || timestamp === null) return [];
+            return [{ locationId: location.id, timestamp, value: amount * price }];
+          }),
+          truncated: sales.length > MAX_SALES,
+        };
+      }),
+    );
+    return {
+      rows: parts.flatMap((part) => part.rows).slice(0, MAX_SALES),
+      truncated: parts.some((part) => part.truncated) || parts.flatMap((part) => part.rows).length > MAX_SALES,
+    };
+  }
+
+  const [current, previous] = await Promise.all([
+    rowsFor(params.from, params.to),
+    rowsFor(params.previousFrom, params.previousTo),
+  ]);
+  const groups = params.compare
+    ? params.locations.map((location) => ({ key: location.id, label: location.name }))
+    : [{ key: "all" as const, label: "Alle locations" }];
+  const days: number[] = [];
+  let cursor = dateKey(params.from, params.timeZone);
+  while (true) {
+    const start = zonedStart(cursor, params.timeZone);
+    if (start >= params.to) break;
+    days.push(start);
+    const [year, month, day] = cursor.split("-").map(Number);
+    cursor = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+  }
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return {
+    unit: "currency",
+    series: groups.map((group) => {
+      const currentRows = params.compare
+        ? current.rows.filter((row) => row.locationId === group.key)
+        : current.rows;
+      const previousRows = params.compare
+        ? previous.rows.filter((row) => row.locationId === group.key)
+        : previous.rows;
+      const byDay = new Map<number, number>();
+      for (const row of currentRows) {
+        const start = zonedStart(dateKey(row.timestamp, params.timeZone), params.timeZone);
+        byDay.set(start, (byDay.get(start) ?? 0) + row.value);
+      }
+      return {
+        key: String(group.key),
+        label: group.label,
+        points: days.map((t) => ({ t, value: round(byDay.get(t) ?? 0) })),
+        total: round(currentRows.reduce((sum, row) => sum + row.value, 0)),
+        previousTotal: round(previousRows.reduce((sum, row) => sum + row.value, 0)),
+      };
+    }),
+    truncated: current.truncated || previous.truncated || undefined,
+  };
+}
 
 export const exportCountWasteReport = action({
   args: { countId: v.id("counts") },

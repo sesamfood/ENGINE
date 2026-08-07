@@ -6,6 +6,11 @@ import {
 } from "./lib/openingHours";
 import { countScheduleValidator } from "./lib/countSettings";
 import { organizationThemeValidator } from "./lib/organizationTheme";
+import {
+  rangeValidator,
+  scopeValidator,
+  widgetValidator,
+} from "./lib/dashboardValidators";
 
 export default defineSchema({
   organizationAssets: defineTable({
@@ -947,4 +952,34 @@ export default defineSchema({
     itemOrder: v.array(v.string()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  dashboards: defineTable({
+    organizationId: v.string(),
+    userIdentifier: v.string(),
+    widgets: v.array(widgetValidator),
+    scope: scopeValidator,
+    range: rangeValidator,
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_userIdentifier", [
+    "organizationId",
+    "userIdentifier",
+  ]),
+
+  dashboardShares: defineTable({
+    organizationId: v.string(),
+    token: v.string(),
+    unlockKey: v.string(),
+    passwordHash: v.optional(v.string()),
+    passwordSalt: v.optional(v.string()),
+    name: v.string(),
+    widgets: v.array(widgetValidator),
+    scope: scopeValidator,
+    range: rangeValidator,
+    createdBy: v.string(),
+    expiresAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    lastViewedAt: v.optional(v.number()),
+  })
+    .index("by_token", ["token"])
+    .index("by_organizationId", ["organizationId"]),
 });

@@ -1,4 +1,5 @@
 export const sidebarItems = [
+  { id: "dashboard", label: "Dashboard" },
   { id: "transfers", label: "Transfers" },
   { id: "waste", label: "Waste" },
   { id: "staffFood", label: "Staff food" },
@@ -17,8 +18,11 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
   const configured = order?.filter(
     (id): id is SidebarItemId => sidebarItemIds.has(id),
   ) ?? [];
+  const missing = defaultSidebarOrder.filter((id) => !configured.includes(id));
+  const newlyAddedDashboard = missing.includes("dashboard") ? ["dashboard" as const] : [];
   return [
+    ...newlyAddedDashboard,
     ...new Set(configured),
-    ...defaultSidebarOrder.filter((id) => !configured.includes(id)),
+    ...missing.filter((id) => id !== "dashboard"),
   ];
 }

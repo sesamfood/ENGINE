@@ -7,6 +7,7 @@ import { mutation, query } from "./_generated/server";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
 
 const sidebarItemValidator = v.union(
+  v.literal("dashboard"),
   v.literal("transfers"),
   v.literal("waste"),
   v.literal("staffFood"),

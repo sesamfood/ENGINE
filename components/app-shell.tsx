@@ -7,6 +7,7 @@ import {
   ChevronsUpDownIcon,
   ClipboardListIcon,
   LogOutIcon,
+  LayoutDashboardIcon,
   RefreshCwIcon,
   SettingsIcon,
   MonitorIcon,
@@ -77,7 +78,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { authClient } from "@/lib/auth-client";
-import { canManageCatalog } from "@/lib/auth-permissions";
+import { canManageCatalog, canViewDashboard } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
@@ -86,6 +87,7 @@ import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
 import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
 
 const primaryNavigation = [
+  { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
   { id: "transfers", label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
   { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
   { id: "staffFood", label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
@@ -330,6 +332,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
 
 function OrganizationHome() {
   const { data: organization } = authClient.useActiveOrganization();
+  const { data: membership } = authClient.useActiveMemberRole();
   const { state, isMobile } = useSidebar();
   const { isAuthenticated } = useConvexAuth();
   const featureLocked = useContext(FeatureLockContext);
@@ -344,7 +347,9 @@ function OrganizationHome() {
     ? effectiveKioskHome(kiosk, featureLocked)
     : featureLocked
       ? "/count"
-      : "/transfers";
+      : canViewDashboard(membership?.role)
+        ? "/dashboard"
+        : "/transfers";
   const showWideLogo = state === "expanded" || isMobile;
 
   if (showWideLogo && branding === undefined) {
@@ -440,6 +445,7 @@ function NavigationList() {
       })
     : null;
   const navigation = kioskNavigation ?? orderedNavigation.filter((item) => {
+    if (item.id === "dashboard") return canViewDashboard(membership?.role) && !featureLocked;
     if (item.id === "organization") return canManageCatalog(membership?.role);
     return !featureLocked || item.id === "count" || item.id === "waste";
   });
@@ -923,6 +929,7 @@ export function AppShell({
     "/verify-email",
     "/invitation",
     "/onboarding",
+    "/share",
   ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
   if (shellless) return children;
@@ -939,6 +946,7 @@ export function AppShell({
   const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees" || pathname.startsWith("/employees/");
   const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
+  const showDashboardHeader = pathname === "/dashboard";
   const showOrganizationHeader =
     pathname === "/organization" || pathname.startsWith("/organization/");
   const showPageHeader =
@@ -947,6 +955,7 @@ export function AppShell({
     showStaffFoodHeader ||
     showEmployeesHeader ||
     showTransfersHeader ||
+    showDashboardHeader ||
     showOrganizationHeader;
 
   if (signingOut) {
@@ -1008,6 +1017,8 @@ export function AppShell({
                             ? "employees-shell-header"
                             : showTransfersHeader
                               ? "transfers-shell-header"
+                              : showDashboardHeader
+                                ? "dashboard-shell-header"
                               : "organization-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"

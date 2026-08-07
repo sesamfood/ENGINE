@@ -7,6 +7,8 @@ import {
   canManageTransfers,
   canRegisterStaffFood,
   canRegisterWaste,
+  canShareDashboard,
+  canViewDashboard,
   canViewWasteReports,
 } from "../../lib/auth-permissions";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
@@ -195,6 +197,22 @@ export async function requireOrganizationAdmin(ctx: AuthContext) {
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
   if (!canManageOrganization(auth.role)) {
     throw new ConvexError("Kun administratorer kan ændre organisationen");
+  }
+  return auth;
+}
+
+export async function requireDashboardViewer(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (auth.kioskModeEnabled || !canViewDashboard(auth.role)) {
+    throw new ConvexError("Du har ikke adgang til dashboardet");
+  }
+  return auth;
+}
+
+export async function requireDashboardSharer(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (auth.kioskModeEnabled || !canShareDashboard(auth.role)) {
+    throw new ConvexError("Kun administratorer kan dele dashboardet");
   }
   return auth;
 }

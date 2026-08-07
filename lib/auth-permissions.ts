@@ -40,3 +40,7 @@ export const canManageOrganization = canManageMembers;
 export const canManageWasteSettings = canManageOrganization;
 
 export const canManageStaffFood = canManageOrganization;
+
+export const canViewDashboard = canManageCatalog;
+
+export const canShareDashboard = canManageOrganization;
