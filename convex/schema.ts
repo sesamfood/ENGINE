@@ -54,6 +54,108 @@ export default defineSchema({
     .index("by_organizationId", ["organizationId"])
     .index("by_organizationId_and_productId", ["organizationId", "productId"]),
 
+  onlinePosSyncStatus: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    state: v.union(
+      v.literal("idle"),
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("error"),
+    ),
+    runToken: v.optional(v.string()),
+    syncedThroughAt: v.optional(v.number()),
+    backfillThroughAt: v.optional(v.number()),
+    lastAttemptAt: v.optional(v.number()),
+    lastSuccessAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_locationId", [
+      "organizationId",
+      "locationId",
+    ]),
+
+  salesOrders: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    occurredAt: v.number(),
+    // ponytail: dayStart is frozen in the organization time zone at ingest; changing
+    // organizationScheduleSettings.timeZone leaves historical rows on the previous zone.
+    // Upgrade: one-off re-rollup mutation.
+    dayStart: v.number(),
+    orderNumber: v.number(),
+    // Money is stored as integer minor units (øre); readers divide by 100.
+    revenue: v.number(),
+    itemCount: v.number(),
+    paymentType: v.string(),
+    department: v.string(),
+    source: v.string(),
+    externalId: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_locationId_and_occurredAt", [
+      "organizationId",
+      "locationId",
+      "occurredAt",
+    ])
+    .index("by_organizationId_and_source_and_externalId", [
+      "organizationId",
+      "source",
+      "externalId",
+    ])
+    .index("by_organizationId_and_locationId_and_dayStart_and_orderNumber", [
+      "organizationId",
+      "locationId",
+      "dayStart",
+      "orderNumber",
+    ])
+    .index("by_occurredAt", ["occurredAt"]),
+
+  salesLines: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    orderId: v.id("salesOrders"),
+    occurredAt: v.number(),
+    externalProductId: v.string(),
+    productName: v.string(),
+    quantity: v.number(),
+    unitPrice: v.number(),
+    revenue: v.number(),
+    source: v.string(),
+    externalId: v.string(),
+  })
+    .index("by_organizationId_and_orderId", ["organizationId", "orderId"])
+    .index("by_organizationId_and_source_and_externalId", [
+      "organizationId",
+      "source",
+      "externalId",
+    ])
+    .index("by_organizationId_and_locationId_and_occurredAt", [
+      "organizationId",
+      "locationId",
+      "occurredAt",
+    ])
+    .index("by_occurredAt", ["occurredAt"]),
+
+  salesDaily: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    dayStart: v.number(),
+    date: v.string(),
+    revenue: v.number(),
+    orderCount: v.number(),
+    itemCount: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_dayStart", ["organizationId", "dayStart"])
+    .index("by_organizationId_and_locationId_and_dayStart", [
+      "organizationId",
+      "locationId",
+      "dayStart",
+    ]),
+
   workfeedIntegrations: defineTable({
     organizationId: v.string(),
     apiKey: v.string(),

@@ -10,11 +10,21 @@ import {
   query,
 } from "./_generated/server";
 import { requireOrganizationAdmin } from "./lib/auth";
+import {
+  number,
+  object,
+  parseProducts,
+  priceNumber,
+  requestOnlinePos,
+  requestSales,
+  saleTimestamp,
+  string,
+  type OnlinePosProduct,
+} from "./lib/onlinePosApi";
 import { normalizeStock } from "./lib/stock";
 import type { MetricResult } from "../lib/dashboard/types";
 import { dateKey, zonedStart } from "./lib/dashboardMetrics";
 
-const API_URL = "https://api.onlinepos.dk/api";
 const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
 const MAX_SALES = 500;
@@ -60,82 +70,6 @@ const wasteReportRowValidator = v.object({
   wasteQuantity: v.number(),
 });
 
-const copenhagenParts = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Copenhagen",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
-
-type OnlinePosProduct = {
-  id: number;
-  name: string;
-  groupName: string;
-};
-
-function object(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function number(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function string(value: unknown) {
-  return typeof value === "string" || typeof value === "number"
-    ? String(value)
-    : "";
-}
-
-function priceNumber(value: unknown) {
-  const normalized = string(value).trim().replace(/\./g, "").replace(",", ".");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function saleTimestamp(date: string, time: string) {
-  const dateMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
-  const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
-  if (!dateMatch || !timeMatch) return null;
-  const desired = Date.UTC(
-    Number(dateMatch[3]),
-    Number(dateMatch[2]) - 1,
-    Number(dateMatch[1]),
-    Number(timeMatch[1]),
-    Number(timeMatch[2]),
-    Number(timeMatch[3] ?? 0),
-  );
-  let timestamp = desired;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(
-      copenhagenParts
-        .formatToParts(timestamp)
-        .map((part) => [part.type, part.value]),
-    );
-    const displayed = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute),
-      Number(parts.second),
-    );
-    timestamp += desired - displayed;
-  }
-  return timestamp;
-}
-
 function requireCompanyId(companyId: number) {
   if (!Number.isSafeInteger(companyId) || companyId <= 0) {
     throw new ConvexError("Firma-id skal være et positivt heltal");
@@ -148,77 +82,6 @@ function requireToken(token: string) {
     throw new ConvexError("Indtast et gyldigt OnlinePOS-token");
   }
   return trimmed;
-}
-
-async function requestOnlinePos(
-  path: string,
-  settings: { token: string; companyId: number },
-  init?: RequestInit,
-) {
-  let response: Response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        token: settings.token,
-        firmaid: String(settings.companyId),
-        ...init?.headers,
-      },
-    });
-  } catch {
-    throw new ConvexError("OnlinePOS kunne ikke kontaktes");
-  }
-
-  if (response.status === 403) {
-    throw new ConvexError("OnlinePOS afviste firma-id eller token");
-  }
-  if (!response.ok) {
-    throw new ConvexError(`OnlinePOS svarede med status ${response.status}`);
-  }
-
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    throw new ConvexError("OnlinePOS returnerede et ugyldigt svar");
-  }
-}
-
-function parseProducts(payload: unknown): OnlinePosProduct[] {
-  if (!Array.isArray(payload)) {
-    throw new ConvexError("OnlinePOS returnerede en ugyldig produktliste");
-  }
-
-  return payload.flatMap((value) => {
-    const product = object(value);
-    const id = number(product?.ID);
-    const name = string(product?.name).trim();
-    if (id === null || !name) return [];
-    return [{ id, name, groupName: string(product?.groupname).trim() }];
-  });
-}
-
-async function requestSales(
-  settings: { token: string; companyId: number },
-  from: number,
-  to: number,
-) {
-  const body = new URLSearchParams({
-    from: String(Math.floor(from / 1000)),
-    to: String(Math.floor(to / 1000)),
-    map_to_koncern: "true",
-  });
-  const payload = object(
-    await requestOnlinePos("/exportSales", settings, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    }),
-  );
-  if (!Array.isArray(payload?.sales)) {
-    throw new ConvexError("OnlinePOS returnerede en ugyldig salgsliste");
-  }
-  return payload.sales;
 }
 
 async function requireEnabledSettings(ctx: ActionCtx): Promise<{
@@ -973,7 +836,11 @@ export async function computeOnlinePosTurnover(
             const line = object(object(value)?.line);
             const amount = number(line?.amount);
             const price = priceNumber(line?.price);
-            const timestamp = saleTimestamp(string(line?.date), string(line?.time));
+            const timestamp = saleTimestamp(
+              string(line?.date),
+              string(line?.time),
+              params.timeZone,
+            );
             if (amount === null || price === null || timestamp === null) return [];
             return [{ locationId: location.id, timestamp, value: amount * price }];
           }),
@@ -1099,12 +966,17 @@ export const exportCountWasteReport = action({
         report.rows.map((row) => [row.productId, row]),
       );
       const from = Math.min(...report.rows.map((row) => row.expectedSinceAt));
+      // ponytail: hardcodes Europe/Copenhagen; later rewrite reads salesLines instead of live POS.
       const sales = await requestSales(location, from, report.submittedAt);
       for (const value of sales) {
         const line = object(object(value)?.line);
         const onlinePosProductId = number(line?.product_id);
         const amount = number(line?.amount);
-        const timestamp = saleTimestamp(string(line?.date), string(line?.time));
+        const timestamp = saleTimestamp(
+          string(line?.date),
+          string(line?.time),
+          "Europe/Copenhagen",
+        );
         if (
           onlinePosProductId === null ||
           amount === null ||
