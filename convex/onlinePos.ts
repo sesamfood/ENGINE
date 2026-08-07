@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { ActionCtx } from "./_generated/server";
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 import {
   action,
   internalMutation,
@@ -22,6 +22,36 @@ const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
 // ponytail: waste-report salesLines capped at 5k; upgrade: paginated sum batches.
 const MAX_WASTE_SALES_LINES = 5_000;
+
+async function beginLocationSalesReset(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const [currentReset, status] = await Promise.all([
+    ctx.db
+      .query("onlinePosSalesResets")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", locationId),
+      )
+      .unique(),
+    ctx.db
+      .query("onlinePosSyncStatus")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", locationId),
+      )
+      .unique(),
+  ]);
+  if (currentReset) await ctx.db.delete(currentReset._id);
+  if (status) await ctx.db.delete(status._id);
+  const resetId = await ctx.db.insert("onlinePosSalesResets", {
+    organizationId,
+    locationId,
+  });
+  await ctx.scheduler.runAfter(0, internal.onlinePosSync.resetLocationSales, {
+    resetId,
+  });
+}
 
 const privateSettingsValidator = v.union(
   v.object({
@@ -262,10 +292,18 @@ export const saveLocationConnection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const [location, current] = await Promise.all([
+    const [location, current, reset] = await Promise.all([
       ctx.db.get("locations", args.locationId),
       ctx.db
         .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("locationId", args.locationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosSalesResets")
         .withIndex("by_organizationId_and_locationId", (q) =>
           q
             .eq("organizationId", args.organizationId)
@@ -294,10 +332,14 @@ export const saveLocationConnection = internalMutation({
         updatedAt: now,
       });
     }
-    await ctx.scheduler.runAfter(0, internal.onlinePosSync.enqueueLocationSync, {
-      organizationId: args.organizationId,
-      locationId: args.locationId,
-    });
+    if ((current && current.companyId !== args.companyId) || reset) {
+      await beginLocationSalesReset(ctx, args.organizationId, args.locationId);
+    } else {
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.enqueueLocationSync, {
+        organizationId: args.organizationId,
+        locationId: args.locationId,
+      });
+    }
     return null;
   },
 });
@@ -441,6 +483,11 @@ export const disconnect = mutation({
     for (const mapping of mappings) await ctx.db.delete(mapping._id);
     for (const connection of locationConnections) {
       await ctx.db.delete(connection._id);
+      await beginLocationSalesReset(
+        ctx,
+        organizationId,
+        connection.locationId,
+      );
     }
     if (settings) await ctx.db.delete(settings._id);
     return null;
@@ -452,15 +499,22 @@ export const disconnectLocation = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    const connection = await ctx.db
-      .query("onlinePosLocationIntegrations")
-      .withIndex("by_organizationId_and_locationId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("locationId", args.locationId),
-      )
-      .unique();
+    const [location, connection] = await Promise.all([
+      ctx.db.get("locations", args.locationId),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", args.locationId),
+        )
+        .unique(),
+    ]);
+    if (!location || location.organizationId !== organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
     if (connection) await ctx.db.delete(connection._id);
+    await beginLocationSalesReset(ctx, organizationId, args.locationId);
     return null;
   },
 });

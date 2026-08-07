@@ -28,8 +28,46 @@ const unlockShareValidator = v.union(
 );
 
 function active(share: Doc<"dashboardShares">) {
-  return !share.revokedAt && share.expiresAt > Date.now();
+  return !share.revokedAt;
 }
+
+export const expireShare = internalMutation({
+  args: {
+    shareId: v.id("dashboardShares"),
+    expiresAt: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const share = await ctx.db.get("dashboardShares", args.shareId);
+    if (share && !share.revokedAt && share.expiresAt === args.expiresAt) {
+      await ctx.db.patch(share._id, { revokedAt: args.expiresAt });
+    }
+    return null;
+  },
+});
+
+export const expireShares = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const shares = await ctx.db
+      .query("dashboardShares")
+      .withIndex("by_revokedAt_and_expiresAt", (q) =>
+        q.eq("revokedAt", undefined).lte("expiresAt", now),
+      )
+      .take(101);
+    for (const share of shares.slice(0, 100)) {
+      if (!share.revokedAt) {
+        await ctx.db.patch(share._id, { revokedAt: share.expiresAt });
+      }
+    }
+    if (shares.length > 100) {
+      await ctx.scheduler.runAfter(0, internal.dashboardShare.expireShares, {});
+    }
+    return null;
+  },
+});
 
 async function requireShare(
   ctx: QueryCtx,
@@ -177,6 +215,7 @@ export const getSharedMetric = query({
     accessKey: v.string(),
     metricId: metricIdValidator,
     visualization: visualizationValidator,
+    now: v.number(),
   },
   returns: metricResultValidator,
   handler: async (ctx, args) => {
@@ -200,6 +239,7 @@ export const getSharedMetric = query({
       share.organizationId,
       share.scope,
       share.range,
+      args.now,
     );
     return await dashboardMetricComputers[args.metricId](ctx, params);
   },

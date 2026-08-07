@@ -12,6 +12,7 @@ export function DashboardWidget({
   widget,
   scope,
   range,
+  now,
   editable,
   resizing,
   publicAccess,
@@ -22,6 +23,7 @@ export function DashboardWidget({
   widget: WidgetInstance;
   scope: DashboardScope;
   range: DashboardRange;
+  now: number;
   editable: boolean;
   resizing?: boolean;
   publicAccess?: { token: string; accessKey: string };
@@ -39,6 +41,7 @@ export function DashboardWidget({
           visualization: definition.defaultVisualization,
           scope,
           range,
+          now,
         },
   );
   const sharedResult = useQuery(
@@ -49,6 +52,7 @@ export function DashboardWidget({
           accessKey: publicAccess.accessKey,
           metricId: widget.metricId,
           visualization: widget.visualization,
+          now,
         }
       : "skip",
   );

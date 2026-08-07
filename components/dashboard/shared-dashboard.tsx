@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
+import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { DashboardGrid } from "./dashboard-grid";
 
 function message(error: unknown) {
@@ -26,6 +27,7 @@ export function SharedDashboard({ token }: { token: string }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const automaticUnlockAttempted = useRef(false);
+  const now = useDashboardNow();
   const config = useQuery(
     api.dashboardShare.getSharedConfig,
     accessKey ? { token, accessKey } : "skip",
@@ -119,7 +121,7 @@ export function SharedDashboard({ token }: { token: string }) {
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{meta.name}</h1>
           <p className="text-sm text-muted-foreground">Tilgængeligt til {new Intl.DateTimeFormat("da-DK", { dateStyle: "long", timeStyle: "short" }).format(meta.expiresAt)}</p>
         </header>
-        <DashboardGrid widgets={config.widgets} scope={config.scope} range={config.range} publicAccess={{ token, accessKey }} />
+        <DashboardGrid widgets={config.widgets} scope={config.scope} range={config.range} now={now} publicAccess={{ token, accessKey }} />
       </section>
     </main>
   );

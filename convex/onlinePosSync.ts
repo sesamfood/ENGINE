@@ -37,6 +37,7 @@ const RECONCILE_MAX_FAIL_RETRIES = 8;
 const RECONCILE_RETRY_BASE_MS = 60_000;
 const RECONCILE_RETRY_MAX_MS = 6 * 60 * 60 * 1_000;
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
+const RESET_PAGE = 500;
 
 type SyncContext = {
   settings: { token: string; companyId: number };
@@ -268,6 +269,14 @@ async function startSync(
     .unique();
   if (!connection) return false;
 
+  const reset = await ctx.db
+    .query("onlinePosSalesResets")
+    .withIndex("by_organizationId_and_locationId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", locationId),
+    )
+    .unique();
+  if (reset) return false;
+
   const status = await getStatus(ctx, organizationId, locationId);
   const now = Date.now();
   // Prefer finishing a mid-reconcile hole (or a deferred nightly reconcile)
@@ -380,7 +389,7 @@ export const getLocationSyncContext = internalQuery({
   },
   returns: syncContextValidator,
   handler: async (ctx, args): Promise<SyncContext | null> => {
-    const [location, master, connection, status, scheduleSettings] =
+    const [location, master, connection, status, reset, scheduleSettings] =
       await Promise.all([
         ctx.db.get("locations", args.locationId),
         ctx.db
@@ -406,6 +415,14 @@ export const getLocationSyncContext = internalQuery({
           )
           .unique(),
         ctx.db
+          .query("onlinePosSalesResets")
+          .withIndex("by_organizationId_and_locationId", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("locationId", args.locationId),
+          )
+          .unique(),
+        ctx.db
           .query("organizationScheduleSettings")
           .withIndex("by_organizationId", (q) =>
             q.eq("organizationId", args.organizationId),
@@ -416,7 +433,8 @@ export const getLocationSyncContext = internalQuery({
       !location ||
       location.organizationId !== args.organizationId ||
       !master?.enabled ||
-      !connection
+      !connection ||
+      reset
     ) {
       return null;
     }
@@ -432,6 +450,74 @@ export const getLocationSyncContext = internalQuery({
       reconcileHashes: status?.reconcileHashes ?? [],
       lineIdsScoped: status?.lineIdsScoped === true,
     };
+  },
+});
+
+export const resetLocationSales = internalMutation({
+  args: { resetId: v.id("onlinePosSalesResets") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reset = await ctx.db.get("onlinePosSalesResets", args.resetId);
+    if (!reset) return null;
+
+    const lines = await ctx.db
+      .query("salesLines")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", reset.organizationId)
+          .eq("locationId", reset.locationId),
+      )
+      .take(RESET_PAGE);
+    for (const line of lines) await ctx.db.delete(line._id);
+    if (lines.length === RESET_PAGE) {
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.resetLocationSales, args);
+      return null;
+    }
+
+    const orders = await ctx.db
+      .query("salesOrders")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", reset.organizationId)
+          .eq("locationId", reset.locationId),
+      )
+      .take(RESET_PAGE);
+    for (const order of orders) await ctx.db.delete(order._id);
+    if (orders.length === RESET_PAGE) {
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.resetLocationSales, args);
+      return null;
+    }
+
+    const daily = await ctx.db
+      .query("salesDaily")
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", reset.organizationId)
+          .eq("locationId", reset.locationId),
+      )
+      .take(RESET_PAGE);
+    for (const row of daily) await ctx.db.delete(row._id);
+    if (daily.length === RESET_PAGE) {
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.resetLocationSales, args);
+      return null;
+    }
+
+    await ctx.db.delete(reset._id);
+    const connection = await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q
+          .eq("organizationId", reset.organizationId)
+          .eq("locationId", reset.locationId),
+      )
+      .unique();
+    if (connection) {
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.enqueueLocationSync, {
+        organizationId: reset.organizationId,
+        locationId: reset.locationId,
+      });
+    }
+    return null;
   },
 });
 

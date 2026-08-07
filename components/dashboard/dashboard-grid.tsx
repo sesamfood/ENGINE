@@ -161,6 +161,7 @@ function DraggableWidget({
   sourceSize,
   scope,
   range,
+  now,
   editable,
   publicAccess,
   onChange,
@@ -171,6 +172,7 @@ function DraggableWidget({
   sourceSize: WidgetSize;
   scope: DashboardScope;
   range: DashboardRange;
+  now: number;
   editable: boolean;
   publicAccess?: { token: string; accessKey: string };
   onChange: (widget: WidgetInstance) => void;
@@ -203,6 +205,7 @@ function DraggableWidget({
         widget={widget}
         scope={scope}
         range={range}
+        now={now}
         editable={editable}
         resizing={widget.size !== sourceSize}
         publicAccess={publicAccess}
@@ -218,6 +221,7 @@ export function DashboardGrid({
   widgets,
   scope,
   range,
+  now,
   editable = false,
   publicAccess,
   onChange,
@@ -225,6 +229,7 @@ export function DashboardGrid({
   widgets: WidgetInstance[];
   scope: DashboardScope;
   range: DashboardRange;
+  now: number;
   editable?: boolean;
   publicAccess?: { token: string; accessKey: string };
   onChange?: (widgets: WidgetInstance[]) => void;
@@ -327,6 +332,7 @@ export function DashboardGrid({
               sourceSize={source.size}
               scope={scope}
               range={range}
+              now={now}
               editable={editable}
               publicAccess={publicAccess}
               onChange={(next) => onChange?.(layout.map((item) => item.key === widget.key ? next : item))}

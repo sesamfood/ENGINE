@@ -53,11 +53,13 @@ export function AddWidgetDialog({
   isAdmin,
   scope,
   range,
+  now,
   onAdd,
 }: {
   isAdmin: boolean;
   scope: DashboardScope;
   range: DashboardRange;
+  now: number;
   onAdd: (widget: WidgetInstance) => void;
 }) {
   const available = metrics.filter((metric) => !metric.adminOnly || isAdmin);
@@ -80,6 +82,7 @@ export function AddWidgetDialog({
           visualization: definition.defaultVisualization,
           scope,
           range,
+          now,
         },
   );
 

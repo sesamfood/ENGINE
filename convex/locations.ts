@@ -502,12 +502,29 @@ export const deleteLocation = mutation({
     if (syncStatus) {
       await ctx.db.delete("onlinePosSyncStatus", syncStatus._id);
     }
+    const salesReset = await ctx.db
+      .query("onlinePosSalesResets")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", location._id),
+      )
+      .unique();
+    if (salesReset) await ctx.db.delete(salesReset._id);
     // Sales tables can exceed one mutation; finish asynchronously so orphans
     // cannot keep feeding the dashboard. Modeled on waste.cleanupProductData.
     await ctx.scheduler.runAfter(0, internal.locations.cleanupLocationSales, {
       organizationId,
       locationId: location._id,
     });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.dashboard.cleanupDeletedLocationDashboards,
+      { organizationId, locationId: location._id },
+    );
+    await ctx.scheduler.runAfter(
+      0,
+      internal.dashboard.cleanupDeletedLocationShares,
+      { organizationId, locationId: location._id },
+    );
     await ctx.db.delete("locations", location._id);
     return null;
   },

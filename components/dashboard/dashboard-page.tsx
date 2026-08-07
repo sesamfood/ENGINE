@@ -14,7 +14,9 @@ import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { canShareDashboard, canViewDashboard } from "@/lib/auth-permissions";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
+import { metricRegistry } from "@/lib/dashboard/registry";
 import type { DashboardConfig, DashboardRange, DashboardScope, WidgetInstance } from "@/lib/dashboard/types";
+import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { AddWidgetDialog } from "./add-widget-dialog";
 import { DashboardGrid } from "./dashboard-grid";
 import { RangeSelector } from "./range-selector";
@@ -34,6 +36,7 @@ function DashboardContent() {
   const [editing, setEditing] = useState(false);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const current = useRef<DashboardConfig | null>(null);
+  const now = useDashboardNow();
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setHeaderTarget(document.getElementById("dashboard-shell-header")));
@@ -42,12 +45,22 @@ function DashboardContent() {
 
   useEffect(() => {
     if (!config) return;
-    if (!current.current || current.current.updatedAt !== config.updatedAt) {
-      const normalized = { ...config, widgets: layoutDashboardWidgets(config.widgets) };
+    const hasRestrictedWidget =
+      membership.data?.role !== "admin" &&
+      current.current?.widgets.some(
+        (widget) => metricRegistry[widget.metricId].adminOnly,
+      );
+    if (!current.current || current.current.updatedAt !== config.updatedAt || hasRestrictedWidget) {
+      const allowedWidgets = config.widgets.filter(
+        (widget) =>
+          membership.data?.role === "admin" ||
+          !metricRegistry[widget.metricId].adminOnly,
+      );
+      const normalized = { ...config, widgets: layoutDashboardWidgets(allowedWidgets) };
       current.current = normalized;
       setLocal(normalized);
     }
-  }, [config]);
+  }, [config, membership.data?.role]);
 
   if (membership.isPending) return <Skeleton className="h-96" />;
   if (!canViewDashboard(membership.data?.role)) {
@@ -100,11 +113,11 @@ function DashboardContent() {
             <PencilIcon data-icon="inline-start" />
             {editing ? "Færdig" : "Rediger"}
           </Button>
-          {editing ? <AddWidgetDialog isAdmin={membership.data?.role === "admin"} scope={local.scope} range={local.range} onAdd={(widget) => widgets(layoutDashboardWidgets([...local.widgets, widget]))} /> : null}
+          {editing ? <AddWidgetDialog isAdmin={membership.data?.role === "admin"} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets(layoutDashboardWidgets([...local.widgets, widget]))} /> : null}
         </div>
       </div>
       {local.widgets.length ? (
-        <DashboardGrid widgets={local.widgets} scope={local.scope} range={local.range} editable={editing} onChange={widgets} />
+        <DashboardGrid widgets={local.widgets} scope={local.scope} range={local.range} now={now} editable={editing} onChange={widgets} />
       ) : (
         <Empty className="min-h-80 border">
           <EmptyHeader>
@@ -112,7 +125,7 @@ function DashboardContent() {
             <EmptyTitle>Dashboardet er tomt</EmptyTitle>
             <EmptyDescription>Tilføj den første widget for at bygge dit overblik.</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent><AddWidgetDialog isAdmin={membership.data?.role === "admin"} scope={local.scope} range={local.range} onAdd={(widget) => widgets([widget])} /></EmptyContent>
+          <EmptyContent><AddWidgetDialog isAdmin={membership.data?.role === "admin"} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets([widget])} /></EmptyContent>
         </Empty>
       )}
     </section>

@@ -41,6 +41,7 @@ import {
 const MAX_WIDGETS = 24;
 const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
+const CLEANUP_PAGE = 50;
 
 const shareSummaryValidator = v.object({
   id: v.id("dashboardShares"),
@@ -114,16 +115,22 @@ async function validateScope(
   }
 }
 
-function configFromDocument(document: Doc<"dashboards"> | null): DashboardConfig {
+function configFromDocument(
+  document: Doc<"dashboards"> | null,
+  role = "admin",
+): DashboardConfig {
+  const widgets = (document?.widgets ?? defaultWidgets).filter(
+    (widget) => role === "admin" || !metricRegistry[widget.metricId].adminOnly,
+  );
   return document
     ? {
-        widgets: document.widgets,
+        widgets,
         scope: document.scope,
         range: document.range,
         updatedAt: document.updatedAt,
       }
     : {
-        widgets: defaultWidgets,
+        widgets,
         scope: { mode: "aggregate" as const, locationIds: null },
         range: { preset: "7days" as const },
         updatedAt: null,
@@ -134,14 +141,14 @@ export const getConfig = query({
   args: {},
   returns: dashboardConfigValidator,
   handler: async (ctx) => {
-    const { organizationId, userIdentifier } = await requireDashboardViewer(ctx);
+    const { organizationId, userIdentifier, role } = await requireDashboardViewer(ctx);
     const dashboard = await ctx.db
       .query("dashboards")
       .withIndex("by_organizationId_and_userIdentifier", (q) =>
         q.eq("organizationId", organizationId).eq("userIdentifier", userIdentifier),
       )
       .unique();
-    return configFromDocument(dashboard);
+    return configFromDocument(dashboard, role);
   },
 });
 
@@ -175,6 +182,7 @@ export const getMetric = query({
     visualization: visualizationValidator,
     scope: scopeValidator,
     range: rangeValidator,
+    now: v.number(),
   },
   returns: metricResultValidator,
   handler: async (ctx, args) => {
@@ -186,7 +194,13 @@ export const getMetric = query({
     if (definition.adminOnly && role !== "admin") {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
-    const params = await resolveMetricParams(ctx, organizationId, args.scope, args.range);
+    const params = await resolveMetricParams(
+      ctx,
+      organizationId,
+      args.scope,
+      args.range,
+      args.now,
+    );
     return await dashboardMetricComputers[args.metricId](ctx, params);
   },
 });
@@ -220,7 +234,14 @@ export const insertShare = internalMutation({
     expiresAt: v.number(),
   },
   returns: v.id("dashboardShares"),
-  handler: async (ctx, args) => await ctx.db.insert("dashboardShares", args),
+  handler: async (ctx, args) => {
+    const shareId = await ctx.db.insert("dashboardShares", args);
+    await ctx.scheduler.runAt(args.expiresAt, internal.dashboardShare.expireShare, {
+      shareId,
+      expiresAt: args.expiresAt,
+    });
+    return shareId;
+  },
 });
 
 export const createShare = action({
@@ -318,6 +339,90 @@ export const revokeShare = mutation({
       throw new ConvexError("Delingen blev ikke fundet");
     }
     if (!share.revokedAt) await ctx.db.patch(share._id, { revokedAt: Date.now() });
+    return null;
+  },
+});
+
+export const cleanupDeletedLocationDashboards = internalMutation({
+  args: {
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("dashboards")
+      .withIndex("by_organizationId_and_userIdentifier", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .paginate({ numItems: CLEANUP_PAGE, cursor: args.cursor ?? null });
+    for (const dashboard of result.page) {
+      if (!dashboard.scope.locationIds?.includes(args.locationId)) continue;
+      const locationIds = dashboard.scope.locationIds.filter(
+        (locationId) => locationId !== args.locationId,
+      );
+      await ctx.db.patch(dashboard._id, {
+        scope: locationIds.length
+          ? {
+              mode:
+                dashboard.scope.mode === "compare" && locationIds.length < 2
+                  ? "aggregate"
+                  : dashboard.scope.mode,
+              locationIds,
+            }
+          : { mode: "aggregate", locationIds: null },
+        updatedAt: Date.now(),
+      });
+    }
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.dashboard.cleanupDeletedLocationDashboards,
+        {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          cursor: result.continueCursor,
+        },
+      );
+    }
+    return null;
+  },
+});
+
+export const cleanupDeletedLocationShares = internalMutation({
+  args: {
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("dashboardShares")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .paginate({ numItems: CLEANUP_PAGE, cursor: args.cursor ?? null });
+    for (const share of result.page) {
+      if (
+        !share.revokedAt &&
+        share.scope.locationIds?.includes(args.locationId)
+      ) {
+        await ctx.db.patch(share._id, { revokedAt: Date.now() });
+      }
+    }
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.dashboard.cleanupDeletedLocationShares,
+        {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          cursor: result.continueCursor,
+        },
+      );
+    }
     return null;
   },
 });

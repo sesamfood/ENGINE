@@ -51,6 +51,15 @@ export default defineSchema({
       "locationId",
     ]),
 
+  onlinePosSalesResets: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+  })
+    .index("by_organizationId_and_locationId", [
+      "organizationId",
+      "locationId",
+    ]),
+
   onlinePosProductMappings: defineTable({
     organizationId: v.string(),
     productId: v.id("products"),
@@ -1099,5 +1108,6 @@ export default defineSchema({
     lastViewedAt: v.optional(v.number()),
   })
     .index("by_token", ["token"])
-    .index("by_organizationId", ["organizationId"]),
+    .index("by_organizationId", ["organizationId"])
+    .index("by_revokedAt_and_expiresAt", ["revokedAt", "expiresAt"]),
 });

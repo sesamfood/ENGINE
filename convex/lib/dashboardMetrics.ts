@@ -21,6 +21,7 @@ export type DashboardMetricParams = {
   previousTo: number;
   granularity: "day";
   timeZone: string;
+  now: number;
 };
 
 type MetricComputer = (
@@ -97,9 +98,10 @@ function validDate(value: string | undefined) {
 
 export function resolveDashboardRange(
   range: DashboardRange,
-  timeZone = DEFAULT_TIME_ZONE,
-  now = Date.now(),
+  timeZone: string | undefined,
+  now: number,
 ) {
+  timeZone ??= DEFAULT_TIME_ZONE;
   try {
     new Intl.DateTimeFormat("en", { timeZone }).format(now);
   } catch {
@@ -146,7 +148,9 @@ export async function resolveMetricParams(
   organizationId: string,
   scope: { mode: "aggregate" | "compare"; locationIds: Id<"locations">[] | null },
   range: DashboardRange,
+  now: number,
 ) {
+  if (!Number.isFinite(now)) throw new ConvexError("Tidspunktet er ugyldigt");
   const [allLocations, scheduleSettings] = await Promise.all([
     ctx.db
       .query("locations")
@@ -162,29 +166,24 @@ export async function resolveMetricParams(
   if (allLocations.length > 200) throw new ConvexError("Organisationen har for mange locations");
 
   const byId = new Map(allLocations.map((location) => [location._id, location]));
-  const selectedIds = scope.locationIds ?? allLocations.map((location) => location._id);
-  if (selectedIds.length === 0) throw new ConvexError("Vælg mindst én location");
-  if (new Set(selectedIds).size !== selectedIds.length) {
-    throw new ConvexError("En location må kun vælges én gang");
-  }
+  const selectedIds = [...new Set(
+    scope.locationIds ?? allLocations.map((location) => location._id),
+  )];
   if (selectedIds.length > MAX_SCOPE_LOCATIONS) {
     throw new ConvexError(`Dashboardet kan højst vise ${MAX_SCOPE_LOCATIONS} locations ad gangen`);
   }
-  const locations = selectedIds.map((id) => {
+  const locations = selectedIds.flatMap((id) => {
     const location = byId.get(id);
-    if (!location) throw new ConvexError("Locationen blev ikke fundet");
-    return { id: location._id, name: location.name };
+    return location ? [{ id: location._id, name: location.name }] : [];
   });
-  if (scope.mode === "compare" && locations.length < 2) {
-    throw new ConvexError("Vælg mindst to locations til sammenligning");
-  }
 
   return {
     organizationId,
     locations,
-    compare: scope.mode === "compare",
+    compare: scope.mode === "compare" && locations.length >= 2,
     granularity: "day" as const,
-    ...resolveDashboardRange(range, scheduleSettings?.timeZone),
+    now,
+    ...resolveDashboardRange(range, scheduleSettings?.timeZone, now),
   };
 }
 
@@ -348,6 +347,7 @@ async function countRows(ctx: QueryCtx, params: DashboardMetricParams) {
       ctx.db
         .query("counts")
         .withIndex("by_organizationId_and_locationId_and_periodKey", (q) => q.eq("organizationId", params.organizationId).eq("locationId", location.id))
+        .order("desc")
         .take(101),
     ),
   );
@@ -377,8 +377,8 @@ const openCounts: MetricComputer = async (ctx, params) => {
     series: groups.map((group) => ({
       key: group.id ?? "all",
       label: group.name,
-      points: [{ t: params.from, value: snapshots(group.id, Math.min(params.to, Date.now() + 1)) }],
-      total: snapshots(group.id, Math.min(params.to, Date.now() + 1)),
+      points: [{ t: params.from, value: snapshots(group.id, Math.min(params.to, params.now + 1)) }],
+      total: snapshots(group.id, Math.min(params.to, params.now + 1)),
       previousTotal: snapshots(group.id, params.previousTo),
     })),
     truncated: result.truncated || undefined,
@@ -486,7 +486,7 @@ const scheduledHours: MetricComputer = async (ctx, params) => {
 };
 
 const headcountToday: MetricComputer = async (ctx, params) => {
-  const today = dateKey(Date.now(), params.timeZone);
+  const today = dateKey(params.now, params.timeZone);
   const from = zonedStart(today, params.timeZone);
   const to = zonedStart(addDays(today, 1), params.timeZone);
   const result = await shiftRows(ctx, params, from - DAY_MS * 2, to);
