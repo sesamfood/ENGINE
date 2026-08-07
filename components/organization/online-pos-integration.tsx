@@ -535,11 +535,9 @@ function ProductMappings({
 function SalesList() {
   const context = useQuery(api.sales.getContext);
   const requestSync = useMutation(api.sales.requestSync);
-  const [fromDate, setFromDate] = useState(() => dateInput(7));
-  const [toDate, setToDate] = useState(() => dateInput(0));
-  const [datesSeededForZone, setDatesSeededForZone] = useState<string | null>(
-    null,
-  );
+  // null = use org-zone defaults derived below (avoids browser-local seed + effect).
+  const [fromDate, setFromDate] = useState<string | null>(null);
+  const [toDate, setToDate] = useState<string | null>(null);
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [syncing, setSyncing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -550,21 +548,19 @@ function SalesList() {
   }, []);
 
   const timeZone = context?.timeZone;
-  useEffect(() => {
-    if (!timeZone || datesSeededForZone === timeZone) return;
-    setFromDate(dateInput(7, timeZone));
-    setToDate(dateInput(0, timeZone));
-    setDatesSeededForZone(timeZone);
-  }, [timeZone, datesSeededForZone]);
+  const resolvedFromDate = fromDate ?? (timeZone ? dateInput(7, timeZone) : "");
+  const resolvedToDate = toDate ?? (timeZone ? dateInput(0, timeZone) : "");
   const from =
-    timeZone && fromDate ? zonedDayStart(fromDate, timeZone) : Number.NaN;
+    timeZone && resolvedFromDate
+      ? zonedDayStart(resolvedFromDate, timeZone)
+      : Number.NaN;
   const to =
-    timeZone && toDate
-      ? zonedDayStart(addCalendarDays(toDate, 1), timeZone)
+    timeZone && resolvedToDate
+      ? zonedDayStart(addCalendarDays(resolvedToDate, 1), timeZone)
       : Number.NaN;
   const rangeValid =
-    Boolean(fromDate) &&
-    Boolean(toDate) &&
+    Boolean(resolvedFromDate) &&
+    Boolean(resolvedToDate) &&
     Boolean(timeZone) &&
     Number.isFinite(from) &&
     Number.isFinite(to) &&
@@ -789,7 +785,7 @@ function SalesList() {
             <Input
               id="online-pos-sales-from"
               type="date"
-              value={fromDate}
+              value={resolvedFromDate}
               onChange={(event) => setFromDate(event.target.value)}
               className="h-11"
             />
@@ -799,7 +795,7 @@ function SalesList() {
             <Input
               id="online-pos-sales-to"
               type="date"
-              value={toDate}
+              value={resolvedToDate}
               onChange={(event) => setToDate(event.target.value)}
               className="h-11"
             />
