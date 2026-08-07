@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { ActionCtx } from "./_generated/server";
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 import {
   action,
   internalMutation,
@@ -10,13 +10,48 @@ import {
   query,
 } from "./_generated/server";
 import { requireOrganizationAdmin } from "./lib/auth";
+import {
+  parseProducts,
+  requestOnlinePos,
+  requestSales,
+  type OnlinePosProduct,
+} from "./lib/onlinePosApi";
 import { normalizeStock } from "./lib/stock";
 
-const API_URL = "https://api.onlinepos.dk/api";
 const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
-const MAX_SALES = 500;
-const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
+// ponytail: waste-report salesLines capped at 5k; upgrade: paginated sum batches.
+const MAX_WASTE_SALES_LINES = 5_000;
+
+async function beginLocationSalesReset(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const [currentReset, status] = await Promise.all([
+    ctx.db
+      .query("onlinePosSalesResets")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", locationId),
+      )
+      .unique(),
+    ctx.db
+      .query("onlinePosSyncStatus")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", locationId),
+      )
+      .unique(),
+  ]);
+  if (currentReset) await ctx.db.delete(currentReset._id);
+  if (status) await ctx.db.delete(status._id);
+  const resetId = await ctx.db.insert("onlinePosSalesResets", {
+    organizationId,
+    locationId,
+  });
+  await ctx.scheduler.runAfter(0, internal.onlinePosSync.resetLocationSales, {
+    resetId,
+  });
+}
 
 const privateSettingsValidator = v.union(
   v.object({
@@ -33,22 +68,6 @@ const onlinePosProductValidator = v.object({
   groupName: v.string(),
 });
 
-const saleValidator = v.object({
-  locationId: v.id("locations"),
-  locationName: v.string(),
-  id: v.number(),
-  checkNumber: v.number(),
-  date: v.string(),
-  time: v.string(),
-  onlinePosProductId: v.number(),
-  onlinePosProductName: v.string(),
-  localProductName: v.union(v.string(), v.null()),
-  amount: v.number(),
-  price: v.string(),
-  paymentType: v.string(),
-  department: v.string(),
-});
-
 const wasteReportRowValidator = v.object({
   productName: v.string(),
   defaultUnitName: v.string(),
@@ -58,75 +77,14 @@ const wasteReportRowValidator = v.object({
   wasteQuantity: v.number(),
 });
 
-const copenhagenParts = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Copenhagen",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
+const wasteReportResultValidator = v.object({
+  locationName: v.string(),
+  submittedAt: v.number(),
+  hasBaseline: v.boolean(),
+  salesIncluded: v.boolean(),
+  salesOmittedReason: v.union(v.string(), v.null()),
+  rows: v.array(wasteReportRowValidator),
 });
-
-type OnlinePosProduct = {
-  id: number;
-  name: string;
-  groupName: string;
-};
-
-function object(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function number(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function string(value: unknown) {
-  return typeof value === "string" || typeof value === "number"
-    ? String(value)
-    : "";
-}
-
-function saleTimestamp(date: string, time: string) {
-  const dateMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
-  const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
-  if (!dateMatch || !timeMatch) return null;
-  const desired = Date.UTC(
-    Number(dateMatch[3]),
-    Number(dateMatch[2]) - 1,
-    Number(dateMatch[1]),
-    Number(timeMatch[1]),
-    Number(timeMatch[2]),
-    Number(timeMatch[3] ?? 0),
-  );
-  let timestamp = desired;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(
-      copenhagenParts
-        .formatToParts(timestamp)
-        .map((part) => [part.type, part.value]),
-    );
-    const displayed = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute),
-      Number(parts.second),
-    );
-    timestamp += desired - displayed;
-  }
-  return timestamp;
-}
 
 function requireCompanyId(companyId: number) {
   if (!Number.isSafeInteger(companyId) || companyId <= 0) {
@@ -140,77 +98,6 @@ function requireToken(token: string) {
     throw new ConvexError("Indtast et gyldigt OnlinePOS-token");
   }
   return trimmed;
-}
-
-async function requestOnlinePos(
-  path: string,
-  settings: { token: string; companyId: number },
-  init?: RequestInit,
-) {
-  let response: Response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        token: settings.token,
-        firmaid: String(settings.companyId),
-        ...init?.headers,
-      },
-    });
-  } catch {
-    throw new ConvexError("OnlinePOS kunne ikke kontaktes");
-  }
-
-  if (response.status === 403) {
-    throw new ConvexError("OnlinePOS afviste firma-id eller token");
-  }
-  if (!response.ok) {
-    throw new ConvexError(`OnlinePOS svarede med status ${response.status}`);
-  }
-
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    throw new ConvexError("OnlinePOS returnerede et ugyldigt svar");
-  }
-}
-
-function parseProducts(payload: unknown): OnlinePosProduct[] {
-  if (!Array.isArray(payload)) {
-    throw new ConvexError("OnlinePOS returnerede en ugyldig produktliste");
-  }
-
-  return payload.flatMap((value) => {
-    const product = object(value);
-    const id = number(product?.ID);
-    const name = string(product?.name).trim();
-    if (id === null || !name) return [];
-    return [{ id, name, groupName: string(product?.groupname).trim() }];
-  });
-}
-
-async function requestSales(
-  settings: { token: string; companyId: number },
-  from: number,
-  to: number,
-) {
-  const body = new URLSearchParams({
-    from: String(Math.floor(from / 1000)),
-    to: String(Math.floor(to / 1000)),
-    map_to_koncern: "true",
-  });
-  const payload = object(
-    await requestOnlinePos("/exportSales", settings, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    }),
-  );
-  if (!Array.isArray(payload?.sales)) {
-    throw new ConvexError("OnlinePOS returnerede en ugyldig salgsliste");
-  }
-  return payload.sales;
 }
 
 async function requireEnabledSettings(ctx: ActionCtx): Promise<{
@@ -326,87 +213,6 @@ export const getPrivateSettings = internalQuery({
   },
 });
 
-export const getSalesContext = internalQuery({
-  args: { organizationId: v.string() },
-  returns: v.object({
-    masterEnabled: v.boolean(),
-    locations: v.array(
-      v.object({
-        id: v.id("locations"),
-        name: v.string(),
-        token: v.string(),
-        companyId: v.number(),
-      }),
-    ),
-    mappings: v.array(
-      v.object({
-        productId: v.id("products"),
-        onlinePosProductId: v.number(),
-        productName: v.string(),
-      }),
-    ),
-  }),
-  handler: async (ctx, args) => {
-    const settings = await ctx.db
-      .query("onlinePosIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .unique();
-    const [rows, locationSettings] = await Promise.all([
-      ctx.db
-        .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .take(MAX_PRODUCTS),
-      ctx.db
-        .query("onlinePosLocationIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .take(MAX_LOCATIONS + 1),
-    ]);
-    if (locationSettings.length > MAX_LOCATIONS) {
-      throw new ConvexError("Der er for mange OnlinePOS-lokationer");
-    }
-    const mappings = await Promise.all(
-      rows.map(async (row) => {
-        const product = await ctx.db.get("products", row.productId);
-        return product?.organizationId === args.organizationId
-          ? {
-              productId: product._id,
-              onlinePosProductId: row.onlinePosProductId,
-              productName: product.name,
-            }
-          : null;
-      }),
-    );
-    const locations = await Promise.all(
-      locationSettings.map(async (locationSettings) => {
-        const location = await ctx.db.get(
-          "locations",
-          locationSettings.locationId,
-        );
-        return location?.organizationId === args.organizationId
-          ? {
-              id: location._id,
-              name: location.name,
-              token: locationSettings.token,
-              companyId: locationSettings.companyId,
-            }
-          : null;
-      }),
-    );
-
-    return {
-      masterEnabled: settings?.enabled ?? false,
-      locations: locations.filter((location) => location !== null),
-      mappings: mappings.filter((mapping) => mapping !== null),
-    };
-  },
-});
-
 export const getLocationName = internalQuery({
   args: {
     organizationId: v.string(),
@@ -468,6 +274,11 @@ export const saveConnection = internalMutation({
         updatedAt: now,
       });
     }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.onlinePosSync.enqueueOrganizationSync,
+      { organizationId: args.organizationId },
+    );
     return null;
   },
 });
@@ -481,10 +292,18 @@ export const saveLocationConnection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const [location, current] = await Promise.all([
+    const [location, current, reset] = await Promise.all([
       ctx.db.get("locations", args.locationId),
       ctx.db
         .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("locationId", args.locationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosSalesResets")
         .withIndex("by_organizationId_and_locationId", (q) =>
           q
             .eq("organizationId", args.organizationId)
@@ -513,6 +332,14 @@ export const saveLocationConnection = internalMutation({
         updatedAt: now,
       });
     }
+    if ((current && current.companyId !== args.companyId) || reset) {
+      await beginLocationSalesReset(ctx, args.organizationId, args.locationId);
+    } else {
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.enqueueLocationSync, {
+        organizationId: args.organizationId,
+        locationId: args.locationId,
+      });
+    }
     return null;
   },
 });
@@ -532,6 +359,13 @@ export const setEnabledInternal = internalMutation({
       enabled: args.enabled,
       updatedAt: Date.now(),
     });
+    if (args.enabled) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.enqueueOrganizationSync,
+        { organizationId: args.organizationId },
+      );
+    }
     return null;
   },
 });
@@ -649,6 +483,11 @@ export const disconnect = mutation({
     for (const mapping of mappings) await ctx.db.delete(mapping._id);
     for (const connection of locationConnections) {
       await ctx.db.delete(connection._id);
+      await beginLocationSalesReset(
+        ctx,
+        organizationId,
+        connection.locationId,
+      );
     }
     if (settings) await ctx.db.delete(settings._id);
     return null;
@@ -660,15 +499,22 @@ export const disconnectLocation = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    const connection = await ctx.db
-      .query("onlinePosLocationIntegrations")
-      .withIndex("by_organizationId_and_locationId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("locationId", args.locationId),
-      )
-      .unique();
+    const [location, connection] = await Promise.all([
+      ctx.db.get("locations", args.locationId),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", args.locationId),
+        )
+        .unique(),
+    ]);
+    if (!location || location.organizationId !== organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
     if (connection) await ctx.db.delete(connection._id);
+    await beginLocationSalesReset(ctx, organizationId, args.locationId);
     return null;
   },
 });
@@ -824,110 +670,24 @@ export const setProductMapping = action({
   },
 });
 
-export const listSales = action({
-  args: { from: v.number(), to: v.number() },
-  returns: v.object({
-    sales: v.array(saleValidator),
-    truncated: v.boolean(),
-  }),
-  handler: async (ctx, args) => {
-    if (
-      !Number.isFinite(args.from) ||
-      !Number.isFinite(args.to) ||
-      args.from >= args.to ||
-      args.to - args.from > MAX_SALES_RANGE_MS
-    ) {
-      throw new ConvexError("Vælg en periode på højst 31 dage");
-    }
-
-    const { organizationId } = await requireOrganizationAdmin(ctx);
-    const context: {
-      masterEnabled: boolean;
-      locations: Array<{
-        id: Id<"locations">;
-        name: string;
-        token: string;
-        companyId: number;
-      }>;
-      mappings: Array<{
-        productId: Id<"products">;
-        onlinePosProductId: number;
-        productName: string;
-      }>;
-    } = await ctx.runQuery(internal.onlinePos.getSalesContext, {
-      organizationId,
-    });
-    if (!context.masterEnabled) {
-      throw new ConvexError("OnlinePOS-masterforbindelsen er ikke aktiv");
-    }
-    if (context.locations.length === 0) {
-      throw new ConvexError(
-        "Forbind mindst én lokation til OnlinePOS for at hente salg",
-      );
-    }
-
-    const names = new Map(
-      context.mappings.map((mapping) => [
-        mapping.onlinePosProductId,
-        mapping.productName,
-      ]),
-    );
-    const byLocation = await Promise.all(
-      context.locations.map(async (location) => {
-        const sales = await requestSales(location, args.from, args.to);
-        return sales.flatMap((value) => {
-          const line = object(object(value)?.line);
-          const id = number(line?.id);
-          const checkNumber = number(line?.chk);
-          const productId = number(line?.product_id);
-          const amount = number(line?.amount);
-          if (
-            id === null ||
-            checkNumber === null ||
-            productId === null ||
-            amount === null
-          ) {
-            return [];
-          }
-          return [
-            {
-              locationId: location.id,
-              locationName: location.name,
-              id,
-              checkNumber,
-              date: string(line?.date),
-              time: string(line?.time),
-              onlinePosProductId: productId,
-              onlinePosProductName: string(line?.product),
-              localProductName: names.get(productId) ?? null,
-              amount,
-              price: string(line?.price),
-              paymentType: string(line?.payment_type),
-              department: string(line?.department),
-            },
-          ];
-        });
-      }),
-    );
-    const parsed = byLocation.flat();
-
-    return {
-      sales: parsed.slice(0, MAX_SALES),
-      truncated: parsed.length > MAX_SALES,
-    };
-  },
-});
-
-export const exportCountWasteReport = action({
+export const buildCountWasteReport = internalQuery({
   args: { countId: v.id("counts") },
-  returns: v.object({
-    locationName: v.string(),
-    submittedAt: v.number(),
-    hasBaseline: v.boolean(),
-    salesIncluded: v.boolean(),
-    rows: v.array(wasteReportRowValidator),
-  }),
-  handler: async (ctx, args) => {
+  returns: wasteReportResultValidator,
+  handler: async (ctx, args): Promise<{
+    locationName: string;
+    submittedAt: number;
+    hasBaseline: boolean;
+    salesIncluded: boolean;
+    salesOmittedReason: string | null;
+    rows: Array<{
+      productName: string;
+      defaultUnitName: string;
+      expectedQuantity: number;
+      salesQuantity: number;
+      countedQuantity: number;
+      wasteQuantity: number;
+    }>;
+  }> => {
     const report: {
       organizationId: string;
       locationId: Id<"locations">;
@@ -950,70 +710,113 @@ export const exportCountWasteReport = action({
         submittedAt: report.submittedAt,
         hasBaseline: false,
         salesIncluded: false,
+        salesOmittedReason: null,
         rows: [],
       };
     }
 
-    const context: {
-      masterEnabled: boolean;
-      locations: Array<{
-        id: Id<"locations">;
-        name: string;
-        token: string;
-        companyId: number;
-      }>;
-      mappings: Array<{
-        productId: Id<"products">;
-        onlinePosProductId: number;
-        productName: string;
-      }>;
-    } = await ctx.runQuery(internal.onlinePos.getSalesContext, {
-      organizationId: report.organizationId,
-    });
-    const location = context.locations.find(
-      (candidate) => candidate.id === report.locationId,
-    );
+    const from = Math.min(...report.rows.map((row) => row.expectedSinceAt));
+    const to = report.submittedAt;
     const salesByProduct = new Map<Id<"products">, number>();
-    const salesIncluded = context.masterEnabled && Boolean(location);
+    let salesIncluded = false;
+    let salesOmittedReason: string | null = null;
 
-    if (location && context.masterEnabled) {
-      const productByOnlinePosId = new Map(
-        context.mappings.map((mapping) => [
-          mapping.onlinePosProductId,
+    const [master, connection, status, mappings] = await Promise.all([
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", report.organizationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", report.organizationId)
+            .eq("locationId", report.locationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosSyncStatus")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", report.organizationId)
+            .eq("locationId", report.locationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", report.organizationId),
+        )
+        .take(MAX_PRODUCTS + 1),
+    ]);
+
+    // Coverage: syncedThroughAt is the forward watermark; backfillThroughAt (falling
+    // back to syncedThroughAt, same as the sync engine) is how far history reaches.
+    const historyStart =
+      status?.backfillThroughAt ?? status?.syncedThroughAt ?? null;
+    const connected = master?.enabled === true && Boolean(connection);
+    const windowCovered =
+      connected &&
+      status?.syncedThroughAt != null &&
+      status.syncedThroughAt >= to &&
+      historyStart != null &&
+      historyStart <= from;
+
+    if (!connected) {
+      salesOmittedReason =
+        "lokationen er ikke forbundet til OnlinePOS";
+    } else if (!windowCovered) {
+      salesOmittedReason =
+        "synkroniserede salg dækker ikke count-perioden";
+    } else if (mappings.length > MAX_PRODUCTS) {
+      salesOmittedReason =
+        "der er for mange produktkoblinger til at beregne sikkert";
+    } else {
+      // onlinePosProductId is a number; salesLines.externalProductId is a string.
+      const productByExternalId = new Map(
+        mappings.map((mapping) => [
+          String(mapping.onlinePosProductId),
           mapping.productId,
         ]),
       );
       const rowByProduct = new Map(
         report.rows.map((row) => [row.productId, row]),
       );
-      const from = Math.min(...report.rows.map((row) => row.expectedSinceAt));
-      const sales = await requestSales(location, from, report.submittedAt);
-      for (const value of sales) {
-        const line = object(object(value)?.line);
-        const onlinePosProductId = number(line?.product_id);
-        const amount = number(line?.amount);
-        const timestamp = saleTimestamp(string(line?.date), string(line?.time));
-        if (
-          onlinePosProductId === null ||
-          amount === null ||
-          timestamp === null
-        ) {
-          continue;
+      // Indexed range is inclusive on both ends, matching old
+      // `timestamp < expectedSinceAt` / `timestamp > submittedAt` exclusion.
+      const lines = await ctx.db
+        .query("salesLines")
+        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+          q
+            .eq("organizationId", report.organizationId)
+            .eq("locationId", report.locationId)
+            .gte("occurredAt", from)
+            .lte("occurredAt", to),
+        )
+        .take(MAX_WASTE_SALES_LINES + 1);
+      if (lines.length > MAX_WASTE_SALES_LINES) {
+        salesOmittedReason =
+          "der er for mange salgslinjer til at beregne sikkert";
+      } else {
+        salesIncluded = true;
+        for (const line of lines) {
+          const productId = productByExternalId.get(line.externalProductId);
+          const row = productId ? rowByProduct.get(productId) : null;
+          if (
+            !productId ||
+            !row ||
+            line.occurredAt < row.expectedSinceAt ||
+            line.occurredAt > report.submittedAt
+          ) {
+            continue;
+          }
+          salesByProduct.set(
+            productId,
+            (salesByProduct.get(productId) ?? 0) + line.quantity,
+          );
         }
-        const productId = productByOnlinePosId.get(onlinePosProductId);
-        const row = productId ? rowByProduct.get(productId) : null;
-        if (
-          !productId ||
-          !row ||
-          timestamp < row.expectedSinceAt ||
-          timestamp > report.submittedAt
-        ) {
-          continue;
-        }
-        salesByProduct.set(
-          productId,
-          (salesByProduct.get(productId) ?? 0) + amount,
-        );
       }
     }
 
@@ -1022,10 +825,11 @@ export const exportCountWasteReport = action({
       submittedAt: report.submittedAt,
       hasBaseline: true,
       salesIncluded,
+      salesOmittedReason,
       rows: report.rows.flatMap((row) => {
-        const salesQuantity = normalizeStock(
-          salesByProduct.get(row.productId) ?? 0,
-        );
+        const salesQuantity = salesIncluded
+          ? normalizeStock(salesByProduct.get(row.productId) ?? 0)
+          : 0;
         const wasteQuantity = normalizeStock(
           row.expectedQuantity - salesQuantity - row.countedQuantity,
         );
@@ -1043,5 +847,30 @@ export const exportCountWasteReport = action({
             ];
       }),
     };
+  },
+});
+
+export const exportCountWasteReport = action({
+  args: { countId: v.id("counts") },
+  returns: wasteReportResultValidator,
+  handler: async (ctx, args) => {
+    const report: {
+      locationName: string;
+      submittedAt: number;
+      hasBaseline: boolean;
+      salesIncluded: boolean;
+      salesOmittedReason: string | null;
+      rows: Array<{
+        productName: string;
+        defaultUnitName: string;
+        expectedQuantity: number;
+        salesQuantity: number;
+        countedQuantity: number;
+        wasteQuantity: number;
+      }>;
+    } = await ctx.runQuery(internal.onlinePos.buildCountWasteReport, {
+      countId: args.countId,
+    });
+    return report;
   },
 });

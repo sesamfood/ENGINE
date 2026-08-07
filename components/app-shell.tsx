@@ -7,6 +7,7 @@ import {
   ChevronsUpDownIcon,
   ClipboardListIcon,
   LogOutIcon,
+  LayoutDashboardIcon,
   RefreshCwIcon,
   SettingsIcon,
   MonitorIcon,
@@ -77,7 +78,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { authClient } from "@/lib/auth-client";
-import { canManageCatalog } from "@/lib/auth-permissions";
+import { canManageCatalog, canViewDashboard } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
@@ -86,6 +87,7 @@ import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
 import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
 
 const primaryNavigation = [
+  { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
   { id: "transfers", label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
   { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
   { id: "staffFood", label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
@@ -115,6 +117,52 @@ type KioskRuntime = NonNullable<
 const KioskContext = createContext<KioskRuntime | null>(null);
 
 const FeatureLockContext = createContext(false);
+const ACTIVE_SYNC_INTERVAL_MS = 60 * 60 * 1_000;
+
+function ActiveSyncHeartbeat() {
+  const { isAuthenticated } = useConvexAuth();
+  const organization = authClient.useActiveOrganization();
+  const requestSync = useMutation(api.organization.requestActiveSync);
+  const organizationId = organization.data?.id;
+
+  useEffect(() => {
+    if (!isAuthenticated || !organizationId) return;
+    let lastRequestedAt = 0;
+    const request = () => {
+      const now = Date.now();
+      if (
+        document.visibilityState !== "visible" ||
+        now - lastRequestedAt < ACTIVE_SYNC_INTERVAL_MS
+      ) {
+        return;
+      }
+      lastRequestedAt = now;
+      void requestSync().catch(() => {
+        lastRequestedAt = 0;
+      });
+    };
+    const events: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "keydown",
+      "scroll",
+      "touchstart",
+      "focus",
+    ];
+    request();
+    for (const event of events) {
+      window.addEventListener(event, request, { passive: true });
+    }
+    document.addEventListener("visibilitychange", request);
+    return () => {
+      for (const event of events) {
+        window.removeEventListener(event, request);
+      }
+      document.removeEventListener("visibilitychange", request);
+    };
+  }, [isAuthenticated, organizationId, requestSync]);
+
+  return null;
+}
 
 const KIOSK_WAKE_LOCK_KEY = "engine.kiosk.keep-screen-on";
 
@@ -267,6 +315,10 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     api.locations.listLocationOptions,
     organizationId && isAuthenticated ? {} : "skip",
   );
+  const lockEnabled = useQuery(
+    api.count.getOtherFeaturesLockEnabled,
+    organizationId && isAuthenticated ? {} : "skip",
+  );
   const locationId = kiosk?.isKioskAccount
     ? kiosk.locationId
     : locations?.some((location) => location.id === storedLocationId)
@@ -274,7 +326,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
       : (locations?.[0]?.id ?? null);
   const lockState = useQuery(
     api.count.getOtherFeaturesLockState,
-    organizationId && isAuthenticated && locationId
+    organizationId && isAuthenticated && lockEnabled && locationId
       ? {
           locationId,
           now: Math.floor(now / 60_000) * 60_000,
@@ -286,14 +338,17 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     organizationId && locationId ? `${organizationId}:${locationId}` : null,
   );
   const exempt = featureLockExempt(pathname);
-  const isLocked = currentLockState?.isLocked ?? false;
+  const isLocked = lockEnabled ? (currentLockState?.isLocked ?? false) : false;
   const lockReady =
-    locations !== undefined && (!locationId || currentLockState !== undefined);
+    locations !== undefined &&
+    lockEnabled !== undefined &&
+    (!lockEnabled || !locationId || currentLockState !== undefined);
 
   useEffect(() => {
+    if (!lockEnabled) return;
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [lockEnabled]);
 
   useEffect(() => {
     if (isLocked && !exempt) router.replace("/count");
@@ -330,6 +385,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
 
 function OrganizationHome() {
   const { data: organization } = authClient.useActiveOrganization();
+  const { data: membership } = authClient.useActiveMemberRole();
   const { state, isMobile } = useSidebar();
   const { isAuthenticated } = useConvexAuth();
   const featureLocked = useContext(FeatureLockContext);
@@ -344,7 +400,9 @@ function OrganizationHome() {
     ? effectiveKioskHome(kiosk, featureLocked)
     : featureLocked
       ? "/count"
-      : "/transfers";
+      : canViewDashboard(membership?.role)
+        ? "/dashboard"
+        : "/transfers";
   const showWideLogo = state === "expanded" || isMobile;
 
   if (showWideLogo && branding === undefined) {
@@ -440,6 +498,7 @@ function NavigationList() {
       })
     : null;
   const navigation = kioskNavigation ?? orderedNavigation.filter((item) => {
+    if (item.id === "dashboard") return canViewDashboard(membership?.role) && !featureLocked;
     if (item.id === "organization") return canManageCatalog(membership?.role);
     return !featureLocked || item.id === "count" || item.id === "waste";
   });
@@ -923,6 +982,7 @@ export function AppShell({
     "/verify-email",
     "/invitation",
     "/onboarding",
+    "/share",
   ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
   if (shellless) return children;
@@ -939,6 +999,7 @@ export function AppShell({
   const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees" || pathname.startsWith("/employees/");
   const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
+  const showDashboardHeader = pathname === "/dashboard";
   const showOrganizationHeader =
     pathname === "/organization" || pathname.startsWith("/organization/");
   const showPageHeader =
@@ -947,6 +1008,7 @@ export function AppShell({
     showStaffFoodHeader ||
     showEmployeesHeader ||
     showTransfersHeader ||
+    showDashboardHeader ||
     showOrganizationHeader;
 
   if (signingOut) {
@@ -962,6 +1024,7 @@ export function AppShell({
 
   return (
     <OrganizationBoundary required={organizationRequired}>
+      <ActiveSyncHeartbeat />
       <OrganizationTheme>
         <KioskRuntimeBoundary>
           <FeatureLockBoundary>
@@ -1008,6 +1071,8 @@ export function AppShell({
                             ? "employees-shell-header"
                             : showTransfersHeader
                               ? "transfers-shell-header"
+                              : showDashboardHeader
+                                ? "dashboard-shell-header"
                               : "organization-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"

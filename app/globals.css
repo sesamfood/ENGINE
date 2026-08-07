@@ -48,6 +48,23 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@media (min-width: 80rem) {
+  .dashboard-grid-item {
+    grid-column: var(--dashboard-column-start) / span var(--dashboard-column-span);
+    grid-row: var(--dashboard-row-start) / span var(--dashboard-row-span);
+  }
+
+  .dashboard-grid-slot {
+    grid-column: var(--dashboard-column-start);
+    grid-row: var(--dashboard-row-start);
+  }
+
+  .dashboard-grid-drop-preview {
+    grid-column: var(--dashboard-column-start) / span var(--dashboard-column-span);
+    grid-row: var(--dashboard-row-start) / span var(--dashboard-row-span);
+  }
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

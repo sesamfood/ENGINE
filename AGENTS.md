@@ -32,6 +32,7 @@ The system should support practical customization without becoming a general-pur
 - Restaurant locations belong to and are managed beneath their organization.
 - Scope every organization-owned record to its Better Auth organization.
 - Never expose or allow access to data across organizations.
+- Sales history is provider-agnostic (`salesOrders`, `salesLines`, `salesDaily`; money in integer minor units). OnlinePOS only fills it via `convex/onlinePosSync.ts`. Reads must not call a provider API — dashboard metrics read `salesDaily`, the integrations panel uses `convex/sales.ts`, and the count waste report reads `salesLines`.
 
 # Authentication and authorization
 
@@ -78,3 +79,31 @@ Convex agent skills for common tasks can be installed by running
 
 - Workfeed: https://docs.workfeed.io/
 - OnlinePOS: https://speca.io/SimonOnlinePOS/external-api-v2?key=41502b8375f30e56b210877ef797b7e4
+
+# Dashboard widgets
+
+A dashboard widget is a metric, a compatible visualization, and a fixed size. To add a metric:
+
+1. Add its id and Danish metadata to `lib/dashboard/registry.ts`.
+2. Add its Convex implementation to the exhaustive `dashboardMetricComputers` record in `convex/lib/dashboardMetrics.ts`.
+3. Do not add widget-specific UI. The add-widget dialog reads the registry automatically.
+
+Every metric returns this contract:
+
+```ts
+type MetricResult = {
+  unit: "count" | "currency" | "percent" | "quantity" | "hours";
+  series: Array<{
+    key: string;
+    label: string;
+    points: Array<{ t: number; value: number }>;
+    total: number;
+    previousTotal: number | null;
+  }>;
+  breakdown?: Array<{ key: string; label: string; value: number }>;
+  target?: number;
+  truncated?: boolean;
+};
+```
+
+See `docs/dashboard-widgets.md` for visualization, sizing, sharing, and data-domain rules.

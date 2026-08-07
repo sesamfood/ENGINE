@@ -9,6 +9,7 @@ const publicPaths = [
   "/reset-password",
   "/verify-email",
   "/invitation",
+  "/share",
 ];
 
 export default async function proxy(request: NextRequest) {
