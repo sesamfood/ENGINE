@@ -123,9 +123,11 @@ export function ShareDialog() {
             </Select>
           </Field>
           <Field>
-            <FieldLabel htmlFor="share-password">Adgangskode (valgfri)</FieldLabel>
+            <FieldLabel htmlFor="share-password">Adgangskode</FieldLabel>
             <Input id="share-password" type="password" value={password} maxLength={128} onChange={(event) => setPassword(event.target.value)} />
-            <FieldDescription>Mindst 4 tegn, hvis feltet udfyldes.</FieldDescription>
+            <FieldDescription>
+              Påkrævet når dashboardet indeholder admin-målinger som omsætning. Mindst 4 tegn.
+            </FieldDescription>
           </Field>
         </FieldGroup>
         <DialogFooter>

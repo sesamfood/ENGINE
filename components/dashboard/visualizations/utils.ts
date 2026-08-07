@@ -2,10 +2,12 @@ import type { ChartConfig } from "@/components/ui/chart";
 import type { MetricResult, MetricUnit } from "@/lib/dashboard/types";
 
 export function total(result: MetricResult) {
+  if (result.headlineTotal !== undefined) return result.headlineTotal;
   return result.series.reduce((sum, series) => sum + series.total, 0);
 }
 
 export function previousTotal(result: MetricResult) {
+  if (result.headlinePrevious !== undefined) return result.headlinePrevious;
   const values = result.series.map((series) => series.previousTotal);
   return values.some((value) => value === null)
     ? null

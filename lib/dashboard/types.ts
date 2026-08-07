@@ -68,6 +68,10 @@ export type MetricResult = {
   breakdown?: { key: string; label: string; value: number }[];
   target?: number;
   truncated?: boolean;
+  // Optional weighted headline for ratio metrics. KPI/%-change prefer this over
+  // summing series totals, which is wrong for averages in compare scope.
+  headlineTotal?: number;
+  headlinePrevious?: number | null;
 };
 
 export type WidgetInstance = {

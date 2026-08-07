@@ -565,6 +565,10 @@ const averageBasket: MetricComputer = async (ctx, params) => {
     ? params.locations.map((location) => ({ key: location.id, label: location.name }))
     : [{ key: "all" as const, label: "Alle locations" }];
   const days = dayStarts(params.from, params.to, params.timeZone);
+  let headlineRevenue = 0;
+  let headlineOrders = 0;
+  let headlinePreviousRevenue = 0;
+  let headlinePreviousOrders = 0;
   const series = groups.map((group) => {
     const relevant = params.compare
       ? result.rows.filter((row) => row.locationId === group.key)
@@ -586,6 +590,10 @@ const averageBasket: MetricComputer = async (ctx, params) => {
     const periodOrders = current.reduce((sum, row) => sum + row.orderCount, 0);
     const previousRevenue = previous.reduce((sum, row) => sum + row.revenue, 0);
     const previousOrders = previous.reduce((sum, row) => sum + row.orderCount, 0);
+    headlineRevenue += periodRevenue;
+    headlineOrders += periodOrders;
+    headlinePreviousRevenue += previousRevenue;
+    headlinePreviousOrders += previousOrders;
     return {
       key: String(group.key),
       label: group.label,
@@ -606,6 +614,14 @@ const averageBasket: MetricComputer = async (ctx, params) => {
     unit: "currency",
     series,
     truncated: result.truncated || undefined,
+    headlineTotal: rounded(
+      headlineOrders > 0 ? headlineRevenue / 100 / headlineOrders : 0,
+    ),
+    headlinePrevious: rounded(
+      headlinePreviousOrders > 0
+        ? headlinePreviousRevenue / 100 / headlinePreviousOrders
+        : 0,
+    ),
   };
 };
 

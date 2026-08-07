@@ -126,6 +126,8 @@ export const metricResultValidator = v.object({
   ),
   target: v.optional(v.number()),
   truncated: v.optional(v.boolean()),
+  headlineTotal: v.optional(v.number()),
+  headlinePrevious: v.optional(v.union(v.number(), v.null())),
 });
 
 export const dashboardConfigValidator = v.object({

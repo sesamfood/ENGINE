@@ -164,7 +164,8 @@ export function WidgetCard({
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <CardTitle className="min-w-0 flex-1 truncate text-base">{definition.label}</CardTitle>
-            <CardDescription className="flex shrink-0 items-center gap-1">
+            {change !== null || result?.truncated ? (
+              <CardDescription className="flex shrink-0 items-center gap-1">
                 {change !== null ? (
                   <Badge
                     variant="secondary"
@@ -179,7 +180,8 @@ export function WidgetCard({
                   </Badge>
                 ) : null}
                 {result?.truncated ? <Badge variant="outline">Begrænset data</Badge> : null}
-            </CardDescription>
+              </CardDescription>
+            ) : null}
           </div>
           {editable ? (
             <div data-dashboard-no-drag className="flex items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>

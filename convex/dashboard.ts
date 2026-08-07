@@ -273,6 +273,15 @@ export const createShare = action({
       userIdentifier,
     });
     const widgets = source.widgets.filter((widget) => metricRegistry[widget.metricId].shareable !== false);
+    // Admin-only metrics (revenue) stay shareable but never on a passwordless link.
+    if (
+      !password &&
+      widgets.some((widget) => metricRegistry[widget.metricId].adminOnly)
+    ) {
+      throw new ConvexError(
+        "Adgangskode er påkrævet når dashboardet indeholder admin-målinger",
+      );
+    }
     const token = randomSecret();
     const unlockKey = randomSecret();
     const passwordSalt = password ? randomSecret(16) : undefined;
