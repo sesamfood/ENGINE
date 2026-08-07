@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:sales": "bun scripts/check-sales-rollup.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

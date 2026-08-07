@@ -7,6 +7,11 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
     period: 5 * MINUTE,
     rate: 1,
   },
+  manualSalesSync: {
+    kind: "fixed window",
+    period: 5 * MINUTE,
+    rate: 1,
+  },
   dashboardShareUnlock: {
     kind: "fixed window",
     period: MINUTE,

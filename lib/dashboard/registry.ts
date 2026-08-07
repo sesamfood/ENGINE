@@ -15,7 +15,6 @@ export type MetricDefinition = {
   visualizations: readonly VisualizationId[];
   defaultVisualization: VisualizationId;
   defaultSize: WidgetSize;
-  live?: boolean;
   adminOnly?: boolean;
   shareable?: boolean;
 };
@@ -171,18 +170,41 @@ const definitions = {
     defaultVisualization: "table",
     defaultSize: "4x2",
   },
-  onlinePosTurnover: {
-    id: "onlinePosTurnover",
-    label: "OnlinePOS-omsætning",
-    category: "OnlinePOS",
-    description: "Live omsætning fra OnlinePOS. Opdateres manuelt.",
+  salesRevenue: {
+    id: "salesRevenue",
+    label: "Omsætning",
+    category: "Salg",
+    description: "Samlet omsætning i perioden.",
     unit: "currency",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
     defaultSize: "2x1",
-    live: true,
     adminOnly: true,
-    shareable: false,
+    shareable: true,
+  },
+  salesOrderCount: {
+    id: "salesOrderCount",
+    label: "Ordrer",
+    category: "Salg",
+    description: "Antal ordrer i perioden.",
+    unit: "count",
+    visualizations: ["kpi", "line", "bar", "area", "table"],
+    defaultVisualization: "kpi",
+    defaultSize: "1x1",
+    adminOnly: true,
+    shareable: true,
+  },
+  averageBasket: {
+    id: "averageBasket",
+    label: "Gennemsnitlig kurv",
+    category: "Salg",
+    description: "Omsætning divideret med antal ordrer.",
+    unit: "currency",
+    visualizations: ["kpi", "line", "bar", "area", "table"],
+    defaultVisualization: "kpi",
+    defaultSize: "1x1",
+    adminOnly: true,
+    shareable: true,
   },
 } satisfies Record<MetricId, MetricDefinition>;
 

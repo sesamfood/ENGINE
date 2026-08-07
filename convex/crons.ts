@@ -11,17 +11,26 @@ crons.interval(
 );
 
 crons.cron(
-  "synchronize Workfeed shifts",
-  "5,20,35,50 * * * *",
-  internal.workfeedSync.dispatchEnabledIntegrations,
-  { kind: "shifts", cursor: null },
-);
-
-crons.cron(
-  "synchronize Workfeed employees",
-  "0 */6 * * *",
+  "daily Workfeed synchronization",
+  "0 3 * * *",
   internal.workfeedSync.dispatchEnabledIntegrations,
   { kind: "employees", cursor: null },
+);
+
+// Convex cron expressions are UTC (not org-local). 05:00 UTC is 06:00 CET /
+// 07:00 CEST — after typical Copenhagen close-of-business for the prior local day.
+crons.cron(
+  "reconcile OnlinePOS sales",
+  "0 5 * * *",
+  internal.onlinePosSync.dispatchEnabledLocations,
+  { kind: "reconcile", cursor: null },
+);
+
+crons.interval(
+  "prune OnlinePOS sales",
+  { hours: 24 },
+  internal.onlinePosSync.pruneSales,
+  { cursor: null },
 );
 
 export default crons;

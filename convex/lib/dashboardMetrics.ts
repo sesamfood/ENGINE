@@ -51,6 +51,14 @@ function addDays(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function daysBetween(from: string, to: string) {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00.000Z`) -
+      Date.parse(`${from}T00:00:00.000Z`)) /
+      DAY_MS,
+  );
+}
+
 export function zonedStart(value: string, timeZone: string) {
   const [year, month, day] = value.split("-").map(Number);
   const target = Date.UTC(year, month - 1, day);
@@ -120,13 +128,14 @@ export function resolveDashboardRange(
 
   const from = zonedStart(fromDate, timeZone);
   const to = zonedStart(addDays(toDate, 1), timeZone);
-  if (to - from > 366 * DAY_MS) {
+  const dayCount = daysBetween(fromDate, toDate) + 1;
+  if (dayCount > 366) {
     throw new ConvexError("Dashboardperioden må højst være ét år");
   }
   return {
     from,
     to,
-    previousFrom: from - (to - from),
+    previousFrom: zonedStart(addDays(fromDate, -dayCount), timeZone),
     previousTo: from,
     timeZone,
   };
@@ -514,8 +523,126 @@ const locationComparison: MetricComputer = async (ctx, params) => {
   return { ...compared, breakdown: compared.series.map((series) => ({ key: series.key, label: series.label, value: series.total })).sort((a, b) => b.value - a.value) };
 };
 
-const onlinePosTurnover: MetricComputer = async () => {
-  throw new ConvexError("OnlinePOS-omsætning skal opdateres manuelt");
+async function salesDailyRows(ctx: QueryCtx, params: DashboardMetricParams) {
+  const rows: Doc<"salesDaily">[] = [];
+  let truncated = false;
+  for (const location of params.locations) {
+    const remaining = MAX_ROWS - rows.length;
+    if (remaining === 0) {
+      truncated = true;
+      break;
+    }
+    const locationRows = await ctx.db
+      .query("salesDaily")
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("locationId", location.id)
+          .gte("dayStart", params.previousFrom)
+          .lt("dayStart", params.to),
+      )
+      .take(remaining + 1);
+    rows.push(...locationRows.slice(0, remaining));
+    if (locationRows.length > remaining) {
+      truncated = true;
+      break;
+    }
+  }
+  return { rows, truncated };
+}
+
+const salesRevenue: MetricComputer = async (ctx, params) => {
+  const result = await salesDailyRows(ctx, params);
+  return seriesResult(
+    "currency",
+    result.rows.map((row) => ({
+      timestamp: row.dayStart,
+      locationId: row.locationId,
+      value: row.revenue / 100,
+    })),
+    params,
+    { truncated: result.truncated || undefined },
+  );
+};
+
+const salesOrderCount: MetricComputer = async (ctx, params) => {
+  const result = await salesDailyRows(ctx, params);
+  return seriesResult(
+    "count",
+    result.rows.map((row) => ({
+      timestamp: row.dayStart,
+      locationId: row.locationId,
+      value: row.orderCount,
+    })),
+    params,
+    { truncated: result.truncated || undefined },
+  );
+};
+
+const averageBasket: MetricComputer = async (ctx, params) => {
+  const result = await salesDailyRows(ctx, params);
+  const groups = params.compare
+    ? params.locations.map((location) => ({ key: location.id, label: location.name }))
+    : [{ key: "all" as const, label: "Alle locations" }];
+  const days = dayStarts(params.from, params.to, params.timeZone);
+  let headlineRevenue = 0;
+  let headlineOrders = 0;
+  let headlinePreviousRevenue = 0;
+  let headlinePreviousOrders = 0;
+  const series = groups.map((group) => {
+    const relevant = params.compare
+      ? result.rows.filter((row) => row.locationId === group.key)
+      : result.rows;
+    const current = relevant.filter(
+      (row) => row.dayStart >= params.from && row.dayStart < params.to,
+    );
+    const previous = relevant.filter(
+      (row) => row.dayStart >= params.previousFrom && row.dayStart < params.previousTo,
+    );
+    const byDay = new Map<number, { revenue: number; orders: number }>();
+    for (const row of current) {
+      const entry = byDay.get(row.dayStart) ?? { revenue: 0, orders: 0 };
+      entry.revenue += row.revenue;
+      entry.orders += row.orderCount;
+      byDay.set(row.dayStart, entry);
+    }
+    const periodRevenue = current.reduce((sum, row) => sum + row.revenue, 0);
+    const periodOrders = current.reduce((sum, row) => sum + row.orderCount, 0);
+    const previousRevenue = previous.reduce((sum, row) => sum + row.revenue, 0);
+    const previousOrders = previous.reduce((sum, row) => sum + row.orderCount, 0);
+    headlineRevenue += periodRevenue;
+    headlineOrders += periodOrders;
+    headlinePreviousRevenue += previousRevenue;
+    headlinePreviousOrders += previousOrders;
+    return {
+      key: String(group.key),
+      label: group.label,
+      points: days.map((t) => {
+        const entry = byDay.get(t);
+        return {
+          t,
+          value: rounded(entry && entry.orders > 0 ? entry.revenue / 100 / entry.orders : 0),
+        };
+      }),
+      total: rounded(periodOrders > 0 ? periodRevenue / 100 / periodOrders : 0),
+      previousTotal: rounded(
+        previousOrders > 0 ? previousRevenue / 100 / previousOrders : 0,
+      ),
+    };
+  });
+  return {
+    unit: "currency",
+    series,
+    truncated: result.truncated || undefined,
+    headlineTotal: rounded(
+      headlineOrders > 0 ? headlineRevenue / 100 / headlineOrders : 0,
+    ),
+    headlinePrevious: rounded(
+      headlinePreviousOrders > 0
+        ? headlinePreviousRevenue / 100 / headlinePreviousOrders
+        : 0,
+    ),
+  };
 };
 
 export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {
@@ -534,5 +661,7 @@ export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {
   scheduledHours,
   headcountToday,
   locationComparison,
-  onlinePosTurnover,
+  salesRevenue,
+  salesOrderCount,
+  averageBasket,
 };

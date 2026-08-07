@@ -16,7 +16,9 @@ export const metricIdValidator = v.union(
   v.literal("scheduledHours"),
   v.literal("headcountToday"),
   v.literal("locationComparison"),
-  v.literal("onlinePosTurnover"),
+  v.literal("salesRevenue"),
+  v.literal("salesOrderCount"),
+  v.literal("averageBasket"),
 );
 
 export const visualizationValidator = v.union(
@@ -92,6 +94,8 @@ export const metricResultValidator = v.object({
   ),
   target: v.optional(v.number()),
   truncated: v.optional(v.boolean()),
+  headlineTotal: v.optional(v.number()),
+  headlinePrevious: v.optional(v.union(v.number(), v.null())),
 });
 
 export const dashboardConfigValidator = v.object({

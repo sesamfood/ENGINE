@@ -8,8 +8,6 @@ Widgets use the shared `MetricResult` contract from `lib/dashboard/types.ts`. A 
 2. Implement the id in the exhaustive `dashboardMetricComputers` record in `convex/lib/dashboardMetrics.ts`. Use organization-scoped indexes, validate locations before computation, bucket points in the organization time zone, and include the preceding equal-length period in `previousTotal` when the source data supports it.
 3. Choose compatible visualizations and a default size in the registry. The add-widget dialog then exposes the metric without UI changes.
 
-Live external metrics remain action-backed. They must still return `MetricResult`, but they are not part of the reactive query registry.
-
 ## Visualizations
 
 - `kpi`: total and optional location totals.
@@ -43,10 +41,10 @@ The visualization control opens a dialog containing live previews rendered from 
 
 Shares snapshot widgets, scope, and range when created. Metric data remains reactive. Links expire, can be revoked, and may require a password. Passwords use salted PBKDF2; the browser keeps the returned unlock key in `sessionStorage`.
 
-Metrics marked `shareable: false` are removed from the snapshot. Live OnlinePOS turnover is admin-only, manually refreshed, limited to 31 days, and cannot be shared. Public queries must verify token, unlock key, expiry, revocation, snapshotted metric membership, and organization-owned locations.
+Metrics marked `shareable: false` are removed from the snapshot. Public queries must verify token, unlock key, expiry, revocation, snapshotted metric membership, and organization-owned locations.
 
 ## Missing data domains
 
-The current database has waste, bad deliveries, stock counts and reconciliation, transfers, staff food, and scheduled shifts. It does not have persisted sales history, guest scores or reviews, events, order counts, basket size, or labor cost. Do not simulate these domains. OnlinePOS turnover is live-only until sales history is persisted.
+The current database has waste, bad deliveries, stock counts and reconciliation, transfers, staff food, scheduled shifts, and persisted sales history (`salesOrders`, `salesLines`, `salesDaily`). The sales metrics `salesRevenue`, `salesOrderCount`, and `averageBasket` are admin-only and shareable. Guest scores, reviews, events, and labor cost still do not exist. Do not simulate these domains.
 
-Per-widget scope overrides, multiple named dashboards per user, organization-wide default layouts, and persisted sales are intentionally outside the first version.
+Per-widget scope overrides, multiple named dashboards per user, and organization-wide default layouts are intentionally outside the first version.

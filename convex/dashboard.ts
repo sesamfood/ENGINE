@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import {
   action,
@@ -11,7 +11,11 @@ import {
 } from "./_generated/server";
 import { defaultWidgets, metricRegistry } from "../lib/dashboard/registry";
 import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
-import type { DashboardConfig, DashboardScope, MetricResult, WidgetInstance } from "../lib/dashboard/types";
+import type {
+  DashboardConfig,
+  DashboardScope,
+  WidgetInstance,
+} from "../lib/dashboard/types";
 import {
   dashboardConfigValidator,
   metricIdValidator,
@@ -33,7 +37,6 @@ import {
   requireDashboardSharer,
   requireDashboardViewer,
 } from "./lib/auth";
-import { computeOnlinePosTurnover } from "./onlinePos";
 
 const MAX_WIDGETS = 24;
 const MAX_SHARE_NAME = 100;
@@ -111,7 +114,7 @@ async function validateScope(
   }
 }
 
-function configFromDocument(document: Doc<"dashboards"> | null) {
+function configFromDocument(document: Doc<"dashboards"> | null): DashboardConfig {
   return document
     ? {
         widgets: document.widgets,
@@ -183,79 +186,8 @@ export const getMetric = query({
     if (definition.adminOnly && role !== "admin") {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
-    if (definition.live) {
-      throw new ConvexError("Live-målingen skal opdateres manuelt");
-    }
     const params = await resolveMetricParams(ctx, organizationId, args.scope, args.range);
     return await dashboardMetricComputers[args.metricId](ctx, params);
-  },
-});
-
-export const getLiveMetricContext = internalQuery({
-  args: {
-    organizationId: v.string(),
-    scope: scopeValidator,
-    range: rangeValidator,
-  },
-  returns: v.object({
-    organizationId: v.string(),
-    locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
-    compare: v.boolean(),
-    from: v.number(),
-    to: v.number(),
-    previousFrom: v.number(),
-    previousTo: v.number(),
-    timeZone: v.string(),
-  }),
-  handler: async (ctx, args) => {
-    const params = await resolveMetricParams(ctx, args.organizationId, args.scope, args.range);
-    return {
-      organizationId: params.organizationId,
-      locations: params.locations,
-      compare: params.compare,
-      from: params.from,
-      to: params.to,
-      previousFrom: params.previousFrom,
-      previousTo: params.previousTo,
-      timeZone: params.timeZone,
-    };
-  },
-});
-
-export const getLiveMetric = action({
-  args: {
-    metricId: metricIdValidator,
-    visualization: visualizationValidator,
-    scope: scopeValidator,
-    range: rangeValidator,
-  },
-  returns: metricResultValidator,
-  handler: async (ctx, args): Promise<MetricResult> => {
-    const { organizationId, role } = await requireDashboardViewer(ctx);
-    if (args.metricId !== "onlinePosTurnover" || role !== "admin") {
-      throw new ConvexError("Du har ikke adgang til live-målingen");
-    }
-    if (!metricRegistry.onlinePosTurnover.visualizations.includes(args.visualization)) {
-      throw new ConvexError("Visualiseringen understøttes ikke af målingen");
-    }
-    const params: {
-      organizationId: string;
-      locations: Array<{ id: Id<"locations">; name: string }>;
-      compare: boolean;
-      from: number;
-      to: number;
-      previousFrom: number;
-      previousTo: number;
-      timeZone: string;
-    } = await ctx.runQuery(internal.dashboard.getLiveMetricContext, {
-      organizationId,
-      scope: args.scope,
-      range: args.range,
-    });
-    if (params.to - params.from > 31 * 24 * 60 * 60 * 1_000) {
-      throw new ConvexError("OnlinePOS kan højst hente 31 dage ad gangen");
-    }
-    return await computeOnlinePosTurnover(ctx, params);
   },
 });
 
@@ -317,6 +249,15 @@ export const createShare = action({
       userIdentifier,
     });
     const widgets = source.widgets.filter((widget) => metricRegistry[widget.metricId].shareable !== false);
+    // Admin-only metrics (revenue) stay shareable but never on a passwordless link.
+    if (
+      !password &&
+      widgets.some((widget) => metricRegistry[widget.metricId].adminOnly)
+    ) {
+      throw new ConvexError(
+        "Adgangskode er påkrævet når dashboardet indeholder admin-målinger",
+      );
+    }
     const token = randomSecret();
     const unlockKey = randomSecret();
     const passwordSalt = password ? randomSecret(16) : undefined;
@@ -358,7 +299,11 @@ export const listShares = query({
       createdAt: share._creationTime,
       lastViewedAt: share.lastViewedAt ?? null,
       revokedAt: share.revokedAt ?? null,
-      requiresPassword: Boolean(share.passwordHash),
+      requiresPassword:
+        Boolean(share.passwordHash) ||
+        share.widgets.some(
+          (widget) => metricRegistry[widget.metricId]?.adminOnly,
+        ),
     }));
   },
 });

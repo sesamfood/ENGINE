@@ -3,7 +3,8 @@ import {
   DEFAULT_WEEKLY_OPENING_HOURS,
   MAX_SPECIAL_OPENING_DATES,
 } from "../lib/count-window";
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { internalMutation, mutation, query } from "./_generated/server";
 import {
   requireCatalogManager,
   requireOrganization,
@@ -16,6 +17,9 @@ import {
 
 const MAX_NAME_LENGTH = 100;
 const MAX_LOCATIONS = 200;
+// Bounded batch so deleteLocation can finish without blowing the mutation budget;
+// self-reschedules until salesOrders/salesLines/salesDaily are gone.
+const LOCATION_SALES_CLEANUP_BATCH = 500;
 
 const locationOptionValidator = v.object({
   id: v.id("locations"),
@@ -474,15 +478,110 @@ export const deleteLocation = mutation({
         q.eq("organizationId", organizationId).eq("locationId", location._id),
       )
       .unique();
-    if (onlinePosConnection) await ctx.db.delete(onlinePosConnection._id);
+    if (onlinePosConnection) {
+      await ctx.db.delete(
+        "onlinePosLocationIntegrations",
+        onlinePosConnection._id,
+      );
+    }
     const workfeedMapping = await ctx.db
       .query("workfeedLocationMappings")
       .withIndex("by_organizationId_and_locationId", (q) =>
         q.eq("organizationId", organizationId).eq("locationId", location._id),
       )
       .unique();
-    if (workfeedMapping) await ctx.db.delete(workfeedMapping._id);
+    if (workfeedMapping) {
+      await ctx.db.delete("workfeedLocationMappings", workfeedMapping._id);
+    }
+    const syncStatus = await ctx.db
+      .query("onlinePosSyncStatus")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", location._id),
+      )
+      .unique();
+    if (syncStatus) {
+      await ctx.db.delete("onlinePosSyncStatus", syncStatus._id);
+    }
+    // Sales tables can exceed one mutation; finish asynchronously so orphans
+    // cannot keep feeding the dashboard. Modeled on waste.cleanupProductData.
+    await ctx.scheduler.runAfter(0, internal.locations.cleanupLocationSales, {
+      organizationId,
+      locationId: location._id,
+    });
     await ctx.db.delete("locations", location._id);
+    return null;
+  },
+});
+
+export const cleanupLocationSales = internalMutation({
+  args: {
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Refuse to wipe sales for a location that still exists — scheduler args
+    // alone are not proof the deleteLocation path ran.
+    const location = await ctx.db.get("locations", args.locationId);
+    if (location) return null;
+    const lines = await ctx.db
+      .query("salesLines")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .take(LOCATION_SALES_CLEANUP_BATCH);
+    for (const row of lines) {
+      await ctx.db.delete("salesLines", row._id);
+    }
+    if (lines.length === LOCATION_SALES_CLEANUP_BATCH) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.locations.cleanupLocationSales,
+        args,
+      );
+      return null;
+    }
+
+    const orders = await ctx.db
+      .query("salesOrders")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .take(LOCATION_SALES_CLEANUP_BATCH);
+    for (const row of orders) {
+      await ctx.db.delete("salesOrders", row._id);
+    }
+    if (orders.length === LOCATION_SALES_CLEANUP_BATCH) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.locations.cleanupLocationSales,
+        args,
+      );
+      return null;
+    }
+
+    const daily = await ctx.db
+      .query("salesDaily")
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .take(LOCATION_SALES_CLEANUP_BATCH);
+    for (const row of daily) {
+      await ctx.db.delete("salesDaily", row._id);
+    }
+    if (daily.length === LOCATION_SALES_CLEANUP_BATCH) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.locations.cleanupLocationSales,
+        args,
+      );
+    }
     return null;
   },
 });

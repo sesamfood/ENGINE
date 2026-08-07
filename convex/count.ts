@@ -44,8 +44,6 @@ const countStateValidator = v.object({
   isOpen: v.boolean(),
   outsideWindowAllowed: v.boolean(),
   count: v.union(countSummaryValidator, v.null()),
-  totalProducts: v.number(),
-  countedProducts: v.number(),
 });
 
 const countProductValidator = v.object({
@@ -62,9 +60,14 @@ const countProductValidator = v.object({
       id: v.id("units"),
       name: v.string(),
       factorToDefault: v.number(),
-      quantity: v.number(),
     }),
   ),
+});
+
+const countQuantityValidator = v.object({
+  productId: v.id("products"),
+  unitId: v.id("units"),
+  quantity: v.number(),
 });
 
 const locationStockValidator = v.object({
@@ -250,6 +253,16 @@ export const getCountSettings = query({
   },
 });
 
+export const getOtherFeaturesLockEnabled = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    const settings = await getCountConfiguration(ctx, organizationId);
+    return settings.lockOtherFeaturesDuringCount;
+  },
+});
+
 export const setCountSettings = mutation({
   args: settingsValidator.fields,
   returns: v.null(),
@@ -311,20 +324,10 @@ export const getCountState = query({
       args.now,
     );
     const periodKey = window.periodKey;
-    const [count, products, hasSubmitted] = await Promise.all([
+    const [count, hasSubmitted] = await Promise.all([
       getCount(ctx, organizationId, args.locationId, periodKey),
-      activeProducts(ctx, organizationId),
       hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
-    const items = count
-      ? await getCountItems(ctx, organizationId, count._id)
-      : [];
-    const activeProductIds = new Set(products.map((product) => product._id));
-    const countedProductIds = new Set(
-      items
-        .filter((item) => activeProductIds.has(item.productId))
-        .map((item) => item.productId),
-    );
 
     return {
       periodKey,
@@ -343,9 +346,34 @@ export const getCountState = query({
             submittedByName: count.submittedByName ?? null,
           }
         : null,
-      totalProducts: products.length,
-      countedProducts: countedProductIds.size,
     };
+  },
+});
+
+export const getCountQuantities = query({
+  args: {
+    locationId: v.id("locations"),
+    countId: v.id("counts"),
+  },
+  returns: v.array(countQuantityValidator),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId } = auth;
+    requireKioskLocation(auth, args.locationId);
+    const count = await ctx.db.get("counts", args.countId);
+    if (
+      !count ||
+      count.organizationId !== organizationId ||
+      count.locationId !== args.locationId
+    ) {
+      throw new ConvexError("Count blev ikke fundet");
+    }
+    const items = await getCountItems(ctx, organizationId, count._id);
+    return items.map((item) => ({
+      productId: item.productId,
+      unitId: item.unitId,
+      quantity: item.quantity,
+    }));
   },
 });
 
@@ -407,7 +435,6 @@ export const setCountProductOrder = mutation({
 export const listCountProducts = query({
   args: {
     locationId: v.id("locations"),
-    now: v.number(),
     categoryId: v.optional(v.id("categories")),
     search: v.string(),
   },
@@ -416,12 +443,7 @@ export const listCountProducts = query({
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId } = auth;
     requireKioskLocation(auth, args.locationId);
-    requireNow(args.now);
-    const location = await requireLocation(
-      ctx,
-      organizationId,
-      args.locationId,
-    );
+    await requireLocation(ctx, organizationId, args.locationId);
     const search = args.search.trim();
     if (search.length > MAX_SEARCH_LENGTH) {
       throw new ConvexError("Søgningen er for lang");
@@ -433,27 +455,6 @@ export const listCountProducts = query({
       }
     }
 
-    const { periodKey } = await getLocationCountWindow(
-      ctx,
-      organizationId,
-      location,
-      args.now,
-    );
-    const count = await getCount(
-      ctx,
-      organizationId,
-      args.locationId,
-      periodKey,
-    );
-    const countItems = count
-      ? await getCountItems(ctx, organizationId, count._id)
-      : [];
-    const quantities = new Map(
-      countItems.map((item) => [
-        `${item.productId}:${item.unitId}`,
-        item.quantity,
-      ]),
-    );
     const products = search
       ? await ctx.db
           .query("products")
@@ -469,54 +470,78 @@ export const listCountProducts = query({
           .take(MAX_PRODUCTS)
       : await activeProducts(ctx, organizationId, args.categoryId);
 
-    return await Promise.all(
-      products.map(async (product) => {
-        const [category, productUnits, imageUrl] = await Promise.all([
-          ctx.db.get("categories", product.categoryId),
-          ctx.db
-            .query("productUnits")
-            .withIndex("by_organizationId_and_productId", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("productId", product._id),
-            )
-            .take(MAX_PRODUCT_UNITS + 1),
+    const productUnits = await Promise.all(
+      products.map((product) =>
+        ctx.db
+          .query("productUnits")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", product._id),
+          )
+          .take(MAX_PRODUCT_UNITS + 1),
+      ),
+    );
+    for (const rows of productUnits) {
+      if (rows.length > MAX_PRODUCT_UNITS) {
+        throw new ConvexError("Produktet har for mange enheder");
+      }
+    }
+
+    const categoryIds = [...new Set(products.map((row) => row.categoryId))];
+    const unitIds = [
+      ...new Set(productUnits.flatMap((rows) => rows.map((row) => row.unitId))),
+    ];
+    const [categories, units, imageUrls] = await Promise.all([
+      Promise.all(categoryIds.map((id) => ctx.db.get("categories", id))),
+      Promise.all(unitIds.map((id) => ctx.db.get("units", id))),
+      Promise.all(
+        products.map((product) =>
           product.imageStorageId
             ? ctx.storage.getUrl(product.imageStorageId)
             : null,
-        ]);
-        if (productUnits.length > MAX_PRODUCT_UNITS) {
-          throw new ConvexError("Produktet har for mange enheder");
-        }
-        const units = await Promise.all(
-          productUnits.map((row) => ctx.db.get("units", row.unitId)),
-        );
-
-        return {
-          id: product._id,
-          name: product.name,
-          category:
-            category?.organizationId === organizationId
-              ? { id: category._id, name: category.name }
-              : null,
-          imageUrl,
-          defaultUnitId: product.defaultUnitId,
-          units: productUnits.flatMap((row, index) => {
-            const unit = units[index];
-            return unit?.organizationId === organizationId
-              ? [
-                  {
-                    id: unit._id,
-                    name: unit.name,
-                    factorToDefault: row.factorToDefault,
-                    quantity: quantities.get(`${product._id}:${unit._id}`) ?? 0,
-                  },
-                ]
-              : [];
-          }),
-        };
-      }),
+        ),
+      ),
+    ]);
+    const categoriesById = new Map(
+      categories.flatMap((category) =>
+        category?.organizationId === organizationId
+          ? [[category._id, category] as const]
+          : [],
+      ),
     );
+    const unitsById = new Map(
+      units.flatMap((unit) =>
+        unit?.organizationId === organizationId
+          ? [[unit._id, unit] as const]
+          : [],
+      ),
+    );
+
+    return products.map((product, index) => {
+      const category = categoriesById.get(product.categoryId);
+      return {
+        id: product._id,
+        name: product.name,
+        category: category
+          ? { id: category._id, name: category.name }
+          : null,
+        imageUrl: imageUrls[index],
+        defaultUnitId: product.defaultUnitId,
+        units: productUnits[index].flatMap((row) => {
+          const unit = unitsById.get(row.unitId);
+          return unit
+            ? [
+                {
+                  id: unit._id,
+                  name: unit.name,
+                  factorToDefault: row.factorToDefault,
+                },
+              ]
+            : [];
+        }),
+      };
+    });
   },
 });
 

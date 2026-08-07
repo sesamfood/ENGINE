@@ -117,6 +117,52 @@ type KioskRuntime = NonNullable<
 const KioskContext = createContext<KioskRuntime | null>(null);
 
 const FeatureLockContext = createContext(false);
+const ACTIVE_SYNC_INTERVAL_MS = 60 * 60 * 1_000;
+
+function ActiveSyncHeartbeat() {
+  const { isAuthenticated } = useConvexAuth();
+  const organization = authClient.useActiveOrganization();
+  const requestSync = useMutation(api.organization.requestActiveSync);
+  const organizationId = organization.data?.id;
+
+  useEffect(() => {
+    if (!isAuthenticated || !organizationId) return;
+    let lastRequestedAt = 0;
+    const request = () => {
+      const now = Date.now();
+      if (
+        document.visibilityState !== "visible" ||
+        now - lastRequestedAt < ACTIVE_SYNC_INTERVAL_MS
+      ) {
+        return;
+      }
+      lastRequestedAt = now;
+      void requestSync().catch(() => {
+        lastRequestedAt = 0;
+      });
+    };
+    const events: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "keydown",
+      "scroll",
+      "touchstart",
+      "focus",
+    ];
+    request();
+    for (const event of events) {
+      window.addEventListener(event, request, { passive: true });
+    }
+    document.addEventListener("visibilitychange", request);
+    return () => {
+      for (const event of events) {
+        window.removeEventListener(event, request);
+      }
+      document.removeEventListener("visibilitychange", request);
+    };
+  }, [isAuthenticated, organizationId, requestSync]);
+
+  return null;
+}
 
 const KIOSK_WAKE_LOCK_KEY = "engine.kiosk.keep-screen-on";
 
@@ -269,6 +315,10 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     api.locations.listLocationOptions,
     organizationId && isAuthenticated ? {} : "skip",
   );
+  const lockEnabled = useQuery(
+    api.count.getOtherFeaturesLockEnabled,
+    organizationId && isAuthenticated ? {} : "skip",
+  );
   const locationId = kiosk?.isKioskAccount
     ? kiosk.locationId
     : locations?.some((location) => location.id === storedLocationId)
@@ -276,7 +326,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
       : (locations?.[0]?.id ?? null);
   const lockState = useQuery(
     api.count.getOtherFeaturesLockState,
-    organizationId && isAuthenticated && locationId
+    organizationId && isAuthenticated && lockEnabled && locationId
       ? {
           locationId,
           now: Math.floor(now / 60_000) * 60_000,
@@ -288,14 +338,17 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     organizationId && locationId ? `${organizationId}:${locationId}` : null,
   );
   const exempt = featureLockExempt(pathname);
-  const isLocked = currentLockState?.isLocked ?? false;
+  const isLocked = lockEnabled ? (currentLockState?.isLocked ?? false) : false;
   const lockReady =
-    locations !== undefined && (!locationId || currentLockState !== undefined);
+    locations !== undefined &&
+    lockEnabled !== undefined &&
+    (!lockEnabled || !locationId || currentLockState !== undefined);
 
   useEffect(() => {
+    if (!lockEnabled) return;
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [lockEnabled]);
 
   useEffect(() => {
     if (isLocked && !exempt) router.replace("/count");
@@ -971,6 +1024,7 @@ export function AppShell({
 
   return (
     <OrganizationBoundary required={organizationRequired}>
+      <ActiveSyncHeartbeat />
       <OrganizationTheme>
         <KioskRuntimeBoundary>
           <FeatureLockBoundary>
