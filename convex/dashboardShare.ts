@@ -23,6 +23,7 @@ const unlockShareValidator = v.union(
     unlockKey: v.string(),
     expiresAt: v.number(),
     revokedAt: v.union(v.number(), v.null()),
+    requiresPassword: v.boolean(),
   }),
   v.null(),
 );
@@ -66,9 +67,14 @@ export const getPublicMeta = query({
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .unique();
     if (!share || !active(share)) return null;
+    const requiresPassword =
+      Boolean(share.passwordHash) ||
+      normalizeStoredWidgets(share.widgets).some(
+        (widget) => metricRegistry[widget.metricId]?.adminOnly,
+      );
     return {
       name: share.name,
-      requiresPassword: Boolean(share.passwordHash),
+      requiresPassword,
       expiresAt: share.expiresAt,
     };
   },
@@ -90,6 +96,10 @@ export const getShareForUnlock = internalQuery({
           unlockKey: share.unlockKey,
           expiresAt: share.expiresAt,
           revokedAt: share.revokedAt ?? null,
+          requiresPassword: Boolean(share.passwordHash) ||
+            normalizeStoredWidgets(share.widgets).some(
+              (widget) => metricRegistry[widget.metricId]?.adminOnly,
+            ),
         }
       : null;
   },
@@ -122,13 +132,20 @@ export const unlock = action({
       unlockKey: string;
       expiresAt: number;
       revokedAt: number | null;
+      requiresPassword: boolean;
     } | null = await ctx.runQuery(internal.dashboardShare.getShareForUnlock, {
       token: args.token,
     });
     if (!share || share.revokedAt || share.expiresAt <= Date.now()) {
       throw new ConvexError("Delingen er udløbet eller ikke tilgængelig");
     }
-    if (share.passwordHash && share.passwordSalt) {
+    if (share.requiresPassword) {
+      if (!share.passwordHash || !share.passwordSalt) {
+        // Legacy passwordless share that now includes admin-only metrics.
+        throw new ConvexError(
+          "Denne deling kræver en adgangskode. Opret et nyt delingslink",
+        );
+      }
       const hash = await hashDashboardPassword(args.password, share.passwordSalt);
       if (!equalSecrets(hash, share.passwordHash)) {
         throw new ConvexError("Adgangskoden er forkert");
@@ -173,6 +190,11 @@ export const getSharedMetric = query({
     );
     const definition = metricRegistry[args.metricId];
     if (!widget || definition.shareable === false) {
+      throw new ConvexError("Målingen er ikke en del af delingen");
+    }
+    // Defense in depth: admin-only metrics never leave a passwordless share,
+    // including legacy links created before the createShare password gate.
+    if (definition.adminOnly && !share.passwordHash) {
       throw new ConvexError("Målingen er ikke en del af delingen");
     }
     const params = await resolveMetricParams(

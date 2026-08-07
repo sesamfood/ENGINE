@@ -105,20 +105,25 @@ const currencyFormatter = new Intl.NumberFormat("da-DK", {
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 const SYNC_DISABLED_REASON_ID = "online-pos-sales-sync-disabled-reason";
 
-function dateInput(daysAgo: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - daysAgo);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
 function addCalendarDays(value: string, days: number) {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + days));
   return date.toISOString().slice(0, 10);
+}
+
+function dateKeyInZone(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(timestamp);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function dateInput(daysAgo: number, timeZone = "Europe/Copenhagen") {
+  return addCalendarDays(dateKeyInZone(Date.now(), timeZone), -daysAgo);
 }
 
 // Local copy of convex/lib/dashboardMetrics.zonedStart — client cannot import that module.
@@ -532,6 +537,9 @@ function SalesList() {
   const requestSync = useMutation(api.sales.requestSync);
   const [fromDate, setFromDate] = useState(() => dateInput(7));
   const [toDate, setToDate] = useState(() => dateInput(0));
+  const [datesSeededForZone, setDatesSeededForZone] = useState<string | null>(
+    null,
+  );
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [syncing, setSyncing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -542,6 +550,12 @@ function SalesList() {
   }, []);
 
   const timeZone = context?.timeZone;
+  useEffect(() => {
+    if (!timeZone || datesSeededForZone === timeZone) return;
+    setFromDate(dateInput(7, timeZone));
+    setToDate(dateInput(0, timeZone));
+    setDatesSeededForZone(timeZone);
+  }, [timeZone, datesSeededForZone]);
   const from =
     timeZone && fromDate ? zonedDayStart(fromDate, timeZone) : Number.NaN;
   const to =

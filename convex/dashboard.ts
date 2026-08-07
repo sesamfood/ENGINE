@@ -323,7 +323,11 @@ export const listShares = query({
       createdAt: share._creationTime,
       lastViewedAt: share.lastViewedAt ?? null,
       revokedAt: share.revokedAt ?? null,
-      requiresPassword: Boolean(share.passwordHash),
+      requiresPassword:
+        Boolean(share.passwordHash) ||
+        normalizeStoredWidgets(share.widgets).some(
+          (widget) => metricRegistry[widget.metricId]?.adminOnly,
+        ),
     }));
   },
 });

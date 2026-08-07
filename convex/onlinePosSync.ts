@@ -32,7 +32,7 @@ const DISPATCH_PAGE = 25;
 const DELETE_PAGE = 40;
 const LINE_DELETE_PAGE = 100;
 const PRUNE_PAGE = 50;
-const RECONCILE_TRAILING_DAYS = 3;
+const RECONCILE_TRAILING_DAYS = 7;
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 
 type SyncContext = {
@@ -260,8 +260,8 @@ async function startSync(
 
   if (wantsReconcile) {
     const timeZone = await organizationTimeZone(ctx, organizationId);
-    // ponytail: trailing 3 local days only — voids older than that still slip
-    // through until a manual re-sync or a longer window / void webhook.
+    // ponytail: trailing 7 local days only — voids older than that still slip
+    // through until a manual re-sync or a void webhook.
     await scheduleReconcileWindow(ctx, {
       organizationId,
       locationId,
@@ -1278,11 +1278,23 @@ export const failSync = internalMutation({
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
     if (status?.runToken === args.runToken) {
+      const now = Date.now();
       await ctx.db.patch("onlinePosSyncStatus", status._id, {
         state: "error",
         lastError: args.message.slice(0, 300),
-        updatedAt: Date.now(),
+        updatedAt: now,
       });
+      // Mid-reconcile holes must not wait for the next cron — retry promptly.
+      if (status.pendingReconcileDayStart != null) {
+        await ctx.scheduler.runAfter(
+          60_000,
+          internal.onlinePosSync.enqueueLocationSync,
+          {
+            organizationId: args.organizationId,
+            locationId: args.locationId,
+          },
+        );
+      }
     }
     return null;
   },

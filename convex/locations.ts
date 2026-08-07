@@ -520,6 +520,10 @@ export const cleanupLocationSales = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // Refuse to wipe sales for a location that still exists — scheduler args
+    // alone are not proof the deleteLocation path ran.
+    const location = await ctx.db.get("locations", args.locationId);
+    if (location) return null;
     const lines = await ctx.db
       .query("salesLines")
       .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
