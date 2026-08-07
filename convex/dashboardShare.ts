@@ -13,6 +13,7 @@ import {
 import { dashboardMetricComputers, resolveMetricParams } from "./lib/dashboardMetrics";
 import { equalSecrets, hashDashboardPassword } from "./lib/dashboardShareCrypto";
 import { rateLimiter } from "./lib/rateLimits";
+import { normalizeStoredWidgets } from "./dashboard";
 
 const unlockShareValidator = v.union(
   v.object({
@@ -146,7 +147,7 @@ export const getSharedConfig = query({
   handler: async (ctx, args) => {
     const share = await requireShare(ctx, args.token, args.accessKey);
     return {
-      widgets: share.widgets,
+      widgets: normalizeStoredWidgets(share.widgets),
       scope: share.scope,
       range: share.range,
       updatedAt: share._creationTime,
@@ -164,13 +165,14 @@ export const getSharedMetric = query({
   returns: metricResultValidator,
   handler: async (ctx, args) => {
     const share = await requireShare(ctx, args.token, args.accessKey);
-    const widget = share.widgets.find(
+    const widgets = normalizeStoredWidgets(share.widgets);
+    const widget = widgets.find(
       (candidate) =>
         candidate.metricId === args.metricId &&
         candidate.visualization === args.visualization,
     );
     const definition = metricRegistry[args.metricId];
-    if (!widget || definition.shareable === false || definition.live) {
+    if (!widget || definition.shareable === false) {
       throw new ConvexError("Målingen er ikke en del af delingen");
     }
     const params = await resolveMetricParams(

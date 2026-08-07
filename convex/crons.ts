@@ -24,4 +24,26 @@ crons.cron(
   { kind: "employees", cursor: null },
 );
 
+// Incremental OnlinePOS sales; 2h watermark overlap re-reads ~200 late lines cheaply.
+crons.interval(
+  "synchronize OnlinePOS sales",
+  { minutes: 15 },
+  internal.onlinePosSync.dispatchEnabledLocations,
+  { kind: "incremental", cursor: null },
+);
+
+crons.cron(
+  "reconcile OnlinePOS sales",
+  "0 4 * * *",
+  internal.onlinePosSync.dispatchEnabledLocations,
+  { kind: "reconcile", cursor: null },
+);
+
+crons.interval(
+  "prune OnlinePOS sales",
+  { hours: 24 },
+  internal.onlinePosSync.pruneSales,
+  { cursor: null },
+);
+
 export default crons;

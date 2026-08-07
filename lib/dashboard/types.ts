@@ -16,7 +16,9 @@ export const metricIds = [
   "scheduledHours",
   "headcountToday",
   "locationComparison",
-  "onlinePosTurnover",
+  "salesRevenue",
+  "salesOrderCount",
+  "averageBasket",
 ] as const;
 
 export const visualizationIds = [

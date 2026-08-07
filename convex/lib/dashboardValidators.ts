@@ -16,6 +16,31 @@ export const metricIdValidator = v.union(
   v.literal("scheduledHours"),
   v.literal("headcountToday"),
   v.literal("locationComparison"),
+  v.literal("salesRevenue"),
+  v.literal("salesOrderCount"),
+  v.literal("averageBasket"),
+);
+
+// ponytail: Narrow after migrateOnlinePosTurnoverWidgets has run in production — delete storedMetricIdValidator / storedWidgetValidator and the onlinePosTurnover literal.
+export const storedMetricIdValidator = v.union(
+  v.literal("wasteQuantity"),
+  v.literal("wasteRegistrations"),
+  v.literal("topWastedProducts"),
+  v.literal("wasteByCategory"),
+  v.literal("badDeliveries"),
+  v.literal("countCompliance"),
+  v.literal("openCounts"),
+  v.literal("transfers"),
+  v.literal("itemsMoved"),
+  v.literal("topTransferredProducts"),
+  v.literal("staffFoodRegistrations"),
+  v.literal("staffFoodPerEmployee"),
+  v.literal("scheduledHours"),
+  v.literal("headcountToday"),
+  v.literal("locationComparison"),
+  v.literal("salesRevenue"),
+  v.literal("salesOrderCount"),
+  v.literal("averageBasket"),
   v.literal("onlinePosTurnover"),
 );
 
@@ -41,6 +66,15 @@ export const widgetSizeValidator = v.union(
 export const widgetValidator = v.object({
   key: v.string(),
   metricId: metricIdValidator,
+  visualization: visualizationValidator,
+  size: widgetSizeValidator,
+  position: v.optional(v.object({ column: v.number(), row: v.number() })),
+  options: v.optional(v.object({ limit: v.optional(v.number()) })),
+});
+
+export const storedWidgetValidator = v.object({
+  key: v.string(),
+  metricId: storedMetricIdValidator,
   visualization: visualizationValidator,
   size: widgetSizeValidator,
   position: v.optional(v.object({ column: v.number(), row: v.number() })),

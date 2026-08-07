@@ -179,7 +179,6 @@ export function WidgetCard({
                   </Badge>
                 ) : null}
                 {result?.truncated ? <Badge variant="outline">Begrænset data</Badge> : null}
-                {definition.live ? <Badge variant="outline">Live</Badge> : null}
             </CardDescription>
           </div>
           {editable ? (

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -74,7 +73,7 @@ export function AddWidgetDialog({
   const [size, setSize] = useState<WidgetSize>(definition.defaultSize);
   const previewResult = useQuery(
     api.dashboard.getMetric,
-    !open || step !== 2 || definition.live
+    !open || step !== 2
       ? "skip"
       : {
           metricId,
@@ -184,10 +183,7 @@ export function AddWidgetDialog({
                             )}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">{metric.label}</p>
-                                {metric.live ? <Badge variant="outline">Live</Badge> : null}
-                              </div>
+                              <p className="font-medium">{metric.label}</p>
                               <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>
                             </div>
                           </CommandItem>
@@ -232,11 +228,7 @@ export function AddWidgetDialog({
                         <CardTitle>{visualizationLabels[visualizationId]}</CardTitle>
                       </CardHeader>
                       <CardContent className="h-44 min-h-0 overflow-hidden">
-                        {definition.live ? (
-                          <div className="grid h-full place-items-center text-center text-sm text-muted-foreground">
-                            Live-data hentes efter tilføjelse.
-                          </div>
-                        ) : previewResult ? (
+                        {previewResult ? (
                           <Visualization result={previewResult} />
                         ) : (
                           <Skeleton className="size-full" />

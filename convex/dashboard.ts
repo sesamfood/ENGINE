@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import {
   action,
@@ -11,7 +11,12 @@ import {
 } from "./_generated/server";
 import { defaultWidgets, metricRegistry } from "../lib/dashboard/registry";
 import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
-import type { DashboardConfig, DashboardScope, MetricResult, WidgetInstance } from "../lib/dashboard/types";
+import type {
+  DashboardConfig,
+  DashboardScope,
+  MetricId,
+  WidgetInstance,
+} from "../lib/dashboard/types";
 import {
   dashboardConfigValidator,
   metricIdValidator,
@@ -33,11 +38,11 @@ import {
   requireDashboardSharer,
   requireDashboardViewer,
 } from "./lib/auth";
-import { computeOnlinePosTurnover } from "./onlinePos";
 
 const MAX_WIDGETS = 24;
 const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
+const MIGRATE_PAGE_SIZE = 50;
 
 const shareSummaryValidator = v.object({
   id: v.id("dashboardShares"),
@@ -49,6 +54,28 @@ const shareSummaryValidator = v.object({
   revokedAt: v.union(v.number(), v.null()),
   requiresPassword: v.boolean(),
 });
+
+export function normalizeWidgetMetricId(metricId: string): MetricId {
+  return metricId === "onlinePosTurnover"
+    ? "salesRevenue"
+    : (metricId as MetricId);
+}
+
+export function normalizeStoredWidgets(
+  widgets: Array<{
+    key: string;
+    metricId: string;
+    visualization: WidgetInstance["visualization"];
+    size: WidgetInstance["size"];
+    position?: WidgetInstance["position"];
+    options?: WidgetInstance["options"];
+  }>,
+): WidgetInstance[] {
+  return widgets.map((widget) => ({
+    ...widget,
+    metricId: normalizeWidgetMetricId(widget.metricId),
+  }));
+}
 
 function validateWidgets(widgets: WidgetInstance[], role: string) {
   if (widgets.length > MAX_WIDGETS) {
@@ -111,10 +138,10 @@ async function validateScope(
   }
 }
 
-function configFromDocument(document: Doc<"dashboards"> | null) {
+function configFromDocument(document: Doc<"dashboards"> | null): DashboardConfig {
   return document
     ? {
-        widgets: document.widgets,
+        widgets: normalizeStoredWidgets(document.widgets),
         scope: document.scope,
         range: document.range,
         updatedAt: document.updatedAt,
@@ -183,79 +210,8 @@ export const getMetric = query({
     if (definition.adminOnly && role !== "admin") {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
-    if (definition.live) {
-      throw new ConvexError("Live-målingen skal opdateres manuelt");
-    }
     const params = await resolveMetricParams(ctx, organizationId, args.scope, args.range);
     return await dashboardMetricComputers[args.metricId](ctx, params);
-  },
-});
-
-export const getLiveMetricContext = internalQuery({
-  args: {
-    organizationId: v.string(),
-    scope: scopeValidator,
-    range: rangeValidator,
-  },
-  returns: v.object({
-    organizationId: v.string(),
-    locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
-    compare: v.boolean(),
-    from: v.number(),
-    to: v.number(),
-    previousFrom: v.number(),
-    previousTo: v.number(),
-    timeZone: v.string(),
-  }),
-  handler: async (ctx, args) => {
-    const params = await resolveMetricParams(ctx, args.organizationId, args.scope, args.range);
-    return {
-      organizationId: params.organizationId,
-      locations: params.locations,
-      compare: params.compare,
-      from: params.from,
-      to: params.to,
-      previousFrom: params.previousFrom,
-      previousTo: params.previousTo,
-      timeZone: params.timeZone,
-    };
-  },
-});
-
-export const getLiveMetric = action({
-  args: {
-    metricId: metricIdValidator,
-    visualization: visualizationValidator,
-    scope: scopeValidator,
-    range: rangeValidator,
-  },
-  returns: metricResultValidator,
-  handler: async (ctx, args): Promise<MetricResult> => {
-    const { organizationId, role } = await requireDashboardViewer(ctx);
-    if (args.metricId !== "onlinePosTurnover" || role !== "admin") {
-      throw new ConvexError("Du har ikke adgang til live-målingen");
-    }
-    if (!metricRegistry.onlinePosTurnover.visualizations.includes(args.visualization)) {
-      throw new ConvexError("Visualiseringen understøttes ikke af målingen");
-    }
-    const params: {
-      organizationId: string;
-      locations: Array<{ id: Id<"locations">; name: string }>;
-      compare: boolean;
-      from: number;
-      to: number;
-      previousFrom: number;
-      previousTo: number;
-      timeZone: string;
-    } = await ctx.runQuery(internal.dashboard.getLiveMetricContext, {
-      organizationId,
-      scope: args.scope,
-      range: args.range,
-    });
-    if (params.to - params.from > 31 * 24 * 60 * 60 * 1_000) {
-      throw new ConvexError("OnlinePOS kan højst hente 31 dage ad gangen");
-    }
-    return await computeOnlinePosTurnover(ctx, params);
   },
 });
 
@@ -373,6 +329,43 @@ export const revokeShare = mutation({
       throw new ConvexError("Delingen blev ikke fundet");
     }
     if (!share.revokedAt) await ctx.db.patch(share._id, { revokedAt: Date.now() });
+    return null;
+  },
+});
+
+export const migrateOnlinePosTurnoverWidgets = internalMutation({
+  args: {
+    table: v.union(v.literal("dashboards"), v.literal("dashboardShares")),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const result = await ctx.db.query(args.table).paginate({
+      numItems: MIGRATE_PAGE_SIZE,
+      cursor: args.cursor,
+    });
+    for (const document of result.page) {
+      let changed = false;
+      const widgets = document.widgets.map((widget) => {
+        if (widget.metricId !== "onlinePosTurnover") return widget;
+        changed = true;
+        return { ...widget, metricId: "salesRevenue" as const };
+      });
+      if (changed) await ctx.db.patch(document._id, { widgets });
+    }
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
+        table: args.table,
+        cursor: result.continueCursor,
+      });
+      return null;
+    }
+    if (args.table === "dashboards") {
+      await ctx.scheduler.runAfter(0, internal.dashboard.migrateOnlinePosTurnoverWidgets, {
+        table: "dashboardShares",
+        cursor: null,
+      });
+    }
     return null;
   },
 });

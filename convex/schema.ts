@@ -9,7 +9,7 @@ import { organizationThemeValidator } from "./lib/organizationTheme";
 import {
   rangeValidator,
   scopeValidator,
-  widgetValidator,
+  storedWidgetValidator,
 } from "./lib/dashboardValidators";
 
 export default defineSchema({
@@ -1058,7 +1058,7 @@ export default defineSchema({
   dashboards: defineTable({
     organizationId: v.string(),
     userIdentifier: v.string(),
-    widgets: v.array(widgetValidator),
+    widgets: v.array(storedWidgetValidator),
     scope: scopeValidator,
     range: rangeValidator,
     updatedAt: v.number(),
@@ -1074,7 +1074,7 @@ export default defineSchema({
     passwordHash: v.optional(v.string()),
     passwordSalt: v.optional(v.string()),
     name: v.string(),
-    widgets: v.array(widgetValidator),
+    widgets: v.array(storedWidgetValidator),
     scope: scopeValidator,
     range: rangeValidator,
     createdBy: v.string(),
