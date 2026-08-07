@@ -32,6 +32,7 @@ The system should support practical customization without becoming a general-pur
 - Restaurant locations belong to and are managed beneath their organization.
 - Scope every organization-owned record to its Better Auth organization.
 - Never expose or allow access to data across organizations.
+- Sales history is provider-agnostic (`salesOrders`, `salesLines`, `salesDaily`; money in integer minor units). OnlinePOS only fills it via `convex/onlinePosSync.ts`. Reads and dashboard metrics go through `convex/sales.ts` / `salesDaily` and must not call a provider API.
 
 # Authentication and authorization
 

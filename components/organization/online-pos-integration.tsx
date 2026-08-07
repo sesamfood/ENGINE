@@ -1,6 +1,11 @@
 "use client";
 
-import { useAction, useMutation, useQuery } from "convex/react";
+import {
+  useAction,
+  useMutation,
+  usePaginatedQuery,
+  useQuery,
+} from "convex/react";
 import {
   CircleAlertIcon,
   PlugIcon,
@@ -8,7 +13,7 @@ import {
   ShoppingBasketIcon,
   UnplugIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
 import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
@@ -46,6 +51,14 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -69,26 +82,27 @@ type OnlinePosProduct = {
   groupName: string;
 };
 
-type Sale = {
-  locationId: Id<"locations">;
-  locationName: string;
-  id: number;
-  checkNumber: number;
-  date: string;
-  time: string;
-  onlinePosProductId: number;
-  onlinePosProductName: string;
-  localProductName: string | null;
-  amount: number;
-  price: string;
-  paymentType: string;
-  department: string;
+type SalesLocationContext = {
+  id: Id<"locations">;
+  name: string;
+  state: "idle" | "queued" | "running" | "error";
+  lastSuccessAt: number | null;
+  lastError: string | null;
+  syncedThroughAt: number | null;
+  backfillThroughAt: number | null;
 };
 
 const connectedAtFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+const currencyFormatter = new Intl.NumberFormat("da-DK", {
+  style: "currency",
+  currency: "DKK",
+});
+
+const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 
 function dateInput(daysAgo: number) {
   const date = new Date();
@@ -102,6 +116,46 @@ function dateInput(daysAgo: number) {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
+}
+
+function formatOre(revenue: number) {
+  return currencyFormatter.format(revenue / 100);
+}
+
+function syncStateLabel(state: SalesLocationContext["state"]) {
+  switch (state) {
+    case "queued":
+      return "I kø";
+    case "running":
+      return "Synkroniserer";
+    case "error":
+      return "Fejl";
+    default:
+      return "Klar";
+  }
+}
+
+function locationCoversRange(
+  location: SalesLocationContext,
+  from: number,
+  to: number,
+) {
+  if (location.syncedThroughAt === null) return false;
+  const coverageStart =
+    location.backfillThroughAt ?? location.syncedThroughAt;
+  return from < location.syncedThroughAt && to > coverageStart;
+}
+
+function periodHasSyncedData(
+  locations: SalesLocationContext[],
+  locationId: Id<"locations"> | null,
+  from: number,
+  to: number,
+) {
+  const relevant = locationId
+    ? locations.filter((location) => location.id === locationId)
+    : locations;
+  return relevant.some((location) => locationCoversRange(location, from, to));
 }
 
 function ConnectionCard({
@@ -432,63 +486,228 @@ function ProductMappings({
 }
 
 function SalesList() {
-  const listSales = useAction(api.onlinePos.listSales);
-  const locationConnections = useQuery(api.onlinePos.listLocationConnections);
+  const context = useQuery(api.sales.getContext);
+  const requestSync = useMutation(api.sales.requestSync);
   const [fromDate, setFromDate] = useState(() => dateInput(7));
   const [toDate, setToDate] = useState(() => dateInput(0));
-  const [sales, setSales] = useState<Sale[] | null>(null);
-  const [truncated, setTruncated] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const connectedLocationCount =
-    locationConnections?.locations.filter((location) => location.connected)
-      .length ?? 0;
+  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [syncing, setSyncing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
-  async function loadSales() {
-    const from = new Date(`${fromDate}T00:00:00`).getTime();
-    const to = new Date(`${toDate}T00:00:00`).getTime() + 24 * 60 * 60 * 1000;
-    if (
-      !fromDate ||
-      !toDate ||
-      !Number.isFinite(from) ||
-      !Number.isFinite(to)
-    ) {
-      toast.error("Vælg en gyldig periode");
-      return;
-    }
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
-    setLoading(true);
+  const from = new Date(`${fromDate}T00:00:00`).getTime();
+  const to = new Date(`${toDate}T00:00:00`).getTime() + 24 * 60 * 60 * 1000;
+  const rangeValid =
+    Boolean(fromDate) &&
+    Boolean(toDate) &&
+    Number.isFinite(from) &&
+    Number.isFinite(to) &&
+    from < to &&
+    to - from <= MAX_SALES_RANGE_MS;
+  const locationId =
+    locationFilter === "all" ? null : (locationFilter as Id<"locations">);
+  const listArgs =
+    context && rangeValid
+      ? { locationId, from, to }
+      : "skip";
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.sales.listOrders,
+    listArgs,
+    { initialNumItems: 50 },
+  );
+
+  const orderAtFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("da-DK", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: context?.timeZone,
+      }),
+    [context?.timeZone],
+  );
+
+  const cooldown =
+    context?.manualSyncRetryAt !== null &&
+    context?.manualSyncRetryAt !== undefined &&
+    context.manualSyncRetryAt > now;
+  const anySyncing = Boolean(
+    context?.locations.some(
+      (location: SalesLocationContext) =>
+        location.state === "queued" || location.state === "running",
+    ),
+  );
+  const connectedLocationCount = context?.locations.length ?? 0;
+  const hasCoverage =
+    rangeValid &&
+    context &&
+    periodHasSyncedData(context.locations, locationId, from, to);
+
+  async function syncNow() {
+    setSyncing(true);
     try {
-      const result = await listSales({ from, to });
-      setSales(result.sales);
-      setTruncated(result.truncated);
+      await requestSync({ locationId });
+      toast.success("Synkroniseringen er sat i gang");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
-      setLoading(false);
+      setSyncing(false);
     }
   }
+
+  if (!context) {
+    return <Skeleton className="h-96 w-full max-w-6xl" />;
+  }
+
+  const locationItems = [
+    { value: "all", label: "Alle lokationer" },
+    ...context.locations.map((location: SalesLocationContext) => ({
+      value: location.id as string,
+      label: location.name,
+    })),
+  ];
 
   return (
     <Card className="max-w-6xl">
       <CardHeader>
-        <CardTitle>Salg fra OnlinePOS</CardTitle>
+        <CardTitle>Ordrer fra OnlinePOS</CardTitle>
         <CardDescription>
-          Hent salg fra alle forbundne lokationer for en periode på højst 31
-          dage. Datoerne er inklusive.
+          Vis synkroniserede ordrer for en periode på højst 31 dage. Datoerne er
+          inklusive.
         </CardDescription>
+        <CardAction>
+          <Button
+            variant="outline"
+            disabled={
+              !context.enabled ||
+              connectedLocationCount === 0 ||
+              syncing ||
+              anySyncing ||
+              cooldown
+            }
+            onClick={() => void syncNow()}
+          >
+            {syncing || anySyncing ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RefreshCwIcon data-icon="inline-start" />
+            )}
+            {anySyncing ? "Synkroniserer" : "Synkronisér nu"}
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        {locationConnections && connectedLocationCount === 0 ? (
+        {!context.connected ? (
+          <Alert>
+            <CircleAlertIcon />
+            <AlertTitle>OnlinePOS er ikke forbundet</AlertTitle>
+            <AlertDescription>
+              Opret masterforbindelsen under Indstillinger, før salg kan
+              synkroniseres.
+            </AlertDescription>
+          </Alert>
+        ) : !context.enabled ? (
+          <Alert>
+            <CircleAlertIcon />
+            <AlertTitle>Integrationen er deaktiveret</AlertTitle>
+            <AlertDescription>
+              Aktiver OnlinePOS for at synkronisere ordrer automatisk.
+            </AlertDescription>
+          </Alert>
+        ) : connectedLocationCount === 0 ? (
           <Alert>
             <CircleAlertIcon />
             <AlertTitle>Ingen lokationer er forbundet</AlertTitle>
             <AlertDescription>
               Tilføj firma-id og token til mindst én lokation under
-              Indstillinger, før du henter salg.
+              Indstillinger, før salg kan synkroniseres.
             </AlertDescription>
           </Alert>
         ) : null}
-        <FieldGroup className="grid sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+
+        {cooldown && context.manualSyncRetryAt ? (
+          <Alert>
+            <CircleAlertIcon />
+            <AlertTitle>Manuel synkronisering er midlertidigt begrænset</AlertTitle>
+            <AlertDescription>
+              Du kan synkronisere igen{" "}
+              {connectedAtFormatter.format(context.manualSyncRetryAt)}.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {context.locations.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {context.locations.map((location: SalesLocationContext) => (
+              <div
+                key={location.id}
+                className="flex flex-col gap-1 rounded-lg border px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+              >
+                <div className="min-w-0 flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{location.name}</span>
+                    <Badge
+                      variant={
+                        location.state === "error" ? "destructive" : "secondary"
+                      }
+                    >
+                      {syncStateLabel(location.state)}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {location.lastSuccessAt
+                      ? `Senest synkroniseret ${connectedAtFormatter.format(location.lastSuccessAt)}`
+                      : "Endnu ikke synkroniseret"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {location.backfillThroughAt
+                      ? `Historik tilbage til ${connectedAtFormatter.format(location.backfillThroughAt)}`
+                      : "Historik er endnu ikke hentet"}
+                    {" · "}
+                    {location.syncedThroughAt
+                      ? `Aktuel til ${connectedAtFormatter.format(location.syncedThroughAt)}`
+                      : "Ingen aktuelle data"}
+                  </p>
+                  {location.lastError ? (
+                    <p className="text-sm text-destructive">{location.lastError}</p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <FieldGroup className="grid sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
+          <Field>
+            <FieldLabel htmlFor="online-pos-sales-location">Lokation</FieldLabel>
+            <Select
+              items={locationItems}
+              value={locationFilter}
+              onValueChange={(value) => {
+                if (value) setLocationFilter(value);
+              }}
+              disabled={connectedLocationCount === 0}
+            >
+              <SelectTrigger
+                id="online-pos-sales-location"
+                className="h-11 w-full"
+              >
+                <SelectValue placeholder="Vælg lokation" />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {locationItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
           <Field>
             <FieldLabel htmlFor="online-pos-sales-from">Fra dato</FieldLabel>
             <Input
@@ -509,88 +728,87 @@ function SalesList() {
               className="h-11"
             />
           </Field>
-          <Button
-            disabled={
-              loading || !locationConnections || connectedLocationCount === 0
-            }
-            onClick={() => void loadSales()}
-          >
-            {loading ? <Spinner data-icon="inline-start" /> : null}
-            Hent salg
-          </Button>
         </FieldGroup>
 
-        {truncated ? (
+        {!rangeValid ? (
           <Alert>
             <CircleAlertIcon />
-            <AlertTitle>Listen er afkortet</AlertTitle>
+            <AlertTitle>Ugyldig periode</AlertTitle>
             <AlertDescription>
-              De første 500 salg vises. Vælg en kortere periode for at se
-              resten.
+              Vælg en periode på højst 31 dage, hvor slutdatoen er efter
+              startdatoen.
             </AlertDescription>
           </Alert>
-        ) : null}
-
-        {sales === null ? (
+        ) : status === "LoadingFirstPage" ? (
+          <Skeleton className="h-72 w-full" />
+        ) : results.length === 0 ? (
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <ShoppingBasketIcon />
               </EmptyMedia>
-              <EmptyTitle>Vælg en periode</EmptyTitle>
-              <EmptyDescription>
-                Salg hentes direkte fra OnlinePOS, når du trykker på Hent salg.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : sales.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>Ingen salg i perioden</EmptyTitle>
-              <EmptyDescription>
-                Prøv at vælge en anden periode.
-              </EmptyDescription>
+              {hasCoverage ? (
+                <>
+                  <EmptyTitle>Ingen ordrer i perioden</EmptyTitle>
+                  <EmptyDescription>
+                    Der var ingen salg i den valgte periode.
+                  </EmptyDescription>
+                </>
+              ) : (
+                <>
+                  <EmptyTitle>Ingen synkroniserede data endnu</EmptyTitle>
+                  <EmptyDescription>
+                    Der er ikke synkroniseret data for perioden endnu. Start en
+                    synkronisering, eller vælg en periode der allerede er
+                    dækket.
+                  </EmptyDescription>
+                </>
+              )}
             </EmptyHeader>
           </Empty>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Dato</TableHead>
-                <TableHead>Lokation</TableHead>
-                <TableHead>OnlinePOS-produkt</TableHead>
-                <TableHead>Lokalt produkt</TableHead>
-                <TableHead>Antal</TableHead>
-                <TableHead>Pris</TableHead>
-                <TableHead>Afdeling</TableHead>
-                <TableHead>Betaling</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sales.map((sale) => (
-                <TableRow
-                  key={`${sale.locationId}-${sale.id}-${sale.checkNumber}`}
-                >
-                  <TableCell>
-                    {sale.date} {sale.time}
-                  </TableCell>
-                  <TableCell>{sale.locationName}</TableCell>
-                  <TableCell>{sale.onlinePosProductName}</TableCell>
-                  <TableCell>
-                    {sale.localProductName ? (
-                      sale.localProductName
-                    ) : (
-                      <Badge variant="secondary">Ikke koblet</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{sale.amount}</TableCell>
-                  <TableCell>{sale.price}</TableCell>
-                  <TableCell>{sale.department || "—"}</TableCell>
-                  <TableCell>{sale.paymentType || "—"}</TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tidspunkt</TableHead>
+                  <TableHead>Lokation</TableHead>
+                  <TableHead>Ordrenr.</TableHead>
+                  <TableHead>Varer</TableHead>
+                  <TableHead>Omsætning</TableHead>
+                  <TableHead>Afdeling</TableHead>
+                  <TableHead>Betaling</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {results.map((order) => (
+                  <TableRow key={order.id}>
+                    <TableCell>
+                      {orderAtFormatter.format(order.occurredAt)}
+                    </TableCell>
+                    <TableCell>{order.locationName}</TableCell>
+                    <TableCell>{order.orderNumber}</TableCell>
+                    <TableCell>{order.itemCount}</TableCell>
+                    <TableCell>{formatOre(order.revenue)}</TableCell>
+                    <TableCell>{order.department || "—"}</TableCell>
+                    <TableCell>{order.paymentType || "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {status === "CanLoadMore" ? (
+              <div className="flex justify-center">
+                <Button variant="outline" onClick={() => loadMore(50)}>
+                  Vis flere
+                </Button>
+              </div>
+            ) : null}
+            {status === "LoadingMore" ? (
+              <div className="flex justify-center">
+                <Spinner />
+              </div>
+            ) : null}
+          </>
         )}
       </CardContent>
     </Card>
