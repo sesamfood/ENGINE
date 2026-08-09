@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { cookies } from "next/headers";
-import { AppShell } from "@/components/app-shell";
-import { BrowserBranding } from "@/components/browser-branding";
+import { AppRouteShell } from "@/components/app-route-shell";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,8 +22,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SESAM ENGINE",
-  applicationName: "SESAM ENGINE",
+  title: "Driftsplatform",
+  applicationName: "Driftsplatform",
   description: "Administrer den daglige drift i din restaurantorganisation.",
 };
 
@@ -52,10 +51,9 @@ export default async function RootLayout({
       <body className="min-h-full">
         <ConvexClientProvider initialToken={initialToken}>
           <TooltipProvider>
-            <BrowserBranding />
-            <AppShell defaultSidebarOpen={defaultSidebarOpen}>
+            <AppRouteShell defaultSidebarOpen={defaultSidebarOpen}>
               {children}
-            </AppShell>
+            </AppRouteShell>
             <Toaster position="top-right" richColors />
           </TooltipProvider>
         </ConvexClientProvider>

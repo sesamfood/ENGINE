@@ -53,7 +53,19 @@ export const sendNotice = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const payload = await ctx.runMutation(internal.badDeliveries.claimNotice, args);
+    let payload;
+    try {
+      payload = await ctx.runMutation(
+        internal.badDeliveries.claimNotice,
+        args,
+      );
+    } catch (error) {
+      await ctx.runMutation(internal.badDeliveries.failNoticeClaim, {
+        ...args,
+        failureMessage: cleanError(error),
+      });
+      return null;
+    }
     if (!payload) return null;
     try {
       const date = new Intl.DateTimeFormat("da-DK", {

@@ -17,6 +17,27 @@ const MAX_PRODUCT_OPTIONS = 50;
 const MAX_PRODUCT_UNITS = 200;
 const EXPORT_PAGE_SIZE = 5;
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+const MAX_PUBLIC_PAGE_SIZE = 100;
+
+function requirePageSize(numItems: number, maximum: number) {
+  if (
+    !Number.isInteger(numItems) ||
+    numItems <= 0 ||
+    numItems > maximum
+  ) {
+    throw new ConvexError("Siden er for stor");
+  }
+}
+
+async function requireLocationsUnlocked(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationIds: Id<"locations">[],
+) {
+  for (const locationId of new Set(locationIds)) {
+    await requireOtherFeaturesUnlocked(ctx, organizationId, locationId);
+  }
+}
 
 const transferItemInputValidator = v.object({
   productId: v.id("products"),
@@ -109,7 +130,7 @@ async function locationName(
   locationId: Id<"locations">,
 ): Promise<string> {
   const location = await ctx.db.get("locations", locationId);
-  return location?.name ?? "Ukendt location";
+  return location?.name ?? "Ukendt lokation";
 }
 
 async function hydrateTransferHeader(
@@ -176,7 +197,7 @@ async function prepareTransfer(
   existingItems: Doc<"transferItems">[] = [],
 ) {
   if (args.fromLocationId === args.toLocationId) {
-    throw new ConvexError("Fra- og til-location skal være forskellige");
+    throw new ConvexError("Fra- og til-lokation skal være forskellige");
   }
   if (!Number.isFinite(args.transferredAt) || args.transferredAt <= 0) {
     throw new ConvexError("Overførselsdatoen er ugyldig");
@@ -196,10 +217,10 @@ async function prepareTransfer(
     ctx.db.get("locations", args.toLocationId),
   ]);
   if (!fromLocation || fromLocation.organizationId !== organizationId) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
   if (!toLocation || toLocation.organizationId !== organizationId) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
 
   const existingByPair = new Map(
@@ -314,7 +335,7 @@ async function applyTransferStock(
     const product = await ctx.db.get("products", item.productId);
     if (!product || product.organizationId !== organizationId) continue;
     if (item.factorToDefault === undefined) {
-      throw new ConvexError("Transferens lageromregning mangler");
+      throw new ConvexError("Flytningens lageromregning mangler");
     }
     const delta = normalizeStock(
       item.quantity * item.factorToDefault * direction,
@@ -355,11 +376,10 @@ export const createTransfer = mutation({
     const auth = await requireTransferManager(ctx, "transfers.new");
     const { organizationId, userIdentifier } = auth;
     requireKioskTransfer(auth, args.fromLocationId, args.toLocationId);
-    await requireOtherFeaturesUnlocked(
-      ctx,
-      organizationId,
+    await requireLocationsUnlocked(ctx, organizationId, [
       args.fromLocationId,
-    );
+      args.toLocationId,
+    ]);
     const { comment, responsibleName, resolvedItems } = await prepareTransfer(
       ctx,
       organizationId,
@@ -412,15 +432,16 @@ export const updateTransfer = mutation({
     const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
-      throw new ConvexError("Transferen blev ikke fundet");
+      throw new ConvexError("Flytningen blev ikke fundet");
     }
     requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
     requireKioskTransfer(auth, args.fromLocationId, args.toLocationId);
-    await requireOtherFeaturesUnlocked(
-      ctx,
-      organizationId,
+    await requireLocationsUnlocked(ctx, organizationId, [
+      transfer.fromLocationId,
+      transfer.toLocationId,
       args.fromLocationId,
-    );
+      args.toLocationId,
+    ]);
 
     const existingItems = await ctx.db
       .query("transferItems")
@@ -431,7 +452,7 @@ export const updateTransfer = mutation({
       )
       .take(MAX_TRANSFER_ITEMS + 1);
     if (existingItems.length > MAX_TRANSFER_ITEMS) {
-      throw new ConvexError("Transferen har for mange varelinjer");
+      throw new ConvexError("Flytningen har for mange varelinjer");
     }
 
     const { comment, responsibleName, resolvedItems } = await prepareTransfer(
@@ -498,14 +519,13 @@ export const deleteTransfer = mutation({
     const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
-      throw new ConvexError("Transferen blev ikke fundet");
+      throw new ConvexError("Flytningen blev ikke fundet");
     }
     requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
-    await requireOtherFeaturesUnlocked(
-      ctx,
-      organizationId,
+    await requireLocationsUnlocked(ctx, organizationId, [
       transfer.fromLocationId,
-    );
+      transfer.toLocationId,
+    ]);
 
     const items = await ctx.db
       .query("transferItems")
@@ -516,7 +536,7 @@ export const deleteTransfer = mutation({
       )
       .take(MAX_TRANSFER_ITEMS + 1);
     if (items.length > MAX_TRANSFER_ITEMS) {
-      throw new ConvexError("Transferen har for mange varelinjer");
+      throw new ConvexError("Flytningen har for mange varelinjer");
     }
     if (transfer.stockApplied) {
       await applyTransferStock(
@@ -547,6 +567,7 @@ export const listTransfers = query({
     const auth = await requireTransferManager(ctx, "transfers.history");
     const { organizationId } = auth;
     validateDateRange(args.startAt, args.endAt);
+    requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     const results = await ctx.db
       .query("transfers")
       .withIndex("by_organizationId_and_transferredAt", (q) =>
@@ -713,6 +734,7 @@ export const exportTransfers = query({
     const auth = await requireTransferManager(ctx, "transfers.history");
     const { organizationId } = auth;
     validateDateRange(args.startAt, args.endAt);
+    requirePageSize(args.paginationOpts.numItems, EXPORT_PAGE_SIZE);
     if (
       args.paginationOpts.numItems !== EXPORT_PAGE_SIZE ||
       args.paginationOpts.maximumRowsRead !== EXPORT_PAGE_SIZE

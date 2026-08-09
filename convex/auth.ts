@@ -162,7 +162,6 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
     trustedOrigins: [
       siteUrl,
       ...(localLoopbackOrigin ? [localLoopbackOrigin] : []),
-      "https://engine-*-mellonn.vercel.app",
     ],
     database: authComponent.adapter(ctx),
     advanced: {

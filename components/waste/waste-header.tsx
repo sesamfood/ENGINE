@@ -53,10 +53,10 @@ function Controls({
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Lagerstyring
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Waste</h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Spild</h1>
       </div>
       <Field>
-        <FieldLabel>Location</FieldLabel>
+        <FieldLabel htmlFor="waste-location">Lokation</FieldLabel>
         {fixedLocationName ? (
           <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
         ) : <Select
@@ -70,9 +70,9 @@ function Controls({
           }}
           disabled={!locations?.length}
         >
-          <SelectTrigger className="h-11 w-full">
+          <SelectTrigger id="waste-location" className="h-11! w-full">
             <MapPinIcon aria-hidden="true" />
-            <SelectValue placeholder="Vælg location" />
+            <SelectValue placeholder="Vælg lokation" />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>

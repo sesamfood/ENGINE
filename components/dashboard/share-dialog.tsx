@@ -48,9 +48,13 @@ function link(token: string) {
   return `${window.location.origin}/share/${token}`;
 }
 
-export function ShareDialog() {
+export function ShareDialog({
+  onBeforeCreate,
+}: {
+  onBeforeCreate?: () => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("Dashboard");
+  const [name, setName] = useState("Overblik");
   const [password, setPassword] = useState("");
   const [days, setDays] = useState("7");
   const [pending, setPending] = useState(false);
@@ -71,6 +75,7 @@ export function ShareDialog() {
   async function create() {
     setPending(true);
     try {
+      await onBeforeCreate?.();
       const share = await createShare({
         name,
         password: password.trim() || undefined,
@@ -87,13 +92,13 @@ export function ShareDialog() {
 
   return (
     <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) setNow(Date.now()); }}>
-      <DialogTrigger render={<Button type="button" variant="outline" />}>
+      <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" variant="outline" />}>
         <Share2Icon data-icon="inline-start" />
         Del
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Del dashboard</DialogTitle>
+          <DialogTitle>Del overblik</DialogTitle>
           <DialogDescription>
             Linket viser et øjebliksbillede af layout, scope og periode. Data forbliver opdateret.
           </DialogDescription>
@@ -126,7 +131,7 @@ export function ShareDialog() {
             <FieldLabel htmlFor="share-password">Adgangskode</FieldLabel>
             <Input id="share-password" type="password" value={password} maxLength={128} onChange={(event) => setPassword(event.target.value)} />
             <FieldDescription>
-              Påkrævet når dashboardet indeholder admin-målinger som omsætning. Mindst 4 tegn.
+              Påkrævet når overblikket indeholder admin-målinger som omsætning. Mindst 4 tegn.
             </FieldDescription>
           </Field>
         </FieldGroup>
@@ -157,11 +162,11 @@ export function ShareDialog() {
                 </div>
                 {!inactive ? (
                   <>
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Kopiér ${share.name}`} onClick={() => void copy(share.token)}>
+                    <Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Kopiér ${share.name}`} onClick={() => void copy(share.token)}>
                       <CopyIcon />
                     </Button>
                     <AlertDialog>
-                      <AlertDialogTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label={`Tilbagekald ${share.name}`} />}>
+                      <AlertDialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Tilbagekald ${share.name}`} />}>
                         <Trash2Icon />
                       </AlertDialogTrigger>
                       <AlertDialogContent>

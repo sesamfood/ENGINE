@@ -67,7 +67,7 @@ export async function getLocationCountWindow(
       .unique(),
   ]);
   if (specials.length > MAX_SPECIAL_OPENING_DATES) {
-    throw new Error("Locationen har for mange særlige åbningstider");
+    throw new Error("Lokationen har for mange særlige åbningstider");
   }
 
   const weekly =

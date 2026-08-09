@@ -120,6 +120,8 @@ const MAX_NAME_LENGTH = 100;
 const MAX_CHILD_ROWS = 200;
 const MAX_GRAPH_PRODUCTS = 500;
 const MAX_PRODUCT_LEDGER_ROWS = 2000;
+const MAX_FUZZY_SEARCH_SCAN = 500;
+const MAX_PUBLIC_PAGE_SIZE = 100;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -128,6 +130,16 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/webp",
   "image/avif",
 ]);
+
+function requirePageSize(numItems: number, maximum: number) {
+  if (
+    !Number.isInteger(numItems) ||
+    numItems <= 0 ||
+    numItems > maximum
+  ) {
+    throw new ConvexError("Siden er for stor");
+  }
+}
 
 function normalizeName(value: string, label: string) {
   const name = value.trim().replace(/\s+/g, " ");
@@ -667,6 +679,7 @@ export const listProducts = query({
   },
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganization(ctx);
+    requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     const { hierarchy: categoryHierarchy } = await loadCategoryHierarchy(
       ctx,
       organizationId,
@@ -684,8 +697,7 @@ export const listProducts = query({
     const search = args.search.trim();
     const results = search
       ? await (async () => {
-          // ponytail: scan the tenant catalog until catalog size warrants a trigram index.
-          const products = await (
+          const scanned = await (
             args.categoryId
               ? ctx.db
                   .query("products")
@@ -706,7 +718,13 @@ export const listProducts = query({
                         .eq("organizationId", organizationId)
                         .eq("status", args.status),
                   )
-          ).collect();
+          ).take(MAX_FUZZY_SEARCH_SCAN + 1);
+          if (scanned.length > MAX_FUZZY_SEARCH_SCAN) {
+            throw new ConvexError(
+              "Der er for mange produkter til en fuld søgning. Vælg en kategori eller arkivér produkter, der ikke bruges",
+            );
+          }
+          const products = scanned.slice(0, MAX_FUZZY_SEARCH_SCAN);
           const matches = products
             .map((product) => {
               const productScore = fuzzyScore(product.name, search);
@@ -731,6 +749,9 @@ export const listProducts = query({
             .sort((left, right) => left.score - right.score)
             .map((match) => match.product);
           const offset = Number(args.paginationOpts.cursor ?? 0);
+          if (!Number.isInteger(offset) || offset < 0) {
+            throw new ConvexError("Søgeresultatet kan ikke fortsættes");
+          }
           const end = Math.min(
             offset + args.paginationOpts.numItems,
             matches.length,
@@ -775,9 +796,7 @@ export const exportProducts = query({
   returns: paginationResultValidator(productExportValidator),
   handler: async (ctx, args) => {
     const { organizationId } = await requireCatalogManager(ctx);
-    if (args.paginationOpts.numItems > 25) {
-      throw new ConvexError("Der kan højst eksporteres 25 produkter ad gangen");
-    }
+    requirePageSize(args.paginationOpts.numItems, 25);
 
     const results = await ctx.db
       .query("products")
@@ -1315,7 +1334,7 @@ export const importProduct = mutation({
       for (const { item } of openCountItems) {
         const oldFactor = oldUnits.get(item.unitId)!;
         const quantity = item.quantity * oldFactor * conversion!;
-        requirePositiveNumber(quantity, "Den omregnede count-mængde");
+        requirePositiveNumber(quantity, "Den omregnede optællingsmængde");
         await ctx.db.patch("countItems", item._id, {
           quantity,
           unitId: defaultUnitId,
@@ -1327,7 +1346,7 @@ export const importProduct = mutation({
             if (nextUnitIds.has(shortcut.unitId)) return shortcut;
             const quantity =
               shortcut.quantity * oldUnits.get(shortcut.unitId)! * conversion!;
-            requirePositiveNumber(quantity, "Den omregnede shortcut-mængde");
+            requirePositiveNumber(quantity, "Den omregnede genvejsmængde");
             return { unitId: defaultUnitId, quantity };
           }),
         });
@@ -1752,7 +1771,7 @@ export const deleteCategory = mutation({
     if (child) throw new ConvexError("Kategorien har underkategorier");
     if (product) throw new ConvexError("Kategorien er stadig i brug");
     if (staffFoodAllowance) {
-      throw new ConvexError("Kategorien bruges stadig i Staff food");
+      throw new ConvexError("Kategorien bruges stadig i personalemad");
     }
     await ctx.db.delete("categories", category._id);
     return null;
@@ -1939,8 +1958,10 @@ export const mergeUnits = mutation({
           )
           .unique();
         if (targetItem) {
+          const quantity = targetItem.quantity + item.quantity;
+          requirePositiveNumber(quantity, "Den sammenlagte optællingsmængde");
           await ctx.db.patch("countItems", targetItem._id, {
-            quantity: targetItem.quantity + item.quantity,
+            quantity,
           });
           await ctx.db.delete("countItems", item._id);
         } else {

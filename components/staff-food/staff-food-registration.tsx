@@ -16,8 +16,9 @@ import {
   UtensilsIcon,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -102,7 +103,7 @@ function initials(name: string) {
 function message(error: unknown) {
   return error instanceof Error
     ? error.message
-    : "Staff food kunne ikke registreres";
+    : "Personalemaden kunne ikke registreres";
 }
 
 function formatDuration(minutes: number) {
@@ -209,7 +210,7 @@ function StaffFoodHeader({
           Personale
         </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Staff food
+          Personalemad
         </h1>
       </div>
       <div
@@ -232,7 +233,7 @@ function StaffFoodHeader({
           </Field>
         ) : null}
         <Field>
-          <FieldLabel>Location</FieldLabel>
+          <FieldLabel htmlFor="staff-food-location">Lokation</FieldLabel>
           {fixedLocationName ? (
             <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium">
               <MapPinIcon aria-hidden="true" />
@@ -250,9 +251,9 @@ function StaffFoodHeader({
               }}
               disabled={!locations?.length}
             >
-              <SelectTrigger className="h-11 w-full">
+              <SelectTrigger id="staff-food-location" className="h-11! w-full">
                 <MapPinIcon aria-hidden="true" />
-                <SelectValue placeholder="Vælg location" />
+                <SelectValue placeholder="Vælg lokation" />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false}>
                 <SelectGroup>
@@ -297,6 +298,7 @@ export function StaffFoodRegistration() {
   const [submitting, setSubmitting] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState(false);
+  const redirectTimer = useRef<number | null>(null);
   const startSession = useMutation(api.staffFood.startSession);
   const register = useMutation(api.staffFood.register);
   const voidCheckout = useMutation(api.staffFood.voidCheckout);
@@ -331,6 +333,15 @@ export function StaffFoodRegistration() {
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimer.current !== null) {
+        window.clearTimeout(redirectTimer.current);
+        redirectTimer.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -482,7 +493,7 @@ export function StaffFoodRegistration() {
       setConfirming(false);
       setSuccess(true);
       setBasket({});
-      toast.success("Staff food er registreret", {
+      toast.success("Personalemaden er registreret", {
         duration: 30_000,
         action: {
           label: "Fortryd",
@@ -493,7 +504,10 @@ export function StaffFoodRegistration() {
           },
         },
       });
-      window.setTimeout(() => router.replace("/waste"), 2_000);
+      redirectTimer.current = window.setTimeout(() => {
+        redirectTimer.current = null;
+        router.replace("/waste");
+      }, 2_000);
     } catch (error) {
       toast.error(message(error));
     } finally {
@@ -542,9 +556,9 @@ export function StaffFoodRegistration() {
             <EmptyMedia variant="icon">
               <MapPinIcon />
             </EmptyMedia>
-            <EmptyTitle>Ingen locations endnu</EmptyTitle>
+            <EmptyTitle>Ingen lokationer endnu</EmptyTitle>
             <EmptyDescription>
-              Opret en location, før Staff food kan registreres.
+              Opret en lokation, før personalemad kan registreres.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -556,7 +570,7 @@ export function StaffFoodRegistration() {
             <EmptyMedia variant="icon">
               <UtensilsIcon />
             </EmptyMedia>
-            <EmptyTitle>Staff food er ikke sat op endnu</EmptyTitle>
+            <EmptyTitle>Personalemad er ikke sat op endnu</EmptyTitle>
             <EmptyDescription>
               En administrator skal oprette mindst én regel for vagtlængde,
               kategorier og produkter.
@@ -580,10 +594,10 @@ export function StaffFoodRegistration() {
               <CheckCircle2Icon className="size-8" />
             </span>
             <h2 className="text-2xl font-semibold">
-              Staff food er registreret
+              Personalemaden er registreret
             </h2>
             <p className="text-muted-foreground">
-              Du sendes tilbage til Waste.
+              Du sendes tilbage til spild.
             </p>
           </div>
         </div>
@@ -609,7 +623,7 @@ export function StaffFoodRegistration() {
                 <EmptyTitle>Vagten udløser ingen regel</EmptyTitle>
                 <EmptyDescription>
                   Vagtlængden på {formatDuration(state.session.durationMinutes)}
-                  er kortere end den første Staff food-regel.
+                  er kortere end den første personalemadsregel.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -694,14 +708,16 @@ export function StaffFoodRegistration() {
                                 >
                                   <div className="relative">
                                     {product.imageUrl ? (
-                                      <div
-                                        role="img"
-                                        aria-label={`Produktbillede af ${product.name}`}
-                                        className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
-                                        style={{
-                                          backgroundImage: `url("${product.imageUrl}")`,
-                                        }}
-                                      />
+                                      <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
+                                        <Image
+                                          src={product.imageUrl}
+                                          alt={`Produktbillede af ${product.name}`}
+                                          fill
+                                          sizes="(max-width: 379px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
+                                          className="object-cover"
+                                          unoptimized
+                                        />
+                                      </div>
                                     ) : (
                                       <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
                                         <ImageIcon className="size-10 lg:size-12" />
@@ -823,7 +839,7 @@ export function StaffFoodRegistration() {
                     }
                     onClick={() => setConfirming(true)}
                   >
-                    Registrér Staff food
+                    Registrér personalemad
                   </Button>
                 </div>
               </div>
@@ -837,7 +853,7 @@ export function StaffFoodRegistration() {
                   <DialogHeader>
                     <DialogTitle>Bekræft registrering</DialogTitle>
                     <DialogDescription>
-                      Kontrollér valget, før du registrerer Staff food.
+                      Kontrollér valget, før du registrerer personalemad.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -851,7 +867,7 @@ export function StaffFoodRegistration() {
                     </div>
                     <div className="flex min-w-0 flex-col gap-1">
                       <span className="text-sm text-muted-foreground">
-                        Location
+                        Lokation
                       </span>
                       <span className="truncate font-medium">
                         {state.session.locationName}
@@ -935,7 +951,7 @@ export function StaffFoodRegistration() {
                   </CardTitle>
                   <CardDescription>
                     Angiv den samlede vagtlængde. Samme erstatningsvagt bruges
-                    resten af dagen på denne location.
+                    resten af dagen på denne lokation.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1064,7 +1080,7 @@ export function StaffFoodRegistration() {
           </CardContent>
           <CardFooter>
             <p className="mr-auto text-xs text-muted-foreground">
-              Staff food registreres på den valgte medarbejder og location.
+              Personalemad registreres på den valgte medarbejder og lokation.
             </p>
           </CardFooter>
         </Card>

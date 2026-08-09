@@ -3,13 +3,13 @@
 import { useEffect } from "react";
 import { authClient } from "@/lib/auth-client";
 
-const SITE_NAME = "SESAM ENGINE";
+const FALLBACK_SITE_NAME = "Driftsplatform";
 
 export function BrowserBranding() {
   const { data: organization } = authClient.useActiveOrganization();
 
   useEffect(() => {
-    document.title = SITE_NAME;
+    document.title = organization?.name?.trim() || FALLBACK_SITE_NAME;
 
     const href = organization?.logo ?? "/favicon.ico";
     const icons = document.querySelectorAll<HTMLLinkElement>(
@@ -27,7 +27,7 @@ export function BrowserBranding() {
     icon.rel = "icon";
     icon.href = href;
     document.head.append(icon);
-  }, [organization?.logo]);
+  }, [organization?.logo, organization?.name]);
 
   return null;
 }

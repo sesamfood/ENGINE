@@ -24,18 +24,20 @@ import { ScopeSelector } from "./scope-selector";
 import { ShareDialog } from "./share-dialog";
 
 function message(error: unknown) {
-  return error instanceof Error ? error.message : "Dashboardet kunne ikke gemmes";
+  return error instanceof Error ? error.message : "Overblikket kunne ikke gemmes";
 }
 
 function DashboardContent() {
   const membership = authClient.useActiveMemberRole();
   const config = useQuery(api.dashboard.getConfig, canViewDashboard(membership.data?.role) ? {} : "skip");
   const locations = useQuery(api.locations.listLocationOptions, canViewDashboard(membership.data?.role) ? {} : "skip");
+  const organizationContext = useQuery(api.employees.getContext, canViewDashboard(membership.data?.role) ? {} : "skip");
   const saveConfig = useMutation(api.dashboard.saveConfig);
   const [local, setLocal] = useState<DashboardConfig | null>(null);
   const [editing, setEditing] = useState(false);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const current = useRef<DashboardConfig | null>(null);
+  const pendingConfigSave = useRef<Promise<void>>(Promise.resolve());
   const now = useDashboardNow();
 
   useEffect(() => {
@@ -71,7 +73,21 @@ function DashboardContent() {
   function commit(next: DashboardConfig) {
     current.current = next;
     setLocal(next);
-    void saveConfig({ widgets: next.widgets, scope: next.scope, range: next.range }).catch((error) => toast.error(message(error)));
+    const save = pendingConfigSave.current
+      .catch(() => undefined)
+      .then(async () => {
+        await saveConfig({
+          widgets: next.widgets,
+          scope: next.scope,
+          range: next.range,
+        });
+      });
+    pendingConfigSave.current = save;
+    void save.catch((error) => toast.error(message(error)));
+  }
+
+  async function flushConfigSave() {
+    await pendingConfigSave.current;
   }
 
   function widgets(next: WidgetInstance[]) {
@@ -93,7 +109,7 @@ function DashboardContent() {
     <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">Overblik</p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Overblik</h1>
       </div>
       <ScopeSelector scope={local.scope} locations={locations} onChange={scope} />
     </div>
@@ -105,11 +121,11 @@ function DashboardContent() {
       {headerTarget ? createPortal(title, headerTarget) : null}
       <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <RangeSelector range={local.range} onChange={range} />
+          <RangeSelector range={local.range} onChange={range} timeZone={organizationContext?.timeZone} />
         </div>
         <div className="flex flex-wrap gap-2">
-          {canShareDashboard(membership.data?.role) ? <ShareDialog /> : null}
-          <Button type="button" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
+          {canShareDashboard(membership.data?.role) ? <ShareDialog onBeforeCreate={flushConfigSave} /> : null}
+          <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
             <PencilIcon data-icon="inline-start" />
             {editing ? "Færdig" : "Rediger"}
           </Button>

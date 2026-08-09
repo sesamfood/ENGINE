@@ -181,6 +181,9 @@ function DraggableWidget({
 }) {
   const draggable = useDraggable({ id: widget.key, disabled: !editable, data: { kind: "widget" } });
   const droppable = useDroppable({ id: widget.key, disabled: !editable, data: { kind: "widget" } });
+  const dragProps = editable
+    ? { ...draggable.attributes, ...draggable.listeners }
+    : {};
 
   return (
     <div
@@ -198,8 +201,7 @@ function DraggableWidget({
         draggable.isDragging && "opacity-20",
         droppable.isOver && !draggable.isDragging && "bg-primary/5 ring-2 ring-primary ring-offset-2 ring-offset-background",
       )}
-      {...draggable.attributes}
-      {...draggable.listeners}
+      {...dragProps}
     >
       <DashboardWidget
         widget={widget}

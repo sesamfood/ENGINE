@@ -39,12 +39,12 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
         >
           <TabsList
             variant="line"
-            aria-label="Countsektioner"
+            aria-label="Optællingssektioner"
             className="h-12 max-w-full justify-start"
           >
             {showCount ? <TabsTrigger value="count" className="min-w-28 px-4">
               <ClipboardListIcon data-icon="inline-start" />
-              Count
+              Optælling
             </TabsTrigger> : null}
             {showStock ? <TabsTrigger value="stock" className="min-w-24 px-4">
               <BoxesIcon data-icon="inline-start" />

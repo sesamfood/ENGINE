@@ -186,7 +186,7 @@ export function WidgetCard({
           {editable ? (
             <div data-dashboard-no-drag className="flex items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>
               <Dialog open={visualizationOpen} onOpenChange={setVisualizationOpen}>
-                <DialogTrigger render={<Button type="button" variant="ghost" size="icon" aria-label={`Skift visualisering for ${definition.label}`} />}>
+                <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${definition.label}`} />}>
                   <ChartNoAxesCombinedIcon />
                 </DialogTrigger>
                 <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
@@ -227,7 +227,7 @@ export function WidgetCard({
                   </div>
                 </DialogContent>
               </Dialog>
-              <Button type="button" variant="destructive" size="icon" aria-label={`Fjern ${definition.label}`} onClick={onRemove}>
+              <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${definition.label}`} onClick={onRemove}>
                 <MinusIcon />
               </Button>
             </div>
@@ -245,7 +245,7 @@ export function WidgetCard({
           aria-valuemax={widgetSizes.length - 1}
           aria-valuenow={widgetSizes.indexOf(widget.size)}
           aria-valuetext={widget.size}
-          className="absolute right-0 bottom-0 size-7 touch-none cursor-nwse-resize rounded-br-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="absolute right-0 bottom-0 size-11 touch-none cursor-nwse-resize rounded-br-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           onPointerDown={startResize}
           onPointerMove={moveResize}
           onPointerUp={(event) => finishResize(event)}

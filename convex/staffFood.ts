@@ -11,6 +11,7 @@ import {
   requireStaffFoodManager,
   requireStaffFoodRegistrar,
 } from "./lib/auth";
+import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
 
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
@@ -21,6 +22,7 @@ const MAX_PICKER_SHIFTS = 500;
 const MAX_SESSION_REGISTRATIONS = 500;
 const MAX_BASKET_ITEMS = 50;
 const MAX_SEARCH_RESULTS = 20;
+const MAX_SETTINGS_PRODUCTS = 500;
 const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 const UNDO_WINDOW_MS = 30_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -85,7 +87,7 @@ async function requireLocation(
 ) {
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
   return location;
 }
@@ -178,7 +180,7 @@ async function requireSession(
 ) {
   const session = await ctx.db.get("staffFoodSessions", sessionId);
   if (!session || session.organizationId !== organizationId) {
-    throw new ConvexError("Staff food-sessionen blev ikke fundet");
+    throw new ConvexError("Personalemadssessionen blev ikke fundet");
   }
   return session;
 }
@@ -545,7 +547,7 @@ export const getSessionState = query({
       !location ||
       location.organizationId !== organizationId
     ) {
-      throw new ConvexError("Staff food-sessionen er ugyldig");
+      throw new ConvexError("Personalemadssessionen er ugyldig");
     }
 
     const activeRows = rows
@@ -719,6 +721,7 @@ export const register = mutation({
     const now = Date.now();
     const session = await requireSession(ctx, organizationId, args.sessionId);
     requireKioskLocation(auth, session.locationId);
+    await requireOtherFeaturesUnlocked(ctx, organizationId, session.locationId);
     if (!(await sessionActive(ctx, organizationId, session, now))) {
       throw new ConvexError("Vagten er ikke aktiv længere");
     }
@@ -884,6 +887,11 @@ export const voidCheckout = mutation({
       throw new ConvexError("Registreringen blev ikke fundet");
     }
     requireKioskLocation(auth, rows[0]!.locationId);
+    await requireOtherFeaturesUnlocked(
+      ctx,
+      organizationId,
+      rows[0]!.locationId,
+    );
     const now = Date.now();
     if (
       rows.some(
@@ -970,11 +978,16 @@ export const getSettings = query({
         .withIndex("by_organizationId_and_normalizedName", (q) =>
           q.eq("organizationId", organizationId),
         )
-        .take(500),
+        .take(MAX_SETTINGS_PRODUCTS + 1),
       getTimeZone(ctx, organizationId),
     ]);
     if (tiers.length > MAX_TIERS) {
       throw new ConvexError("Der er for mange regler");
+    }
+    if (products.length > MAX_SETTINGS_PRODUCTS) {
+      throw new ConvexError(
+        "Der er mere end 500 produkter. Slet arkiverede produkter, der ikke længere bruges, eller kontakt en administrator",
+      );
     }
     const tierResults = await Promise.all(
       tiers.map(async (tier) => {

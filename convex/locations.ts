@@ -5,6 +5,7 @@ import {
 } from "../lib/count-window";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { getDatabaseAdapter } from "./auth";
 import {
   requireCatalogManager,
   requireOrganization,
@@ -20,6 +21,10 @@ const MAX_LOCATIONS = 200;
 // Bounded batch so deleteLocation can finish without blowing the mutation budget;
 // self-reschedules until salesOrders/salesLines/salesDaily are gone.
 const LOCATION_SALES_CLEANUP_BATCH = 500;
+
+type KioskMember = {
+  kioskLocationId?: string | null;
+};
 
 const locationOptionValidator = v.object({
   id: v.id("locations"),
@@ -227,7 +232,7 @@ export const getOpeningHours = query({
     const { organizationId } = await requireCatalogManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
-      throw new ConvexError("Locationen blev ikke fundet");
+      throw new ConvexError("Lokationen blev ikke fundet");
     }
     const [specials, legacySettings] = await Promise.all([
       ctx.db
@@ -248,7 +253,7 @@ export const getOpeningHours = query({
             .unique(),
     ]);
     if (specials.length > MAX_SPECIAL_OPENING_DATES) {
-      throw new ConvexError("Locationen har for mange særlige åbningstider");
+      throw new ConvexError("Lokationen har for mange særlige åbningstider");
     }
 
     return {
@@ -286,7 +291,7 @@ export const setOpeningHours = mutation({
     const { organizationId } = await requireCatalogManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
-      throw new ConvexError("Locationen blev ikke fundet");
+      throw new ConvexError("Lokationen blev ikke fundet");
     }
     requireOpeningHours(args.mode, args.weekly, args.specials);
 
@@ -299,7 +304,7 @@ export const setOpeningHours = mutation({
       )
       .take(MAX_SPECIAL_OPENING_DATES + 1);
     if (currentSpecials.length > MAX_SPECIAL_OPENING_DATES) {
-      throw new ConvexError("Locationen har for mange særlige åbningstider");
+      throw new ConvexError("Lokationen har for mange særlige åbningstider");
     }
 
     await ctx.db.patch("locations", location._id, {
@@ -365,7 +370,7 @@ export const createLocation = mutation({
           .eq("normalizedName", normalizedName),
       )
       .unique();
-    if (existing) throw new ConvexError("Locationen findes allerede");
+    if (existing) throw new ConvexError("Lokationen findes allerede");
     return await ctx.db.insert("locations", {
       organizationId,
       name,
@@ -383,7 +388,7 @@ export const renameLocation = mutation({
     const { organizationId } = await requireCatalogManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
-      throw new ConvexError("Locationen blev ikke fundet");
+      throw new ConvexError("Lokationen blev ikke fundet");
     }
     const { name, normalizedName } = normalizeName(
       args.name,
@@ -398,7 +403,7 @@ export const renameLocation = mutation({
       )
       .unique();
     if (existing && existing._id !== location._id) {
-      throw new ConvexError("Locationen findes allerede");
+      throw new ConvexError("Lokationen findes allerede");
     }
     await ctx.db.patch("locations", location._id, { name, normalizedName });
     return null;
@@ -412,51 +417,188 @@ export const deleteLocation = mutation({
     const { organizationId } = await requireCatalogManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
-      throw new ConvexError("Locationen blev ikke fundet");
+      throw new ConvexError("Lokationen blev ikke fundet");
     }
-    const usedAsFrom = await ctx.db
-      .query("transfers")
-      .withIndex("by_organizationId_and_fromLocationId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("fromLocationId", location._id),
-      )
-      .first();
-    const usedAsTo = usedAsFrom
-      ? null
-      : await ctx.db
-          .query("transfers")
-          .withIndex("by_organizationId_and_toLocationId", (q) =>
+    const dependencies = await Promise.all([
+      ctx.db
+        .query("transfers")
+        .withIndex("by_organizationId_and_fromLocationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("fromLocationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("transfers")
+        .withIndex("by_organizationId_and_toLocationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("toLocationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("counts")
+        .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("locationStock")
+        .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("employeeLocationAssignments")
+        .withIndex(
+          "by_organizationId_and_locationId_and_employeeId",
+          (q) =>
             q
               .eq("organizationId", organizationId)
-              .eq("toLocationId", location._id),
-          )
-          .first();
-    if (usedAsFrom || usedAsTo) {
-      throw new ConvexError("Locationen er stadig i brug");
-    }
-    const count = await ctx.db
-      .query("counts")
-      .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("locationId", location._id),
+              .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("scheduledShifts")
+        .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("staffFoodSessions")
+        .withIndex("by_org_location_employee_date_source", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("staffFoodRegistrations")
+        .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("wasteRegistrations")
+        .withIndex("by_org_location_time", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("badDeliveries")
+        .withIndex(
+          "by_organizationId_and_locationId_and_registeredAt",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("wasteProductStats")
+        .withIndex("by_org_location_product", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("wasteAmountStats")
+        .withIndex("by_org_location_product_unit_qty", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("wasteProductConfigs")
+        .withIndex("by_org_location_product", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("salesOrders")
+        .withIndex(
+          "by_organizationId_and_locationId_and_occurredAt",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("salesLines")
+        .withIndex(
+          "by_organizationId_and_locationId_and_occurredAt",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("salesDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("workfeedLocationMappings")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("onlinePosSyncStatus")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("onlinePosSalesResets")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+    ]);
+    const kioskMembers = await getDatabaseAdapter(ctx).findMany<KioskMember>({
+      model: "member",
+      where: [{ field: "organizationId", value: organizationId }],
+      limit: 100,
+    });
+    if (
+      kioskMembers.some(
+        (member) => member.kioskLocationId === String(location._id),
       )
-      .first();
-    const stock = count
-      ? null
-      : await ctx.db
-          .query("locationStock")
-          .withIndex(
-            "by_organizationId_and_locationId_and_productId",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("locationId", location._id),
-          )
-          .first();
-    if (count || stock) {
-      throw new ConvexError("Locationen har counts eller lagerbeholdning");
+    ) {
+      throw new ConvexError(
+        "Lokationen er knyttet til en kioskkonto. Flyt eller slet kioskkontoen først",
+      );
+    }
+    if (dependencies.some(Boolean)) {
+      throw new ConvexError(
+        "Lokationen har driftsdata, historik eller integrationer og kan ikke slettes",
+      );
     }
     const specialOpeningHours = await ctx.db
       .query("locationSpecialOpeningHours")
@@ -467,54 +609,11 @@ export const deleteLocation = mutation({
       )
       .take(MAX_SPECIAL_OPENING_DATES + 1);
     if (specialOpeningHours.length > MAX_SPECIAL_OPENING_DATES) {
-      throw new ConvexError("Locationen har for mange særlige åbningstider");
+      throw new ConvexError("Lokationen har for mange særlige åbningstider");
     }
     for (const hours of specialOpeningHours) {
       await ctx.db.delete("locationSpecialOpeningHours", hours._id);
     }
-    const onlinePosConnection = await ctx.db
-      .query("onlinePosLocationIntegrations")
-      .withIndex("by_organizationId_and_locationId", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", location._id),
-      )
-      .unique();
-    if (onlinePosConnection) {
-      await ctx.db.delete(
-        "onlinePosLocationIntegrations",
-        onlinePosConnection._id,
-      );
-    }
-    const workfeedMapping = await ctx.db
-      .query("workfeedLocationMappings")
-      .withIndex("by_organizationId_and_locationId", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", location._id),
-      )
-      .unique();
-    if (workfeedMapping) {
-      await ctx.db.delete("workfeedLocationMappings", workfeedMapping._id);
-    }
-    const syncStatus = await ctx.db
-      .query("onlinePosSyncStatus")
-      .withIndex("by_organizationId_and_locationId", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", location._id),
-      )
-      .unique();
-    if (syncStatus) {
-      await ctx.db.delete("onlinePosSyncStatus", syncStatus._id);
-    }
-    const salesReset = await ctx.db
-      .query("onlinePosSalesResets")
-      .withIndex("by_organizationId_and_locationId", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", location._id),
-      )
-      .unique();
-    if (salesReset) await ctx.db.delete(salesReset._id);
-    // Sales tables can exceed one mutation; finish asynchronously so orphans
-    // cannot keep feeding the dashboard. Modeled on waste.cleanupProductData.
-    await ctx.scheduler.runAfter(0, internal.locations.cleanupLocationSales, {
-      organizationId,
-      locationId: location._id,
-    });
     await ctx.scheduler.runAfter(
       0,
       internal.dashboard.cleanupDeletedLocationDashboards,

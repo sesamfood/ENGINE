@@ -274,7 +274,7 @@ export function CategoryManager() {
     const deleteDisabled = category.hasChildren || category.inUse;
     const deleteReason = category.hasChildren
       ? "Kategorien har underkategorier og kan derfor ikke fjernes."
-      : "Kategorien bruges af produkter eller Staff food-regler og kan derfor ikke fjernes.";
+      : "Kategorien bruges af produkter eller personalemadsregler og kan derfor ikke fjernes.";
     const row = (
       <div
         className="flex min-h-14 min-w-max items-center gap-2 border-b px-2"
@@ -574,7 +574,7 @@ export function CategoryManager() {
                     )
                   }
                 >
-                  <SelectTrigger id="category-parent" className="h-11 w-full">
+                  <SelectTrigger id="category-parent" className="h-11! w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

@@ -3,16 +3,24 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
-import { TransferForm } from "@/components/transfers/transfer-form";
-import { TransferHistory } from "@/components/transfers/transfer-history";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth-client";
 import { canManageTransfers } from "@/lib/auth-permissions";
+
+const TransferForm = dynamic(
+  () => import("@/components/transfers/transfer-form").then((module) => module.TransferForm),
+  { loading: () => <Skeleton className="h-96 w-full" /> },
+);
+const TransferHistory = dynamic(
+  () => import("@/components/transfers/transfer-history").then((module) => module.TransferHistory),
+  { loading: () => <Skeleton className="h-96 w-full" /> },
+);
 
 function TransfersContent() {
   const membership = authClient.useActiveMemberRole();
@@ -21,6 +29,7 @@ function TransfersContent() {
   const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const showNew = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("transfers.new");
   const showHistory = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("transfers.history");
+  const activeTab = pathname === "/transfers/history" ? "history" : "new";
 
   if (membership.isPending) {
     return <Skeleton className="h-80 w-full" />;
@@ -31,7 +40,7 @@ function TransfersContent() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Du har ikke adgang til at oprette eller se transfers.
+          Du har ikke adgang til at oprette eller se flytninger.
         </AlertDescription>
       </Alert>
     );
@@ -40,20 +49,20 @@ function TransfersContent() {
   return (
     <Tabs value={pathname === "/transfers/history" ? "history" : "new"} onValueChange={(value) => router.push(value === "history" ? "/transfers/history" : "/transfers")}>
       <TabsList
-        aria-label="Transfersektioner"
+        aria-label="Flyttesektioner"
         className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
       >
         {showNew ? <TabsTrigger value="new" className="min-w-36 px-6">
-          Ny transfer
+          Ny flytning
         </TabsTrigger> : null}
         {showHistory ? <TabsTrigger value="history" className="min-w-36 px-6">
-          Transfer historik
+          Flyttehistorik
         </TabsTrigger> : null}
       </TabsList>
-      {showNew ? <TabsContent value="new" className="pt-6">
+      {showNew && activeTab === "new" ? <TabsContent value="new" className="pt-6">
         <TransferForm />
       </TabsContent> : null}
-      {showHistory ? <TabsContent value="history" className="pt-6">
+      {showHistory && activeTab === "history" ? <TabsContent value="history" className="pt-6">
         <TransferHistory />
       </TabsContent> : null}
     </Tabs>
@@ -76,7 +85,7 @@ export default function TransfersPage() {
         Lagerstyring
       </p>
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-        Transfers
+        Flytninger
       </h1>
     </div>
   );

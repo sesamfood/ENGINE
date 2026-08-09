@@ -35,6 +35,26 @@ const MIN_PRODUCT_HISTORY = 20;
 const UNDO_WINDOW_MS = 30_000;
 const DAYS_30_MS = 30 * 24 * 60 * 60 * 1000;
 const DAYS_90_MS = 90 * 24 * 60 * 60 * 1000;
+const MAX_PUBLIC_PAGE_SIZE = 100;
+
+function requirePageSize(numItems: number, maximum: number) {
+  if (
+    !Number.isInteger(numItems) ||
+    numItems <= 0 ||
+    numItems > maximum
+  ) {
+    throw new ConvexError("Siden er for stor");
+  }
+}
+
+function requireCompleteProductSet<T>(rows: T[]) {
+  if (rows.length > MAX_PRODUCTS) {
+    throw new ConvexError(
+      "Der er mere end 500 produkter. Ryd op i produktkataloget eller kontakt en administrator",
+    );
+  }
+  return rows;
+}
 
 const popularityPeriodValidator = v.union(
   v.literal("allTime"),
@@ -125,7 +145,7 @@ async function requireLocation(
 ) {
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
   return location;
 }
@@ -820,7 +840,8 @@ export const setSettings = mutation({
         .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
           q.eq("organizationId", organizationId).eq("status", "active"),
         )
-        .take(MAX_PRODUCTS);
+        .take(MAX_PRODUCTS + 1);
+      requireCompleteProductSet(products);
       await Promise.all(
         products.map((product) =>
           ctx.scheduler.runAfter(
@@ -860,7 +881,8 @@ export const listCatalog = query({
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
         q.eq("organizationId", organizationId).eq("status", "active"),
       )
-      .take(MAX_PRODUCTS);
+      .take(MAX_PRODUCTS + 1);
+    requireCompleteProductSet(products);
     return await Promise.all(
       products.map(async (product) => {
         const [category, productUnits, imageUrl] = await Promise.all([
@@ -939,7 +961,7 @@ export const getViewState = query({
                 .eq("locationId", args.locationId),
             )
             .order("desc")
-            .take(MAX_PRODUCTS)
+            .take(MAX_PRODUCTS + 1)
         : settings.popularityPeriod === "90Days"
           ? await ctx.db
               .query("wasteProductStats")
@@ -949,7 +971,7 @@ export const getViewState = query({
                   .eq("locationId", args.locationId),
               )
               .order("desc")
-              .take(MAX_PRODUCTS)
+              .take(MAX_PRODUCTS + 1)
           : await ctx.db
               .query("wasteProductStats")
               .withIndex("by_org_location_all_count", (q) =>
@@ -958,7 +980,7 @@ export const getViewState = query({
                   .eq("locationId", args.locationId),
               )
               .order("desc")
-              .take(MAX_PRODUCTS)
+              .take(MAX_PRODUCTS + 1)
       : null;
     const organizationStats = settings.popularityPeriod === "30Days"
       ? await ctx.db
@@ -967,7 +989,7 @@ export const getViewState = query({
             q.eq("organizationId", organizationId),
           )
           .order("desc")
-          .take(MAX_PRODUCTS)
+          .take(MAX_PRODUCTS + 1)
       : settings.popularityPeriod === "90Days"
         ? await ctx.db
             .query("wasteOrganizationProductStats")
@@ -975,14 +997,16 @@ export const getViewState = query({
               q.eq("organizationId", organizationId),
             )
             .order("desc")
-            .take(MAX_PRODUCTS)
+            .take(MAX_PRODUCTS + 1)
         : await ctx.db
             .query("wasteOrganizationProductStats")
             .withIndex("by_org_all_count", (q) =>
               q.eq("organizationId", organizationId),
             )
             .order("desc")
-            .take(MAX_PRODUCTS);
+            .take(MAX_PRODUCTS + 1);
+    requireCompleteProductSet(locationStats ?? []);
+    requireCompleteProductSet(organizationStats);
     const locationByProduct = new Map(
       (locationStats ?? []).map((row) => [row.productId, row]),
     );
@@ -1011,7 +1035,8 @@ export const getViewState = query({
       .withIndex("by_org_location_pinned", (q) =>
         q.eq("organizationId", organizationId).eq("locationId", args.locationId),
       )
-      .take(MAX_PRODUCTS);
+      .take(MAX_PRODUCTS + 1);
+    requireCompleteProductSet(configs);
     return {
       settings: {
         inactivitySeconds: settings.inactivitySeconds,
@@ -1208,7 +1233,7 @@ export const setShortcutOverride = mutation({
     await requireLocation(ctx, organizationId, args.locationId);
     const product = await requireActiveProduct(ctx, organizationId, args.productId);
     if (args.shortcuts.length < 1 || args.shortcuts.length > 2) {
-      throw new ConvexError("Angiv en eller to shortcuts");
+      throw new ConvexError("Angiv en eller to genveje");
     }
     const normalized = [] as Array<{ unitId: Id<"units">; quantity: number }>;
     for (const shortcut of args.shortcuts) {
@@ -1230,7 +1255,7 @@ export const setShortcutOverride = mutation({
       normalized[0].unitId === normalized[1].unitId &&
       normalized[0].quantity === normalized[1].quantity
     ) {
-      throw new ConvexError("De to shortcuts skal være forskellige");
+      throw new ConvexError("De to genveje skal være forskellige");
     }
     const current = await ctx.db
       .query("wasteProductConfigs")
@@ -1414,7 +1439,7 @@ export const rebuildOrganizationStatsForProduct = internalMutation({
       currentAmounts.length > MAX_REBUILD_ROWS
     ) {
       throw new ConvexError(
-        "Organisationens Waste-historik er for stor til at blive samlet automatisk",
+        "Organisationens spildhistorik er for stor til at blive samlet automatisk",
       );
     }
     const totals = locationProducts.reduce(
@@ -1519,6 +1544,7 @@ export const cleanupProductData = internalMutation({
       organizationProductStatsRows,
       organizationAmountStatsRows,
       configs,
+      onlinePosMappings,
     ] = await Promise.all([
       ctx.db
         .query("wasteProductStats")
@@ -1560,6 +1586,14 @@ export const cleanupProductData = internalMutation({
             .eq("productId", args.productId),
         )
         .take(limit),
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("productId", args.productId),
+        )
+        .take(limit),
     ]);
     for (const row of productStats) await ctx.db.delete("wasteProductStats", row._id);
     for (const row of amountStatsRows) await ctx.db.delete("wasteAmountStats", row._id);
@@ -1570,12 +1604,16 @@ export const cleanupProductData = internalMutation({
       await ctx.db.delete("wasteOrganizationAmountStats", row._id);
     }
     for (const row of configs) await ctx.db.delete("wasteProductConfigs", row._id);
+    for (const row of onlinePosMappings) {
+      await ctx.db.delete("onlinePosProductMappings", row._id);
+    }
     if (
       productStats.length === limit ||
       amountStatsRows.length === limit ||
       organizationProductStatsRows.length === limit ||
       organizationAmountStatsRows.length === limit ||
-      configs.length === limit
+      configs.length === limit ||
+      onlinePosMappings.length === limit
     ) {
       await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, args);
     }
@@ -1596,6 +1634,7 @@ export const listRegistrations = query({
     const { organizationId } = auth;
     const locationId = auth.kioskLocationId ?? args.locationId;
     validateRange(args.startAt, args.endAt);
+    requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     if (args.locationId) {
       requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
@@ -1640,9 +1679,7 @@ export const exportRegistrations = query({
     const { organizationId } = auth;
     const locationId = auth.kioskLocationId ?? args.locationId;
     validateRange(args.startAt, args.endAt);
-    if (args.paginationOpts.numItems > 100) {
-      throw new ConvexError("Eksportsiden er for stor");
-    }
+    requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     if (args.locationId) {
       requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);

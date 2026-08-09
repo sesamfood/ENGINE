@@ -98,7 +98,7 @@ export function CountSettings() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre count-vinduet.
+          Kun administratorer kan ændre optællingsvinduet.
         </AlertDescription>
       </Alert>
     );
@@ -123,7 +123,7 @@ export function CountSettings() {
         requireCountBeforeOpening,
         countSchedule,
       });
-      toast.success("Count-indstillingerne er gemt");
+      toast.success("Optællingsindstillingerne er gemt");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -135,10 +135,10 @@ export function CountSettings() {
     <Card className="max-w-3xl">
       <CardHeader>
         <div className="flex items-center gap-1">
-          <CardTitle>Count-indstillinger</CardTitle>
+          <CardTitle>Optællingsindstillinger</CardTitle>
           <HelpTooltip
-            label="Count-indstillinger"
-            content="Vælg hvornår count skal gennemføres, om det skal være registreret før åbning, og om den øvrige drift skal låses imens."
+            label="Optællingsindstillinger"
+            content="Vælg hvornår optællingen skal gennemføres, om den skal være registreret før åbning, og om den øvrige drift skal låses imens."
           />
         </div>
       </CardHeader>
@@ -148,17 +148,17 @@ export function CountSettings() {
             <FieldContent>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="count-outside-window">
-                  Tillad count uden for count-vinduet
+                  Tillad optælling uden for optællingsvinduet
                 </FieldLabel>
                 <HelpTooltip
-                  label="Tillad count uden for count-vinduet"
-                  content="Medarbejdere kan registrere den aktuelle count når som helst."
+                  label="Tillad optælling uden for optællingsvinduet"
+                  content="Medarbejdere kan registrere den aktuelle optælling når som helst."
                 />
               </div>
             </FieldContent>
             <Switch
               id="count-outside-window"
-              aria-label="Tillad count uden for count-vinduet"
+              aria-label="Tillad optælling uden for optællingsvinduet"
               checked={allowOutsideWindow}
               onCheckedChange={setDraftAllowOutsideWindow}
             />
@@ -167,17 +167,17 @@ export function CountSettings() {
             <FieldContent>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="count-lock-other-features">
-                  Lås andre funktioner under count
+                  Lås andre funktioner under optælling
                 </FieldLabel>
                 <HelpTooltip
-                  label="Lås andre funktioner under count"
-                  content="Når count-vinduet åbner, er kun count, lager og indstillinger tilgængelige for den valgte location, indtil dens count er registreret."
+                  label="Lås andre funktioner under optælling"
+                  content="Når optællingsvinduet åbner, er kun optælling, lager og indstillinger tilgængelige for den valgte lokation, indtil dens optælling er registreret."
                 />
               </div>
             </FieldContent>
             <Switch
               id="count-lock-other-features"
-              aria-label="Lås andre funktioner under count"
+              aria-label="Lås andre funktioner under optælling"
               checked={lockOtherFeaturesDuringCount}
               onCheckedChange={setDraftLockOtherFeatures}
             />
@@ -186,17 +186,17 @@ export function CountSettings() {
             <FieldContent>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="count-required-before-opening">
-                  Kræv count før åbning
+                  Kræv optælling før åbning
                 </FieldLabel>
                 <HelpTooltip
-                  label="Kræv count før åbning"
-                  content="Når indstillingen er slået til, forbliver et count åbent efter locationens åbningstid, indtil det er registreret."
+                  label="Kræv optælling før åbning"
+                  content="Når indstillingen er slået til, forbliver en optælling åben efter lokationens åbningstid, indtil den er registreret."
                 />
               </div>
             </FieldContent>
             <Switch
               id="count-required-before-opening"
-              aria-label="Kræv count før åbning"
+              aria-label="Kræv optælling før åbning"
               checked={requireCountBeforeOpening}
               onCheckedChange={setDraftRequireCount}
             />
@@ -205,7 +205,7 @@ export function CountSettings() {
 
         <FieldGroup>
           <Field>
-            <FieldLabel>Count-frekvens</FieldLabel>
+            <FieldLabel htmlFor="count-schedule-type">Optællingsfrekvens</FieldLabel>
             <Select
               items={scheduleOptions}
               value={countSchedule.type}
@@ -221,7 +221,7 @@ export function CountSettings() {
                 )
               }
             >
-              <SelectTrigger className="h-11! w-full sm:max-w-sm">
+              <SelectTrigger id="count-schedule-type" className="h-11! w-full sm:max-w-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -235,13 +235,13 @@ export function CountSettings() {
               </SelectContent>
             </Select>
             <FieldDescription>
-              Vælg hvornår count-vinduet skal åbne.
+              Vælg, hvornår optællingsvinduet skal åbne.
             </FieldDescription>
           </Field>
 
           {countSchedule.type === "monthly" ? (
             <Field>
-              <FieldLabel>Count-dag</FieldLabel>
+              <FieldLabel htmlFor="count-schedule-day">Optællingsdag</FieldLabel>
               <Select
                 items={monthlyDayOptions}
                 value={String(countSchedule.day)}
@@ -252,7 +252,7 @@ export function CountSettings() {
                   })
                 }
               >
-                <SelectTrigger className="h-11! w-full sm:max-w-sm">
+                <SelectTrigger id="count-schedule-day" className="h-11! w-full sm:max-w-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -289,7 +289,7 @@ export function CountSettings() {
               </Field>
               <Field>
                 <FieldLabel htmlFor="count-anchor-date">
-                  Første count-dato
+                  Første optællingsdato
                 </FieldLabel>
                 <Input
                   id="count-anchor-date"
@@ -310,13 +310,13 @@ export function CountSettings() {
 
         <Alert>
           <Clock3Icon />
-          <AlertTitle>Count-vinduet følger åbningstiderne</AlertTitle>
+          <AlertTitle>Optællingsvinduet følger åbningstiderne</AlertTitle>
           <AlertDescription>
-            Count åbner, når locationen lukker på den valgte count-dag
+            Optællingen åbner, når lokationen lukker på den valgte optællingsdag
             {requireCountBeforeOpening
               ? ", og forbliver åbent, indtil det er registreret."
-              : ", og lukker, når locationen åbner igen."}{" "}
-            Åbningstider og særlige datoer ændres under Locations.
+              : ", og lukker, når lokationen åbner igen."}{" "}
+            Åbningstider og særlige datoer ændres under Lokationer.
           </AlertDescription>
         </Alert>
       </CardContent>
@@ -327,7 +327,7 @@ export function CountSettings() {
           onClick={() => void save()}
         >
           {saving ? <Spinner data-icon="inline-start" /> : null}
-          Gem count-indstillinger
+          Gem optællingsindstillinger
         </Button>
       </CardFooter>
     </Card>

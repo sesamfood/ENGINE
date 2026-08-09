@@ -77,6 +77,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { BrowserBranding } from "@/components/browser-branding";
 import { authClient } from "@/lib/auth-client";
 import { canManageCatalog, canViewDashboard } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
@@ -87,11 +88,11 @@ import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
 import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
 
 const primaryNavigation = [
-  { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
-  { id: "transfers", label: "Transfers", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
-  { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
-  { id: "staffFood", label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
-  { id: "count", label: "Count", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
+  { id: "dashboard", label: "Overblik", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
+  { id: "transfers", label: "Flytninger", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
+  { id: "waste", label: "Spild", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
+  { id: "staffFood", label: "Personalemad", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
+  { id: "count", label: "Optælling", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
 ];
 
 const employeesNavigation = {
@@ -358,7 +359,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     return (
       <main
         className="grid min-h-screen place-items-center"
-        aria-label="Kontrollerer count-status"
+        aria-label="Kontrollerer optællingsstatus"
       >
         <Spinner className="size-5" />
       </main>
@@ -369,7 +370,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     return (
       <main
         className="grid min-h-screen place-items-center"
-        aria-label="Åbner count"
+        aria-label="Åbner optælling"
       >
         <Spinner className="size-5" />
       </main>
@@ -1023,7 +1024,9 @@ export function AppShell({
   }
 
   return (
-    <OrganizationBoundary required={organizationRequired}>
+    <>
+      <BrowserBranding />
+      <OrganizationBoundary required={organizationRequired}>
       <ActiveSyncHeartbeat />
       <OrganizationTheme>
         <KioskRuntimeBoundary>
@@ -1116,6 +1119,7 @@ export function AppShell({
         </FeatureLockBoundary>
         </KioskRuntimeBoundary>
       </OrganizationTheme>
-    </OrganizationBoundary>
+      </OrganizationBoundary>
+    </>
   );
 }

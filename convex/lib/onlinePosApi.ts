@@ -252,6 +252,12 @@ export function parseSaleLines(
     ids.add(externalId);
     const unitPrice = Math.round(price * 100);
     const quantity = amount;
+    const revenue = Math.round(quantity * unitPrice);
+    if (!Number.isFinite(unitPrice) || !Number.isFinite(revenue)) {
+      throw new ConvexError(
+        `OnlinePOS returnerede en for stor salgslinje ved indeks ${index}`,
+      );
+    }
     return {
       externalId,
       orderNumber: chk,
@@ -260,7 +266,7 @@ export function parseSaleLines(
       productName: string(line?.product),
       quantity,
       unitPrice,
-      revenue: Math.round(quantity * unitPrice),
+      revenue,
       paymentType: string(line?.payment_type),
       department,
     };

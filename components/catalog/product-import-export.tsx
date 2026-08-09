@@ -24,6 +24,7 @@ import {
   archiveImageBlob,
   createProductArchive,
   downloadProductArchive,
+  MAX_PRODUCTS,
   readProductArchive,
   type ParsedProductArchive,
   type ProductExportRow,
@@ -70,6 +71,9 @@ export function ProductImportExport() {
           paginationOpts: { cursor, numItems: 25 },
         });
         products.push(...result.page);
+        if (products.length > MAX_PRODUCTS) {
+          throw new Error(`Eksporten kan højst indeholde ${MAX_PRODUCTS.toLocaleString("da-DK")} produkter`);
+        }
         cursor = result.continueCursor;
         done = result.isDone;
       }

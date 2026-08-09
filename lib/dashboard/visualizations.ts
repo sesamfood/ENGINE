@@ -1,18 +1,48 @@
-import type { ComponentType } from "react";
-import { AreaVisualization } from "@/components/dashboard/visualizations/area";
-import { BarVisualization } from "@/components/dashboard/visualizations/bar";
-import { DonutVisualization } from "@/components/dashboard/visualizations/donut";
+import dynamic from "next/dynamic";
+import { createElement, type ComponentType } from "react";
 import { GaugeVisualization } from "@/components/dashboard/visualizations/gauge";
 import { KpiVisualization } from "@/components/dashboard/visualizations/kpi";
-import { LineVisualization } from "@/components/dashboard/visualizations/line";
 import { ListVisualization } from "@/components/dashboard/visualizations/list";
 import { TableVisualization } from "@/components/dashboard/visualizations/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { MetricResult, VisualizationId } from "./types";
 
 export type VisualizationProps = {
   result: MetricResult;
   compact?: boolean;
 };
+
+const visualizationLoading = () =>
+  createElement(Skeleton, { className: "h-full min-h-24 w-full" });
+
+const LineVisualization = dynamic<VisualizationProps>(
+  () =>
+    import("@/components/dashboard/visualizations/line").then(
+      (module) => module.LineVisualization,
+    ),
+  { loading: visualizationLoading },
+);
+const BarVisualization = dynamic<VisualizationProps>(
+  () =>
+    import("@/components/dashboard/visualizations/bar").then(
+      (module) => module.BarVisualization,
+    ),
+  { loading: visualizationLoading },
+);
+const AreaVisualization = dynamic<VisualizationProps>(
+  () =>
+    import("@/components/dashboard/visualizations/area").then(
+      (module) => module.AreaVisualization,
+    ),
+  { loading: visualizationLoading },
+);
+const DonutVisualization = dynamic<VisualizationProps>(
+  () =>
+    import("@/components/dashboard/visualizations/donut").then(
+      (module) => module.DonutVisualization,
+    ),
+  { loading: visualizationLoading },
+);
 
 export const visualizationRegistry: Record<
   VisualizationId,

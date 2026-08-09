@@ -132,7 +132,7 @@ export function resolveDashboardRange(
   const to = zonedStart(addDays(toDate, 1), timeZone);
   const dayCount = daysBetween(fromDate, toDate) + 1;
   if (dayCount > 366) {
-    throw new ConvexError("Dashboardperioden må højst være ét år");
+    throw new ConvexError("Overbliksperioden må højst være ét år");
   }
   return {
     from,
@@ -163,14 +163,14 @@ export async function resolveMetricParams(
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
       .unique(),
   ]);
-  if (allLocations.length > 200) throw new ConvexError("Organisationen har for mange locations");
+  if (allLocations.length > 200) throw new ConvexError("Organisationen har for mange lokationer");
 
   const byId = new Map(allLocations.map((location) => [location._id, location]));
   const selectedIds = [...new Set(
     scope.locationIds ?? allLocations.map((location) => location._id),
   )];
   if (selectedIds.length > MAX_SCOPE_LOCATIONS) {
-    throw new ConvexError(`Dashboardet kan højst vise ${MAX_SCOPE_LOCATIONS} locations ad gangen`);
+    throw new ConvexError(`Overblikket kan højst vise ${MAX_SCOPE_LOCATIONS} lokationer ad gangen`);
   }
   const locations = selectedIds.flatMap((id) => {
     const location = byId.get(id);
@@ -211,7 +211,7 @@ function seriesResult(
 ): MetricResult {
   const groups = params.compare
     ? params.locations.map((location) => ({ key: location.id, label: location.name }))
-    : [{ key: "all", label: "Alle locations" }];
+    : [{ key: "all", label: "Alle lokationer" }];
   const days = dayStarts(params.from, params.to, params.timeZone);
   const series = groups.map((group) => {
     const relevant = params.compare
@@ -357,7 +357,7 @@ async function countRows(ctx: QueryCtx, params: DashboardMetricParams) {
 const countCompliance: MetricComputer = async (ctx, params) => {
   const result = await countRows(ctx, params);
   const timed = result.rows.map((row) => ({ timestamp: row.submittedAt ?? row._creationTime, locationId: row.locationId, submitted: row.status === "submitted" }));
-  const groups = params.compare ? params.locations : [{ id: "all" as const, name: "Alle locations" }];
+  const groups = params.compare ? params.locations : [{ id: "all" as const, name: "Alle lokationer" }];
   const series = groups.map((group) => {
     const relevant = params.compare ? timed.filter((row) => row.locationId === group.id) : timed;
     const current = relevant.filter((row) => row.timestamp >= params.from && row.timestamp < params.to);
@@ -371,7 +371,7 @@ const countCompliance: MetricComputer = async (ctx, params) => {
 const openCounts: MetricComputer = async (ctx, params) => {
   const result = await countRows(ctx, params);
   const snapshots = (locationId: Id<"locations"> | null, at: number) => result.rows.filter((row) => (!locationId || row.locationId === locationId) && row._creationTime < at && (!row.submittedAt || row.submittedAt >= at)).length;
-  const groups = params.compare ? params.locations : [{ id: null, name: "Alle locations" }];
+  const groups = params.compare ? params.locations : [{ id: null, name: "Alle lokationer" }];
   return {
     unit: "count",
     series: groups.map((group) => ({
@@ -490,7 +490,7 @@ const headcountToday: MetricComputer = async (ctx, params) => {
   const from = zonedStart(today, params.timeZone);
   const to = zonedStart(addDays(today, 1), params.timeZone);
   const result = await shiftRows(ctx, params, from - DAY_MS * 2, to);
-  const groups = params.compare ? params.locations : [{ id: "all" as const, name: "Alle locations" }];
+  const groups = params.compare ? params.locations : [{ id: "all" as const, name: "Alle lokationer" }];
   const employees = await Promise.all([...new Set(result.rows.map((row) => row.employeeId))].map((id) => ctx.db.get("employees", id)));
   const names = new Map(employees.flatMap((employee) => employee ? [[employee._id, employee.displayName] as const] : []));
   const active = result.rows.filter((row) => row.startsAt < to && row.endsAt > from);
@@ -583,7 +583,7 @@ const averageBasket: MetricComputer = async (ctx, params) => {
   const result = await salesDailyRows(ctx, params);
   const groups = params.compare
     ? params.locations.map((location) => ({ key: location.id, label: location.name }))
-    : [{ key: "all" as const, label: "Alle locations" }];
+    : [{ key: "all" as const, label: "Alle lokationer" }];
   const days = dayStarts(params.from, params.to, params.timeZone);
   let headlineRevenue = 0;
   let headlineOrders = 0;

@@ -56,7 +56,7 @@ const shareSummaryValidator = v.object({
 
 function validateWidgets(widgets: WidgetInstance[], role: string) {
   if (widgets.length > MAX_WIDGETS) {
-    throw new ConvexError(`Dashboardet kan højst have ${MAX_WIDGETS} widgets`);
+    throw new ConvexError(`Overblikket kan højst have ${MAX_WIDGETS} widgets`);
   }
   if (new Set(widgets.map((widget) => widget.key)).size !== widgets.length) {
     throw new ConvexError("Hver widget skal have en unik nøgle");
@@ -101,17 +101,17 @@ async function validateScope(
 ) {
   if (scope.locationIds === null) return;
   if (scope.locationIds.length === 0 || scope.locationIds.length > 200) {
-    throw new ConvexError("Vælg mellem 1 og 200 locations");
+    throw new ConvexError("Vælg mellem 1 og 200 lokationer");
   }
   if (scope.mode === "compare" && scope.locationIds.length < 2) {
-    throw new ConvexError("Vælg mindst to locations til sammenligning");
+    throw new ConvexError("Vælg mindst to lokationer til sammenligning");
   }
   if (new Set(scope.locationIds).size !== scope.locationIds.length) {
-    throw new ConvexError("En location må kun vælges én gang");
+    throw new ConvexError("En lokation må kun vælges én gang");
   }
   const locations = await Promise.all(scope.locationIds.map((id) => ctx.db.get("locations", id)));
   if (locations.some((location) => location?.organizationId !== organizationId)) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
 }
 
@@ -276,7 +276,7 @@ export const createShare = action({
       widgets.some((widget) => metricRegistry[widget.metricId].adminOnly)
     ) {
       throw new ConvexError(
-        "Adgangskode er påkrævet når dashboardet indeholder admin-målinger",
+        "Adgangskode er påkrævet når overblikket indeholder admin-målinger",
       );
     }
     const token = randomSecret();

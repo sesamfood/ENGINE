@@ -125,8 +125,23 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function dateValue(date: Date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
+
+function dateKeyInTimeZone(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(timestamp);
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function monthStartInTimeZone(timestamp: number, timeZone: string) {
+  return `${dateKeyInTimeZone(timestamp, timeZone).slice(0, 8)}01`;
 }
 
 function parseDateValue(value: string) {
@@ -220,11 +235,9 @@ export function StaffFoodSettings() {
   >({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Tier | null>(null);
-  const now = new Date();
-  const [from, setFrom] = useState(() =>
-    dateValue(new Date(now.getFullYear(), now.getMonth(), 1)),
-  );
-  const [to, setTo] = useState(() => dateValue(now));
+  const [todayTimestamp] = useState(() => Date.now());
+  const [from, setFrom] = useState<string | null>(null);
+  const [to, setTo] = useState<string | null>(null);
   const [location, setLocation] = useState("all");
   const [exporting, setExporting] = useState(false);
 
@@ -328,9 +341,11 @@ export function StaffFoodSettings() {
     }
   }
 
-  const timeZone = settings?.timeZone ?? "Europe/Copenhagen";
-  const startAt = zonedStart(from, timeZone);
-  const endAt = zonedEnd(to, timeZone);
+  const timeZone = settings?.timeZone ?? DEFAULT_TIME_ZONE;
+  const resolvedFrom = from ?? monthStartInTimeZone(todayTimestamp, timeZone);
+  const resolvedTo = to ?? dateKeyInTimeZone(todayTimestamp, timeZone);
+  const startAt = zonedStart(resolvedFrom, timeZone);
+  const endAt = zonedEnd(resolvedTo, timeZone);
   const rangeValid =
     Number.isFinite(startAt) &&
     Number.isFinite(endAt) &&
@@ -370,10 +385,10 @@ export function StaffFoodSettings() {
         timeZone,
       });
       downloadCsv(
-        `staff-food-${from}-${to}.csv`,
+        `staff-food-${resolvedFrom}-${resolvedTo}.csv`,
         [
           "Registreret",
-          "Location",
+          "Lokation",
           "Medarbejder",
           "Vagttype",
           "Arbejdsdato",
@@ -418,7 +433,7 @@ export function StaffFoodSettings() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre Staff food og eksportere rapporter.
+          Kun administratorer kan ændre personalemad og eksportere rapporter.
         </AlertDescription>
       </Alert>
     );
@@ -430,9 +445,9 @@ export function StaffFoodSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-1">
-            Regler for Staff food
+            Regler for personalemad
             <HelpTooltip
-              label="Regler for Staff food"
+              label="Regler for personalemad"
               content="Medarbejderen får den regel med den højeste vagtlængde, som vagten opfylder. Reglerne lægges ikke sammen."
             />
           </CardTitle>
@@ -465,7 +480,8 @@ export function StaffFoodSettings() {
                     </CardDescription>
                     <CardAction className="flex gap-2">
                       <Button
-                        size="icon-sm"
+                        size="icon-lg"
+                        className="size-11"
                         variant="outline"
                         aria-label="Redigér regel"
                         onClick={() => openEditor(tier)}
@@ -473,7 +489,8 @@ export function StaffFoodSettings() {
                         <PencilIcon />
                       </Button>
                       <Button
-                        size="icon-sm"
+                        size="icon-lg"
+                        className="size-11"
                         variant="outline"
                         aria-label="Slet regel"
                         onClick={() => setPendingDelete(tier)}
@@ -501,7 +518,7 @@ export function StaffFoodSettings() {
                 </EmptyMedia>
                 <EmptyTitle>Ingen regler endnu</EmptyTitle>
                 <EmptyDescription>
-                  Opret den første regel for at aktivere Staff food.
+                  Opret den første regel for at aktivere personalemad.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -529,7 +546,7 @@ export function StaffFoodSettings() {
               <Input
                 id="staff-food-from"
                 type="date"
-                value={from}
+                value={resolvedFrom}
                 aria-invalid={!rangeValid}
                 onChange={(event) => setFrom(event.target.value)}
               />
@@ -539,7 +556,7 @@ export function StaffFoodSettings() {
               <Input
                 id="staff-food-to"
                 type="date"
-                value={to}
+                value={resolvedTo}
                 aria-invalid={!rangeValid}
                 onChange={(event) => setTo(event.target.value)}
               />
@@ -548,10 +565,10 @@ export function StaffFoodSettings() {
               ) : null}
             </Field>
             <Field>
-              <FieldLabel>Location</FieldLabel>
+              <FieldLabel htmlFor="staff-food-settings-location">Lokation</FieldLabel>
               <Select
                 items={[
-                  { value: "all", label: "Alle locations" },
+                  { value: "all", label: "Alle lokationer" },
                   ...locations.map((item) => ({
                     value: item.id,
                     label: item.name,
@@ -560,12 +577,12 @@ export function StaffFoodSettings() {
                 value={location}
                 onValueChange={(value) => setLocation(value ?? "all")}
               >
-                <SelectTrigger>
+                <SelectTrigger id="staff-food-settings-location">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">Alle locations</SelectItem>
+                    <SelectItem value="all">Alle lokationer</SelectItem>
                     {locations.map((item) => (
                       <SelectItem key={item.id} value={item.id}>
                         {item.name}
@@ -674,7 +691,8 @@ export function StaffFoodSettings() {
                     <CardTitle>Kategori {index + 1}</CardTitle>
                     <CardAction>
                       <Button
-                        size="icon-sm"
+                        size="icon-lg"
+                        className="size-11"
                         variant="outline"
                         aria-label="Fjern kategori"
                         onClick={() =>
@@ -692,7 +710,7 @@ export function StaffFoodSettings() {
                   <CardContent className="flex flex-col gap-5">
                     <FieldGroup className="grid sm:grid-cols-[minmax(0,1fr)_10rem]">
                       <Field data-invalid={!amountValid}>
-                        <FieldLabel>Kategori</FieldLabel>
+                        <FieldLabel htmlFor={`staff-food-category-${index}`}>Kategori</FieldLabel>
                         <Select
                           items={categoryItems}
                           value={allowance.categoryId}
@@ -703,7 +721,7 @@ export function StaffFoodSettings() {
                             })
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id={`staff-food-category-${index}`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

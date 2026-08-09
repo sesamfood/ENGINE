@@ -84,8 +84,23 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function dateValue(date: Date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
+
+function dateKeyInTimeZone(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(timestamp);
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function monthStartInTimeZone(timestamp: number, timeZone: string) {
+  return `${dateKeyInTimeZone(timestamp, timeZone).slice(0, 8)}01`;
 }
 
 function zonedStart(value: string, timeZone: string) {
@@ -140,9 +155,9 @@ export function WasteReport() {
   const membership = authClient.useActiveMemberRole();
   const kiosk = useQuery(api.kiosk.getRuntimeContext);
   const { locations } = useWasteContext();
-  const now = new Date();
-  const [from, setFrom] = useState(() => dateValue(new Date(now.getFullYear(), now.getMonth(), 1)));
-  const [to, setTo] = useState(() => dateValue(now));
+  const [todayTimestamp] = useState(() => Date.now());
+  const [from, setFrom] = useState<string | null>(null);
+  const [to, setTo] = useState<string | null>(null);
   const [location, setLocation] = useState("all");
   const [selected, setSelected] = useState<Row | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -150,7 +165,9 @@ export function WasteReport() {
   const voidWaste = useMutation(api.waste.voidWasteRegistration);
   const canReport = canViewWasteReports(membership.data?.role) || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.report"));
   const reportContext = useQuery(api.employees.getContext, canReport ? {} : "skip");
-  const timeZone = reportContext?.timeZone ?? "Europe/Copenhagen";
+  const timeZone = reportContext?.timeZone ?? DEFAULT_TIME_ZONE;
+  const resolvedFrom = from ?? monthStartInTimeZone(todayTimestamp, timeZone);
+  const resolvedTo = to ?? dateKeyInTimeZone(todayTimestamp, timeZone);
   const formatter = useMemo(
     () =>
       new Intl.DateTimeFormat("da-DK", {
@@ -160,10 +177,10 @@ export function WasteReport() {
       }),
     [timeZone],
   );
-  const startAt = zonedStart(from, timeZone);
-  const endAt = zonedEnd(to, timeZone);
+  const startAt = zonedStart(resolvedFrom, timeZone);
+  const endAt = zonedEnd(resolvedTo, timeZone);
   const rangeValid = Number.isFinite(startAt) && Number.isFinite(endAt) && startAt <= endAt;
-  const args = rangeValid && canReport
+  const args = reportContext && rangeValid && canReport
     ? { startAt, endAt, ...(location === "all" ? {} : { locationId: location as Id<"locations"> }) }
     : "skip";
   const { results, status, loadMore } = usePaginatedQuery(api.waste.listRegistrations, args, { initialNumItems: 25 });
@@ -194,7 +211,7 @@ export function WasteReport() {
 
   if (membership.isPending) return <Skeleton className="h-96" />;
   if (!canReport) {
-    return <Alert variant="destructive"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Kun ledere og administratorer kan se Waste-rapporter.</AlertDescription></Alert>;
+    return <Alert variant="destructive"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Kun ledere og administratorer kan se spildrapporter.</AlertDescription></Alert>;
   }
 
   async function allRows(activeOnly: boolean) {
@@ -228,7 +245,7 @@ export function WasteReport() {
         const key = `${row.locationId}:${row.productId}:${row.defaultUnitId}`;
         groups.set(key, [...(groups.get(key) ?? []), row]);
       }
-      downloadCsv(`waste-oversigt-${from}-${to}.csv`, ["Location", "Produkt", "Mængde", "Enhed", "Registreringer"], [...groups.values()].map((group) => [group[0].locationName, group[0].productName, String(group.reduce((sum, row) => sum + row.defaultQuantity, 0)).replace(".", ","), group[0].defaultUnitName, String(group.length)]));
+      downloadCsv(`waste-oversigt-${resolvedFrom}-${resolvedTo}.csv`, ["Lokation", "Produkt", "Mængde", "Enhed", "Registreringer"], [...groups.values()].map((group) => [group[0].locationName, group[0].productName, String(group.reduce((sum, row) => sum + row.defaultQuantity, 0)).replace(".", ","), group[0].defaultUnitName, String(group.length)]));
     } catch (error) { toast.error(message(error)); } finally { setExporting(false); }
   }
 
@@ -236,7 +253,7 @@ export function WasteReport() {
     setExporting(true);
     try {
       const rows = await allRows(false);
-      downloadCsv(`waste-registreringer-${from}-${to}.csv`, ["Tidspunkt", "Location", "Medarbejder", "Produkt", "Mængde", "Enhed", "Kilde", "Status"], rows.map((row) => [formatter.format(row.registeredAt), row.locationName, row.registeredByName, row.productName, String(row.quantity).replace(".", ","), row.unitName, row.source === "shortcut" ? "Shortcut" : "Tilpasset", row.status === "active" ? "Aktiv" : "Annulleret"]));
+      downloadCsv(`waste-registreringer-${resolvedFrom}-${resolvedTo}.csv`, ["Tidspunkt", "Lokation", "Medarbejder", "Produkt", "Mængde", "Enhed", "Kilde", "Status"], rows.map((row) => [formatter.format(row.registeredAt), row.locationName, row.registeredByName, row.productName, String(row.quantity).replace(".", ","), row.unitName, row.source === "shortcut" ? "Genvej" : "Tilpasset", row.status === "active" ? "Aktiv" : "Annulleret"]));
     } catch (error) { toast.error(message(error)); } finally { setExporting(false); }
   }
 
@@ -244,7 +261,7 @@ export function WasteReport() {
     if (!selected) return;
     try {
       await voidWaste({ registrationId: selected.id });
-      toast.success("Waste-registreringen er annulleret");
+      toast.success("Spildregistreringen er annulleret");
       setConfirming(false);
       setSelected(null);
     } catch (error) { toast.error(message(error)); }
@@ -254,9 +271,9 @@ export function WasteReport() {
     <div className="flex flex-col gap-6">
       <Card>
         <CardContent className="grid gap-4 pt-4 sm:grid-cols-3">
-          <Field><FieldLabel htmlFor="waste-from">Fra</FieldLabel><Input id="waste-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
-          <Field><FieldLabel htmlFor="waste-to">Til</FieldLabel><Input id="waste-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></Field>
-          <Field><FieldLabel>Location</FieldLabel>{kiosk?.isKioskAccount ? <div className="flex h-10 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div> : <Select value={location} onValueChange={(value) => setLocation(value ?? "all")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">Alle locations</SelectItem>{locations?.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectGroup></SelectContent></Select>}</Field>
+          <Field><FieldLabel htmlFor="waste-from">Fra</FieldLabel><Input id="waste-from" type="date" value={resolvedFrom} onChange={(event) => setFrom(event.target.value)} /></Field>
+          <Field><FieldLabel htmlFor="waste-to">Til</FieldLabel><Input id="waste-to" type="date" value={resolvedTo} onChange={(event) => setTo(event.target.value)} /></Field>
+          <Field><FieldLabel htmlFor="waste-report-location">Lokation</FieldLabel>{kiosk?.isKioskAccount ? <div className="flex h-10 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div> : <Select value={location} onValueChange={(value) => setLocation(value ?? "all")}><SelectTrigger id="waste-report-location"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">Alle lokationer</SelectItem>{locations?.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectGroup></SelectContent></Select>}</Field>
         </CardContent>
       </Card>
       {!rangeValid ? <Alert variant="destructive"><AlertTitle>Ugyldig periode</AlertTitle><AlertDescription>Fra-dato skal være før eller samme dag som til-dato.</AlertDescription></Alert> : null}
@@ -264,14 +281,14 @@ export function WasteReport() {
       <Card>
         <CardHeader className="sm:grid-cols-[1fr_auto]"><CardTitle>Oversigt</CardTitle><Button variant="outline" disabled={exporting || !rangeValid} onClick={exportSummary}><DownloadIcon data-icon="inline-start" />Eksportér oversigt</Button></CardHeader>
         <CardContent>
-          {activeStatus !== "Exhausted" ? <Skeleton className="h-40" /> : summary.length ? <Table><TableHeader><TableRow><TableHead>Location</TableHead><TableHead>Produkt</TableHead><TableHead className="text-right">Mængde</TableHead><TableHead>Enhed</TableHead><TableHead className="text-right">Registreringer</TableHead></TableRow></TableHeader><TableBody>{summary.map((row) => <TableRow key={`${row.location}:${row.product}:${row.unit}`}><TableCell>{row.location}</TableCell><TableCell>{row.product}</TableCell><TableCell className="text-right">{formatNumber(row.quantity)}</TableCell><TableCell>{row.unit}</TableCell><TableCell className="text-right">{row.count}</TableCell></TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyTitle>Ingen Waste i perioden</EmptyTitle></EmptyHeader></Empty>}
+          {activeStatus !== "Exhausted" ? <Skeleton className="h-40" /> : summary.length ? <Table><TableHeader><TableRow><TableHead>Lokation</TableHead><TableHead>Produkt</TableHead><TableHead className="text-right">Mængde</TableHead><TableHead>Enhed</TableHead><TableHead className="text-right">Registreringer</TableHead></TableRow></TableHeader><TableBody>{summary.map((row) => <TableRow key={`${row.location}:${row.product}:${row.unit}`}><TableCell>{row.location}</TableCell><TableCell>{row.product}</TableCell><TableCell className="text-right">{formatNumber(row.quantity)}</TableCell><TableCell>{row.unit}</TableCell><TableCell className="text-right">{row.count}</TableCell></TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyTitle>Intet spild i perioden</EmptyTitle></EmptyHeader></Empty>}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="sm:grid-cols-[1fr_auto]"><CardTitle>Registreringer</CardTitle><Button variant="outline" disabled={exporting || !rangeValid} onClick={exportLog}><DownloadIcon data-icon="inline-start" />Eksportér registreringer</Button></CardHeader>
         <CardContent>
-          {status === "LoadingFirstPage" ? <Skeleton className="h-56" /> : results.length ? <><Table><TableHeader><TableRow><TableHead>Tidspunkt</TableHead><TableHead>Location</TableHead><TableHead>Medarbejder</TableHead><TableHead>Produkt</TableHead><TableHead>Mængde</TableHead><TableHead>Kilde</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{(results as Row[]).map((row) => <TableRow key={row.id} className="cursor-pointer" tabIndex={0} onClick={() => setSelected(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelected(row); }}><TableCell>{formatter.format(row.registeredAt)}</TableCell><TableCell>{row.locationName}</TableCell><TableCell>{row.registeredByName}</TableCell><TableCell>{row.productName}</TableCell><TableCell>{formatNumber(row.quantity)} {row.unitName}</TableCell><TableCell>{row.source === "shortcut" ? "Shortcut" : "Tilpasset"}</TableCell><TableCell><Badge variant={row.status === "active" ? "secondary" : "outline"}>{row.status === "active" ? "Aktiv" : "Annulleret"}</Badge></TableCell></TableRow>)}</TableBody></Table>{status === "CanLoadMore" ? <div className="mt-4 flex justify-center"><Button variant="outline" onClick={() => loadMore(25)}>Indlæs flere</Button></div> : null}</> : <Empty className="min-h-44"><EmptyHeader><EmptyMedia variant="icon"><FileChartColumnIcon /></EmptyMedia><EmptyTitle>Ingen registreringer</EmptyTitle><EmptyDescription>Der er ingen Waste-registreringer i den valgte periode.</EmptyDescription></EmptyHeader></Empty>}
+          {status === "LoadingFirstPage" ? <Skeleton className="h-56" /> : results.length ? <><Table><TableHeader><TableRow><TableHead>Tidspunkt</TableHead><TableHead>Lokation</TableHead><TableHead>Medarbejder</TableHead><TableHead>Produkt</TableHead><TableHead>Mængde</TableHead><TableHead>Kilde</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{(results as Row[]).map((row) => <TableRow key={row.id} role="button" tabIndex={0} aria-label={`Åbn spildregistrering for ${row.productName} på ${row.locationName}`} className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset" onClick={() => setSelected(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelected(row); } }}><TableCell>{formatter.format(row.registeredAt)}</TableCell><TableCell>{row.locationName}</TableCell><TableCell>{row.registeredByName}</TableCell><TableCell>{row.productName}</TableCell><TableCell>{formatNumber(row.quantity)} {row.unitName}</TableCell><TableCell>{row.source === "shortcut" ? "Genvej" : "Tilpasset"}</TableCell><TableCell><Badge variant={row.status === "active" ? "secondary" : "outline"}>{row.status === "active" ? "Aktiv" : "Annulleret"}</Badge></TableCell></TableRow>)}</TableBody></Table>{status === "CanLoadMore" ? <div className="mt-4 flex justify-center"><Button variant="outline" onClick={() => loadMore(25)}>Indlæs flere</Button></div> : null}</> : <Empty className="min-h-44"><EmptyHeader><EmptyMedia variant="icon"><FileChartColumnIcon /></EmptyMedia><EmptyTitle>Ingen registreringer</EmptyTitle><EmptyDescription>Der er ingen spildregistreringer i den valgte periode.</EmptyDescription></EmptyHeader></Empty>}
         </CardContent>
       </Card>
 
@@ -283,12 +300,12 @@ export function WasteReport() {
           location === "all" ? undefined : (location as Id<"locations">)
         }
         formatter={formatter}
-        from={from}
-        to={to}
+        from={resolvedFrom}
+        to={resolvedTo}
         rangeValid={rangeValid}
       />
 
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}><DialogContent>{selected ? <><DialogHeader><DialogTitle>{selected.productName}</DialogTitle><DialogDescription>{formatter.format(selected.registeredAt)} · {selected.locationName}</DialogDescription></DialogHeader><dl className="grid grid-cols-2 gap-3"><dt className="text-muted-foreground">Medarbejder</dt><dd>{selected.registeredByName}</dd><dt className="text-muted-foreground">Mængde</dt><dd>{formatNumber(selected.quantity)} {selected.unitName}</dd><dt className="text-muted-foreground">Kilde</dt><dd>{selected.source === "shortcut" ? "Shortcut" : "Tilpasset"}</dd><dt className="text-muted-foreground">Status</dt><dd>{selected.status === "active" ? "Aktiv" : "Annulleret"}</dd>{selected.voidedAt ? <><dt className="text-muted-foreground">Annulleret</dt><dd>{formatter.format(selected.voidedAt)}{selected.voidedByName ? ` af ${selected.voidedByName}` : ""}</dd></> : null}</dl><DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Luk</Button>{selected.status === "active" ? <Button variant="destructive" onClick={() => setConfirming(true)}>Annullér registrering</Button> : null}</DialogFooter></> : null}</DialogContent></Dialog>
+      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}><DialogContent>{selected ? <><DialogHeader><DialogTitle>{selected.productName}</DialogTitle><DialogDescription>{formatter.format(selected.registeredAt)} · {selected.locationName}</DialogDescription></DialogHeader><dl className="grid grid-cols-2 gap-3"><dt className="text-muted-foreground">Medarbejder</dt><dd>{selected.registeredByName}</dd><dt className="text-muted-foreground">Mængde</dt><dd>{formatNumber(selected.quantity)} {selected.unitName}</dd><dt className="text-muted-foreground">Kilde</dt><dd>{selected.source === "shortcut" ? "Genvej" : "Tilpasset"}</dd><dt className="text-muted-foreground">Status</dt><dd>{selected.status === "active" ? "Aktiv" : "Annulleret"}</dd>{selected.voidedAt ? <><dt className="text-muted-foreground">Annulleret</dt><dd>{formatter.format(selected.voidedAt)}{selected.voidedByName ? ` af ${selected.voidedByName}` : ""}</dd></> : null}</dl><DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Luk</Button>{selected.status === "active" ? <Button variant="destructive" onClick={() => setConfirming(true)}>Annullér registrering</Button> : null}</DialogFooter></> : null}</DialogContent></Dialog>
       <AlertDialog open={confirming} onOpenChange={setConfirming}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Annullér registrering?</AlertDialogTitle><AlertDialogDescription>Lageret bliver tilført den registrerede mængde igen. Auditloggen bevares.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Behold</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={voidSelected}>Annullér registrering</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </div>
   );

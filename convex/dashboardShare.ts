@@ -27,8 +27,8 @@ const unlockShareValidator = v.union(
   v.null(),
 );
 
-function active(share: Doc<"dashboardShares">) {
-  return !share.revokedAt;
+function active(share: Doc<"dashboardShares">, now: number) {
+  return !share.revokedAt && share.expiresAt > now;
 }
 
 export const expireShare = internalMutation({
@@ -55,7 +55,11 @@ async function requireShare(
     .query("dashboardShares")
     .withIndex("by_token", (q) => q.eq("token", token))
     .unique();
-  if (!share || !active(share) || !equalSecrets(share.unlockKey, accessKey)) {
+  if (
+    !share ||
+    !active(share, Date.now()) ||
+    !equalSecrets(share.unlockKey, accessKey)
+  ) {
     throw new ConvexError("Delingen er udløbet eller ikke tilgængelig");
   }
   return share;
@@ -80,7 +84,7 @@ export const getPublicMeta = query({
       .query("dashboardShares")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .unique();
-    if (!share || !active(share)) return null;
+    if (!share || !active(share, Date.now())) return null;
     const requiresPassword =
       Boolean(share.passwordHash) ||
       share.widgets.some(

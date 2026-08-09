@@ -30,6 +30,7 @@ import {
   SearchIcon,
   XIcon,
 } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -319,12 +320,16 @@ function ProductCard({
       >
         <div className="relative">
           {product.imageUrl ? (
-            <div
-              role="img"
-              aria-label={`Produktbillede af ${product.name}`}
-              className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
-              style={{ backgroundImage: `url("${product.imageUrl}")` }}
-            />
+            <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
+              <Image
+                src={product.imageUrl}
+                alt={`Produktbillede af ${product.name}`}
+                fill
+                sizes="(max-width: 379px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
+                className="object-cover"
+                unoptimized
+              />
+            </div>
           ) : (
             <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
               <PackageOpenIcon
@@ -369,7 +374,7 @@ function ProductCard({
                   }
                   disabled={disabled}
                 >
-                  <SelectTrigger className="h-11 w-full">
+                  <SelectTrigger aria-label={`Enhed for ${product.name}`} className="h-11! w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
@@ -1037,9 +1042,9 @@ export function CountSheet() {
   const lockedReason = !state
     ? null
     : state.count?.status === "submitted"
-      ? "Count er allerede registreret"
+      ? "Optællingen er allerede registreret"
       : !state.isOpen
-        ? "Count-vinduet er lukket"
+        ? "Optællingsvinduet er lukket"
         : null;
   const isClosed = Boolean(
     state && state.count?.status !== "submitted" && !state.isOpen,
@@ -1059,13 +1064,13 @@ export function CountSheet() {
     (quantity) => quantity > 0,
   );
   const disabledReason = !locationId
-    ? "Vælg en location"
+    ? "Vælg en lokation"
     : !state
-      ? "Count indlæses"
+      ? "Optælling indlæses"
       : state.count?.status === "submitted"
-        ? "Count er allerede registreret"
+        ? "Optællingen er allerede registreret"
         : !state.isOpen
-          ? "Count-vinduet er lukket"
+          ? "Optællingsvinduet er lukket"
           : !hasQuantity
             ? "Indtast mindst én mængde"
             : null;
@@ -1077,7 +1082,7 @@ export function CountSheet() {
       await flushPending();
       await submitCount({ locationId });
       setConfirmOpen(false);
-      toast.success("Count er registreret");
+      toast.success("Optællingen er registreret");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -1091,11 +1096,11 @@ export function CountSheet() {
     try {
       const report = await exportCountWasteReport({ countId: state.count.id });
       if (!report.hasBaseline) {
-        toast.error("Spildrapporten kræver en tidligere registreret count");
+        toast.error("Spildrapporten kræver en tidligere registreret optælling");
         return;
       }
       if (report.rows.length === 0) {
-        toast.success("Der er ingen lagerafvigelser i denne count");
+        toast.success("Der er ingen lagerafvigelser i denne optælling");
         return;
       }
       const registeredAt = new Intl.DateTimeFormat("da-DK", {
@@ -1108,8 +1113,8 @@ export function CountSheet() {
       downloadCsv(
         `spildrapport-${fileDate}.csv`,
         [
-          "Location",
-          "Count registreret",
+          "Lokation",
+          "Optælling registreret",
           "Produkt",
           "Forventet beholdning før salg",
           report.salesIncluded ? "Salg" : "Salg (ikke medtaget)",
@@ -1156,9 +1161,9 @@ export function CountSheet() {
           <EmptyMedia variant="icon">
             <BoxesIcon />
           </EmptyMedia>
-          <EmptyTitle>Ingen locations endnu</EmptyTitle>
+          <EmptyTitle>Ingen lokationer endnu</EmptyTitle>
           <EmptyDescription>
-            En administrator skal oprette en location, før lageret kan tælles.
+            En administrator skal oprette en lokation, før lageret kan tælles.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -1367,7 +1372,7 @@ export function CountSheet() {
               >
                 <LockKeyholeIcon data-icon="inline-start" />
                 <span>
-                  <span className="hidden lg:inline">Count er låst · </span>
+                  <span className="hidden lg:inline">Optællingen er låst · </span>
                   Åbner om {countdown(state.opensAt, now)}
                 </span>
               </Badge>
@@ -1398,7 +1403,7 @@ export function CountSheet() {
                   onClick={() => setConfirmOpen(true)}
                 >
                   {submitting ? <Spinner data-icon="inline-start" /> : null}
-                  Registrér count
+                  Registrér optælling
                 </Button>
               </UnavailableTooltip>
             )}
@@ -1409,23 +1414,23 @@ export function CountSheet() {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Registrér count?</AlertDialogTitle>
+            <AlertDialogTitle>Registrér optælling?</AlertDialogTitle>
             <AlertDialogDescription>
               Lageret overskrives for de produkter, der har en mængde i denne
-              count. Produkter uden en mængde beholder deres nuværende lager.
-              Denne count kan ikke ændres bagefter.
+              optælling. Produkter uden en mængde beholder deres nuværende lager.
+              Denne optælling kan ikke ændres bagefter.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={submitting}>
-              Fortsæt count
+              Fortsæt optælling
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={submitting}
               onClick={() => void confirmSubmit()}
             >
               {submitting ? <Spinner data-icon="inline-start" /> : null}
-              Registrér count
+              Registrér optælling
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

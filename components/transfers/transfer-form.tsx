@@ -10,6 +10,7 @@ import {
   SaveIcon,
   Trash2Icon,
 } from "lucide-react";
+import Image from "next/image";
 import { useDeferredValue, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -416,14 +417,14 @@ export function TransferForm({
 
   function validate() {
     const nextErrors: Record<string, string> = {};
-    if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderlocation";
-    if (!toLocationId) nextErrors.toLocation = "Vælg modtagerlocation";
+    if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderlokation";
+    if (!toLocationId) nextErrors.toLocation = "Vælg modtagerlokation";
     if (
       fromLocationId &&
       toLocationId &&
       fromLocationId === toLocationId
     ) {
-      nextErrors.toLocation = "Fra- og til-location skal være forskellige";
+      nextErrors.toLocation = "Fra- og til-lokation skal være forskellige";
     }
     if (!responsibleUserId) nextErrors.responsible = "Vælg en ansvarlig";
     const transferredAt = fromDatetimeLocalValue(transferredAtLocal);
@@ -458,11 +459,11 @@ export function TransferForm({
       };
       if (transfer) {
         await updateTransfer({ transferId: transfer.id, ...payload });
-        toast.success("Transferen er opdateret");
+        toast.success("Flytningen er opdateret");
         onSaved?.();
       } else {
         await createTransfer(payload);
-        toast.success("Transferen er gemt");
+        toast.success("Flytningen er gemt");
         resetForm();
       }
     } catch (caught) {
@@ -482,7 +483,7 @@ export function TransferForm({
           <CardContent>
             <FieldGroup>
               <Field data-invalid={Boolean(errors.fromLocation)}>
-                <FieldLabel>Fra location</FieldLabel>
+                <FieldLabel>Fra lokation</FieldLabel>
                 {kiosk?.isKioskAccount && fromLocationId === kiosk.locationId ? (
                   <div className="flex h-11 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div>
                 ) : <CreatableCombobox
@@ -497,15 +498,15 @@ export function TransferForm({
                       return next;
                     });
                   }}
-                  placeholder="Søg efter location"
-                  ariaLabel="Fra location"
+                  placeholder="Søg efter lokation"
+                  ariaLabel="Fra lokation"
                   disabled={locations === undefined}
                 />}
                 <FieldError>{errors.fromLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
-                <FieldLabel>Til location</FieldLabel>
+                <FieldLabel>Til lokation</FieldLabel>
                 {kiosk?.isKioskAccount && toLocationId === kiosk.locationId ? (
                   <div className="flex h-11 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div>
                 ) : <CreatableCombobox
@@ -520,8 +521,8 @@ export function TransferForm({
                       return next;
                     });
                   }}
-                  placeholder="Søg efter location"
-                  ariaLabel="Til location"
+                  placeholder="Søg efter lokation"
+                  ariaLabel="Til lokation"
                   disabled={locations === undefined}
                 />}
                 <FieldError>{errors.toLocation}</FieldError>
@@ -625,14 +626,16 @@ export function TransferForm({
                     >
                       <div className="flex items-center gap-3">
                         {product.imageUrl ? (
-                          <div
-                            role="img"
-                            aria-label={`Produktbillede af ${product.productName}`}
-                            className="size-14 shrink-0 rounded-lg bg-muted bg-cover bg-center"
-                            style={{
-                              backgroundImage: `url("${product.imageUrl}")`,
-                            }}
-                          />
+                          <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+                            <Image
+                              src={product.imageUrl}
+                              alt={`Produktbillede af ${product.productName}`}
+                              fill
+                              sizes="3.5rem"
+                              className="object-cover"
+                              unoptimized
+                            />
+                          </div>
                         ) : (
                           <div
                             className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
@@ -671,7 +674,7 @@ export function TransferForm({
                             className="grid gap-3 py-2 sm:grid-cols-[minmax(8rem,1fr)_auto_auto] sm:items-center"
                           >
                             <Field>
-                              <FieldLabel className="sr-only">
+                              <FieldLabel htmlFor={`${line.key}-unit`} className="sr-only">
                                 Enhed for {line.productName}
                               </FieldLabel>
                               <Select
@@ -693,7 +696,7 @@ export function TransferForm({
                                   )
                                 }
                               >
-                                <SelectTrigger className="h-11 w-full">
+                                <SelectTrigger id={`${line.key}-unit`} className="h-11! w-full">
                                   <SelectValue placeholder="Vælg enhed" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -823,7 +826,7 @@ export function TransferForm({
           "sticky bottom-0 flex flex-col gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-end",
           transfer
             ? "-mx-4 px-4"
-            : "-mx-5 px-5 sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12",
+            : "-mx-4 px-4 sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12",
         )}
       >
         <div className="flex flex-col-reverse gap-2 sm:flex-row">
@@ -851,7 +854,7 @@ export function TransferForm({
             ) : (
               <SaveIcon data-icon="inline-start" />
             )}
-            {transfer ? "Gem ændringer" : "Gem transfer"}
+            {transfer ? "Gem ændringer" : "Gem flytning"}
           </Button>
         </div>
       </div>

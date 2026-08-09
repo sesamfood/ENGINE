@@ -222,7 +222,7 @@ export function WasteSettings() {
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre Waste-indstillinger.
+          Kun administratorer kan ændre spildindstillinger.
         </AlertDescription>
       </Alert>
     );
@@ -290,7 +290,7 @@ export function WasteSettings() {
         setCcDraft(null);
         setBccDraft(null);
       }
-      toast.success("Waste-indstillingerne er gemt");
+      toast.success("Spildindstillingerne er gemt");
     } catch (error) {
       toast.error(message(error));
     } finally {
@@ -302,7 +302,7 @@ export function WasteSettings() {
     <div className="flex max-w-3xl flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Waste-indstillinger</CardTitle>
+          <CardTitle>Spildindstillinger</CardTitle>
         </CardHeader>
         <CardContent>
           <FieldGroup>
@@ -334,14 +334,14 @@ export function WasteSettings() {
             </Field>
             <Field orientation="horizontal">
               <FieldContent>
-                <FieldLabel>Popularitetsperiode</FieldLabel>
+                <FieldLabel htmlFor="waste-popularity-period">Popularitetsperiode</FieldLabel>
               </FieldContent>
               <Select
                 items={periodItems}
                 value={period}
                 onValueChange={(value) => setPeriodDraft(value as Period)}
               >
-                <SelectTrigger className="w-52">
+                <SelectTrigger id="waste-popularity-period" className="w-52">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -363,7 +363,7 @@ export function WasteSettings() {
                   </FieldLabel>
                   <HelpTooltip
                     label="historik fra hele organisationen"
-                    content="Når indstillingen er slået til, bruges Waste fra alle locations til popularitet og anbefalede shortcuts. Når den er slået fra, bruges kun historikken fra den valgte location."
+                    content="Når indstillingen er slået til, bruges spild fra alle lokationer til popularitet og anbefalede genveje. Når den er slået fra, bruges kun historikken fra den valgte lokation."
                   />
                 </div>
               </FieldContent>
@@ -425,7 +425,7 @@ export function WasteSettings() {
                 </FieldLabel>
                 <HelpTooltip
                   label="E-mailens emne"
-                  content="Brug {location} for locationens navn og {date} for registreringens dato og tidspunkt."
+                  content="Brug {location} for lokationens navn og {date} for registreringens dato og tidspunkt."
                 />
               </div>
               <Input

@@ -417,7 +417,7 @@ export function MemberManagement() {
                           }
                           disabled={disabled}
                         >
-                          <SelectTrigger className="h-10 w-40">
+                          <SelectTrigger aria-label={`Rolle for ${member.user.name}`} className="h-10 w-40">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

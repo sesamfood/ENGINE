@@ -13,7 +13,7 @@ export async function otherFeaturesLocked(
 ) {
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
 
   const window = await getLocationCountWindow(
@@ -52,7 +52,7 @@ export async function requireOtherFeaturesUnlocked(
     await otherFeaturesLocked(ctx, organizationId, locationId, Date.now())
   ) {
     throw new ConvexError(
-      "Andre funktioner er låst, indtil denne location har registreret count",
+      "Andre funktioner er låst, indtil denne lokation har registreret optælling",
     );
   }
 }

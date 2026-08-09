@@ -12,6 +12,7 @@ import {
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
+import Image from "next/image";
 import {
   useDeferredValue,
   useEffect,
@@ -296,9 +297,9 @@ export function BadDeliveryRegistration() {
           <EmptyMedia variant="icon">
             <PackageOpenIcon />
           </EmptyMedia>
-          <EmptyTitle>Ingen locations</EmptyTitle>
+          <EmptyTitle>Ingen lokationer</EmptyTitle>
           <EmptyDescription>
-            Opret en location, før en dårlig levering kan registreres.
+            Opret en lokation, før en dårlig levering kan registreres.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -594,14 +595,16 @@ export function BadDeliveryRegistration() {
                   >
                     <div className="flex items-center gap-3">
                       {product.imageUrl ? (
-                        <div
-                          role="img"
-                          aria-label={`Produktbillede af ${product.productName}`}
-                          className="size-14 shrink-0 rounded-lg bg-muted bg-cover bg-center"
-                          style={{
-                            backgroundImage: `url("${product.imageUrl}")`,
-                          }}
-                        />
+                        <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+                          <Image
+                            src={product.imageUrl}
+                            alt={`Produktbillede af ${product.productName}`}
+                            fill
+                            sizes="3.5rem"
+                            className="object-cover"
+                            unoptimized
+                          />
+                        </div>
                       ) : (
                         <div className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                           <PackageOpenIcon aria-hidden="true" />
@@ -629,7 +632,7 @@ export function BadDeliveryRegistration() {
                           className="grid gap-3 py-2 sm:grid-cols-[minmax(8rem,1fr)_auto_auto] sm:items-center"
                         >
                           <Field>
-                            <FieldLabel className="sr-only">
+                            <FieldLabel htmlFor={`${line.key}-unit`} className="sr-only">
                               Enhed for {line.productName}
                             </FieldLabel>
                             <Select
@@ -648,7 +651,7 @@ export function BadDeliveryRegistration() {
                                 )
                               }
                             >
-                              <SelectTrigger className="h-11 w-full">
+                              <SelectTrigger id={`${line.key}-unit`} className="h-11! w-full">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -788,7 +791,7 @@ export function BadDeliveryRegistration() {
                   </FieldLabel>
                   <FieldDescription>
                     Trækker varernes omregnede standardmængder fra den valgte
-                    location.
+                    lokationen.
                   </FieldDescription>
                 </FieldContent>
                 <Switch
@@ -819,7 +822,7 @@ export function BadDeliveryRegistration() {
             </div>
           </DialogHeader>
           <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3 text-sm">
-            <dt className="text-muted-foreground">Location</dt>
+            <dt className="text-muted-foreground">Lokation</dt>
             <dd>{selectedLocation.name}</dd>
             <dt className="text-muted-foreground">Kommentar</dt>
             <dd>{comment.trim() || "Ingen kommentar"}</dd>

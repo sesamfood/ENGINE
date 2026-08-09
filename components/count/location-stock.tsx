@@ -7,6 +7,7 @@ import {
   ListIcon,
   PackageOpenIcon,
 } from "lucide-react";
+import Image from "next/image";
 import { useState } from "react";
 import {
   Card,
@@ -114,9 +115,9 @@ export function LocationStock() {
           <EmptyMedia variant="icon">
             <BoxesIcon />
           </EmptyMedia>
-          <EmptyTitle>Vælg en location</EmptyTitle>
+          <EmptyTitle>Vælg en lokation</EmptyTitle>
           <EmptyDescription>
-            Vælg den location, hvis lager du vil se.
+            Vælg den lokation, hvis lager du vil se.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -172,12 +173,16 @@ export function LocationStock() {
               className="h-full gap-0 py-0 [--card-spacing:--spacing(3)] lg:[--card-spacing:--spacing(4)]"
             >
               {row.imageUrl ? (
-                <div
-                  role="img"
-                  aria-label={`Produktbillede af ${row.productName}`}
-                  className="aspect-video w-full bg-muted bg-cover bg-center lg:aspect-[4/3]"
-                  style={{ backgroundImage: `url("${row.imageUrl}")` }}
-                />
+                <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
+                  <Image
+                    src={row.imageUrl}
+                    alt={`Produktbillede af ${row.productName}`}
+                    fill
+                    sizes="(max-width: 379px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
               ) : (
                 <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
                   <PackageOpenIcon
