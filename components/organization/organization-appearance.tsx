@@ -203,7 +203,6 @@ function LogoUploadCard({
               src={shownLogo}
               alt={`${organizationName} ${title.toLocaleLowerCase("da")}`}
               fill
-              unoptimized
               className={wide ? "object-contain" : "object-cover"}
               onLoad={(event) => {
                 if (wide) {

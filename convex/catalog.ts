@@ -720,12 +720,20 @@ export const listProducts = query({
                   )
           ).take(MAX_FUZZY_SEARCH_SCAN + 1);
           if (scanned.length > MAX_FUZZY_SEARCH_SCAN) {
-            throw new ConvexError(
-              "Der er for mange produkter til en fuld søgning. Vælg en kategori eller arkivér produkter, der ikke bruges",
-            );
+            return await ctx.db
+              .query("products")
+              .withSearchIndex("search_name", (q) => {
+                const productSearch = q
+                  .search("name", search)
+                  .eq("organizationId", organizationId)
+                  .eq("status", args.status);
+                return args.categoryId
+                  ? productSearch.eq("categoryId", args.categoryId)
+                  : productSearch;
+              })
+              .paginate(args.paginationOpts);
           }
-          const products = scanned.slice(0, MAX_FUZZY_SEARCH_SCAN);
-          const matches = products
+          const matches = scanned
             .map((product) => {
               const productScore = fuzzyScore(product.name, search);
               const categoryScore = fuzzyScore(
@@ -756,7 +764,6 @@ export const listProducts = query({
             offset + args.paginationOpts.numItems,
             matches.length,
           );
-
           return {
             page: matches.slice(offset, end),
             isDone: end === matches.length,

@@ -73,7 +73,6 @@ function ProductImage({ product }: { product: CatalogProduct }) {
           fill
           sizes="(max-width: 639px) 100vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
           className="object-cover"
-          unoptimized
         />
       </div>
     );

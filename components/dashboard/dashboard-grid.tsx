@@ -17,7 +17,9 @@ import {
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
 import { useMemo, useState, type CSSProperties } from "react";
+import { useQuery } from "convex/react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import {
@@ -28,7 +30,7 @@ import {
   widgetsOverlappingPosition,
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
-import type { DashboardRange, DashboardScope, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { DashboardRange, DashboardScope, MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
 
 const sizeClasses: Record<WidgetSize, string> = {
@@ -38,6 +40,33 @@ const sizeClasses: Record<WidgetSize, string> = {
   "2x2": "col-span-1 row-span-2 sm:col-span-2",
   "4x2": "col-span-1 row-span-2 sm:col-span-2 xl:col-span-4",
 };
+
+function useMetricBatch(
+  widgets: WidgetInstance[],
+  scope: DashboardScope,
+  range: DashboardRange,
+  now: number,
+  publicAccess?: { token: string; accessKey: string },
+) {
+  const requests = widgets.map(({ key, metricId, visualization }) => ({
+    key,
+    metricId,
+    visualization,
+  }));
+  const authenticated = useQuery(
+    api.dashboard.getMetrics,
+    publicAccess || requests.length === 0
+      ? "skip"
+      : { widgets: requests, scope, range, now },
+  );
+  const shared = useQuery(
+    api.dashboardShare.getSharedMetrics,
+    publicAccess && requests.length > 0
+      ? { ...publicAccess, widgets: requests, now }
+      : "skip",
+  );
+  return publicAccess ? shared : authenticated;
+}
 
 function dashboardCollision(widgets: WidgetInstance[]): CollisionDetection {
   return (args) => {
@@ -159,22 +188,16 @@ function DropFootprint({
 function DraggableWidget({
   widget,
   sourceSize,
-  scope,
-  range,
-  now,
+  result,
   editable,
-  publicAccess,
   onChange,
   onResize,
   onRemove,
 }: {
   widget: WidgetInstance;
   sourceSize: WidgetSize;
-  scope: DashboardScope;
-  range: DashboardRange;
-  now: number;
+  result?: MetricResult;
   editable: boolean;
-  publicAccess?: { token: string; accessKey: string };
   onChange: (widget: WidgetInstance) => void;
   onResize: (size: WidgetSize, complete: boolean) => void;
   onRemove: () => void;
@@ -205,12 +228,9 @@ function DraggableWidget({
     >
       <DashboardWidget
         widget={widget}
-        scope={scope}
-        range={range}
-        now={now}
+        result={result}
         editable={editable}
         resizing={widget.size !== sourceSize}
-        publicAccess={publicAccess}
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
         onResize={onResize}
         onRemove={onRemove}
@@ -243,6 +263,23 @@ export function DashboardGrid({
     targetKey?: string;
   } | null>(null);
   const [resizePreview, setResizePreview] = useState<{ key: string; size: WidgetSize } | null>(null);
+  const batch0 = useMetricBatch(widgets.slice(0, 3), scope, range, now, publicAccess);
+  const batch1 = useMetricBatch(widgets.slice(3, 6), scope, range, now, publicAccess);
+  const batch2 = useMetricBatch(widgets.slice(6, 9), scope, range, now, publicAccess);
+  const batch3 = useMetricBatch(widgets.slice(9, 12), scope, range, now, publicAccess);
+  const batch4 = useMetricBatch(widgets.slice(12, 15), scope, range, now, publicAccess);
+  const batch5 = useMetricBatch(widgets.slice(15, 18), scope, range, now, publicAccess);
+  const batch6 = useMetricBatch(widgets.slice(18, 21), scope, range, now, publicAccess);
+  const batch7 = useMetricBatch(widgets.slice(21, 24), scope, range, now, publicAccess);
+  const metricResults = useMemo(
+    () =>
+      new Map(
+        [batch0, batch1, batch2, batch3, batch4, batch5, batch6, batch7]
+          .flatMap((batch) => batch ?? [])
+          .map(({ key, result }) => [key, result] as const),
+      ),
+    [batch0, batch1, batch2, batch3, batch4, batch5, batch6, batch7],
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
@@ -332,11 +369,8 @@ export function DashboardGrid({
               key={widget.key}
               widget={widget}
               sourceSize={source.size}
-              scope={scope}
-              range={range}
-              now={now}
+              result={metricResults.get(widget.key)}
               editable={editable}
-              publicAccess={publicAccess}
               onChange={(next) => onChange?.(layout.map((item) => item.key === widget.key ? next : item))}
               onResize={(size, complete) => {
                 if (!complete) {

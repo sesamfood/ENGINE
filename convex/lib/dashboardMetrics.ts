@@ -22,6 +22,7 @@ export type DashboardMetricParams = {
   granularity: "day";
   timeZone: string;
   now: number;
+  cache: Map<string, Promise<unknown>>;
 };
 
 type MetricComputer = (
@@ -183,8 +184,21 @@ export async function resolveMetricParams(
     compare: scope.mode === "compare" && locations.length >= 2,
     granularity: "day" as const,
     now,
+    cache: new Map<string, Promise<unknown>>(),
     ...resolveDashboardRange(range, scheduleSettings?.timeZone, now),
   };
+}
+
+function cached<T>(
+  params: DashboardMetricParams,
+  key: string,
+  load: () => Promise<T>,
+) {
+  const existing = params.cache.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const result = load();
+  params.cache.set(key, result);
+  return result;
 }
 
 function rounded(value: number) {
@@ -240,14 +254,16 @@ function seriesResult(
 }
 
 async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  const selected = new Set(params.locations.map((location) => location.id));
-  const rows = await ctx.db
-    .query("wasteRegistrations")
-    .withIndex("by_org_status_time", (q) =>
-      q.eq("organizationId", params.organizationId).eq("status", "active").gte("registeredAt", params.previousFrom).lt("registeredAt", params.to),
-    )
-    .take(MAX_ROWS + 1);
-  return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  return await cached(params, "waste", async () => {
+    const selected = new Set(params.locations.map((location) => location.id));
+    const rows = await ctx.db
+      .query("wasteRegistrations")
+      .withIndex("by_org_status_time", (q) =>
+        q.eq("organizationId", params.organizationId).eq("status", "active").gte("registeredAt", params.previousFrom).lt("registeredAt", params.to),
+      )
+      .take(MAX_ROWS + 1);
+    return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  });
 }
 
 const wasteQuantity: MetricComputer = async (ctx, params) => {
@@ -326,14 +342,16 @@ const wasteByCategory: MetricComputer = async (ctx, params) => {
 };
 
 async function badDeliveryRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  const selected = new Set(params.locations.map((location) => location.id));
-  const rows = await ctx.db
-    .query("badDeliveries")
-    .withIndex("by_organizationId_and_status_and_registeredAt", (q) =>
-      q.eq("organizationId", params.organizationId).eq("status", "active").gte("registeredAt", params.previousFrom).lt("registeredAt", params.to),
-    )
-    .take(MAX_ROWS + 1);
-  return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  return await cached(params, "bad-deliveries", async () => {
+    const selected = new Set(params.locations.map((location) => location.id));
+    const rows = await ctx.db
+      .query("badDeliveries")
+      .withIndex("by_organizationId_and_status_and_registeredAt", (q) =>
+        q.eq("organizationId", params.organizationId).eq("status", "active").gte("registeredAt", params.previousFrom).lt("registeredAt", params.to),
+      )
+      .take(MAX_ROWS + 1);
+    return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  });
 }
 
 const badDeliveries: MetricComputer = async (ctx, params) => {
@@ -342,16 +360,18 @@ const badDeliveries: MetricComputer = async (ctx, params) => {
 };
 
 async function countRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  const parts = await Promise.all(
-    params.locations.map((location) =>
-      ctx.db
-        .query("counts")
-        .withIndex("by_organizationId_and_locationId_and_periodKey", (q) => q.eq("organizationId", params.organizationId).eq("locationId", location.id))
-        .order("desc")
-        .take(101),
-    ),
-  );
-  return { rows: parts.flat().slice(0, MAX_ROWS), truncated: parts.some((part) => part.length > 100) || parts.flat().length > MAX_ROWS };
+  return await cached(params, "counts", async () => {
+    const parts = await Promise.all(
+      params.locations.map((location) =>
+        ctx.db
+          .query("counts")
+          .withIndex("by_organizationId_and_locationId_and_periodKey", (q) => q.eq("organizationId", params.organizationId).eq("locationId", location.id))
+          .order("desc")
+          .take(101),
+      ),
+    );
+    return { rows: parts.flat().slice(0, MAX_ROWS), truncated: parts.some((part) => part.length > 100) || parts.flat().length > MAX_ROWS };
+  });
 }
 
 const countCompliance: MetricComputer = async (ctx, params) => {
@@ -386,12 +406,14 @@ const openCounts: MetricComputer = async (ctx, params) => {
 };
 
 async function transferRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  const selected = new Set(params.locations.map((location) => location.id));
-  const rows = await ctx.db
-    .query("transfers")
-    .withIndex("by_organizationId_and_transferredAt", (q) => q.eq("organizationId", params.organizationId).gte("transferredAt", params.previousFrom).lt("transferredAt", params.to))
-    .take(MAX_ROWS + 1);
-  return { rows: rows.filter((row) => selected.has(row.fromLocationId) || selected.has(row.toLocationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  return await cached(params, "transfers", async () => {
+    const selected = new Set(params.locations.map((location) => location.id));
+    const rows = await ctx.db
+      .query("transfers")
+      .withIndex("by_organizationId_and_transferredAt", (q) => q.eq("organizationId", params.organizationId).gte("transferredAt", params.previousFrom).lt("transferredAt", params.to))
+      .take(MAX_ROWS + 1);
+    return { rows: rows.filter((row) => selected.has(row.fromLocationId) || selected.has(row.toLocationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  });
 }
 
 const transfers: MetricComputer = async (ctx, params) => {
@@ -399,19 +421,21 @@ const transfers: MetricComputer = async (ctx, params) => {
   return seriesResult("count", result.rows.map((row) => ({ timestamp: row.transferredAt, locationId: row.fromLocationId, value: 1 })), params, { truncated: result.truncated || undefined });
 };
 
-async function transferItems(ctx: QueryCtx, transfers: Doc<"transfers">[]) {
-  const selected = transfers.slice(0, MAX_TRANSFER_DETAILS);
-  const parts = await Promise.all(selected.map((transfer) => ctx.db.query("transferItems").withIndex("by_organizationId_and_transferId", (q) => q.eq("organizationId", transfer.organizationId).eq("transferId", transfer._id)).take(201)));
-  const rows = parts.flat();
-  return {
-    rows: rows.slice(0, MAX_ROWS),
-    truncated: transfers.length > selected.length || parts.some((part) => part.length > 200) || rows.length > MAX_ROWS,
-  };
+async function transferItems(ctx: QueryCtx, params: DashboardMetricParams, transfers: Doc<"transfers">[]) {
+  return await cached(params, "transfer-items", async () => {
+    const selected = transfers.slice(0, MAX_TRANSFER_DETAILS);
+    const parts = await Promise.all(selected.map((transfer) => ctx.db.query("transferItems").withIndex("by_organizationId_and_transferId", (q) => q.eq("organizationId", transfer.organizationId).eq("transferId", transfer._id)).take(201)));
+    const rows = parts.flat();
+    return {
+      rows: rows.slice(0, MAX_ROWS),
+      truncated: transfers.length > selected.length || parts.some((part) => part.length > 200) || rows.length > MAX_ROWS,
+    };
+  });
 }
 
 const itemsMoved: MetricComputer = async (ctx, params) => {
   const transferResult = await transferRows(ctx, params);
-  const itemResult = await transferItems(ctx, transferResult.rows);
+  const itemResult = await transferItems(ctx, params, transferResult.rows);
   const byTransfer = new Map(transferResult.rows.map((row) => [row._id, row]));
   const rows = itemResult.rows.flatMap((item) => {
     const transfer = byTransfer.get(item.transferId);
@@ -422,7 +446,7 @@ const itemsMoved: MetricComputer = async (ctx, params) => {
 
 const topTransferredProducts: MetricComputer = async (ctx, params) => {
   const transferResult = await transferRows(ctx, params);
-  const itemResult = await transferItems(ctx, transferResult.rows);
+  const itemResult = await transferItems(ctx, params, transferResult.rows);
   const byTransfer = new Map(transferResult.rows.map((row) => [row._id, row]));
   const values = new Map<string, { label: string; value: number }>();
   const rows: TimedValue[] = [];
@@ -444,12 +468,14 @@ const topTransferredProducts: MetricComputer = async (ctx, params) => {
 };
 
 async function staffFoodRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  const selected = new Set(params.locations.map((location) => location.id));
-  const rows = await ctx.db
-    .query("staffFoodRegistrations")
-    .withIndex("by_organizationId_and_registeredAt", (q) => q.eq("organizationId", params.organizationId).gte("registeredAt", params.previousFrom).lt("registeredAt", params.to))
-    .take(MAX_ROWS + 1);
-  return { rows: rows.filter((row) => row.status === "active" && selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  return await cached(params, "staff-food", async () => {
+    const selected = new Set(params.locations.map((location) => location.id));
+    const rows = await ctx.db
+      .query("staffFoodRegistrations")
+      .withIndex("by_organizationId_and_registeredAt", (q) => q.eq("organizationId", params.organizationId).gte("registeredAt", params.previousFrom).lt("registeredAt", params.to))
+      .take(MAX_ROWS + 1);
+    return { rows: rows.filter((row) => row.status === "active" && selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  });
 }
 
 const staffFoodRegistrations: MetricComputer = async (ctx, params) => {
@@ -472,12 +498,14 @@ const staffFoodPerEmployee: MetricComputer = async (ctx, params) => {
 };
 
 async function shiftRows(ctx: QueryCtx, params: DashboardMetricParams, from = params.previousFrom, to = params.to) {
-  const selected = new Set(params.locations.map((location) => location.id));
-  const rows = await ctx.db
-    .query("scheduledShifts")
-    .withIndex("by_organizationId_and_startsAt", (q) => q.eq("organizationId", params.organizationId).gte("startsAt", from).lt("startsAt", to))
-    .take(MAX_ROWS + 1);
-  return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  return await cached(params, `shifts:${from}:${to}`, async () => {
+    const selected = new Set(params.locations.map((location) => location.id));
+    const rows = await ctx.db
+      .query("scheduledShifts")
+      .withIndex("by_organizationId_and_startsAt", (q) => q.eq("organizationId", params.organizationId).gte("startsAt", from).lt("startsAt", to))
+      .take(MAX_ROWS + 1);
+    return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+  });
 }
 
 const scheduledHours: MetricComputer = async (ctx, params) => {
@@ -524,31 +552,33 @@ const locationComparison: MetricComputer = async (ctx, params) => {
 };
 
 async function salesDailyRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  const rows: Doc<"salesDaily">[] = [];
-  let truncated = false;
-  for (const location of params.locations) {
-    const remaining = MAX_ROWS - rows.length;
-    if (remaining === 0) {
-      truncated = true;
-      break;
+  return await cached(params, "sales-daily", async () => {
+    const rows: Doc<"salesDaily">[] = [];
+    let truncated = false;
+    for (const location of params.locations) {
+      const remaining = MAX_ROWS - rows.length;
+      if (remaining === 0) {
+        truncated = true;
+        break;
+      }
+      const locationRows = await ctx.db
+        .query("salesDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", location.id)
+            .gte("dayStart", params.previousFrom)
+            .lt("dayStart", params.to),
+        )
+        .take(remaining + 1);
+      rows.push(...locationRows.slice(0, remaining));
+      if (locationRows.length > remaining) {
+        truncated = true;
+        break;
+      }
     }
-    const locationRows = await ctx.db
-      .query("salesDaily")
-      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", location.id)
-          .gte("dayStart", params.previousFrom)
-          .lt("dayStart", params.to),
-      )
-      .take(remaining + 1);
-    rows.push(...locationRows.slice(0, remaining));
-    if (locationRows.length > remaining) {
-      truncated = true;
-      break;
-    }
-  }
-  return { rows, truncated };
+    return { rows, truncated };
+  });
 }
 
 const salesRevenue: MetricComputer = async (ctx, params) => {

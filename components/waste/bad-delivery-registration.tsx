@@ -602,7 +602,6 @@ export function BadDeliveryRegistration() {
                             fill
                             sizes="3.5rem"
                             className="object-cover"
-                            unoptimized
                           />
                         </div>
                       ) : (

@@ -18,7 +18,9 @@ import type {
 } from "../lib/dashboard/types";
 import {
   dashboardConfigValidator,
+  keyedMetricResultValidator,
   metricIdValidator,
+  metricRequestValidator,
   metricResultValidator,
   rangeValidator,
   scopeValidator,
@@ -42,6 +44,7 @@ const MAX_WIDGETS = 24;
 const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
 const CLEANUP_PAGE = 50;
+const MAX_METRIC_BATCH = 3;
 
 const shareSummaryValidator = v.object({
   id: v.id("dashboardShares"),
@@ -152,6 +155,53 @@ export const getConfig = query({
   },
 });
 
+async function writeConfig(
+  ctx: MutationCtx,
+  args: {
+    widgets: WidgetInstance[];
+    scope: DashboardScope;
+    range: DashboardConfig["range"];
+  },
+  expectedUpdatedAt?: number | null,
+) {
+  const { organizationId, userIdentifier, role } =
+    await requireDashboardViewer(ctx);
+  validateWidgets(args.widgets, role);
+  await validateScope(ctx, organizationId, args.scope);
+  const current = await ctx.db
+    .query("dashboards")
+    .withIndex("by_organizationId_and_userIdentifier", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("userIdentifier", userIdentifier),
+    )
+    .unique();
+  if (
+    expectedUpdatedAt !== undefined &&
+    (current?.updatedAt ?? null) !== expectedUpdatedAt
+  ) {
+    throw new ConvexError(
+      "Overblikket blev ændret i en anden fane. Dine seneste ændringer blev ikke gemt",
+    );
+  }
+  const updatedAt = Math.max(Date.now(), (current?.updatedAt ?? 0) + 1);
+  const data = {
+    widgets: args.widgets,
+    scope: args.scope,
+    range: args.range,
+    updatedAt,
+  };
+  if (current) await ctx.db.patch(current._id, data);
+  else {
+    await ctx.db.insert("dashboards", {
+      organizationId,
+      userIdentifier,
+      ...data,
+    });
+  }
+  return updatedAt;
+}
+
 export const saveConfig = mutation({
   args: {
     widgets: v.array(widgetValidator),
@@ -160,20 +210,21 @@ export const saveConfig = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
-    const { organizationId, userIdentifier, role } = await requireDashboardViewer(ctx);
-    validateWidgets(args.widgets, role);
-    await validateScope(ctx, organizationId, args.scope);
-    const current = await ctx.db
-      .query("dashboards")
-      .withIndex("by_organizationId_and_userIdentifier", (q) =>
-        q.eq("organizationId", organizationId).eq("userIdentifier", userIdentifier),
-      )
-      .unique();
-    const data = { widgets: args.widgets, scope: args.scope, range: args.range, updatedAt: Date.now() };
-    if (current) await ctx.db.patch(current._id, data);
-    else await ctx.db.insert("dashboards", { organizationId, userIdentifier, ...data });
+    await writeConfig(ctx, args);
     return null;
   },
+});
+
+export const saveConfigRevisioned = mutation({
+  args: {
+    widgets: v.array(widgetValidator),
+    scope: scopeValidator,
+    range: rangeValidator,
+    expectedUpdatedAt: v.union(v.number(), v.null()),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) =>
+    await writeConfig(ctx, args, args.expectedUpdatedAt),
 });
 
 export const getMetric = query({
@@ -202,6 +253,60 @@ export const getMetric = query({
       args.now,
     );
     return await dashboardMetricComputers[args.metricId](ctx, params);
+  },
+});
+
+export const getMetrics = query({
+  args: {
+    widgets: v.array(metricRequestValidator),
+    scope: scopeValidator,
+    range: rangeValidator,
+    now: v.number(),
+  },
+  returns: v.array(keyedMetricResultValidator),
+  handler: async (ctx, args) => {
+    const { organizationId, role } = await requireDashboardViewer(ctx);
+    if (
+      args.widgets.length > MAX_METRIC_BATCH ||
+      new Set(args.widgets.map((widget) => widget.key)).size !==
+        args.widgets.length
+    ) {
+      throw new ConvexError("Widgetgruppen er ugyldig");
+    }
+    for (const widget of args.widgets) {
+      const definition = metricRegistry[widget.metricId];
+      if (!definition.visualizations.includes(widget.visualization)) {
+        throw new ConvexError("Visualiseringen understøttes ikke af målingen");
+      }
+      if (definition.adminOnly && role !== "admin") {
+        throw new ConvexError("Du har ikke adgang til denne måling");
+      }
+    }
+    const params = await resolveMetricParams(
+      ctx,
+      organizationId,
+      args.scope,
+      args.range,
+      args.now,
+    );
+    const results = new Map<
+      string,
+      ReturnType<(typeof dashboardMetricComputers)[keyof typeof dashboardMetricComputers]>
+    >();
+    for (const widget of args.widgets) {
+      if (!results.has(widget.metricId)) {
+        results.set(
+          widget.metricId,
+          dashboardMetricComputers[widget.metricId](ctx, params),
+        );
+      }
+    }
+    return await Promise.all(
+      args.widgets.map(async (widget) => ({
+        key: widget.key,
+        result: await results.get(widget.metricId)!,
+      })),
+    );
   },
 });
 

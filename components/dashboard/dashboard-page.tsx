@@ -32,11 +32,14 @@ function DashboardContent() {
   const config = useQuery(api.dashboard.getConfig, canViewDashboard(membership.data?.role) ? {} : "skip");
   const locations = useQuery(api.locations.listLocationOptions, canViewDashboard(membership.data?.role) ? {} : "skip");
   const organizationContext = useQuery(api.employees.getContext, canViewDashboard(membership.data?.role) ? {} : "skip");
-  const saveConfig = useMutation(api.dashboard.saveConfig);
+  const saveConfig = useMutation(api.dashboard.saveConfigRevisioned);
   const [local, setLocal] = useState<DashboardConfig | null>(null);
   const [editing, setEditing] = useState(false);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const current = useRef<DashboardConfig | null>(null);
+  const persistedRevision = useRef<number | null>(null);
+  const pendingSaveCount = useRef(0);
+  const [pendingSaves, setPendingSaves] = useState(0);
   const pendingConfigSave = useRef<Promise<void>>(Promise.resolve());
   const now = useDashboardNow();
 
@@ -47,6 +50,14 @@ function DashboardContent() {
 
   useEffect(() => {
     if (!config) return;
+    if (pendingSaveCount.current > 0) return;
+    if (
+      config.updatedAt !== null &&
+      persistedRevision.current !== null &&
+      config.updatedAt < persistedRevision.current
+    ) {
+      return;
+    }
     const hasRestrictedWidget =
       membership.data?.role !== "admin" &&
       current.current?.widgets.some(
@@ -59,10 +70,11 @@ function DashboardContent() {
           !metricRegistry[widget.metricId].adminOnly,
       );
       const normalized = { ...config, widgets: layoutDashboardWidgets(allowedWidgets) };
+      persistedRevision.current = config.updatedAt;
       current.current = normalized;
       setLocal(normalized);
     }
-  }, [config, membership.data?.role]);
+  }, [config, membership.data?.role, pendingSaves]);
 
   if (membership.isPending) return <Skeleton className="h-96" />;
   if (!canViewDashboard(membership.data?.role)) {
@@ -73,14 +85,26 @@ function DashboardContent() {
   function commit(next: DashboardConfig) {
     current.current = next;
     setLocal(next);
+    pendingSaveCount.current += 1;
+    setPendingSaves((count) => count + 1);
     const save = pendingConfigSave.current
       .catch(() => undefined)
       .then(async () => {
-        await saveConfig({
+        const updatedAt = await saveConfig({
           widgets: next.widgets,
           scope: next.scope,
           range: next.range,
+          expectedUpdatedAt: persistedRevision.current,
         });
+        persistedRevision.current = updatedAt;
+        if (current.current) {
+          current.current = { ...current.current, updatedAt };
+          setLocal(current.current);
+        }
+      })
+      .finally(() => {
+        pendingSaveCount.current -= 1;
+        setPendingSaves((count) => count - 1);
       });
     pendingConfigSave.current = save;
     void save.catch((error) => toast.error(message(error)));

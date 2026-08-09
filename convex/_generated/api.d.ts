@@ -44,6 +44,7 @@ import type * as onlinePosSync from "../onlinePosSync.js";
 import type * as organization from "../organization.js";
 import type * as sales from "../sales.js";
 import type * as staffFood from "../staffFood.js";
+import type * as storageCleanup from "../storageCleanup.js";
 import type * as transfers from "../transfers.js";
 import type * as waste from "../waste.js";
 import type * as workfeed from "../workfeed.js";
@@ -92,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   organization: typeof organization;
   sales: typeof sales;
   staffFood: typeof staffFood;
+  storageCleanup: typeof storageCleanup;
   transfers: typeof transfers;
   waste: typeof waste;
   workfeed: typeof workfeed;

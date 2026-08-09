@@ -422,7 +422,6 @@ function OrganizationHome() {
           alt={organization?.name ?? "Organisation"}
           width={200}
           height={48}
-          unoptimized
           className="max-h-10 w-auto max-w-full object-contain"
         />
       </Link>
@@ -446,7 +445,6 @@ function OrganizationHome() {
             src={logoUrl}
             alt={organization?.name ?? "Organisation"}
             fill
-            unoptimized
             className="object-cover"
           />
         ) : (
