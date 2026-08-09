@@ -175,6 +175,12 @@ export function parseProducts(payload: unknown): OnlinePosProduct[] {
   });
 }
 
+export async function requestProducts(
+  settings: OnlinePosSettings,
+): Promise<OnlinePosProduct[]> {
+  return parseProducts(await requestOnlinePos("/getProducts", settings));
+}
+
 export async function requestSales(
   settings: OnlinePosSettings,
   from: number,

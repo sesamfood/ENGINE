@@ -11,8 +11,7 @@ import {
 } from "./_generated/server";
 import { requireOrganizationAdmin } from "./lib/auth";
 import {
-  parseProducts,
-  requestOnlinePos,
+  requestProducts,
   requestSales,
   type OnlinePosProduct,
 } from "./lib/onlinePosApi";
@@ -377,12 +376,10 @@ export const connect = action({
     const { organizationId } = await requireOrganizationAdmin(ctx);
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
-    const products = parseProducts(
-      await requestOnlinePos("/getProducts", {
-        token,
-        companyId: args.companyId,
-      }),
-    );
+    const products = await requestProducts({
+      token,
+      companyId: args.companyId,
+    });
     await ctx.runMutation(internal.onlinePos.saveConnection, {
       organizationId,
       token,
@@ -439,7 +436,7 @@ export const setEnabled = action({
     });
     if (!settings) throw new ConvexError("OnlinePOS er ikke forbundet");
     if (args.enabled) {
-      parseProducts(await requestOnlinePos("/getProducts", settings));
+      await requestProducts(settings);
     }
     await ctx.runMutation(internal.onlinePos.setEnabledInternal, {
       organizationId,
@@ -524,7 +521,7 @@ export const listProducts = action({
   returns: v.array(onlinePosProductValidator),
   handler: async (ctx): Promise<OnlinePosProduct[]> => {
     const { settings } = await requireEnabledSettings(ctx);
-    return parseProducts(await requestOnlinePos("/getProducts", settings));
+    return requestProducts(settings);
   },
 });
 
@@ -651,9 +648,7 @@ export const setProductMapping = action({
     const { organizationId, settings } = await requireEnabledSettings(ctx);
 
     if (args.onlinePosProductId !== null) {
-      const products = parseProducts(
-        await requestOnlinePos("/getProducts", settings),
-      );
+      const products = await requestProducts(settings);
       if (!products.some((product) => product.id === args.onlinePosProductId)) {
         throw new ConvexError(
           "Produktet findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",
@@ -670,7 +665,7 @@ export const setProductMapping = action({
   },
 });
 
-export const buildCountWasteReport = internalQuery({
+export const buildCountWasteReport = query({
   args: { countId: v.id("counts") },
   returns: wasteReportResultValidator,
   handler: async (ctx, args): Promise<{
@@ -847,30 +842,5 @@ export const buildCountWasteReport = internalQuery({
             ];
       }),
     };
-  },
-});
-
-export const exportCountWasteReport = action({
-  args: { countId: v.id("counts") },
-  returns: wasteReportResultValidator,
-  handler: async (ctx, args) => {
-    const report: {
-      locationName: string;
-      submittedAt: number;
-      hasBaseline: boolean;
-      salesIncluded: boolean;
-      salesOmittedReason: string | null;
-      rows: Array<{
-        productName: string;
-        defaultUnitName: string;
-        expectedQuantity: number;
-        salesQuantity: number;
-        countedQuantity: number;
-        wasteQuantity: number;
-      }>;
-    } = await ctx.runQuery(internal.onlinePos.buildCountWasteReport, {
-      countId: args.countId,
-    });
-    return report;
   },
 });

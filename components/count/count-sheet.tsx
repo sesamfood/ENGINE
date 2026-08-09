@@ -17,7 +17,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   BoxesIcon,
   DownloadIcon,
@@ -804,11 +804,9 @@ export function CountSheet() {
   const pendingValues = useRef(new Map<string, QuantityPayload>());
   const timers = useRef(new Map<string, number>());
   const inFlight = useRef(new Map<string, Promise<null>>());
+  const convex = useConvex();
   const setQuantity = useMutation(api.count.setCountQuantity);
   const submitCount = useMutation(api.count.submitCount);
-  const exportCountWasteReport = useAction(
-    api.onlinePos.exportCountWasteReport,
-  );
   const setDefaultOrder = useMutation(api.count.setCountProductOrder);
   const locations = useQuery(api.locations.listLocationOptions);
   const locationId = locations?.some(
@@ -1093,7 +1091,9 @@ export function CountSheet() {
     if (!state?.count?.id) return;
     setExporting(true);
     try {
-      const report = await exportCountWasteReport({ countId: state.count.id });
+      const report = await convex.query(api.onlinePos.buildCountWasteReport, {
+        countId: state.count.id,
+      });
       if (!report.hasBaseline) {
         toast.error("Spildrapporten kræver en tidligere registreret optælling");
         return;
