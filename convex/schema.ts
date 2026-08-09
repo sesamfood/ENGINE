@@ -1108,5 +1108,6 @@ export default defineSchema({
     lastViewedAt: v.optional(v.number()),
   })
     .index("by_token", ["token"])
-    .index("by_organizationId", ["organizationId"]),
+    .index("by_organizationId", ["organizationId"])
+    .index("by_revokedAt_and_expiresAt", ["revokedAt", "expiresAt"]),
 });
