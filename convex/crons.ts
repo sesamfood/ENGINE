@@ -33,11 +33,4 @@ crons.interval(
   { cursor: null },
 );
 
-crons.interval(
-  "expire dashboard shares",
-  { minutes: 1 },
-  internal.dashboardShare.expireShares,
-  {},
-);
-
 export default crons;

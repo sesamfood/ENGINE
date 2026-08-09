@@ -46,29 +46,6 @@ export const expireShare = internalMutation({
   },
 });
 
-export const expireShares = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const now = Date.now();
-    const shares = await ctx.db
-      .query("dashboardShares")
-      .withIndex("by_revokedAt_and_expiresAt", (q) =>
-        q.eq("revokedAt", undefined).lte("expiresAt", now),
-      )
-      .take(101);
-    for (const share of shares.slice(0, 100)) {
-      if (!share.revokedAt) {
-        await ctx.db.patch(share._id, { revokedAt: share.expiresAt });
-      }
-    }
-    if (shares.length > 100) {
-      await ctx.scheduler.runAfter(0, internal.dashboardShare.expireShares, {});
-    }
-    return null;
-  },
-});
-
 async function requireShare(
   ctx: QueryCtx,
   token: string,
