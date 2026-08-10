@@ -8,7 +8,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import { requireOrganization, requireIntegrationManager } from "./lib/auth";
 import {
   requestDepartments,
   type WorkfeedDepartment,
@@ -42,7 +42,7 @@ function requireCredential(value: string, label: string, maxLength: number) {
 async function requireConnectedSettings(
   ctx: ActionCtx,
 ): Promise<{ organizationId: string; settings: WorkfeedSettings }> {
-  const { organizationId } = await requireOrganizationAdmin(ctx);
+  const { organizationId } = await requireIntegrationManager(ctx);
   const settings: WorkfeedSettings | null = await ctx.runQuery(
     internal.workfeed.getPrivateSettings,
     { organizationId },
@@ -60,7 +60,7 @@ export const getSettings = query({
     connectedAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const settings = await ctx.db
       .query("workfeedIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -105,7 +105,7 @@ export const listLocationMappings = query({
     limitReached: v.boolean(),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const [locations, mappings] = await Promise.all([
       ctx.db
         .query("locations")
@@ -318,7 +318,7 @@ export const connect = action({
   args: { apiKey: v.string(), companyId: v.string() },
   returns: v.object({ departmentCount: v.number() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const apiKey = requireCredential(args.apiKey, "Workfeed API-nøgle", 500);
     const companyId = requireCredential(
       args.companyId,
@@ -393,7 +393,7 @@ export const removeLocationMapping = mutation({
   args: { locationId: v.id("locations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const mapping = await ctx.db
       .query("workfeedLocationMappings")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -416,7 +416,7 @@ export const disconnect = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const [settings, mappings] = await Promise.all([
       ctx.db
         .query("workfeedIntegrations")

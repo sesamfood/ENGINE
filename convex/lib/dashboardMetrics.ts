@@ -150,6 +150,7 @@ export async function resolveMetricParams(
   scope: { mode: "aggregate" | "compare"; locationIds: Id<"locations">[] | null },
   range: DashboardRange,
   now: number,
+  allowedLocationScope?: { all: boolean; ids: ReadonlySet<Id<"locations">> },
 ) {
   if (!Number.isFinite(now)) throw new ConvexError("Tidspunktet er ugyldigt");
   const [allLocations, scheduleSettings] = await Promise.all([
@@ -167,9 +168,22 @@ export async function resolveMetricParams(
   if (allLocations.length > 200) throw new ConvexError("Organisationen har for mange lokationer");
 
   const byId = new Map(allLocations.map((location) => [location._id, location]));
-  const selectedIds = [...new Set(
-    scope.locationIds ?? allLocations.map((location) => location._id),
-  )];
+  const availableIds = allowedLocationScope?.all
+    ? allLocations.map((location) => location._id)
+    : allowedLocationScope
+      ? allLocations
+          .filter((location) => allowedLocationScope.ids.has(location._id))
+          .map((location) => location._id)
+      : allLocations.map((location) => location._id);
+  const selectedIds = [
+    ...new Set(scope.locationIds ?? availableIds),
+  ];
+  if (
+    allowedLocationScope &&
+    selectedIds.some((locationId) => !availableIds.includes(locationId))
+  ) {
+    throw new ConvexError("Du har ikke adgang til en eller flere lokationer");
+  }
   if (selectedIds.length > MAX_SCOPE_LOCATIONS) {
     throw new ConvexError(`Overblikket kan højst vise ${MAX_SCOPE_LOCATIONS} lokationer ad gangen`);
   }

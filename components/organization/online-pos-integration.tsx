@@ -73,8 +73,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
-import { canManageOrganization } from "@/lib/auth-permissions";
+import { useAccess, usePermission } from "@/components/app-shell";
 
 type OnlinePosProduct = {
   id: number;
@@ -888,9 +887,9 @@ function SalesList() {
 }
 
 export function OnlinePosIntegration() {
-  const membership = authClient.useActiveMemberRole();
-  const isAdmin = canManageOrganization(membership.data?.role);
-  const settings = useQuery(api.onlinePos.getSettings, isAdmin ? {} : "skip");
+  const access = useAccess();
+  const canManage = usePermission("integrations.manage");
+  const settings = useQuery(api.onlinePos.getSettings, canManage ? {} : "skip");
   const listOnlinePosProducts = useAction(api.onlinePos.listProducts);
   const setEnabled = useAction(api.onlinePos.setEnabled);
   const [tab, setTab] = useState("connection");
@@ -937,16 +936,16 @@ export function OnlinePosIntegration() {
     }
   }
 
-  if (membership.isPending) {
+  if (!access) {
     return <Skeleton className="h-96 w-full max-w-3xl" />;
   }
 
-  if (!isAdmin) {
+  if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan administrere integrationer.
+          Du har ikke adgang til at administrere integrationer.
         </AlertDescription>
       </Alert>
     );

@@ -15,7 +15,7 @@ export type MetricDefinition = {
   visualizations: readonly VisualizationId[];
   defaultVisualization: VisualizationId;
   defaultSize: WidgetSize;
-  adminOnly?: boolean;
+  sensitive?: boolean;
   shareable?: boolean;
 };
 
@@ -179,7 +179,7 @@ const definitions = {
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
     defaultSize: "2x1",
-    adminOnly: true,
+    sensitive: true,
     shareable: true,
   },
   salesOrderCount: {
@@ -191,7 +191,7 @@ const definitions = {
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
     defaultSize: "1x1",
-    adminOnly: true,
+    sensitive: true,
     shareable: true,
   },
   averageBasket: {
@@ -203,7 +203,7 @@ const definitions = {
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
     defaultSize: "1x1",
-    adminOnly: true,
+    sensitive: true,
     shareable: true,
   },
 } satisfies Record<MetricId, MetricDefinition>;

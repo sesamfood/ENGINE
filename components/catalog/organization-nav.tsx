@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePermission } from "@/components/app-shell";
 
 const catalogSections = [
   { value: "products", label: "Produkter" },
@@ -11,12 +12,23 @@ const catalogSections = [
   { value: "units", label: "Enheder" },
 ];
 
+const userSections = [
+  { value: "users", label: "Brugere", permission: "members.manage" },
+  { value: "users/roles", label: "Roller og adgang", permission: "roles.manage" },
+] as const;
+
 export function OrganizationHeader() {
   const pathname = usePathname();
   const router = useRouter();
+  const canManageMembers = usePermission("members.manage");
+  const canManageRoles = usePermission("roles.manage");
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const inCatalog = catalogSections.some((item) =>
     pathname.startsWith(`/organization/${item.value}`),
+  );
+  const inUsers = pathname.startsWith("/organization/users");
+  const visibleUserSections = userSections.filter((item) =>
+    item.permission === "members.manage" ? canManageMembers : canManageRoles,
   );
   const onProductForm = pathname.startsWith("/organization/products/");
   const catalogSection =
@@ -37,8 +49,10 @@ export function OrganizationHeader() {
             ? "Optælling"
             : pathname.startsWith("/organization/waste")
               ? "Spild"
-              : pathname.startsWith("/organization/users")
-                ? "Brugere"
+              : pathname.startsWith("/organization/users/roles")
+                ? "Roller og adgang"
+                : pathname.startsWith("/organization/users")
+                  ? "Brugere"
                 : pathname.startsWith("/organization/sidebar")
                   ? "Sidemenu"
                 : pathname === "/organization"
@@ -49,7 +63,19 @@ export function OrganizationHeader() {
     for (const item of catalogSections) {
       router.prefetch(`/organization/${item.value}`);
     }
+    for (const item of userSections) {
+      router.prefetch(`/organization/${item.value}`);
+    }
   }, [router]);
+
+  useEffect(() => {
+    if (!inUsers) return;
+    if (pathname.startsWith("/organization/users/roles") && !canManageRoles && canManageMembers) {
+      router.replace("/organization/users", { scroll: false });
+    } else if (!pathname.startsWith("/organization/users/roles") && !canManageMembers && canManageRoles) {
+      router.replace("/organization/users/roles", { scroll: false });
+    }
+  }, [canManageMembers, canManageRoles, inUsers, pathname, router]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -93,6 +119,23 @@ export function OrganizationHeader() {
                 value={item.value}
                 className="min-w-36 px-6"
               >
+                {item.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      ) : null}
+      {inUsers && visibleUserSections.length ? (
+        <Tabs
+          value={pathname.startsWith("/organization/users/roles") ? "users/roles" : "users"}
+          onValueChange={(value) => router.push(`/organization/${value}`, { scroll: false })}
+        >
+          <TabsList
+            aria-label="Brugersektioner"
+            className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
+          >
+            {visibleUserSections.map((item) => (
+              <TabsTrigger key={item.value} value={item.value} className="min-w-36 px-6">
                 {item.label}
               </TabsTrigger>
             ))}

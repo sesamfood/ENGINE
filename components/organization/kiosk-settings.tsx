@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -63,6 +64,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { useAccess, usePermission } from "@/components/app-shell";
 import { kioskDestinations, type KioskDestinationId } from "@/lib/kiosk";
 import type { OrganizationRole } from "@/lib/auth-permissions";
 
@@ -72,7 +74,6 @@ const roleLabels: Record<OrganizationRole, string> = {
   member: "Medlem",
 };
 const roles = Object.keys(roleLabels) as OrganizationRole[];
-const roleItems = roles.map((role) => ({ value: role, label: roleLabels[role] }));
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Handlingen kunne ikke gennemføres";
@@ -202,9 +203,24 @@ function PasswordDialog({ account, onClose }: { account: Account | null; onClose
 }
 
 export function KioskSettings() {
-  const settings = useQuery(api.kiosk.getAdminSettings);
-  const accounts = useQuery(api.kiosk.listAccounts);
-  const locations = useQuery(api.locations.listLocationOptions);
+  const access = useAccess();
+  const canManageSettings = usePermission("organization.settings");
+  const canManageMembers = usePermission("members.manage");
+  const settings = useQuery(
+    api.kiosk.getAdminSettings,
+    canManageSettings ? {} : "skip",
+  );
+  const accounts = useQuery(
+    api.kiosk.listAccounts,
+    canManageMembers ? {} : "skip",
+  );
+  const memberLocationAccess = useQuery(
+    api.access.listMemberLocationAccess,
+    canManageMembers ? {} : "skip",
+  );
+  const locations = canManageMembers
+    ? memberLocationAccess?.locations
+    : undefined;
   const saveSettings = useMutation(api.kiosk.saveSettings);
   const createAccount = useMutation(api.kiosk.createAccount);
   const revokeSessions = useMutation(api.kiosk.revokeAccountSessions);
@@ -231,9 +247,36 @@ export function KioskSettings() {
     return () => window.clearTimeout(timeout);
   }, [settings]);
 
-  if (settings === undefined || accounts === undefined || locations === undefined) {
+  if (!access) {
     return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
   }
+
+  if (!canManageSettings && !canManageMembers) {
+    return (
+      <Alert variant="destructive" className="max-w-xl">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>Du har ikke adgang til kioskindstillinger eller kioskkonti.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (
+    (canManageSettings && settings === undefined) ||
+    (canManageMembers && (accounts === undefined || locations === undefined))
+  ) {
+    return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
+  }
+
+  const availableAccounts = accounts ?? [];
+  const availableLocations = locations ?? [];
+  const availableRoles =
+    access?.role === "admin"
+      ? roles
+      : roles.filter((item) => item !== "admin");
+  const availableRoleItems = availableRoles.map((item) => ({
+    value: item,
+    label: roleLabels[item],
+  }));
 
   const groups = [...new Set(kioskDestinations.map((page) => page.group))];
   const homeItems = kioskDestinations.filter((page) => enabledPages.includes(page.id)).map((page) => ({ value: page.id, label: page.label }));
@@ -300,7 +343,7 @@ export function KioskSettings() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
+      {canManageSettings ? <Card>
         <CardHeader><CardTitle>Kiosktilstand</CardTitle><CardDescription>Vælg de sider, kiosker må bruge, deres startside og automatisk nulstilling.</CardDescription></CardHeader>
         <CardContent>
           <form onSubmit={save} className="flex flex-col gap-6">
@@ -324,9 +367,9 @@ export function KioskSettings() {
             <Button type="submit" size="lg" className="self-start" disabled={settingsPending}>{settingsPending ? <Spinner data-icon="inline-start" /> : null}Gem kioskopsætning</Button>
           </form>
         </CardContent>
-      </Card>
+      </Card> : null}
 
-      {settings ? <>
+      {canManageMembers ? <>
       <Card>
         <CardHeader><CardTitle>Opret kioskkonto</CardTitle><CardDescription>Kontoen bindes permanent til én lokation og starter altid i kiosktilstand.</CardDescription></CardHeader>
         <CardContent>
@@ -335,18 +378,18 @@ export function KioskSettings() {
               <Field><FieldLabel htmlFor="new-kiosk-name">Navn</FieldLabel><Input id="new-kiosk-name" name="name" required /></Field>
               <Field><FieldLabel htmlFor="new-kiosk-username">Brugernavn</FieldLabel><Input id="new-kiosk-username" name="username" autoComplete="off" minLength={3} maxLength={30} required /></Field>
               <Field><FieldLabel htmlFor="new-kiosk-password">Adgangskode</FieldLabel><PasswordInput id="new-kiosk-password" name="password" autoComplete="new-password" minLength={12} maxLength={256} required /></Field>
-              <Field><FieldLabel htmlFor="new-kiosk-location">Lokation</FieldLabel><Select name="locationId" items={locations.map((location) => ({ value: location.id, label: location.name }))} required><SelectTrigger id="new-kiosk-location" className="w-full"><SelectValue placeholder="Vælg lokation" /></SelectTrigger><SelectContent><SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-              <Field><FieldLabel htmlFor="new-kiosk-role">Normal rolle</FieldLabel><Select items={roleItems} value={role} onValueChange={(value) => value && setRole(value)}><SelectTrigger id="new-kiosk-role" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{roles.map((item) => <SelectItem key={item} value={item}>{roleLabels[item]}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel htmlFor="new-kiosk-location">Lokation</FieldLabel><Select name="locationId" items={availableLocations.map((location) => ({ value: location.id, label: location.name }))} required><SelectTrigger id="new-kiosk-location" className="w-full"><SelectValue placeholder="Vælg lokation" /></SelectTrigger><SelectContent><SelectGroup>{availableLocations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel htmlFor="new-kiosk-role">Normal rolle</FieldLabel><Select items={availableRoleItems} value={role} onValueChange={(value) => value && setRole(value)}><SelectTrigger id="new-kiosk-role" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{availableRoles.map((item) => <SelectItem key={item} value={item}>{roleLabels[item]}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
             </FieldGroup>
-            <Button type="submit" size="lg" className="mt-5" disabled={creating || !settings || !locations.length}>{creating ? <Spinner data-icon="inline-start" /> : <PlusIcon data-icon="inline-start" />}Opret kioskkonto</Button>
+            <Button type="submit" size="lg" className="mt-5" disabled={creating || !availableLocations.length}>{creating ? <Spinner data-icon="inline-start" /> : <PlusIcon data-icon="inline-start" />}Opret kioskkonto</Button>
           </form>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Kioskkonti</CardTitle><CardDescription>{accounts.length} {accounts.length === 1 ? "konto" : "konti"}</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Kioskkonti</CardTitle><CardDescription>{availableAccounts.length} {availableAccounts.length === 1 ? "konto" : "konti"}</CardDescription></CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {accounts.length ? accounts.map((account) => (
+          {availableAccounts.length ? availableAccounts.map((account) => (
             <div key={account.memberId} className="flex flex-col gap-4 rounded-xl border p-4 lg:flex-row lg:items-center">
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{account.name}</p><Badge>Kiosk</Badge><Badge variant="secondary">{roleLabels[account.role]}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{account.username} · {account.locationName} · {account.activeSessionCount} aktive sessioner</p></div>
               <div className="flex flex-wrap gap-2">
@@ -359,7 +402,7 @@ export function KioskSettings() {
           )) : <div className="flex min-h-36 flex-col items-center justify-center gap-2 text-center"><MonitorCogIcon className="size-6 text-muted-foreground" /><p className="font-medium">Ingen kioskkonti endnu</p><p className="text-sm text-muted-foreground">Gem opsætningen og opret den første konto ovenfor.</p></div>}
         </CardContent>
       </Card>
-      <AccountDialog account={editing} locations={locations} onClose={() => setEditing(null)} />
+      <AccountDialog account={editing} locations={availableLocations} onClose={() => setEditing(null)} />
       <PasswordDialog account={passwordAccount} onClose={() => setPasswordAccount(null)} />
       </> : null}
     </div>

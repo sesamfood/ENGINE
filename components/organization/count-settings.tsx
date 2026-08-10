@@ -34,8 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
-import { authClient } from "@/lib/auth-client";
-import { canManageOrganization } from "@/lib/auth-permissions";
+import { useAccess, usePermission } from "@/components/app-shell";
 import type { CountSchedule } from "@/lib/count-window";
 
 const scheduleOptions = [
@@ -62,8 +61,9 @@ function messageFrom(error: unknown) {
 }
 
 export function CountSettings() {
-  const membership = authClient.useActiveMemberRole();
-  const settings = useQuery(api.count.getCountSettings);
+  const access = useAccess();
+  const canManage = usePermission("count.settings");
+  const settings = useQuery(api.count.getCountSettings, canManage ? {} : "skip");
   const saveSettings = useMutation(api.count.setCountSettings);
   const [draftAllowOutsideWindow, setDraftAllowOutsideWindow] = useState<
     boolean | null
@@ -89,16 +89,16 @@ export function CountSettings() {
   const countSchedule =
     draftSchedule ?? settings?.countSchedule ?? { type: "monthly", day: 0 };
 
-  if (membership.isPending || !settings) {
+  if (!access || (canManage && !settings)) {
     return <Skeleton className="h-72 w-full max-w-2xl" />;
   }
 
-  if (!canManageOrganization(membership.data?.role)) {
+  if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre optællingsvinduet.
+          Du har ikke adgang til at ændre optællingsvinduet.
         </AlertDescription>
       </Alert>
     );

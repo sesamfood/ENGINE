@@ -36,8 +36,8 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { useAccess, usePermission } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
-import { canManageOrganization } from "@/lib/auth-permissions";
 import { compressImage } from "@/lib/compress-image";
 import { cn } from "@/lib/utils";
 import { OrganizationThemeCard } from "./organization-theme-card";
@@ -308,18 +308,15 @@ function LogoUploadCard({
 
 export function OrganizationAppearance() {
   const organization = authClient.useActiveOrganization();
-  const membership = authClient.useActiveMemberRole();
-  const branding = useQuery(api.organization.getBranding);
+  const access = useAccess();
+  const canManage = usePermission("organization.settings");
+  const branding = useQuery(api.organization.getBranding, canManage ? {} : "skip");
   const setLogo = useMutation(api.organization.setLogo);
   const removeLogo = useMutation(api.organization.removeLogo);
   const setWideLogo = useMutation(api.organization.setWideLogo);
   const removeWideLogo = useMutation(api.organization.removeWideLogo);
 
-  if (
-    organization.isPending ||
-    membership.isPending ||
-    branding === undefined
-  ) {
+  if (organization.isPending || !access) {
     return (
       <div className="flex max-w-4xl flex-col gap-6">
         <Skeleton className="h-72 w-full" />
@@ -328,14 +325,23 @@ export function OrganizationAppearance() {
     );
   }
 
-  if (!organization.data || !canManageOrganization(membership.data?.role)) {
+  if (!organization.data || !canManage) {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre organisationens oplysninger.
+          Du har ikke adgang til at ændre organisationens oplysninger.
         </AlertDescription>
       </Alert>
+    );
+  }
+
+  if (branding === undefined) {
+    return (
+      <div className="flex max-w-4xl flex-col gap-6">
+        <Skeleton className="h-72 w-full" />
+        <Skeleton className="h-72 w-full" />
+      </div>
     );
   }
 

@@ -1,46 +1,136 @@
-import {
-  adminAc,
-  defaultAc,
-  memberAc,
-} from "better-auth/plugins/organization/access";
+import { adminAc, defaultAc } from "better-auth/plugins/organization/access";
 import type { AccessControl } from "better-auth/plugins/access";
 
 export const organizationAccessControl = defaultAc as AccessControl;
 
+// Better Auth still needs to know which built-in roles may call its member
+// endpoints. The Convex permission checks are the source of truth for whether
+// the current member may actually use those endpoints.
+const managerAc = defaultAc.newRole({
+  organization: [],
+  member: ["create", "update", "delete"],
+  invitation: ["create", "cancel"],
+  team: [],
+  ac: ["read"],
+});
+
 export const organizationRoles = {
   admin: adminAc,
-  manager: memberAc,
-  member: memberAc,
+  manager: managerAc,
+  member: managerAc,
 };
 
 export type OrganizationRole = keyof typeof organizationRoles;
 
-export function canManageCatalog(role: string | null | undefined) {
-  return role === "admin" || role === "manager";
+export const permissionCatalog = [
+  {
+    group: "Optælling",
+    permissions: [
+      { id: "count.register", label: "Registrere optællinger" },
+      { id: "count.viewStock", label: "Se lagerbeholdning" },
+    ],
+  },
+  {
+    group: "Spild",
+    permissions: [
+      { id: "waste.register", label: "Registrere spild" },
+      { id: "waste.report", label: "Se spildrapporter" },
+      { id: "waste.export", label: "Eksportere spild" },
+    ],
+  },
+  {
+    group: "Flytninger",
+    permissions: [
+      { id: "transfers.view", label: "Se flytninger" },
+      { id: "transfers.manage", label: "Administrere flytninger" },
+    ],
+  },
+  {
+    group: "Personalemad",
+    permissions: [
+      { id: "staffFood.register", label: "Registrere personalemad" },
+      { id: "staffFood.manage", label: "Administrere personalemad" },
+    ],
+  },
+  {
+    group: "Dashboard",
+    permissions: [
+      { id: "dashboard.view", label: "Se dashboard" },
+      { id: "dashboard.share", label: "Dele dashboard" },
+      { id: "dashboard.viewSales", label: "Se salgstal" },
+    ],
+  },
+  {
+    group: "Medarbejdere",
+    permissions: [
+      { id: "employees.schedule", label: "Se vagtplan" },
+      { id: "employees.directory", label: "Se medarbejderkartotek" },
+    ],
+  },
+  {
+    group: "Organisation",
+    permissions: [
+      { id: "catalog.manage", label: "Administrere katalog" },
+      { id: "locations.manage", label: "Administrere lokationer" },
+      { id: "count.settings", label: "Administrere optællingsindstillinger" },
+      { id: "waste.settings", label: "Administrere spildindstillinger" },
+      { id: "organization.settings", label: "Administrere organisationsindstillinger" },
+      { id: "integrations.manage", label: "Administrere integrationer" },
+    ],
+  },
+  {
+    group: "Brugere",
+    permissions: [
+      { id: "members.manage", label: "Administrere brugere" },
+      { id: "roles.manage", label: "Administrere roller og adgang" },
+    ],
+  },
+] as const;
+
+export type PermissionId =
+  (typeof permissionCatalog)[number]["permissions"][number]["id"];
+
+export const permissionIds = permissionCatalog.flatMap((group) =>
+  group.permissions.map((permission) => permission.id),
+) as PermissionId[];
+
+const permissionIdSet = new Set<string>(permissionIds);
+
+export const defaultRolePermissions: Record<OrganizationRole, readonly PermissionId[]> = {
+  admin: permissionIds,
+  manager: permissionIds.filter(
+    (id) =>
+      !id.endsWith(".settings") &&
+      id !== "integrations.manage" &&
+      id !== "locations.manage" &&
+      id !== "members.manage" &&
+      id !== "roles.manage" &&
+      id !== "staffFood.manage" &&
+      id !== "dashboard.share" &&
+      id !== "dashboard.viewSales",
+  ),
+  member: [
+    "count.register",
+    "count.viewStock",
+    "waste.register",
+    "staffFood.register",
+    "employees.schedule",
+    "employees.directory",
+  ],
+};
+
+export function isPermissionId(value: string): value is PermissionId {
+  return permissionIdSet.has(value);
 }
 
-export const canManageTransfers = canManageCatalog;
-
-export const canViewWasteReports = canManageCatalog;
-
-export function canCountStock(role: string | null | undefined) {
-  return role === "admin" || role === "manager" || role === "member";
+export function hasPermission(
+  role: string | null | undefined,
+  permissions: ReadonlySet<string> | readonly string[] | undefined,
+  permission: PermissionId | string,
+) {
+  if (role === "admin") return true;
+  if (!permissions) return false;
+  return "has" in permissions
+    ? permissions.has(permission)
+    : permissions.includes(permission);
 }
-
-export const canRegisterWaste = canCountStock;
-
-export const canRegisterStaffFood = canCountStock;
-
-export function canManageMembers(role: string | null | undefined) {
-  return role === "admin";
-}
-
-export const canManageOrganization = canManageMembers;
-
-export const canManageWasteSettings = canManageOrganization;
-
-export const canManageStaffFood = canManageOrganization;
-
-export const canViewDashboard = canManageCatalog;
-
-export const canShareDashboard = canManageOrganization;

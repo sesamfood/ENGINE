@@ -7,9 +7,12 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
-  requireKioskLocation,
+  requireLocationAccess,
   requireStaffFoodManager,
   requireStaffFoodRegistrar,
+  isMultiLocationFilter,
+  isSingleLocationFilter,
+  resolveLocationFilter,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
@@ -243,7 +246,7 @@ export const getPicker = query({
   handler: async (ctx, args) => {
     const auth = await requireStaffFoodRegistrar(ctx);
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     requireNow(args.now);
     await requireLocation(ctx, organizationId, args.locationId);
     const [rows, tier] = await Promise.all([
@@ -314,7 +317,7 @@ export const searchEmployees = query({
   handler: async (ctx, args) => {
     const auth = await requireStaffFoodRegistrar(ctx);
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     requireNow(args.now);
     await requireLocation(ctx, organizationId, args.locationId);
     const search = args.search.trim().slice(0, 100);
@@ -379,7 +382,7 @@ export const startSession = mutation({
   handler: async (ctx, args) => {
     const auth = await requireStaffFoodRegistrar(ctx);
     const { organizationId, userIdentifier } = auth;
-    requireKioskLocation(auth, args.selection.locationId);
+    requireLocationAccess(auth, args.selection.locationId);
     const now = Date.now();
     const location = await requireLocation(
       ctx,
@@ -525,7 +528,7 @@ export const getSessionState = query({
     const { organizationId } = auth;
     requireNow(args.now);
     const session = await requireSession(ctx, organizationId, args.sessionId);
-    requireKioskLocation(auth, session.locationId);
+    requireLocationAccess(auth, session.locationId);
     const [employee, location, tier, rows, active] = await Promise.all([
       ctx.db.get("employees", session.employeeId),
       ctx.db.get("locations", session.locationId),
@@ -720,7 +723,7 @@ export const register = mutation({
     }
     const now = Date.now();
     const session = await requireSession(ctx, organizationId, args.sessionId);
-    requireKioskLocation(auth, session.locationId);
+    requireLocationAccess(auth, session.locationId);
     await requireOtherFeaturesUnlocked(ctx, organizationId, session.locationId);
     if (!(await sessionActive(ctx, organizationId, session, now))) {
       throw new ConvexError("Vagten er ikke aktiv længere");
@@ -886,7 +889,7 @@ export const voidCheckout = mutation({
     if (!rows.length || rows.length > MAX_BASKET_ITEMS) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
-    requireKioskLocation(auth, rows[0]!.locationId);
+    requireLocationAccess(auth, rows[0]!.locationId);
     await requireOtherFeaturesUnlocked(
       ctx,
       organizationId,
@@ -1249,7 +1252,7 @@ export const exportRegistrations = query({
   handler: async (ctx, args) => {
     const auth = await requireStaffFoodManager(ctx);
     const { organizationId } = auth;
-    const locationId = auth.kioskLocationId ?? args.locationId;
+    const locationFilter = resolveLocationFilter(auth, args.locationId);
     if (
       !Number.isFinite(args.startAt) ||
       !Number.isFinite(args.endAt) ||
@@ -1262,21 +1265,38 @@ export const exportRegistrations = query({
       throw new ConvexError("Eksportsiden er for stor");
     }
     if (args.locationId) {
-      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
-    const result = locationId
+    const result = isSingleLocationFilter(locationFilter)
       ? await ctx.db
           .query("staffFoodRegistrations")
           .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
             q
               .eq("organizationId", organizationId)
-              .eq("locationId", locationId)
+              .eq("locationId", locationFilter.locationId)
               .gte("registeredAt", args.startAt)
               .lte("registeredAt", args.endAt),
           )
           .order("desc")
           .paginate(args.paginationOpts)
+      : isMultiLocationFilter(locationFilter)
+        ? await ctx.db
+            .query("staffFoodRegistrations")
+            .withIndex("by_organizationId_and_registeredAt", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .filter((q) =>
+              q.or(
+                ...locationFilter.locationIds.map((locationId) =>
+                  q.eq(q.field("locationId"), locationId),
+                ),
+              ),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
       : await ctx.db
           .query("staffFoodRegistrations")
           .withIndex("by_organizationId_and_registeredAt", (q) =>

@@ -7,7 +7,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireOrganizationAdmin } from "./lib/auth";
+import { requireIntegrationManager } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
 
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
@@ -106,7 +106,7 @@ export const getContext = query({
     manualSyncRetryAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const [settings, integration, connections, statuses, manualLimit] =
       await Promise.all([
         scheduleSettings(ctx, organizationId),
@@ -173,7 +173,7 @@ export const requestSync = mutation({
   args: { locationId: v.union(v.id("locations"), v.null()) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const integration = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -235,7 +235,7 @@ export const listOrders = query({
   },
   returns: paginationResultValidator(orderValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     requireSalesRange(args.from, args.to);
     requireListOrdersPage(args.paginationOpts);
 

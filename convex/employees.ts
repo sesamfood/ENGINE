@@ -10,7 +10,7 @@ import { mutation, query } from "./_generated/server";
 import {
   requireEmployeeViewer,
   requireKioskDestination,
-  requireKioskLocation,
+  requireLocationAccess,
   requireNormalOrganization,
   requireOrganization,
   requireOrganizationAdmin,
@@ -224,7 +224,7 @@ export const listWeek = query({
   handler: async (ctx, args) => {
     const auth = await requireEmployeeViewer(ctx, "employees.schedule");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     const monday = parseDate(args.weekStart);
     if (monday.getUTCDay() !== 1) {
       throw new ConvexError("Ugestarten skal være en mandag");
@@ -318,7 +318,7 @@ export const listDirectory = query({
     const auth = await requireEmployeeViewer(ctx, "employees.directory");
     const { organizationId } = auth;
     requirePageSize(args.paginationOpts.numItems);
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     const location = await ctx.db.get("locations", args.locationId);
     if (location?.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");

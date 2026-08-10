@@ -23,8 +23,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { authClient } from "@/lib/auth-client";
-import { canManageCatalog, canManageMembers } from "@/lib/auth-permissions";
+import { useAccess, usePermission } from "@/components/app-shell";
 
 const sections = [
   {
@@ -32,84 +31,104 @@ const sections = [
     description: "Administrer produkter, kategorier og enheder.",
     href: "/organization/products",
     icon: PackageIcon,
-    adminOnly: false,
+    permissions: ["catalog.manage"],
   },
   {
     title: "Lokationer",
     description: "Administrer de lokationer, der bruges i flytninger.",
     href: "/organization/locations",
     icon: StoreIcon,
-    adminOnly: false,
+    permissions: ["locations.manage"],
   },
   {
     title: "Brugere",
     description: "Inviter brugere, og administrer deres roller.",
     href: "/organization/users",
     icon: UsersIcon,
-    adminOnly: true,
+    permissions: ["members.manage", "roles.manage"],
   },
   {
     title: "Kiosk",
     description: "Vælg kiosksider, og administrer lokationsbundne konti.",
     href: "/organization/kiosk",
     icon: MonitorCogIcon,
-    adminOnly: true,
+    permissions: ["organization.settings", "members.manage"],
   },
   {
     title: "Sidemenu",
     description: "Bestem rækkefølgen af organisationens menupunkter.",
     href: "/organization/sidebar",
     icon: ListOrderedIcon,
-    adminOnly: true,
+    permissions: ["organization.settings"],
   },
   {
     title: "Optælling",
     description: "Indstil frekvens og regler for optællingsvinduet.",
     href: "/organization/count",
     icon: ClipboardListIcon,
-    adminOnly: true,
+    permissions: ["count.settings"],
   },
   {
     title: "Spild",
     description: "Indstil nulstilling og popularitet for spild.",
     href: "/organization/waste",
     icon: Trash2Icon,
-    adminOnly: true,
+    permissions: ["waste.settings"],
   },
   {
     title: "Personalemad",
     description: "Indstil vagtlængder, kategorier og tilladte produkter.",
     href: "/organization/staff-food",
     icon: UtensilsIcon,
-    adminOnly: true,
+    permissions: ["staffFood.manage"],
   },
   {
     title: "Vagtplan",
     description: "Indstil tidszonen for medarbejdernes vagtplan.",
     href: "/organization/schedule",
     icon: CalendarClockIcon,
-    adminOnly: true,
+    permissions: ["organization.settings"],
   },
   {
     title: "Integrationer",
     description: "Forbind eksterne systemer og administrer dataudveksling.",
     href: "/organization/integrations",
     icon: PlugIcon,
-    adminOnly: true,
+    permissions: ["integrations.manage"],
   },
   {
     title: "Udseende",
     description: "Administrer logoer og organisationens identitet.",
     href: "/organization/appearance",
     icon: Building2Icon,
-    adminOnly: true,
+    permissions: ["organization.settings"],
   },
 ];
 
 export function OrganizationOverview() {
-  const membership = authClient.useActiveMemberRole();
+  const access = useAccess();
+  const canCatalog = usePermission("catalog.manage");
+  const canLocations = usePermission("locations.manage");
+  const canMembers = usePermission("members.manage");
+  const canRoles = usePermission("roles.manage");
+  const canOrganizationSettings = usePermission("organization.settings");
+  const canCountSettings = usePermission("count.settings");
+  const canWasteSettings = usePermission("waste.settings");
+  const canStaffFood = usePermission("staffFood.manage");
+  const canIntegrations = usePermission("integrations.manage");
+  const allowedPermissions = {
+    "catalog.manage": canCatalog,
+    "locations.manage": canLocations,
+    "members.manage": canMembers,
+    "roles.manage": canRoles,
+    "organization.settings": canOrganizationSettings,
+    "count.settings": canCountSettings,
+    "waste.settings": canWasteSettings,
+    "staffFood.manage": canStaffFood,
+    "integrations.manage": canIntegrations,
+  };
 
-  if (membership.isPending) {
+  if (!access) {
     return (
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 3 }, (_, index) => (
@@ -119,7 +138,7 @@ export function OrganizationOverview() {
     );
   }
 
-  if (!canManageCatalog(membership.data?.role)) {
+  if (!Object.values(allowedPermissions).some(Boolean)) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
@@ -130,19 +149,25 @@ export function OrganizationOverview() {
     );
   }
 
-  const isAdmin = canManageMembers(membership.data?.role);
   const availableSections = sections.filter(
-    (section) => !section.adminOnly || isAdmin,
+    (section) =>
+      section.permissions.some(
+        (permission) => allowedPermissions[permission as keyof typeof allowedPermissions],
+      ),
   );
 
   return (
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       {availableSections.map((section) => {
         const Icon = section.icon;
+        const href =
+          section.title === "Brugere" && !canMembers && canRoles
+            ? "/organization/users/roles"
+            : section.href;
         return (
           <Link
             key={section.href}
-            href={section.href}
+            href={href}
             aria-label={`Åbn ${section.title.toLocaleLowerCase("da")}`}
             className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >

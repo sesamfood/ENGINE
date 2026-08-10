@@ -1,58 +1,113 @@
 import { ConvexError } from "convex/values";
 import {
-  canCountStock,
-  canManageCatalog,
-  canManageOrganization,
-  canManageStaffFood,
-  canManageTransfers,
-  canRegisterStaffFood,
-  canRegisterWaste,
-  canShareDashboard,
-  canViewDashboard,
-  canViewWasteReports,
+  defaultRolePermissions,
+  hasPermission,
+  type OrganizationRole,
+  type PermissionId,
 } from "../../lib/auth-permissions";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { authComponent, createAuth, getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
 
 type AuthContext = QueryCtx | MutationCtx | ActionCtx;
 
-export async function requireOrganization(ctx: AuthContext) {
+type AuthMember = {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: OrganizationRole;
+  kioskLocationId?: string | null;
+};
+
+type AuthSession = {
+  id: string;
+  isKioskAccount?: boolean | null;
+  kioskModeEnabled?: boolean | null;
+};
+
+async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
   const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-  const member = await auth.api.getActiveMember({ headers }).catch(() => null);
+  const member = (await auth.api.getActiveMember({ headers }).catch(() => null)) as
+    | AuthMember
+    | null;
   if (!member) throw new ConvexError("Ingen aktiv organisation");
-  const session = await getDatabaseAdapter(ctx).findOne<{
-    id: string;
-    isKioskAccount?: boolean | null;
-    kioskModeEnabled?: boolean | null;
-  }>({
+
+  const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
     model: "session",
     where: [{ field: "id", value: identity.sessionId as string }],
   });
-  const kioskLocationId = (member as typeof member & {
-    kioskLocationId?: string | null;
-  }).kioskLocationId;
+  const role = member.role;
+  const configured = await ctx.db
+    .query("rolePermissions")
+    .withIndex("by_organizationId_and_role", (q) =>
+      q.eq("organizationId", member.organizationId).eq("role", role),
+    )
+    .unique();
+  const permissions = configured?.permissions ?? defaultRolePermissions[role];
+  const locationAccess = await ctx.db
+    .query("memberLocationAccess")
+    .withIndex("by_organizationId_and_userId", (q) =>
+      q.eq("organizationId", member.organizationId).eq("userId", member.userId),
+    )
+    .unique();
+  const kioskLocationId = member.kioskLocationId
+    ? (member.kioskLocationId as Id<"locations">)
+    : null;
+  const locationScope = kioskLocationId
+    ? { all: false, ids: new Set<Id<"locations">>([kioskLocationId]) }
+    : locationAccess?.scope === "selected"
+      ? { all: false, ids: new Set(locationAccess.locationIds) }
+      : { all: true, ids: new Set<Id<"locations">>() };
 
   return {
     organizationId: member.organizationId,
-    role: member.role,
+    role,
+    permissions: new Set<string>(
+      role === "admin" ? defaultRolePermissions.admin : permissions,
+    ),
+    locationScope,
     sessionId: identity.sessionId as string,
     isKioskAccount: session?.isKioskAccount === true,
     kioskModeEnabled: session?.kioskModeEnabled === true,
-    kioskLocationId: kioskLocationId
-      ? (kioskLocationId as Id<"locations">)
-      : null,
+    kioskLocationId,
     userIdentifier: identity.tokenIdentifier,
     userName: identity.name?.trim() || identity.email || "Ukendt bruger",
   };
 }
 
-type OrganizationAuth = Awaited<ReturnType<typeof requireOrganization>>;
+type OrganizationAuth = {
+  organizationId: string;
+  role: OrganizationRole;
+  permissions: ReadonlySet<string>;
+  locationScope: { all: boolean; ids: ReadonlySet<Id<"locations">> };
+  sessionId: string;
+  isKioskAccount: boolean;
+  kioskModeEnabled: boolean;
+  kioskLocationId: Id<"locations"> | null;
+  userIdentifier: string;
+  userName: string;
+};
+
+export async function requireOrganization(ctx: AuthContext): Promise<OrganizationAuth> {
+  if (!("db" in ctx)) {
+    const context = await ctx.runQuery(internal.access.getRoleContext, {});
+    return {
+      ...context,
+      permissions: new Set(context.permissions),
+      locationScope: {
+        all: context.locationScope.all,
+        ids: new Set(context.locationScope.ids),
+      },
+    };
+  }
+  return await getOrganizationFromDatabase(ctx);
+}
 
 export async function requireKioskDestination(
   ctx: AuthContext,
@@ -69,9 +124,7 @@ export async function requireKioskDestination(
     .unique();
   const pages = Array.isArray(page) ? page : [page];
   if (
-    pages.some(
-      (page) => page === "count.register" || page === "waste.register",
-    ) &&
+    pages.some((item) => item === "count.register" || item === "waste.register") &&
     auth.kioskLocationId &&
     (await otherFeaturesLocked(
       ctx,
@@ -88,13 +141,80 @@ export async function requireKioskDestination(
   return true;
 }
 
-export function requireKioskLocation(
+export function requireLocationAccess(
   auth: OrganizationAuth,
   locationId: Id<"locations">,
 ) {
   if (auth.isKioskAccount && auth.kioskLocationId !== locationId) {
-    throw new ConvexError("Kioskkontoen har ikke adgang til denne location");
+    throw new ConvexError("Kioskkontoen har ikke adgang til denne lokation");
   }
+  if (!auth.locationScope.all && !auth.locationScope.ids.has(locationId)) {
+    throw new ConvexError("Du har ikke adgang til denne lokation");
+  }
+}
+
+export function resolveLocationFilter(
+  auth: OrganizationAuth,
+  locationId?: Id<"locations">,
+): { locationId: Id<"locations"> } | { locationIds: Id<"locations">[] } | "all" {
+  if (locationId) {
+    requireLocationAccess(auth, locationId);
+    return { locationId };
+  }
+  if (auth.kioskLocationId) return { locationId: auth.kioskLocationId };
+  if (auth.locationScope.all) return "all";
+  return { locationIds: [...auth.locationScope.ids] };
+}
+
+export function isSingleLocationFilter(
+  filter: ReturnType<typeof resolveLocationFilter>,
+): filter is { locationId: Id<"locations"> } {
+  return typeof filter === "object" && "locationId" in filter;
+}
+
+export function isMultiLocationFilter(
+  filter: ReturnType<typeof resolveLocationFilter>,
+): filter is { locationIds: Id<"locations">[] } {
+  return typeof filter === "object" && "locationIds" in filter;
+}
+
+export async function requirePermission(
+  ctx: AuthContext,
+  permission: PermissionId,
+  page?: KioskDestinationId | readonly KioskDestinationId[],
+) {
+  const auth = await requireOrganization(ctx);
+  if (page && (await requireKioskDestination(ctx, auth, page))) return auth;
+  if (!hasPermission(auth.role, auth.permissions, permission)) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
+export async function requireCatalogManager(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "catalog.manage");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
+export async function requireLocationManager(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "locations.manage");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
+export async function requireTransferManager(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "transfers.new",
+) {
+  return await requirePermission(ctx, "transfers.manage", page);
+}
+
+export async function requireTransferViewer(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "transfers.history",
+) {
+  return await requirePermission(ctx, "transfers.view", page);
 }
 
 export function requireKioskTransfer(
@@ -111,49 +231,25 @@ export function requireKioskTransfer(
   }
 }
 
-export async function requireCatalogManager(ctx: AuthContext) {
-  const auth = await requireOrganization(ctx);
-  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
-  if (!canManageCatalog(auth.role)) {
-    throw new ConvexError("Du har ikke adgang");
-  }
-  return auth;
-}
-
-export async function requireTransferManager(
-  ctx: AuthContext,
-  page: KioskDestinationId | readonly KioskDestinationId[] = "transfers.new",
-) {
-  const auth = await requireOrganization(ctx);
-  if (await requireKioskDestination(ctx, auth, page)) return auth;
-  if (!canManageTransfers(auth.role)) {
-    throw new ConvexError("Du har ikke adgang");
-  }
-  return auth;
-}
-
 export async function requireCounter(
   ctx: AuthContext,
   page: KioskDestinationId | readonly KioskDestinationId[] = "count.register",
 ) {
-  const auth = await requireOrganization(ctx);
-  if (await requireKioskDestination(ctx, auth, page)) return auth;
-  if (!canCountStock(auth.role)) {
-    throw new ConvexError("Du har ikke adgang");
-  }
-  return auth;
+  return await requirePermission(ctx, "count.register", page);
+}
+
+export async function requireStockViewer(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "count.stock",
+) {
+  return await requirePermission(ctx, "count.viewStock", page);
 }
 
 export async function requireWasteRegistrar(
   ctx: AuthContext,
   page: KioskDestinationId | readonly KioskDestinationId[] = "waste.register",
 ) {
-  const auth = await requireOrganization(ctx);
-  if (await requireKioskDestination(ctx, auth, page)) return auth;
-  if (!canRegisterWaste(auth.role)) {
-    throw new ConvexError("Du har ikke adgang");
-  }
-  return auth;
+  return await requirePermission(ctx, "waste.register", page);
 }
 
 export async function requireEmployeeViewer(
@@ -163,9 +259,11 @@ export async function requireEmployeeViewer(
     | "employees.directory"
   )[],
 ) {
-  const auth = await requireOrganization(ctx);
-  await requireKioskDestination(ctx, auth, page);
-  return auth;
+  return await requirePermission(
+    ctx,
+    page === "employees.schedule" ? "employees.schedule" : "employees.directory",
+    page,
+  );
 }
 
 export async function requireNormalOrganization(ctx: AuthContext) {
@@ -175,35 +273,50 @@ export async function requireNormalOrganization(ctx: AuthContext) {
 }
 
 export async function requireStaffFoodRegistrar(ctx: AuthContext) {
-  const auth = await requireOrganization(ctx);
-  if (await requireKioskDestination(ctx, auth, "staffFood.register")) return auth;
-  if (!canRegisterStaffFood(auth.role)) {
-    throw new ConvexError("Du har ikke adgang");
-  }
-  return auth;
+  return await requirePermission(ctx, "staffFood.register", "staffFood.register");
 }
 
-export async function requireWasteReporter(ctx: AuthContext) {
-  const auth = await requireOrganization(ctx);
-  if (await requireKioskDestination(ctx, auth, "waste.report")) return auth;
-  if (!canViewWasteReports(auth.role)) {
-    throw new ConvexError("Du har ikke adgang");
-  }
+export async function requireWasteReporter(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "waste.report",
+) {
+  return await requirePermission(ctx, "waste.report", page);
+}
+
+export async function requireWasteExporter(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "waste.report",
+) {
+  return await requirePermission(ctx, "waste.export", page);
+}
+
+export async function requireWasteSettings(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "waste.settings");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
   return auth;
 }
 
 export async function requireOrganizationAdmin(ctx: AuthContext) {
-  const auth = await requireOrganization(ctx);
+  const auth = await requirePermission(ctx, "organization.settings");
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
-  if (!canManageOrganization(auth.role)) {
-    throw new ConvexError("Kun administratorer kan ændre organisationen");
-  }
+  return auth;
+}
+
+export async function requireMemberManager(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "members.manage");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
+export async function requireIntegrationManager(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "integrations.manage");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
   return auth;
 }
 
 export async function requireDashboardViewer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
-  if (auth.kioskModeEnabled || !canViewDashboard(auth.role)) {
+  if (auth.kioskModeEnabled || !hasPermission(auth.role, auth.permissions, "dashboard.view")) {
     throw new ConvexError("Du har ikke adgang til dashboardet");
   }
   return auth;
@@ -211,17 +324,14 @@ export async function requireDashboardViewer(ctx: AuthContext) {
 
 export async function requireDashboardSharer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
-  if (auth.kioskModeEnabled || !canShareDashboard(auth.role)) {
+  if (auth.kioskModeEnabled || !hasPermission(auth.role, auth.permissions, "dashboard.share")) {
     throw new ConvexError("Kun administratorer kan dele dashboardet");
   }
   return auth;
 }
 
 export async function requireStaffFoodManager(ctx: AuthContext) {
-  const auth = await requireOrganization(ctx);
+  const auth = await requirePermission(ctx, "staffFood.manage");
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
-  if (!canManageStaffFood(auth.role)) {
-    throw new ConvexError("Kun administratorer kan ændre Staff food");
-  }
   return auth;
 }

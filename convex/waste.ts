@@ -11,12 +11,18 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { canViewWasteReports } from "../lib/auth-permissions";
+import { hasPermission } from "../lib/auth-permissions";
 import {
-  requireKioskLocation,
-  requireOrganizationAdmin,
+  requireKioskDestination,
+  requireLocationAccess,
+  requireOrganization,
   requireWasteRegistrar,
+  requireWasteExporter,
   requireWasteReporter,
+  requireWasteSettings,
+  isMultiLocationFilter,
+  isSingleLocationFilter,
+  resolveLocationFilter,
 } from "./lib/auth";
 import {
   DEFAULT_BAD_DELIVERY_EMAIL_BODY,
@@ -791,7 +797,7 @@ export const getSettings = query({
   args: {},
   returns: settingsValidator,
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireWasteSettings(ctx);
     return await settingsFor(ctx, organizationId);
   },
 });
@@ -800,7 +806,7 @@ export const setSettings = mutation({
   args: settingsValidator.fields,
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireWasteSettings(ctx);
     if (
       !Number.isInteger(args.inactivitySeconds) ||
       args.inactivitySeconds < 5 ||
@@ -948,7 +954,7 @@ export const getViewState = query({
   handler: async (ctx, args) => {
     const auth = await requireWasteRegistrar(ctx, "waste.register");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
     const locationStats = settings.historyScope === "location"
@@ -1094,7 +1100,7 @@ export const registerWaste = mutation({
   handler: async (ctx, args) => {
     const auth = await requireWasteRegistrar(ctx, "waste.register");
     const { organizationId, userIdentifier, userName } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     const quantity = requireQuantity(args.quantity);
     const [location, product, productUnit, unit] = await Promise.all([
       requireLocation(ctx, organizationId, args.locationId),
@@ -1176,7 +1182,7 @@ export const setPinned = mutation({
   handler: async (ctx, args) => {
     const auth = await requireWasteRegistrar(ctx, "waste.register");
     const { organizationId, userIdentifier } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     await Promise.all([
       requireLocation(ctx, organizationId, args.locationId),
       requireActiveProduct(ctx, organizationId, args.productId),
@@ -1229,7 +1235,7 @@ export const setShortcutOverride = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireWasteSettings(ctx);
     await requireLocation(ctx, organizationId, args.locationId);
     const product = await requireActiveProduct(ctx, organizationId, args.productId);
     if (args.shortcuts.length < 1 || args.shortcuts.length > 2) {
@@ -1286,7 +1292,7 @@ export const clearShortcutOverride = mutation({
   args: { locationId: v.id("locations"), productId: v.id("products") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireWasteSettings(ctx);
     await requireLocation(ctx, organizationId, args.locationId);
     const current = await ctx.db
       .query("wasteProductConfigs")
@@ -1314,15 +1320,29 @@ export const voidWasteRegistration = mutation({
   args: { registrationId: v.id("wasteRegistrations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requireWasteRegistrar(ctx, [
+    const auth = await requireOrganization(ctx);
+    const kioskBypass = await requireKioskDestination(ctx, auth, [
       "waste.register",
       "waste.report",
     ]);
+    const canRegister = hasPermission(
+      auth.role,
+      auth.permissions,
+      "waste.register",
+    );
+    const canReport = hasPermission(
+      auth.role,
+      auth.permissions,
+      "waste.report",
+    );
+    if (!kioskBypass && !canRegister && !canReport) {
+      throw new ConvexError("Du har ikke adgang");
+    }
     const registration = await ctx.db.get("wasteRegistrations", args.registrationId);
     if (!registration || registration.organizationId !== auth.organizationId) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
-    requireKioskLocation(auth, registration.locationId);
+    requireLocationAccess(auth, registration.locationId);
     if (registration.status === "voided") {
       throw new ConvexError("Registreringen er allerede annulleret");
     }
@@ -1330,7 +1350,7 @@ export const voidWasteRegistration = mutation({
     const canUndoOwn =
       registration.registeredBy === auth.userIdentifier &&
       now - registration.registeredAt <= UNDO_WINDOW_MS;
-    if (!canUndoOwn && !canViewWasteReports(auth.role)) {
+    if (!canUndoOwn && !canReport) {
       throw new ConvexError("Du har ikke adgang til at annullere registreringen");
     }
     const periods: PopularityPeriod[] = ["allTime"];
@@ -1632,25 +1652,42 @@ export const listRegistrations = query({
   handler: async (ctx, args) => {
     const auth = await requireWasteReporter(ctx);
     const { organizationId } = auth;
-    const locationId = auth.kioskLocationId ?? args.locationId;
+    const locationFilter = resolveLocationFilter(auth, args.locationId);
     validateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     if (args.locationId) {
-      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
-    const results = locationId
+    const results = isSingleLocationFilter(locationFilter)
       ? await ctx.db
           .query("wasteRegistrations")
           .withIndex("by_org_location_time", (q) =>
             q
               .eq("organizationId", organizationId)
-              .eq("locationId", locationId)
+              .eq("locationId", locationFilter.locationId)
               .gte("registeredAt", args.startAt)
               .lte("registeredAt", args.endAt),
           )
           .order("desc")
           .paginate(args.paginationOpts)
+      : isMultiLocationFilter(locationFilter)
+        ? await ctx.db
+            .query("wasteRegistrations")
+            .withIndex("by_org_and_time", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .filter((q) =>
+              q.or(
+                ...locationFilter.locationIds.map((locationId) =>
+                  q.eq(q.field("locationId"), locationId),
+                ),
+              ),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
       : await ctx.db
           .query("wasteRegistrations")
           .withIndex("by_org_and_time", (q) =>
@@ -1675,17 +1712,16 @@ export const exportRegistrations = query({
   },
   returns: paginationResultValidator(reportRowValidator),
   handler: async (ctx, args) => {
-    const auth = await requireWasteReporter(ctx);
+    const auth = await requireWasteExporter(ctx);
     const { organizationId } = auth;
-    const locationId = auth.kioskLocationId ?? args.locationId;
+    const locationFilter = resolveLocationFilter(auth, args.locationId);
     validateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     if (args.locationId) {
-      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
     const results = args.activeOnly
-      ? locationId
+      ? isSingleLocationFilter(locationFilter)
         ? await ctx.db
             .query("wasteRegistrations")
             .withIndex(
@@ -1693,10 +1729,29 @@ export const exportRegistrations = query({
               (q) =>
                 q
                   .eq("organizationId", organizationId)
-                  .eq("locationId", locationId)
+                  .eq("locationId", locationFilter.locationId)
                   .eq("status", "active")
                   .gte("registeredAt", args.startAt)
                   .lte("registeredAt", args.endAt),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : isMultiLocationFilter(locationFilter)
+        ? await ctx.db
+            .query("wasteRegistrations")
+            .withIndex("by_org_status_time", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("status", "active")
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .filter((q) =>
+              q.or(
+                ...locationFilter.locationIds.map((locationId) =>
+                  q.eq(q.field("locationId"), locationId),
+                ),
+              ),
             )
             .order("desc")
             .paginate(args.paginationOpts)
@@ -1711,15 +1766,33 @@ export const exportRegistrations = query({
             )
             .order("desc")
             .paginate(args.paginationOpts)
-      : locationId
+      : isSingleLocationFilter(locationFilter)
         ? await ctx.db
             .query("wasteRegistrations")
             .withIndex("by_org_location_time", (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("locationId", locationId)
+                  .eq("locationId", locationFilter.locationId)
                 .gte("registeredAt", args.startAt)
                 .lte("registeredAt", args.endAt),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : isMultiLocationFilter(locationFilter)
+        ? await ctx.db
+            .query("wasteRegistrations")
+            .withIndex("by_org_and_time", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .filter((q) =>
+              q.or(
+                ...locationFilter.locationIds.map((locationId) =>
+                  q.eq(q.field("locationId"), locationId),
+                ),
+              ),
             )
             .order("desc")
             .paginate(args.paginationOpts)

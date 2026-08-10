@@ -1,7 +1,7 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { organization } from "better-auth/plugins/organization";
 import { username } from "better-auth/plugins/username";
@@ -261,6 +261,47 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         "/organization/get-active-member": false,
         "/organization/get-active-member-role": false,
       },
+    },
+    hooks: {
+      before: createAuthMiddleware(async (authCtx) => {
+        const memberApiPaths = new Set([
+          "/organization/list-members",
+          "/organization/list-invitations",
+          "/organization/invite-member",
+          "/organization/add-member",
+          "/organization/update-member-role",
+          "/organization/remove-member",
+          "/organization/cancel-invitation",
+        ]);
+        if (!authCtx.path || !memberApiPaths.has(authCtx.path)) return;
+        const session = await getSessionFromCtx(authCtx).catch(() => null);
+        if (!session) return;
+        if (session.session.kioskModeEnabled) {
+          throw new APIError("FORBIDDEN", {
+            message: "Du har ikke adgang til at administrere brugere",
+          });
+        }
+        const input = (authCtx.body ?? authCtx.query) as
+          | { organizationId?: string }
+          | undefined;
+        const organizationId =
+          input?.organizationId ?? session.session.activeOrganizationId;
+        if (!organizationId) {
+          throw new APIError("FORBIDDEN", {
+            message: "Ingen aktiv organisation",
+          });
+        }
+        const roleContext = await ctx.runQuery(
+          internal.access.getMemberPermissionContext,
+          { organizationId, userId: session.user.id },
+        );
+        if (roleContext.role === "admin") return;
+        if (!roleContext.permissions.includes("members.manage")) {
+          throw new APIError("FORBIDDEN", {
+            message: "Du har ikke adgang til at administrere brugere",
+          });
+        }
+      }),
     },
     plugins: [
       username(),

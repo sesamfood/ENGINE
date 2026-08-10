@@ -92,7 +92,7 @@ export const getPublicMeta = query({
     const requiresPassword =
       Boolean(share.passwordHash) ||
       share.widgets.some(
-        (widget) => metricRegistry[widget.metricId]?.adminOnly,
+        (widget) => metricRegistry[widget.metricId]?.sensitive,
       );
     return {
       name: share.name,
@@ -120,7 +120,7 @@ export const getShareForUnlock = internalQuery({
           revokedAt: share.revokedAt ?? null,
           requiresPassword: Boolean(share.passwordHash) ||
             share.widgets.some(
-              (widget) => metricRegistry[widget.metricId]?.adminOnly,
+        (widget) => metricRegistry[widget.metricId]?.sensitive,
             ),
         }
       : null;
@@ -216,7 +216,7 @@ export const getSharedMetric = query({
     }
     // Defense in depth: admin-only metrics never leave a passwordless share,
     // including legacy links created before the createShare password gate.
-    if (definition.adminOnly && !share.passwordHash) {
+    if (definition.sensitive && !share.passwordHash) {
       throw new ConvexError("Målingen er ikke en del af delingen");
     }
     const params = await resolveMetricParams(
@@ -258,7 +258,7 @@ export const getSharedMetrics = query({
       if (
         !widget ||
         definition.shareable === false ||
-        (definition.adminOnly && !share.passwordHash)
+        (definition.sensitive && !share.passwordHash)
       ) {
         throw new ConvexError("Målingen er ikke en del af delingen");
       }

@@ -44,8 +44,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
-import { authClient } from "@/lib/auth-client";
-import { canManageWasteSettings } from "@/lib/auth-permissions";
+import { useAccess, usePermission } from "@/components/app-shell";
 
 type Period = "allTime" | "30Days" | "90Days";
 type HistoryScope = "location" | "organization";
@@ -199,8 +198,8 @@ function RecipientInput({
 }
 
 export function WasteSettings() {
-  const membership = authClient.useActiveMemberRole();
-  const canManage = canManageWasteSettings(membership.data?.role);
+  const access = useAccess();
+  const canManage = usePermission("waste.settings");
   const settings = useQuery(api.waste.getSettings, canManage ? {} : "skip");
   const saveSettings = useMutation(api.waste.setSettings);
   const [secondsDraft, setSecondsDraft] = useState<string | null>(null);
@@ -216,13 +215,13 @@ export function WasteSettings() {
   const [bccDraft, setBccDraft] = useState<string[] | null>(null);
   const [saving, setSaving] = useState<"waste" | "badDelivery" | null>(null);
 
-  if (membership.isPending) return <Skeleton className="h-72 max-w-3xl" />;
+  if (!access) return <Skeleton className="h-72 max-w-3xl" />;
   if (!canManage) {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre spildindstillinger.
+          Du har ikke adgang til at ændre spildindstillinger.
         </AlertDescription>
       </Alert>
     );

@@ -50,6 +50,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { downloadCsv } from "@/lib/download-csv";
+import { useKiosk, usePermission } from "@/components/app-shell";
 
 type NoticeStatus =
   | "notConfigured"
@@ -178,6 +179,8 @@ export function BadDeliveriesReportSection({
   rangeValid: boolean;
 }) {
   const convex = useConvex();
+  const kiosk = useKiosk();
+  const canExport = usePermission("waste.export") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.report"));
   const args = rangeValid
     ? { startAt, endAt, ...(locationId ? { locationId } : {}) }
     : "skip";
@@ -301,18 +304,20 @@ export function BadDeliveriesReportSection({
       <Card>
         <CardHeader className="sm:grid-cols-[1fr_auto]">
           <CardTitle>Dårlige leveringer</CardTitle>
-          <Button
-            variant="outline"
-            disabled={exporting || !rangeValid}
-            onClick={() => void exportRows()}
-          >
-            {exporting ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <DownloadIcon data-icon="inline-start" />
-            )}
-            Eksportér dårlige leveringer
-          </Button>
+          {canExport ? (
+            <Button
+              variant="outline"
+              disabled={exporting || !rangeValid}
+              onClick={() => void exportRows()}
+            >
+              {exporting ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <DownloadIcon data-icon="inline-start" />
+              )}
+              Eksportér dårlige leveringer
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent>
           {status === "LoadingFirstPage" ? (

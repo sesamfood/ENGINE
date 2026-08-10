@@ -13,6 +13,27 @@ import {
 } from "./lib/dashboardValidators";
 
 export default defineSchema({
+  rolePermissions: defineTable({
+    organizationId: v.string(),
+    role: v.union(
+      v.literal("admin"),
+      v.literal("manager"),
+      v.literal("member"),
+    ),
+    permissions: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_role", ["organizationId", "role"]),
+
+  memberLocationAccess: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    scope: v.union(v.literal("all"), v.literal("selected")),
+    locationIds: v.array(v.id("locations")),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_userId", ["organizationId", "userId"])
+    .index("by_organizationId", ["organizationId"]),
+
   organizationAssets: defineTable({
     organizationId: v.string(),
     logoStorageId: v.optional(v.id("_storage")),

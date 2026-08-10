@@ -79,7 +79,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { BrowserBranding } from "@/components/browser-branding";
 import { authClient } from "@/lib/auth-client";
-import { canManageCatalog, canViewDashboard } from "@/lib/auth-permissions";
+import type { PermissionId } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
@@ -111,11 +111,35 @@ const organizationNavigation = {
   pages: [] as string[],
 };
 
-type KioskRuntime = NonNullable<
-  ReturnType<typeof useQuery<typeof api.kiosk.getRuntimeContext>>
->;
+type KioskSettings = {
+  enabledPages: string[];
+  homePage: string | null;
+  inactivitySeconds: number | null;
+  updatedAt: number;
+};
 
-const KioskContext = createContext<KioskRuntime | null>(null);
+export type KioskRuntime = {
+  isKioskAccount: boolean;
+  kioskModeEnabled: boolean;
+  locationId: Id<"locations"> | null;
+  locationName: string | null;
+  settings: KioskSettings | null;
+};
+
+type LocationOption = { id: Id<"locations">; name: string };
+
+type AccessRuntime = {
+  role: string;
+  permissions: string[];
+  locationScope: { all: boolean; ids: Id<"locations">[] };
+  kiosk: KioskRuntime | null;
+};
+
+type AccessContextValue = AccessRuntime & {
+  locations: LocationOption[];
+};
+
+const AccessContext = createContext<AccessContextValue | null>(null);
 
 const FeatureLockContext = createContext(false);
 const ACTIVE_SYNC_INTERVAL_MS = 60 * 60 * 1_000;
@@ -213,33 +237,83 @@ function useKioskWakeLock(enabled: boolean) {
   return supported;
 }
 
+export function useAccess() {
+  return useContext(AccessContext);
+}
+
+export function useKiosk() {
+  return useContext(AccessContext)?.kiosk ?? null;
+}
+
+export function usePermission(permissionId: PermissionId) {
+  const access = useContext(AccessContext);
+  return Boolean(access?.permissions.includes(permissionId));
+}
+
+export function useLocationAccess() {
+  const access = useContext(AccessContext);
+  const locations = access?.locations ?? [];
+  const kiosk = access?.kiosk;
+  const kioskLocked = Boolean(kiosk?.isKioskAccount);
+  const singleLocationLocked = locations?.length === 1;
+  const isLocked = kioskLocked || singleLocationLocked;
+  const lockedId = kioskLocked
+    ? (kiosk?.locationId ?? null)
+    : singleLocationLocked
+      ? (locations?.[0]?.id ?? null)
+      : null;
+  const lockedName = kioskLocked
+    ? (kiosk?.locationName ?? null)
+    : singleLocationLocked
+      ? (locations?.[0]?.name ?? null)
+      : null;
+
+  return {
+    locations,
+    isLocked,
+    lockedId,
+    lockedName,
+  };
+}
+
 function effectiveKioskHome(runtime: KioskRuntime, countLocked: boolean) {
   if (countLocked) return "/count";
   const homePage = runtime.settings?.homePage as KioskDestinationId | undefined;
   return homePage ? kioskDestination(homePage).route : "/transfers";
 }
 
-function KioskRuntimeBoundary({ children }: { children: React.ReactNode }) {
+function AccessBoundary({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
   const organization = authClient.useActiveOrganization();
-  const runtime = useQuery(
-    api.kiosk.getRuntimeContext,
+  const access = useQuery(
+    api.access.getContext,
+    isAuthenticated && organization.data ? {} : "skip",
+  );
+  const locations = useQuery(
+    api.locations.listLocationOptions,
     isAuthenticated && organization.data ? {} : "skip",
   );
 
-  if (isAuthenticated && organization.data && runtime === undefined) {
+  if (
+    isAuthenticated &&
+    organization.data &&
+    (access === undefined || locations === undefined)
+  ) {
     return (
-      <main className="grid min-h-screen place-items-center" aria-label="Indlæser kiosktilstand">
+      <main className="grid min-h-screen place-items-center" aria-label="Indlæser adgange">
         <Spinner className="size-5" />
       </main>
     );
   }
 
-  return <KioskContext.Provider value={runtime ?? null}>{children}</KioskContext.Provider>;
+  const contextValue = access
+    ? { ...access, locations: locations ?? [] }
+    : null;
+  return <AccessContext.Provider value={contextValue}>{children}</AccessContext.Provider>;
 }
 
 function KioskBehavior({ children }: { children: React.ReactNode }) {
-  const runtime = useContext(KioskContext);
+  const runtime = useKiosk();
   const countLocked = useContext(FeatureLockContext);
   const pathname = usePathname();
   const router = useRouter();
@@ -307,15 +381,12 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated } = useConvexAuth();
-  const kiosk = useContext(KioskContext);
+  const kiosk = useKiosk();
   const organization = authClient.useActiveOrganization();
   const [now, setNow] = useState(() => Date.now());
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
-  const locations = useQuery(
-    api.locations.listLocationOptions,
-    organizationId && isAuthenticated ? {} : "skip",
-  );
+  const { locations } = useLocationAccess();
   const lockEnabled = useQuery(
     api.count.getOtherFeaturesLockEnabled,
     organizationId && isAuthenticated ? {} : "skip",
@@ -386,11 +457,39 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
 
 function OrganizationHome() {
   const { data: organization } = authClient.useActiveOrganization();
-  const { data: membership } = authClient.useActiveMemberRole();
   const { state, isMobile } = useSidebar();
   const { isAuthenticated } = useConvexAuth();
   const featureLocked = useContext(FeatureLockContext);
-  const kiosk = useContext(KioskContext);
+  const kiosk = useKiosk();
+  const canDashboard = usePermission("dashboard.view");
+  const canTransfersManage = usePermission("transfers.manage");
+  const canTransfersView = usePermission("transfers.view");
+  const canWasteRegister = usePermission("waste.register");
+  const canWasteReport = usePermission("waste.report");
+  const canStaffFood = usePermission("staffFood.register");
+  const canCountRegister = usePermission("count.register");
+  const canCountStock = usePermission("count.viewStock");
+  const canEmployeesSchedule = usePermission("employees.schedule");
+  const canEmployeesDirectory = usePermission("employees.directory");
+  const canCatalog = usePermission("catalog.manage");
+  const canLocations = usePermission("locations.manage");
+  const canOrganizationSettings = usePermission("organization.settings");
+  const canCountSettings = usePermission("count.settings");
+  const canWasteSettings = usePermission("waste.settings");
+  const canIntegrations = usePermission("integrations.manage");
+  const canStaffFoodManage = usePermission("staffFood.manage");
+  const canMembers = usePermission("members.manage");
+  const canRoles = usePermission("roles.manage");
+  const canOrganization =
+    canCatalog ||
+    canLocations ||
+    canOrganizationSettings ||
+    canCountSettings ||
+    canWasteSettings ||
+    canIntegrations ||
+    canStaffFoodManage ||
+    canMembers ||
+    canRoles;
   const branding = useQuery(
     api.organization.getBranding,
     organization && isAuthenticated ? {} : "skip",
@@ -401,9 +500,29 @@ function OrganizationHome() {
     ? effectiveKioskHome(kiosk, featureLocked)
     : featureLocked
       ? "/count"
-      : canViewDashboard(membership?.role)
+      : canDashboard
         ? "/dashboard"
-        : "/transfers";
+        : canTransfersManage
+          ? "/transfers"
+          : canTransfersView
+            ? "/transfers/history"
+            : canWasteRegister
+              ? "/waste"
+              : canWasteReport
+                ? "/waste/report"
+            : canStaffFood
+                ? "/staff-food"
+                : canCountRegister
+                  ? "/count"
+                  : canCountStock
+                    ? "/count/stock"
+                    : canEmployeesSchedule
+                      ? "/employees"
+                      : canEmployeesDirectory
+                        ? "/employees/directory"
+                        : canOrganization
+                          ? "/organization"
+                          : "/profile";
   const showWideLogo = state === "expanded" || isMobile;
 
   if (showWideLogo && branding === undefined) {
@@ -458,13 +577,45 @@ function OrganizationHome() {
 }
 
 function NavigationList() {
-  const { data: membership } = authClient.useActiveMemberRole();
   const organization = authClient.useActiveOrganization();
   const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const featureLocked = useContext(FeatureLockContext);
-  const kiosk = useContext(KioskContext);
+  const kiosk = useKiosk();
+  const canDashboard = usePermission("dashboard.view");
+  const canTransfersManage = usePermission("transfers.manage");
+  const canTransfersView = usePermission("transfers.view");
+  const canTransfers = canTransfersView || canTransfersManage;
+  const canWasteRegister = usePermission("waste.register");
+  const canWasteReport = usePermission("waste.report");
+  const canWaste = canWasteRegister || canWasteReport;
+  const canStaffFood = usePermission("staffFood.register");
+  const canCountRegister = usePermission("count.register");
+  const canCountStock = usePermission("count.viewStock");
+  const canCount = canCountRegister || canCountStock;
+  const canEmployeesSchedule = usePermission("employees.schedule");
+  const canEmployeesDirectory = usePermission("employees.directory");
+  const canEmployees = canEmployeesSchedule || canEmployeesDirectory;
+  const canCatalog = usePermission("catalog.manage");
+  const canLocations = usePermission("locations.manage");
+  const canOrganizationSettings = usePermission("organization.settings");
+  const canCountSettings = usePermission("count.settings");
+  const canWasteSettings = usePermission("waste.settings");
+  const canIntegrations = usePermission("integrations.manage");
+  const canStaffFoodManage = usePermission("staffFood.manage");
+  const canMembers = usePermission("members.manage");
+  const canRoles = usePermission("roles.manage");
+  const canOrganization =
+    canCatalog ||
+    canLocations ||
+    canOrganizationSettings ||
+    canCountSettings ||
+    canWasteSettings ||
+    canIntegrations ||
+    canStaffFoodManage ||
+    canMembers ||
+    canRoles;
   const itemOrder = useQuery(
     api.navigation.getOrder,
     organization.data && isAuthenticated ? {} : "skip",
@@ -496,11 +647,32 @@ function NavigationList() {
           : [];
       })
     : null;
-  const navigation = kioskNavigation ?? orderedNavigation.filter((item) => {
-    if (item.id === "dashboard") return canViewDashboard(membership?.role) && !featureLocked;
-    if (item.id === "organization") return canManageCatalog(membership?.role);
-    return !featureLocked || item.id === "count" || item.id === "waste";
-  });
+  const navigation = kioskNavigation ?? orderedNavigation
+    .filter((item) => {
+      if (item.id === "dashboard") return canDashboard && !featureLocked;
+      if (item.id === "transfers") return canTransfers && !featureLocked;
+      if (item.id === "waste") return canWaste;
+      if (item.id === "staffFood") return canStaffFood && !featureLocked;
+      if (item.id === "count") return canCount;
+      if (item.id === "employees") return canEmployees && !featureLocked;
+      if (item.id === "organization") return canOrganization;
+      return false;
+    })
+    .map((item) => {
+      if (item.id === "transfers" && !canTransfersManage) {
+        return { ...item, href: "/transfers/history" };
+      }
+      if (item.id === "waste" && !canWasteRegister) {
+        return { ...item, href: "/waste/report" };
+      }
+      if (item.id === "count" && !canCountRegister) {
+        return { ...item, href: "/count/stock" };
+      }
+      if (item.id === "employees" && !canEmployeesSchedule) {
+        return { ...item, href: "/employees/directory" };
+      }
+      return item;
+    });
 
   return (
     <SidebarGroup>
@@ -578,8 +750,26 @@ function ProfileMenu({
   onSignOut: () => void;
 }) {
   const { data: session } = authClient.useSession();
-  const { data: membership } = authClient.useActiveMemberRole();
-  const kiosk = useContext(KioskContext);
+  const kiosk = useKiosk();
+  const canCatalog = usePermission("catalog.manage");
+  const canLocations = usePermission("locations.manage");
+  const canOrganizationSettings = usePermission("organization.settings");
+  const canCountSettings = usePermission("count.settings");
+  const canWasteSettings = usePermission("waste.settings");
+  const canIntegrations = usePermission("integrations.manage");
+  const canStaffFoodManage = usePermission("staffFood.manage");
+  const canMembers = usePermission("members.manage");
+  const canRoles = usePermission("roles.manage");
+  const canManageOrganization =
+    canCatalog ||
+    canLocations ||
+    canOrganizationSettings ||
+    canCountSettings ||
+    canWasteSettings ||
+    canIntegrations ||
+    canStaffFoodManage ||
+    canMembers ||
+    canRoles;
   const { isMobile, setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
@@ -602,8 +792,6 @@ function ProfileMenu({
     pathname === "/profile" ||
     pathname === "/settings" ||
     pathname.startsWith("/organization");
-  const canManageOrganization = canManageCatalog(membership?.role);
-
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
@@ -717,7 +905,7 @@ function ProfileMenu({
 }
 
 function KioskModeControl() {
-  const kiosk = useContext(KioskContext);
+  const kiosk = useKiosk();
   const countLocked = useContext(FeatureLockContext);
   const { state } = useSidebar();
   const router = useRouter();
@@ -803,7 +991,7 @@ function KioskModeControl() {
 }
 
 function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
-  const kiosk = useContext(KioskContext);
+  const kiosk = useKiosk();
   return (
     <SidebarFooter>
       <KioskModeControl />
@@ -815,7 +1003,7 @@ function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSign
 }
 
 function MobileAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
-  const kiosk = useContext(KioskContext);
+  const kiosk = useKiosk();
   return kiosk?.kioskModeEnabled ? null : <ProfileMenu compact signingOut={signingOut} onSignOut={onSignOut} />;
 }
 
@@ -1027,7 +1215,7 @@ export function AppShell({
       <OrganizationBoundary required={organizationRequired}>
       <ActiveSyncHeartbeat />
       <OrganizationTheme>
-        <KioskRuntimeBoundary>
+        <AccessBoundary>
           <FeatureLockBoundary>
             <KioskBehavior>
           <SidebarProvider
@@ -1115,7 +1303,7 @@ export function AppShell({
           </SidebarProvider>
             </KioskBehavior>
         </FeatureLockBoundary>
-        </KioskRuntimeBoundary>
+        </AccessBoundary>
       </OrganizationTheme>
       </OrganizationBoundary>
     </>

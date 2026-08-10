@@ -1,19 +1,12 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { MapPinIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Field, FieldLabel } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { LocationField } from "@/components/location-field";
+import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
@@ -40,13 +33,13 @@ function Controls({
   locationId,
   locations,
   organizationId,
-  fixedLocationName,
+  isLocked,
+  lockedName,
 }: Omit<WasteContextValue, "resetToken"> & {
   organizationId?: string;
-  fixedLocationName?: string;
+  isLocked: boolean;
+  lockedName?: string | null;
 }) {
-  const items =
-    locations?.map((location) => ({ value: location.id, label: location.name })) ?? [];
   return (
     <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
@@ -57,33 +50,18 @@ function Controls({
       </div>
       <Field>
         <FieldLabel htmlFor="waste-location">Lokation</FieldLabel>
-        {fixedLocationName ? (
-          <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
-        ) : <Select
-          items={items}
+        <LocationField
+          id="waste-location"
+          locations={locations}
           value={locationId}
+          locked={isLocked}
+          lockedName={lockedName}
           onValueChange={(value) => {
-            if (organizationId) {
-              setWasteLocation(organizationId, value as string);
-              setCountLocation(organizationId, value as string);
-            }
+            if (!organizationId) return;
+            setWasteLocation(organizationId, value);
+            setCountLocation(organizationId, value);
           }}
-          disabled={!locations?.length}
-        >
-          <SelectTrigger id="waste-location" className="h-11! w-full">
-            <MapPinIcon aria-hidden="true" />
-            <SelectValue placeholder="Vælg lokation" />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            <SelectGroup>
-              {items.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>}
+        />
       </Field>
     </div>
   );
@@ -95,27 +73,30 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
-  const locations = useQuery(api.locations.listLocationOptions);
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
-  const locationId = kiosk?.isKioskAccount
-    ? kiosk.locationId
+  const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
+  const kiosk = useKiosk();
+  const canRegister = usePermission("waste.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.register"));
+  const locationId = isLocked
+    ? lockedId
     : locations?.some((location) => location.id === storedLocationId)
     ? (storedLocationId as Id<"locations">)
     : (locations?.[0]?.id ?? null);
   const viewState = useQuery(
     api.waste.getViewState,
-    locationId ? { locationId } : "skip",
+    canRegister && !pathname.startsWith("/waste/report") && locationId
+      ? { locationId }
+      : "skip",
   );
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [resetToken, setResetToken] = useState(0);
 
   useEffect(() => {
-    if (!organizationId || !locations || kiosk?.isKioskAccount) return;
+    if (!organizationId || !locations || isLocked) return;
     if (!locations.some((location) => location.id === storedLocationId)) {
       setWasteLocation(organizationId, locations[0]?.id ?? null);
       setCountLocation(organizationId, locations[0]?.id ?? null);
     }
-  }, [kiosk?.isKioskAccount, locations, organizationId, storedLocationId]);
+  }, [isLocked, locations, organizationId, storedLocationId]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() =>
@@ -125,8 +106,8 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (kiosk?.kioskModeEnabled) return;
-    if (pathname.startsWith("/waste/bad-delivery")) return;
+    if (!canRegister || kiosk?.kioskModeEnabled) return;
+    if (pathname.startsWith("/waste/bad-delivery") || pathname.startsWith("/waste/report")) return;
     const seconds = viewState?.settings.inactivitySeconds ?? 30;
     let timer = window.setTimeout(reset, seconds * 1000);
     function reset() {
@@ -144,14 +125,15 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
       window.clearTimeout(timer);
       for (const event of events) window.removeEventListener(event, activity, true);
     };
-  }, [kiosk?.kioskModeEnabled, pathname, router, viewState?.settings.inactivitySeconds]);
+  }, [canRegister, kiosk?.kioskModeEnabled, pathname, router, viewState?.settings.inactivitySeconds]);
 
   const controls = (
     <Controls
       locationId={locationId}
       locations={locations}
       organizationId={organizationId}
-      fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
+      isLocked={isLocked}
+      lockedName={lockedName}
     />
   );
 

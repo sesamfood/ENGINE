@@ -3,7 +3,11 @@ import { kioskDestinations } from "../lib/kiosk";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { createAuth, getDatabaseAdapter } from "./auth";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  requireMemberManager,
+  requireOrganization,
+  requireOrganizationAdmin,
+} from "./lib/auth";
 
 const pageIds = new Set<string>(kioskDestinations.map((page) => page.id));
 const roleValidator = v.union(
@@ -204,7 +208,7 @@ export const listAccounts = query({
   args: {},
   returns: v.array(accountValidator),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireMemberManager(ctx);
     const adapter = getDatabaseAdapter(ctx);
     const members = await adapter.findMany<Member>({
       model: "member",
@@ -257,7 +261,11 @@ export const createAccount = mutation({
   },
   returns: v.object({ memberId: v.string(), userId: v.string() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const auth = await requireMemberManager(ctx);
+    const { organizationId } = auth;
+    if (args.role === "admin" && auth.role !== "admin") {
+      throw new ConvexError("Kun administratorer kan oprette en administratorkiosk");
+    }
     const settings = await ctx.db
       .query("kioskSettings")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
@@ -331,7 +339,7 @@ export const updateAccount = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireMemberManager(ctx);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     await requireLocation(ctx, organizationId, args.locationId);
     const name = args.name.trim();
@@ -357,7 +365,7 @@ export const setPassword = mutation({
   args: { memberId: v.string(), password: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireMemberManager(ctx);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     validatePassword(args.password);
     const password = await (await createAuth(ctx).$context).password.hash(
@@ -379,7 +387,7 @@ export const revokeAccountSessions = mutation({
   args: { memberId: v.string() },
   returns: v.object({ revokedSessions: v.number() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireMemberManager(ctx);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     const adapter = getDatabaseAdapter(ctx);
     const revokedSessions = await adapter.count({
@@ -401,7 +409,7 @@ export const deleteAccount = mutation({
   args: { memberId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireMemberManager(ctx);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     const adapter = getDatabaseAdapter(ctx);
     await adapter.deleteMany({

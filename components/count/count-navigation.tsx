@@ -2,19 +2,24 @@
 
 import { BoxesIcon, ClipboardListIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import type { ReactNode } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useKiosk, usePermission } from "@/components/app-shell";
 
 export function CountNavigation({ action }: { action?: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const sidebar = useSidebar();
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
-  const showCount = !kiosk?.kioskModeEnabled || pathname === "/count" || kiosk.settings?.enabledPages.includes("count.register");
-  const showStock = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("count.stock");
+  const kiosk = useKiosk();
+  const canRegister = usePermission("count.register");
+  const canStock = usePermission("count.viewStock");
+  const showCount = kiosk?.kioskModeEnabled
+    ? pathname === "/count" || kiosk.settings?.enabledPages.includes("count.register")
+    : canRegister;
+  const showStock = kiosk?.kioskModeEnabled
+    ? kiosk.settings?.enabledPages.includes("count.stock")
+    : canStock;
 
   return (
     <div

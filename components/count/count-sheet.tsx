@@ -43,6 +43,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -94,7 +95,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { canManageCatalog } from "@/lib/auth-permissions";
+import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import {
   setCountOrder,
   useCountLocation,
@@ -782,10 +783,12 @@ function CountSkeleton() {
 
 export function CountSheet() {
   const organization = authClient.useActiveOrganization();
-  const membership = authClient.useActiveMemberRole();
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
-  const savedOrder = useCountOrder(organizationId, storedLocationId);
+  const { locations, isLocked, lockedId } = useLocationAccess();
+  const kiosk = useKiosk();
+  const canRegister = usePermission("count.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("count.register"));
+  const canManageCatalog = usePermission("catalog.manage");
   const [now, setNow] = useState(() => Date.now());
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
@@ -808,12 +811,12 @@ export function CountSheet() {
   const setQuantity = useMutation(api.count.setCountQuantity);
   const submitCount = useMutation(api.count.submitCount);
   const setDefaultOrder = useMutation(api.count.setCountProductOrder);
-  const locations = useQuery(api.locations.listLocationOptions);
-  const locationId = locations?.some(
-    (location) => location.id === storedLocationId,
-  )
-    ? (storedLocationId as Id<"locations">)
-    : null;
+  const locationId = isLocked
+    ? lockedId
+    : locations?.some((location) => location.id === storedLocationId)
+      ? (storedLocationId as Id<"locations">)
+      : (locations?.[0]?.id ?? null);
+  const savedOrder = useCountOrder(organizationId, locationId);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -828,12 +831,12 @@ export function CountSheet() {
   const queryNow = Math.floor(now / 60_000) * 60_000;
   const queriedState = useQuery(
     api.count.getCountState,
-    locationId ? { locationId, now: queryNow } : "skip",
+    canRegister && locationId ? { locationId, now: queryNow } : "skip",
   );
   const state = useLastDefined(queriedState, locationId);
   const queriedQuantities = useQuery(
     api.count.getCountQuantities,
-    locationId && state?.count
+    canRegister && locationId && state?.count
       ? { locationId, countId: state.count.id }
       : "skip",
   );
@@ -843,12 +846,15 @@ export function CountSheet() {
   );
   const defaultOrder = useQuery(
     api.count.getCountProductOrder,
-    locationId ? { locationId } : "skip",
+    canRegister && locationId ? { locationId } : "skip",
   );
-  const categories = useQuery(api.catalog.listCategoryOptions);
+  const categories = useQuery(
+    api.catalog.listCategoryOptions,
+    canRegister ? {} : "skip",
+  );
   const queriedProducts = useQuery(
     api.count.listCountProducts,
-    locationId
+    canRegister && locationId
       ? {
           locationId,
           categoryId:
@@ -1151,6 +1157,15 @@ export function CountSheet() {
     }
   }
 
+  if (!canRegister) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>Du har ikke adgang til at registrere optællinger.</AlertDescription>
+      </Alert>
+    );
+  }
+
   if (!locations) return <CountSkeleton />;
 
   if (locations.length === 0) {
@@ -1200,7 +1215,7 @@ export function CountSheet() {
                 Start forfra
               </Button>
             ) : null}
-            {editingOrder && canManageCatalog(membership.data?.role) ? (
+            {editingOrder && canManageCatalog ? (
               <Button
                 type="button"
                 variant="outline"
