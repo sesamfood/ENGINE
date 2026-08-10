@@ -137,7 +137,7 @@ function AccountDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Redigér kioskkonto</DialogTitle>
-          <DialogDescription>Skift kontoens navn eller faste location.</DialogDescription>
+          <DialogDescription>Skift kontoens navn eller faste lokation.</DialogDescription>
         </DialogHeader>
         {account ? (
           <form onSubmit={submit} className="flex flex-col gap-4">
@@ -147,7 +147,7 @@ function AccountDialog({
                 <Input id="edit-kiosk-name" name="name" defaultValue={account.name} required />
               </Field>
               <Field>
-                <FieldLabel htmlFor="edit-kiosk-location">Location</FieldLabel>
+                <FieldLabel htmlFor="edit-kiosk-location">Lokation</FieldLabel>
                 <Select name="locationId" defaultValue={account.locationId} items={locations.map((location) => ({ value: location.id, label: location.name }))}>
                   <SelectTrigger id="edit-kiosk-location" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent>
@@ -328,14 +328,14 @@ export function KioskSettings() {
 
       {settings ? <>
       <Card>
-        <CardHeader><CardTitle>Opret kioskkonto</CardTitle><CardDescription>Kontoen bindes permanent til én location og starter altid i kiosktilstand.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Opret kioskkonto</CardTitle><CardDescription>Kontoen bindes permanent til én lokation og starter altid i kiosktilstand.</CardDescription></CardHeader>
         <CardContent>
           <form onSubmit={create}>
             <FieldGroup className="md:grid md:grid-cols-2 xl:grid-cols-5">
               <Field><FieldLabel htmlFor="new-kiosk-name">Navn</FieldLabel><Input id="new-kiosk-name" name="name" required /></Field>
               <Field><FieldLabel htmlFor="new-kiosk-username">Brugernavn</FieldLabel><Input id="new-kiosk-username" name="username" autoComplete="off" minLength={3} maxLength={30} required /></Field>
               <Field><FieldLabel htmlFor="new-kiosk-password">Adgangskode</FieldLabel><PasswordInput id="new-kiosk-password" name="password" autoComplete="new-password" minLength={12} maxLength={256} required /></Field>
-              <Field><FieldLabel htmlFor="new-kiosk-location">Location</FieldLabel><Select name="locationId" items={locations.map((location) => ({ value: location.id, label: location.name }))} required><SelectTrigger id="new-kiosk-location" className="w-full"><SelectValue placeholder="Vælg location" /></SelectTrigger><SelectContent><SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel htmlFor="new-kiosk-location">Lokation</FieldLabel><Select name="locationId" items={locations.map((location) => ({ value: location.id, label: location.name }))} required><SelectTrigger id="new-kiosk-location" className="w-full"><SelectValue placeholder="Vælg lokation" /></SelectTrigger><SelectContent><SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
               <Field><FieldLabel htmlFor="new-kiosk-role">Normal rolle</FieldLabel><Select items={roleItems} value={role} onValueChange={(value) => value && setRole(value)}><SelectTrigger id="new-kiosk-role" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{roles.map((item) => <SelectItem key={item} value={item}>{roleLabels[item]}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
             </FieldGroup>
             <Button type="submit" size="lg" className="mt-5" disabled={creating || !settings || !locations.length}>{creating ? <Spinner data-icon="inline-start" /> : <PlusIcon data-icon="inline-start" />}Opret kioskkonto</Button>

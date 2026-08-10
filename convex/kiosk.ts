@@ -96,7 +96,7 @@ async function requireLocation(
 ) {
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Location blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
   return location;
 }

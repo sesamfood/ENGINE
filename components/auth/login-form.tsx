@@ -41,7 +41,7 @@ export function LoginForm({
     try {
       const form = new FormData(event.currentTarget);
       const identifier = String(form.get("identifier")).trim();
-      const destination = identifier.includes("@") ? redirectTo : "/";
+      const destination = redirectTo;
       const credentials = {
         password: String(form.get("password")),
         callbackURL: `${window.location.origin}${destination}`,

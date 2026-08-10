@@ -290,7 +290,7 @@ export function LocationOpeningHours({
         <DialogHeader>
           <DialogTitle>Åbningstider for {locationName}</DialogTitle>
           <DialogDescription>
-            Åbningstiderne bestemmer count-vinduet på den valgte count-dag.
+            Åbningstiderne bestemmer optællingsvinduet på den valgte optællingsdag.
           </DialogDescription>
         </DialogHeader>
 
@@ -306,7 +306,7 @@ export function LocationOpeningHours({
                 <FieldLegend>Faste åbningstider</FieldLegend>
                 <HelpTooltip
                   label="Faste åbningstider"
-                  content="En lukketid før åbningstiden betyder, at locationen lukker efter midnat."
+                  content="En lukketid før åbningstiden betyder, at lokationen lukker efter midnat."
                 />
               </div>
               <ToggleGroup

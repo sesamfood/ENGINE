@@ -12,6 +12,7 @@ import {
   SearchIcon,
   Trash2Icon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -65,12 +66,15 @@ function messageFrom(error: unknown) {
 function ProductImage({ product }: { product: CatalogProduct }) {
   if (product.imageUrl) {
     return (
-      <div
-        role="img"
-        aria-label={`Produktbillede af ${product.name}`}
-        className="aspect-[4/3] w-full bg-muted bg-cover bg-center"
-        style={{ backgroundImage: `url("${product.imageUrl}")` }}
-      />
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
+        <Image
+          src={product.imageUrl}
+          alt={`Produktbillede af ${product.name}`}
+          fill
+          sizes="(max-width: 639px) 100vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
+          className="object-cover"
+        />
+      </div>
     );
   }
 

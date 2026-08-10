@@ -9,10 +9,10 @@ import {
 
 const ARCHIVE_FORMAT = "product-catalog";
 const ARCHIVE_VERSION = 1;
-const MAX_ARCHIVE_SIZE = 250 * 1024 * 1024;
+export const MAX_ARCHIVE_SIZE = 250 * 1024 * 1024;
 const MAX_MANIFEST_SIZE = 5 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-const MAX_PRODUCTS = 5000;
+export const MAX_PRODUCTS = 5000;
 const MAX_CHILDREN = 200;
 const MAX_NAME_LENGTH = 100;
 const IMAGE_PATH = /^images\/[a-z0-9_-]+\.(?:jpg|png|webp|avif)$/;
@@ -269,8 +269,12 @@ function unzipFile(file: File) {
 }
 
 export async function createProductArchive(products: ProductExportRow[]) {
+  if (products.length > MAX_PRODUCTS) {
+    throw new Error(`Eksporten kan højst indeholde ${MAX_PRODUCTS.toLocaleString("da-DK")} produkter`);
+  }
   const files: AsyncZippable = {};
   const archivedProducts: ProductArchiveProduct[] = [];
+  let uncompressedSize = 0;
 
   for (const [index, product] of products.entries()) {
     let image: string | undefined;
@@ -286,9 +290,26 @@ export async function createProductArchive(products: ProductExportRow[]) {
       const extension = contentType ? imageExtensions[contentType] : undefined;
       if (!extension)
         throw new Error(`Billedet til ${product.name} har et ugyldigt format`);
+      const contentLengthHeader = response.headers.get("content-length");
+      const contentLength = contentLengthHeader
+        ? Number(contentLengthHeader)
+        : Number.NaN;
+      if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_SIZE) {
+        throw new Error(`Billedet til ${product.name} er større end 10 MB`);
+      }
+      if (
+        Number.isFinite(contentLength) &&
+        uncompressedSize + contentLength > MAX_ARCHIVE_SIZE
+      ) {
+        throw new Error("Eksporten må højst indeholde 250 MB ukomprimerede data");
+      }
       const data = new Uint8Array(await response.arrayBuffer());
       if (data.byteLength > MAX_IMAGE_SIZE) {
         throw new Error(`Billedet til ${product.name} er større end 10 MB`);
+      }
+      uncompressedSize += data.byteLength;
+      if (uncompressedSize > MAX_ARCHIVE_SIZE) {
+        throw new Error("Eksporten må højst indeholde 250 MB ukomprimerede data");
       }
       image = `images/${String(index + 1).padStart(5, "0")}.${extension}`;
       files[image] = [data, { level: 0 }];
@@ -310,7 +331,14 @@ export async function createProductArchive(products: ProductExportRow[]) {
     exportedAt: new Date().toISOString(),
     products: archivedProducts,
   };
-  files["manifest.json"] = strToU8(JSON.stringify(manifest, null, 2));
+  const manifestData = strToU8(JSON.stringify(manifest, null, 2));
+  if (manifestData.byteLength > MAX_MANIFEST_SIZE) {
+    throw new Error("Eksportens produktdata må højst fylde 5 MB");
+  }
+  if (uncompressedSize + manifestData.byteLength > MAX_ARCHIVE_SIZE) {
+    throw new Error("Eksporten må højst indeholde 250 MB ukomprimerede data");
+  }
+  files["manifest.json"] = manifestData;
   const data = await zipFiles(files);
   return new Blob([new Uint8Array(data)], { type: "application/zip" });
 }

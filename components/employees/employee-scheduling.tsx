@@ -374,7 +374,7 @@ export function EmployeeScheduling() {
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Medarbejdere</h1>
       </div>
       <Field>
-        <FieldLabel>Location</FieldLabel>
+        <FieldLabel htmlFor="employees-location">Lokation</FieldLabel>
         {kiosk?.isKioskAccount ? (
           <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{kiosk.locationName}</div>
         ) : <Select
@@ -385,9 +385,9 @@ export function EmployeeScheduling() {
           }}
           disabled={!locations.length}
         >
-          <SelectTrigger className="h-11 w-full">
+          <SelectTrigger id="employees-location" className="h-11! w-full">
             <MapPinIcon aria-hidden="true" />
-            <SelectValue placeholder="Vælg location" />
+            <SelectValue placeholder="Vælg lokation" />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup>

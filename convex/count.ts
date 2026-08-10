@@ -104,7 +104,7 @@ async function requireLocation(
 ) {
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
   return location;
 }
@@ -140,7 +140,7 @@ function requireCountSchedule(
       schedule.day < 0 ||
       schedule.day > 31
     ) {
-      throw new ConvexError("Count-dagen er ugyldig");
+      throw new ConvexError("Optællingsdagen er ugyldig");
     }
     return;
   }
@@ -152,7 +152,7 @@ function requireCountSchedule(
     throw new ConvexError("Intervallet skal være mellem 1 og 365 dage");
   }
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(schedule.anchorDate);
-  if (!match) throw new ConvexError("Første count-dato er ugyldig");
+  if (!match) throw new ConvexError("Første optællingsdato er ugyldig");
   const date = new Date(
     Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
   );
@@ -161,7 +161,7 @@ function requireCountSchedule(
     date.getUTCMonth() !== Number(match[2]) - 1 ||
     date.getUTCDate() !== Number(match[3])
   ) {
-    throw new ConvexError("Første count-dato er ugyldig");
+    throw new ConvexError("Første optællingsdato er ugyldig");
   }
 }
 
@@ -211,7 +211,7 @@ async function getCountItems(
     )
     .take(MAX_COUNT_ITEMS + 1);
   if (items.length > MAX_COUNT_ITEMS) {
-    throw new ConvexError("Count har for mange enhedslinjer");
+    throw new ConvexError("Optællingen har for mange enhedslinjer");
   }
   return items;
 }
@@ -240,8 +240,12 @@ async function activeProducts(
         )
         .take(MAX_PRODUCTS + 1);
 
-  // ponytail: walking a stockroom needs one uninterrupted list; paginate if organizations outgrow 500 active products.
-  return products.slice(0, MAX_PRODUCTS);
+  if (products.length > MAX_PRODUCTS) {
+    throw new ConvexError(
+      "Der er mere end 500 aktive produkter. Arkivér produkter, der ikke bruges, eller afgræns listen",
+    );
+  }
+  return products;
 }
 
 export const getCountSettings = query({
@@ -366,7 +370,7 @@ export const getCountQuantities = query({
       count.organizationId !== organizationId ||
       count.locationId !== args.locationId
     ) {
-      throw new ConvexError("Count blev ikke fundet");
+      throw new ConvexError("Optællingen blev ikke fundet");
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     return items.map((item) => ({
@@ -467,8 +471,13 @@ export const listCountProducts = query({
               ? productSearch.eq("categoryId", args.categoryId)
               : productSearch;
           })
-          .take(MAX_PRODUCTS)
+          .take(MAX_PRODUCTS + 1)
       : await activeProducts(ctx, organizationId, args.categoryId);
+    if (products.length > MAX_PRODUCTS) {
+      throw new ConvexError(
+        "Søgningen matcher mere end 500 produkter. Afgræns søgningen",
+      );
+    }
 
     const productUnits = await Promise.all(
       products.map((product) =>
@@ -603,11 +612,11 @@ export const setCountQuantity = mutation({
       hasSubmitted &&
       !windowIsOpen(now, window)
     ) {
-      throw new ConvexError("Count-vinduet er lukket");
+      throw new ConvexError("Optællingsvinduet er lukket");
     }
     let count = currentCount;
     if (count?.status === "submitted") {
-      throw new ConvexError("Count er allerede registreret");
+      throw new ConvexError("Optællingen er allerede registreret");
     }
     if (!count && args.quantity === 0) return null;
     if (!count) {
@@ -682,13 +691,13 @@ export const submitCount = mutation({
       hasSubmitted &&
       !windowIsOpen(now, window)
     ) {
-      throw new ConvexError("Count-vinduet er lukket");
+      throw new ConvexError("Optællingsvinduet er lukket");
     }
     if (!count) {
       throw new ConvexError("Indtast mindst én mængde før registrering");
     }
     if (count.status === "submitted") {
-      throw new ConvexError("Count er allerede registreret");
+      throw new ConvexError("Optællingen er allerede registreret");
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     if (items.length === 0) {
@@ -706,7 +715,7 @@ export const submitCount = mutation({
       );
       if (quantity === null) {
         throw new ConvexError(
-          "En produkt-enhed er ændret. Opdatér count og prøv igen",
+          "En produkt-enhed er ændret. Opdatér optællingen og prøv igen",
         );
       }
       totals.set(item.productId, (totals.get(item.productId) ?? 0) + quantity);
@@ -774,7 +783,7 @@ export const getWasteReportContext = internalQuery({
       count.status !== "submitted" ||
       !count.submittedAt
     ) {
-      throw new ConvexError("Den registrerede count blev ikke fundet");
+      throw new ConvexError("Den registrerede optælling blev ikke fundet");
     }
     requireKioskLocation(auth, count.locationId);
     const location = await requireLocation(
@@ -789,7 +798,7 @@ export const getWasteReportContext = internalQuery({
       )
       .take(MAX_PRODUCTS + 1);
     if (rows.length > MAX_PRODUCTS) {
-      throw new ConvexError("Count har for mange produkter");
+      throw new ConvexError("Optællingen har for mange produkter");
     }
 
     return {

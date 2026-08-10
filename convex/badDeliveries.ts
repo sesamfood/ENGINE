@@ -31,12 +31,24 @@ const MAX_COMMENT_LENGTH = 500;
 const MAX_QUANTITY = 1_000_000;
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const EXPORT_PAGE_SIZE = 10;
+const MAX_PUBLIC_PAGE_SIZE = 100;
+const NOTICE_CLAIM_TIMEOUT_MS = 10 * 60 * 1000;
 const IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
   "image/avif",
 ]);
+
+function requirePageSize(numItems: number, maximum: number) {
+  if (
+    !Number.isInteger(numItems) ||
+    numItems <= 0 ||
+    numItems > maximum
+  ) {
+    throw new ConvexError("Siden er for stor");
+  }
+}
 
 const noticeStatusValidator = v.union(
   v.literal("notConfigured"),
@@ -186,7 +198,7 @@ async function requireLocation(
 ) {
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Locationen blev ikke fundet");
+    throw new ConvexError("Lokationen blev ikke fundet");
   }
   return location;
 }
@@ -574,6 +586,7 @@ export const listBadDeliveries = query({
     const { organizationId } = auth;
     const locationId = auth.kioskLocationId ?? args.locationId;
     requireRange(args.startAt, args.endAt);
+    requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     if (args.locationId) {
       requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
@@ -685,6 +698,7 @@ export const exportBadDeliveries = query({
     const { organizationId } = auth;
     const locationId = auth.kioskLocationId ?? args.locationId;
     requireRange(args.startAt, args.endAt);
+    requirePageSize(args.paginationOpts.numItems, EXPORT_PAGE_SIZE);
     if (
       args.paginationOpts.numItems !== EXPORT_PAGE_SIZE ||
       args.paginationOpts.maximumRowsRead !== EXPORT_PAGE_SIZE
@@ -892,10 +906,15 @@ export const claimNotice = internalMutation({
   handler: async (ctx, args) => {
     const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
     if (!delivery) return null;
+    const now = Date.now();
     if (args.kind === "initial") {
+      const claimIsFresh =
+        delivery.initialNoticeInFlight &&
+        delivery.initialNoticeAttemptedAt !== undefined &&
+        now - delivery.initialNoticeAttemptedAt < NOTICE_CLAIM_TIMEOUT_MS;
       if (
         delivery.initialNoticeStatus !== "pending" ||
-        delivery.initialNoticeInFlight
+        claimIsFresh
       ) {
         return null;
       }
@@ -909,23 +928,32 @@ export const claimNotice = internalMutation({
       }
       await ctx.db.patch("badDeliveries", delivery._id, {
         initialNoticeInFlight: true,
-        initialNoticeAttemptedAt: Date.now(),
+        initialNoticeAttemptedAt: now,
         initialNoticeFailureMessage: undefined,
       });
     } else {
+      const claimIsFresh =
+        delivery.cancellationNoticeInFlight &&
+        delivery.cancellationNoticeAttemptedAt !== undefined &&
+        now - delivery.cancellationNoticeAttemptedAt < NOTICE_CLAIM_TIMEOUT_MS;
       if (
         delivery.status !== "voided" ||
         delivery.cancellationNoticeStatus !== "pending" ||
-        delivery.cancellationNoticeInFlight
+        claimIsFresh
       ) {
         return null;
       }
       await ctx.db.patch("badDeliveries", delivery._id, {
         cancellationNoticeInFlight: true,
-        cancellationNoticeAttemptedAt: Date.now(),
+        cancellationNoticeAttemptedAt: now,
         cancellationNoticeFailureMessage: undefined,
       });
     }
+    await ctx.scheduler.runAfter(
+      NOTICE_CLAIM_TIMEOUT_MS,
+      internal.badDeliveries.releaseStaleNoticeClaim,
+      { ...args, attemptedAt: now },
+    );
     const [items, attachments, scheduleSettings] = await Promise.all([
       ctx.db
         .query("badDeliveryItems")
@@ -981,6 +1009,86 @@ export const claimNotice = internalMutation({
       voidedAt: delivery.voidedAt ?? null,
       voidedByName: delivery.voidedByName ?? null,
     };
+  },
+});
+
+export const releaseStaleNoticeClaim = internalMutation({
+  args: {
+    badDeliveryId: v.id("badDeliveries"),
+    kind: noticeKindValidator,
+    attemptedAt: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
+    if (!delivery) return null;
+
+    if (
+      args.kind === "initial" &&
+      delivery.initialNoticeStatus === "pending" &&
+      delivery.initialNoticeInFlight &&
+      delivery.initialNoticeAttemptedAt === args.attemptedAt
+    ) {
+      await ctx.db.patch("badDeliveries", delivery._id, {
+        initialNoticeStatus: "failed",
+        initialNoticeInFlight: false,
+        initialNoticeFailureMessage:
+          "Afsendelsen blev afbrudt. Prøv at sende meddelelsen igen",
+      });
+    }
+
+    if (
+      args.kind === "cancellation" &&
+      delivery.cancellationNoticeStatus === "pending" &&
+      delivery.cancellationNoticeInFlight &&
+      delivery.cancellationNoticeAttemptedAt === args.attemptedAt
+    ) {
+      await ctx.db.patch("badDeliveries", delivery._id, {
+        cancellationNoticeStatus: "failed",
+        cancellationNoticeInFlight: false,
+        cancellationNoticeFailureMessage:
+          "Afsendelsen blev afbrudt. Prøv at sende meddelelsen igen",
+      });
+    }
+
+    return null;
+  },
+});
+
+export const failNoticeClaim = internalMutation({
+  args: {
+    badDeliveryId: v.id("badDeliveries"),
+    kind: noticeKindValidator,
+    failureMessage: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
+    if (!delivery) return null;
+
+    if (
+      args.kind === "initial" &&
+      delivery.initialNoticeStatus === "pending" &&
+      !delivery.initialNoticeInFlight
+    ) {
+      await ctx.db.patch("badDeliveries", delivery._id, {
+        initialNoticeStatus: "failed",
+        initialNoticeFailureMessage: args.failureMessage,
+      });
+    }
+
+    if (
+      args.kind === "cancellation" &&
+      delivery.cancellationNoticeStatus === "pending" &&
+      !delivery.cancellationNoticeInFlight
+    ) {
+      await ctx.db.patch("badDeliveries", delivery._id, {
+        cancellationNoticeStatus: "failed",
+        cancellationNoticeFailureMessage: args.failureMessage,
+      });
+    }
+
+    return null;
   },
 });
 

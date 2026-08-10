@@ -1,10 +1,18 @@
+import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 type ReadContext = QueryCtx | MutationCtx;
 
 export function normalizeStock(quantity: number) {
-  return Math.round(quantity * 1e6) / 1e6;
+  if (!Number.isFinite(quantity)) {
+    throw new ConvexError("Lagermængden er ugyldig");
+  }
+  const normalized = Math.round(quantity * 1e6) / 1e6;
+  if (!Number.isFinite(normalized)) {
+    throw new ConvexError("Lagermængden er for stor");
+  }
+  return normalized;
 }
 
 export async function toDefaultUnit(

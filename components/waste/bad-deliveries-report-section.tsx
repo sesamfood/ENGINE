@@ -253,7 +253,7 @@ export function BadDeliveriesReportSection({
         [
           "Reference",
           "Dato og tid",
-          "Location",
+          "Lokation",
           "Registreret af",
           "Produkt",
           "Mængde",
@@ -323,7 +323,7 @@ export function BadDeliveriesReportSection({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tidspunkt</TableHead>
-                    <TableHead>Location</TableHead>
+                    <TableHead>Lokation</TableHead>
                     <TableHead>Registreret af</TableHead>
                     <TableHead>Varelinjer</TableHead>
                     <TableHead>Lager</TableHead>
@@ -335,8 +335,10 @@ export function BadDeliveriesReportSection({
                   {(results as Row[]).map((row) => (
                     <TableRow
                       key={row.id}
-                      className="cursor-pointer"
+                      role="button"
                       tabIndex={0}
+                      aria-label={`Åbn registrering af dårlig levering på ${row.locationName}`}
+                      className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
                       onClick={() => setSelectedId(row.id)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {

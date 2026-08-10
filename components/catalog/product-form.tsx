@@ -740,7 +740,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           />
                         </Field>
                         <Field>
-                          <FieldLabel>Enhed</FieldLabel>
+                          <FieldLabel htmlFor={`${row.key}-unit`}>Enhed</FieldLabel>
                           <Select
                             items={(selectedProduct?.units ?? []).map(
                               (unit) => ({ value: unit.id, label: unit.name }),
@@ -757,7 +757,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                             }
                             disabled={!selectedProduct}
                           >
-                            <SelectTrigger className="h-11 w-full">
+                            <SelectTrigger id={`${row.key}-unit`} className="h-11! w-full">
                               <SelectValue placeholder="Vælg enhed" />
                             </SelectTrigger>
                             <SelectContent>

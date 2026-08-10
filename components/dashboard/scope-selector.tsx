@@ -53,12 +53,12 @@ export function ScopeSelector({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ToggleGroup value={[scope.mode]} onValueChange={setMode} variant="outline" spacing={0}>
-        <ToggleGroupItem value="aggregate">
+      <ToggleGroup value={[scope.mode]} onValueChange={setMode} variant="outline" size="lg" spacing={0}>
+        <ToggleGroupItem value="aggregate" className="min-h-11">
           <MapPinIcon data-icon="inline-start" />
-          Location
+          Lokation
         </ToggleGroupItem>
-        <ToggleGroupItem value="compare" disabled={locations.length < 2}>
+        <ToggleGroupItem value="compare" className="min-h-11" disabled={locations.length < 2}>
           <GitCompareArrowsIcon data-icon="inline-start" />
           Sammenlign
         </ToggleGroupItem>
@@ -66,28 +66,28 @@ export function ScopeSelector({
       {scope.mode === "aggregate" ? (
         <Select
           items={[
-            { value: "all", label: "Alle locations" },
+            { value: "all", label: "Alle lokationer" },
             ...locations.map((location) => ({ value: location.id, label: location.name })),
           ]}
           value={aggregateValue}
           onValueChange={(value) => onChange({ mode: "aggregate", locationIds: value && value !== "all" ? [value as Id<"locations">] : null })}
         >
-          <SelectTrigger className="w-56 min-w-48"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Lokation" className="h-11! w-56 min-w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="all">Alle locations</SelectItem>
+              <SelectItem value="all">Alle lokationer</SelectItem>
               {locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}
             </SelectGroup>
           </SelectContent>
         </Select>
       ) : (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button type="button" variant="outline" />}>
-            {selected.length} locations
+          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="lg" className="min-h-11" />}>
+            {selected.length} lokationer
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
             <DropdownMenuGroup>
-              <DropdownMenuLabel>Vælg locations</DropdownMenuLabel>
+              <DropdownMenuLabel>Vælg lokationer</DropdownMenuLabel>
               {locations.map((location) => (
                 <DropdownMenuCheckboxItem
                   key={location.id}

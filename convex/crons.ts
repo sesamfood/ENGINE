@@ -33,4 +33,11 @@ crons.interval(
   { cursor: null },
 );
 
+crons.cron(
+  "delete orphaned uploads",
+  "0 2 * * 0",
+  internal.storageCleanup.removeOrphans,
+  { cursor: null },
+);
+
 export default crons;

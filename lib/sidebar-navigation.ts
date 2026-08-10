@@ -1,9 +1,9 @@
 export const sidebarItems = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "transfers", label: "Transfers" },
-  { id: "waste", label: "Waste" },
-  { id: "staffFood", label: "Staff food" },
-  { id: "count", label: "Count" },
+  { id: "dashboard", label: "Overblik" },
+  { id: "transfers", label: "Flytninger" },
+  { id: "waste", label: "Spild" },
+  { id: "staffFood", label: "Personalemad" },
+  { id: "count", label: "Optælling" },
   { id: "employees", label: "Medarbejdere" },
   { id: "organization", label: "Organisation" },
 ] as const;

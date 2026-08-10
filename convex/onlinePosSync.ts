@@ -117,6 +117,13 @@ function lineExternalId(
   return `${locationId}:${providerLineId}`;
 }
 
+function finiteSalesNumber(value: number) {
+  if (!Number.isFinite(value)) {
+    throw new ConvexError("OnlinePOS-salgstallene er for store");
+  }
+  return value;
+}
+
 function trailingReconcileDays(now: number, timeZone: string) {
   const today = dateKey(now, timeZone);
   const days: Array<{ dayStart: number; dayEnd: number }> = [];
@@ -723,6 +730,13 @@ export const ingestSalesBatch = internalMutation({
       ...line,
       externalId: lineExternalId(args.locationId, line.externalId),
     }));
+    for (const line of lines) {
+      finiteSalesNumber(line.quantity);
+      finiteSalesNumber(line.unitPrice);
+      finiteSalesNumber(line.revenue);
+      finiteSalesNumber(line.occurredAt);
+      finiteSalesNumber(line.orderNumber);
+    }
 
     const knownOrderKeys = new Set<string>();
     const existingLines = new Map<string, ExistingLineState>();
@@ -900,8 +914,12 @@ export const ingestSalesBatch = internalMutation({
           oldOrder.organizationId === args.organizationId &&
           oldOrder.locationId === args.locationId
         ) {
-          const nextRevenue = oldOrder.revenue - existingLine.revenue;
-          const nextItemCount = oldOrder.itemCount - existingLine.quantity;
+          const nextRevenue = finiteSalesNumber(
+            oldOrder.revenue - existingLine.revenue,
+          );
+          const nextItemCount = finiteSalesNumber(
+            oldOrder.itemCount - existingLine.quantity,
+          );
           const oldKey = orderKey(
             oldOrder.locationId,
             oldOrder.dayStart,
@@ -970,14 +988,18 @@ export const ingestSalesBatch = internalMutation({
         let revenue = order.revenue;
         let itemCount = order.itemCount;
         if (existingLine && existingLine.orderId === order._id) {
-          revenue += line.revenue - existingLine.revenue;
-          itemCount += line.quantity - existingLine.quantity;
+          revenue = finiteSalesNumber(
+            revenue + line.revenue - existingLine.revenue,
+          );
+          itemCount = finiteSalesNumber(
+            itemCount + line.quantity - existingLine.quantity,
+          );
         } else if (existingLine) {
-          revenue += line.revenue;
-          itemCount += line.quantity;
+          revenue = finiteSalesNumber(revenue + line.revenue);
+          itemCount = finiteSalesNumber(itemCount + line.quantity);
         } else {
-          revenue += line.revenue;
-          itemCount += line.quantity;
+          revenue = finiteSalesNumber(revenue + line.revenue);
+          itemCount = finiteSalesNumber(itemCount + line.quantity);
         }
         const nextOccurredAt = Math.min(order.occurredAt, line.occurredAt);
         const externalId = orderExternalId(
@@ -1096,6 +1118,9 @@ export const ingestSalesBatch = internalMutation({
     }
 
     for (const [bucket, delta] of deltas) {
+      finiteSalesNumber(delta.revenue);
+      finiteSalesNumber(delta.orderCount);
+      finiteSalesNumber(delta.itemCount);
       if (
         delta.revenue === 0 &&
         delta.orderCount === 0 &&
@@ -1118,9 +1143,11 @@ export const ingestSalesBatch = internalMutation({
         .unique();
       if (daily) {
         await ctx.db.patch("salesDaily", daily._id, {
-          revenue: daily.revenue + delta.revenue,
-          orderCount: daily.orderCount + delta.orderCount,
-          itemCount: daily.itemCount + delta.itemCount,
+          revenue: finiteSalesNumber(daily.revenue + delta.revenue),
+          orderCount: finiteSalesNumber(
+            daily.orderCount + delta.orderCount,
+          ),
+          itemCount: finiteSalesNumber(daily.itemCount + delta.itemCount),
           updatedAt: now,
         });
       } else {

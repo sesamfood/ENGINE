@@ -111,7 +111,7 @@ function formatQuantity(quantity: number) {
 function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
-    : "Waste kunne ikke registreres";
+    : "Spild kunne ikke registreres";
 }
 
 function shortcutsFor(
@@ -267,7 +267,7 @@ export function WasteRegistration() {
       });
       const unit = product.units.find((item) => item.id === shortcut.unitId);
       toast.success(
-        `Waste registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
+        `Spild registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
         { duration: 10_000 },
       );
       setNow(result.registeredAt);
@@ -312,8 +312,8 @@ export function WasteRegistration() {
       );
       toast.success(
         succeeded.length === 1
-          ? "Waste-registreringen er annulleret"
-          : `${succeeded.length} Waste-registreringer er annulleret`,
+          ? "Spildregistreringen er annulleret"
+          : `${succeeded.length} spildregistreringer er annulleret`,
       );
     }
     if (failed.length) {
@@ -321,7 +321,7 @@ export function WasteRegistration() {
       toast.error(
         failed.length === 1 && firstError?.status === "rejected"
           ? errorMessage(firstError.reason)
-          : `${failed.length} Waste-registreringer kunne ikke annulleres`,
+          : `${failed.length} spildregistreringer kunne ikke annulleres`,
       );
     }
     setUndoingIds((current) => current.filter((id) => !ids.includes(id)));
@@ -357,7 +357,7 @@ export function WasteRegistration() {
         productId: selected.id,
         shortcuts: shortcutDrafts,
       });
-      toast.success("Shortcuts er gemt");
+      toast.success("Genvejene er gemt");
       setEditingShortcuts(false);
     } catch (error) {
       toast.error(errorMessage(error));
@@ -380,9 +380,9 @@ export function WasteRegistration() {
           <EmptyMedia variant="icon">
             <Trash2Icon />
           </EmptyMedia>
-          <EmptyTitle>Ingen locations</EmptyTitle>
+          <EmptyTitle>Ingen lokationer</EmptyTitle>
           <EmptyDescription>
-            Opret en location, før Waste kan registreres.
+            Opret en lokation, før spild kan registreres.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -397,7 +397,7 @@ export function WasteRegistration() {
           </EmptyMedia>
           <EmptyTitle>Ingen produkter</EmptyTitle>
           <EmptyDescription>
-            Der er ingen aktive produkter at registrere Waste for.
+            Der er ingen aktive produkter at registrere spild for.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -460,7 +460,6 @@ export function WasteRegistration() {
                         alt=""
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                        unoptimized
                         className="object-cover"
                       />
                     </div>
@@ -483,7 +482,7 @@ export function WasteRegistration() {
                     type="button"
                     data-card-trigger
                     className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                    aria-label={`Registrér en anden mængde Waste for ${product.name}`}
+                    aria-label={`Registrér en anden mængde spild for ${product.name}`}
                     onClick={() => openProduct(product)}
                   />
                   <Button
@@ -551,7 +550,7 @@ export function WasteRegistration() {
                 <DialogTitle>{selected.name}</DialogTitle>
                 <DialogDescription>
                   {editingShortcuts
-                    ? "Vælg en eller to mængder, der skal vises som shortcuts på produktkortet."
+                    ? "Vælg en eller to mængder, der skal vises som genveje på produktkortet."
                     : "Angiv den mængde, der er blevet kasseret."}
                 </DialogDescription>
               </DialogHeader>
@@ -562,7 +561,6 @@ export function WasteRegistration() {
                     alt=""
                     fill
                     sizes="(max-width: 640px) 90vw, 32rem"
-                    unoptimized
                     className="object-contain"
                   />
                 ) : (
@@ -599,7 +597,7 @@ export function WasteRegistration() {
                         />
                       </Field>
                       <Field>
-                        <FieldLabel>Enhed</FieldLabel>
+                        <FieldLabel htmlFor={`waste-shortcut-unit-${index}`}>Enhed</FieldLabel>
                         <Select
                           items={selected.units.map((unit) => ({
                             value: unit.id,
@@ -615,7 +613,7 @@ export function WasteRegistration() {
                             setShortcutDrafts(next);
                           }}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id={`waste-shortcut-unit-${index}`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -639,7 +637,7 @@ export function WasteRegistration() {
                           }
                         >
                           <Trash2Icon data-icon="inline-start" />
-                          Fjern shortcut
+                          Fjern genvej
                         </Button>
                       ) : null}
                     </div>
@@ -667,7 +665,7 @@ export function WasteRegistration() {
                     </Button>
                     <HelpTooltip
                       label="anbefalede mængder"
-                      content="Fjerner de manuelt valgte shortcuts og bruger igen de to mængder, der anbefales ud fra den Waste-historik, produktet bruger."
+                      content="Fjerner de manuelt valgte genveje og bruger igen de to mængder, der anbefales ud fra den spildhistorik, produktet bruger."
                     />
                   </div>
                 </FieldGroup>
@@ -687,7 +685,7 @@ export function WasteRegistration() {
                     />
                   </Field>
                   <Field>
-                    <FieldLabel>Enhed</FieldLabel>
+                    <FieldLabel htmlFor="waste-unit">Enhed</FieldLabel>
                     <Select
                       items={selected.units.map((unit) => ({
                         value: unit.id,
@@ -696,7 +694,7 @@ export function WasteRegistration() {
                       value={unitId}
                       onValueChange={(value) => setUnitId(value as Id<"units">)}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger id="waste-unit">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -714,7 +712,7 @@ export function WasteRegistration() {
               )}
               <DialogFooter>
                 {editingShortcuts ? (
-                  <Button onClick={saveShortcuts}>Gem shortcuts</Button>
+                  <Button onClick={saveShortcuts}>Gem genveje</Button>
                 ) : (
                   <>
                     <Button
@@ -728,7 +726,7 @@ export function WasteRegistration() {
                         variant="outline"
                         onClick={() => setEditingShortcuts(true)}
                       >
-                        Redigér shortcuts
+                        Redigér genveje
                       </Button>
                     ) : null}
                     <Button
@@ -749,7 +747,7 @@ export function WasteRegistration() {
                         );
                       }}
                     >
-                      Registrér Waste
+                      Registrér spild
                     </Button>
                   </>
                 )}
@@ -791,7 +789,7 @@ export function WasteRegistration() {
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
+            <DialogTitle>Fortryd spildregistreringer</DialogTitle>
             <DialogDescription>
               Fortryd en enkelt registrering eller annullér dem alle.
               Registreringerne forsvinder automatisk efter 30 sekunder.

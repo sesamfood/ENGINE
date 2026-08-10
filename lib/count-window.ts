@@ -203,7 +203,7 @@ function findOpenDay(
     const hours = openingHoursOn(date, weekly, specials);
     if (!hours.closed) return { date, hours };
   }
-  throw new Error("Locationen har ingen åbne dage");
+  throw new Error("Lokationen har ingen åbne dage");
 }
 
 function countWindowForDate(

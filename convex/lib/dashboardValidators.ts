@@ -98,6 +98,17 @@ export const metricResultValidator = v.object({
   headlinePrevious: v.optional(v.union(v.number(), v.null())),
 });
 
+export const metricRequestValidator = v.object({
+  key: v.string(),
+  metricId: metricIdValidator,
+  visualization: visualizationValidator,
+});
+
+export const keyedMetricResultValidator = v.object({
+  key: v.string(),
+  result: metricResultValidator,
+});
+
 export const dashboardConfigValidator = v.object({
   widgets: v.array(widgetValidator),
   scope: scopeValidator,

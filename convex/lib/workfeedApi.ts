@@ -114,6 +114,12 @@ export function parseDepartments(payload: unknown): WorkfeedDepartment[] {
   });
 }
 
+export async function requestDepartments(
+  settings: Pick<WorkfeedSettings, "apiKey" | "companyId">,
+): Promise<WorkfeedDepartment[]> {
+  return parseDepartments(await requestWorkfeed("/departments", settings));
+}
+
 export function parseEmployees(payload: unknown): WorkfeedEmployee[] {
   if (!Array.isArray(payload)) {
     throw new ConvexError("Workfeed returnerede en ugyldig medarbejderliste");

@@ -123,7 +123,7 @@ export function AddWidgetDialog({
 
   return (
     <Dialog open={open} onOpenChange={setDialogOpen}>
-      <DialogTrigger render={<Button type="button" />}>
+      <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" />}>
         <PlusIcon data-icon="inline-start" />
         Tilføj widget
       </DialogTrigger>

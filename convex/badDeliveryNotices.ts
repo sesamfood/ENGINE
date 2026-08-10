@@ -53,8 +53,23 @@ export const sendNotice = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const payload = await ctx.runMutation(internal.badDeliveries.claimNotice, args);
+    let payload;
+    try {
+      payload = await ctx.runMutation(
+        internal.badDeliveries.claimNotice,
+        args,
+      );
+    } catch (error) {
+      await ctx.runMutation(internal.badDeliveries.failNoticeClaim, {
+        ...args,
+        failureMessage: cleanError(error),
+      });
+      return null;
+    }
     if (!payload) return null;
+    let completion:
+      | { success: true; providerId: string }
+      | { success: false; failureMessage: string };
     try {
       const date = new Intl.DateTimeFormat("da-DK", {
         dateStyle: "short",
@@ -136,18 +151,14 @@ export const sendNotice = internalAction({
         },
         `bad-delivery/${reference}/${args.kind}`,
       );
-      await ctx.runMutation(internal.badDeliveries.completeNotice, {
-        ...args,
-        success: true,
-        providerId,
-      });
+      completion = { success: true, providerId };
     } catch (error) {
-      await ctx.runMutation(internal.badDeliveries.completeNotice, {
-        ...args,
-        success: false,
-        failureMessage: cleanError(error),
-      });
+      completion = { success: false, failureMessage: cleanError(error) };
     }
+    await ctx.runMutation(internal.badDeliveries.completeNotice, {
+      ...args,
+      ...completion,
+    });
     return null;
   },
 });

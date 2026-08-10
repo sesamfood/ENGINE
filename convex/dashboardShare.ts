@@ -6,13 +6,17 @@ import { action, internalMutation, internalQuery, query } from "./_generated/ser
 import { metricRegistry } from "../lib/dashboard/registry";
 import {
   dashboardConfigValidator,
+  keyedMetricResultValidator,
   metricIdValidator,
+  metricRequestValidator,
   metricResultValidator,
   visualizationValidator,
 } from "./lib/dashboardValidators";
 import { dashboardMetricComputers, resolveMetricParams } from "./lib/dashboardMetrics";
 import { equalSecrets, hashDashboardPassword } from "./lib/dashboardShareCrypto";
 import { rateLimiter } from "./lib/rateLimits";
+
+const MAX_METRIC_BATCH = 3;
 
 const unlockShareValidator = v.union(
   v.object({
@@ -27,8 +31,8 @@ const unlockShareValidator = v.union(
   v.null(),
 );
 
-function active(share: Doc<"dashboardShares">) {
-  return !share.revokedAt;
+function active(share: Doc<"dashboardShares">, now: number) {
+  return !share.revokedAt && share.expiresAt > now;
 }
 
 export const expireShare = internalMutation({
@@ -55,7 +59,11 @@ async function requireShare(
     .query("dashboardShares")
     .withIndex("by_token", (q) => q.eq("token", token))
     .unique();
-  if (!share || !active(share) || !equalSecrets(share.unlockKey, accessKey)) {
+  if (
+    !share ||
+    !active(share, Date.now()) ||
+    !equalSecrets(share.unlockKey, accessKey)
+  ) {
     throw new ConvexError("Delingen er udløbet eller ikke tilgængelig");
   }
   return share;
@@ -80,7 +88,7 @@ export const getPublicMeta = query({
       .query("dashboardShares")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .unique();
-    if (!share || !active(share)) return null;
+    if (!share || !active(share, Date.now())) return null;
     const requiresPassword =
       Boolean(share.passwordHash) ||
       share.widgets.some(
@@ -219,5 +227,66 @@ export const getSharedMetric = query({
       args.now,
     );
     return await dashboardMetricComputers[args.metricId](ctx, params);
+  },
+});
+
+export const getSharedMetrics = query({
+  args: {
+    token: v.string(),
+    accessKey: v.string(),
+    widgets: v.array(metricRequestValidator),
+    now: v.number(),
+  },
+  returns: v.array(keyedMetricResultValidator),
+  handler: async (ctx, args) => {
+    const share = await requireShare(ctx, args.token, args.accessKey);
+    if (
+      args.widgets.length > MAX_METRIC_BATCH ||
+      new Set(args.widgets.map((widget) => widget.key)).size !==
+        args.widgets.length
+    ) {
+      throw new ConvexError("Widgetgruppen er ugyldig");
+    }
+    for (const requested of args.widgets) {
+      const widget = share.widgets.find(
+        (candidate) =>
+          candidate.key === requested.key &&
+          candidate.metricId === requested.metricId &&
+          candidate.visualization === requested.visualization,
+      );
+      const definition = metricRegistry[requested.metricId];
+      if (
+        !widget ||
+        definition.shareable === false ||
+        (definition.adminOnly && !share.passwordHash)
+      ) {
+        throw new ConvexError("Målingen er ikke en del af delingen");
+      }
+    }
+    const params = await resolveMetricParams(
+      ctx,
+      share.organizationId,
+      share.scope,
+      share.range,
+      args.now,
+    );
+    const results = new Map<
+      string,
+      ReturnType<(typeof dashboardMetricComputers)[keyof typeof dashboardMetricComputers]>
+    >();
+    for (const widget of args.widgets) {
+      if (!results.has(widget.metricId)) {
+        results.set(
+          widget.metricId,
+          dashboardMetricComputers[widget.metricId](ctx, params),
+        );
+      }
+    }
+    return await Promise.all(
+      args.widgets.map(async (widget) => ({
+        key: widget.key,
+        result: await results.get(widget.metricId)!,
+      })),
+    );
   },
 });

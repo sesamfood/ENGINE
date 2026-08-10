@@ -22,6 +22,17 @@ const MAX_WEEK_SHIFTS = 2_000;
 const MAX_LOCATION_EMPLOYEES = 500;
 const MAX_ASSIGNMENTS = 200;
 const DAY_MS = 24 * 60 * 60 * 1_000;
+const MAX_PUBLIC_PAGE_SIZE = 100;
+
+function requirePageSize(numItems: number) {
+  if (
+    !Number.isInteger(numItems) ||
+    numItems <= 0 ||
+    numItems > MAX_PUBLIC_PAGE_SIZE
+  ) {
+    throw new ConvexError("Siden er for stor");
+  }
+}
 
 const syncStateValidator = v.union(
   v.literal("idle"),
@@ -306,6 +317,7 @@ export const listDirectory = query({
   handler: async (ctx, args) => {
     const auth = await requireEmployeeViewer(ctx, "employees.directory");
     const { organizationId } = auth;
+    requirePageSize(args.paginationOpts.numItems);
     requireKioskLocation(auth, args.locationId);
     const location = await ctx.db.get("locations", args.locationId);
     if (location?.organizationId !== organizationId) {

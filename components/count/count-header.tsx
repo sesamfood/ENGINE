@@ -70,7 +70,7 @@ function CountHeaderControls({
         </p>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Count
+            Optælling
           </h1>
           {periodKey ? (
             <p className="text-lg capitalize text-muted-foreground">
@@ -81,7 +81,7 @@ function CountHeaderControls({
       </div>
 
       <Field>
-        <FieldLabel>Location</FieldLabel>
+        <FieldLabel htmlFor="count-location">Lokation</FieldLabel>
         {fixedLocationName ? (
           <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
         ) : <Select
@@ -94,9 +94,9 @@ function CountHeaderControls({
           }}
           disabled={!locations || locations.length === 0}
         >
-          <SelectTrigger className="h-11 w-full">
+          <SelectTrigger id="count-location" className="h-11! w-full">
             <MapPinIcon aria-hidden="true" />
-            <SelectValue placeholder="Vælg location" />
+            <SelectValue placeholder="Vælg lokation" />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>
@@ -162,7 +162,7 @@ export function CountHeader() {
   const statusDescription =
     state?.count?.submittedAt
       ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
-      : "Denne count kan ikke ændres.";
+      : "Denne optælling kan ikke ændres.";
   const locationItems =
     locations?.map((location) => ({
       value: location.id,
@@ -198,7 +198,7 @@ export function CountHeader() {
       {pathname === "/count" && submitted ? (
         <Alert className="md:-mt-5">
           <CheckCircle2Icon />
-          <AlertTitle>Count er registreret</AlertTitle>
+          <AlertTitle>Optællingen er registreret</AlertTitle>
           <AlertDescription>{statusDescription}</AlertDescription>
         </Alert>
       ) : null}

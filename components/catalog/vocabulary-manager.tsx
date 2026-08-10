@@ -103,14 +103,14 @@ const vocabularyKinds = {
     }),
   },
   location: {
-    singular: "location",
-    plural: "Locations",
-    definite: "Locationen",
-    deleteNoun: " locations",
+    singular: "lokation",
+    plural: "Lokationer",
+    definite: "Lokationen",
+    deleteNoun: " lokationer",
     description:
-      "Vedligehold de locations, der kan bruges i transfers og count.",
+      "Vedligehold de lokationer, der kan bruges i flytninger og optællinger.",
     emptyDescription:
-      "Tilføj den første location for at kunne oprette transfers.",
+      "Tilføj den første lokation for at kunne oprette flytninger.",
     list: api.locations.listLocations,
     create: api.locations.createLocation,
     rename: api.locations.renameLocation,
@@ -364,7 +364,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            Denne location bruges i en transfer og kan derfor
+                            Denne lokation bruges i en flytning og kan derfor
                             ikke fjernes.
                           </TooltipContent>
                         </Tooltip>

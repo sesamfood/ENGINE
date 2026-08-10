@@ -26,17 +26,17 @@ export function OrganizationHeader() {
   const title = inCatalog
     ? "Produkter"
     : pathname.startsWith("/organization/locations")
-      ? "Locations"
+      ? "Lokationer"
       : pathname.startsWith("/organization/integrations")
         ? "Integrationer"
         : pathname.startsWith("/organization/schedule")
           ? "Vagtplan"
           : pathname.startsWith("/organization/staff-food")
-            ? "Staff food"
+            ? "Personalemad"
           : pathname.startsWith("/organization/count")
-            ? "Count"
+            ? "Optælling"
             : pathname.startsWith("/organization/waste")
-              ? "Waste"
+              ? "Spild"
               : pathname.startsWith("/organization/users")
                 ? "Brugere"
                 : pathname.startsWith("/organization/sidebar")

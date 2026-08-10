@@ -10,8 +10,7 @@ import {
 } from "./_generated/server";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
 import {
-  parseDepartments,
-  requestWorkfeed,
+  requestDepartments,
   type WorkfeedDepartment,
   type WorkfeedSettings,
 } from "./lib/workfeedApi";
@@ -326,9 +325,7 @@ export const connect = action({
       "Workfeed firma-id",
       200,
     );
-    const departments = parseDepartments(
-      await requestWorkfeed("/departments", { apiKey, companyId }),
-    );
+    const departments = await requestDepartments({ apiKey, companyId });
     await ctx.runMutation(internal.workfeed.saveConnection, {
       organizationId,
       apiKey,
@@ -344,7 +341,7 @@ export const setEnabled = action({
   handler: async (ctx, args) => {
     const { organizationId, settings } = await requireConnectedSettings(ctx);
     if (args.enabled) {
-      parseDepartments(await requestWorkfeed("/departments", settings));
+      await requestDepartments(settings);
     }
     await ctx.runMutation(internal.workfeed.setEnabledInternal, {
       organizationId,
@@ -359,7 +356,7 @@ export const listDepartments = action({
   returns: v.array(departmentValidator),
   handler: async (ctx): Promise<WorkfeedDepartment[]> => {
     const { settings } = await requireConnectedSettings(ctx);
-    return parseDepartments(await requestWorkfeed("/departments", settings));
+    return requestDepartments(settings);
   },
 });
 
@@ -376,9 +373,9 @@ export const saveLocationMapping = action({
       "Workfeed-afdeling",
       200,
     );
-    const department = parseDepartments(
-      await requestWorkfeed("/departments", settings),
-    ).find((item) => item.id === departmentId);
+    const department = (await requestDepartments(settings)).find(
+      (item) => item.id === departmentId,
+    );
     if (!department) {
       throw new ConvexError("Workfeed-afdelingen blev ikke fundet");
     }

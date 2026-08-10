@@ -192,12 +192,12 @@ const exportColumns: ExportColumn[] = [
   },
   {
     key: "fromLocation",
-    label: "Fra location",
+    label: "Fra lokation",
     value: (row) => row.fromLocationName,
   },
   {
     key: "toLocation",
-    label: "Til location",
+    label: "Til lokation",
     value: (row) => row.toLocationName,
   },
   {
@@ -786,7 +786,7 @@ export function TransferHistory() {
   const loadedCount = transfers.length;
 
   const countLabel = useMemo(() => {
-    const noun = loadedCount === 1 ? "transfer" : "transfers";
+    const noun = loadedCount === 1 ? "flytning" : "flytninger";
     const base = `${loadedCount} ${noun} i perioden`;
     if (paginationStatus === "CanLoadMore") {
       return `${base} (flere kan indlæses)`;
@@ -834,7 +834,7 @@ export function TransferHistory() {
         isDone = result.isDone;
       }
       if (rows.length === 0) {
-        toast.error("Ingen transfers i den valgte periode");
+        toast.error("Ingen flytninger i den valgte periode");
         return;
       }
       downloadTransfersCsv(rows, fromDate, toDate, selectedColumns);
@@ -856,7 +856,7 @@ export function TransferHistory() {
     setIsDeleting(true);
     try {
       await deleteTransfer({ transferId: selectedTransferId });
-      toast.success("Transferen er slettet");
+      toast.success("Flytningen er slettet");
       setIsDeleteOpen(false);
       setSelectedTransferId(null);
       setIsEditing(false);
@@ -932,9 +932,9 @@ export function TransferHistory() {
             <EmptyMedia variant="icon">
               <ArrowLeftRightIcon />
             </EmptyMedia>
-            <EmptyTitle>Ingen transfers i perioden</EmptyTitle>
+            <EmptyTitle>Ingen flytninger i perioden</EmptyTitle>
             <EmptyDescription>
-              Prøv en anden periode, eller opret en ny transfer.
+              Prøv en anden periode, eller opret en ny flytning.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -946,15 +946,15 @@ export function TransferHistory() {
             <TableHeader>
               <TableRow>
                 <TableHead>Tidspunkt</TableHead>
-                <TableHead>Fra location</TableHead>
-                <TableHead>Til location</TableHead>
+                <TableHead>Fra lokation</TableHead>
+                <TableHead>Til lokation</TableHead>
                 <TableHead>Ansvarlig</TableHead>
                 <TableHead>
                   <span className="flex items-center justify-end gap-1">
                     Antal enheder
                     <HelpTooltip
                       label="Antal enheder"
-                      content="Summen af de registrerede mængder i transferen. Varerne kan være registreret med forskellige enheder."
+                      content="Summen af de registrerede mængder i flytningen. Varerne kan være registreret med forskellige enheder."
                     />
                   </span>
                 </TableHead>
@@ -967,7 +967,7 @@ export function TransferHistory() {
                   key={transfer.id}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Åbn transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
+                  aria-label={`Åbn flytning fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
                   className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
                   onClick={() => openTransfer(transfer.id)}
                   onKeyDown={(event) => {
@@ -1117,12 +1117,12 @@ export function TransferHistory() {
         >
           <DialogHeader>
             <DialogTitle>
-              {isEditing ? "Rediger transfer" : "Transfer"}
+              {isEditing ? "Rediger flytning" : "Flytning"}
             </DialogTitle>
             <DialogDescription>
               {transferDetail
                 ? `${dateTimeFormatter.format(transferDetail.transferredAt)} · ${transferDetail.fromLocationName} → ${transferDetail.toLocationName}`
-                : "Indlæser transferdetaljer"}
+                : "Indlæser flyttedetaljer"}
             </DialogDescription>
           </DialogHeader>
 
@@ -1136,7 +1136,7 @@ export function TransferHistory() {
 
           {!isEditing && transferDetail === null ? (
             <p className="text-sm text-muted-foreground">
-              Transferen blev ikke fundet.
+              Flytningen blev ikke fundet.
             </p>
           ) : null}
 
@@ -1201,7 +1201,7 @@ export function TransferHistory() {
                 onClick={() => setIsDeleteOpen(true)}
               >
                 <Trash2Icon data-icon="inline-start" />
-                Slet transfer
+                Slet flytning
               </Button>
               <Button
                 size="lg"
@@ -1209,7 +1209,7 @@ export function TransferHistory() {
                 onClick={() => setIsEditing(true)}
               >
                 <PencilIcon data-icon="inline-start" />
-                Rediger transfer
+                Rediger flytning
               </Button>
             </DialogFooter>
           ) : null}
@@ -1224,9 +1224,9 @@ export function TransferHistory() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Slet transfer?</AlertDialogTitle>
+            <AlertDialogTitle>Slet flytning?</AlertDialogTitle>
             <AlertDialogDescription>
-              Transferen og alle dens varelinjer slettes permanent. Handlingen
+              Flytningen og alle dens varelinjer slettes permanent. Handlingen
               kan ikke fortrydes.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1240,7 +1240,7 @@ export function TransferHistory() {
               onClick={() => void confirmDelete()}
             >
               {isDeleting ? <Spinner data-icon="inline-start" /> : null}
-              Slet transfer
+              Slet flytning
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
