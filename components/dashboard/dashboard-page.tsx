@@ -11,8 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
-import { authClient } from "@/lib/auth-client";
-import { canShareDashboard, canViewDashboard } from "@/lib/auth-permissions";
+import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import type { DashboardConfig, DashboardRange, DashboardScope, WidgetInstance } from "@/lib/dashboard/types";
@@ -28,16 +27,20 @@ function message(error: unknown) {
 }
 
 function DashboardContent() {
-  const membership = authClient.useActiveMemberRole();
-  const config = useQuery(api.dashboard.getConfig, canViewDashboard(membership.data?.role) ? {} : "skip");
-  const locations = useQuery(api.locations.listLocationOptions, canViewDashboard(membership.data?.role) ? {} : "skip");
-  const organizationContext = useQuery(api.employees.getContext, canViewDashboard(membership.data?.role) ? {} : "skip");
+  const access = useAccess();
+  const canView = usePermission("dashboard.view");
+  const canShare = usePermission("dashboard.share");
+  const canViewSales = usePermission("dashboard.viewSales");
+  const config = useQuery(api.dashboard.getConfig, canView ? {} : "skip");
+  const { locations } = useLocationAccess();
+  const organizationContext = useQuery(api.employees.getContext, canView ? {} : "skip");
   const saveConfig = useMutation(api.dashboard.saveConfigRevisioned);
   const [local, setLocal] = useState<DashboardConfig | null>(null);
   const [editing, setEditing] = useState(false);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const current = useRef<DashboardConfig | null>(null);
   const persistedRevision = useRef<number | null>(null);
+  const lastSensitivePermission = useRef<boolean | null>(null);
   const pendingSaveCount = useRef(0);
   const [pendingSaves, setPendingSaves] = useState(0);
   const pendingConfigSave = useRef<Promise<void>>(Promise.resolve());
@@ -59,26 +62,32 @@ function DashboardContent() {
       return;
     }
     const hasRestrictedWidget =
-      membership.data?.role !== "admin" &&
+      !canViewSales &&
       current.current?.widgets.some(
-        (widget) => metricRegistry[widget.metricId].adminOnly,
+        (widget) => metricRegistry[widget.metricId].sensitive,
       );
-    if (!current.current || current.current.updatedAt !== config.updatedAt || hasRestrictedWidget) {
+    const permissionChanged = lastSensitivePermission.current !== canViewSales;
+    if (
+      !current.current ||
+      current.current.updatedAt !== config.updatedAt ||
+      hasRestrictedWidget ||
+      permissionChanged
+    ) {
       const allowedWidgets = config.widgets.filter(
         (widget) =>
-          membership.data?.role === "admin" ||
-          !metricRegistry[widget.metricId].adminOnly,
+          canViewSales || !metricRegistry[widget.metricId].sensitive,
       );
       const normalized = { ...config, widgets: layoutDashboardWidgets(allowedWidgets) };
       persistedRevision.current = config.updatedAt;
       current.current = normalized;
       setLocal(normalized);
+      lastSensitivePermission.current = canViewSales;
     }
-  }, [config, membership.data?.role, pendingSaves]);
+  }, [canViewSales, config, pendingSaves]);
 
-  if (membership.isPending) return <Skeleton className="h-96" />;
-  if (!canViewDashboard(membership.data?.role)) {
-    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Kun ledere og administratorer kan se dashboardet.</AlertDescription></Alert>;
+  if (!access) return <Skeleton className="h-96" />;
+  if (!canView) {
+    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se overblikket.</AlertDescription></Alert>;
   }
   if (!local || locations === undefined) return <Skeleton className="h-96" />;
 
@@ -148,12 +157,12 @@ function DashboardContent() {
           <RangeSelector range={local.range} onChange={range} timeZone={organizationContext?.timeZone} />
         </div>
         <div className="flex flex-wrap gap-2">
-          {canShareDashboard(membership.data?.role) ? <ShareDialog onBeforeCreate={flushConfigSave} /> : null}
+          {canShare ? <ShareDialog onBeforeCreate={flushConfigSave} /> : null}
           <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
             <PencilIcon data-icon="inline-start" />
             {editing ? "Færdig" : "Rediger"}
           </Button>
-          {editing ? <AddWidgetDialog isAdmin={membership.data?.role === "admin"} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets(layoutDashboardWidgets([...local.widgets, widget]))} /> : null}
+          {editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets(layoutDashboardWidgets([...local.widgets, widget]))} /> : null}
         </div>
       </div>
       {local.widgets.length ? (
@@ -165,7 +174,7 @@ function DashboardContent() {
             <EmptyTitle>Dashboardet er tomt</EmptyTitle>
             <EmptyDescription>Tilføj den første widget for at bygge dit overblik.</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent><AddWidgetDialog isAdmin={membership.data?.role === "admin"} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets([widget])} /></EmptyContent>
+          <EmptyContent><AddWidgetDialog canViewSensitive={canViewSales} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets([widget])} /></EmptyContent>
         </Empty>
       )}
     </section>

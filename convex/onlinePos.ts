@@ -9,7 +9,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { requireOrganizationAdmin } from "./lib/auth";
+import { requireIntegrationManager } from "./lib/auth";
 import {
   requestProducts,
   requestSales,
@@ -103,7 +103,7 @@ async function requireEnabledSettings(ctx: ActionCtx): Promise<{
   organizationId: string;
   settings: { token: string; companyId: number; enabled: boolean };
 }> {
-  const { organizationId } = await requireOrganizationAdmin(ctx);
+  const { organizationId } = await requireIntegrationManager(ctx);
   const settings: {
     token: string;
     companyId: number;
@@ -126,7 +126,7 @@ export const getSettings = query({
     connectedAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const settings = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -157,7 +157,7 @@ export const listLocationConnections = query({
     limitReached: v.boolean(),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const [locations, connections] = await Promise.all([
       ctx.db
         .query("locations")
@@ -373,7 +373,7 @@ export const connect = action({
   args: { token: v.string(), companyId: v.number() },
   returns: v.object({ productCount: v.number() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
     const products = await requestProducts({
@@ -397,7 +397,7 @@ export const connectLocation = action({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
     const locationName: string | null = await ctx.runQuery(
@@ -426,7 +426,7 @@ export const setEnabled = action({
   args: { enabled: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const settings: {
       token: string;
       companyId: number;
@@ -450,7 +450,7 @@ export const disconnect = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const [settings, mappings, locationConnections] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
@@ -495,7 +495,7 @@ export const disconnectLocation = mutation({
   args: { locationId: v.id("locations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const [location, connection] = await Promise.all([
       ctx.db.get("locations", args.locationId),
       ctx.db
@@ -541,7 +541,7 @@ export const listMappingOptions = query({
     v.null(),
   ),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const { organizationId } = await requireIntegrationManager(ctx);
     const settings = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>

@@ -6,8 +6,12 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { authComponent, createAuth } from "./auth";
-import { requireKioskTransfer, requireTransferManager } from "./lib/auth";
+import { getDatabaseAdapter } from "./auth";
+import {
+  requireKioskTransfer,
+  requireTransferManager,
+  requireTransferViewer,
+} from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
 
@@ -83,6 +87,11 @@ const transferDetailValidator = transferHeaderValidator.extend({
 
 const productSearchOptionValidator = v.object({
   id: v.id("products"),
+  name: v.string(),
+});
+
+const responsibleUserValidator = v.object({
+  id: v.string(),
   name: v.string(),
 });
 
@@ -171,22 +180,23 @@ async function resolveResponsibleName(
   organizationId: string,
   responsibleUserId: string,
 ) {
-  const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-  const result = await auth.api.listMembers({
-    headers,
-    query: {
-      organizationId,
-      limit: 1,
-      filterField: "userId",
-      filterValue: responsibleUserId,
-      filterOperator: "eq",
-    },
+  const adapter = getDatabaseAdapter(ctx);
+  const member = await adapter.findOne<{ userId: string }>({
+    model: "member",
+    where: [
+      { field: "organizationId", value: organizationId },
+      { field: "userId", value: responsibleUserId },
+    ],
   });
-  const member = result.members[0];
   if (!member) {
     throw new ConvexError("Den ansvarlige er ikke medlem af organisationen");
   }
-  return member.user.name?.trim() || member.user.email;
+  const user = await adapter.findOne<{ name?: string | null; email: string }>({
+    model: "user",
+    where: [{ field: "id", value: member.userId }],
+  });
+  if (!user) throw new ConvexError("Den ansvarlige er ikke medlem af organisationen");
+  return user.name?.trim() || user.email;
 }
 
 async function prepareTransfer(
@@ -564,7 +574,7 @@ export const listTransfers = query({
   },
   returns: paginationResultValidator(transferHeaderValidator),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, "transfers.history");
+    const auth = await requireTransferViewer(ctx, "transfers.history");
     const { organizationId } = auth;
     validateDateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
@@ -600,7 +610,7 @@ export const getTransfer = query({
   args: { transferId: v.id("transfers") },
   returns: v.union(transferDetailValidator, v.null()),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, "transfers.history");
+    const auth = await requireTransferViewer(ctx, "transfers.history");
     const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) return null;
@@ -671,6 +681,34 @@ export const searchTransferProducts = query({
   },
 });
 
+export const listResponsibleUsers = query({
+  args: {},
+  returns: v.array(responsibleUserValidator),
+  handler: async (ctx) => {
+    const { organizationId } = await requireTransferManager(ctx, "transfers.new");
+    const adapter = getDatabaseAdapter(ctx);
+    const members = await adapter.findMany<{ userId: string }>({
+      model: "member",
+      where: [{ field: "organizationId", value: organizationId }],
+      limit: 100,
+    });
+    const users = await Promise.all(
+      members.map((member) =>
+        adapter.findOne<{ id: string; name?: string | null; email: string }>({
+          model: "user",
+          where: [{ field: "id", value: member.userId }],
+        }),
+      ),
+    );
+    return members.flatMap((member, index) => {
+      const user = users[index];
+      return user
+        ? [{ id: member.userId, name: user.name?.trim() || user.email }]
+        : [];
+    });
+  },
+});
+
 export const getTransferProductOption = query({
   args: { productId: v.id("products") },
   returns: v.union(productOptionValidator, v.null()),
@@ -731,7 +769,7 @@ export const exportTransfers = query({
   },
   returns: paginationResultValidator(exportTransferValidator),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, "transfers.history");
+    const auth = await requireTransferViewer(ctx, "transfers.history");
     const { organizationId } = auth;
     validateDateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, EXPORT_PAGE_SIZE);

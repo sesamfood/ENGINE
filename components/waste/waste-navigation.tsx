@@ -6,27 +6,54 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useEffect } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { authClient } from "@/lib/auth-client";
-import { canViewWasteReports } from "@/lib/auth-permissions";
+import { useKiosk, usePermission } from "@/components/app-shell";
 
 export function WasteNavigation() {
   const pathname = usePathname();
   const router = useRouter();
   const sidebar = useSidebar();
-  const membership = authClient.useActiveMemberRole();
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
-  const showRegister = pathname === "/waste" || !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("waste.register");
-  const showBadDelivery = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("waste.badDelivery");
-  const canReport = canViewWasteReports(membership.data?.role) || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.report"));
-  const value = pathname.startsWith("/waste/report")
+  const kiosk = useKiosk();
+  const canRegister = usePermission("waste.register");
+  const canReportPermission = usePermission("waste.report");
+  const kioskMode = Boolean(kiosk?.kioskModeEnabled);
+  const showRegister = kioskMode
+    ? pathname === "/waste" || Boolean(kiosk?.settings?.enabledPages.includes("waste.register"))
+    : canRegister;
+  const showBadDelivery = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("waste.badDelivery"))
+    : canRegister;
+  const canReport = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("waste.report"))
+    : canReportPermission;
+  const value = pathname.startsWith("/waste/report") && canReport
     ? "report"
-    : pathname.startsWith("/waste/bad-delivery")
+    : pathname.startsWith("/waste/bad-delivery") && showBadDelivery
       ? "badDelivery"
-      : "register";
+      : showRegister
+        ? "register"
+        : showBadDelivery
+          ? "badDelivery"
+          : "report";
+
+  useEffect(() => {
+    if (!showRegister && !showBadDelivery && !canReport) return;
+    if (
+      (pathname === "/waste" && value === "register") ||
+      (pathname.startsWith("/waste/bad-delivery") && value === "badDelivery") ||
+      (pathname.startsWith("/waste/report") && value === "report")
+    ) {
+      return;
+    }
+    const href = value === "report"
+      ? "/waste/report"
+      : value === "badDelivery"
+        ? "/waste/bad-delivery"
+        : "/waste";
+    router.replace(href, { scroll: false });
+  }, [canReport, pathname, router, showBadDelivery, showRegister, value]);
 
   return (
     <div

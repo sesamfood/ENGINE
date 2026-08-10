@@ -60,8 +60,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
-import { canManageWasteSettings } from "@/lib/auth-permissions";
+import { usePermission } from "@/components/app-shell";
 import { cn } from "@/lib/utils";
 import { useWasteContext } from "./waste-header";
 
@@ -150,8 +149,7 @@ export function WasteRegistration() {
   const setPinned = useMutation(api.waste.setPinned);
   const setOverride = useMutation(api.waste.setShortcutOverride);
   const clearOverride = useMutation(api.waste.clearShortcutOverride);
-  const membership = authClient.useActiveMemberRole();
-  const isAdmin = canManageWasteSettings(membership.data?.role);
+  const canManageSettings = usePermission("waste.settings");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [selectedId, setSelectedId] = useState<Id<"products"> | null>(null);
@@ -721,7 +719,7 @@ export function WasteRegistration() {
                     >
                       Annullér
                     </Button>
-                    {isAdmin ? (
+                    {canManageSettings ? (
                       <Button
                         variant="outline"
                         onClick={() => setEditingShortcuts(true)}

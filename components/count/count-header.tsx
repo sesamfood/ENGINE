@@ -1,25 +1,16 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import {
-  CheckCircle2Icon,
-  MapPinIcon,
-} from "lucide-react";
+import { CheckCircle2Icon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field, FieldLabel } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { LocationField } from "@/components/location-field";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
 import { setCountLocation, useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
@@ -48,19 +39,19 @@ function formatPeriod(periodKey: string) {
 function CountHeaderControls({
   locationId,
   locations,
-  locationItems,
   organizationId,
   periodKey,
-  fixedLocationName,
+  isLocked,
+  lockedName,
 }: {
   locationId: Id<"locations"> | null;
   locations:
     | Array<{ id: Id<"locations">; name: string }>
     | undefined;
-  locationItems: Array<{ value: Id<"locations">; label: string }>;
   organizationId: string | undefined;
   periodKey: string | undefined;
-  fixedLocationName?: string;
+  isLocked: boolean;
+  lockedName?: string | null;
 }) {
   return (
     <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
@@ -82,32 +73,16 @@ function CountHeaderControls({
 
       <Field>
         <FieldLabel htmlFor="count-location">Lokation</FieldLabel>
-        {fixedLocationName ? (
-          <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{fixedLocationName}</div>
-        ) : <Select
-          items={locationItems}
+        <LocationField
+          id="count-location"
+          locations={locations}
           value={locationId}
+          locked={isLocked}
+          lockedName={lockedName}
           onValueChange={(value) => {
-            if (organizationId) {
-              setCountLocation(organizationId, value as string);
-            }
+            if (organizationId) setCountLocation(organizationId, value);
           }}
-          disabled={!locations || locations.length === 0}
-        >
-          <SelectTrigger id="count-location" className="h-11! w-full">
-            <MapPinIcon aria-hidden="true" />
-            <SelectValue placeholder="Vælg lokation" />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            <SelectGroup>
-              {locationItems.map((location) => (
-                <SelectItem key={location.value} value={location.value}>
-                  {location.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>}
+        />
       </Field>
     </div>
   );
@@ -118,8 +93,9 @@ export function CountHeader() {
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
-  const locations = useQuery(api.locations.listLocationOptions);
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
+  const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
+  const kiosk = useKiosk();
+  const canRegister = usePermission("count.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("count.register"));
   const [now, setNow] = useState(() => Date.now());
   const [desktopTarget, setDesktopTarget] = useState<HTMLElement | null>(null);
 
@@ -136,26 +112,26 @@ export function CountHeader() {
   }, []);
 
   useEffect(() => {
-    if (!organizationId || !locations || kiosk?.isKioskAccount) return;
+    if (!organizationId || !locations || isLocked) return;
     const valid = locations.some(
       (location) => location.id === storedLocationId,
     );
     if (!valid) {
       setCountLocation(organizationId, locations[0]?.id ?? null);
     }
-  }, [kiosk?.isKioskAccount, locations, organizationId, storedLocationId]);
+  }, [isLocked, locations, organizationId, storedLocationId]);
 
-  const locationId = kiosk?.isKioskAccount
-    ? kiosk.locationId
-    : locations?.some(
-    (location) => location.id === storedLocationId,
-  )
-    ? (storedLocationId as Id<"locations">)
-    : null;
+  const locationId = isLocked
+    ? lockedId
+    : locations?.some((location) => location.id === storedLocationId)
+      ? (storedLocationId as Id<"locations">)
+      : (locations?.[0]?.id ?? null);
   const queryNow = Math.floor(now / 60_000) * 60_000;
   const queriedState = useQuery(
     api.count.getCountState,
-    locationId ? { locationId, now: queryNow } : "skip",
+    canRegister && pathname === "/count" && locationId
+      ? { locationId, now: queryNow }
+      : "skip",
   );
   const state = useLastDefined(queriedState, locationId);
   const submitted = state?.count?.status === "submitted";
@@ -163,22 +139,16 @@ export function CountHeader() {
     state?.count?.submittedAt
       ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
       : "Denne optælling kan ikke ændres.";
-  const locationItems =
-    locations?.map((location) => ({
-      value: location.id,
-      label: location.name,
-    })) ?? [];
-
   return (
     <div className="flex flex-col gap-6">
       <header className="md:hidden">
         <CountHeaderControls
           locationId={locationId}
           locations={locations}
-          locationItems={locationItems}
           organizationId={organizationId}
           periodKey={state?.periodKey}
-          fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
+          isLocked={isLocked}
+          lockedName={lockedName}
         />
       </header>
       {desktopTarget
@@ -186,10 +156,10 @@ export function CountHeader() {
             <CountHeaderControls
               locationId={locationId}
               locations={locations}
-              locationItems={locationItems}
               organizationId={organizationId}
               periodKey={state?.periodKey}
-              fixedLocationName={kiosk?.isKioskAccount ? kiosk.locationName ?? undefined : undefined}
+              isLocked={isLocked}
+              lockedName={lockedName}
             />,
             desktopTarget,
           )

@@ -7,7 +7,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Clock3Icon,
-  MapPinIcon,
   RefreshCwIcon,
   SearchIcon,
   UsersRoundIcon,
@@ -36,14 +35,8 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { LocationField } from "@/components/location-field";
+import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -326,10 +319,12 @@ export function EmployeeScheduling() {
   const router = useRouter();
   const organizationId = organization.data?.id;
   const context = useQuery(api.employees.getContext);
-  const locations = useQuery(api.locations.listLocationOptions);
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
+  const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
+  const kiosk = useKiosk();
+  const canSchedule = usePermission("employees.schedule") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("employees.schedule"));
+  const canDirectory = usePermission("employees.directory") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("employees.directory"));
   const requestSync = useMutation(api.employees.requestWorkfeedSync);
-  const selectedTab = pathname === "/employees/directory" ? "directory" : "schedule";
+  const selectedTab = canDirectory && (!canSchedule || pathname === "/employees/directory") ? "directory" : "schedule";
   const storedLocationId = useEmployeeLocation(organizationId);
   const [syncing, setSyncing] = useState(false);
   const [retryAt, setRetryAt] = useState<number | null>(null);
@@ -357,11 +352,21 @@ export function EmployeeScheduling() {
     finally { setSyncing(false); }
   };
 
+  const showSchedule = canSchedule;
+  const showDirectory = canDirectory;
+  useEffect(() => {
+    if (pathname === "/employees/directory" && !showDirectory && showSchedule) {
+      router.replace("/employees");
+    } else if (pathname !== "/employees/directory" && !showSchedule && showDirectory) {
+      router.replace("/employees/directory");
+    }
+  }, [pathname, router, showDirectory, showSchedule]);
+
   if (!context || !locations) return <div className="flex flex-col gap-5"><Skeleton className="h-24 w-full" /><Skeleton className="h-96 w-full" /></div>;
   const effectiveRetryAt = retryAt ?? context.manualSyncRetryAt;
   const cooldown = effectiveRetryAt !== null && effectiveRetryAt > now;
-  const activeLocationId = kiosk?.isKioskAccount
-    ? kiosk.locationId
+  const activeLocationId = isLocked
+    ? lockedId
     : locations.some((location) => location.id === storedLocationId)
     ? (storedLocationId as Id<"locations">)
     : (locations[0]?.id ?? null);
@@ -375,24 +380,16 @@ export function EmployeeScheduling() {
       </div>
       <Field>
         <FieldLabel htmlFor="employees-location">Lokation</FieldLabel>
-        {kiosk?.isKioskAccount ? (
-          <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium"><MapPinIcon aria-hidden="true" />{kiosk.locationName}</div>
-        ) : <Select
-          items={locations.map((location) => ({ value: location.id, label: location.name }))}
+        <LocationField
+          id="employees-location"
+          locations={locations}
           value={activeLocationId}
+          locked={isLocked}
+          lockedName={lockedName}
           onValueChange={(value) => {
-            if (organizationId && value) setEmployeeLocation(organizationId, value);
+            if (organizationId) setEmployeeLocation(organizationId, value);
           }}
-          disabled={!locations.length}
-        >
-          <SelectTrigger id="employees-location" className="h-11! w-full">
-            <MapPinIcon aria-hidden="true" />
-            <SelectValue placeholder="Vælg lokation" />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            <SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup>
-          </SelectContent>
-        </Select>}
+        />
       </Field>
     </div>
   );
@@ -402,8 +399,14 @@ export function EmployeeScheduling() {
       {queued ? "Synkroniserer" : "Synkronisér nu"}
     </Button>
   ) : null;
-  const showSchedule = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("employees.schedule");
-  const showDirectory = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("employees.directory");
+  if (!showSchedule && !showDirectory) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>Du har ikke adgang til medarbejdervisningen.</AlertDescription>
+      </Alert>
+    );
+  }
   return (
     <main className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
       <header className="md:hidden">{header}</header>

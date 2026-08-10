@@ -12,9 +12,13 @@ import {
   query,
 } from "./_generated/server";
 import {
-  requireKioskLocation,
+  requireLocationAccess,
+  requireWasteExporter,
   requireWasteRegistrar,
   requireWasteReporter,
+  isMultiLocationFilter,
+  isSingleLocationFilter,
+  resolveLocationFilter,
 } from "./lib/auth";
 import {
   DEFAULT_BAD_DELIVERY_EMAIL_BODY,
@@ -279,7 +283,7 @@ export const getRegistrationConfig = query({
   handler: async (ctx, args) => {
     const auth = await requireWasteRegistrar(ctx, "waste.badDelivery");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
     return {
@@ -394,7 +398,7 @@ export const registerBadDelivery = mutation({
   handler: async (ctx, args) => {
     const auth = await requireWasteRegistrar(ctx, "waste.badDelivery");
     const { organizationId, userIdentifier, userName } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     await requireOtherFeaturesUnlocked(ctx, organizationId, args.locationId);
     const location = await requireLocation(ctx, organizationId, args.locationId);
     if (args.items.length < 1 || args.items.length > MAX_ITEMS) {
@@ -584,14 +588,13 @@ export const listBadDeliveries = query({
   handler: async (ctx, args) => {
     const auth = await requireWasteReporter(ctx);
     const { organizationId } = auth;
-    const locationId = auth.kioskLocationId ?? args.locationId;
+    const locationFilter = resolveLocationFilter(auth, args.locationId);
     requireRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     if (args.locationId) {
-      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
-    const result = locationId
+    const result = isSingleLocationFilter(locationFilter)
       ? await ctx.db
           .query("badDeliveries")
           .withIndex(
@@ -599,12 +602,30 @@ export const listBadDeliveries = query({
             (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("locationId", locationId)
+                .eq("locationId", locationFilter.locationId)
                 .gte("registeredAt", args.startAt)
                 .lte("registeredAt", args.endAt),
           )
           .order("desc")
           .paginate(args.paginationOpts)
+      : isMultiLocationFilter(locationFilter)
+        ? await ctx.db
+            .query("badDeliveries")
+            .withIndex("by_organizationId_and_registeredAt", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .filter((q) =>
+              q.or(
+                ...locationFilter.locationIds.map((locationId) =>
+                  q.eq(q.field("locationId"), locationId),
+                ),
+              ),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
       : await ctx.db
           .query("badDeliveries")
           .withIndex("by_organizationId_and_registeredAt", (q) =>
@@ -627,7 +648,7 @@ export const getBadDelivery = query({
     const { organizationId } = auth;
     const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
     if (!delivery || delivery.organizationId !== organizationId) return null;
-    requireKioskLocation(auth, delivery.locationId);
+    requireLocationAccess(auth, delivery.locationId);
     const [items, attachments] = await Promise.all([
       ctx.db
         .query("badDeliveryItems")
@@ -694,9 +715,9 @@ export const exportBadDeliveries = query({
     v.object({ rows: v.array(exportRowValidator) }),
   ),
   handler: async (ctx, args) => {
-    const auth = await requireWasteReporter(ctx);
+    const auth = await requireWasteExporter(ctx);
     const { organizationId } = auth;
-    const locationId = auth.kioskLocationId ?? args.locationId;
+    const locationFilter = resolveLocationFilter(auth, args.locationId);
     requireRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, EXPORT_PAGE_SIZE);
     if (
@@ -706,10 +727,9 @@ export const exportBadDeliveries = query({
       throw new ConvexError("Eksportsiden er for stor");
     }
     if (args.locationId) {
-      requireKioskLocation(auth, args.locationId);
       await requireLocation(ctx, organizationId, args.locationId);
     }
-    const result = locationId
+    const result = isSingleLocationFilter(locationFilter)
       ? await ctx.db
           .query("badDeliveries")
           .withIndex(
@@ -717,12 +737,30 @@ export const exportBadDeliveries = query({
             (q) =>
               q
                 .eq("organizationId", organizationId)
-                .eq("locationId", locationId)
+                .eq("locationId", locationFilter.locationId)
                 .gte("registeredAt", args.startAt)
                 .lte("registeredAt", args.endAt),
           )
           .order("desc")
           .paginate(args.paginationOpts)
+      : isMultiLocationFilter(locationFilter)
+        ? await ctx.db
+            .query("badDeliveries")
+            .withIndex("by_organizationId_and_registeredAt", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .filter((q) =>
+              q.or(
+                ...locationFilter.locationIds.map((locationId) =>
+                  q.eq(q.field("locationId"), locationId),
+                ),
+              ),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
       : await ctx.db
           .query("badDeliveries")
           .withIndex("by_organizationId_and_registeredAt", (q) =>
@@ -785,7 +823,7 @@ export const voidBadDelivery = mutation({
     if (!delivery || delivery.organizationId !== organizationId) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
-    requireKioskLocation(auth, delivery.locationId);
+    requireLocationAccess(auth, delivery.locationId);
     if (delivery.status !== "active") {
       throw new ConvexError("Registreringen er allerede annulleret");
     }
@@ -845,7 +883,7 @@ export const retryBadDeliveryNotice = mutation({
     if (!delivery || delivery.organizationId !== organizationId) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
-    requireKioskLocation(auth, delivery.locationId);
+    requireLocationAccess(auth, delivery.locationId);
     if (args.kind === "initial") {
       if (
         delivery.status !== "active" ||

@@ -39,6 +39,7 @@ import {
   requireDashboardSharer,
   requireDashboardViewer,
 } from "./lib/auth";
+import { hasPermission } from "../lib/auth-permissions";
 
 const MAX_WIDGETS = 24;
 const MAX_SHARE_NAME = 100;
@@ -57,7 +58,7 @@ const shareSummaryValidator = v.object({
   requiresPassword: v.boolean(),
 });
 
-function validateWidgets(widgets: WidgetInstance[], role: string) {
+function validateWidgets(widgets: WidgetInstance[], canViewSales: boolean) {
   if (widgets.length > MAX_WIDGETS) {
     throw new ConvexError(`Overblikket kan højst have ${MAX_WIDGETS} widgets`);
   }
@@ -73,7 +74,7 @@ function validateWidgets(widgets: WidgetInstance[], role: string) {
     if (!definition.visualizations.includes(widget.visualization)) {
       throw new ConvexError("Visualiseringen understøttes ikke af målingen");
     }
-    if (definition.adminOnly && role !== "admin") {
+    if (definition.sensitive && !canViewSales) {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
     if (widget.position) {
@@ -101,6 +102,7 @@ async function validateScope(
   ctx: MutationCtx,
   organizationId: string,
   scope: DashboardScope,
+  allowedLocationScope?: { all: boolean; ids: ReadonlySet<Doc<"locations">["_id"]> },
 ) {
   if (scope.locationIds === null) return;
   if (scope.locationIds.length === 0 || scope.locationIds.length > 200) {
@@ -112,6 +114,13 @@ async function validateScope(
   if (new Set(scope.locationIds).size !== scope.locationIds.length) {
     throw new ConvexError("En lokation må kun vælges én gang");
   }
+  if (
+    allowedLocationScope &&
+    !allowedLocationScope.all &&
+    scope.locationIds.some((locationId) => !allowedLocationScope.ids.has(locationId))
+  ) {
+    throw new ConvexError("Du har ikke adgang til en eller flere lokationer");
+  }
   const locations = await Promise.all(scope.locationIds.map((id) => ctx.db.get("locations", id)));
   if (locations.some((location) => location?.organizationId !== organizationId)) {
     throw new ConvexError("Lokationen blev ikke fundet");
@@ -120,15 +129,34 @@ async function validateScope(
 
 function configFromDocument(
   document: Doc<"dashboards"> | null,
-  role = "admin",
+  canViewSales = true,
+  allowedLocationScope?: { all: boolean; ids: ReadonlySet<Doc<"locations">["_id"]> },
 ): DashboardConfig {
   const widgets = (document?.widgets ?? defaultWidgets).filter(
-    (widget) => role === "admin" || !metricRegistry[widget.metricId].adminOnly,
+    (widget) => canViewSales || !metricRegistry[widget.metricId].sensitive,
   );
+  const storedScope = document?.scope ?? { mode: "aggregate" as const, locationIds: null };
+  const scope =
+    storedScope.locationIds === null || !allowedLocationScope
+      ? storedScope
+      : (() => {
+          const locationIds = allowedLocationScope.all
+            ? storedScope.locationIds
+            : storedScope.locationIds.filter((id) => allowedLocationScope.ids.has(id));
+          return locationIds.length
+            ? {
+                mode:
+                  storedScope.mode === "compare" && locationIds.length < 2
+                    ? ("aggregate" as const)
+                    : storedScope.mode,
+                locationIds,
+              }
+            : { mode: "aggregate" as const, locationIds: null };
+        })();
   return document
     ? {
         widgets,
-        scope: document.scope,
+        scope,
         range: document.range,
         updatedAt: document.updatedAt,
       }
@@ -144,14 +172,19 @@ export const getConfig = query({
   args: {},
   returns: dashboardConfigValidator,
   handler: async (ctx) => {
-    const { organizationId, userIdentifier, role } = await requireDashboardViewer(ctx);
+    const auth = await requireDashboardViewer(ctx);
+    const { organizationId, userIdentifier } = auth;
     const dashboard = await ctx.db
       .query("dashboards")
       .withIndex("by_organizationId_and_userIdentifier", (q) =>
         q.eq("organizationId", organizationId).eq("userIdentifier", userIdentifier),
       )
       .unique();
-    return configFromDocument(dashboard, role);
+    return configFromDocument(
+      dashboard,
+      hasPermission(auth.role, auth.permissions, "dashboard.viewSales"),
+      auth.locationScope,
+    );
   },
 });
 
@@ -164,10 +197,13 @@ async function writeConfig(
   },
   expectedUpdatedAt?: number | null,
 ) {
-  const { organizationId, userIdentifier, role } =
-    await requireDashboardViewer(ctx);
-  validateWidgets(args.widgets, role);
-  await validateScope(ctx, organizationId, args.scope);
+  const auth = await requireDashboardViewer(ctx);
+  const { organizationId, userIdentifier } = auth;
+  validateWidgets(
+    args.widgets,
+    hasPermission(auth.role, auth.permissions, "dashboard.viewSales"),
+  );
+  await validateScope(ctx, organizationId, args.scope, auth.locationScope);
   const current = await ctx.db
     .query("dashboards")
     .withIndex("by_organizationId_and_userIdentifier", (q) =>
@@ -237,12 +273,16 @@ export const getMetric = query({
   },
   returns: metricResultValidator,
   handler: async (ctx, args) => {
-    const { organizationId, role } = await requireDashboardViewer(ctx);
+    const auth = await requireDashboardViewer(ctx);
+    const { organizationId } = auth;
     const definition = metricRegistry[args.metricId];
     if (!definition.visualizations.includes(args.visualization)) {
       throw new ConvexError("Visualiseringen understøttes ikke af målingen");
     }
-    if (definition.adminOnly && role !== "admin") {
+    if (
+      definition.sensitive &&
+      !hasPermission(auth.role, auth.permissions, "dashboard.viewSales")
+    ) {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
     const params = await resolveMetricParams(
@@ -251,6 +291,7 @@ export const getMetric = query({
       args.scope,
       args.range,
       args.now,
+      auth.locationScope,
     );
     return await dashboardMetricComputers[args.metricId](ctx, params);
   },
@@ -265,7 +306,8 @@ export const getMetrics = query({
   },
   returns: v.array(keyedMetricResultValidator),
   handler: async (ctx, args) => {
-    const { organizationId, role } = await requireDashboardViewer(ctx);
+    const auth = await requireDashboardViewer(ctx);
+    const { organizationId } = auth;
     if (
       args.widgets.length > MAX_METRIC_BATCH ||
       new Set(args.widgets.map((widget) => widget.key)).size !==
@@ -278,7 +320,10 @@ export const getMetrics = query({
       if (!definition.visualizations.includes(widget.visualization)) {
         throw new ConvexError("Visualiseringen understøttes ikke af målingen");
       }
-      if (definition.adminOnly && role !== "admin") {
+      if (
+        definition.sensitive &&
+        !hasPermission(auth.role, auth.permissions, "dashboard.viewSales")
+      ) {
         throw new ConvexError("Du har ikke adgang til denne måling");
       }
     }
@@ -288,6 +333,7 @@ export const getMetrics = query({
       args.scope,
       args.range,
       args.now,
+      auth.locationScope,
     );
     const results = new Map<
       string,
@@ -357,7 +403,8 @@ export const createShare = action({
   },
   returns: v.object({ token: v.string() }),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } = await requireDashboardSharer(ctx);
+    const auth = await requireDashboardSharer(ctx);
+    const { organizationId, userIdentifier } = auth;
     const name = args.name.trim();
     if (!name || name.length > MAX_SHARE_NAME) {
       throw new ConvexError(`Navnet skal være mellem 1 og ${MAX_SHARE_NAME} tegn`);
@@ -374,14 +421,41 @@ export const createShare = action({
       organizationId,
       userIdentifier,
     });
-    const widgets = source.widgets.filter((widget) => metricRegistry[widget.metricId].shareable !== false);
-    // Admin-only metrics (revenue) stay shareable but never on a passwordless link.
+    const canViewSales = hasPermission(
+      auth.role,
+      auth.permissions,
+      "dashboard.viewSales",
+    );
+    const widgets = source.widgets.filter(
+      (widget) =>
+        metricRegistry[widget.metricId].shareable !== false &&
+        (canViewSales || !metricRegistry[widget.metricId].sensitive),
+    );
+    const scope = auth.locationScope.all
+      ? source.scope
+      : (() => {
+          const allowedIds = [...auth.locationScope.ids];
+          const locationIds = (source.scope.locationIds ?? allowedIds).filter(
+            (locationId) => auth.locationScope.ids.has(locationId),
+          );
+          if (!locationIds.length) {
+            throw new ConvexError("Du har ikke adgang til overblikkets lokationer");
+          }
+          return {
+            mode:
+              source.scope.mode === "compare" && locationIds.length >= 2
+                ? ("compare" as const)
+                : ("aggregate" as const),
+            locationIds,
+          };
+        })();
+    // Sensitive metrics stay shareable but never on a passwordless link.
     if (
       !password &&
-      widgets.some((widget) => metricRegistry[widget.metricId].adminOnly)
+      widgets.some((widget) => metricRegistry[widget.metricId].sensitive)
     ) {
       throw new ConvexError(
-        "Adgangskode er påkrævet når overblikket indeholder admin-målinger",
+        "Adgangskode er påkrævet, når overblikket indeholder følsomme målinger",
       );
     }
     const token = randomSecret();
@@ -398,7 +472,7 @@ export const createShare = action({
       passwordSalt,
       name,
       widgets,
-      scope: source.scope,
+      scope,
       range: source.range,
       createdBy: userIdentifier,
       expiresAt: args.expiresAt,
@@ -428,7 +502,7 @@ export const listShares = query({
       requiresPassword:
         Boolean(share.passwordHash) ||
         share.widgets.some(
-          (widget) => metricRegistry[widget.metricId]?.adminOnly,
+          (widget) => metricRegistry[widget.metricId]?.sensitive,
         ),
     }));
   },

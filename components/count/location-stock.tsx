@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -35,6 +36,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
 import { useCountLocation } from "@/lib/count-prefs";
 
@@ -81,16 +83,27 @@ export function LocationStock() {
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
-  const locations = useQuery(api.locations.listLocationOptions);
-  const locationId = locations?.some(
-    (location) => location.id === storedLocationId,
-  )
-    ? (storedLocationId as Id<"locations">)
-    : null;
+  const { locations, isLocked, lockedId } = useLocationAccess();
+  const kiosk = useKiosk();
+  const canView = usePermission("count.viewStock") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("count.stock"));
+  const locationId = isLocked
+    ? lockedId
+    : locations?.some((location) => location.id === storedLocationId)
+      ? (storedLocationId as Id<"locations">)
+      : (locations?.[0]?.id ?? null);
   const stock = useQuery(
     api.count.listLocationStock,
-    locationId ? { locationId } : "skip",
+    canView && locationId ? { locationId } : "skip",
   );
+
+  if (!canView) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>Du har ikke adgang til lagerbeholdningen.</AlertDescription>
+      </Alert>
+    );
+  }
 
   if (!locations || (locationId && !stock)) {
     return (

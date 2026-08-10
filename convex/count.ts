@@ -5,10 +5,11 @@ import { internalQuery, mutation, query } from "./_generated/server";
 import {
   requireCatalogManager,
   requireCounter,
-  requireKioskLocation,
+  requireLocationAccess,
   requireNormalOrganization,
   requireOrganization,
-  requireOrganizationAdmin,
+  requirePermission,
+  requireStockViewer,
 } from "./lib/auth";
 import { otherFeaturesLocked } from "./lib/countLock";
 import { countScheduleValidator } from "./lib/countSettings";
@@ -271,7 +272,9 @@ export const setCountSettings = mutation({
   args: settingsValidator.fields,
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const auth = await requirePermission(ctx, "count.settings");
+    if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+    const { organizationId } = auth;
     requireCountSchedule(args.countSchedule);
     const current = await ctx.db
       .query("countSettings")
@@ -295,7 +298,7 @@ export const getOtherFeaturesLockState = query({
   handler: async (ctx, args) => {
     const auth = await requireOrganization(ctx);
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     requireNow(args.now);
     return {
       isLocked: await otherFeaturesLocked(
@@ -314,7 +317,7 @@ export const getCountState = query({
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     requireNow(args.now);
     const location = await requireLocation(
       ctx,
@@ -363,7 +366,7 @@ export const getCountQuantities = query({
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     const count = await ctx.db.get("counts", args.countId);
     if (
       !count ||
@@ -387,7 +390,7 @@ export const getCountProductOrder = query({
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     const location = await requireLocation(
       ctx,
       organizationId,
@@ -446,7 +449,7 @@ export const listCountProducts = query({
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const search = args.search.trim();
     if (search.length > MAX_SEARCH_LENGTH) {
@@ -565,7 +568,7 @@ export const setCountQuantity = mutation({
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId, userIdentifier } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     if (!Number.isFinite(args.quantity) || args.quantity < 0) {
       throw new ConvexError("Mængden skal være nul eller større");
     }
@@ -668,7 +671,7 @@ export const submitCount = mutation({
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId, userName } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     const location = await requireLocation(
       ctx,
       organizationId,
@@ -785,7 +788,7 @@ export const getWasteReportContext = internalQuery({
     ) {
       throw new ConvexError("Den registrerede optælling blev ikke fundet");
     }
-    requireKioskLocation(auth, count.locationId);
+    requireLocationAccess(auth, count.locationId);
     const location = await requireLocation(
       ctx,
       auth.organizationId,
@@ -822,9 +825,9 @@ export const listLocationStock = query({
   args: { locationId: v.id("locations") },
   returns: v.array(locationStockValidator),
   handler: async (ctx, args) => {
-    const auth = await requireCounter(ctx, "count.stock");
+    const auth = await requireStockViewer(ctx, "count.stock");
     const { organizationId } = auth;
-    requireKioskLocation(auth, args.locationId);
+    requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const products = await activeProducts(ctx, organizationId);
 

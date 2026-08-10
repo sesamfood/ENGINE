@@ -78,8 +78,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
-import { canManageStaffFood } from "@/lib/auth-permissions";
+import { LocationField } from "@/components/location-field";
+import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { downloadCsv } from "@/lib/download-csv";
 
 type Settings = NonNullable<
@@ -215,13 +215,9 @@ function formatDuration(minutes: number) {
 
 export function StaffFoodSettings() {
   const convex = useConvex();
-  const membership = authClient.useActiveMemberRole();
-  const canManage = canManageStaffFood(membership.data?.role);
+  const canManage = usePermission("staffFood.manage");
+  const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const settings = useQuery(api.staffFood.getSettings, canManage ? {} : "skip");
-  const locations = useQuery(
-    api.locations.listLocationOptions,
-    canManage ? {} : "skip",
-  );
   const saveTier = useMutation(api.staffFood.saveTier);
   const deleteTier = useMutation(api.staffFood.deleteTier);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -240,6 +236,12 @@ export function StaffFoodSettings() {
   const [to, setTo] = useState<string | null>(null);
   const [location, setLocation] = useState("all");
   const [exporting, setExporting] = useState(false);
+  const effectiveLocation =
+    isLocked && lockedId
+      ? String(lockedId)
+      : location === "all" || locations?.some((item) => item.id === location)
+        ? location
+        : "all";
 
   const categoryItems =
     settings?.categories.map((category) => ({
@@ -371,9 +373,9 @@ export function StaffFoodSettings() {
           paginationOpts: { numItems: 100, cursor },
           startAt,
           endAt,
-          ...(location === "all"
+          ...(effectiveLocation === "all"
             ? {}
-            : { locationId: location as Id<"locations"> }),
+            : { locationId: effectiveLocation as Id<"locations"> }),
         });
         rows.push(...result.page);
         cursor = result.continueCursor;
@@ -427,7 +429,6 @@ export function StaffFoodSettings() {
     }
   }
 
-  if (membership.isPending) return <Skeleton className="h-96 max-w-5xl" />;
   if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-xl">
@@ -566,31 +567,41 @@ export function StaffFoodSettings() {
             </Field>
             <Field>
               <FieldLabel htmlFor="staff-food-settings-location">Lokation</FieldLabel>
-              <Select
-                items={[
-                  { value: "all", label: "Alle lokationer" },
-                  ...locations.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                  })),
-                ]}
-                value={location}
-                onValueChange={(value) => setLocation(value ?? "all")}
-              >
-                <SelectTrigger id="staff-food-settings-location">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all">Alle lokationer</SelectItem>
-                    {locations.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              {isLocked ? (
+                <LocationField
+                  id="staff-food-settings-location"
+                  locations={locations}
+                  value={lockedId}
+                  locked
+                  lockedName={lockedName}
+                />
+              ) : (
+                <Select
+                  items={[
+                    { value: "all", label: "Alle lokationer" },
+                    ...locations.map((item) => ({
+                      value: item.id,
+                      label: item.name,
+                    })),
+                  ]}
+                  value={effectiveLocation}
+                  onValueChange={(value) => setLocation(value ?? "all")}
+                >
+                  <SelectTrigger id="staff-food-settings-location">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">Alle lokationer</SelectItem>
+                      {locations.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
             </Field>
           </FieldGroup>
         </CardContent>

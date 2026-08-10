@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
-import { authComponent, createAuth } from "./auth";
+import { getDatabaseAdapter } from "./auth";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
 import {
   getOrganizationThemeError,
@@ -202,13 +202,10 @@ export const setLogo = mutation({
     const logoUrl = await ctx.storage.getUrl(args.storageId);
     if (!logoUrl) throw new ConvexError("Logoet kunne ikke indlæses");
 
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-    await auth.api.updateOrganization({
-      headers,
-      body: {
-        organizationId,
-        data: { logo: logoUrl },
-      },
+    await getDatabaseAdapter(ctx).update({
+      model: "organization",
+      where: [{ field: "id", value: organizationId }],
+      update: { logo: logoUrl, updatedAt: new Date() },
     });
 
     const currentAsset = await ctx.db
@@ -250,13 +247,10 @@ export const removeLogo = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-    await auth.api.updateOrganization({
-      headers,
-      body: {
-        organizationId,
-        data: { logo: null },
-      },
+    await getDatabaseAdapter(ctx).update({
+      model: "organization",
+      where: [{ field: "id", value: organizationId }],
+      update: { logo: null, updatedAt: new Date() },
     });
 
     const currentAsset = await ctx.db

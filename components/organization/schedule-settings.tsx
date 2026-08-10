@@ -18,16 +18,16 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
-import { authClient } from "@/lib/auth-client";
-import { canManageOrganization } from "@/lib/auth-permissions";
+import { useAccess, usePermission } from "@/components/app-shell";
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 export function ScheduleSettings() {
-  const membership = authClient.useActiveMemberRole();
-  const context = useQuery(api.employees.getContext);
+  const access = useAccess();
+  const canManage = usePermission("organization.settings");
+  const context = useQuery(api.employees.getContext, canManage ? {} : "skip");
   const setTimeZone = useMutation(api.employees.setTimeZone);
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -49,19 +49,23 @@ export function ScheduleSettings() {
     }));
   }, []);
 
-  if (membership.isPending || !context) {
+  if (!access) {
     return <Skeleton className="h-64 w-full max-w-3xl" />;
   }
 
-  if (!canManageOrganization(membership.data?.role)) {
+  if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre vagtplanens tidszone.
+          Du har ikke adgang til at ændre vagtplanens tidszone.
         </AlertDescription>
       </Alert>
     );
+  }
+
+  if (!context) {
+    return <Skeleton className="h-64 w-full max-w-3xl" />;
   }
 
   const timeZone = draft ?? context.timeZone;

@@ -37,8 +37,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { authClient } from "@/lib/auth-client";
-import { canManageOrganization } from "@/lib/auth-permissions";
+import { useAccess, usePermission } from "@/components/app-shell";
 import {
   sidebarItems,
   type SidebarItemId,
@@ -225,22 +224,27 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
 }
 
 export function SidebarSettings() {
-  const membership = authClient.useActiveMemberRole();
-  const itemOrder = useQuery(api.navigation.getOrder);
+  const access = useAccess();
+  const canManage = usePermission("organization.settings");
+  const itemOrder = useQuery(api.navigation.getOrder, canManage ? {} : "skip");
 
-  if (membership.isPending || itemOrder === undefined) {
+  if (!access) {
     return <Skeleton className="h-[36rem] w-full max-w-3xl" />;
   }
 
-  if (!canManageOrganization(membership.data?.role)) {
+  if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre sidemenuens rækkefølge.
+          Du har ikke adgang til at ændre sidemenuens rækkefølge.
         </AlertDescription>
       </Alert>
     );
+  }
+
+  if (itemOrder === undefined) {
+    return <Skeleton className="h-[36rem] w-full max-w-3xl" />;
   }
 
   return (

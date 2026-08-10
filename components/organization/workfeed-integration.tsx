@@ -66,8 +66,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
-import { canManageOrganization } from "@/lib/auth-permissions";
+import { useAccess, usePermission } from "@/components/app-shell";
 
 type Settings = {
   connected: boolean;
@@ -550,9 +549,9 @@ function LocationMappings() {
 }
 
 export function WorkfeedIntegration() {
-  const membership = authClient.useActiveMemberRole();
-  const isAdmin = canManageOrganization(membership.data?.role);
-  const settings = useQuery(api.workfeed.getSettings, isAdmin ? {} : "skip");
+  const access = useAccess();
+  const canManage = usePermission("integrations.manage");
+  const settings = useQuery(api.workfeed.getSettings, canManage ? {} : "skip");
   const setEnabled = useAction(api.workfeed.setEnabled);
   const [setupOpen, setSetupOpen] = useState(false);
   const [changingEnabled, setChangingEnabled] = useState(false);
@@ -577,16 +576,16 @@ export function WorkfeedIntegration() {
     }
   }
 
-  if (membership.isPending) {
+  if (!access) {
     return <Skeleton className="h-72 w-full max-w-6xl" />;
   }
 
-  if (!isAdmin) {
+  if (!canManage) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan administrere integrationer.
+          Du har ikke adgang til at administrere integrationer.
         </AlertDescription>
       </Alert>
     );

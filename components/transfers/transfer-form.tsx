@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { useKiosk } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -65,8 +66,7 @@ type ProductSearchOption = {
 
 type MemberOption = {
   id: string;
-  userId: string;
-  user: { id: string; name: string; email: string };
+  name: string;
 };
 
 type TransferLine = {
@@ -130,11 +130,11 @@ export function TransferForm({
 }) {
   const convex = useConvex();
   const { data: session } = authClient.useSession();
-  const { data: organization } = authClient.useActiveOrganization();
-  const locations = useQuery(api.locations.listLocationOptions) as
+  const locations = useQuery(api.locations.listAllLocationOptions) as
     | LocationOption[]
     | undefined;
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
+  const kiosk = useKiosk();
+  const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const [productSearch, setProductSearch] = useState("");
   const deferredProductSearch = useDeferredValue(productSearch);
   const productResults = useQuery(api.transfers.searchTransferProducts, {
@@ -168,13 +168,9 @@ export function TransferForm({
     })),
   );
   const [productToAdd, setProductToAdd] = useState<string | null>(null);
-  const [members, setMembers] = useState<MemberOption[]>([]);
-  const [membersError, setMembersError] = useState<string>();
-  const [membersLoading, setMembersLoading] = useState(true);
   const [loadingProductId, setLoadingProductId] = useState<string>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const organizationId = organization?.id;
   const sessionUserId = session?.user.id;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
 
@@ -185,67 +181,14 @@ export function TransferForm({
     }
   }, [kiosk?.isKioskAccount, kiosk?.locationId, transfer]);
 
-  useEffect(() => {
-    if (!organizationId) return;
-    let active = true;
-    const pageSize = 100;
-
-    void (async () => {
-      try {
-        const firstResult = await authClient.organization.listMembers({
-          query: { organizationId, limit: pageSize, offset: 0 },
-        });
-        if (!active) return;
-
-        if (firstResult.error) {
-          setMembersError("Medlemmer kunne ikke indlæses.");
-          return;
-        }
-
-        const firstPage = firstResult.data?.members ?? [];
-        const total = firstResult.data?.total ?? firstPage.length;
-        const remainingOffsets = Array.from(
-          { length: Math.max(0, Math.ceil(total / pageSize) - 1) },
-          (_, index) => (index + 1) * pageSize,
-        );
-        const remainingResults = await Promise.all(
-          remainingOffsets.map((offset) =>
-            authClient.organization.listMembers({
-              query: { organizationId, limit: pageSize, offset },
-            }),
-          ),
-        );
-        if (!active) return;
-        if (remainingResults.some((result) => result.error)) {
-          setMembersError("Medlemmer kunne ikke indlæses.");
-          return;
-        }
-
-        const loaded = [
-          ...firstPage,
-          ...remainingResults.flatMap(
-            (result) => result.data?.members ?? [],
-          ),
-        ];
-        setMembersError(undefined);
-        setMembers(loaded);
-        if (
-          sessionUserId &&
-          loaded.some((member) => member.userId === sessionUserId)
-        ) {
-          setResponsibleUserId((current) => current ?? sessionUserId);
-        }
-      } catch {
-        if (active) setMembersError("Medlemmer kunne ikke indlæses.");
-      } finally {
-        if (active) setMembersLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [organizationId, sessionUserId]);
+  const members = (responsibleUsers ?? []) as MemberOption[];
+  const membersLoading = responsibleUsers === undefined;
+  const membersError = undefined;
+  const effectiveResponsibleUserId =
+    responsibleUserId ??
+    (sessionUserId && members.some((member) => member.id === sessionUserId)
+      ? sessionUserId
+      : null);
 
   const products = (productResults ?? []) as ProductSearchOption[];
   const displayLines = lines;
@@ -279,8 +222,8 @@ export function TransferForm({
     }),
   );
   const memberOptions: ComboboxOption[] = members.map((member) => ({
-    value: member.userId,
-    label: member.user.name || member.user.email,
+    value: member.id,
+    label: member.name,
   }));
 
   const lineCount = lines.length;
@@ -426,7 +369,7 @@ export function TransferForm({
     ) {
       nextErrors.toLocation = "Fra- og til-lokation skal være forskellige";
     }
-    if (!responsibleUserId) nextErrors.responsible = "Vælg en ansvarlig";
+    if (!effectiveResponsibleUserId) nextErrors.responsible = "Vælg en ansvarlig";
     const transferredAt = fromDatetimeLocalValue(transferredAtLocal);
     if (!Number.isFinite(transferredAt)) {
       nextErrors.transferredAt = "Angiv et gyldigt tidspunkt";
@@ -440,7 +383,7 @@ export function TransferForm({
   }
 
   async function save() {
-    if (!validate() || !fromLocationId || !toLocationId || !responsibleUserId) {
+    if (!validate() || !fromLocationId || !toLocationId || !effectiveResponsibleUserId) {
       return;
     }
     setIsSaving(true);
@@ -448,7 +391,7 @@ export function TransferForm({
       const payload = {
         fromLocationId: fromLocationId as Id<"locations">,
         toLocationId: toLocationId as Id<"locations">,
-        responsibleUserId,
+        responsibleUserId: effectiveResponsibleUserId,
         comment: comment.trim() || undefined,
         transferredAt: fromDatetimeLocalValue(transferredAtLocal),
         items: lines.map((line) => ({
@@ -532,7 +475,7 @@ export function TransferForm({
                 <FieldLabel>Ansvarlig</FieldLabel>
                 <CreatableCombobox
                   options={memberOptions}
-                  value={responsibleUserId}
+                  value={effectiveResponsibleUserId}
                   onValueChange={(value) => {
                     setResponsibleUserId(value);
                     setErrors((current) => {

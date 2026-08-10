@@ -19,6 +19,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -33,7 +34,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,6 +54,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Table,
   TableBody,
   TableCell,
@@ -56,10 +68,10 @@ import {
 } from "@/components/ui/table";
 import { authClient } from "@/lib/auth-client";
 import { api } from "@/convex/_generated/api";
-import {
-  canManageMembers,
-  type OrganizationRole,
-} from "@/lib/auth-permissions";
+import { usePermission } from "@/components/app-shell";
+import { LocationField } from "@/components/location-field";
+import type { Id } from "@/convex/_generated/dataModel";
+import type { OrganizationRole } from "@/lib/auth-permissions";
 
 type Member = {
   id: string;
@@ -87,6 +99,113 @@ const roleItems = roles.map((role) => ({
   label: roleLabels[role],
 }));
 
+type LocationAccessRow = {
+  userId: string;
+  scope: "all" | "selected";
+  locationIds: Id<"locations">[];
+};
+
+type LocationAccessOption = {
+  id: Id<"locations">;
+  name: string;
+};
+
+function MemberLocationPicker({
+  userId,
+  access,
+  locations,
+  disabled,
+  setAccess,
+}: {
+  userId: string;
+  access?: LocationAccessRow;
+  locations: LocationAccessOption[];
+  disabled: boolean;
+  setAccess: (args: {
+    userId: string;
+    scope: "all" | "selected";
+    locationIds: Id<"locations">[];
+  }) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const scope = access?.scope ?? "all";
+  const selectedIds = access?.locationIds ?? [];
+  const label =
+    scope === "all"
+      ? "Alle lokationer"
+      : `${selectedIds.length} lokation${selectedIds.length === 1 ? "" : "er"}`;
+
+  async function save(scopeValue: "all" | "selected", locationIds: Id<"locations">[]) {
+    setSaving(true);
+    try {
+      await setAccess({ userId, scope: scopeValue, locationIds });
+      toast.success("Lokationerne er opdateret");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Lokationerne kunne ikke opdateres");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleLocation(id: Id<"locations">, checked: boolean) {
+    const next = checked
+      ? [...new Set([...selectedIds, id])]
+      : selectedIds.filter((value) => value !== id);
+    if (!next.length) {
+      toast.error("Vælg mindst én lokation");
+      return;
+    }
+    void save("selected", next);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 min-w-40 justify-start"
+            disabled={disabled || saving}
+            aria-label="Lokationer"
+          />
+        }
+      >
+        <span className="truncate">{label}</span>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72">
+        <FieldSet className="gap-2">
+          <FieldLegend variant="label">Lokationer</FieldLegend>
+          <label className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
+            <Checkbox
+              checked={scope === "all"}
+              disabled={saving}
+              onCheckedChange={(checked) => {
+                if (checked === true) void save("all", []);
+              }}
+            />
+            <span>Alle lokationer</span>
+          </label>
+          {locations.map((location) => (
+            <label
+              key={location.id}
+              className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
+            >
+              <Checkbox
+                checked={scope === "selected" && selectedIds.includes(location.id)}
+                disabled={saving}
+                onCheckedChange={(checked) => toggleLocation(location.id, checked === true)}
+              />
+              <span className="truncate">{location.name}</span>
+            </label>
+          ))}
+        </FieldSet>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function initials(name: string) {
   return (
     name
@@ -99,11 +218,10 @@ function initials(name: string) {
 }
 
 export function MemberManagement() {
+  const allowed = usePermission("members.manage");
   const { data: session } = authClient.useSession();
   const { data: organization, isPending: organizationPending } =
     authClient.useActiveOrganization();
-  const { data: membership, isPending: membershipPending } =
-    authClient.useActiveMemberRole();
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,13 +230,19 @@ export function MemberManagement() {
   const [inviteRole, setInviteRole] = useState<OrganizationRole>("member");
   const [inviting, setInviting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const kioskAccounts = useQuery(api.kiosk.listAccounts);
+  const kioskAccounts = useQuery(api.kiosk.listAccounts, allowed ? {} : "skip");
   const deleteKioskAccount = useMutation(api.kiosk.deleteAccount);
+  const memberLocationAccess = useQuery(
+    api.access.listMemberLocationAccess,
+    allowed ? {} : "skip",
+  );
+  const updateMemberLocationAccess = useMutation(
+    api.access.setMemberLocationAccess,
+  );
   const organizationId = organization?.id;
-  const memberRole = membership?.role;
 
   useEffect(() => {
-    if (!organizationId || !canManageMembers(memberRole)) return;
+    if (!organizationId || !allowed) return;
     let active = true;
 
     void (async () => {
@@ -157,7 +281,7 @@ export function MemberManagement() {
     return () => {
       active = false;
     };
-  }, [memberRole, organizationId, refreshKey]);
+  }, [allowed, organizationId, refreshKey]);
 
   async function invite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -265,11 +389,11 @@ export function MemberManagement() {
     }
   }
 
-  if (organizationPending || membershipPending) {
+  if (organizationPending) {
     return <Skeleton className="h-80 w-full" />;
   }
 
-  if (!organization || !canManageMembers(membership?.role)) {
+  if (!organization || !allowed) {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
@@ -281,6 +405,8 @@ export function MemberManagement() {
   }
 
   const adminCount = members.filter((member) => member.role === "admin").length;
+  const accessRows = memberLocationAccess?.access ?? [];
+  const assignmentLocations = memberLocationAccess?.locations ?? [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -355,7 +481,7 @@ export function MemberManagement() {
           <CardDescription>{members.length} aktive brugere</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {loading ? (
+          {loading || memberLocationAccess === undefined ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 3 }, (_, index) => (
                 <Skeleton key={index} className="h-14 w-full" />
@@ -367,6 +493,7 @@ export function MemberManagement() {
                 <TableRow>
                   <TableHead>Bruger</TableHead>
                   <TableHead>Rolle</TableHead>
+                  <TableHead>Lokationer</TableHead>
                   <TableHead className="w-16">
                     <span className="sr-only">Handlinger</span>
                   </TableHead>
@@ -430,6 +557,25 @@ export function MemberManagement() {
                             </SelectGroup>
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell>
+                        {kioskAccount ? (
+                          <LocationField
+                            locations={assignmentLocations}
+                            value={kioskAccount.locationId}
+                            locked
+                            lockedName={kioskAccount.locationName}
+                            className="h-10! min-w-40"
+                          />
+                        ) : (
+                          <MemberLocationPicker
+                            userId={member.userId}
+                            access={accessRows.find((row) => row.userId === member.userId)}
+                            locations={assignmentLocations}
+                            disabled={memberLocationAccess === undefined}
+                            setAccess={(args) => updateMemberLocationAccess(args)}
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
                         <AlertDialog>

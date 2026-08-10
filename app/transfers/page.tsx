@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -10,8 +8,7 @@ import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gat
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { authClient } from "@/lib/auth-client";
-import { canManageTransfers } from "@/lib/auth-permissions";
+import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
 
 const TransferForm = dynamic(
   () => import("@/components/transfers/transfer-form").then((module) => module.TransferForm),
@@ -23,19 +20,40 @@ const TransferHistory = dynamic(
 );
 
 function TransfersContent() {
-  const membership = authClient.useActiveMemberRole();
   const pathname = usePathname();
   const router = useRouter();
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
-  const showNew = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("transfers.new");
-  const showHistory = !kiosk?.kioskModeEnabled || kiosk.settings?.enabledPages.includes("transfers.history");
+  const access = useAccess();
+  const kiosk = useKiosk();
+  const canManage = usePermission("transfers.manage");
+  const canView = usePermission("transfers.view");
+  const kioskMode = Boolean(kiosk?.kioskModeEnabled);
+  const showNew = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("transfers.new"))
+    : canManage;
+  const showHistory = kioskMode
+    ? Boolean(kiosk?.settings?.enabledPages.includes("transfers.history"))
+    : canView;
   const activeTab = pathname === "/transfers/history" ? "history" : "new";
+  const selectedTab =
+    activeTab === "history" && showHistory
+      ? "history"
+      : showNew
+        ? "new"
+        : "history";
 
-  if (membership.isPending) {
+  useEffect(() => {
+    if (!showNew && !showHistory) return;
+    if (activeTab === selectedTab) return;
+    router.replace(
+      selectedTab === "history" ? "/transfers/history" : "/transfers",
+    );
+  }, [activeTab, router, selectedTab, showHistory, showNew]);
+
+  if (!access) {
     return <Skeleton className="h-80 w-full" />;
   }
 
-  if (!canManageTransfers(membership.data?.role) && !kiosk?.kioskModeEnabled) {
+  if (!showNew && !showHistory) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
@@ -47,7 +65,7 @@ function TransfersContent() {
   }
 
   return (
-    <Tabs value={pathname === "/transfers/history" ? "history" : "new"} onValueChange={(value) => router.push(value === "history" ? "/transfers/history" : "/transfers")}>
+    <Tabs value={selectedTab} onValueChange={(value) => router.push(value === "history" ? "/transfers/history" : "/transfers")}>
       <TabsList
         aria-label="Flyttesektioner"
         className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
@@ -59,10 +77,10 @@ function TransfersContent() {
           Flyttehistorik
         </TabsTrigger> : null}
       </TabsList>
-      {showNew && activeTab === "new" ? <TabsContent value="new" className="pt-6">
+      {showNew && selectedTab === "new" ? <TabsContent value="new" className="pt-6">
         <TransferForm />
       </TabsContent> : null}
-      {showHistory && activeTab === "history" ? <TabsContent value="history" className="pt-6">
+      {showHistory && selectedTab === "history" ? <TabsContent value="history" className="pt-6">
         <TransferHistory />
       </TabsContent> : null}
     </Tabs>

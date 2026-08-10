@@ -50,19 +50,21 @@ const sizePreviewClasses: Record<WidgetSize, string> = {
 };
 
 export function AddWidgetDialog({
-  isAdmin,
+  canViewSensitive,
   scope,
   range,
   now,
   onAdd,
 }: {
-  isAdmin: boolean;
+  canViewSensitive: boolean;
   scope: DashboardScope;
   range: DashboardRange;
   now: number;
   onAdd: (widget: WidgetInstance) => void;
 }) {
-  const available = metrics.filter((metric) => !metric.adminOnly || isAdmin);
+  const available = metrics.filter(
+    (metric) => !metric.sensitive || canViewSensitive,
+  );
   const categories = Array.from(new Set(available.map((metric) => metric.category))).map((category) => ({
     label: category,
     metrics: available.filter((metric) => metric.category === category),

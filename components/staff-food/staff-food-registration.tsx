@@ -57,14 +57,8 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { LocationField } from "@/components/location-field";
+import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -72,7 +66,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { canManageStaffFood } from "@/lib/auth-permissions";
 import { setCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
@@ -188,7 +181,8 @@ function StaffFoodHeader({
   employeeName,
   onLocationChange,
   onEmployeeChange,
-  fixedLocationName,
+  isLocked,
+  lockedName,
 }: {
   locationId: Id<"locations"> | null;
   locations: Array<{ id: Id<"locations">; name: string }> | undefined;
@@ -196,13 +190,9 @@ function StaffFoodHeader({
   employeeName?: string;
   onLocationChange: () => void;
   onEmployeeChange: () => void;
-  fixedLocationName?: string;
+  isLocked: boolean;
+  lockedName?: string | null;
 }) {
-  const items =
-    locations?.map((location) => ({
-      value: location.id,
-      label: location.name,
-    })) ?? [];
   return (
     <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
       <div className="flex min-w-0 flex-col gap-2">
@@ -234,38 +224,19 @@ function StaffFoodHeader({
         ) : null}
         <Field>
           <FieldLabel htmlFor="staff-food-location">Lokation</FieldLabel>
-          {fixedLocationName ? (
-            <div className="flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium">
-              <MapPinIcon aria-hidden="true" />
-              {fixedLocationName}
-            </div>
-          ) : (
-            <Select
-              items={items}
-              value={locationId}
-              onValueChange={(value) => {
-                if (!organizationId) return;
-                onLocationChange();
-                setWasteLocation(organizationId, value as string);
-                setCountLocation(organizationId, value as string);
-              }}
-              disabled={!locations?.length}
-            >
-              <SelectTrigger id="staff-food-location" className="h-11! w-full">
-                <MapPinIcon aria-hidden="true" />
-                <SelectValue placeholder="Vælg lokation" />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {items.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          )}
+          <LocationField
+            id="staff-food-location"
+            locations={locations}
+            value={locationId}
+            locked={isLocked}
+            lockedName={lockedName}
+            onValueChange={(value) => {
+              if (!organizationId) return;
+              onLocationChange();
+              setWasteLocation(organizationId, value);
+              setCountLocation(organizationId, value);
+            }}
+          />
         </Field>
       </div>
     </div>
@@ -276,11 +247,11 @@ export function StaffFoodRegistration() {
   const router = useRouter();
   const sidebar = useSidebar();
   const organization = authClient.useActiveOrganization();
-  const membership = authClient.useActiveMemberRole();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
-  const locations = useQuery(api.locations.listLocationOptions);
-  const kiosk = useQuery(api.kiosk.getRuntimeContext);
+  const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
+  const kiosk = useKiosk();
+  const canRegister = usePermission("staffFood.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("staffFood.register"));
   const [now, setNow] = useState(() => Date.now());
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const [sessionId, setSessionId] = useState<Id<"staffFoodSessions"> | null>(
@@ -303,30 +274,30 @@ export function StaffFoodRegistration() {
   const register = useMutation(api.staffFood.register);
   const voidCheckout = useMutation(api.staffFood.voidCheckout);
 
-  const locationId = kiosk?.isKioskAccount
-    ? kiosk.locationId
+  const locationId = isLocked
+    ? lockedId
     : locations?.some((location) => location.id === storedLocationId)
       ? (storedLocationId as Id<"locations">)
       : (locations?.[0]?.id ?? null);
   const queryNow = Math.floor(now / 30_000) * 30_000;
   const queriedPicker = useQuery(
     api.staffFood.getPicker,
-    locationId ? { locationId, now: queryNow } : "skip",
+    canRegister && locationId ? { locationId, now: queryNow } : "skip",
   );
   const picker = useLastDefined(queriedPicker, locationId);
   const queriedSearchResults = useQuery(
     api.staffFood.searchEmployees,
-    locationId && searchValue
+    canRegister && locationId && searchValue
       ? { locationId, search: searchValue, now: queryNow }
       : "skip",
   );
   const searchResults = useLastDefined(
     queriedSearchResults,
-    locationId && searchValue ? `${locationId}:${searchValue}` : null,
+    canRegister && locationId && searchValue ? `${locationId}:${searchValue}` : null,
   );
   const queriedState = useQuery(
     api.staffFood.getSessionState,
-    sessionId ? { sessionId, now: queryNow } : "skip",
+    canRegister && sessionId ? { sessionId, now: queryNow } : "skip",
   );
   const state = useLastDefined(queriedState, sessionId);
 
@@ -357,13 +328,13 @@ export function StaffFoodRegistration() {
   }, []);
 
   useEffect(() => {
-    if (!organizationId || !locations || kiosk?.isKioskAccount) return;
+    if (!organizationId || !locations || isLocked) return;
     if (!locations.some((location) => location.id === storedLocationId)) {
       const fallback = locations[0]?.id ?? null;
       setWasteLocation(organizationId, fallback);
       setCountLocation(organizationId, fallback);
     }
-  }, [kiosk?.isKioskAccount, locations, organizationId, storedLocationId]);
+  }, [isLocked, locations, organizationId, storedLocationId]);
 
   const effectiveCategoryId =
     categoryId === "all" ||
@@ -377,9 +348,8 @@ export function StaffFoodRegistration() {
       locations={locations}
       organizationId={organizationId}
       employeeName={state?.session.employeeName}
-      fixedLocationName={
-        kiosk?.isKioskAccount ? (kiosk.locationName ?? undefined) : undefined
-      }
+      isLocked={isLocked}
+      lockedName={lockedName}
       onLocationChange={() => {
         setSessionId(null);
         setBasket({});
@@ -534,7 +504,16 @@ export function StaffFoodRegistration() {
       (product) => product.categoryId === allowance.categoryId,
     ),
   );
-  const canManage = canManageStaffFood(membership.data?.role);
+  const canManage = usePermission("staffFood.manage");
+
+  if (!canRegister) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>Du har ikke adgang til at registrere personalemad.</AlertDescription>
+      </Alert>
+    );
+  }
 
   if (!locations) {
     return (

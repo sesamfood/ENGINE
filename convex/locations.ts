@@ -7,8 +7,9 @@ import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 import {
-  requireCatalogManager,
+  requireLocationManager,
   requireOrganization,
+  requireTransferManager,
 } from "./lib/auth";
 import {
   openingHoursModeValidator,
@@ -150,7 +151,7 @@ export const listLocations = query({
   args: {},
   returns: v.array(locationAdminValidator),
   handler: async (ctx) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const { organizationId } = await requireLocationManager(ctx);
     const locations = await ctx.db
       .query("locations")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -210,7 +211,8 @@ export const listLocationOptions = query({
   args: {},
   returns: v.array(locationOptionValidator),
   handler: async (ctx) => {
-    const { organizationId } = await requireOrganization(ctx);
+    const auth = await requireOrganization(ctx);
+    const { organizationId } = auth;
     const locations = await ctx.db
       .query("locations")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -218,10 +220,33 @@ export const listLocationOptions = query({
       )
       .take(MAX_LOCATIONS);
 
-    return locations.map((location) => ({
+    return locations
+      .filter(
+        (location) =>
+          auth.locationScope.all || auth.locationScope.ids.has(location._id),
+      )
+      .map((location) => ({
       id: location._id,
       name: location.name,
-    }));
+      }));
+  },
+});
+
+export const listAllLocationOptions = query({
+  args: {},
+  returns: v.array(locationOptionValidator),
+  handler: async (ctx) => {
+    const { organizationId } = await requireTransferManager(
+      ctx,
+      "transfers.new",
+    );
+    const locations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_LOCATIONS);
+    return locations.map((location) => ({ id: location._id, name: location.name }));
   },
 });
 
@@ -229,7 +254,7 @@ export const getOpeningHours = query({
   args: { locationId: v.id("locations") },
   returns: openingHoursSettingsValidator,
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const { organizationId } = await requireLocationManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
@@ -288,7 +313,7 @@ export const setOpeningHours = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const { organizationId } = await requireLocationManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
@@ -345,7 +370,7 @@ export const createLocation = mutation({
   args: { name: v.string() },
   returns: v.id("locations"),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const { organizationId } = await requireLocationManager(ctx);
     const locations = await ctx.db
       .query("locations")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -385,7 +410,7 @@ export const renameLocation = mutation({
   args: { locationId: v.id("locations"), name: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const { organizationId } = await requireLocationManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
@@ -414,7 +439,7 @@ export const deleteLocation = mutation({
   args: { locationId: v.id("locations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const { organizationId } = await requireLocationManager(ctx);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
@@ -610,6 +635,23 @@ export const deleteLocation = mutation({
       .take(MAX_SPECIAL_OPENING_DATES + 1);
     if (specialOpeningHours.length > MAX_SPECIAL_OPENING_DATES) {
       throw new ConvexError("Lokationen har for mange særlige åbningstider");
+    }
+    const memberLocationRows = await ctx.db
+      .query("memberLocationAccess")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(1000);
+    for (const row of memberLocationRows) {
+      if (row.scope !== "selected" || !row.locationIds.includes(location._id)) {
+        continue;
+      }
+      const locationIds = row.locationIds.filter((id) => id !== location._id);
+      await ctx.db.patch("memberLocationAccess", row._id, {
+        scope: locationIds.length ? "selected" : "all",
+        locationIds,
+        updatedAt: Date.now(),
+      });
     }
     for (const hours of specialOpeningHours) {
       await ctx.db.delete("locationSpecialOpeningHours", hours._id);

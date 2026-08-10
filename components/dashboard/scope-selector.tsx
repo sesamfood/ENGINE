@@ -1,6 +1,8 @@
 "use client";
 
 import { GitCompareArrowsIcon, MapPinIcon } from "lucide-react";
+import { LocationField } from "@/components/location-field";
+import { useLocationAccess } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,15 +35,35 @@ export function ScopeSelector({
   locations: Location[];
   onChange: (scope: DashboardScope) => void;
 }) {
-  const selected = scope.locationIds ?? [];
-  const aggregateValue = scope.mode === "aggregate" && selected.length === 1 ? selected[0] : "all";
+  const access = useLocationAccess();
+  const visibleLocations = access.locations ?? locations;
+  const singleLocation = access.isLocked && access.lockedId
+    ? visibleLocations.filter((location) => location.id === access.lockedId)
+    : visibleLocations;
+  const availableLocations = singleLocation.length ? singleLocation : visibleLocations;
+  const selected = (scope.locationIds ?? []).filter((id) =>
+    availableLocations.some((location) => location.id === id),
+  );
+  const lockedToSingle = availableLocations.length === 1;
+  const currentMode = lockedToSingle ? "aggregate" : scope.mode;
+  const aggregateValue = lockedToSingle
+    ? availableLocations[0]?.id ?? "all"
+    : scope.mode === "aggregate" && selected.length === 1
+      ? selected[0]
+      : "all";
 
   function setMode(value: string[]) {
     const mode = value[0];
+    if (lockedToSingle) {
+      if (availableLocations[0]) {
+        onChange({ mode: "aggregate", locationIds: [availableLocations[0].id] });
+      }
+      return;
+    }
     if (mode === "aggregate") {
       onChange({ mode: "aggregate", locationIds: null });
     } else if (mode === "compare") {
-      const ids = selected.length >= 2 ? selected : locations.slice(0, 2).map((location) => location.id);
+      const ids = selected.length >= 2 ? selected : availableLocations.slice(0, 2).map((location) => location.id);
       if (ids.length >= 2) onChange({ mode: "compare", locationIds: ids });
     }
   }
@@ -53,21 +75,29 @@ export function ScopeSelector({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ToggleGroup value={[scope.mode]} onValueChange={setMode} variant="outline" size="lg" spacing={0}>
+      <ToggleGroup value={[currentMode]} onValueChange={setMode} variant="outline" size="lg" spacing={0}>
         <ToggleGroupItem value="aggregate" className="min-h-11">
           <MapPinIcon data-icon="inline-start" />
           Lokation
         </ToggleGroupItem>
-        <ToggleGroupItem value="compare" className="min-h-11" disabled={locations.length < 2}>
+        {!lockedToSingle ? <ToggleGroupItem value="compare" className="min-h-11" disabled={availableLocations.length < 2}>
           <GitCompareArrowsIcon data-icon="inline-start" />
           Sammenlign
-        </ToggleGroupItem>
+        </ToggleGroupItem> : null}
       </ToggleGroup>
-      {scope.mode === "aggregate" ? (
+      {lockedToSingle ? (
+        <LocationField
+          locations={availableLocations}
+          value={aggregateValue}
+          locked
+          lockedName={availableLocations[0]?.name}
+          className="h-11! w-56 min-w-48"
+        />
+      ) : scope.mode === "aggregate" ? (
         <Select
           items={[
             { value: "all", label: "Alle lokationer" },
-            ...locations.map((location) => ({ value: location.id, label: location.name })),
+            ...availableLocations.map((location) => ({ value: location.id, label: location.name })),
           ]}
           value={aggregateValue}
           onValueChange={(value) => onChange({ mode: "aggregate", locationIds: value && value !== "all" ? [value as Id<"locations">] : null })}
@@ -76,7 +106,7 @@ export function ScopeSelector({
           <SelectContent>
             <SelectGroup>
               <SelectItem value="all">Alle lokationer</SelectItem>
-              {locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}
+              {availableLocations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -88,7 +118,7 @@ export function ScopeSelector({
           <DropdownMenuContent align="start" className="w-64">
             <DropdownMenuGroup>
               <DropdownMenuLabel>Vælg lokationer</DropdownMenuLabel>
-              {locations.map((location) => (
+              {availableLocations.map((location) => (
                 <DropdownMenuCheckboxItem
                   key={location.id}
                   checked={selected.includes(location.id)}
