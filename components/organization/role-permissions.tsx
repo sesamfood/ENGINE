@@ -103,16 +103,16 @@ export function RolePermissions() {
 
   return (
     <div className="max-w-5xl">
-      <Card>
+      <Card className="overflow-visible">
         <CardHeader>
           <CardTitle>Roller og adgang</CardTitle>
           <CardDescription>
             Vælg hvilke handlinger hver rolle må udføre i organisationen.
           </CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="overflow-x-auto md:overflow-visible md:[&_[data-slot=table-container]]:overflow-visible">
           <Table className="min-w-[42rem]">
-            <TableHeader>
+            <TableHeader className="sticky top-16 z-10 bg-card md:top-24">
               <TableRow>
                 <TableHead>Handling</TableHead>
                 {roles.map((role) => (
@@ -138,9 +138,13 @@ export function RolePermissions() {
                           role.id === "admin" ||
                           currentDraft[role.id].includes(permission.id);
                         return (
-                          <TableCell key={role.id} className="text-center">
+                          <TableCell
+                            key={role.id}
+                            className="text-center [&:has([role=checkbox])]:pr-2"
+                          >
                             <Checkbox
                               className={cn(
+                                "mx-auto",
                                 role.id === "admin" &&
                                   "data-checked:border-muted-foreground/40 data-checked:bg-muted data-checked:text-muted-foreground",
                               )}

@@ -5,6 +5,9 @@ const repositoryRoot = path.resolve(".");
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  experimental: {
+    turbopackFileSystemCacheForDev: false,
+  },
   images: {
     remotePatterns: [
       {
