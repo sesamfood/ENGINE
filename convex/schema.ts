@@ -141,6 +141,8 @@ export default defineSchema({
     pendingReconcileDayStart: v.optional(v.number()),
     dayStartRerollToken: v.optional(v.string()),
     dayStartRerollTimeZone: v.optional(v.string()),
+    dayStartRerollRetryCount: v.optional(v.number()),
+    dayStartRerollError: v.optional(v.string()),
     // Keep the latest reconciled day hash; replace by dayStart.
     reconcileHashes: v.optional(
       v.array(v.object({ dayStart: v.number(), hash: v.string() })),

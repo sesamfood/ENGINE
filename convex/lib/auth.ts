@@ -210,6 +210,12 @@ export function requireLocationAccess(
   }
 }
 
+export function requireAllLocationAccess(auth: OrganizationAuth) {
+  if (!auth.locationScope.all) {
+    throw new ConvexError("Du har ikke adgang til hele organisationen");
+  }
+}
+
 export function resolveLocationFilter(
   auth: OrganizationAuth,
   locationId?: Id<"locations">,
@@ -292,6 +298,29 @@ export function requireKioskTransfer(
     !auth.locationScope.all &&
     !auth.locationScope.ids.has(fromLocationId) &&
     !auth.locationScope.ids.has(toLocationId)
+  ) {
+    throw new ConvexError("Du har ikke adgang til transferen");
+  }
+}
+
+export function requireTransferMutationAccess(
+  auth: OrganizationAuth,
+  fromLocationId: Id<"locations">,
+  toLocationId: Id<"locations">,
+) {
+  if (auth.isKioskAccount) {
+    if (
+      auth.kioskLocationId !== fromLocationId &&
+      auth.kioskLocationId !== toLocationId
+    ) {
+      throw new ConvexError("Kioskkontoen har ikke adgang til transferen");
+    }
+    return;
+  }
+  if (
+    !auth.locationScope.all &&
+    (!auth.locationScope.ids.has(fromLocationId) ||
+      !auth.locationScope.ids.has(toLocationId))
   ) {
     throw new ConvexError("Du har ikke adgang til transferen");
   }

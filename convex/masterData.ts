@@ -8,7 +8,11 @@ import {
   optionalText,
   requireCurrency,
 } from "./lib/masterData";
-import { requireTimeZone } from "./lib/timeZone";
+import {
+  requireTimeZone,
+  resolveTimeZone,
+  scheduleLocationDayStartReroll,
+} from "./lib/timeZone";
 
 const MAX_ROWS = 200;
 const operatorStatusValidator = v.union(
@@ -139,12 +143,45 @@ export const updateMarket = mutation({
     if (existing && existing._id !== market._id) {
       throw new ConvexError("Markedet findes allerede");
     }
+    const locations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_marketId", (q) =>
+        q.eq("organizationId", organizationId).eq("marketId", market._id),
+      )
+      .take(MAX_ROWS + 1);
+    if (locations.length > MAX_ROWS) {
+      throw new ConvexError("Markedet har for mange lokationer");
+    }
+    const inheritedLocations = locations.filter(
+      (location) => !location.timeZone,
+    );
+    const previousTimeZones = await Promise.all(
+      inheritedLocations.map((location) =>
+        resolveTimeZone(ctx, organizationId, location._id),
+      ),
+    );
+    const timeZone = requireTimeZone(args.timeZone);
     await ctx.db.patch("markets", market._id, {
       name,
       normalizedName,
       currency: requireCurrency(args.currency),
-      timeZone: requireTimeZone(args.timeZone),
+      timeZone,
     });
+    for (const [index, location] of inheritedLocations.entries()) {
+      const nextTimeZone = await resolveTimeZone(
+        ctx,
+        organizationId,
+        location._id,
+      );
+      if (nextTimeZone !== previousTimeZones[index]) {
+        await scheduleLocationDayStartReroll(
+          ctx,
+          organizationId,
+          location._id,
+          nextTimeZone,
+        );
+      }
+    }
     return null;
   },
 });

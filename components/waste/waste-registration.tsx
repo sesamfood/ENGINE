@@ -77,9 +77,11 @@ type UndoRegistration = {
   unitName: string;
   registeredAt: number;
   expiresAt: number;
+  reasonExpiresAt: number;
 };
 
 const UNDO_WINDOW_MS = 30_000;
+const UNDO_REASON_GRACE_MS = 30_000;
 
 const collator = new Intl.Collator("da", { sensitivity: "base" });
 
@@ -175,13 +177,16 @@ export function WasteRegistration() {
       setNow(current);
       setUndoRegistrations((registrations) =>
         registrations.filter(
-          (registration) => registration.expiresAt > current,
+          (registration) =>
+            (undoDialogOpen
+              ? registration.reasonExpiresAt
+              : registration.expiresAt) > current,
         ),
       );
     };
     const interval = window.setInterval(updateUndoWindow, 250);
     return () => window.clearInterval(interval);
-  }, [hasUndoRegistrations]);
+  }, [hasUndoRegistrations, undoDialogOpen]);
 
   const rankMap = useMemo(
     () => new Map(state?.rankings.map((rank) => [rank.productId, rank])),
@@ -282,6 +287,8 @@ export function WasteRegistration() {
           unitName: result.unitName,
           registeredAt: result.registeredAt,
           expiresAt: result.registeredAt + UNDO_WINDOW_MS,
+          reasonExpiresAt:
+            result.registeredAt + UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS,
         },
       ]);
       setRecent(key);
@@ -608,7 +615,9 @@ export function WasteRegistration() {
                         />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor={`waste-shortcut-unit-${index}`}>Enhed</FieldLabel>
+                        <FieldLabel htmlFor={`waste-shortcut-unit-${index}`}>
+                          Enhed
+                        </FieldLabel>
                         <Select
                           items={selected.units.map((unit) => ({
                             value: unit.id,
@@ -643,9 +652,7 @@ export function WasteRegistration() {
                           type="button"
                           variant="ghost"
                           className="col-span-2 justify-self-end"
-                          onClick={() =>
-                            setShortcutDrafts([shortcutDrafts[0]])
-                          }
+                          onClick={() => setShortcutDrafts([shortcutDrafts[0]])}
                         >
                           <Trash2Icon data-icon="inline-start" />
                           Fjern genvej
@@ -802,9 +809,9 @@ export function WasteRegistration() {
           <DialogHeader>
             <DialogTitle>Fortryd spildregistreringer</DialogTitle>
             <DialogDescription>
-              Fortryd en enkelt registrering eller annullér dem alle.
-              Skriv en begrundelse. Registreringerne forsvinder automatisk efter
-              30 sekunder.
+              Fortryd en enkelt registrering eller annullér dem alle. Skriv en
+              begrundelse. Registreringerne forsvinder automatisk efter 30
+              sekunder.
             </DialogDescription>
           </DialogHeader>
           <Field>
@@ -840,7 +847,9 @@ export function WasteRegistration() {
                   type="button"
                   variant="destructive"
                   className="h-11 shrink-0 px-4"
-                  disabled={undoingIds.includes(registration.id) || !undoReason.trim()}
+                  disabled={
+                    undoingIds.includes(registration.id) || !undoReason.trim()
+                  }
                   onClick={() => void undo([registration], undoReason)}
                 >
                   <Undo2Icon data-icon="inline-start" />

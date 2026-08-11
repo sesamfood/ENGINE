@@ -89,7 +89,10 @@ export const permissionCatalog = [
       { id: "locations.manage", label: "Administrere lokationer" },
       { id: "count.settings", label: "Administrere optællingsindstillinger" },
       { id: "waste.settings", label: "Administrere spildindstillinger" },
-      { id: "organization.settings", label: "Administrere organisationsindstillinger" },
+      {
+        id: "organization.settings",
+        label: "Administrere organisationsindstillinger",
+      },
       { id: "integrations.manage", label: "Administrere integrationer" },
     ],
   },
@@ -125,7 +128,9 @@ export const defaultRolePermissions: Record<
       id !== "roles.manage" &&
       id !== "staffFood.manage" &&
       id !== "dashboard.share" &&
-      id !== "dashboard.viewSales",
+      id !== "dashboard.viewSales" &&
+      id !== "sales.viewAggregate" &&
+      id !== "sales.viewDetail",
   ),
   member: [
     "count.register",
@@ -134,11 +139,6 @@ export const defaultRolePermissions: Record<
     "staffFood.register",
     "employees.schedule",
     "employees.directory",
-    "count.export",
-    "transfers.export",
-    "dashboard.export",
-    "sales.viewAggregate",
-    "sales.viewDetail",
   ],
 };
 
@@ -146,9 +146,9 @@ export function permissionsForRole(
   role: string,
   configured?: readonly string[],
 ) {
-  return configured ??
-    defaultRolePermissions[role as SystemOrganizationRole] ??
-    [];
+  return (
+    configured ?? defaultRolePermissions[role as SystemOrganizationRole] ?? []
+  );
 }
 
 export function isPermissionId(value: string): value is PermissionId {

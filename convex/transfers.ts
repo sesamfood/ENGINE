@@ -9,7 +9,7 @@ import { mutation, query } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 import {
   requireKioskTransfer,
-  requirePermission,
+  requireTransferMutationAccess,
   requireTransferManager,
   requireTransferViewer,
   resolveLocationFilter,
@@ -26,11 +26,7 @@ const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 const MAX_PUBLIC_PAGE_SIZE = 100;
 
 function requirePageSize(numItems: number, maximum: number) {
-  if (
-    !Number.isInteger(numItems) ||
-    numItems <= 0 ||
-    numItems > maximum
-  ) {
+  if (!Number.isInteger(numItems) || numItems <= 0 || numItems > maximum) {
     throw new ConvexError("Siden er for stor");
   }
 }
@@ -144,10 +140,21 @@ async function locationName(
   return location?.name ?? "Ukendt lokation";
 }
 
+async function scopedLocationName(
+  ctx: QueryCtx,
+  locationId: Id<"locations">,
+  visibleLocationIds: ReadonlySet<Id<"locations">> | null,
+) {
+  return visibleLocationIds && !visibleLocationIds.has(locationId)
+    ? "Anden lokation"
+    : await locationName(ctx, locationId);
+}
+
 async function hydrateTransferHeader(
   ctx: QueryCtx,
   transfer: Doc<"transfers">,
   existingItems?: Doc<"transferItems">[],
+  visibleLocationIds: ReadonlySet<Id<"locations">> | null = null,
 ) {
   const items =
     existingItems ??
@@ -161,8 +168,8 @@ async function hydrateTransferHeader(
       .take(MAX_TRANSFER_ITEMS));
 
   const [fromLocationName, toLocationName] = await Promise.all([
-    locationName(ctx, transfer.fromLocationId),
-    locationName(ctx, transfer.toLocationId),
+    scopedLocationName(ctx, transfer.fromLocationId, visibleLocationIds),
+    scopedLocationName(ctx, transfer.toLocationId, visibleLocationIds),
   ]);
 
   return {
@@ -197,7 +204,8 @@ async function resolveResponsibleName(
     model: "user",
     where: [{ field: "id", value: member.userId }],
   });
-  if (!user) throw new ConvexError("Den ansvarlige er ikke medlem af organisationen");
+  if (!user)
+    throw new ConvexError("Den ansvarlige er ikke medlem af organisationen");
   return user.name?.trim() || user.email;
 }
 
@@ -236,10 +244,7 @@ async function prepareTransfer(
   }
 
   const existingByPair = new Map(
-    existingItems.map((item) => [
-      `${item.productId}:${item.unitId}`,
-      item,
-    ]),
+    existingItems.map((item) => [`${item.productId}:${item.unitId}`, item]),
   );
   const pairKeys = new Set<string>();
   const resolvedItems: Array<{
@@ -263,8 +268,7 @@ async function prepareTransfer(
 
     const product = await ctx.db.get("products", item.productId);
     const productUnit =
-      product?.organizationId === organizationId &&
-      product.status === "active"
+      product?.organizationId === organizationId && product.status === "active"
         ? await ctx.db
             .query("productUnits")
             .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
@@ -352,20 +356,8 @@ async function applyTransferStock(
     const delta = normalizeStock(
       item.quantity * item.factorToDefault * direction,
     );
-    await addStock(
-      ctx,
-      organizationId,
-      fromLocationId,
-      item.productId,
-      -delta,
-    );
-    await addStock(
-      ctx,
-      organizationId,
-      toLocationId,
-      item.productId,
-      delta,
-    );
+    await addStock(ctx, organizationId, fromLocationId, item.productId, -delta);
+    await addStock(ctx, organizationId, toLocationId, item.productId, delta);
   }
 }
 
@@ -387,7 +379,7 @@ export const createTransfer = mutation({
   handler: async (ctx, args) => {
     const auth = await requireTransferManager(ctx, "transfers.new");
     const { organizationId, userIdentifier } = auth;
-    requireKioskTransfer(auth, args.fromLocationId, args.toLocationId);
+    requireTransferMutationAccess(auth, args.fromLocationId, args.toLocationId);
     await requireLocationsUnlocked(ctx, organizationId, [
       args.fromLocationId,
       args.toLocationId,
@@ -446,8 +438,12 @@ export const updateTransfer = mutation({
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Flytningen blev ikke fundet");
     }
-    requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
-    requireKioskTransfer(auth, args.fromLocationId, args.toLocationId);
+    requireTransferMutationAccess(
+      auth,
+      transfer.fromLocationId,
+      transfer.toLocationId,
+    );
+    requireTransferMutationAccess(auth, args.fromLocationId, args.toLocationId);
     await requireLocationsUnlocked(ctx, organizationId, [
       transfer.fromLocationId,
       transfer.toLocationId,
@@ -458,9 +454,7 @@ export const updateTransfer = mutation({
     const existingItems = await ctx.db
       .query("transferItems")
       .withIndex("by_organizationId_and_transferId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("transferId", transfer._id),
+        q.eq("organizationId", organizationId).eq("transferId", transfer._id),
       )
       .take(MAX_TRANSFER_ITEMS + 1);
     if (existingItems.length > MAX_TRANSFER_ITEMS) {
@@ -533,7 +527,11 @@ export const deleteTransfer = mutation({
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Flytningen blev ikke fundet");
     }
-    requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
+    requireTransferMutationAccess(
+      auth,
+      transfer.fromLocationId,
+      transfer.toLocationId,
+    );
     await requireLocationsUnlocked(ctx, organizationId, [
       transfer.fromLocationId,
       transfer.toLocationId,
@@ -542,9 +540,7 @@ export const deleteTransfer = mutation({
     const items = await ctx.db
       .query("transferItems")
       .withIndex("by_organizationId_and_transferId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("transferId", transfer._id),
+        q.eq("organizationId", organizationId).eq("transferId", transfer._id),
       )
       .take(MAX_TRANSFER_ITEMS + 1);
     if (items.length > MAX_TRANSFER_ITEMS) {
@@ -613,7 +609,14 @@ export const listTransfers = query({
     return {
       ...results,
       page: await Promise.all(
-        results.page.map((transfer) => hydrateTransferHeader(ctx, transfer)),
+        results.page.map((transfer) =>
+          hydrateTransferHeader(
+            ctx,
+            transfer,
+            undefined,
+            auth.locationScope.all ? null : auth.locationScope.ids,
+          ),
+        ),
       ),
     };
   },
@@ -628,13 +631,18 @@ export const getTransfer = query({
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) return null;
     requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
+    if (
+      !auth.locationScope.all &&
+      (!auth.locationScope.ids.has(transfer.fromLocationId) ||
+        !auth.locationScope.ids.has(transfer.toLocationId))
+    ) {
+      return null;
+    }
 
     const items = await ctx.db
       .query("transferItems")
       .withIndex("by_organizationId_and_transferId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("transferId", transfer._id),
+        q.eq("organizationId", organizationId).eq("transferId", transfer._id),
       )
       .take(MAX_TRANSFER_ITEMS);
 
@@ -660,7 +668,10 @@ export const searchTransferProducts = query({
   args: { search: v.string() },
   returns: v.array(productSearchOptionValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(ctx, "transfers.new");
+    const { organizationId } = await requireTransferManager(
+      ctx,
+      "transfers.new",
+    );
     const search = args.search.trim();
     if (search.length > 100) {
       throw new ConvexError("Søgningen er for lang");
@@ -678,12 +689,8 @@ export const searchTransferProducts = query({
           .take(MAX_PRODUCT_OPTIONS)
       : await ctx.db
           .query("products")
-          .withIndex(
-            "by_organizationId_and_status_and_normalizedName",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("status", "active"),
+          .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+            q.eq("organizationId", organizationId).eq("status", "active"),
           )
           .take(MAX_PRODUCT_OPTIONS);
 
@@ -698,7 +705,10 @@ export const listResponsibleUsers = query({
   args: {},
   returns: v.array(responsibleUserValidator),
   handler: async (ctx) => {
-    const { organizationId } = await requireTransferManager(ctx, "transfers.new");
+    const { organizationId } = await requireTransferManager(
+      ctx,
+      "transfers.new",
+    );
     const adapter = getDatabaseAdapter(ctx);
     const members = await adapter.findMany<{ userId: string }>({
       model: "member",
@@ -742,9 +752,7 @@ export const getTransferProductOption = query({
     const productUnits = await ctx.db
       .query("productUnits")
       .withIndex("by_organizationId_and_productId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("productId", product._id),
+        q.eq("organizationId", organizationId).eq("productId", product._id),
       )
       .take(MAX_PRODUCT_UNITS + 1);
     if (productUnits.length > MAX_PRODUCT_UNITS) {
@@ -752,7 +760,9 @@ export const getTransferProductOption = query({
     }
 
     const units = await Promise.all(
-      productUnits.map((productUnit) => ctx.db.get("units", productUnit.unitId)),
+      productUnits.map((productUnit) =>
+        ctx.db.get("units", productUnit.unitId),
+      ),
     );
     const imageUrl = product.imageStorageId
       ? await ctx.storage.getUrl(product.imageStorageId)
@@ -782,7 +792,10 @@ export const exportTransfers = query({
   },
   returns: paginationResultValidator(exportTransferValidator),
   handler: async (ctx, args) => {
-    const auth = await requirePermission(ctx, "transfers.export");
+    const auth = await requireTransferViewer(ctx, "transfers.history");
+    if (!auth.permissions.has("transfers.export")) {
+      throw new ConvexError("Du har ikke adgang");
+    }
     const { organizationId } = auth;
     const locationFilter = resolveLocationFilter(auth);
     const locationIds =
@@ -864,8 +877,16 @@ export const exportTransfers = query({
       page: await Promise.all(
         transfers.page.map(async (transfer) => {
           const [fromLocationName, toLocationName, items] = await Promise.all([
-            locationName(ctx, transfer.fromLocationId),
-            locationName(ctx, transfer.toLocationId),
+            scopedLocationName(
+              ctx,
+              transfer.fromLocationId,
+              auth.locationScope.all ? null : auth.locationScope.ids,
+            ),
+            scopedLocationName(
+              ctx,
+              transfer.toLocationId,
+              auth.locationScope.all ? null : auth.locationScope.ids,
+            ),
             ctx.db
               .query("transferItems")
               .withIndex("by_organizationId_and_transferId", (q) =>

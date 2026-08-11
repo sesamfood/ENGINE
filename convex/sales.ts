@@ -130,30 +130,36 @@ export const getContext = query({
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
     const { organizationId } = auth;
-    const [timeZone, settings, integration, connections, statuses, manualLimit] =
-      await Promise.all([
-        resolveTimeZone(ctx, organizationId),
-        scheduleSettings(ctx, organizationId),
-        ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .unique(),
-        ctx.db
-          .query("onlinePosLocationIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .take(MAX_LOCATIONS + 1),
-        ctx.db
-          .query("onlinePosSyncStatus")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .take(MAX_LOCATIONS + 1),
-        rateLimiter.check(ctx, "manualSalesSync", { key: organizationId }),
-      ]);
+    const [
+      timeZone,
+      settings,
+      integration,
+      connections,
+      statuses,
+      manualLimit,
+    ] = await Promise.all([
+      resolveTimeZone(ctx, organizationId),
+      scheduleSettings(ctx, organizationId),
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+      ctx.db
+        .query("onlinePosSyncStatus")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+      rateLimiter.check(ctx, "manualSalesSync", { key: organizationId }),
+    ]);
     const visibleConnections = connections.filter(
       (connection) =>
         auth.locationScope.all ||
@@ -177,7 +183,11 @@ export const getContext = query({
           const location = await ctx.db.get("locations", connection.locationId);
           if (location?.organizationId !== organizationId) return null;
           const status = statusByLocation.get(connection.locationId);
-          const currency = await locationCurrency(ctx, organizationId, location);
+          const currency = await locationCurrency(
+            ctx,
+            organizationId,
+            location,
+          );
           return {
             id: location._id,
             name: location.name,
@@ -232,11 +242,21 @@ export const requestSync = mutation({
       );
     }
     if (args.locationId === null) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.onlinePosSync.enqueueOrganizationSync,
-        { organizationId },
-      );
+      if (auth.locationScope.all) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.onlinePosSync.enqueueOrganizationSync,
+          { organizationId },
+        );
+      } else {
+        for (const locationId of auth.locationScope.ids) {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.onlinePosSync.enqueueLocationSync,
+            { organizationId, locationId },
+          );
+        }
+      }
       return null;
     }
     const locationId = args.locationId;
@@ -256,10 +276,14 @@ export const requestSync = mutation({
     if (!connection) {
       throw new ConvexError("Lokationen er ikke forbundet til OnlinePOS");
     }
-    await ctx.scheduler.runAfter(0, internal.onlinePosSync.enqueueLocationSync, {
-      organizationId,
-      locationId,
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.onlinePosSync.enqueueLocationSync,
+      {
+        organizationId,
+        locationId,
+      },
+    );
     return null;
   },
 });
