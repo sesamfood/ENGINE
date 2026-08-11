@@ -25,6 +25,7 @@ type AuthMember = {
 
 type AuthSession = {
   userId: string;
+  expiresAt: number;
   activeOrganizationId?: string | null;
   isKioskAccount?: boolean | null;
   kioskModeEnabled?: boolean | null;
@@ -77,7 +78,11 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     model: "session",
     where: [{ field: "id", value: identity.sessionId as string }],
   });
-  if (!session?.activeOrganizationId) {
+  if (
+    !session ||
+    session.expiresAt < Date.now() ||
+    !session.activeOrganizationId
+  ) {
     throw new ConvexError("Ingen aktiv organisation");
   }
   const member = await adapter.findOne<AuthMember>({

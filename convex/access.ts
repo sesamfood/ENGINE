@@ -13,12 +13,11 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
-import { authComponent, createAuth, getDatabaseAdapter } from "./auth";
+import { getDatabaseAdapter } from "./auth";
+import { listScopedLocationOptions } from "./locations";
 import {
   requireOrganization,
   requirePermission,
-  resolveStoredLocationScope,
 } from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 
@@ -66,8 +65,6 @@ const accessContextValidator = v.object({
 const runtimeContextValidator = accessContextValidator.extend({
   locations: v.array(locationOptionValidator),
 });
-
-const MAX_RUNTIME_LOCATIONS = 200;
 
 const roleContextValidator = v.object({
   organizationId: v.string(),
@@ -235,77 +232,24 @@ async function assertManagementRoleRemains(
   }
 }
 
-type AuthSession = {
-  id: string;
-  isKioskAccount?: boolean | null;
-  kioskModeEnabled?: boolean | null;
-};
-
 async function getRoleContextForQuery(ctx: QueryCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new ConvexError("Du er ikke logget ind");
-
-  const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-  const member = (await auth.api
-    .getActiveMember({ headers })
-    .catch(() => null)) as AuthMember | null;
-  if (!member) throw new ConvexError("Ingen aktiv organisation");
-
-  const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
-    model: "session",
-    where: [{ field: "id", value: identity.sessionId as string }],
-  });
-  const role = member.role;
-  const [rolePermissions, roleConfig] = await Promise.all([
-    ctx.db
-      .query("rolePermissions")
-      .withIndex("by_organizationId_and_role", (q) =>
-        q.eq("organizationId", member.organizationId).eq("role", role),
-      )
-      .unique(),
-    ctx.db
-      .query("roles")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", member.organizationId).eq("key", role),
-      )
-      .unique(),
-  ]);
-  const permissions = permissionsForRole(role, rolePermissions?.permissions);
-  const access = await ctx.db
-    .query("memberLocationAccess")
-    .withIndex("by_organizationId_and_userId", (q) =>
-      q.eq("organizationId", member.organizationId).eq("userId", member.userId),
-    )
-    .unique();
-
-  const kioskLocationId = member.kioskLocationId
-    ? (member.kioskLocationId as Id<"locations">)
-    : null;
-  const isKioskAccount = session?.isKioskAccount === true;
-  const resolvedLocationScope = await resolveStoredLocationScope(
-    ctx,
-    member.organizationId,
-    access,
-    kioskLocationId,
-  );
-  const locationScope = {
-    all: resolvedLocationScope.all,
-    ids: [...resolvedLocationScope.ids],
-  };
-
+  const auth = await requireOrganization(ctx);
   return {
-    organizationId: member.organizationId,
-    role,
-    granularity: roleConfig?.granularity ?? "detail",
-    permissions: [...permissions],
-    locationScope,
-    userId: member.userId,
-    sessionId: identity.sessionId as string,
-    isKioskAccount,
-    kioskModeEnabled: session?.kioskModeEnabled === true,
-    kioskLocationId,
-    userIdentifier: identity.tokenIdentifier,
-    userName: identity.name?.trim() || identity.email || "Ukendt bruger",
+    organizationId: auth.organizationId,
+    role: auth.role,
+    granularity: auth.granularity,
+    permissions: [...auth.permissions],
+    locationScope: {
+      all: auth.locationScope.all,
+      ids: [...auth.locationScope.ids],
+    },
+    userId: auth.userId,
+    sessionId: auth.sessionId,
+    isKioskAccount: auth.isKioskAccount,
+    kioskModeEnabled: auth.kioskModeEnabled,
+    kioskLocationId: auth.kioskLocationId,
+    userIdentifier: auth.userIdentifier,
+    userName: auth.userName,
   };
 }
 
@@ -356,21 +300,13 @@ export const getRuntimeContext = query({
   returns: runtimeContextValidator,
   handler: async (ctx) => {
     const { auth, context } = await getAccessContext(ctx);
-    const locations = await ctx.db
-      .query("locations")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .take(MAX_RUNTIME_LOCATIONS);
-
     return {
       ...context,
-      locations: locations
-        .filter(
-          (location) =>
-            auth.locationScope.all || auth.locationScope.ids.has(location._id),
-        )
-        .map((location) => ({ id: location._id, name: location.name })),
+      locations: await listScopedLocationOptions(
+        ctx,
+        auth.organizationId,
+        auth.locationScope,
+      ),
     };
   },
 });

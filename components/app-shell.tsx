@@ -385,7 +385,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const { locations } = useLocationAccess();
   const lockEnabled = useQuery(
     api.count.getOtherFeaturesLockEnabled,
-    organizationId && isAuthenticated && !exempt ? {} : "skip",
+    organizationId && isAuthenticated ? {} : "skip",
   );
   const locationId = kiosk?.isKioskAccount
     ? kiosk.locationId
@@ -394,7 +394,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
       : (locations?.[0]?.id ?? null);
   const lockState = useQuery(
     api.count.getOtherFeaturesLockState,
-    organizationId && isAuthenticated && !exempt && lockEnabled && locationId
+    organizationId && isAuthenticated && lockEnabled && locationId
       ? {
           locationId,
           now: Math.floor(now / 60_000) * 60_000,
@@ -403,12 +403,9 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   );
   const currentLockState = useLastDefined(
     lockState,
-    !exempt && organizationId && locationId
-      ? `${organizationId}:${locationId}`
-      : null,
+    organizationId && locationId ? `${organizationId}:${locationId}` : null,
   );
-  const isLocked =
-    !exempt && lockEnabled ? (currentLockState?.isLocked ?? false) : false;
+  const isLocked = lockEnabled ? (currentLockState?.isLocked ?? false) : false;
   const lockReady =
     locations !== undefined &&
     lockEnabled !== undefined &&
