@@ -4,6 +4,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import {
+  Building2Icon,
   Clock3Icon,
   MergeIcon,
   PencilIcon,
@@ -15,6 +16,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
 import { LocationOpeningHours } from "@/components/organization/location-opening-hours";
+import { LocationDetails } from "@/components/organization/location-details";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,6 +145,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
     null,
   );
   const [openingHoursLocation, setOpeningHoursLocation] =
+    useState<VocabularyItem | null>(null);
+  const [detailsLocation, setDetailsLocation] =
     useState<VocabularyItem | null>(null);
   const [pendingMerge, setPendingMerge] = useState<VocabularyItem | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<Id<"units"> | null>(null);
@@ -293,6 +297,23 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
+                      {kind === "location" ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-lg"
+                                aria-label={`Redigér stamdata for ${item.name}`}
+                                onClick={() => setDetailsLocation(item)}
+                              />
+                            }
+                          >
+                            <Building2Icon />
+                          </TooltipTrigger>
+                          <TooltipContent>Stamdata</TooltipContent>
+                        </Tooltip>
+                      ) : null}
                       {kind === "location" ? (
                         <Tooltip>
                           <TooltipTrigger
@@ -522,6 +543,17 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           open
           onOpenChange={(open) => {
             if (!open) setOpeningHoursLocation(null);
+          }}
+        />
+      ) : null}
+
+      {kind === "location" && detailsLocation ? (
+        <LocationDetails
+          locationId={detailsLocation.id as Id<"locations">}
+          locationName={detailsLocation.name}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDetailsLocation(null);
           }}
         />
       ) : null}

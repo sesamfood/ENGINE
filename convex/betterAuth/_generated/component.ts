@@ -98,6 +98,16 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             | {
                 data: {
                   createdAt: number;
+                  organizationId: string;
+                  permission: string;
+                  role: string;
+                  updatedAt?: null | number;
+                };
+                model: "organizationRole";
+              }
+            | {
+                data: {
+                  createdAt: number;
                   kioskLocationId?: null | string;
                   organizationId: string;
                   role: string;
@@ -295,6 +305,39 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   connector?: "AND" | "OR";
                   field:
                     "name" | "slug" | "logo" | "createdAt" | "metadata" | "_id";
+                  mode?: "sensitive" | "insensitive";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "organizationRole";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "organizationId"
+                    | "role"
+                    | "permission"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -639,6 +682,39 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 }>;
               }
             | {
+                model: "organizationRole";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "organizationId"
+                    | "role"
+                    | "permission"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "_id";
+                  mode?: "sensitive" | "insensitive";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
                 model: "member";
                 where?: Array<{
                   connector?: "AND" | "OR";
@@ -782,6 +858,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             | "account"
             | "verification"
             | "organization"
+            | "organizationRole"
             | "member"
             | "invitation"
             | "jwks"
@@ -831,6 +908,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             | "account"
             | "verification"
             | "organization"
+            | "organizationRole"
             | "member"
             | "invitation"
             | "jwks"
@@ -1069,6 +1147,46 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   connector?: "AND" | "OR";
                   field:
                     "name" | "slug" | "logo" | "createdAt" | "metadata" | "_id";
+                  mode?: "sensitive" | "insensitive";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "organizationRole";
+                update: {
+                  createdAt?: number;
+                  organizationId?: string;
+                  permission?: string;
+                  role?: string;
+                  updatedAt?: null | number;
+                };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "organizationId"
+                    | "role"
+                    | "permission"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"
@@ -1464,6 +1582,46 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   connector?: "AND" | "OR";
                   field:
                     "name" | "slug" | "logo" | "createdAt" | "metadata" | "_id";
+                  mode?: "sensitive" | "insensitive";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "organizationRole";
+                update: {
+                  createdAt?: number;
+                  organizationId?: string;
+                  permission?: string;
+                  role?: string;
+                  updatedAt?: null | number;
+                };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "organizationId"
+                    | "role"
+                    | "permission"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
                     | "lt"

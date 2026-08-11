@@ -25,7 +25,7 @@ export function TableVisualization({ result, compact = false }: { result: Metric
           {rows.slice(0, 20).map((row) => (
             <TableRow key={row.key}>
               <TableCell className={cn("font-medium", compact && "py-1.5")}>{row.label}</TableCell>
-              <TableCell className={cn("text-right tabular-nums", compact && "py-1.5")}>{formatMetricValue(row.value, result.unit)}</TableCell>
+              <TableCell className={cn("text-right tabular-nums", compact && "py-1.5")}>{formatMetricValue(row.value, result)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

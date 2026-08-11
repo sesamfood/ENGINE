@@ -1,5 +1,16 @@
 import { ConvexError } from "convex/values";
-import type { DashboardRange, MetricId, MetricResult, MetricUnit } from "../../lib/dashboard/types";
+import {
+  DEFAULT_CURRENCY,
+  type DashboardRange,
+  type MetricId,
+  type MetricResult,
+  type MetricUnit,
+} from "../../lib/dashboard/types";
+import type { DataGranularity } from "../../lib/auth-permissions";
+import {
+  metricRegistry,
+  type MetricSource,
+} from "../../lib/dashboard/registry";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 
@@ -8,13 +19,33 @@ const MAX_ROWS = 5_000;
 const MAX_SCOPE_LOCATIONS = 200;
 const MAX_TRANSFER_DETAILS = 500;
 const DAY_MS = 24 * 60 * 60 * 1_000;
+const INTEGRATION_FRESHNESS_INTERVAL_MS = 26 * 60 * 60 * 1_000;
 
-export type DashboardLocation = { id: Id<"locations">; name: string };
+export type DashboardLocation = {
+  id: Id<"locations">;
+  name: string;
+  currency: string;
+};
+
+export type DashboardComparisonGroup = {
+  key: string;
+  label: string;
+  locationIds: readonly Id<"locations">[];
+};
 
 export type DashboardMetricParams = {
   organizationId: string;
   locations: DashboardLocation[];
   compare: boolean;
+  comparisonGroups?: DashboardComparisonGroup[];
+  anonymousLocations?: DashboardLocation[];
+  anonymousComparisonGroups?: DashboardComparisonGroup[];
+  scopeTruncated?: boolean;
+  anonymousScopeTruncated?: boolean;
+  accessGranularity: DataGranularity;
+  salesDetailAllowed: boolean;
+  anonymousSeed: string;
+  ownLocationIds: ReadonlySet<Id<"locations">> | null;
   from: number;
   to: number;
   previousFrom: number;
@@ -43,7 +74,9 @@ export function dateKey(timestamp: number, timeZone: string) {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(timestamp);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
   return `${values.year}-${values.month}-${values.day}`;
 }
 
@@ -55,8 +88,7 @@ function addDays(value: string, days: number) {
 
 function daysBetween(from: string, to: string) {
   return Math.round(
-    (Date.parse(`${to}T00:00:00.000Z`) -
-      Date.parse(`${from}T00:00:00.000Z`)) /
+    (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) /
       DAY_MS,
   );
 }
@@ -94,7 +126,9 @@ export function zonedStart(value: string, timeZone: string) {
 
 function validDate(value: string | undefined) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  return new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+  return (
+    new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value
+  );
 }
 
 export function resolveDashboardRange(
@@ -122,7 +156,11 @@ export function resolveDashboardRange(
   } else if (range.preset === "thisMonth") {
     fromDate = `${today.slice(0, 8)}01`;
   } else if (range.preset === "custom") {
-    if (!validDate(range.from) || !validDate(range.to) || range.from! > range.to!) {
+    if (
+      !validDate(range.from) ||
+      !validDate(range.to) ||
+      range.from! > range.to!
+    ) {
       throw new ConvexError("Vælg en gyldig periode");
     }
     fromDate = range.from!;
@@ -147,12 +185,25 @@ export function resolveDashboardRange(
 export async function resolveMetricParams(
   ctx: QueryCtx,
   organizationId: string,
-  scope: { mode: "aggregate" | "compare"; locationIds: Id<"locations">[] | null },
+  scope: {
+    mode: "aggregate" | "compare";
+    locationIds: Id<"locations">[] | null;
+    level?: "organization" | "market" | "operator" | "location";
+    parentId?: string;
+  },
   range: DashboardRange,
   now: number,
   allowedLocationScope?: { all: boolean; ids: ReadonlySet<Id<"locations">> },
+  access?: {
+    granularity: DataGranularity;
+    anonymousSeed: string;
+    salesDetailAllowed?: boolean;
+  },
 ) {
   if (!Number.isFinite(now)) throw new ConvexError("Tidspunktet er ugyldigt");
+  const anonymousAccess = access?.granularity === "anonymous";
+  const widenAnonymousScope =
+    anonymousAccess && scope.locationIds === null && scope.level !== "location";
   const [allLocations, scheduleSettings] = await Promise.all([
     ctx.db
       .query("locations")
@@ -162,40 +213,272 @@ export async function resolveMetricParams(
       .take(201),
     ctx.db
       .query("organizationScheduleSettings")
-      .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
       .unique(),
   ]);
-  if (allLocations.length > 200) throw new ConvexError("Organisationen har for mange lokationer");
-
-  const byId = new Map(allLocations.map((location) => [location._id, location]));
-  const availableIds = allowedLocationScope?.all
-    ? allLocations.map((location) => location._id)
-    : allowedLocationScope
-      ? allLocations
-          .filter((location) => allowedLocationScope.ids.has(location._id))
-          .map((location) => location._id)
-      : allLocations.map((location) => location._id);
-  const selectedIds = [
-    ...new Set(scope.locationIds ?? availableIds),
-  ];
+  const requestedLocations =
+    scope.locationIds === null
+      ? null
+      : await Promise.all(
+          [...new Set(scope.locationIds)].map((locationId) =>
+            ctx.db.get("locations", locationId),
+          ),
+        );
   if (
-    allowedLocationScope &&
-    selectedIds.some((locationId) => !availableIds.includes(locationId))
+    requestedLocations?.some(
+      (location) => !location || location.organizationId !== organizationId,
+    )
   ) {
+    throw new ConvexError("Lokationen blev ikke fundet");
+  }
+  const requestedRows =
+    requestedLocations?.filter(
+      (location): location is NonNullable<typeof location> => Boolean(location),
+    ) ?? null;
+
+  let candidateLocations: Doc<"locations">[];
+  if (scope.level === "market") {
+    if (!scope.parentId) throw new ConvexError("Vælg et marked");
+    const market = await ctx.db.get("markets", scope.parentId as Id<"markets">);
+    if (!market || market.organizationId !== organizationId) {
+      throw new ConvexError("Markedet blev ikke fundet");
+    }
+    candidateLocations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_marketId", (q) =>
+        q.eq("organizationId", organizationId).eq("marketId", market._id),
+      )
+      .take(MAX_SCOPE_LOCATIONS + 1);
+  } else if (scope.level === "operator") {
+    if (!scope.parentId) throw new ConvexError("Vælg en operatør");
+    const operator = await ctx.db.get(
+      "operators",
+      scope.parentId as Id<"operators">,
+    );
+    if (!operator || operator.organizationId !== organizationId) {
+      throw new ConvexError("Operatøren blev ikke fundet");
+    }
+    candidateLocations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_operatorId", (q) =>
+        q.eq("organizationId", organizationId).eq("operatorId", operator._id),
+      )
+      .take(MAX_SCOPE_LOCATIONS + 1);
+  } else if (scope.level === "location" && scope.parentId) {
+    const location = await ctx.db.get(
+      "locations",
+      scope.parentId as Id<"locations">,
+    );
+    if (!location || location.organizationId !== organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
+    candidateLocations = [location];
+  } else if (requestedRows) {
+    candidateLocations = requestedRows;
+  } else if (
+    allowedLocationScope &&
+    !allowedLocationScope.all &&
+    !widenAnonymousScope
+  ) {
+    const allowedRows = await Promise.all(
+      [...allowedLocationScope.ids]
+        .slice(0, MAX_SCOPE_LOCATIONS + 1)
+        .map((locationId) => ctx.db.get("locations", locationId)),
+    );
+    candidateLocations = allowedRows.filter(
+      (location): location is NonNullable<typeof location> =>
+        Boolean(location && location.organizationId === organizationId),
+    );
+  } else {
+    candidateLocations = allLocations;
+  }
+  const lookupLocations = [
+    ...new Map(
+      [...allLocations, ...candidateLocations, ...(requestedRows ?? [])].map(
+        (location) => [location._id, location],
+      ),
+    ).values(),
+  ];
+
+  const marketIds = [
+    ...new Set(
+      lookupLocations.flatMap((location) =>
+        location.marketId ? [location.marketId] : [],
+      ),
+    ),
+  ];
+  const markets = await Promise.all(
+    marketIds.map((marketId) => ctx.db.get("markets", marketId)),
+  );
+  const marketById = new Map(
+    markets.flatMap((market) =>
+      market?.organizationId === organizationId
+        ? [[market._id, market] as const]
+        : [],
+    ),
+  );
+
+  const operatorIds = [
+    ...new Set(
+      lookupLocations.flatMap((location) =>
+        location.operatorId ? [location.operatorId] : [],
+      ),
+    ),
+  ];
+  const operators = await Promise.all(
+    operatorIds.map((operatorId) => ctx.db.get("operators", operatorId)),
+  );
+  const operatorById = new Map(
+    operators.flatMap((operator) =>
+      operator?.organizationId === organizationId
+        ? [[operator._id, operator] as const]
+        : [],
+    ),
+  );
+
+  const byId = new Map(
+    lookupLocations.map((location) => [location._id, location]),
+  );
+  const candidateIds = new Set(
+    candidateLocations.map((location) => location._id),
+  );
+  if (
+    scope.locationIds !== null &&
+    scope.locationIds.some((locationId) => !candidateIds.has(locationId))
+  ) {
+    throw new ConvexError("Scope indeholder en ugyldig lokation");
+  }
+  const hasAccess = (locationId: Id<"locations">) =>
+    !allowedLocationScope ||
+    allowedLocationScope.all ||
+    allowedLocationScope.ids.has(locationId);
+  if (scope.locationIds?.some((locationId) => !hasAccess(locationId))) {
     throw new ConvexError("Du har ikke adgang til en eller flere lokationer");
   }
-  if (selectedIds.length > MAX_SCOPE_LOCATIONS) {
-    throw new ConvexError(`Overblikket kan højst vise ${MAX_SCOPE_LOCATIONS} lokationer ad gangen`);
-  }
-  const locations = selectedIds.flatMap((id) => {
-    const location = byId.get(id);
-    return location ? [{ id: location._id, name: location.name }] : [];
-  });
+  const selectedIds =
+    scope.locationIds === null
+      ? candidateLocations
+          .filter((location) => hasAccess(location._id))
+          .map((location) => location._id)
+      : [...new Set(scope.locationIds)];
+  const anonymousExpansion = widenAnonymousScope && selectedIds.length > 0;
+  const anonymousSelectedIds = anonymousExpansion
+    ? candidateLocations.map((location) => location._id)
+    : selectedIds;
+  const scopeTruncated =
+    selectedIds.length > MAX_SCOPE_LOCATIONS;
+  const anonymousScopeTruncated =
+    anonymousExpansion && anonymousSelectedIds.length > MAX_SCOPE_LOCATIONS;
+  const resolvedIds = selectedIds.slice(0, MAX_SCOPE_LOCATIONS);
+  const anonymousResolvedIds = anonymousSelectedIds.slice(
+    0,
+    MAX_SCOPE_LOCATIONS,
+  );
+  const dashboardLocationsFor = (
+    ids: readonly Id<"locations">[],
+  ): DashboardLocation[] =>
+    ids.flatMap((id) => {
+      const location = byId.get(id);
+      if (!location) return [];
+      const marketCurrency = location.marketId
+        ? marketById.get(location.marketId)?.currency
+        : undefined;
+      return [
+        {
+          id: location._id,
+          name: location.name,
+          currency: location.currency || marketCurrency || DEFAULT_CURRENCY,
+        },
+      ];
+    });
+  const locations = dashboardLocationsFor(resolvedIds);
+  const anonymousLocations = anonymousExpansion
+    ? dashboardLocationsFor(anonymousResolvedIds)
+    : undefined;
+
+  const comparisonGroupsFor = (
+    ids: readonly Id<"locations">[],
+    rows: DashboardLocation[],
+  ): DashboardComparisonGroup[] | undefined => {
+    if (scope.level === "organization") {
+      const byMarket = new Map<string, DashboardComparisonGroup>();
+      for (const location of ids.flatMap((id) => byId.get(id) ?? [])) {
+        const key = location.marketId ?? "unassigned-market";
+        const group = byMarket.get(key) ?? {
+          key,
+          label: location.marketId
+            ? (marketById.get(location.marketId)?.name ?? "Ukendt marked")
+            : "Uden marked",
+          locationIds: [],
+        };
+        byMarket.set(key, {
+          ...group,
+          locationIds: [...group.locationIds, location._id],
+        });
+      }
+      return [...byMarket.values()];
+    }
+    if (scope.level === "market" && scope.parentId) {
+      const byOperator = new Map<string, DashboardComparisonGroup>();
+      for (const location of ids.flatMap((id) => byId.get(id) ?? [])) {
+        const key = location.operatorId ?? "unassigned-operator";
+        const group = byOperator.get(key) ?? {
+          key,
+          label: location.operatorId
+            ? (operatorById.get(location.operatorId)?.name ??
+              "Ukendt operatør")
+            : "Uden operatør",
+          locationIds: [],
+        };
+        byOperator.set(key, {
+          ...group,
+          locationIds: [...group.locationIds, location._id],
+        });
+      }
+      return [...byOperator.values()];
+    }
+    if (scope.level === "operator" && scope.parentId) {
+      return rows.map((location) => ({
+        key: location.id,
+        label: location.name,
+        locationIds: [location.id],
+      }));
+    }
+    if (scope.level === "location") {
+      return rows.map((location) => ({
+        key: location.id,
+        label: location.name,
+        locationIds: [location.id],
+      }));
+    }
+    return undefined;
+  };
+  const comparisonGroups = comparisonGroupsFor(resolvedIds, locations);
+  const anonymousComparisonGroups = anonymousLocations
+    ? comparisonGroupsFor(anonymousResolvedIds, anonymousLocations)
+    : undefined;
 
   return {
     organizationId,
     locations,
     compare: scope.mode === "compare" && locations.length >= 2,
+    comparisonGroups,
+    anonymousLocations,
+    anonymousComparisonGroups,
+    anonymousScopeTruncated: anonymousScopeTruncated || undefined,
+    scopeTruncated:
+      scopeTruncated || undefined,
+    accessGranularity: access?.granularity ?? "detail",
+    salesDetailAllowed: access?.salesDetailAllowed ?? true,
+    anonymousSeed: access?.anonymousSeed ?? "shared-dashboard",
+    ownLocationIds:
+      anonymousAccess && !allowedLocationScope
+        ? new Set<Id<"locations">>()
+        : allowedLocationScope?.all
+          ? null
+          : (allowedLocationScope?.ids ?? null),
     granularity: "day" as const,
     now,
     cache: new Map<string, Promise<unknown>>(),
@@ -213,6 +496,97 @@ function cached<T>(
   const result = load();
   params.cache.set(key, result);
   return result;
+}
+
+type Freshness = NonNullable<MetricResult["freshness"]>;
+
+function withAffectedNames(
+  params: DashboardMetricParams,
+  names: string[],
+  freshness: Omit<Freshness, "affectedLocationNames">,
+): Freshness {
+  return params.accessGranularity === "detail"
+    ? { ...freshness, affectedLocationNames: names }
+    : freshness;
+}
+
+async function onlinePosFreshness(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+): Promise<Freshness> {
+  return await cached(params, "freshness:onlinepos", async () => {
+    const statuses = await Promise.all(
+      params.locations.map((location) =>
+        ctx.db
+          .query("onlinePosSyncStatus")
+          .withIndex("by_organizationId_and_locationId", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .eq("locationId", location.id),
+          )
+          .unique(),
+      ),
+    );
+    const staleNames: string[] = [];
+    const errorNames: string[] = [];
+    const successfulSyncs: number[] = [];
+    const staleBefore = params.now - INTEGRATION_FRESHNESS_INTERVAL_MS;
+    for (const [index, location] of params.locations.entries()) {
+      const status = statuses[index];
+      const lastSuccessAt = status?.lastSuccessAt ?? null;
+      if (lastSuccessAt !== null) successfulSyncs.push(lastSuccessAt);
+      const stale = lastSuccessAt === null || lastSuccessAt < staleBefore;
+      const error = status?.state === "error" || Boolean(status?.lastError);
+      if (stale) staleNames.push(location.name);
+      if (error) errorNames.push(location.name);
+    }
+    const affectedNames = [...new Set([...staleNames, ...errorNames])];
+    return withAffectedNames(params, affectedNames, {
+      lastSuccessAt:
+        successfulSyncs.length === params.locations.length &&
+        successfulSyncs.length > 0
+          ? Math.min(...successfulSyncs)
+          : null,
+      staleLocationCount: staleNames.length,
+      errorLocationCount: errorNames.length,
+    });
+  });
+}
+
+async function workfeedFreshness(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+): Promise<Freshness> {
+  return await cached(params, "freshness:workfeed", async () => {
+    const status = await ctx.db
+      .query("workfeedSyncStatus")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", params.organizationId),
+      )
+      .unique();
+    const lastSuccessAt = status?.lastShiftSuccessAt ?? null;
+    const stale =
+      lastSuccessAt === null ||
+      lastSuccessAt < params.now - INTEGRATION_FRESHNESS_INTERVAL_MS;
+    const error = status?.state === "error" || Boolean(status?.lastError);
+    const names =
+      stale || error ? params.locations.map((location) => location.name) : [];
+    return withAffectedNames(params, names, {
+      lastSuccessAt,
+      staleLocationCount: stale ? params.locations.length : 0,
+      errorLocationCount: error ? params.locations.length : 0,
+    });
+  });
+}
+
+async function integrationFreshness(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+  source: MetricSource,
+): Promise<Freshness> {
+  return source === "onlinepos"
+    ? await onlinePosFreshness(ctx, params)
+    : await workfeedFreshness(ctx, params);
 }
 
 function rounded(value: number) {
@@ -235,25 +609,46 @@ function seriesResult(
   unit: MetricUnit,
   rows: TimedValue[],
   params: DashboardMetricParams,
-  options?: Pick<MetricResult, "breakdown" | "target" | "truncated">,
+  options?: Pick<
+    MetricResult,
+    "breakdown" | "target" | "truncated" | "currency" | "mixedCurrency"
+  >,
+  groupOverride?: DashboardComparisonGroup[],
 ): MetricResult {
-  const groups = params.compare
-    ? params.locations.map((location) => ({ key: location.id, label: location.name }))
-    : [{ key: "all", label: "Alle lokationer" }];
+  const groups: Array<{
+    key: string;
+    label: string;
+    locationIds?: readonly Id<"locations">[];
+  }> = groupOverride?.length
+    ? groupOverride
+    : params.compare
+      ? params.locations.map((location) => ({
+          key: location.id,
+          label: location.name,
+          locationIds: [location.id],
+        }))
+      : [{ key: "all", label: "Alle lokationer" }];
   const days = dayStarts(params.from, params.to, params.timeZone);
   const series = groups.map((group) => {
-    const relevant = params.compare
-      ? rows.filter((row) => row.locationId === group.key)
-      : rows;
+    const relevant = groupOverride?.length
+      ? rows.filter((row) => group.locationIds?.includes(row.locationId))
+      : params.compare
+        ? rows.filter((row) => row.locationId === group.key)
+        : rows;
     const current = relevant.filter(
       (row) => row.timestamp >= params.from && row.timestamp < params.to,
     );
     const previous = relevant.filter(
-      (row) => row.timestamp >= params.previousFrom && row.timestamp < params.previousTo,
+      (row) =>
+        row.timestamp >= params.previousFrom &&
+        row.timestamp < params.previousTo,
     );
     const byDay = new Map<number, number>();
     for (const row of current) {
-      const start = zonedStart(dateKey(row.timestamp, params.timeZone), params.timeZone);
+      const start = zonedStart(
+        dateKey(row.timestamp, params.timeZone),
+        params.timeZone,
+      );
       byDay.set(start, (byDay.get(start) ?? 0) + row.value);
     }
     return {
@@ -267,16 +662,37 @@ function seriesResult(
   return { unit, series, ...options };
 }
 
+function currencyOptions(
+  params: DashboardMetricParams,
+): Pick<MetricResult, "currency" | "mixedCurrency"> {
+  const currencies = [
+    ...new Set(
+      params.locations.map((location) => location.currency || DEFAULT_CURRENCY),
+    ),
+  ];
+  if (currencies.length > 1) return { mixedCurrency: true };
+  return { currency: currencies[0] ?? DEFAULT_CURRENCY };
+}
+
 async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "waste", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
     const rows = await ctx.db
       .query("wasteRegistrations")
       .withIndex("by_org_status_time", (q) =>
-        q.eq("organizationId", params.organizationId).eq("status", "active").gte("registeredAt", params.previousFrom).lt("registeredAt", params.to),
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("status", "active")
+          .gte("registeredAt", params.previousFrom)
+          .lt("registeredAt", params.to),
       )
       .take(MAX_ROWS + 1);
-    return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+    return {
+      rows: rows
+        .filter((row) => selected.has(row.locationId))
+        .slice(0, MAX_ROWS),
+      truncated: rows.length > MAX_ROWS,
+    };
   });
 }
 
@@ -298,7 +714,11 @@ const wasteRegistrations: MetricComputer = async (ctx, params) => {
   const result = await wasteRows(ctx, params);
   return seriesResult(
     "count",
-    result.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })),
+    result.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
     params,
     { truncated: result.truncated || undefined },
   );
@@ -309,13 +729,20 @@ const topWastedProducts: MetricComputer = async (ctx, params) => {
   const current = result.rows.filter((row) => row.registeredAt >= params.from);
   const products = new Map<string, { label: string; value: number }>();
   for (const row of current) {
-    const item = products.get(row.productId) ?? { label: row.productName, value: 0 };
+    const item = products.get(row.productId) ?? {
+      label: row.productName,
+      value: 0,
+    };
     item.value += 1;
     products.set(row.productId, item);
   }
   return seriesResult(
     "count",
-    result.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })),
+    result.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
     params,
     {
       breakdown: [...products.entries()]
@@ -331,25 +758,55 @@ const wasteByCategory: MetricComputer = async (ctx, params) => {
   const result = await wasteRows(ctx, params);
   const current = result.rows.filter((row) => row.registeredAt >= params.from);
   const productIds = [...new Set(current.map((row) => row.productId))];
-  const products = await Promise.all(productIds.map((id) => ctx.db.get("products", id)));
-  const categoryIds = [...new Set(products.flatMap((product) => product?.categoryId ? [product.categoryId] : []))];
-  const categories = await Promise.all(categoryIds.map((id) => ctx.db.get("categories", id)));
-  const categoryNames = new Map(categories.flatMap((category) => category ? [[category._id, category.name] as const] : []));
-  const categoryByProduct = new Map(products.flatMap((product) => product ? [[product._id, product.categoryId] as const] : []));
+  const products = await Promise.all(
+    productIds.map((id) => ctx.db.get("products", id)),
+  );
+  const categoryIds = [
+    ...new Set(
+      products.flatMap((product) =>
+        product?.categoryId ? [product.categoryId] : [],
+      ),
+    ),
+  ];
+  const categories = await Promise.all(
+    categoryIds.map((id) => ctx.db.get("categories", id)),
+  );
+  const categoryNames = new Map(
+    categories.flatMap((category) =>
+      category ? [[category._id, category.name] as const] : [],
+    ),
+  );
+  const categoryByProduct = new Map(
+    products.flatMap((product) =>
+      product ? [[product._id, product.categoryId] as const] : [],
+    ),
+  );
   const values = new Map<string, { label: string; value: number }>();
   for (const row of current) {
     const categoryId = categoryByProduct.get(row.productId);
     const key = categoryId ?? "uncategorized";
-    const item = values.get(key) ?? { label: categoryId ? (categoryNames.get(categoryId) ?? "Ukendt kategori") : "Uden kategori", value: 0 };
+    const item = values.get(key) ?? {
+      label: categoryId
+        ? (categoryNames.get(categoryId) ?? "Ukendt kategori")
+        : "Uden kategori",
+      value: 0,
+    };
     item.value += 1;
     values.set(key, item);
   }
   return seriesResult(
     "count",
-    result.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })),
+    result.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
     params,
     {
-      breakdown: [...values.entries()].map(([key, item]) => ({ key, ...item })).sort((a, b) => b.value - a.value).slice(0, 10),
+      breakdown: [...values.entries()]
+        .map(([key, item]) => ({ key, ...item }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10),
       truncated: result.truncated || undefined,
     },
   );
@@ -361,16 +818,34 @@ async function badDeliveryRows(ctx: QueryCtx, params: DashboardMetricParams) {
     const rows = await ctx.db
       .query("badDeliveries")
       .withIndex("by_organizationId_and_status_and_registeredAt", (q) =>
-        q.eq("organizationId", params.organizationId).eq("status", "active").gte("registeredAt", params.previousFrom).lt("registeredAt", params.to),
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("status", "active")
+          .gte("registeredAt", params.previousFrom)
+          .lt("registeredAt", params.to),
       )
       .take(MAX_ROWS + 1);
-    return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+    return {
+      rows: rows
+        .filter((row) => selected.has(row.locationId))
+        .slice(0, MAX_ROWS),
+      truncated: rows.length > MAX_ROWS,
+    };
   });
 }
 
 const badDeliveries: MetricComputer = async (ctx, params) => {
   const result = await badDeliveryRows(ctx, params);
-  return seriesResult("count", result.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })), params, { truncated: result.truncated || undefined });
+  return seriesResult(
+    "count",
+    result.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
+    params,
+    { truncated: result.truncated || undefined },
+  );
 };
 
 async function countRows(ctx: QueryCtx, params: DashboardMetricParams) {
@@ -379,39 +854,91 @@ async function countRows(ctx: QueryCtx, params: DashboardMetricParams) {
       params.locations.map((location) =>
         ctx.db
           .query("counts")
-          .withIndex("by_organizationId_and_locationId_and_periodKey", (q) => q.eq("organizationId", params.organizationId).eq("locationId", location.id))
+          .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .eq("locationId", location.id),
+          )
           .order("desc")
           .take(101),
       ),
     );
-    return { rows: parts.flat().slice(0, MAX_ROWS), truncated: parts.some((part) => part.length > 100) || parts.flat().length > MAX_ROWS };
+    return {
+      rows: parts.flat().slice(0, MAX_ROWS),
+      truncated:
+        parts.some((part) => part.length > 100) ||
+        parts.flat().length > MAX_ROWS,
+    };
   });
 }
 
 const countCompliance: MetricComputer = async (ctx, params) => {
   const result = await countRows(ctx, params);
-  const timed = result.rows.map((row) => ({ timestamp: row.submittedAt ?? row._creationTime, locationId: row.locationId, submitted: row.status === "submitted" }));
-  const groups = params.compare ? params.locations : [{ id: "all" as const, name: "Alle lokationer" }];
+  const timed = result.rows.map((row) => ({
+    timestamp: row.submittedAt ?? row._creationTime,
+    locationId: row.locationId,
+    submitted: row.status === "submitted",
+  }));
+  const groups = params.compare
+    ? params.locations
+    : [{ id: "all" as const, name: "Alle lokationer" }];
   const series = groups.map((group) => {
-    const relevant = params.compare ? timed.filter((row) => row.locationId === group.id) : timed;
-    const current = relevant.filter((row) => row.timestamp >= params.from && row.timestamp < params.to);
-    const previous = relevant.filter((row) => row.timestamp >= params.previousFrom && row.timestamp < params.previousTo);
-    const percent = (rows: typeof relevant) => rows.length ? rounded((rows.filter((row) => row.submitted).length / rows.length) * 100) : 0;
-    return { key: String(group.id), label: group.name, points: [{ t: params.from, value: percent(current) }], total: percent(current), previousTotal: percent(previous) };
+    const relevant = params.compare
+      ? timed.filter((row) => row.locationId === group.id)
+      : timed;
+    const current = relevant.filter(
+      (row) => row.timestamp >= params.from && row.timestamp < params.to,
+    );
+    const previous = relevant.filter(
+      (row) =>
+        row.timestamp >= params.previousFrom &&
+        row.timestamp < params.previousTo,
+    );
+    const percent = (rows: typeof relevant) =>
+      rows.length
+        ? rounded(
+            (rows.filter((row) => row.submitted).length / rows.length) * 100,
+          )
+        : 0;
+    return {
+      key: String(group.id),
+      label: group.name,
+      points: [{ t: params.from, value: percent(current) }],
+      total: percent(current),
+      previousTotal: percent(previous),
+    };
   });
-  return { unit: "percent", series, target: 100, truncated: result.truncated || undefined };
+  return {
+    unit: "percent",
+    series,
+    target: 100,
+    truncated: result.truncated || undefined,
+  };
 };
 
 const openCounts: MetricComputer = async (ctx, params) => {
   const result = await countRows(ctx, params);
-  const snapshots = (locationId: Id<"locations"> | null, at: number) => result.rows.filter((row) => (!locationId || row.locationId === locationId) && row._creationTime < at && (!row.submittedAt || row.submittedAt >= at)).length;
-  const groups = params.compare ? params.locations : [{ id: null, name: "Alle lokationer" }];
+  const snapshots = (locationId: Id<"locations"> | null, at: number) =>
+    result.rows.filter(
+      (row) =>
+        (!locationId || row.locationId === locationId) &&
+        row._creationTime < at &&
+        (!row.submittedAt || row.submittedAt >= at),
+    ).length;
+  const groups = params.compare
+    ? params.locations
+    : [{ id: null, name: "Alle lokationer" }];
   return {
     unit: "count",
     series: groups.map((group) => ({
       key: group.id ?? "all",
       label: group.name,
-      points: [{ t: params.from, value: snapshots(group.id, Math.min(params.to, params.now + 1)) }],
+      points: [
+        {
+          t: params.from,
+          value: snapshots(group.id, Math.min(params.to, params.now + 1)),
+        },
+      ],
       total: snapshots(group.id, Math.min(params.to, params.now + 1)),
       previousTotal: snapshots(group.id, params.previousTo),
     })),
@@ -424,25 +951,65 @@ async function transferRows(ctx: QueryCtx, params: DashboardMetricParams) {
     const selected = new Set(params.locations.map((location) => location.id));
     const rows = await ctx.db
       .query("transfers")
-      .withIndex("by_organizationId_and_transferredAt", (q) => q.eq("organizationId", params.organizationId).gte("transferredAt", params.previousFrom).lt("transferredAt", params.to))
+      .withIndex("by_organizationId_and_transferredAt", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .gte("transferredAt", params.previousFrom)
+          .lt("transferredAt", params.to),
+      )
       .take(MAX_ROWS + 1);
-    return { rows: rows.filter((row) => selected.has(row.fromLocationId) || selected.has(row.toLocationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+    return {
+      rows: rows
+        .filter(
+          (row) =>
+            selected.has(row.fromLocationId) || selected.has(row.toLocationId),
+        )
+        .slice(0, MAX_ROWS),
+      truncated: rows.length > MAX_ROWS,
+    };
   });
 }
 
 const transfers: MetricComputer = async (ctx, params) => {
   const result = await transferRows(ctx, params);
-  return seriesResult("count", result.rows.map((row) => ({ timestamp: row.transferredAt, locationId: row.fromLocationId, value: 1 })), params, { truncated: result.truncated || undefined });
+  return seriesResult(
+    "count",
+    result.rows.map((row) => ({
+      timestamp: row.transferredAt,
+      locationId: row.fromLocationId,
+      value: 1,
+    })),
+    params,
+    { truncated: result.truncated || undefined },
+  );
 };
 
-async function transferItems(ctx: QueryCtx, params: DashboardMetricParams, transfers: Doc<"transfers">[]) {
+async function transferItems(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+  transfers: Doc<"transfers">[],
+) {
   return await cached(params, "transfer-items", async () => {
     const selected = transfers.slice(0, MAX_TRANSFER_DETAILS);
-    const parts = await Promise.all(selected.map((transfer) => ctx.db.query("transferItems").withIndex("by_organizationId_and_transferId", (q) => q.eq("organizationId", transfer.organizationId).eq("transferId", transfer._id)).take(201)));
+    const parts = await Promise.all(
+      selected.map((transfer) =>
+        ctx.db
+          .query("transferItems")
+          .withIndex("by_organizationId_and_transferId", (q) =>
+            q
+              .eq("organizationId", transfer.organizationId)
+              .eq("transferId", transfer._id),
+          )
+          .take(201),
+      ),
+    );
     const rows = parts.flat();
     return {
       rows: rows.slice(0, MAX_ROWS),
-      truncated: transfers.length > selected.length || parts.some((part) => part.length > 200) || rows.length > MAX_ROWS,
+      truncated:
+        transfers.length > selected.length ||
+        parts.some((part) => part.length > 200) ||
+        rows.length > MAX_ROWS,
     };
   });
 }
@@ -453,9 +1020,19 @@ const itemsMoved: MetricComputer = async (ctx, params) => {
   const byTransfer = new Map(transferResult.rows.map((row) => [row._id, row]));
   const rows = itemResult.rows.flatMap((item) => {
     const transfer = byTransfer.get(item.transferId);
-    return transfer ? [{ timestamp: transfer.transferredAt, locationId: transfer.fromLocationId, value: item.quantity * (item.factorToDefault ?? 1) }] : [];
+    return transfer
+      ? [
+          {
+            timestamp: transfer.transferredAt,
+            locationId: transfer.fromLocationId,
+            value: item.quantity * (item.factorToDefault ?? 1),
+          },
+        ]
+      : [];
   });
-  return seriesResult("quantity", rows, params, { truncated: transferResult.truncated || itemResult.truncated || undefined });
+  return seriesResult("quantity", rows, params, {
+    truncated: transferResult.truncated || itemResult.truncated || undefined,
+  });
 };
 
 const topTransferredProducts: MetricComputer = async (ctx, params) => {
@@ -468,15 +1045,29 @@ const topTransferredProducts: MetricComputer = async (ctx, params) => {
     const transfer = byTransfer.get(item.transferId);
     if (!transfer) continue;
     const value = item.quantity * (item.factorToDefault ?? 1);
-    rows.push({ timestamp: transfer.transferredAt, locationId: transfer.fromLocationId, value });
+    rows.push({
+      timestamp: transfer.transferredAt,
+      locationId: transfer.fromLocationId,
+      value,
+    });
     if (transfer.transferredAt >= params.from) {
-      const entry = values.get(item.productId) ?? { label: item.productName, value: 0 };
+      const entry = values.get(item.productId) ?? {
+        label: item.productName,
+        value: 0,
+      };
       entry.value += value;
       values.set(item.productId, entry);
     }
   }
   return seriesResult("quantity", rows, params, {
-    breakdown: [...values.entries()].map(([key, item]) => ({ key, label: item.label, value: rounded(item.value) })).sort((a, b) => b.value - a.value).slice(0, 10),
+    breakdown: [...values.entries()]
+      .map(([key, item]) => ({
+        key,
+        label: item.label,
+        value: rounded(item.value),
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10),
     truncated: transferResult.truncated || itemResult.truncated || undefined,
   });
 };
@@ -486,45 +1077,107 @@ async function staffFoodRows(ctx: QueryCtx, params: DashboardMetricParams) {
     const selected = new Set(params.locations.map((location) => location.id));
     const rows = await ctx.db
       .query("staffFoodRegistrations")
-      .withIndex("by_organizationId_and_registeredAt", (q) => q.eq("organizationId", params.organizationId).gte("registeredAt", params.previousFrom).lt("registeredAt", params.to))
+      .withIndex("by_organizationId_and_registeredAt", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .gte("registeredAt", params.previousFrom)
+          .lt("registeredAt", params.to),
+      )
       .take(MAX_ROWS + 1);
-    return { rows: rows.filter((row) => row.status === "active" && selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+    return {
+      rows: rows
+        .filter(
+          (row) => row.status === "active" && selected.has(row.locationId),
+        )
+        .slice(0, MAX_ROWS),
+      truncated: rows.length > MAX_ROWS,
+    };
   });
 }
 
 const staffFoodRegistrations: MetricComputer = async (ctx, params) => {
   const result = await staffFoodRows(ctx, params);
-  return seriesResult("count", result.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })), params, { truncated: result.truncated || undefined });
+  return seriesResult(
+    "count",
+    result.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
+    params,
+    { truncated: result.truncated || undefined },
+  );
 };
 
 const staffFoodPerEmployee: MetricComputer = async (ctx, params) => {
   const result = await staffFoodRows(ctx, params);
   const values = new Map<string, { label: string; value: number }>();
-  for (const row of result.rows.filter((row) => row.registeredAt >= params.from)) {
-    const item = values.get(row.employeeId) ?? { label: row.employeeName, value: 0 };
+  for (const row of result.rows.filter(
+    (row) => row.registeredAt >= params.from,
+  )) {
+    const item = values.get(row.employeeId) ?? {
+      label: row.employeeName,
+      value: 0,
+    };
     item.value += 1;
     values.set(row.employeeId, item);
   }
-  return seriesResult("count", result.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })), params, {
-    breakdown: [...values.entries()].map(([key, item]) => ({ key, ...item })).sort((a, b) => b.value - a.value).slice(0, 10),
-    truncated: result.truncated || undefined,
-  });
+  return seriesResult(
+    "count",
+    result.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
+    params,
+    {
+      breakdown: [...values.entries()]
+        .map(([key, item]) => ({ key, ...item }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10),
+      truncated: result.truncated || undefined,
+    },
+  );
 };
 
-async function shiftRows(ctx: QueryCtx, params: DashboardMetricParams, from = params.previousFrom, to = params.to) {
+async function shiftRows(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+  from = params.previousFrom,
+  to = params.to,
+) {
   return await cached(params, `shifts:${from}:${to}`, async () => {
     const selected = new Set(params.locations.map((location) => location.id));
     const rows = await ctx.db
       .query("scheduledShifts")
-      .withIndex("by_organizationId_and_startsAt", (q) => q.eq("organizationId", params.organizationId).gte("startsAt", from).lt("startsAt", to))
+      .withIndex("by_organizationId_and_startsAt", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .gte("startsAt", from)
+          .lt("startsAt", to),
+      )
       .take(MAX_ROWS + 1);
-    return { rows: rows.filter((row) => selected.has(row.locationId)).slice(0, MAX_ROWS), truncated: rows.length > MAX_ROWS };
+    return {
+      rows: rows
+        .filter((row) => selected.has(row.locationId))
+        .slice(0, MAX_ROWS),
+      truncated: rows.length > MAX_ROWS,
+    };
   });
 }
 
 const scheduledHours: MetricComputer = async (ctx, params) => {
   const result = await shiftRows(ctx, params);
-  return seriesResult("hours", result.rows.map((row) => ({ timestamp: row.startsAt, locationId: row.locationId, value: Math.max(0, row.endsAt - row.startsAt) / 3_600_000 })), params, { truncated: result.truncated || undefined });
+  return seriesResult(
+    "hours",
+    result.rows.map((row) => ({
+      timestamp: row.startsAt,
+      locationId: row.locationId,
+      value: Math.max(0, row.endsAt - row.startsAt) / 3_600_000,
+    })),
+    params,
+    { truncated: result.truncated || undefined },
+  );
 };
 
 const headcountToday: MetricComputer = async (ctx, params) => {
@@ -532,37 +1185,112 @@ const headcountToday: MetricComputer = async (ctx, params) => {
   const from = zonedStart(today, params.timeZone);
   const to = zonedStart(addDays(today, 1), params.timeZone);
   const result = await shiftRows(ctx, params, from - DAY_MS * 2, to);
-  const groups = params.compare ? params.locations : [{ id: "all" as const, name: "Alle lokationer" }];
-  const employees = await Promise.all([...new Set(result.rows.map((row) => row.employeeId))].map((id) => ctx.db.get("employees", id)));
-  const names = new Map(employees.flatMap((employee) => employee ? [[employee._id, employee.displayName] as const] : []));
-  const active = result.rows.filter((row) => row.startsAt < to && row.endsAt > from);
+  const groups = params.compare
+    ? params.locations
+    : [{ id: "all" as const, name: "Alle lokationer" }];
+  const employees = await Promise.all(
+    [...new Set(result.rows.map((row) => row.employeeId))].map((id) =>
+      ctx.db.get("employees", id),
+    ),
+  );
+  const names = new Map(
+    employees.flatMap((employee) =>
+      employee ? [[employee._id, employee.displayName] as const] : [],
+    ),
+  );
+  const active = result.rows.filter(
+    (row) => row.startsAt < to && row.endsAt > from,
+  );
   return {
     unit: "count",
     series: groups.map((group) => {
-      const rows = params.compare ? active.filter((row) => row.locationId === group.id) : active;
+      const rows = params.compare
+        ? active.filter((row) => row.locationId === group.id)
+        : active;
       const total = new Set(rows.map((row) => row.employeeId)).size;
-      return { key: String(group.id), label: group.name, points: [{ t: from, value: total }], total, previousTotal: null };
+      return {
+        key: String(group.id),
+        label: group.name,
+        points: [{ t: from, value: total }],
+        total,
+        previousTotal: null,
+      };
     }),
-    breakdown: [...new Set(active.map((row) => row.employeeId))].slice(0, 10).map((id) => ({ key: id, label: names.get(id) ?? "Ukendt medarbejder", value: 1 })),
+    breakdown: [...new Set(active.map((row) => row.employeeId))]
+      .slice(0, 10)
+      .map((id) => ({
+        key: id,
+        label: names.get(id) ?? "Ukendt medarbejder",
+        value: 1,
+      })),
     truncated: result.truncated || undefined,
   };
 };
 
 const locationComparison: MetricComputer = async (ctx, params) => {
+  const comparisonParams =
+    params.accessGranularity === "anonymous" && params.anonymousLocations
+      ? {
+          ...params,
+          locations: params.anonymousLocations,
+          comparisonGroups: params.anonymousComparisonGroups,
+          compare: true,
+          cache: new Map<string, Promise<unknown>>(),
+        }
+      : { ...params, compare: true };
   const [waste, deliveries, transferResult, staffFood] = await Promise.all([
-    wasteRows(ctx, params),
-    badDeliveryRows(ctx, params),
-    transferRows(ctx, params),
-    staffFoodRows(ctx, params),
+    wasteRows(ctx, comparisonParams),
+    badDeliveryRows(ctx, comparisonParams),
+    transferRows(ctx, comparisonParams),
+    staffFoodRows(ctx, comparisonParams),
   ]);
   const rows: TimedValue[] = [
-    ...waste.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })),
-    ...deliveries.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })),
-    ...transferResult.rows.map((row) => ({ timestamp: row.transferredAt, locationId: row.fromLocationId, value: 1 })),
-    ...staffFood.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })),
+    ...waste.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
+    ...deliveries.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
+    ...transferResult.rows.map((row) => ({
+      timestamp: row.transferredAt,
+      locationId: row.fromLocationId,
+      value: 1,
+    })),
+    ...staffFood.rows.map((row) => ({
+      timestamp: row.registeredAt,
+      locationId: row.locationId,
+      value: 1,
+    })),
   ];
-  const compared = seriesResult("count", rows, { ...params, compare: true }, { truncated: waste.truncated || deliveries.truncated || transferResult.truncated || staffFood.truncated || undefined });
-  return { ...compared, breakdown: compared.series.map((series) => ({ key: series.key, label: series.label, value: series.total })).sort((a, b) => b.value - a.value) };
+  const compared = seriesResult(
+    "count",
+    rows,
+    comparisonParams,
+    {
+      truncated:
+        waste.truncated ||
+        deliveries.truncated ||
+        transferResult.truncated ||
+        staffFood.truncated ||
+        comparisonParams.anonymousScopeTruncated ||
+        undefined,
+    },
+    comparisonParams.comparisonGroups,
+  );
+  return {
+    ...compared,
+    breakdown: compared.series
+      .map((series) => ({
+        key: series.key,
+        label: series.label,
+        value: series.total,
+      }))
+      .sort((a, b) => b.value - a.value),
+  };
 };
 
 async function salesDailyRows(ctx: QueryCtx, params: DashboardMetricParams) {
@@ -605,7 +1333,7 @@ const salesRevenue: MetricComputer = async (ctx, params) => {
       value: row.revenue / 100,
     })),
     params,
-    { truncated: result.truncated || undefined },
+    { ...currencyOptions(params), truncated: result.truncated || undefined },
   );
 };
 
@@ -625,8 +1353,12 @@ const salesOrderCount: MetricComputer = async (ctx, params) => {
 
 const averageBasket: MetricComputer = async (ctx, params) => {
   const result = await salesDailyRows(ctx, params);
+  const currencies = currencyOptions(params);
   const groups = params.compare
-    ? params.locations.map((location) => ({ key: location.id, label: location.name }))
+    ? params.locations.map((location) => ({
+        key: location.id,
+        label: location.name,
+      }))
     : [{ key: "all" as const, label: "Alle lokationer" }];
   const days = dayStarts(params.from, params.to, params.timeZone);
   let headlineRevenue = 0;
@@ -641,7 +1373,8 @@ const averageBasket: MetricComputer = async (ctx, params) => {
       (row) => row.dayStart >= params.from && row.dayStart < params.to,
     );
     const previous = relevant.filter(
-      (row) => row.dayStart >= params.previousFrom && row.dayStart < params.previousTo,
+      (row) =>
+        row.dayStart >= params.previousFrom && row.dayStart < params.previousTo,
     );
     const byDay = new Map<number, { revenue: number; orders: number }>();
     for (const row of current) {
@@ -653,7 +1386,10 @@ const averageBasket: MetricComputer = async (ctx, params) => {
     const periodRevenue = current.reduce((sum, row) => sum + row.revenue, 0);
     const periodOrders = current.reduce((sum, row) => sum + row.orderCount, 0);
     const previousRevenue = previous.reduce((sum, row) => sum + row.revenue, 0);
-    const previousOrders = previous.reduce((sum, row) => sum + row.orderCount, 0);
+    const previousOrders = previous.reduce(
+      (sum, row) => sum + row.orderCount,
+      0,
+    );
     headlineRevenue += periodRevenue;
     headlineOrders += periodOrders;
     headlinePreviousRevenue += previousRevenue;
@@ -665,7 +1401,9 @@ const averageBasket: MetricComputer = async (ctx, params) => {
         const entry = byDay.get(t);
         return {
           t,
-          value: rounded(entry && entry.orders > 0 ? entry.revenue / 100 / entry.orders : 0),
+          value: rounded(
+            entry && entry.orders > 0 ? entry.revenue / 100 / entry.orders : 0,
+          ),
         };
       }),
       total: rounded(periodOrders > 0 ? periodRevenue / 100 / periodOrders : 0),
@@ -677,35 +1415,193 @@ const averageBasket: MetricComputer = async (ctx, params) => {
   return {
     unit: "currency",
     series,
+    ...currencies,
     truncated: result.truncated || undefined,
-    headlineTotal: rounded(
-      headlineOrders > 0 ? headlineRevenue / 100 / headlineOrders : 0,
-    ),
-    headlinePrevious: rounded(
-      headlinePreviousOrders > 0
-        ? headlinePreviousRevenue / 100 / headlinePreviousOrders
-        : 0,
-    ),
+    ...(currencies.mixedCurrency
+      ? {}
+      : {
+          headlineTotal: rounded(
+            headlineOrders > 0 ? headlineRevenue / 100 / headlineOrders : 0,
+          ),
+          headlinePrevious: rounded(
+            headlinePreviousOrders > 0
+              ? headlinePreviousRevenue / 100 / headlinePreviousOrders
+              : 0,
+          ),
+        }),
   };
 };
 
+function nonLocationBreakdown(result: MetricResult) {
+  const seriesKeys = new Set(result.series.map((series) => series.key));
+  return result.breakdown?.filter((item) => !seriesKeys.has(item.key));
+}
+
+function aggregateResult(result: MetricResult): MetricResult {
+  if (result.series.length <= 1) {
+    return { ...result, breakdown: nonLocationBreakdown(result) };
+  }
+  const total =
+    result.headlineTotal ??
+    result.series.reduce((sum, series) => sum + series.total, 0);
+  const previousValues = result.series.map((series) => series.previousTotal);
+  const previousTotal =
+    result.headlinePrevious !== undefined
+      ? result.headlinePrevious
+      : previousValues.some((value) => value === null)
+        ? null
+        : previousValues.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+  const byTime = new Map<number, number>();
+  if (result.headlineTotal === undefined) {
+    for (const series of result.series) {
+      for (const point of series.points) {
+        byTime.set(point.t, (byTime.get(point.t) ?? 0) + point.value);
+      }
+    }
+  }
+  return {
+    ...result,
+    breakdown: nonLocationBreakdown(result),
+    series: [
+      {
+        key: "all",
+        label: "Alle lokationer",
+        points: [...byTime.entries()]
+          .sort(([left], [right]) => left - right)
+          .map(([t, value]) => ({ t, value: rounded(value) })),
+        total: rounded(total),
+        previousTotal: previousTotal === null ? null : rounded(previousTotal),
+      },
+    ],
+  };
+}
+
+function restaurantLabel(index: number) {
+  let value = index + 1;
+  let label = "";
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return `Restaurant ${label}`;
+}
+
+async function anonymousAliases(params: DashboardMetricParams) {
+  if (params.ownLocationIds === null)
+    return new Map<string, { key: string; label: string }>();
+  const locations = params.anonymousLocations ?? params.locations;
+  const comparisonGroups =
+    params.anonymousComparisonGroups ?? params.comparisonGroups;
+  const keys = new Set<string>();
+  for (const location of locations) {
+    if (!params.ownLocationIds.has(location.id)) keys.add(location.id);
+  }
+  for (const group of comparisonGroups ?? []) {
+    if (group.locationIds.some((id) => !params.ownLocationIds?.has(id))) {
+      keys.add(group.key);
+    }
+  }
+  const scored = await Promise.all(
+    [...keys].map(async (key) => {
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(`${params.anonymousSeed}:${key}`),
+      );
+      return { key, score: [...new Uint8Array(digest)].join(":") };
+    }),
+  );
+  scored.sort((left, right) => left.score.localeCompare(right.score));
+  return new Map(
+    scored.map(({ key }, index) => [
+      key,
+      { key: `restaurant-${index + 1}`, label: restaurantLabel(index) },
+    ]),
+  );
+}
+
+async function applyAccessGranularity(
+  result: MetricResult,
+  params: DashboardMetricParams,
+) {
+  if (params.accessGranularity === "detail") return result;
+  if (params.accessGranularity === "aggregate") return aggregateResult(result);
+  const aliases = await anonymousAliases(params);
+  if (!aliases.size) return result;
+  return {
+    ...result,
+    series: result.series.map((series) => {
+      const alias = aliases.get(series.key);
+      return alias ? { ...series, ...alias } : series;
+    }),
+    breakdown: result.breakdown?.map((item) => {
+      const alias = aliases.get(item.key);
+      return alias ? { ...item, ...alias } : item;
+    }),
+  };
+}
+
+function withAccessGranularity(
+  metricId: MetricId,
+  computer: MetricComputer,
+): MetricComputer {
+  return async (ctx, params) => {
+    const effectiveParams =
+      metricRegistry[metricId].sensitive && !params.salesDetailAllowed
+        ? { ...params, accessGranularity: "aggregate" as const }
+        : params;
+    return await applyAccessGranularity(
+      await computer(ctx, effectiveParams),
+      effectiveParams,
+    );
+  };
+}
+
+function withMetricMetadata(
+  metricId: MetricId,
+  computer: MetricComputer,
+): MetricComputer {
+  const accessAware = withAccessGranularity(metricId, computer);
+  const source = metricRegistry[metricId].source;
+  if (source === "internal") return accessAware;
+  return async (ctx, params) => ({
+    ...(await accessAware(ctx, params)),
+    freshness: await integrationFreshness(ctx, params, source),
+  });
+}
+
 export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {
-  wasteQuantity,
-  wasteRegistrations,
-  topWastedProducts,
-  wasteByCategory,
-  badDeliveries,
-  countCompliance,
-  openCounts,
-  transfers,
-  itemsMoved,
-  topTransferredProducts,
-  staffFoodRegistrations,
-  staffFoodPerEmployee,
-  scheduledHours,
-  headcountToday,
-  locationComparison,
-  salesRevenue,
-  salesOrderCount,
-  averageBasket,
+  wasteQuantity: withMetricMetadata("wasteQuantity", wasteQuantity),
+  wasteRegistrations: withMetricMetadata(
+    "wasteRegistrations",
+    wasteRegistrations,
+  ),
+  topWastedProducts: withMetricMetadata("topWastedProducts", topWastedProducts),
+  wasteByCategory: withMetricMetadata("wasteByCategory", wasteByCategory),
+  badDeliveries: withMetricMetadata("badDeliveries", badDeliveries),
+  countCompliance: withMetricMetadata("countCompliance", countCompliance),
+  openCounts: withMetricMetadata("openCounts", openCounts),
+  transfers: withMetricMetadata("transfers", transfers),
+  itemsMoved: withMetricMetadata("itemsMoved", itemsMoved),
+  topTransferredProducts: withMetricMetadata(
+    "topTransferredProducts",
+    topTransferredProducts,
+  ),
+  staffFoodRegistrations: withMetricMetadata(
+    "staffFoodRegistrations",
+    staffFoodRegistrations,
+  ),
+  staffFoodPerEmployee: withMetricMetadata(
+    "staffFoodPerEmployee",
+    staffFoodPerEmployee,
+  ),
+  scheduledHours: withMetricMetadata("scheduledHours", scheduledHours),
+  headcountToday: withMetricMetadata("headcountToday", headcountToday),
+  locationComparison: withMetricMetadata(
+    "locationComparison",
+    locationComparison,
+  ),
+  salesRevenue: withMetricMetadata("salesRevenue", salesRevenue),
+  salesOrderCount: withMetricMetadata("salesOrderCount", salesOrderCount),
+  averageBasket: withMetricMetadata("averageBasket", averageBasket),
 };

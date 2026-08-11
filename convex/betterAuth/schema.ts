@@ -3,6 +3,10 @@ import { tables } from "./generatedSchema";
 
 const schema = defineSchema({
   ...tables,
+  organizationRole: tables.organizationRole.index("organizationId_role", [
+    "organizationId",
+    "role",
+  ]),
   session: tables.session.index("userId_expiresAt", ["userId", "expiresAt"]),
   member: tables.member
     .index("organizationId_userId", ["organizationId", "userId"])

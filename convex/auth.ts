@@ -25,8 +25,6 @@ const siteUrl = process.env.SITE_URL!;
 const localLoopbackOrigin = siteUrl?.startsWith("http://localhost:")
   ? siteUrl.replace("localhost", "127.0.0.1")
   : null;
-const allowedOrganizationRoles = new Set(["admin", "manager", "member"]);
-
 type OrganizationMember = {
   id: string;
   organizationId: string;
@@ -41,10 +39,39 @@ export function getDatabaseAdapter(
   return authComponent.adapter(ctx)(createAuthOptions(ctx));
 }
 
-function requireAllowedOrganizationRole(role: string) {
-  if (!allowedOrganizationRoles.has(role)) {
+async function requireAllowedOrganizationRole(
+  ctx: GenericCtx<DataModel>,
+  organizationId: string,
+  role: string,
+) {
+  const allowed = await ctx.runQuery(internal.access.isRoleRegistered, {
+    organizationId,
+    role,
+  });
+  if (!allowed) {
     throw new APIError("BAD_REQUEST", {
       message: "Ugyldig organisationsrolle",
+    });
+  }
+}
+
+async function requireAnotherAdmin(
+  ctx: GenericCtx<DataModel>,
+  member: OrganizationMember,
+  newRole: string,
+) {
+  if (member.role !== "admin" || newRole === "admin") return;
+  const admins = await getDatabaseAdapter(ctx).findMany<OrganizationMember>({
+    model: "member",
+    where: [
+      { field: "organizationId", value: member.organizationId },
+      { field: "role", value: "admin" },
+    ],
+    limit: 2,
+  });
+  if (!admins.some((admin) => admin.id !== member.id)) {
+    throw new APIError("BAD_REQUEST", {
+      message: "Den sidste administrator kan ikke skifte rolle",
     });
   }
 }
@@ -295,7 +322,6 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
           internal.access.getMemberPermissionContext,
           { organizationId, userId: session.user.id },
         );
-        if (roleContext.role === "admin") return;
         if (!roleContext.permissions.includes("members.manage")) {
           throw new APIError("FORBIDDEN", {
             message: "Du har ikke adgang til at administrere brugere",
@@ -308,6 +334,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
       organization({
         ac: organizationAccessControl,
         roles: organizationRoles,
+        dynamicAccessControl: { enabled: true },
         creatorRole: "admin",
         organizationLimit: 1,
         membershipLimit: 100,
@@ -330,14 +357,27 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             await requireNoOrganizationMembership(ctx, user.id);
           },
           beforeAddMember: async ({ member }) => {
-            requireAllowedOrganizationRole(member.role);
+            await requireAllowedOrganizationRole(
+              ctx,
+              member.organizationId,
+              member.role,
+            );
             await requireNoOrganizationMembership(ctx, member.userId);
           },
-          beforeUpdateMemberRole: async ({ newRole }) => {
-            requireAllowedOrganizationRole(newRole);
+          beforeUpdateMemberRole: async ({ member, newRole }) => {
+            await requireAllowedOrganizationRole(
+              ctx,
+              member.organizationId,
+              newRole,
+            );
+            await requireAnotherAdmin(ctx, member, newRole);
           },
           beforeCreateInvitation: async ({ invitation }) => {
-            requireAllowedOrganizationRole(invitation.role);
+            await requireAllowedOrganizationRole(
+              ctx,
+              invitation.organizationId,
+              invitation.role,
+            );
           },
           beforeAcceptInvitation: async ({ user }) => {
             await requireNoOrganizationMembership(ctx, user.id);

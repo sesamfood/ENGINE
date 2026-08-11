@@ -8,12 +8,18 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { requireOrganization, requireIntegrationManager } from "./lib/auth";
+import {
+  requireAllLocationAccess,
+  requireIntegrationManager,
+  requireLocationAccess,
+  requireOrganization,
+} from "./lib/auth";
 import {
   requestDepartments,
   type WorkfeedDepartment,
   type WorkfeedSettings,
 } from "./lib/workfeedApi";
+import { recordAudit } from "./lib/audit";
 
 const MAX_LOCATIONS = 200;
 
@@ -41,14 +47,15 @@ function requireCredential(value: string, label: string, maxLength: number) {
 
 async function requireConnectedSettings(
   ctx: ActionCtx,
-): Promise<{ organizationId: string; settings: WorkfeedSettings }> {
-  const { organizationId } = await requireIntegrationManager(ctx);
+) {
+  const auth = await requireIntegrationManager(ctx);
+  const { organizationId } = auth;
   const settings: WorkfeedSettings | null = await ctx.runQuery(
     internal.workfeed.getPrivateSettings,
     { organizationId },
   );
   if (!settings) throw new ConvexError("Workfeed er ikke forbundet");
-  return { organizationId, settings };
+  return { auth, organizationId, settings };
 }
 
 export const getSettings = query({
@@ -60,7 +67,8 @@ export const getSettings = query({
     connectedAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
     const settings = await ctx.db
       .query("workfeedIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -105,7 +113,8 @@ export const listLocationMappings = query({
     limitReached: v.boolean(),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
     const [locations, mappings] = await Promise.all([
       ctx.db
         .query("locations")
@@ -126,9 +135,13 @@ export const listLocationMappings = query({
     const byLocationId = new Map(
       mappings.map((mapping) => [mapping.locationId, mapping]),
     );
+    const visibleLocations = locations.filter(
+      (location) =>
+        auth.locationScope.all || auth.locationScope.ids.has(location._id),
+    );
 
     return {
-      locations: locations.slice(0, MAX_LOCATIONS).map((location) => {
+      locations: visibleLocations.slice(0, MAX_LOCATIONS).map((location) => {
         const mapping = byLocationId.get(location._id);
         return {
           id: location._id,
@@ -137,7 +150,7 @@ export const listLocationMappings = query({
           departmentName: mapping?.departmentName ?? null,
         };
       }),
-      limitReached: locations.length > MAX_LOCATIONS,
+      limitReached: visibleLocations.length > MAX_LOCATIONS,
     };
   },
 });
@@ -167,6 +180,8 @@ export const saveConnection = internalMutation({
     organizationId: v.string(),
     apiKey: v.string(),
     companyId: v.string(),
+    actorUserId: v.string(),
+    actorName: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -189,6 +204,16 @@ export const saveConnection = internalMutation({
       }
       for (const mapping of mappings) await ctx.db.delete(mapping._id);
     }
+    const integrationId = current
+      ? current._id
+      : await ctx.db.insert("workfeedIntegrations", {
+          organizationId: args.organizationId,
+          apiKey: args.apiKey,
+          companyId: args.companyId,
+          enabled: true,
+          connectedAt: now,
+          updatedAt: now,
+        });
     if (current) {
       await ctx.db.patch(current._id, {
         apiKey: args.apiKey,
@@ -197,16 +222,21 @@ export const saveConnection = internalMutation({
         connectedAt: now,
         updatedAt: now,
       });
-    } else {
-      await ctx.db.insert("workfeedIntegrations", {
-        organizationId: args.organizationId,
-        apiKey: args.apiKey,
-        companyId: args.companyId,
-        enabled: true,
-        connectedAt: now,
-        updatedAt: now,
-      });
     }
+    await recordAudit(
+      ctx,
+      {
+        organizationId: args.organizationId,
+        userId: args.actorUserId,
+        userName: args.actorName,
+      },
+      {
+        action: "integration.connected",
+        entityTable: "workfeedIntegrations",
+        entityId: integrationId,
+        summary: "Workfeed-integrationen blev forbundet",
+      },
+    );
     await ctx.scheduler.runAfter(
       0,
       internal.workfeedSync.enqueueOrganizationSync,
@@ -318,7 +348,9 @@ export const connect = action({
   args: { apiKey: v.string(), companyId: v.string() },
   returns: v.object({ departmentCount: v.number() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    const { organizationId, userId, userName } = auth;
     const apiKey = requireCredential(args.apiKey, "Workfeed API-nøgle", 500);
     const companyId = requireCredential(
       args.companyId,
@@ -330,6 +362,8 @@ export const connect = action({
       organizationId,
       apiKey,
       companyId,
+      actorUserId: userId,
+      actorName: userName,
     });
     return { departmentCount: departments.length };
   },
@@ -339,7 +373,8 @@ export const setEnabled = action({
   args: { enabled: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, settings } = await requireConnectedSettings(ctx);
+    const { auth, organizationId, settings } = await requireConnectedSettings(ctx);
+    requireAllLocationAccess(auth);
     if (args.enabled) {
       await requestDepartments(settings);
     }
@@ -367,7 +402,9 @@ export const saveLocationMapping = action({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, settings } = await requireConnectedSettings(ctx);
+    const { auth, organizationId, settings } =
+      await requireConnectedSettings(ctx);
+    requireLocationAccess(auth, args.locationId);
     const departmentId = requireCredential(
       args.departmentId,
       "Workfeed-afdeling",
@@ -393,7 +430,9 @@ export const removeLocationMapping = mutation({
   args: { locationId: v.id("locations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
     const mapping = await ctx.db
       .query("workfeedLocationMappings")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -416,7 +455,9 @@ export const disconnect = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    const { organizationId } = auth;
     const [settings, mappings] = await Promise.all([
       ctx.db
         .query("workfeedIntegrations")
@@ -436,6 +477,14 @@ export const disconnect = mutation({
     }
     for (const mapping of mappings) await ctx.db.delete(mapping._id);
     if (settings) await ctx.db.delete(settings._id);
+    if (settings || mappings.length > 0) {
+      await recordAudit(ctx, auth, {
+        action: "integration.disconnected",
+        entityTable: "workfeedIntegrations",
+        entityId: organizationId,
+        summary: "Workfeed-integrationen blev afbrudt",
+      });
+    }
     return null;
   },
 });

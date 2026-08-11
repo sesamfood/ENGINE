@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -159,6 +160,7 @@ export function WasteReport() {
   const [location, setLocation] = useState("all");
   const [selected, setSelected] = useState<Row | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
   const [exporting, setExporting] = useState(false);
   const voidWaste = useMutation(api.waste.voidWasteRegistration);
   const kioskCanReport = Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.report"));
@@ -266,7 +268,7 @@ export function WasteReport() {
   async function voidSelected() {
     if (!selected) return;
     try {
-      await voidWaste({ registrationId: selected.id });
+      await voidWaste({ registrationId: selected.id, reason: voidReason });
       toast.success("Spildregistreringen er annulleret");
       setConfirming(false);
       setSelected(null);
@@ -309,8 +311,8 @@ export function WasteReport() {
         rangeValid={rangeValid}
       />
 
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}><DialogContent>{selected ? <><DialogHeader><DialogTitle>{selected.productName}</DialogTitle><DialogDescription>{formatter.format(selected.registeredAt)} · {selected.locationName}</DialogDescription></DialogHeader><dl className="grid grid-cols-2 gap-3"><dt className="text-muted-foreground">Medarbejder</dt><dd>{selected.registeredByName}</dd><dt className="text-muted-foreground">Mængde</dt><dd>{formatNumber(selected.quantity)} {selected.unitName}</dd><dt className="text-muted-foreground">Kilde</dt><dd>{selected.source === "shortcut" ? "Genvej" : "Tilpasset"}</dd><dt className="text-muted-foreground">Status</dt><dd>{selected.status === "active" ? "Aktiv" : "Annulleret"}</dd>{selected.voidedAt ? <><dt className="text-muted-foreground">Annulleret</dt><dd>{formatter.format(selected.voidedAt)}{selected.voidedByName ? ` af ${selected.voidedByName}` : ""}</dd></> : null}</dl><DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Luk</Button>{selected.status === "active" ? <Button variant="destructive" onClick={() => setConfirming(true)}>Annullér registrering</Button> : null}</DialogFooter></> : null}</DialogContent></Dialog>
-      <AlertDialog open={confirming} onOpenChange={setConfirming}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Annullér registrering?</AlertDialogTitle><AlertDialogDescription>Lageret bliver tilført den registrerede mængde igen. Auditloggen bevares.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Behold</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={voidSelected}>Annullér registrering</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}><DialogContent>{selected ? <><DialogHeader><DialogTitle>{selected.productName}</DialogTitle><DialogDescription>{formatter.format(selected.registeredAt)} · {selected.locationName}</DialogDescription></DialogHeader><dl className="grid grid-cols-2 gap-3"><dt className="text-muted-foreground">Medarbejder</dt><dd>{selected.registeredByName}</dd><dt className="text-muted-foreground">Mængde</dt><dd>{formatNumber(selected.quantity)} {selected.unitName}</dd><dt className="text-muted-foreground">Kilde</dt><dd>{selected.source === "shortcut" ? "Genvej" : "Tilpasset"}</dd><dt className="text-muted-foreground">Status</dt><dd>{selected.status === "active" ? "Aktiv" : "Annulleret"}</dd>{selected.voidedAt ? <><dt className="text-muted-foreground">Annulleret</dt><dd>{formatter.format(selected.voidedAt)}{selected.voidedByName ? ` af ${selected.voidedByName}` : ""}</dd></> : null}</dl><DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Luk</Button>{selected.status === "active" ? <Button variant="destructive" onClick={() => { setVoidReason(""); setConfirming(true); }}>Annullér registrering</Button> : null}</DialogFooter></> : null}</DialogContent></Dialog>
+      <AlertDialog open={confirming} onOpenChange={setConfirming}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Annullér registrering?</AlertDialogTitle><AlertDialogDescription>Lageret bliver tilført den registrerede mængde igen. Auditloggen bevares.</AlertDialogDescription></AlertDialogHeader><Field><FieldLabel htmlFor="waste-void-reason">Begrundelse</FieldLabel><Textarea id="waste-void-reason" value={voidReason} onChange={(event) => setVoidReason(event.target.value)} placeholder="Skriv, hvorfor registreringen annulleres" required /></Field><AlertDialogFooter><AlertDialogCancel>Behold</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={!voidReason.trim()} onClick={() => void voidSelected()}>Annullér registrering</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </div>
   );
 }

@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Empty,
   EmptyDescription,
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -197,6 +199,7 @@ export function BadDeliveriesReportSection({
   const voidDelivery = useMutation(api.badDeliveries.voidBadDelivery);
   const retryNotice = useMutation(api.badDeliveries.retryBadDeliveryNotice);
   const [confirmingVoid, setConfirmingVoid] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
   const [working, setWorking] = useState<string>();
   const [exporting, setExporting] = useState(false);
 
@@ -217,7 +220,7 @@ export function BadDeliveriesReportSection({
     if (!selectedId) return;
     setWorking("void");
     try {
-      await voidDelivery({ badDeliveryId: selectedId });
+      await voidDelivery({ badDeliveryId: selectedId, reason: voidReason });
       toast.success("Registreringen er annulleret");
       setConfirmingVoid(false);
     } catch (error) {
@@ -550,7 +553,10 @@ export function BadDeliveriesReportSection({
                   <Button
                     variant="destructive"
                     disabled={Boolean(working)}
-                    onClick={() => setConfirmingVoid(true)}
+                    onClick={() => {
+                      setVoidReason("");
+                      setConfirmingVoid(true);
+                    }}
                   >
                     Annullér registrering
                   </Button>
@@ -574,13 +580,23 @@ export function BadDeliveriesReportSection({
                 : "Billeder og auditlog bevares. Lageret ændres ikke."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <Field>
+            <FieldLabel htmlFor="bad-delivery-void-reason">Begrundelse</FieldLabel>
+            <Textarea
+              id="bad-delivery-void-reason"
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+              placeholder="Skriv, hvorfor registreringen annulleres"
+              required
+            />
+          </Field>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={working === "void"}>
               Behold
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              disabled={working === "void"}
+              disabled={working === "void" || !voidReason.trim()}
               onClick={() => void voidSelected()}
             >
               {working === "void" ? <Spinner data-icon="inline-start" /> : null}

@@ -182,6 +182,7 @@ test("en manager uden waste.report kan ikke se spildregistreringer", async () =>
   const manager = await createUser(t, org._id, "manager", 1);
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "manager",
+    reason: "Testændring",
     permissions: defaultRolePermissions.manager.filter(
       (permission) => permission !== "waste.report",
     ),
@@ -195,21 +196,72 @@ test("en manager uden waste.report kan ikke se spildregistreringer", async () =>
   ).rejects.toThrowError("Du har ikke adgang");
 });
 
-test("rolleindstillinger afviser administratorrollen og ukendte tilladelser", async () => {
+test("rolleindstillinger beskytter administrationsadgang og afviser ukendte tilladelser", async () => {
   const t = convexTest(schema, modules);
   const { asUser } = await setupAuthOrg(t);
   await expect(
     asUser.mutation(api.access.saveRolePermissions, {
       role: "admin",
+      reason: "Testændring",
       permissions: [],
     }),
-  ).rejects.toThrowError("Administratorrollen kan ikke ændres");
+  ).rejects.toThrowError(
+    "Mindst én rolle skal kunne administrere både roller og brugere",
+  );
   await expect(
     asUser.mutation(api.access.saveRolePermissions, {
       role: "manager",
+      reason: "Testændring",
       permissions: ["not.a.permission"],
     }),
   ).rejects.toThrowError("En eller flere tilladelser findes ikke");
+});
+
+test("adgangsændringer kræver en begrundelse og opretter ét auditspor", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId } = await seedLocations(t, org._id);
+
+  await expect(
+    asUser.mutation(api.access.saveRolePermissions, {
+      role: "manager",
+      reason: " ",
+      permissions: [...defaultRolePermissions.manager],
+    }),
+  ).rejects.toThrowError("Angiv en begrundelse");
+
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role: "manager",
+    reason: "Managerrollen skal begrænses",
+    permissions: defaultRolePermissions.manager.filter(
+      (permission) => permission !== "waste.report",
+    ),
+  });
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: user._id,
+    reason: "Brugeren arbejder kun i Nord",
+    scope: "selected",
+    locationIds: [allowedLocationId],
+  });
+
+  const rows = await t.run(async (ctx) =>
+    ctx.db
+      .query("auditLog")
+      .withIndex("by_organizationId_and_at", (q) =>
+        q.eq("organizationId", org._id),
+      )
+      .take(10),
+  );
+  expect(rows.map(({ action, reason }) => ({ action, reason }))).toEqual([
+    {
+      action: "roles.permissionsChanged",
+      reason: "Managerrollen skal begrænses",
+    },
+    {
+      action: "members.locationAccessChanged",
+      reason: "Brugeren arbejder kun i Nord",
+    },
+  ]);
 });
 
 test("valgte lokationer filtrerer valgmuligheder og optællinger", async () => {
@@ -219,12 +271,13 @@ test("valgte lokationer filtrerer valgmuligheder og optællinger", async () => {
     await seedLocations(t, org._id);
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "selected",
     locationIds: [allowedLocationId],
   });
-  await expect(asUser.query(api.locations.listLocationOptions, {})).resolves.toEqual([
-    { id: allowedLocationId, name: "Nord" },
-  ]);
+  await expect(
+    asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
   await expect(
     asUser.mutation(api.count.setCountQuantity, {
       locationId: foreignLocationId,
@@ -242,6 +295,7 @@ test("spildrapport uden lokation viser kun brugerens valgte lokationer", async (
     await seedLocations(t, org._id);
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "selected",
     locationIds: [allowedLocationId],
   });
@@ -262,14 +316,160 @@ test("spildrapport uden lokation viser kun brugerens valgte lokationer", async (
   });
   expect(result.page).toHaveLength(1);
   expect(result.page[0]?.locationId).toBe(allowedLocationId);
+  await expect(
+    asUser.query(api.waste.listRegistrations, {
+      paginationOpts: { numItems: 10, cursor: null },
+      startAt: now - 100,
+      endAt: now + 100,
+      locationId: foreignLocationId,
+    }),
+  ).rejects.toThrowError("Du har ikke adgang til denne lokation");
+});
+
+test("valgt lokationsscope begrænser optællingslinjer", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, now, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId, foreignLocationId, productId, unitId } =
+    await seedLocations(t, org._id);
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: user._id,
+    reason: "Testændring",
+    scope: "selected",
+    locationIds: [allowedLocationId],
+  });
+  const { allowedCountId, foreignCountId } = await t.run(async (ctx) => {
+    const allowedCountId = await ctx.db.insert("counts", {
+      organizationId: org._id,
+      locationId: allowedLocationId,
+      periodKey: "2026-08",
+      status: "submitted",
+      submittedAt: now,
+      submittedByName: "Ada Lovelace",
+      createdBy: user._id,
+    });
+    const foreignCountId = await ctx.db.insert("counts", {
+      organizationId: org._id,
+      locationId: foreignLocationId,
+      periodKey: "2026-08",
+      status: "submitted",
+      submittedAt: now,
+      submittedByName: "Ada Lovelace",
+      createdBy: user._id,
+    });
+    await ctx.db.insert("countItems", {
+      organizationId: org._id,
+      countId: allowedCountId,
+      productId,
+      unitId,
+      quantity: 2,
+    });
+    await ctx.db.insert("countItems", {
+      organizationId: org._id,
+      countId: foreignCountId,
+      productId,
+      unitId,
+      quantity: 9,
+    });
+    return { allowedCountId, foreignCountId };
+  });
+
+  await expect(
+    asUser.query(api.count.getCountQuantities, {
+      locationId: allowedLocationId,
+      countId: allowedCountId,
+    }),
+  ).resolves.toEqual([{ productId, unitId, quantity: 2 }]);
+  await expect(
+    asUser.query(api.count.getCountQuantities, {
+      locationId: foreignLocationId,
+      countId: foreignCountId,
+    }),
+  ).rejects.toThrowError("Du har ikke adgang til denne lokation");
+});
+
+test("valgt lokationsscope skjuler flytninger fra andre lokationer", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, now, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId, foreignLocationId, productId, unitId } =
+    await seedLocations(t, org._id);
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: user._id,
+    reason: "Testændring",
+    scope: "selected",
+    locationIds: [allowedLocationId],
+  });
+  const { allowedTransferId, foreignTransferId } = await t.run(async (ctx) => {
+    const otherForeignLocationId = await ctx.db.insert("locations", {
+      organizationId: org._id,
+      name: "Vest",
+      normalizedName: "vest",
+    });
+    const allowedTransferId = await ctx.db.insert("transfers", {
+      organizationId: org._id,
+      fromLocationId: allowedLocationId,
+      toLocationId: foreignLocationId,
+      responsibleUserId: user._id,
+      responsibleName: "Ada Lovelace",
+      transferredAt: now - 10,
+      createdBy: user._id,
+      stockApplied: true,
+    });
+    const foreignTransferId = await ctx.db.insert("transfers", {
+      organizationId: org._id,
+      fromLocationId: foreignLocationId,
+      toLocationId: otherForeignLocationId,
+      responsibleUserId: user._id,
+      responsibleName: "Ada Lovelace",
+      transferredAt: now - 5,
+      createdBy: user._id,
+      stockApplied: true,
+    });
+    await ctx.db.insert("transferItems", {
+      organizationId: org._id,
+      transferId: allowedTransferId,
+      productId,
+      productName: "Cola",
+      unitId,
+      unitName: "stk",
+      quantity: 1,
+      factorToDefault: 1,
+    });
+    await ctx.db.insert("transferItems", {
+      organizationId: org._id,
+      transferId: foreignTransferId,
+      productId,
+      productName: "Cola",
+      unitId,
+      unitName: "stk",
+      quantity: 3,
+      factorToDefault: 1,
+    });
+    return { allowedTransferId, foreignTransferId };
+  });
+
+  const result = await asUser.query(api.transfers.listTransfers, {
+    paginationOpts: { numItems: 10, cursor: null },
+    startAt: now - 100,
+    endAt: now + 100,
+  });
+  expect(result.page.map((transfer) => transfer.id)).toEqual([
+    allowedTransferId,
+  ]);
+  expect(result.page.map((transfer) => transfer.id)).not.toContain(
+    foreignTransferId,
+  );
 });
 
 test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
   const t = convexTest(schema, modules);
   const { org, asUser } = await setupAuthOrg(t);
-  const { allowedLocationId, foreignLocationId } = await seedLocations(t, org._id);
+  const { allowedLocationId, foreignLocationId } = await seedLocations(
+    t,
+    org._id,
+  );
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "member",
+    reason: "Testændring",
     permissions: [],
   });
   await t.run(async (ctx) => {
@@ -285,9 +485,9 @@ test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
     kioskLocationId: allowedLocationId,
     isKioskAccount: true,
   });
-  await expect(kiosk.asUser.query(api.locations.listLocationOptions, {})).resolves.toEqual([
-    { id: allowedLocationId, name: "Nord" },
-  ]);
+  await expect(
+    kiosk.asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
   await expect(
     kiosk.asUser.query(api.count.getCountState, {
       locationId: allowedLocationId,
@@ -300,4 +500,414 @@ test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
       now: Date.now(),
     }),
   ).rejects.toThrowError("Kioskkontoen har ikke adgang til denne lokation");
+});
+
+test("navngivne roller registreres og håndhæves af Convex", async () => {
+  const t = convexTest(schema, modules);
+  const { org, now, asUser } = await setupAuthOrg(t);
+  const role = await asUser.mutation(api.access.createRole, {
+    name: "Franchisetager",
+  });
+  expect(role).toBe("franchisetager");
+  const registered = await t.query(components.betterAuth.adapter.findMany, {
+    model: "organizationRole",
+    where: [
+      { field: "organizationId", value: org._id },
+      { field: "role", value: role },
+    ],
+    paginationOpts: { numItems: 10, cursor: null },
+  } as never);
+  expect(registered.page).toHaveLength(1);
+
+  await expect(
+    asUser.mutation(api.access.saveRolePermissions, {
+      role: "admin",
+      reason: "Testændring",
+      permissions: ["count.register"],
+    }),
+  ).rejects.toThrowError(
+    "Mindst én rolle skal kunne administrere både roller og brugere",
+  );
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role,
+    reason: "Testændring",
+    permissions: ["count.register", "roles.manage", "members.manage"],
+  });
+  await expect(
+    asUser.mutation(api.access.saveRolePermissions, {
+      role: "admin",
+      reason: "Testændring",
+      permissions: ["count.register"],
+    }),
+  ).rejects.toThrowError(
+    "Mindst én rolle skal kunne administrere både roller og brugere",
+  );
+
+  const customUser = await baCreate(t, "user", {
+    name: "Grace Hopper",
+    email: "grace@example.com",
+    emailVerified: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await baCreate(t, "member", {
+    organizationId: org._id,
+    userId: customUser._id,
+    role,
+    createdAt: now,
+  });
+  const customSession = await baCreate(t, "session", {
+    expiresAt: now + 60 * 60 * 1000,
+    token: `custom-${now}`,
+    createdAt: now,
+    updatedAt: now,
+    userId: customUser._id,
+    activeOrganizationId: org._id,
+  });
+  const asCustomUser = t.withIdentity({
+    subject: customUser._id,
+    issuer: "http://localhost:3000",
+    tokenIdentifier: `http://localhost:3000|${customUser._id}`,
+    sessionId: customSession._id,
+  } as never);
+  const context = await asCustomUser.query(api.access.getContext, {});
+  expect(context.role).toBe(role);
+  expect(context.permissions).toContain("count.register");
+  await expect(
+    asCustomUser.mutation(api.access.deleteRole, { role }),
+  ).rejects.toThrowError("Rollen bruges af et medlem og kan ikke slettes");
+});
+
+test("operatørscope begrænser lokationer, spild, optællinger og flytninger", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, now, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId, foreignLocationId, productId, unitId } =
+    await seedLocations(t, org._id);
+  const { operatorId, emptyOperatorId, allowedCountId, foreignCountId } =
+    await t.run(async (ctx) => {
+      const operatorId = await ctx.db.insert("operators", {
+        organizationId: org._id,
+        name: "Norddrift",
+        normalizedName: "norddrift",
+        status: "active",
+      });
+      const emptyOperatorId = await ctx.db.insert("operators", {
+        organizationId: org._id,
+        name: "Uden restauranter",
+        normalizedName: "uden restauranter",
+        status: "active",
+      });
+      await ctx.db.patch("locations", allowedLocationId, { operatorId });
+      const allowedCountId = await ctx.db.insert("counts", {
+        organizationId: org._id,
+        locationId: allowedLocationId,
+        periodKey: "2026-08",
+        status: "submitted",
+        submittedAt: now,
+        submittedByName: "Ada Lovelace",
+        createdBy: user._id,
+      });
+      const foreignCountId = await ctx.db.insert("counts", {
+        organizationId: org._id,
+        locationId: foreignLocationId,
+        periodKey: "2026-08",
+        status: "submitted",
+        submittedAt: now,
+        submittedByName: "Ada Lovelace",
+        createdBy: user._id,
+      });
+      await ctx.db.insert(
+        "wasteRegistrations",
+        wasteRow(org._id, allowedLocationId, productId, unitId, now - 10),
+      );
+      await ctx.db.insert(
+        "wasteRegistrations",
+        wasteRow(org._id, foreignLocationId, productId, unitId, now - 5),
+      );
+      await ctx.db.insert("transfers", {
+        organizationId: org._id,
+        fromLocationId: allowedLocationId,
+        toLocationId: foreignLocationId,
+        responsibleUserId: user._id,
+        responsibleName: "Ada Lovelace",
+        transferredAt: now - 10,
+        createdBy: user._id,
+        stockApplied: true,
+      });
+      await ctx.db.insert("transfers", {
+        organizationId: org._id,
+        fromLocationId: foreignLocationId,
+        toLocationId: foreignLocationId,
+        responsibleUserId: user._id,
+        responsibleName: "Ada Lovelace",
+        transferredAt: now - 5,
+        createdBy: user._id,
+        stockApplied: true,
+      });
+      for (const [index, locationId] of [
+        allowedLocationId,
+        foreignLocationId,
+      ].entries()) {
+        await ctx.db.insert("onlinePosLocationIntegrations", {
+          organizationId: org._id,
+          locationId,
+          token: `token-${index}`,
+          companyId: index + 1,
+          connectedAt: now,
+          updatedAt: now,
+        });
+        await ctx.db.insert("workfeedLocationMappings", {
+          organizationId: org._id,
+          locationId,
+          departmentId: `department-${index}`,
+          departmentName: `Afdeling ${index}`,
+          updatedAt: now,
+        });
+        await ctx.db.insert("salesOrders", {
+          organizationId: org._id,
+          locationId,
+          occurredAt: now - index,
+          dayStart: now - 1_000,
+          orderNumber: index + 1,
+          revenue: 1000,
+          itemCount: 1,
+          paymentType: "Kort",
+          department: "Restaurant",
+          source: "test",
+          externalId: `order-${index}`,
+          updatedAt: now,
+        });
+      }
+      return { operatorId, emptyOperatorId, allowedCountId, foreignCountId };
+    });
+
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: user._id,
+    reason: "Testændring",
+    scope: "operator",
+    locationIds: [],
+    operatorId,
+  });
+  await expect(
+    asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
+  const waste = await asUser.query(api.waste.listRegistrations, {
+    paginationOpts: { numItems: 10, cursor: null },
+    startAt: now - 100,
+    endAt: now + 100,
+  });
+  expect(waste.page.map((row) => row.locationId)).toEqual([allowedLocationId]);
+  await expect(
+    asUser.query(api.count.getCountQuantities, {
+      locationId: allowedLocationId,
+      countId: allowedCountId,
+    }),
+  ).resolves.toEqual([]);
+  await expect(
+    asUser.query(api.count.getCountQuantities, {
+      locationId: foreignLocationId,
+      countId: foreignCountId,
+    }),
+  ).rejects.toThrowError("Du har ikke adgang til denne lokation");
+  const transfers = await asUser.query(api.transfers.listTransfers, {
+    paginationOpts: { numItems: 10, cursor: null },
+    startAt: now - 100,
+    endAt: now + 100,
+  });
+  expect(transfers.page).toHaveLength(1);
+  expect(transfers.page[0]?.fromLocationName).toBe("Nord");
+  const onlinePos = await asUser.query(
+    api.onlinePos.listLocationConnections,
+    {},
+  );
+  expect(onlinePos.locations.map((location) => location.id)).toEqual([
+    allowedLocationId,
+  ]);
+  const workfeed = await asUser.query(api.workfeed.listLocationMappings, {});
+  expect(workfeed.locations.map((location) => location.id)).toEqual([
+    allowedLocationId,
+  ]);
+  const orders = await asUser.query(api.sales.listOrders, {
+    locationId: null,
+    from: now - 100,
+    to: now + 100,
+    paginationOpts: { numItems: 10, cursor: null },
+  });
+  expect(orders.page.map((order) => order.locationId)).toEqual([
+    allowedLocationId,
+  ]);
+
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: user._id,
+    reason: "Testændring",
+    scope: "operator",
+    locationIds: [],
+    operatorId: emptyOperatorId,
+  });
+  await expect(
+    asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([]);
+});
+
+test("dashboardets datavisning håndhæves i API-svaret", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, now, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId, foreignLocationId, productId, unitId } =
+    await seedLocations(t, org._id);
+  await t.run(async (ctx) => {
+    await ctx.db.patch("locations", allowedLocationId, { currency: "DKK" });
+    await ctx.db.patch("locations", foreignLocationId, { currency: "EUR" });
+    await ctx.db.insert(
+      "wasteRegistrations",
+      wasteRow(org._id, allowedLocationId, productId, unitId, now - 10),
+    );
+    await ctx.db.insert(
+      "wasteRegistrations",
+      wasteRow(org._id, foreignLocationId, productId, unitId, now - 5),
+    );
+    for (const locationId of [allowedLocationId, foreignLocationId]) {
+      await ctx.db.insert("salesDaily", {
+        organizationId: org._id,
+        locationId,
+        dayStart: now - 1_000,
+        date: "2026-08-10",
+        revenue: 10_000,
+        orderCount: 10,
+        itemCount: 10,
+        updatedAt: now,
+      });
+    }
+  });
+  await asUser.mutation(api.access.ensureRoles, {});
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role: "admin",
+    reason: "Testændring",
+    permissions: [...defaultRolePermissions.admin],
+    granularity: "aggregate",
+  });
+  const aggregate = await asUser.query(api.dashboard.getMetrics, {
+    widgets: [
+      {
+        key: "waste",
+        metricId: "wasteRegistrations",
+        visualization: "kpi",
+      },
+    ],
+    scope: {
+      mode: "compare",
+      locationIds: [allowedLocationId, foreignLocationId],
+    },
+    range: { preset: "7days" },
+    now,
+  });
+  expect(aggregate[0]?.result.series).toHaveLength(1);
+  expect(aggregate[0]?.result.breakdown).toBeUndefined();
+  const mixedCurrency = await asUser.query(api.dashboard.getMetrics, {
+    widgets: [
+      {
+        key: "sales",
+        metricId: "salesRevenue",
+        visualization: "kpi",
+      },
+    ],
+    scope: {
+      mode: "aggregate",
+      locationIds: [allowedLocationId, foreignLocationId],
+    },
+    range: { preset: "7days" },
+    now,
+  });
+  expect(mixedCurrency[0]?.result.mixedCurrency).toBe(true);
+  expect(mixedCurrency[0]?.result.currency).toBeUndefined();
+  const singleCurrency = await asUser.query(api.dashboard.getMetrics, {
+    widgets: [
+      {
+        key: "sales",
+        metricId: "salesRevenue",
+        visualization: "kpi",
+      },
+    ],
+    scope: { mode: "aggregate", locationIds: [allowedLocationId] },
+    range: { preset: "7days" },
+    now,
+  });
+  expect(singleCurrency[0]?.result.currency).toBe("DKK");
+  expect(singleCurrency[0]?.result.mixedCurrency).toBeUndefined();
+
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role: "admin",
+    reason: "Testændring",
+    permissions: defaultRolePermissions.admin.filter(
+      (permission) =>
+        permission !== "dashboard.viewSales" &&
+        permission !== "sales.viewDetail",
+    ),
+    granularity: "detail",
+  });
+  const aggregateSalesOnly = await asUser.query(api.dashboard.getMetrics, {
+    widgets: [
+      {
+        key: "waste",
+        metricId: "wasteRegistrations",
+        visualization: "kpi",
+      },
+      {
+        key: "sales",
+        metricId: "salesRevenue",
+        visualization: "kpi",
+      },
+    ],
+    scope: {
+      mode: "compare",
+      locationIds: [allowedLocationId, foreignLocationId],
+    },
+    range: { preset: "7days" },
+    now,
+  });
+  expect(aggregateSalesOnly[0]?.result.series).toHaveLength(2);
+  expect(aggregateSalesOnly[1]?.result.series).toHaveLength(1);
+
+  const operatorId = await t.run(async (ctx) => {
+    const id = await ctx.db.insert("operators", {
+      organizationId: org._id,
+      name: "Norddrift",
+      normalizedName: "norddrift",
+      status: "active",
+    });
+    await ctx.db.patch("locations", allowedLocationId, { operatorId: id });
+    return id;
+  });
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: user._id,
+    reason: "Testændring",
+    scope: "operator",
+    locationIds: [],
+    operatorId,
+  });
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role: "admin",
+    reason: "Testændring",
+    permissions: [...defaultRolePermissions.admin],
+    granularity: "anonymous",
+  });
+  const anonymous = await asUser.query(api.dashboard.getMetrics, {
+    widgets: [
+      {
+        key: "comparison",
+        metricId: "locationComparison",
+        visualization: "table",
+      },
+    ],
+    scope: {
+      mode: "compare",
+      locationIds: [allowedLocationId],
+      level: "location",
+      parentId: allowedLocationId,
+    },
+    range: { preset: "7days" },
+    now,
+  });
+  const payload = JSON.stringify(anonymous);
+  expect(payload).toContain("Nord");
+  expect(payload).not.toContain("Syd");
 });

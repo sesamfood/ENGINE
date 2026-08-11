@@ -6,11 +6,16 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
+import { DEFAULT_CURRENCY } from "../lib/dashboard/types";
 import { mutation, query } from "./_generated/server";
-import { requireIntegrationManager } from "./lib/auth";
+import {
+  requireIntegrationManager,
+  requireLocationAccess,
+  resolveLocationFilter,
+} from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
+import { resolveTimeZone } from "./lib/timeZone";
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_LOCATIONS = 200;
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 // Matches staffFood/waste paginated exports; caps client page size.
@@ -28,6 +33,7 @@ const syncStateValidator = v.union(
 const locationContextValidator = v.object({
   id: v.id("locations"),
   name: v.string(),
+  currency: v.string(),
   state: syncStateValidator,
   lastSuccessAt: v.union(v.number(), v.null()),
   lastError: v.union(v.string(), v.null()),
@@ -40,6 +46,7 @@ const orderValidator = v.object({
   occurredAt: v.number(),
   locationId: v.id("locations"),
   locationName: v.string(),
+  currency: v.string(),
   orderNumber: v.number(),
   revenue: v.number(),
   itemCount: v.number(),
@@ -80,18 +87,33 @@ function requireListOrdersPage(paginationOpts: { numItems: number }) {
 function mapOrder(
   order: Doc<"salesOrders">,
   locationName: string,
+  currency: string,
 ) {
   return {
     id: order._id,
     occurredAt: order.occurredAt,
     locationId: order.locationId,
     locationName,
+    currency,
     orderNumber: order.orderNumber,
     revenue: order.revenue,
     itemCount: order.itemCount,
     paymentType: order.paymentType,
     department: order.department,
   };
+}
+
+async function locationCurrency(
+  ctx: QueryCtx,
+  organizationId: string,
+  location: Doc<"locations">,
+) {
+  if (location.currency) return location.currency;
+  if (!location.marketId) return DEFAULT_CURRENCY;
+  const market = await ctx.db.get("markets", location.marketId);
+  return market?.organizationId === organizationId && market.currency
+    ? market.currency
+    : DEFAULT_CURRENCY;
 }
 
 export const getContext = query({
@@ -106,46 +128,70 @@ export const getContext = query({
     manualSyncRetryAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
-    const [settings, integration, connections, statuses, manualLimit] =
-      await Promise.all([
-        scheduleSettings(ctx, organizationId),
-        ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .unique(),
-        ctx.db
-          .query("onlinePosLocationIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .take(MAX_LOCATIONS + 1),
-        ctx.db
-          .query("onlinePosSyncStatus")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .take(MAX_LOCATIONS + 1),
-        rateLimiter.check(ctx, "manualSalesSync", { key: organizationId }),
-      ]);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
+    const [
+      timeZone,
+      settings,
+      integration,
+      connections,
+      statuses,
+      manualLimit,
+    ] = await Promise.all([
+      resolveTimeZone(ctx, organizationId),
+      scheduleSettings(ctx, organizationId),
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+      ctx.db
+        .query("onlinePosSyncStatus")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+      rateLimiter.check(ctx, "manualSalesSync", { key: organizationId }),
+    ]);
+    const visibleConnections = connections.filter(
+      (connection) =>
+        auth.locationScope.all ||
+        auth.locationScope.ids.has(connection.locationId),
+    );
+    const visibleStatuses = statuses.filter(
+      (status) =>
+        auth.locationScope.all || auth.locationScope.ids.has(status.locationId),
+    );
     const limitReached =
-      connections.length > MAX_LOCATIONS || statuses.length > MAX_LOCATIONS;
+      visibleConnections.length > MAX_LOCATIONS ||
+      visibleStatuses.length > MAX_LOCATIONS;
     const statusByLocation = new Map(
-      statuses
+      visibleStatuses
         .slice(0, MAX_LOCATIONS)
         .map((status) => [status.locationId, status]),
     );
     const locations = (
       await Promise.all(
-        connections.slice(0, MAX_LOCATIONS).map(async (connection) => {
+        visibleConnections.slice(0, MAX_LOCATIONS).map(async (connection) => {
           const location = await ctx.db.get("locations", connection.locationId);
           if (location?.organizationId !== organizationId) return null;
           const status = statusByLocation.get(connection.locationId);
+          const currency = await locationCurrency(
+            ctx,
+            organizationId,
+            location,
+          );
           return {
             id: location._id,
             name: location.name,
+            currency,
             state: status?.state ?? ("idle" as const),
             lastSuccessAt: status?.lastSuccessAt ?? null,
             lastError: status?.lastError ?? null,
@@ -156,7 +202,7 @@ export const getContext = query({
       )
     ).flatMap((location) => (location ? [location] : []));
     return {
-      timeZone: settings?.timeZone ?? DEFAULT_TIME_ZONE,
+      timeZone,
       usesDefaultTimeZone: !settings,
       connected: Boolean(integration),
       enabled: Boolean(integration?.enabled),
@@ -173,7 +219,8 @@ export const requestSync = mutation({
   args: { locationId: v.union(v.id("locations"), v.null()) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
     const integration = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -195,14 +242,25 @@ export const requestSync = mutation({
       );
     }
     if (args.locationId === null) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.onlinePosSync.enqueueOrganizationSync,
-        { organizationId },
-      );
+      if (auth.locationScope.all) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.onlinePosSync.enqueueOrganizationSync,
+          { organizationId },
+        );
+      } else {
+        for (const locationId of auth.locationScope.ids) {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.onlinePosSync.enqueueLocationSync,
+            { organizationId, locationId },
+          );
+        }
+      }
       return null;
     }
     const locationId = args.locationId;
+    requireLocationAccess(auth, locationId);
     const [location, connection] = await Promise.all([
       ctx.db.get("locations", locationId),
       ctx.db
@@ -218,10 +276,14 @@ export const requestSync = mutation({
     if (!connection) {
       throw new ConvexError("Lokationen er ikke forbundet til OnlinePOS");
     }
-    await ctx.scheduler.runAfter(0, internal.onlinePosSync.enqueueLocationSync, {
-      organizationId,
-      locationId,
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.onlinePosSync.enqueueLocationSync,
+      {
+        organizationId,
+        locationId,
+      },
+    );
     return null;
   },
 });
@@ -235,16 +297,26 @@ export const listOrders = query({
   },
   returns: paginationResultValidator(orderValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
+    const locationFilter = resolveLocationFilter(auth);
+    const locationIds =
+      locationFilter === "all"
+        ? null
+        : "locationId" in locationFilter
+          ? [locationFilter.locationId]
+          : locationFilter.locationIds;
     requireSalesRange(args.from, args.to);
     requireListOrdersPage(args.paginationOpts);
 
     if (args.locationId !== null) {
       const locationId = args.locationId;
+      requireLocationAccess(auth, locationId);
       const location = await ctx.db.get("locations", locationId);
       if (location?.organizationId !== organizationId) {
         throw new ConvexError("Lokationen blev ikke fundet");
       }
+      const currency = await locationCurrency(ctx, organizationId, location);
       const result = await ctx.db
         .query("salesOrders")
         .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
@@ -258,7 +330,9 @@ export const listOrders = query({
         .paginate(args.paginationOpts);
       return {
         ...result,
-        page: result.page.map((order) => mapOrder(order, location.name)),
+        page: result.page.map((order) =>
+          mapOrder(order, location.name, currency),
+        ),
       };
     }
 
@@ -272,13 +346,33 @@ export const listOrders = query({
     if (connections.length > MAX_LOCATIONS) {
       throw new ConvexError("Der er for mange OnlinePOS-lokationer");
     }
-    const locationDocs = await Promise.all(
-      connections.map((row) => ctx.db.get("locations", row.locationId)),
+    const visibleConnections = connections.filter(
+      (connection) =>
+        locationIds === null || locationIds.includes(connection.locationId),
     );
-    const locationNameById = new Map<Id<"locations">, string>();
-    for (const location of locationDocs) {
-      if (location?.organizationId === organizationId) {
-        locationNameById.set(location._id, location.name);
+    const locationDocs = await Promise.all(
+      visibleConnections.map((row) => ctx.db.get("locations", row.locationId)),
+    );
+    const locationContexts = await Promise.all(
+      locationDocs.map(async (location) => {
+        if (location?.organizationId !== organizationId) return null;
+        return {
+          id: location._id,
+          name: location.name,
+          currency: await locationCurrency(ctx, organizationId, location),
+        };
+      }),
+    );
+    const locationById = new Map<
+      Id<"locations">,
+      { name: string; currency: string }
+    >();
+    for (const location of locationContexts) {
+      if (location) {
+        locationById.set(location.id, {
+          name: location.name,
+          currency: location.currency,
+        });
       }
     }
     const result = await ctx.db
@@ -289,16 +383,29 @@ export const listOrders = query({
           .gte("occurredAt", args.from)
           .lt("occurredAt", args.to),
       )
+      .filter((q) =>
+        locationIds
+          ? locationIds.length
+            ? q.or(
+                ...locationIds.map((locationId) =>
+                  q.eq(q.field("locationId"), locationId),
+                ),
+              )
+            : q.neq(q.field("organizationId"), organizationId)
+          : true,
+      )
       .order("desc")
       .paginate(args.paginationOpts);
     return {
       ...result,
-      page: result.page.map((order) =>
-        mapOrder(
+      page: result.page.map((order) => {
+        const location = locationById.get(order.locationId);
+        return mapOrder(
           order,
-          locationNameById.get(order.locationId) ?? "Ukendt lokation",
-        ),
-      ),
+          location?.name ?? "Ukendt lokation",
+          location?.currency ?? DEFAULT_CURRENCY,
+        );
+      }),
     };
   },
 });

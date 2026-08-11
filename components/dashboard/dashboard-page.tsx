@@ -30,7 +30,11 @@ function DashboardContent() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canShare = usePermission("dashboard.share");
-  const canViewSales = usePermission("dashboard.viewSales");
+  const canViewLegacySales = usePermission("dashboard.viewSales");
+  const canViewAggregateSales = usePermission("sales.viewAggregate");
+  const canViewDetailedSales = usePermission("sales.viewDetail");
+  const canViewSales =
+    canViewLegacySales || canViewAggregateSales || canViewDetailedSales;
   const config = useQuery(api.dashboard.getConfig, canView ? {} : "skip");
   const { locations } = useLocationAccess();
   const organizationContext = useQuery(api.employees.getContext, canView ? {} : "skip");

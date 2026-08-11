@@ -10,9 +10,12 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import type { MetricResult } from "@/lib/dashboard/types";
-import { chartModel, shortDate } from "./utils";
+import { chartModel, isMixedCurrency, shortDate } from "./utils";
 
 export function BarVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
+  if (isMixedCurrency(result)) {
+    return <div className="grid h-full place-items-center text-sm text-muted-foreground">Flere valutaer</div>;
+  }
   if (result.breakdown?.length) {
     const config = { value: { label: "Værdi", color: "var(--chart-1)" } } satisfies ChartConfig;
     return (

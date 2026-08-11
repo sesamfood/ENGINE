@@ -6,11 +6,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import {
-  internalMutation,
-  mutation,
-  query,
-} from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { hasPermission } from "../lib/auth-permissions";
 import {
   requireKioskDestination,
@@ -32,6 +28,7 @@ import {
   validateBadDeliveryRecipients,
 } from "./lib/badDeliverySettings";
 import { addStock, normalizeStock } from "./lib/stock";
+import { recordAudit, requireAuditReason } from "./lib/audit";
 
 const MAX_PRODUCTS = 500;
 const MAX_CHILD_ROWS = 200;
@@ -39,16 +36,13 @@ const MAX_REBUILD_ROWS = 1_000;
 const MAX_QUANTITY = 1_000_000;
 const MIN_PRODUCT_HISTORY = 20;
 const UNDO_WINDOW_MS = 30_000;
+const UNDO_REASON_GRACE_MS = 30_000;
 const DAYS_30_MS = 30 * 24 * 60 * 60 * 1000;
 const DAYS_90_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_PUBLIC_PAGE_SIZE = 100;
 
 function requirePageSize(numItems: number, maximum: number) {
-  if (
-    !Number.isInteger(numItems) ||
-    numItems <= 0 ||
-    numItems > maximum
-  ) {
+  if (!Number.isInteger(numItems) || numItems <= 0 || numItems > maximum) {
     throw new ConvexError("Siden er for stor");
   }
 }
@@ -124,7 +118,11 @@ function quantityKey(quantity: number) {
 
 function requireQuantity(quantity: number) {
   const normalized = normalizeQuantity(quantity);
-  if (!Number.isFinite(quantity) || normalized <= 0 || normalized > MAX_QUANTITY) {
+  if (
+    !Number.isFinite(quantity) ||
+    normalized <= 0 ||
+    normalized > MAX_QUANTITY
+  ) {
     throw new ConvexError(
       `Mængden skal være større end nul og højst ${MAX_QUANTITY}`,
     );
@@ -181,10 +179,8 @@ async function settingsFor(ctx: WasteContext, organizationId: string) {
     inactivitySeconds: settings?.inactivitySeconds ?? 30,
     popularityPeriod: settings?.popularityPeriod ?? ("allTime" as const),
     historyScope: settings?.historyScope ?? ("location" as const),
-    badDeliveryDeductFromStock:
-      settings?.badDeliveryDeductFromStock ?? true,
-    badDeliveryShowStockChoice:
-      settings?.badDeliveryShowStockChoice ?? true,
+    badDeliveryDeductFromStock: settings?.badDeliveryDeductFromStock ?? true,
+    badDeliveryShowStockChoice: settings?.badDeliveryShowStockChoice ?? true,
     badDeliveryTo: settings?.badDeliveryTo ?? [],
     badDeliveryCc: settings?.badDeliveryCc ?? [],
     badDeliveryBcc: settings?.badDeliveryBcc ?? [],
@@ -217,24 +213,18 @@ async function amountStats(
   ctx: WasteContext,
   registration: Pick<
     Doc<"wasteRegistrations">,
-    | "organizationId"
-    | "locationId"
-    | "productId"
-    | "unitId"
-    | "quantityKey"
+    "organizationId" | "locationId" | "productId" | "unitId" | "quantityKey"
   >,
 ) {
   return await ctx.db
     .query("wasteAmountStats")
-    .withIndex(
-      "by_org_location_product_unit_qty",
-      (q) =>
-        q
-          .eq("organizationId", registration.organizationId)
-          .eq("locationId", registration.locationId)
-          .eq("productId", registration.productId)
-          .eq("unitId", registration.unitId)
-          .eq("quantityKey", registration.quantityKey),
+    .withIndex("by_org_location_product_unit_qty", (q) =>
+      q
+        .eq("organizationId", registration.organizationId)
+        .eq("locationId", registration.locationId)
+        .eq("productId", registration.productId)
+        .eq("unitId", registration.unitId)
+        .eq("quantityKey", registration.quantityKey),
     )
     .unique();
 }
@@ -323,41 +313,35 @@ async function topAmounts(
     period === "30Days"
       ? await ctx.db
           .query("wasteAmountStats")
-          .withIndex(
-            "by_org_location_product_30_count",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("locationId", locationId)
-                .eq("productId", productId)
-                .gt("count30Days", 0),
+          .withIndex("by_org_location_product_30_count", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", locationId)
+              .eq("productId", productId)
+              .gt("count30Days", 0),
           )
           .order("desc")
           .take(MAX_CHILD_ROWS)
       : period === "90Days"
         ? await ctx.db
             .query("wasteAmountStats")
-            .withIndex(
-              "by_org_location_product_90_count",
-              (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("locationId", locationId)
-                  .eq("productId", productId)
-                  .gt("count90Days", 0),
+            .withIndex("by_org_location_product_90_count", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", locationId)
+                .eq("productId", productId)
+                .gt("count90Days", 0),
             )
             .order("desc")
             .take(MAX_CHILD_ROWS)
         : await ctx.db
             .query("wasteAmountStats")
-            .withIndex(
-              "by_org_location_product_all_count",
-              (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("locationId", locationId)
-                  .eq("productId", productId)
-                  .gt("allTimeCount", 0),
+            .withIndex("by_org_location_product_all_count", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", locationId)
+                .eq("productId", productId)
+                .gt("allTimeCount", 0),
             )
             .order("desc")
             .take(MAX_CHILD_ROWS);
@@ -448,10 +432,7 @@ async function refreshTopAmounts(
 
 async function refreshOrganizationTopAmounts(
   ctx: MutationCtx,
-  registration: Pick<
-    Doc<"wasteRegistrations">,
-    "organizationId" | "productId"
-  >,
+  registration: Pick<Doc<"wasteRegistrations">, "organizationId" | "productId">,
   periods: PopularityPeriod[],
 ) {
   const stats = await organizationProductStats(
@@ -602,29 +583,25 @@ async function latestActiveRegistration(
   return forAmount
     ? await ctx.db
         .query("wasteRegistrations")
-        .withIndex(
-          "by_org_location_product_unit_qty_status_time",
-          (q) =>
-            q
-              .eq("organizationId", registration.organizationId)
-              .eq("locationId", registration.locationId)
-              .eq("productId", registration.productId)
-              .eq("unitId", registration.unitId)
-              .eq("quantityKey", registration.quantityKey)
-              .eq("status", "active"),
+        .withIndex("by_org_location_product_unit_qty_status_time", (q) =>
+          q
+            .eq("organizationId", registration.organizationId)
+            .eq("locationId", registration.locationId)
+            .eq("productId", registration.productId)
+            .eq("unitId", registration.unitId)
+            .eq("quantityKey", registration.quantityKey)
+            .eq("status", "active"),
         )
         .order("desc")
         .first()
     : await ctx.db
         .query("wasteRegistrations")
-        .withIndex(
-          "by_org_location_product_status_time",
-          (q) =>
-            q
-              .eq("organizationId", registration.organizationId)
-              .eq("locationId", registration.locationId)
-              .eq("productId", registration.productId)
-              .eq("status", "active"),
+        .withIndex("by_org_location_product_status_time", (q) =>
+          q
+            .eq("organizationId", registration.organizationId)
+            .eq("locationId", registration.locationId)
+            .eq("productId", registration.productId)
+            .eq("status", "active"),
         )
         .order("desc")
         .first();
@@ -881,7 +858,10 @@ export const listCatalog = query({
     }),
   ),
   handler: async (ctx) => {
-    const { organizationId } = await requireWasteRegistrar(ctx, "waste.register");
+    const { organizationId } = await requireWasteRegistrar(
+      ctx,
+      "waste.register",
+    );
     const products = await ctx.db
       .query("products")
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
@@ -896,7 +876,9 @@ export const listCatalog = query({
           ctx.db
             .query("productUnits")
             .withIndex("by_organizationId_and_productId", (q) =>
-              q.eq("organizationId", organizationId).eq("productId", product._id),
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", product._id),
             )
             .take(MAX_CHILD_ROWS),
           product.imageStorageId
@@ -957,60 +939,62 @@ export const getViewState = query({
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
-    const locationStats = settings.historyScope === "location"
-      ? settings.popularityPeriod === "30Days"
+    const locationStats =
+      settings.historyScope === "location"
+        ? settings.popularityPeriod === "30Days"
+          ? await ctx.db
+              .query("wasteProductStats")
+              .withIndex("by_org_location_30_count", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("locationId", args.locationId),
+              )
+              .order("desc")
+              .take(MAX_PRODUCTS + 1)
+          : settings.popularityPeriod === "90Days"
+            ? await ctx.db
+                .query("wasteProductStats")
+                .withIndex("by_org_location_90_count", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("locationId", args.locationId),
+                )
+                .order("desc")
+                .take(MAX_PRODUCTS + 1)
+            : await ctx.db
+                .query("wasteProductStats")
+                .withIndex("by_org_location_all_count", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("locationId", args.locationId),
+                )
+                .order("desc")
+                .take(MAX_PRODUCTS + 1)
+        : null;
+    const organizationStats =
+      settings.popularityPeriod === "30Days"
         ? await ctx.db
-            .query("wasteProductStats")
-            .withIndex("by_org_location_30_count", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("locationId", args.locationId),
+            .query("wasteOrganizationProductStats")
+            .withIndex("by_org_30_count", (q) =>
+              q.eq("organizationId", organizationId),
             )
             .order("desc")
             .take(MAX_PRODUCTS + 1)
         : settings.popularityPeriod === "90Days"
           ? await ctx.db
-              .query("wasteProductStats")
-              .withIndex("by_org_location_90_count", (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("locationId", args.locationId),
+              .query("wasteOrganizationProductStats")
+              .withIndex("by_org_90_count", (q) =>
+                q.eq("organizationId", organizationId),
               )
               .order("desc")
               .take(MAX_PRODUCTS + 1)
           : await ctx.db
-              .query("wasteProductStats")
-              .withIndex("by_org_location_all_count", (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("locationId", args.locationId),
+              .query("wasteOrganizationProductStats")
+              .withIndex("by_org_all_count", (q) =>
+                q.eq("organizationId", organizationId),
               )
               .order("desc")
-              .take(MAX_PRODUCTS + 1)
-      : null;
-    const organizationStats = settings.popularityPeriod === "30Days"
-      ? await ctx.db
-          .query("wasteOrganizationProductStats")
-          .withIndex("by_org_30_count", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .order("desc")
-          .take(MAX_PRODUCTS + 1)
-      : settings.popularityPeriod === "90Days"
-        ? await ctx.db
-            .query("wasteOrganizationProductStats")
-            .withIndex("by_org_90_count", (q) =>
-              q.eq("organizationId", organizationId),
-            )
-            .order("desc")
-            .take(MAX_PRODUCTS + 1)
-        : await ctx.db
-            .query("wasteOrganizationProductStats")
-            .withIndex("by_org_all_count", (q) =>
-              q.eq("organizationId", organizationId),
-            )
-            .order("desc")
-            .take(MAX_PRODUCTS + 1);
+              .take(MAX_PRODUCTS + 1);
     requireCompleteProductSet(locationStats ?? []);
     requireCompleteProductSet(organizationStats);
     const locationByProduct = new Map(
@@ -1019,27 +1003,30 @@ export const getViewState = query({
     const organizationProductIds = new Set(
       organizationStats.map((row) => row.productId),
     );
-    const stats = settings.historyScope === "organization"
-      ? organizationStats
-      : [
-          ...organizationStats.map((organizationRow) => {
-            const locationRow = locationByProduct.get(
-              organizationRow.productId,
-            );
-            return locationRow &&
-              countForPeriod(locationRow, settings.popularityPeriod) >=
-                MIN_PRODUCT_HISTORY
-              ? locationRow
-              : organizationRow;
-          }),
-          ...(locationStats ?? []).filter(
-            (row) => !organizationProductIds.has(row.productId),
-          ),
-        ];
+    const stats =
+      settings.historyScope === "organization"
+        ? organizationStats
+        : [
+            ...organizationStats.map((organizationRow) => {
+              const locationRow = locationByProduct.get(
+                organizationRow.productId,
+              );
+              return locationRow &&
+                countForPeriod(locationRow, settings.popularityPeriod) >=
+                  MIN_PRODUCT_HISTORY
+                ? locationRow
+                : organizationRow;
+            }),
+            ...(locationStats ?? []).filter(
+              (row) => !organizationProductIds.has(row.productId),
+            ),
+          ];
     const configs = await ctx.db
       .query("wasteProductConfigs")
       .withIndex("by_org_location_pinned", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", args.locationId),
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", args.locationId),
       )
       .take(MAX_PRODUCTS + 1);
     requireCompleteProductSet(configs);
@@ -1124,7 +1111,9 @@ export const registerWaste = mutation({
       throw new ConvexError("Produktets standardenhed blev ikke fundet");
     }
     const now = Date.now();
-    const defaultQuantity = normalizeStock(quantity * productUnit.factorToDefault);
+    const defaultQuantity = normalizeStock(
+      quantity * productUnit.factorToDefault,
+    );
     const registrationId = await ctx.db.insert("wasteRegistrations", {
       organizationId,
       locationId: location._id,
@@ -1147,8 +1136,17 @@ export const registerWaste = mutation({
       activeIn30Days: true,
       activeIn90Days: true,
     });
-    const registration = (await ctx.db.get("wasteRegistrations", registrationId))!;
-    await addStock(ctx, organizationId, location._id, product._id, -defaultQuantity);
+    const registration = (await ctx.db.get(
+      "wasteRegistrations",
+      registrationId,
+    ))!;
+    await addStock(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+      -defaultQuantity,
+    );
     await addRegistrationStats(ctx, registration);
     await Promise.all([
       ctx.scheduler.runAt(
@@ -1237,7 +1235,11 @@ export const setShortcutOverride = mutation({
   handler: async (ctx, args) => {
     const { organizationId } = await requireWasteSettings(ctx);
     await requireLocation(ctx, organizationId, args.locationId);
-    const product = await requireActiveProduct(ctx, organizationId, args.productId);
+    const product = await requireActiveProduct(
+      ctx,
+      organizationId,
+      args.productId,
+    );
     if (args.shortcuts.length < 1 || args.shortcuts.length > 2) {
       throw new ConvexError("Angiv en eller to genveje");
     }
@@ -1317,10 +1319,14 @@ export const clearShortcutOverride = mutation({
 });
 
 export const voidWasteRegistration = mutation({
-  args: { registrationId: v.id("wasteRegistrations") },
+  args: {
+    registrationId: v.id("wasteRegistrations"),
+    reason: v.string(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOrganization(ctx);
+    const reason = requireAuditReason(args.reason);
     const kioskBypass = await requireKioskDestination(ctx, auth, [
       "waste.register",
       "waste.report",
@@ -1338,7 +1344,10 @@ export const voidWasteRegistration = mutation({
     if (!kioskBypass && !canRegister && !canReport) {
       throw new ConvexError("Du har ikke adgang");
     }
-    const registration = await ctx.db.get("wasteRegistrations", args.registrationId);
+    const registration = await ctx.db.get(
+      "wasteRegistrations",
+      args.registrationId,
+    );
     if (!registration || registration.organizationId !== auth.organizationId) {
       throw new ConvexError("Registreringen blev ikke fundet");
     }
@@ -1349,9 +1358,11 @@ export const voidWasteRegistration = mutation({
     const now = Date.now();
     const canUndoOwn =
       registration.registeredBy === auth.userIdentifier &&
-      now - registration.registeredAt <= UNDO_WINDOW_MS;
+      now - registration.registeredAt <= UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS;
     if (!canUndoOwn && !canReport) {
-      throw new ConvexError("Du har ikke adgang til at annullere registreringen");
+      throw new ConvexError(
+        "Du har ikke adgang til at annullere registreringen",
+      );
     }
     const periods: PopularityPeriod[] = ["allTime"];
     if (registration.activeIn30Days) periods.push("30Days");
@@ -1372,6 +1383,14 @@ export const voidWasteRegistration = mutation({
       registration.defaultQuantity,
     );
     await decrementStats(ctx, registration, periods, true);
+    await recordAudit(ctx, auth, {
+      action: "waste.void",
+      entityTable: "wasteRegistrations",
+      entityId: registration._id,
+      locationId: registration.locationId,
+      summary: `Spildregistrering for ${registration.productName} annulleret`,
+      reason,
+    });
     return null;
   },
 });
@@ -1380,7 +1399,10 @@ export const expireRegistrationFrom30DayStats = internalMutation({
   args: { registrationId: v.id("wasteRegistrations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const registration = await ctx.db.get("wasteRegistrations", args.registrationId);
+    const registration = await ctx.db.get(
+      "wasteRegistrations",
+      args.registrationId,
+    );
     if (
       !registration ||
       registration.status !== "active" ||
@@ -1400,7 +1422,10 @@ export const expireRegistrationFrom90DayStats = internalMutation({
   args: { registrationId: v.id("wasteRegistrations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const registration = await ctx.db.get("wasteRegistrations", args.registrationId);
+    const registration = await ctx.db.get(
+      "wasteRegistrations",
+      args.registrationId,
+    );
     if (
       !registration ||
       registration.status !== "active" ||
@@ -1537,7 +1562,11 @@ export const rebuildOrganizationStatsForProduct = internalMutation({
       const key = `${amount.unitId}:${amount.quantityKey}`;
       const current = currentAmountsByKey.get(key);
       if (current) {
-        await ctx.db.replace("wasteOrganizationAmountStats", current._id, amount);
+        await ctx.db.replace(
+          "wasteOrganizationAmountStats",
+          current._id,
+          amount,
+        );
         currentAmountsByKey.delete(key);
       } else {
         await ctx.db.insert("wasteOrganizationAmountStats", amount);
@@ -1615,15 +1644,18 @@ export const cleanupProductData = internalMutation({
         )
         .take(limit),
     ]);
-    for (const row of productStats) await ctx.db.delete("wasteProductStats", row._id);
-    for (const row of amountStatsRows) await ctx.db.delete("wasteAmountStats", row._id);
+    for (const row of productStats)
+      await ctx.db.delete("wasteProductStats", row._id);
+    for (const row of amountStatsRows)
+      await ctx.db.delete("wasteAmountStats", row._id);
     for (const row of organizationProductStatsRows) {
       await ctx.db.delete("wasteOrganizationProductStats", row._id);
     }
     for (const row of organizationAmountStatsRows) {
       await ctx.db.delete("wasteOrganizationAmountStats", row._id);
     }
-    for (const row of configs) await ctx.db.delete("wasteProductConfigs", row._id);
+    for (const row of configs)
+      await ctx.db.delete("wasteProductConfigs", row._id);
     for (const row of onlinePosMappings) {
       await ctx.db.delete("onlinePosProductMappings", row._id);
     }
@@ -1688,16 +1720,16 @@ export const listRegistrations = query({
             )
             .order("desc")
             .paginate(args.paginationOpts)
-      : await ctx.db
-          .query("wasteRegistrations")
-          .withIndex("by_org_and_time", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .gte("registeredAt", args.startAt)
-              .lte("registeredAt", args.endAt),
-          )
-          .order("desc")
-          .paginate(args.paginationOpts);
+        : await ctx.db
+            .query("wasteRegistrations")
+            .withIndex("by_org_and_time", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts);
     return { ...results, page: results.page.map(reportRow) };
   },
 });
@@ -1724,88 +1756,86 @@ export const exportRegistrations = query({
       ? isSingleLocationFilter(locationFilter)
         ? await ctx.db
             .query("wasteRegistrations")
-            .withIndex(
-              "by_org_location_status_time",
-              (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("locationId", locationFilter.locationId)
-                  .eq("status", "active")
-                  .gte("registeredAt", args.startAt)
-                  .lte("registeredAt", args.endAt),
+            .withIndex("by_org_location_status_time", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", locationFilter.locationId)
+                .eq("status", "active")
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
             )
             .order("desc")
             .paginate(args.paginationOpts)
         : isMultiLocationFilter(locationFilter)
-        ? await ctx.db
-            .query("wasteRegistrations")
-            .withIndex("by_org_status_time", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("status", "active")
-                .gte("registeredAt", args.startAt)
-                .lte("registeredAt", args.endAt),
-            )
-            .filter((q) =>
-              q.or(
-                ...locationFilter.locationIds.map((locationId) =>
-                  q.eq(q.field("locationId"), locationId),
+          ? await ctx.db
+              .query("wasteRegistrations")
+              .withIndex("by_org_status_time", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("status", "active")
+                  .gte("registeredAt", args.startAt)
+                  .lte("registeredAt", args.endAt),
+              )
+              .filter((q) =>
+                q.or(
+                  ...locationFilter.locationIds.map((locationId) =>
+                    q.eq(q.field("locationId"), locationId),
+                  ),
                 ),
-              ),
-            )
-            .order("desc")
-            .paginate(args.paginationOpts)
-        : await ctx.db
-            .query("wasteRegistrations")
-            .withIndex("by_org_status_time", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("status", "active")
-                .gte("registeredAt", args.startAt)
-                .lte("registeredAt", args.endAt),
-            )
-            .order("desc")
-            .paginate(args.paginationOpts)
+              )
+              .order("desc")
+              .paginate(args.paginationOpts)
+          : await ctx.db
+              .query("wasteRegistrations")
+              .withIndex("by_org_status_time", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("status", "active")
+                  .gte("registeredAt", args.startAt)
+                  .lte("registeredAt", args.endAt),
+              )
+              .order("desc")
+              .paginate(args.paginationOpts)
       : isSingleLocationFilter(locationFilter)
         ? await ctx.db
             .query("wasteRegistrations")
             .withIndex("by_org_location_time", (q) =>
               q
                 .eq("organizationId", organizationId)
-                  .eq("locationId", locationFilter.locationId)
+                .eq("locationId", locationFilter.locationId)
                 .gte("registeredAt", args.startAt)
                 .lte("registeredAt", args.endAt),
             )
             .order("desc")
             .paginate(args.paginationOpts)
         : isMultiLocationFilter(locationFilter)
-        ? await ctx.db
-            .query("wasteRegistrations")
-            .withIndex("by_org_and_time", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .gte("registeredAt", args.startAt)
-                .lte("registeredAt", args.endAt),
-            )
-            .filter((q) =>
-              q.or(
-                ...locationFilter.locationIds.map((locationId) =>
-                  q.eq(q.field("locationId"), locationId),
+          ? await ctx.db
+              .query("wasteRegistrations")
+              .withIndex("by_org_and_time", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .gte("registeredAt", args.startAt)
+                  .lte("registeredAt", args.endAt),
+              )
+              .filter((q) =>
+                q.or(
+                  ...locationFilter.locationIds.map((locationId) =>
+                    q.eq(q.field("locationId"), locationId),
+                  ),
                 ),
-              ),
-            )
-            .order("desc")
-            .paginate(args.paginationOpts)
-        : await ctx.db
-            .query("wasteRegistrations")
-            .withIndex("by_org_and_time", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .gte("registeredAt", args.startAt)
-                .lte("registeredAt", args.endAt),
-            )
-            .order("desc")
-            .paginate(args.paginationOpts);
+              )
+              .order("desc")
+              .paginate(args.paginationOpts)
+          : await ctx.db
+              .query("wasteRegistrations")
+              .withIndex("by_org_and_time", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .gte("registeredAt", args.startAt)
+                  .lte("registeredAt", args.endAt),
+              )
+              .order("desc")
+              .paginate(args.paginationOpts);
     return { ...results, page: results.page.map(reportRow) };
   },
 });

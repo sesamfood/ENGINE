@@ -66,14 +66,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { kioskDestinations, type KioskDestinationId } from "@/lib/kiosk";
-import type { OrganizationRole } from "@/lib/auth-permissions";
+import type { SystemOrganizationRole } from "@/lib/auth-permissions";
 
-const roleLabels: Record<OrganizationRole, string> = {
+const roleLabels: Record<SystemOrganizationRole, string> = {
   admin: "Administrator",
   manager: "Manager",
   member: "Medlem",
 };
-const roles = Object.keys(roleLabels) as OrganizationRole[];
+const roles = Object.keys(roleLabels) as SystemOrganizationRole[];
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Handlingen kunne ikke gennemføres";
@@ -206,6 +206,7 @@ export function KioskSettings() {
   const access = useAccess();
   const canManageSettings = usePermission("organization.settings");
   const canManageMembers = usePermission("members.manage");
+  const canManageRoles = usePermission("roles.manage");
   const settings = useQuery(
     api.kiosk.getAdminSettings,
     canManageSettings ? {} : "skip",
@@ -232,7 +233,7 @@ export function KioskSettings() {
   const [settingsPending, setSettingsPending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string>();
-  const [role, setRole] = useState<OrganizationRole>("member");
+  const [role, setRole] = useState<SystemOrganizationRole>("member");
   const [editing, setEditing] = useState<Account | null>(null);
   const [passwordAccount, setPasswordAccount] = useState<Account | null>(null);
 
@@ -270,7 +271,7 @@ export function KioskSettings() {
   const availableAccounts = accounts ?? [];
   const availableLocations = locations ?? [];
   const availableRoles =
-    access?.role === "admin"
+    canManageRoles
       ? roles
       : roles.filter((item) => item !== "admin");
   const availableRoleItems = availableRoles.map((item) => ({

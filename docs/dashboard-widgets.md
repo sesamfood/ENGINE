@@ -2,11 +2,20 @@
 
 Widgets use the shared `MetricResult` contract from `lib/dashboard/types.ts`. A metric owns data computation; a visualization only renders that normalized result. Location comparisons use one series per location, while aggregate scope uses one `all` series.
 
+Monetary metrics include their effective ISO 4217 `currency`. Currency resolves from the
+location, then its market, then the organization default (the existing DKK default). When a
+scope contains more than one effective currency, the result sets `mixedCurrency: true` and
+currency visualizations show the Danish `Flere valutaer` state instead of a summed total.
+Money remains integer minor units in storage and is divided only when a metric or display
+formatter renders it.
+
 ## Adding a metric
 
-1. Add the metric id to `metricIds` and its Danish definition to `metricRegistry` in `lib/dashboard/registry.ts`.
+1. Add the metric id and its Danish definition to `metricRegistry` in `lib/dashboard/registry.ts`. Every definition must include a non-empty `formula` that describes the calculation and at least one `sourceTables` entry naming the tables actually read by its Convex implementation.
 2. Implement the id in the exhaustive `dashboardMetricComputers` record in `convex/lib/dashboardMetrics.ts`. Use organization-scoped indexes, validate locations before computation, bucket points in the organization time zone, and include the preceding equal-length period in `previousTotal` when the source data supports it.
 3. Choose compatible visualizations and a default size in the registry. The add-widget dialog then exposes the metric without UI changes.
+
+The formula and source tables are shown in the widget's information popover and when choosing a metric in the add-widget dialog. Derive both fields from the implementation, not from the marketing description; keep the formula and labels in Danish. `sourceTables` uses a non-empty readonly tuple so a metric cannot be registered without documenting at least one data source.
 
 ## Visualizations
 

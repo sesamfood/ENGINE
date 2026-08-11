@@ -5,6 +5,9 @@ import {
   ArrowDownRightIcon,
   ArrowUpRightIcon,
   ChartNoAxesCombinedIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleQuestionMarkIcon,
   MinusIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +27,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { metricRegistry, visualizationLabels } from "@/lib/dashboard/registry";
@@ -46,6 +57,77 @@ type ResizeSession = {
   original: WidgetSize;
   current: WidgetSize;
 };
+
+function FreshnessNotice({
+  freshness,
+}: {
+  freshness: NonNullable<MetricResult["freshness"]>;
+}) {
+  const hasError = freshness.errorLocationCount > 0;
+  const isStale = freshness.staleLocationCount > 0;
+  const label = hasError
+    ? "Synkroniseringsfejl"
+    : isStale
+      ? "Data kan være forældede"
+      : "Data opdateret";
+  const affected = freshness.affectedLocationNames ?? [];
+  const formatter = new Intl.DateTimeFormat("da-DK", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 px-1"
+            aria-label={label}
+          />
+        }
+      >
+        <Badge
+          variant={hasError ? "destructive" : isStale ? "outline" : "secondary"}
+          className="h-5"
+        >
+          {hasError || isStale ? <CircleAlertIcon /> : <CircleCheckIcon />}
+          {label}
+        </Badge>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <PopoverHeader>
+          <PopoverTitle>{label}</PopoverTitle>
+          <PopoverDescription>
+            {isStale
+              ? `${freshness.staleLocationCount} ${freshness.staleLocationCount === 1 ? "lokation har" : "lokationer har"} data, der kan være forældede.`
+              : hasError
+                ? "Seneste synkronisering har en fejl."
+                : "Integrationsdata er synkroniseret inden for det forventede interval."}
+          </PopoverDescription>
+        </PopoverHeader>
+        {freshness.errorLocationCount > 0 ? (
+          <p className="text-sm text-destructive">
+            {freshness.errorLocationCount} {freshness.errorLocationCount === 1 ? "lokation" : "lokationer"} har synkroniseringsfejl.
+          </p>
+        ) : null}
+        <p className="text-sm text-muted-foreground">
+          Senest gennemført: {freshness.lastSuccessAt === null ? "Aldrig" : formatter.format(freshness.lastSuccessAt)}
+        </p>
+        {affected.length > 0 ? (
+          <div className="text-sm">
+            <p className="font-medium">Berørte lokationer</p>
+            <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+              {affected.slice(0, 10).map((name) => <li key={name}>{name}</li>)}
+            </ul>
+            {affected.length > 10 ? <p className="mt-1 text-muted-foreground">+ {affected.length - 10} flere</p> : null}
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function nearestSize(session: ResizeSession, clientX: number, clientY: number) {
   const wantedWidth = Math.max(session.cellWidth, session.width + clientX - session.startX);
@@ -82,6 +164,8 @@ export function WidgetCard({
   const definition = metricRegistry[widget.metricId];
   const current = result ? total(result) : null;
   const previous = result ? previousTotal(result) : null;
+  const freshness = result?.freshness;
+  const hasFreshness = Boolean(freshness);
   const change = current !== null && previous !== null && previous !== 0
     ? ((current - previous) / Math.abs(previous)) * 100
     : null;
@@ -164,7 +248,38 @@ export function WidgetCard({
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <CardTitle className="min-w-0 flex-1 truncate text-base">{definition.label}</CardTitle>
-            {change !== null || result?.truncated ? (
+            <div data-dashboard-no-drag className="shrink-0" onPointerDown={(event) => event.stopPropagation()}>
+              <Popover>
+                <PopoverTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-lg"
+                      className="size-11"
+                      aria-label={`Vis formel og datakilder for ${definition.label}`}
+                    />
+                  }
+                >
+                  <CircleQuestionMarkIcon />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-80">
+                  <PopoverHeader>
+                    <PopoverTitle>{definition.label}</PopoverTitle>
+                    <PopoverDescription>{definition.description}</PopoverDescription>
+                  </PopoverHeader>
+                  <div className="flex flex-col gap-1">
+                    <p className="font-medium">Formel</p>
+                    <p className="text-muted-foreground">{definition.formula}</p>
+                    <p className="mt-2 font-medium">Datakilder</p>
+                    <ul className="list-disc pl-5 text-muted-foreground">
+                      {definition.sourceTables.map((table) => <li key={table}>{table}</li>)}
+                    </ul>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+            {change !== null || result?.truncated || hasFreshness ? (
               <CardDescription className="flex shrink-0 items-center gap-1">
                 {change !== null ? (
                   <Badge
@@ -180,6 +295,7 @@ export function WidgetCard({
                   </Badge>
                 ) : null}
                 {result?.truncated ? <Badge variant="outline">Begrænset data</Badge> : null}
+                {hasFreshness ? <FreshnessNotice freshness={freshness!} /> : null}
               </CardDescription>
             ) : null}
           </div>

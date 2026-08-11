@@ -74,6 +74,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
+import { DEFAULT_CURRENCY } from "@/lib/dashboard/types";
 
 type OnlinePosProduct = {
   id: number;
@@ -84,6 +85,7 @@ type OnlinePosProduct = {
 type SalesLocationContext = {
   id: Id<"locations">;
   name: string;
+  currency: string;
   state: "idle" | "queued" | "running" | "error";
   lastSuccessAt: number | null;
   lastError: string | null;
@@ -94,11 +96,6 @@ type SalesLocationContext = {
 const connectedAtFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
-});
-
-const currencyFormatter = new Intl.NumberFormat("da-DK", {
-  style: "currency",
-  currency: "DKK",
 });
 
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
@@ -161,8 +158,11 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
-function formatOre(revenue: number) {
-  return currencyFormatter.format(revenue / 100);
+function formatOre(revenue: number, currency = DEFAULT_CURRENCY) {
+  return new Intl.NumberFormat("da-DK", {
+    style: "currency",
+    currency,
+  }).format(revenue / 100);
 }
 
 function syncStateLabel(state: SalesLocationContext["state"]) {
@@ -860,7 +860,7 @@ function SalesList() {
                     <TableCell>{order.locationName}</TableCell>
                     <TableCell>{order.orderNumber}</TableCell>
                     <TableCell>{order.itemCount}</TableCell>
-                    <TableCell>{formatOre(order.revenue)}</TableCell>
+                    <TableCell>{formatOre(order.revenue, order.currency)}</TableCell>
                     <TableCell>{order.department || "—"}</TableCell>
                     <TableCell>{order.paymentType || "—"}</TableCell>
                   </TableRow>

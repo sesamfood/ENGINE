@@ -9,13 +9,18 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { requireIntegrationManager } from "./lib/auth";
+import {
+  requireAllLocationAccess,
+  requireIntegrationManager,
+  requireLocationAccess,
+} from "./lib/auth";
 import {
   requestProducts,
   requestSales,
   type OnlinePosProduct,
 } from "./lib/onlinePosApi";
 import { normalizeStock } from "./lib/stock";
+import { recordAudit } from "./lib/audit";
 
 const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
@@ -126,7 +131,8 @@ export const getSettings = query({
     connectedAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
     const settings = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -157,7 +163,8 @@ export const listLocationConnections = query({
     limitReached: v.boolean(),
   }),
   handler: async (ctx) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
     const [locations, connections] = await Promise.all([
       ctx.db
         .query("locations")
@@ -175,9 +182,13 @@ export const listLocationConnections = query({
     const byLocationId = new Map(
       connections.map((connection) => [connection.locationId, connection]),
     );
+    const visibleLocations = locations.filter(
+      (location) =>
+        auth.locationScope.all || auth.locationScope.ids.has(location._id),
+    );
 
     return {
-      locations: locations.slice(0, MAX_LOCATIONS).map((location) => {
+      locations: visibleLocations.slice(0, MAX_LOCATIONS).map((location) => {
         const connection = byLocationId.get(location._id);
         return {
           id: location._id,
@@ -187,7 +198,7 @@ export const listLocationConnections = query({
           connectedAt: connection?.connectedAt ?? null,
         };
       }),
-      limitReached: locations.length > MAX_LOCATIONS,
+      limitReached: visibleLocations.length > MAX_LOCATIONS,
     };
   },
 });
@@ -231,6 +242,8 @@ export const saveConnection = internalMutation({
     organizationId: v.string(),
     token: v.string(),
     companyId: v.number(),
+    actorUserId: v.string(),
+    actorName: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -255,6 +268,16 @@ export const saveConnection = internalMutation({
       for (const mapping of mappings) await ctx.db.delete(mapping._id);
     }
 
+    const integrationId = current
+      ? current._id
+      : await ctx.db.insert("onlinePosIntegrations", {
+          organizationId: args.organizationId,
+          token: args.token,
+          companyId: args.companyId,
+          enabled: true,
+          connectedAt: now,
+          updatedAt: now,
+        });
     if (current) {
       await ctx.db.patch(current._id, {
         token: args.token,
@@ -263,16 +286,21 @@ export const saveConnection = internalMutation({
         connectedAt: now,
         updatedAt: now,
       });
-    } else {
-      await ctx.db.insert("onlinePosIntegrations", {
-        organizationId: args.organizationId,
-        token: args.token,
-        companyId: args.companyId,
-        enabled: true,
-        connectedAt: now,
-        updatedAt: now,
-      });
     }
+    await recordAudit(
+      ctx,
+      {
+        organizationId: args.organizationId,
+        userId: args.actorUserId,
+        userName: args.actorName,
+      },
+      {
+        action: "integration.connected",
+        entityTable: "onlinePosIntegrations",
+        entityId: integrationId,
+        summary: "OnlinePOS-integrationen blev forbundet",
+      },
+    );
     await ctx.scheduler.runAfter(
       0,
       internal.onlinePosSync.enqueueOrganizationSync,
@@ -288,6 +316,8 @@ export const saveLocationConnection = internalMutation({
     locationId: v.id("locations"),
     token: v.string(),
     companyId: v.number(),
+    actorUserId: v.string(),
+    actorName: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -314,6 +344,16 @@ export const saveLocationConnection = internalMutation({
       throw new ConvexError("Lokationen blev ikke fundet");
     }
     const now = Date.now();
+    const connectionId = current
+      ? current._id
+      : await ctx.db.insert("onlinePosLocationIntegrations", {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          token: args.token,
+          companyId: args.companyId,
+          connectedAt: now,
+          updatedAt: now,
+        });
     if (current) {
       await ctx.db.patch(current._id, {
         token: args.token,
@@ -321,23 +361,33 @@ export const saveLocationConnection = internalMutation({
         connectedAt: now,
         updatedAt: now,
       });
-    } else {
-      await ctx.db.insert("onlinePosLocationIntegrations", {
-        organizationId: args.organizationId,
-        locationId: args.locationId,
-        token: args.token,
-        companyId: args.companyId,
-        connectedAt: now,
-        updatedAt: now,
-      });
     }
+    await recordAudit(
+      ctx,
+      {
+        organizationId: args.organizationId,
+        userId: args.actorUserId,
+        userName: args.actorName,
+      },
+      {
+        action: "integration.locationConnected",
+        entityTable: "onlinePosLocationIntegrations",
+        entityId: connectionId,
+        locationId: args.locationId,
+        summary: "OnlinePOS blev forbundet til lokationen",
+      },
+    );
     if ((current && current.companyId !== args.companyId) || reset) {
       await beginLocationSalesReset(ctx, args.organizationId, args.locationId);
     } else {
-      await ctx.scheduler.runAfter(0, internal.onlinePosSync.enqueueLocationSync, {
-        organizationId: args.organizationId,
-        locationId: args.locationId,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.enqueueLocationSync,
+        {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+        },
+      );
     }
     return null;
   },
@@ -373,7 +423,9 @@ export const connect = action({
   args: { token: v.string(), companyId: v.number() },
   returns: v.object({ productCount: v.number() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    const { organizationId, userId, userName } = auth;
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
     const products = await requestProducts({
@@ -384,6 +436,8 @@ export const connect = action({
       organizationId,
       token,
       companyId: args.companyId,
+      actorUserId: userId,
+      actorName: userName,
     });
     return { productCount: products.length };
   },
@@ -397,7 +451,9 @@ export const connectLocation = action({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId, userId, userName } = auth;
+    requireLocationAccess(auth, args.locationId);
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
     const locationName: string | null = await ctx.runQuery(
@@ -417,6 +473,8 @@ export const connectLocation = action({
       locationId: args.locationId,
       token,
       companyId: args.companyId,
+      actorUserId: userId,
+      actorName: userName,
     });
     return null;
   },
@@ -426,7 +484,9 @@ export const setEnabled = action({
   args: { enabled: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    const { organizationId } = auth;
     const settings: {
       token: string;
       companyId: number;
@@ -450,7 +510,9 @@ export const disconnect = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    const { organizationId } = auth;
     const [settings, mappings, locationConnections] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
@@ -480,13 +542,17 @@ export const disconnect = mutation({
     for (const mapping of mappings) await ctx.db.delete(mapping._id);
     for (const connection of locationConnections) {
       await ctx.db.delete(connection._id);
-      await beginLocationSalesReset(
-        ctx,
-        organizationId,
-        connection.locationId,
-      );
+      await beginLocationSalesReset(ctx, organizationId, connection.locationId);
     }
     if (settings) await ctx.db.delete(settings._id);
+    if (settings || locationConnections.length > 0) {
+      await recordAudit(ctx, auth, {
+        action: "integration.disconnected",
+        entityTable: "onlinePosIntegrations",
+        entityId: organizationId,
+        summary: "OnlinePOS-integrationen blev afbrudt",
+      });
+    }
     return null;
   },
 });
@@ -495,7 +561,9 @@ export const disconnectLocation = mutation({
   args: { locationId: v.id("locations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireIntegrationManager(ctx);
+    const auth = await requireIntegrationManager(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
     const [location, connection] = await Promise.all([
       ctx.db.get("locations", args.locationId),
       ctx.db
@@ -512,6 +580,13 @@ export const disconnectLocation = mutation({
     }
     if (connection) await ctx.db.delete(connection._id);
     await beginLocationSalesReset(ctx, organizationId, args.locationId);
+    await recordAudit(ctx, auth, {
+      action: "integration.locationDisconnected",
+      entityTable: "onlinePosLocationIntegrations",
+      entityId: connection?._id ?? args.locationId,
+      locationId: args.locationId,
+      summary: "OnlinePOS blev afbrudt fra lokationen",
+    });
     return null;
   },
 });
@@ -668,7 +743,10 @@ export const setProductMapping = action({
 export const buildCountWasteReport = query({
   args: { countId: v.id("counts") },
   returns: wasteReportResultValidator,
-  handler: async (ctx, args): Promise<{
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
     locationName: string;
     submittedAt: number;
     hasBaseline: boolean;
@@ -760,11 +838,9 @@ export const buildCountWasteReport = query({
       historyStart <= from;
 
     if (!connected) {
-      salesOmittedReason =
-        "lokationen er ikke forbundet til OnlinePOS";
+      salesOmittedReason = "lokationen er ikke forbundet til OnlinePOS";
     } else if (!windowCovered) {
-      salesOmittedReason =
-        "synkroniserede salg dækker ikke count-perioden";
+      salesOmittedReason = "synkroniserede salg dækker ikke count-perioden";
     } else if (mappings.length > MAX_PRODUCTS) {
       salesOmittedReason =
         "der er for mange produktkoblinger til at beregne sikkert";

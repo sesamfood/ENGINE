@@ -38,6 +38,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
+import { usePermission } from "@/components/app-shell";
 import {
   TransferForm,
   type EditableTransfer,
@@ -729,6 +730,7 @@ function ExportColumnList({
 
 export function TransferHistory() {
   const convex = useConvex();
+  const canExport = usePermission("transfers.export");
   const [fromDate, setFromDate] = useState(defaultFromDate);
   const [toDate, setToDate] = useState(defaultToDate);
   const [selectedTransferId, setSelectedTransferId] =
@@ -896,16 +898,18 @@ export function TransferHistory() {
             />
           </Field>
         </FieldGroup>
-        <Button
-          variant="outline"
-          size="lg"
-          className="min-h-11 px-4"
-          disabled={Boolean(rangeError)}
-          onClick={() => setIsExportOpen(true)}
-        >
-          <DownloadIcon data-icon="inline-start" />
-          Eksportér til CSV
-        </Button>
+        {canExport ? (
+          <Button
+            variant="outline"
+            size="lg"
+            className="min-h-11 px-4"
+            disabled={Boolean(rangeError)}
+            onClick={() => setIsExportOpen(true)}
+          >
+            <DownloadIcon data-icon="inline-start" />
+            Eksportér til CSV
+          </Button>
+        ) : null}
       </div>
 
       {rangeError ? (

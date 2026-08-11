@@ -9,9 +9,12 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import type { MetricResult } from "@/lib/dashboard/types";
-import { chartModel, shortDate } from "./utils";
+import { chartModel, isMixedCurrency, shortDate } from "./utils";
 
 export function AreaVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
+  if (isMixedCurrency(result)) {
+    return <div className="grid h-full place-items-center text-sm text-muted-foreground">Flere valutaer</div>;
+  }
   const model = chartModel(result);
   return (
     <ChartContainer config={model.config} className="h-full min-h-0 w-full aspect-auto">

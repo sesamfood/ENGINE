@@ -52,6 +52,15 @@ export const widgetValidator = v.object({
 export const scopeValidator = v.object({
   mode: v.union(v.literal("aggregate"), v.literal("compare")),
   locationIds: v.union(v.array(v.id("locations")), v.null()),
+  level: v.optional(
+    v.union(
+      v.literal("organization"),
+      v.literal("market"),
+      v.literal("operator"),
+      v.literal("location"),
+    ),
+  ),
+  parentId: v.optional(v.string()),
 });
 
 export const rangeValidator = v.object({
@@ -94,6 +103,16 @@ export const metricResultValidator = v.object({
   ),
   target: v.optional(v.number()),
   truncated: v.optional(v.boolean()),
+  currency: v.optional(v.string()),
+  mixedCurrency: v.optional(v.boolean()),
+  freshness: v.optional(
+    v.object({
+      lastSuccessAt: v.union(v.number(), v.null()),
+      staleLocationCount: v.number(),
+      errorLocationCount: v.number(),
+      affectedLocationNames: v.optional(v.array(v.string())),
+    }),
+  ),
   headlineTotal: v.optional(v.number()),
   headlinePrevious: v.optional(v.union(v.number(), v.null())),
 });

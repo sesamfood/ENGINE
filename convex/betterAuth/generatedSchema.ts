@@ -81,6 +81,14 @@ export const tables = {
   })
     .index("name", ["name"])
     .index("slug", ["slug"]),
+  organizationRole: defineTable({
+    organizationId: v.string(),
+    role: v.string(),
+    permission: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.union(v.null(), v.number())),
+  })
+    .index("organizationId", ["organizationId"]),
   member: defineTable({
     organizationId: v.string(),
     userId: v.string(),

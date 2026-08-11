@@ -16,8 +16,12 @@ import {
   requireOrganizationAdmin,
 } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
+import {
+  requireTimeZone,
+  resolveTimeZone,
+  scheduleLocationDayStartReroll,
+} from "./lib/timeZone";
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_WEEK_SHIFTS = 2_000;
 const MAX_LOCATION_EMPLOYEES = 500;
 const MAX_ASSIGNMENTS = 200;
@@ -46,9 +50,7 @@ const employeeSummaryValidator = v.object({
   displayName: v.string(),
   imageUrl: v.union(v.string(), v.null()),
   active: v.boolean(),
-  locations: v.array(
-    v.object({ id: v.id("locations"), name: v.string() }),
-  ),
+  locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
 });
 
 function parseDate(value: string) {
@@ -78,27 +80,10 @@ function dateInTimeZone(timestamp: number, timeZone: string) {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(timestamp);
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const value = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
   return `${value.year}-${value.month}-${value.day}`;
-}
-
-function requireTimeZone(timeZone: string) {
-  const normalized = timeZone.trim();
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: normalized }).format();
-  } catch {
-    throw new ConvexError("Tidszonen er ugyldig");
-  }
-  return normalized;
-}
-
-async function scheduleSettings(ctx: QueryCtx, organizationId: string) {
-  return await ctx.db
-    .query("organizationScheduleSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
 }
 
 async function hydrateEmployee(
@@ -113,7 +98,9 @@ async function hydrateEmployee(
     )
     .take(MAX_ASSIGNMENTS);
   const locations = await Promise.all(
-    assignments.map((assignment) => ctx.db.get("locations", assignment.locationId)),
+    assignments.map((assignment) =>
+      ctx.db.get("locations", assignment.locationId),
+    ),
   );
   return {
     id: employee._id,
@@ -151,8 +138,22 @@ export const getContext = query({
       "waste.report",
     ]);
     const { organizationId } = auth;
-    const [settings, integration, status, employee, shift, manualLimit] = await Promise.all([
-      scheduleSettings(ctx, organizationId),
+    const [
+      timeZone,
+      settings,
+      integration,
+      status,
+      employee,
+      shift,
+      manualLimit,
+    ] = await Promise.all([
+      resolveTimeZone(ctx, organizationId),
+      ctx.db
+        .query("organizationScheduleSettings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
       ctx.db
         .query("workfeedIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -180,7 +181,7 @@ export const getContext = query({
       rateLimiter.check(ctx, "manualWorkfeedSync", { key: organizationId }),
     ]);
     return {
-      timeZone: settings?.timeZone ?? DEFAULT_TIME_ZONE,
+      timeZone,
       usesDefaultTimeZone: !settings,
       workfeedConnected: Boolean(integration),
       workfeedEnabled: Boolean(integration?.enabled),
@@ -233,8 +234,11 @@ export const listWeek = query({
     if (location?.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
     }
-    const settings = await scheduleSettings(ctx, organizationId);
-    const timeZone = settings?.timeZone ?? DEFAULT_TIME_ZONE;
+    const timeZone = await resolveTimeZone(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const dates = Array.from({ length: 7 }, (_, index) =>
       dateValue(new Date(monday.getTime() + index * DAY_MS)),
     );
@@ -252,7 +256,9 @@ export const listWeek = query({
       ctx.db
         .query("employeeLocationAssignments")
         .withIndex("by_organizationId_and_locationId_and_employeeId", (q) =>
-          q.eq("organizationId", organizationId).eq("locationId", args.locationId),
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", args.locationId),
         )
         .take(MAX_LOCATION_EMPLOYEES + 1),
     ]);
@@ -279,26 +285,31 @@ export const listWeek = query({
       dates,
       employees: employees
         .flatMap((employee) => {
-          if (!employee || employee.organizationId !== organizationId) return [];
+          if (!employee || employee.organizationId !== organizationId)
+            return [];
           const employeeShifts = shiftsByEmployee.get(employee._id) ?? [];
           if (!employee.active && employeeShifts.length === 0) return [];
-          return [{
-            id: employee._id,
-            displayName: employee.displayName,
-            imageUrl: employee.imageUrl,
-            active: employee.active,
-            shifts: employeeShifts
-              .sort((left, right) => left.startsAt - right.startsAt)
-              .map((shift) => ({
-                id: shift._id,
-                startsAt: shift.startsAt,
-                endsAt: shift.endsAt,
-                roleName: shift.roleName,
-                date: shift.date,
-              })),
-          }];
+          return [
+            {
+              id: employee._id,
+              displayName: employee.displayName,
+              imageUrl: employee.imageUrl,
+              active: employee.active,
+              shifts: employeeShifts
+                .sort((left, right) => left.startsAt - right.startsAt)
+                .map((shift) => ({
+                  id: shift._id,
+                  startsAt: shift.startsAt,
+                  endsAt: shift.endsAt,
+                  roleName: shift.roleName,
+                  date: shift.date,
+                })),
+            },
+          ];
         })
-        .sort((left, right) => left.displayName.localeCompare(right.displayName, "da")),
+        .sort((left, right) =>
+          left.displayName.localeCompare(right.displayName, "da"),
+        ),
       limitReached:
         shiftRows.length > MAX_WEEK_SHIFTS ||
         assignments.length > MAX_LOCATION_EMPLOYEES,
@@ -330,13 +341,18 @@ export const listDirectory = query({
         ? await ctx.db
             .query("employees")
             .withSearchIndex("search_displayName", (q) =>
-              q.search("displayName", search).eq("organizationId", organizationId).eq("active", true),
+              q
+                .search("displayName", search)
+                .eq("organizationId", organizationId)
+                .eq("active", true),
             )
             .paginate(args.paginationOpts)
         : await ctx.db
             .query("employees")
             .withSearchIndex("search_displayName", (q) =>
-              q.search("displayName", search).eq("organizationId", organizationId),
+              q
+                .search("displayName", search)
+                .eq("organizationId", organizationId),
             )
             .paginate(args.paginationOpts);
     } else {
@@ -358,25 +374,23 @@ export const listDirectory = query({
       result.page.map(async (employee) => {
         const assignment = await ctx.db
           .query("employeeLocationAssignments")
-          .withIndex(
-            "by_organizationId_and_locationId_and_employeeId",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("locationId", args.locationId)
-                .eq("employeeId", employee._id),
+          .withIndex("by_organizationId_and_locationId_and_employeeId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", args.locationId)
+              .eq("employeeId", employee._id),
           )
           .unique();
         if (!assignment) return null;
         const hydrated = await hydrateEmployee(ctx, organizationId, employee);
-        return auth.isKioskAccount
-          ? {
-              ...hydrated,
-              locations: hydrated.locations.filter(
-                (item) => item.id === args.locationId,
-              ),
-            }
-          : hydrated;
+        const visibleLocations = auth.isKioskAccount
+          ? hydrated.locations.filter((item) => item.id === args.locationId)
+          : auth.locationScope.all
+            ? hydrated.locations
+            : hydrated.locations.filter((item) =>
+                auth.locationScope.ids.has(item.id),
+              );
+        return { ...hydrated, locations: visibleLocations };
       }),
     );
     return { ...result, page: page.filter((employee) => employee !== null) };
@@ -389,6 +403,23 @@ export const setTimeZone = mutation({
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const timeZone = requireTimeZone(args.timeZone);
+    const locations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(201);
+    if (locations.length > 200) {
+      throw new ConvexError("Organisationen har for mange lokationer");
+    }
+    const inheritedLocations = locations.filter(
+      (location) => !location.timeZone,
+    );
+    const previousTimeZones = await Promise.all(
+      inheritedLocations.map((location) =>
+        resolveTimeZone(ctx, organizationId, location._id),
+      ),
+    );
     const current = await ctx.db
       .query("organizationScheduleSettings")
       .withIndex("by_organizationId", (q) =>
@@ -403,6 +434,21 @@ export const setTimeZone = mutation({
         timeZone,
         updatedAt: Date.now(),
       });
+    }
+    for (const [index, location] of inheritedLocations.entries()) {
+      const nextTimeZone = await resolveTimeZone(
+        ctx,
+        organizationId,
+        location._id,
+      );
+      if (nextTimeZone !== previousTimeZones[index]) {
+        await scheduleLocationDayStartReroll(
+          ctx,
+          organizationId,
+          location._id,
+          nextTimeZone,
+        );
+      }
     }
     return null;
   },
@@ -440,7 +486,11 @@ export const requestWorkfeedSync = mutation({
       return { accepted: false, state: "unavailable" as const, retryAt: null };
     }
     if (status?.state === "queued" || status?.state === "running") {
-      return { accepted: false, state: "alreadyQueued" as const, retryAt: null };
+      return {
+        accepted: false,
+        state: "alreadyQueued" as const,
+        retryAt: null,
+      };
     }
     const limit = await rateLimiter.limit(ctx, "manualWorkfeedSync", {
       key: organizationId,

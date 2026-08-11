@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import {
   action,
@@ -40,12 +40,34 @@ import {
   requireDashboardViewer,
 } from "./lib/auth";
 import { hasPermission } from "../lib/auth-permissions";
+import type { DataGranularity } from "../lib/auth-permissions";
 
 const MAX_WIDGETS = 24;
 const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
 const CLEANUP_PAGE = 50;
 const MAX_METRIC_BATCH = 3;
+
+type DashboardAccess = {
+  role: string;
+  permissions: ReadonlySet<string>;
+  granularity: DataGranularity;
+};
+
+function canViewSales(auth: DashboardAccess) {
+  return (
+    hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
+    hasPermission(auth.role, auth.permissions, "sales.viewAggregate") ||
+    hasPermission(auth.role, auth.permissions, "sales.viewDetail")
+  );
+}
+
+function canViewDetailedSales(auth: DashboardAccess) {
+  return (
+    hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
+    hasPermission(auth.role, auth.permissions, "sales.viewDetail")
+  );
+}
 
 const shareSummaryValidator = v.object({
   id: v.id("dashboardShares"),
@@ -104,6 +126,41 @@ async function validateScope(
   scope: DashboardScope,
   allowedLocationScope?: { all: boolean; ids: ReadonlySet<Doc<"locations">["_id"]> },
 ) {
+  if (!scope.level && scope.parentId) {
+    throw new ConvexError("Scopeforælderen er ugyldig");
+  }
+  if (scope.level === "organization" && scope.parentId) {
+    throw new ConvexError("Organisationen har ikke en scopeforælder");
+  }
+  if (scope.level === "market") {
+    if (!scope.parentId) throw new ConvexError("Vælg et marked");
+    const market = await ctx.db.get("markets", scope.parentId as Id<"markets">);
+    if (!market || market.organizationId !== organizationId) {
+      throw new ConvexError("Markedet blev ikke fundet");
+    }
+  }
+  if (scope.level === "operator") {
+    if (!scope.parentId) throw new ConvexError("Vælg en operatør");
+    const operator = await ctx.db.get(
+      "operators",
+      scope.parentId as Id<"operators">,
+    );
+    if (!operator || operator.organizationId !== organizationId) {
+      throw new ConvexError("Operatøren blev ikke fundet");
+    }
+  }
+  if (scope.level === "location" && scope.parentId) {
+    const location = await ctx.db.get(
+      "locations",
+      scope.parentId as Id<"locations">,
+    );
+    if (!location || location.organizationId !== organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
+    if (scope.locationIds && !scope.locationIds.includes(location._id)) {
+      throw new ConvexError("Scopeforælderen matcher ikke lokationen");
+    }
+  }
   if (scope.locationIds === null) return;
   if (scope.locationIds.length === 0 || scope.locationIds.length > 200) {
     throw new ConvexError("Vælg mellem 1 og 200 lokationer");
@@ -125,7 +182,80 @@ async function validateScope(
   if (locations.some((location) => location?.organizationId !== organizationId)) {
     throw new ConvexError("Lokationen blev ikke fundet");
   }
+  if (scope.level === "market" && scope.parentId && locations.some((location) => location?.marketId !== scope.parentId)) {
+    throw new ConvexError("Scope indeholder en lokation uden for markedet");
+  }
+  if (scope.level === "operator" && scope.parentId && locations.some((location) => location?.operatorId !== scope.parentId)) {
+    throw new ConvexError("Scope indeholder en lokation uden for operatøren");
+  }
 }
+
+const scopeMarketOptionValidator = v.object({
+  id: v.id("markets"),
+  name: v.string(),
+});
+
+const scopeOperatorOptionValidator = v.object({
+  id: v.id("operators"),
+  name: v.string(),
+});
+
+const scopeLocationOptionValidator = v.object({
+  id: v.id("locations"),
+  name: v.string(),
+  marketId: v.union(v.id("markets"), v.null()),
+  operatorId: v.union(v.id("operators"), v.null()),
+});
+
+const scopeOptionsValidator = v.object({
+  markets: v.array(scopeMarketOptionValidator),
+  operators: v.array(scopeOperatorOptionValidator),
+  locations: v.array(scopeLocationOptionValidator),
+});
+
+export const listScopeOptions = query({
+  args: {},
+  returns: scopeOptionsValidator,
+  handler: async (ctx) => {
+    const auth = await requireDashboardViewer(ctx);
+    const rows = auth.locationScope.all
+      ? await ctx.db
+          .query("locations")
+          .withIndex("by_organizationId_and_normalizedName", (q) =>
+            q.eq("organizationId", auth.organizationId),
+          )
+          .take(200)
+      : await Promise.all(
+          [...auth.locationScope.ids]
+            .slice(0, 200)
+            .map((locationId) => ctx.db.get("locations", locationId)),
+        );
+    const locations = rows.filter(
+      (location): location is NonNullable<typeof location> =>
+        Boolean(location && location.organizationId === auth.organizationId),
+    );
+    const marketIds = [...new Set(locations.flatMap((location) => location.marketId ? [location.marketId] : []))];
+    const operatorIds = [...new Set(locations.flatMap((location) => location.operatorId ? [location.operatorId] : []))];
+    const [markets, operators] = await Promise.all([
+      Promise.all(marketIds.map((id) => ctx.db.get("markets", id))),
+      Promise.all(operatorIds.map((id) => ctx.db.get("operators", id))),
+    ]);
+    return {
+      markets: markets
+        .filter((market) => market?.organizationId === auth.organizationId)
+        .map((market) => ({ id: market!._id, name: market!.name })),
+      operators: operators
+        .filter((operator) => operator?.organizationId === auth.organizationId)
+        .map((operator) => ({ id: operator!._id, name: operator!.name })),
+      locations: locations.map((location) => ({
+        id: location._id,
+        name: location.name,
+        marketId: location.marketId ?? null,
+        operatorId: location.operatorId ?? null,
+      })),
+    };
+  },
+});
 
 function configFromDocument(
   document: Doc<"dashboards"> | null,
@@ -145,6 +275,7 @@ function configFromDocument(
             : storedScope.locationIds.filter((id) => allowedLocationScope.ids.has(id));
           return locationIds.length
             ? {
+                ...storedScope,
                 mode:
                   storedScope.mode === "compare" && locationIds.length < 2
                     ? ("aggregate" as const)
@@ -165,7 +296,14 @@ function configFromDocument(
         scope: { mode: "aggregate" as const, locationIds: null },
         range: { preset: "7days" as const },
         updatedAt: null,
-      };
+  };
+}
+
+function markScopeTruncated<T extends { truncated?: boolean }>(
+  result: T,
+  scopeTruncated?: boolean,
+) {
+  return scopeTruncated ? { ...result, truncated: true } : result;
 }
 
 export const getConfig = query({
@@ -182,7 +320,7 @@ export const getConfig = query({
       .unique();
     return configFromDocument(
       dashboard,
-      hasPermission(auth.role, auth.permissions, "dashboard.viewSales"),
+      canViewSales(auth),
       auth.locationScope,
     );
   },
@@ -201,7 +339,7 @@ async function writeConfig(
   const { organizationId, userIdentifier } = auth;
   validateWidgets(
     args.widgets,
-    hasPermission(auth.role, auth.permissions, "dashboard.viewSales"),
+    canViewSales(auth),
   );
   await validateScope(ctx, organizationId, args.scope, auth.locationScope);
   const current = await ctx.db
@@ -281,7 +419,7 @@ export const getMetric = query({
     }
     if (
       definition.sensitive &&
-      !hasPermission(auth.role, auth.permissions, "dashboard.viewSales")
+      !canViewSales(auth)
     ) {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
@@ -292,8 +430,16 @@ export const getMetric = query({
       args.range,
       args.now,
       auth.locationScope,
+      {
+        granularity: auth.granularity,
+        anonymousSeed: auth.sessionId,
+        salesDetailAllowed: canViewDetailedSales(auth),
+      },
     );
-    return await dashboardMetricComputers[args.metricId](ctx, params);
+    return markScopeTruncated(
+      await dashboardMetricComputers[args.metricId](ctx, params),
+      params.scopeTruncated,
+    );
   },
 });
 
@@ -322,7 +468,7 @@ export const getMetrics = query({
       }
       if (
         definition.sensitive &&
-        !hasPermission(auth.role, auth.permissions, "dashboard.viewSales")
+        !canViewSales(auth)
       ) {
         throw new ConvexError("Du har ikke adgang til denne måling");
       }
@@ -334,6 +480,11 @@ export const getMetrics = query({
       args.range,
       args.now,
       auth.locationScope,
+      {
+        granularity: auth.granularity,
+        anonymousSeed: auth.sessionId,
+        salesDetailAllowed: canViewDetailedSales(auth),
+      },
     );
     const results = new Map<
       string,
@@ -350,7 +501,10 @@ export const getMetrics = query({
     return await Promise.all(
       args.widgets.map(async (widget) => ({
         key: widget.key,
-        result: await results.get(widget.metricId)!,
+        result: markScopeTruncated(
+          await results.get(widget.metricId)!,
+          params.scopeTruncated,
+        ),
       })),
     );
   },
@@ -382,6 +536,14 @@ export const insertShare = internalMutation({
     scope: scopeValidator,
     range: rangeValidator,
     createdBy: v.string(),
+    granularity: v.optional(
+      v.union(
+        v.literal("detail"),
+        v.literal("aggregate"),
+        v.literal("anonymous"),
+      ),
+    ),
+    salesDetailAllowed: v.optional(v.boolean()),
     expiresAt: v.number(),
   },
   returns: v.id("dashboardShares"),
@@ -421,15 +583,11 @@ export const createShare = action({
       organizationId,
       userIdentifier,
     });
-    const canViewSales = hasPermission(
-      auth.role,
-      auth.permissions,
-      "dashboard.viewSales",
-    );
+    const salesAllowed = canViewSales(auth);
     const widgets = source.widgets.filter(
       (widget) =>
         metricRegistry[widget.metricId].shareable !== false &&
-        (canViewSales || !metricRegistry[widget.metricId].sensitive),
+        (salesAllowed || !metricRegistry[widget.metricId].sensitive),
     );
     const scope = auth.locationScope.all
       ? source.scope
@@ -442,6 +600,7 @@ export const createShare = action({
             throw new ConvexError("Du har ikke adgang til overblikkets lokationer");
           }
           return {
+            ...source.scope,
             mode:
               source.scope.mode === "compare" && locationIds.length >= 2
                 ? ("compare" as const)
@@ -475,6 +634,8 @@ export const createShare = action({
       scope,
       range: source.range,
       createdBy: userIdentifier,
+      granularity: auth.granularity,
+      salesDetailAllowed: canViewDetailedSales(auth),
       expiresAt: args.expiresAt,
     });
     return { token };

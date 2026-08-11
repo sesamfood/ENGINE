@@ -71,7 +71,6 @@ import { api } from "@/convex/_generated/api";
 import { usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { OrganizationRole } from "@/lib/auth-permissions";
 
 type Member = {
   id: string;
@@ -87,22 +86,11 @@ type Invitation = {
   status: string;
 };
 
-const roleLabels: Record<OrganizationRole, string> = {
-  admin: "Administrator",
-  manager: "Manager",
-  member: "Medlem",
-};
-
-const roles = Object.keys(roleLabels) as OrganizationRole[];
-const roleItems = roles.map((role) => ({
-  value: role,
-  label: roleLabels[role],
-}));
-
 type LocationAccessRow = {
   userId: string;
-  scope: "all" | "selected";
+  scope: "all" | "selected" | "operator";
   locationIds: Id<"locations">[];
+  operatorId: Id<"operators"> | null;
 };
 
 type LocationAccessOption = {
@@ -110,39 +98,66 @@ type LocationAccessOption = {
   name: string;
 };
 
+type OperatorAccessOption = {
+  id: Id<"operators">;
+  name: string;
+};
+
 function MemberLocationPicker({
   userId,
   access,
   locations,
+  operators,
   disabled,
   setAccess,
 }: {
   userId: string;
   access?: LocationAccessRow;
   locations: LocationAccessOption[];
+  operators: OperatorAccessOption[];
   disabled: boolean;
   setAccess: (args: {
     userId: string;
-    scope: "all" | "selected";
+    scope: "all" | "selected" | "operator";
     locationIds: Id<"locations">[];
+    operatorId?: Id<"operators">;
+    reason: string;
   }) => Promise<unknown>;
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState("");
   const scope = access?.scope ?? "all";
   const selectedIds = access?.locationIds ?? [];
+  const operator = operators.find((item) => item.id === access?.operatorId);
   const label =
     scope === "all"
       ? "Alle lokationer"
-      : `${selectedIds.length} lokation${selectedIds.length === 1 ? "" : "er"}`;
+      : scope === "operator"
+        ? (operator?.name ?? "Vælg operatør")
+        : `${selectedIds.length} lokation${selectedIds.length === 1 ? "" : "er"}`;
 
-  async function save(scopeValue: "all" | "selected", locationIds: Id<"locations">[]) {
+  async function save(
+    scopeValue: "all" | "selected" | "operator",
+    locationIds: Id<"locations">[],
+    operatorId?: Id<"operators">,
+  ) {
     setSaving(true);
     try {
-      await setAccess({ userId, scope: scopeValue, locationIds });
+      await setAccess({
+        userId,
+        scope: scopeValue,
+        locationIds,
+        operatorId,
+        reason,
+      });
       toast.success("Lokationerne er opdateret");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Lokationerne kunne ikke opdateres");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Lokationerne kunne ikke opdateres",
+      );
     } finally {
       setSaving(false);
     }
@@ -160,7 +175,13 @@ function MemberLocationPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setReason("");
+      }}
+    >
       <PopoverTrigger
         render={
           <Button
@@ -175,32 +196,76 @@ function MemberLocationPicker({
         <span className="truncate">{label}</span>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72">
-        <FieldSet className="gap-2">
-          <FieldLegend variant="label">Lokationer</FieldLegend>
-          <label className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
-            <Checkbox
-              checked={scope === "all"}
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`location-access-reason-${userId}`}>
+              Begrundelse
+            </FieldLabel>
+            <Input
+              id={`location-access-reason-${userId}`}
+              value={reason}
+              maxLength={1000}
+              placeholder="Hvorfor ændres adgangen?"
               disabled={saving}
-              onCheckedChange={(checked) => {
-                if (checked === true) void save("all", []);
-              }}
+              onChange={(event) => setReason(event.target.value)}
             />
-            <span>Alle lokationer</span>
-          </label>
-          {locations.map((location) => (
-            <label
-              key={location.id}
-              className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
-            >
+          </Field>
+          <FieldSet className="gap-2">
+            <FieldLegend variant="label">Lokationer</FieldLegend>
+            <label className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
               <Checkbox
-                checked={scope === "selected" && selectedIds.includes(location.id)}
-                disabled={saving}
-                onCheckedChange={(checked) => toggleLocation(location.id, checked === true)}
+                checked={scope === "all"}
+                disabled={saving || !reason.trim()}
+                onCheckedChange={(checked) => {
+                  if (checked === true) void save("all", []);
+                }}
               />
-              <span className="truncate">{location.name}</span>
+              <span>Alle lokationer</span>
             </label>
-          ))}
-        </FieldSet>
+            {locations.map((location) => (
+              <label
+                key={location.id}
+                className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
+              >
+                <Checkbox
+                  checked={
+                    scope === "selected" && selectedIds.includes(location.id)
+                  }
+                  disabled={saving || !reason.trim()}
+                  onCheckedChange={(checked) =>
+                    toggleLocation(location.id, checked === true)
+                  }
+                />
+                <span className="truncate">{location.name}</span>
+              </label>
+            ))}
+            {operators.length ? (
+              <>
+                <FieldLegend variant="label" className="mt-2">
+                  Operatør
+                </FieldLegend>
+                {operators.map((item) => (
+                  <label
+                    key={item.id}
+                    className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
+                  >
+                    <Checkbox
+                      checked={
+                        scope === "operator" && access?.operatorId === item.id
+                      }
+                      disabled={saving || !reason.trim()}
+                      onCheckedChange={(checked) => {
+                        if (checked === true)
+                          void save("operator", [], item.id);
+                      }}
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </label>
+                ))}
+              </>
+            ) : null}
+          </FieldSet>
+        </FieldGroup>
       </PopoverContent>
     </Popover>
   );
@@ -227,7 +292,7 @@ export function MemberManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [pendingId, setPendingId] = useState<string>();
-  const [inviteRole, setInviteRole] = useState<OrganizationRole>("member");
+  const [inviteRole, setInviteRole] = useState("member");
   const [inviting, setInviting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const kioskAccounts = useQuery(api.kiosk.listAccounts, allowed ? {} : "skip");
@@ -236,10 +301,19 @@ export function MemberManagement() {
     api.access.listMemberLocationAccess,
     allowed ? {} : "skip",
   );
+  const roleRows = useQuery(api.access.listRoles, allowed ? {} : "skip");
   const updateMemberLocationAccess = useMutation(
     api.access.setMemberLocationAccess,
   );
   const organizationId = organization?.id;
+  const roles = roleRows?.map((role) => role.key) ?? [];
+  const roleLabels = Object.fromEntries(
+    (roleRows ?? []).map((role) => [role.key, role.name]),
+  );
+  const roleItems = (roleRows ?? []).map((role) => ({
+    value: role.key,
+    label: role.name,
+  }));
 
   useEffect(() => {
     if (!organizationId || !allowed) return;
@@ -315,7 +389,7 @@ export function MemberManagement() {
     }
   }
 
-  async function changeRole(member: Member, role: OrganizationRole) {
+  async function changeRole(member: Member, role: string) {
     if (!organization) return;
     setPendingId(member.id);
     try {
@@ -343,7 +417,9 @@ export function MemberManagement() {
     if (!organization) return;
     setPendingId(member.id);
     try {
-      const kioskAccount = kioskAccounts?.find((account) => account.userId === member.userId);
+      const kioskAccount = kioskAccounts?.find(
+        (account) => account.userId === member.userId,
+      );
       if (kioskAccount) {
         await deleteKioskAccount({ memberId: kioskAccount.memberId });
       } else {
@@ -404,9 +480,12 @@ export function MemberManagement() {
     );
   }
 
+  if (roleRows === undefined) return <Skeleton className="h-80 w-full" />;
+
   const adminCount = members.filter((member) => member.role === "admin").length;
   const accessRows = memberLocationAccess?.access ?? [];
   const assignmentLocations = memberLocationAccess?.locations ?? [];
+  const assignmentOperators = memberLocationAccess?.operators ?? [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -449,7 +528,7 @@ export function MemberManagement() {
                     <SelectGroup>
                       {roles.map((role) => (
                         <SelectItem key={role} value={role}>
-                          {roleLabels[role]}
+                          {roleLabels[role] ?? role}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -481,7 +560,9 @@ export function MemberManagement() {
           <CardDescription>{members.length} aktive brugere</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {loading || memberLocationAccess === undefined ? (
+          {loading ||
+          memberLocationAccess === undefined ||
+          roleRows === undefined ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 3 }, (_, index) => (
                 <Skeleton key={index} className="h-14 w-full" />
@@ -501,7 +582,9 @@ export function MemberManagement() {
               </TableHeader>
               <TableBody>
                 {members.map((member) => {
-                  const kioskAccount = kioskAccounts?.find((account) => account.userId === member.userId);
+                  const kioskAccount = kioskAccounts?.find(
+                    (account) => account.userId === member.userId,
+                  );
                   const isCurrentUser = member.userId === session?.user.id;
                   const isLastAdmin =
                     member.role === "admin" && adminCount === 1;
@@ -527,7 +610,11 @@ export function MemberManagement() {
                             <span className="truncate font-medium">
                               {member.user.name}
                             </span>
-                            <span className="truncate text-sm text-muted-foreground">{kioskAccount ? `${kioskAccount.username} · ${kioskAccount.locationName}` : member.user.email}</span>
+                            <span className="truncate text-sm text-muted-foreground">
+                              {kioskAccount
+                                ? `${kioskAccount.username} · ${kioskAccount.locationName}`
+                                : member.user.email}
+                            </span>
                           </div>
                           {kioskAccount ? <Badge>Kiosk</Badge> : null}
                           {isCurrentUser ? (
@@ -540,18 +627,21 @@ export function MemberManagement() {
                           items={roleItems}
                           value={member.role}
                           onValueChange={(role) =>
-                            void changeRole(member, role as OrganizationRole)
+                            role && void changeRole(member, role)
                           }
                           disabled={disabled}
                         >
-                          <SelectTrigger aria-label={`Rolle for ${member.user.name}`} className="h-10 w-40">
+                          <SelectTrigger
+                            aria-label={`Rolle for ${member.user.name}`}
+                            className="h-10 w-40"
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectGroup>
                               {roles.map((role) => (
                                 <SelectItem key={role} value={role}>
-                                  {roleLabels[role]}
+                                  {roleLabels[role] ?? role}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
@@ -570,10 +660,15 @@ export function MemberManagement() {
                         ) : (
                           <MemberLocationPicker
                             userId={member.userId}
-                            access={accessRows.find((row) => row.userId === member.userId)}
+                            access={accessRows.find(
+                              (row) => row.userId === member.userId,
+                            )}
                             locations={assignmentLocations}
+                            operators={assignmentOperators}
                             disabled={memberLocationAccess === undefined}
-                            setAccess={(args) => updateMemberLocationAccess(args)}
+                            setAccess={(args) =>
+                              updateMemberLocationAccess(args)
+                            }
                           />
                         )}
                       </TableCell>
@@ -644,8 +739,7 @@ export function MemberManagement() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{invitation.email}</p>
                     <p className="text-sm text-muted-foreground">
-                      {roleLabels[invitation.role as OrganizationRole] ??
-                        invitation.role}
+                      {roleLabels[invitation.role] ?? invitation.role}
                     </p>
                   </div>
                   <AlertDialog>

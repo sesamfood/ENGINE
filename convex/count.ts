@@ -18,6 +18,7 @@ import {
   getLocationCountWindow,
 } from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
+import { recordAudit, requireAuditReason } from "./lib/audit";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
@@ -666,11 +667,15 @@ export const setCountQuantity = mutation({
 });
 
 export const submitCount = mutation({
-  args: { locationId: v.id("locations") },
+  args: {
+    locationId: v.id("locations"),
+    reason: v.string(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     const { organizationId, userName } = auth;
+    const reason = requireAuditReason(args.reason);
     requireLocationAccess(auth, args.locationId);
     const location = await requireLocation(
       ctx,
@@ -764,6 +769,14 @@ export const submitCount = mutation({
       submittedAt: now,
       submittedByName: userName,
     });
+    await recordAudit(ctx, auth, {
+      action: "count.reconciled",
+      entityTable: "counts",
+      entityId: count._id,
+      locationId: args.locationId,
+      summary: "Optælling registreret og lageret afstemt",
+      reason,
+    });
     return null;
   },
 });
@@ -778,7 +791,7 @@ export const getWasteReportContext = internalQuery({
     rows: v.array(reconciliationRowValidator),
   }),
   handler: async (ctx, args) => {
-    const auth = await requireCounter(ctx, "count.register");
+    const auth = await requirePermission(ctx, "count.export");
     const count = await ctx.db.get("counts", args.countId);
     if (
       !count ||

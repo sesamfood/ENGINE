@@ -16,8 +16,9 @@ import {
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
+import { resolveTimeZone } from "./lib/timeZone";
+import { recordAudit, requireAuditReason } from "./lib/audit";
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_TIERS = 10;
 const MAX_ALLOWANCES = 20;
 const MAX_PRODUCTS_PER_TIER = 100;
@@ -28,6 +29,7 @@ const MAX_SEARCH_RESULTS = 20;
 const MAX_SETTINGS_PRODUCTS = 500;
 const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 const UNDO_WINDOW_MS = 30_000;
+const UNDO_REASON_GRACE_MS = 30_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const sessionSourceValidator = v.union(
@@ -93,16 +95,6 @@ async function requireLocation(
     throw new ConvexError("Lokationen blev ikke fundet");
   }
   return location;
-}
-
-async function getTimeZone(ctx: StaffFoodContext, organizationId: string) {
-  const settings = await ctx.db
-    .query("organizationScheduleSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
-  return settings?.timeZone ?? DEFAULT_TIME_ZONE;
 }
 
 function dateInTimeZone(timestamp: number, timeZone: string) {
@@ -195,18 +187,22 @@ async function sessionActive(
   now: number,
 ) {
   if (session.source === "manual") {
-    const timeZone = await getTimeZone(ctx, organizationId);
+    const timeZone = await resolveTimeZone(
+      ctx,
+      organizationId,
+      session.locationId,
+    );
     return session.workDate === dateInTimeZone(now, timeZone);
   }
   if (!session.scheduledShiftId) return false;
   const shift = await ctx.db.get("scheduledShifts", session.scheduledShiftId);
   return Boolean(
     shift &&
-      shift.organizationId === organizationId &&
-      shift.locationId === session.locationId &&
-      shift.employeeId === session.employeeId &&
-      shift.startsAt <= now &&
-      shift.endsAt > now,
+    shift.organizationId === organizationId &&
+    shift.locationId === session.locationId &&
+    shift.employeeId === session.employeeId &&
+    shift.startsAt <= now &&
+    shift.endsAt > now,
   );
 }
 
@@ -389,7 +385,11 @@ export const startSession = mutation({
       organizationId,
       args.selection.locationId,
     );
-    const timeZone = await getTimeZone(ctx, organizationId);
+    const timeZone = await resolveTimeZone(
+      ctx,
+      organizationId,
+      args.selection.locationId,
+    );
     if (args.selection.kind === "scheduled") {
       const shift = await ctx.db.get("scheduledShifts", args.selection.shiftId);
       if (
@@ -458,15 +458,13 @@ export const startSession = mutation({
     const workDate = dateInTimeZone(now, timeZone);
     const existing = await ctx.db
       .query("staffFoodSessions")
-      .withIndex(
-        "by_org_location_employee_date_source",
-        (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("locationId", location._id)
-            .eq("employeeId", employee._id)
-            .eq("workDate", workDate)
-            .eq("source", "manual"),
+      .withIndex("by_org_location_employee_date_source", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", location._id)
+          .eq("employeeId", employee._id)
+          .eq("workDate", workDate)
+          .eq("source", "manual"),
       )
       .unique();
     if (existing) return existing._id;
@@ -536,9 +534,7 @@ export const getSessionState = query({
       ctx.db
         .query("staffFoodRegistrations")
         .withIndex("by_organizationId_and_sessionId_and_registeredAt", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("sessionId", session._id),
+          q.eq("organizationId", organizationId).eq("sessionId", session._id),
         )
         .order("desc")
         .take(MAX_SESSION_REGISTRATIONS + 1),
@@ -713,11 +709,18 @@ export const register = mutation({
     if (!args.items.length || args.items.length > MAX_BASKET_ITEMS) {
       throw new ConvexError("Vælg mindst ét og højst 50 produkter");
     }
-    if (new Set(args.items.map((item) => item.productId)).size !== args.items.length) {
+    if (
+      new Set(args.items.map((item) => item.productId)).size !==
+      args.items.length
+    ) {
       throw new ConvexError("Det samme produkt må kun vælges én gang");
     }
     for (const item of args.items) {
-      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 20) {
+      if (
+        !Number.isInteger(item.quantity) ||
+        item.quantity < 1 ||
+        item.quantity > 20
+      ) {
         throw new ConvexError("Antallet skal være mellem 1 og 20");
       }
     }
@@ -749,7 +752,10 @@ export const register = mutation({
     const allowanceByCategory = new Map(
       allowanceRows.map((allowance) => [allowance.categoryId, allowance]),
     );
-    const allowedProducts = new Map<Id<"products">, Doc<"staffFoodRuleAllowances">>();
+    const allowedProducts = new Map<
+      Id<"products">,
+      Doc<"staffFoodRuleAllowances">
+    >();
     let configuredProductCount = 0;
     for (const allowance of allowanceRows) {
       const rows = await ctx.db
@@ -873,10 +879,14 @@ export const register = mutation({
 });
 
 export const voidCheckout = mutation({
-  args: { checkoutId: v.string() },
+  args: {
+    checkoutId: v.string(),
+    reason: v.string(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireStaffFoodRegistrar(ctx);
+    const reason = requireAuditReason(args.reason);
     const { organizationId, userIdentifier, userName } = auth;
     const rows = await ctx.db
       .query("staffFoodRegistrations")
@@ -900,7 +910,7 @@ export const voidCheckout = mutation({
       rows.some(
         (row) =>
           row.registeredBy !== userIdentifier ||
-          now - row.registeredAt > UNDO_WINDOW_MS ||
+          now - row.registeredAt > UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS ||
           row.status !== "active",
       )
     ) {
@@ -921,6 +931,14 @@ export const voidCheckout = mutation({
         row.defaultQuantity,
       );
     }
+    await recordAudit(ctx, auth, {
+      action: "staffFood.void",
+      entityTable: "staffFoodRegistrations",
+      entityId: args.checkoutId,
+      locationId: rows[0]!.locationId,
+      summary: "Personalemadsregistrering annulleret",
+      reason,
+    });
     return null;
   },
 });
@@ -949,9 +967,7 @@ export const getSettings = query({
         ),
       }),
     ),
-    categories: v.array(
-      v.object({ id: v.id("categories"), name: v.string() }),
-    ),
+    categories: v.array(v.object({ id: v.id("categories"), name: v.string() })),
     products: v.array(
       v.object({
         id: v.id("products"),
@@ -982,7 +998,7 @@ export const getSettings = query({
           q.eq("organizationId", organizationId),
         )
         .take(MAX_SETTINGS_PRODUCTS + 1),
-      getTimeZone(ctx, organizationId),
+      resolveTimeZone(ctx, organizationId),
     ]);
     if (tiers.length > MAX_TIERS) {
       throw new ConvexError("Der er for mange regler");
@@ -1112,7 +1128,9 @@ export const saveTier = mutation({
       )
       .unique();
     if (duplicate && duplicate._id !== args.tierId) {
-      throw new ConvexError("Der findes allerede en regel for denne vagtlængde");
+      throw new ConvexError(
+        "Der findes allerede en regel for denne vagtlængde",
+      );
     }
     let tierId = args.tierId;
     if (tierId) {
@@ -1297,16 +1315,16 @@ export const exportRegistrations = query({
             )
             .order("desc")
             .paginate(args.paginationOpts)
-      : await ctx.db
-          .query("staffFoodRegistrations")
-          .withIndex("by_organizationId_and_registeredAt", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .gte("registeredAt", args.startAt)
-              .lte("registeredAt", args.endAt),
-          )
-          .order("desc")
-          .paginate(args.paginationOpts);
+        : await ctx.db
+            .query("staffFoodRegistrations")
+            .withIndex("by_organizationId_and_registeredAt", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .gte("registeredAt", args.startAt)
+                .lte("registeredAt", args.endAt),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts);
     return { ...result, page: result.page.map(registrationRow) };
   },
 });

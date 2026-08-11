@@ -79,7 +79,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { BrowserBranding } from "@/components/browser-branding";
 import { authClient } from "@/lib/auth-client";
-import type { PermissionId } from "@/lib/auth-permissions";
+import type { DataGranularity, PermissionId } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
@@ -130,6 +130,7 @@ type LocationOption = { id: Id<"locations">; name: string };
 
 type AccessRuntime = {
   role: string;
+  granularity: DataGranularity;
   permissions: string[];
   locationScope: { all: boolean; ids: Id<"locations">[] };
   kiosk: KioskRuntime | null;

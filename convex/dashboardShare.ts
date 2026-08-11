@@ -225,6 +225,12 @@ export const getSharedMetric = query({
       share.scope,
       share.range,
       args.now,
+      undefined,
+      {
+        granularity: share.granularity ?? "detail",
+        anonymousSeed: share.token,
+        salesDetailAllowed: share.salesDetailAllowed ?? true,
+      },
     );
     return await dashboardMetricComputers[args.metricId](ctx, params);
   },
@@ -269,6 +275,12 @@ export const getSharedMetrics = query({
       share.scope,
       share.range,
       args.now,
+      undefined,
+      {
+        granularity: share.granularity ?? "detail",
+        anonymousSeed: share.token,
+        salesDetailAllowed: share.salesDetailAllowed ?? true,
+      },
     );
     const results = new Map<
       string,
