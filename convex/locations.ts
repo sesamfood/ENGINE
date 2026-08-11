@@ -15,7 +15,6 @@ import { getDatabaseAdapter } from "./auth";
 import {
   requireLocationAccess,
   requireLocationManager,
-  requireOrganization,
   requireTransferManager,
 } from "./lib/auth";
 import {
@@ -270,19 +269,6 @@ export const listLocations = query({
             inUse: Boolean(usedAsFrom || usedAsTo || count || stock),
           };
         }),
-    );
-  },
-});
-
-export const listLocationOptions = query({
-  args: {},
-  returns: v.array(locationOptionValidator),
-  handler: async (ctx) => {
-    const auth = await requireOrganization(ctx);
-    return await listScopedLocationOptions(
-      ctx,
-      auth.organizationId,
-      auth.locationScope,
     );
   },
 });

@@ -286,15 +286,6 @@ export const getMemberPermissionContext = internalQuery({
   },
 });
 
-export const getContext = query({
-  args: {},
-  returns: accessContextValidator,
-  handler: async (ctx) => {
-    const { context } = await getAccessContext(ctx);
-    return context;
-  },
-});
-
 export const getRuntimeContext = query({
   args: {},
   returns: runtimeContextValidator,

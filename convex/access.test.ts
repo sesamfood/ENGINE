@@ -145,6 +145,29 @@ async function seedLocations(
   });
 }
 
+test("udløbet session afvises", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, now } = await setupAuthOrg(t);
+  const session = await baCreate(t, "session", {
+    expiresAt: now - 1,
+    token: `expired-token-${now}`,
+    createdAt: now,
+    updatedAt: now,
+    userId: user._id,
+    activeOrganizationId: org._id,
+  });
+  const asExpiredUser = t.withIdentity({
+    subject: user._id,
+    issuer: "http://localhost:3000",
+    tokenIdentifier: `http://localhost:3000|${user._id}`,
+    sessionId: session._id,
+  } as never);
+
+  await expect(
+    asExpiredUser.query(api.access.getRuntimeContext, {}),
+  ).rejects.toThrowError("Ingen aktiv organisation");
+});
+
 function wasteRow(
   organizationId: string,
   locationId: Id<"locations">,
