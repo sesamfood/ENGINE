@@ -34,6 +34,11 @@ const locationScopeValidator = v.object({
   ids: v.array(v.id("locations")),
 });
 
+const locationOptionValidator = v.object({
+  id: v.id("locations"),
+  name: v.string(),
+});
+
 const kioskSettingsValidator = v.object({
   enabledPages: v.array(v.string()),
   homePage: v.string(),
@@ -49,6 +54,20 @@ const kioskContextValidator = v.object({
   role: v.string(),
   settings: v.union(kioskSettingsValidator, v.null()),
 });
+
+const accessContextValidator = v.object({
+  role: roleValidator,
+  granularity: granularityValidator,
+  permissions: v.array(v.string()),
+  locationScope: locationScopeValidator,
+  kiosk: kioskContextValidator,
+});
+
+const runtimeContextValidator = accessContextValidator.extend({
+  locations: v.array(locationOptionValidator),
+});
+
+const MAX_RUNTIME_LOCATIONS = 200;
 
 const roleContextValidator = v.object({
   organizationId: v.string(),
@@ -325,25 +344,51 @@ export const getMemberPermissionContext = internalQuery({
 
 export const getContext = query({
   args: {},
-  returns: v.object({
-    role: roleValidator,
-    granularity: granularityValidator,
-    permissions: v.array(v.string()),
-    locationScope: locationScopeValidator,
-    kiosk: kioskContextValidator,
-  }),
+  returns: accessContextValidator,
   handler: async (ctx) => {
-    const auth = await requireOrganization(ctx);
-    const settings = await ctx.db
-      .query("kioskSettings")
-      .withIndex("by_organizationId", (q) =>
+    const { context } = await getAccessContext(ctx);
+    return context;
+  },
+});
+
+export const getRuntimeContext = query({
+  args: {},
+  returns: runtimeContextValidator,
+  handler: async (ctx) => {
+    const { auth, context } = await getAccessContext(ctx);
+    const locations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
         q.eq("organizationId", auth.organizationId),
       )
-      .unique();
-    const location = auth.kioskLocationId
-      ? await ctx.db.get("locations", auth.kioskLocationId)
-      : null;
+      .take(MAX_RUNTIME_LOCATIONS);
+
     return {
+      ...context,
+      locations: locations
+        .filter(
+          (location) =>
+            auth.locationScope.all || auth.locationScope.ids.has(location._id),
+        )
+        .map((location) => ({ id: location._id, name: location.name })),
+    };
+  },
+});
+
+async function getAccessContext(ctx: QueryCtx) {
+  const auth = await requireOrganization(ctx);
+  const settings = await ctx.db
+    .query("kioskSettings")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", auth.organizationId),
+    )
+    .unique();
+  const location = auth.kioskLocationId
+    ? await ctx.db.get("locations", auth.kioskLocationId)
+    : null;
+  return {
+    auth,
+    context: {
       role: auth.role,
       granularity: auth.granularity,
       permissions: [...auth.permissions],
@@ -366,9 +411,9 @@ export const getContext = query({
             }
           : null,
       },
-    };
-  },
-});
+    },
+  };
+}
 
 export const listRolePermissions = query({
   args: {},

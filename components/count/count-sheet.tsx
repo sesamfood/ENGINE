@@ -54,6 +54,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CountNavigation } from "@/components/count/count-navigation";
+import { useCountState } from "@/components/count/count-state-provider";
 import {
   Dialog,
   DialogContent,
@@ -95,11 +96,9 @@ import {
 } from "@/components/ui/tooltip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
-import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
+import { usePermission } from "@/components/app-shell";
 import {
   setCountOrder,
-  useCountLocation,
   useCountOrder,
 } from "@/lib/count-prefs";
 import { downloadCsv } from "@/lib/download-csv";
@@ -783,15 +782,10 @@ function CountSkeleton() {
 }
 
 export function CountSheet() {
-  const organization = authClient.useActiveOrganization();
-  const organizationId = organization.data?.id;
-  const storedLocationId = useCountLocation(organizationId);
-  const { locations, isLocked, lockedId } = useLocationAccess();
-  const kiosk = useKiosk();
-  const canRegister = usePermission("count.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("count.register"));
+  const { organizationId, locations, locationId, canRegister, now, state } =
+    useCountState();
   const canManageCatalog = usePermission("catalog.manage");
   const canExport = usePermission("count.export");
-  const [now, setNow] = useState(() => Date.now());
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [categoryId, setCategoryId] = useState<string>("all");
@@ -814,29 +808,13 @@ export function CountSheet() {
   const setQuantity = useMutation(api.count.setCountQuantity);
   const submitCount = useMutation(api.count.submitCount);
   const setDefaultOrder = useMutation(api.count.setCountProductOrder);
-  const locationId = isLocked
-    ? lockedId
-    : locations?.some((location) => location.id === storedLocationId)
-      ? (storedLocationId as Id<"locations">)
-      : (locations?.[0]?.id ?? null);
   const savedOrder = useCountOrder(organizationId, locationId);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setQuerySearch(search), 300);
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  const queryNow = Math.floor(now / 60_000) * 60_000;
-  const queriedState = useQuery(
-    api.count.getCountState,
-    canRegister && locationId ? { locationId, now: queryNow } : "skip",
-  );
-  const state = useLastDefined(queriedState, locationId);
   const queriedQuantities = useQuery(
     api.count.getCountQuantities,
     canRegister && locationId && state?.count
