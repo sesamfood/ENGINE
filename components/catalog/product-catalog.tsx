@@ -74,6 +74,63 @@ type CatalogProduct = {
   deletesAt: number | null;
 };
 
+type CategoryMenuOption = {
+  id: Id<"categories">;
+  name: string;
+  parentCategoryId: Id<"categories"> | null;
+  path: string;
+  depth: number;
+};
+
+function CategoryMenuItems({
+  categories,
+  parentCategoryId,
+  onSelect,
+}: {
+  categories: CategoryMenuOption[];
+  parentCategoryId: Id<"categories"> | null;
+  onSelect: (categoryId: Id<"categories">) => void;
+}) {
+  return categories
+    .filter((category) => category.parentCategoryId === parentCategoryId)
+    .map((category) => {
+      const hasChildren = categories.some(
+        (child) => child.parentCategoryId === category.id,
+      );
+
+      if (!hasChildren) {
+        return (
+          <DropdownMenuItem
+            key={category.id}
+            onClick={() => onSelect(category.id)}
+          >
+            {category.name}
+          </DropdownMenuItem>
+        );
+      }
+
+      return (
+        <DropdownMenuSub key={category.id}>
+          <DropdownMenuSubTrigger onClick={() => onSelect(category.id)}>
+            {category.name}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => onSelect(category.id)}>
+                Vælg {category.name}
+              </DropdownMenuItem>
+              <CategoryMenuItems
+                categories={categories}
+                parentCategoryId={category.id}
+                onSelect={onSelect}
+              />
+            </DropdownMenuGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    });
+}
+
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
@@ -394,104 +451,105 @@ export function ProductCatalog() {
     }
   }
 
+  function selectBulkCategory(categoryId: Id<"categories">) {
+    setBulkCategoryId(categoryId);
+    setIsBulkCategoryDialogOpen(true);
+  }
+
   const selectedBulkCategory = categoryOptions?.find(
     (category) => category.id === bulkCategoryId,
   );
 
   return (
     <div className="flex flex-col gap-7">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={search}
-            onChange={(event) => changeSearch(event.target.value)}
-            placeholder="Søg efter produkter"
-            aria-label="Søg efter produkter eller kategorier"
-            className="h-11 pl-10"
-          />
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row md:flex-none">
-          <Button
-            type="button"
-            variant={isSelectionMode ? "secondary" : "outline"}
-            className="min-h-11 px-3"
-            aria-pressed={isSelectionMode}
-            onClick={toggleSelectionMode}
-          >
-            {isSelectionMode ? "Annuller valg" : "Vælg"}
-          </Button>
-          {isSelectionMode ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-11 px-3"
-                    aria-label="Handlinger for valgte produkter"
-                    disabled={selectedIds.length === 0}
-                  />
-                }
-              >
-                <span>{selectedIds.length} valgte</span>
-                <MoreHorizontalIcon data-icon="inline-end" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>
-                    {selectedIds.length} valgt
-                  </DropdownMenuLabel>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>
-                      <TagsIcon />
-                      Skift kategori
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuGroup>
-                        {categoryOptions === undefined ? (
-                          <DropdownMenuItem disabled>
-                            Indlæser kategorier
-                          </DropdownMenuItem>
-                        ) : categoryOptions.length === 0 ? (
-                          <DropdownMenuItem disabled>
-                            Ingen kategorier
-                          </DropdownMenuItem>
-                        ) : (
-                          categoryOptions.map((category) => (
-                            <DropdownMenuItem
-                              key={category.id}
-                              onClick={() => {
-                                setBulkCategoryId(category.id);
-                                setIsBulkCategoryDialogOpen(true);
-                              }}
-                            >
-                              {category.path}
+      <div className="sticky top-16 z-30 -mx-4 bg-background px-4 py-3 md:top-24 md:py-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="relative min-w-0 flex-1">
+            <SearchIcon
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={search}
+              onChange={(event) => changeSearch(event.target.value)}
+              placeholder="Søg efter produkter"
+              aria-label="Søg efter produkter eller kategorier"
+              className="h-11 pl-10"
+            />
+          </div>
+          <div className="flex flex-row flex-wrap items-center gap-3 md:flex-none">
+            <Button
+              type="button"
+              variant={isSelectionMode ? "secondary" : "outline"}
+              className="min-h-11 px-3"
+              aria-pressed={isSelectionMode}
+              onClick={toggleSelectionMode}
+            >
+              {isSelectionMode ? "Annuller valg" : "Vælg"}
+            </Button>
+            {isSelectionMode ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11 px-3"
+                      aria-label="Handlinger for valgte produkter"
+                      disabled={selectedIds.length === 0}
+                    />
+                  }
+                >
+                  <span>{selectedIds.length} valgte</span>
+                  <MoreHorizontalIcon data-icon="inline-end" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>
+                      {selectedIds.length} valgt
+                    </DropdownMenuLabel>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <TagsIcon />
+                        Skift kategori
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuGroup>
+                          {categoryOptions === undefined ? (
+                            <DropdownMenuItem disabled>
+                              Indlæser kategorier
                             </DropdownMenuItem>
-                          ))
-                        )}
-                      </DropdownMenuGroup>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-          <ProductImportExport
-            status={status}
-            onToggleStatus={toggleStatus}
-          />
-          <Button
-            size="lg"
-            className="min-h-11 px-4"
-            onClick={() => router.push(newProductHref(search, status))}
-          >
-            <PlusIcon data-icon="inline-start" />
-            Nyt produkt
-          </Button>
+                          ) : categoryOptions.length === 0 ? (
+                            <DropdownMenuItem disabled>
+                              Ingen kategorier
+                            </DropdownMenuItem>
+                          ) : (
+                            <CategoryMenuItems
+                              categories={categoryOptions}
+                              parentCategoryId={null}
+                              onSelect={selectBulkCategory}
+                            />
+                          )}
+                        </DropdownMenuGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            <ProductImportExport
+              status={status}
+              onToggleStatus={toggleStatus}
+            />
+            <Button
+              size="lg"
+              className="min-h-11 px-4"
+              onClick={() => router.push(newProductHref(search, status))}
+            >
+              <PlusIcon data-icon="inline-start" />
+              Nyt produkt
+            </Button>
+          </div>
         </div>
       </div>
 

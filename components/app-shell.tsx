@@ -1243,7 +1243,7 @@ export function AppShell({
           <SidebarInset className="min-w-0">
             <header
               className={cn(
-                "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
+                "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
                 showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
               )}
             >
