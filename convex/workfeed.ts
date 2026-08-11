@@ -9,6 +9,7 @@ import {
   query,
 } from "./_generated/server";
 import {
+  requireAllLocationAccess,
   requireIntegrationManager,
   requireLocationAccess,
   requireOrganization,
@@ -348,6 +349,7 @@ export const connect = action({
   returns: v.object({ departmentCount: v.number() }),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
     const { organizationId, userId, userName } = auth;
     const apiKey = requireCredential(args.apiKey, "Workfeed API-nøgle", 500);
     const companyId = requireCredential(
@@ -371,7 +373,8 @@ export const setEnabled = action({
   args: { enabled: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, settings } = await requireConnectedSettings(ctx);
+    const { auth, organizationId, settings } = await requireConnectedSettings(ctx);
+    requireAllLocationAccess(auth);
     if (args.enabled) {
       await requestDepartments(settings);
     }
@@ -453,6 +456,7 @@ export const disconnect = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
     const { organizationId } = auth;
     const [settings, mappings] = await Promise.all([
       ctx.db

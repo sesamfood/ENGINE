@@ -539,7 +539,9 @@ test("navngivne roller registreres og håndhæves af Convex", async () => {
       reason: "Testændring",
       permissions: ["count.register"],
     }),
-  ).resolves.toBeNull();
+  ).rejects.toThrowError(
+    "Mindst én rolle skal kunne administrere både roller og brugere",
+  );
 
   const customUser = await baCreate(t, "user", {
     name: "Grace Hopper",

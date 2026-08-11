@@ -107,16 +107,19 @@ const BETTER_AUTH_ROLE_PERMISSIONS = JSON.stringify({
 });
 
 async function ensureSystemRoles(ctx: MutationCtx, organizationId: string) {
-  const existing = await ctx.db
-    .query("roles")
-    .withIndex("by_organizationId_and_key", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .take(100);
-  const keys = new Set(existing.map((role) => role.key));
+  const existing = await Promise.all(
+    systemRoleKeys.map((key) =>
+      ctx.db
+        .query("roles")
+        .withIndex("by_organizationId_and_key", (q) =>
+          q.eq("organizationId", organizationId).eq("key", key),
+        )
+        .unique(),
+    ),
+  );
   const updatedAt = Date.now();
-  for (const key of systemRoleKeys) {
-    if (keys.has(key)) continue;
+  for (const [index, key] of systemRoleKeys.entries()) {
+    if (existing[index]) continue;
     await ctx.db.insert("roles", {
       organizationId,
       key,
@@ -159,29 +162,26 @@ async function assertManagementRoleRemains(
   override?:
     { role: string; permissions: readonly string[] } | { remove: string },
 ) {
-  const [roles, permissionRows] = await Promise.all([
-    ctx.db
-      .query("roles")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .take(100),
+  const [permissionRows, members] = await Promise.all([
     ctx.db
       .query("rolePermissions")
       .withIndex("by_organizationId_and_role", (q) =>
         q.eq("organizationId", organizationId),
       )
-      .take(100),
+      .collect(),
+    getDatabaseAdapter(ctx).findMany<AuthMember>({
+      model: "member",
+      where: [{ field: "organizationId", value: organizationId }],
+    }),
   ]);
   const configured = new Map(
     permissionRows.map((row) => [row.role, row.permissions] as const),
   );
-  const roleKeys = new Set<string>([
-    ...systemRoleKeys,
-    ...roles.map((role) => role.key),
-  ]);
-  if (override && "remove" in override) roleKeys.delete(override.remove);
-  const hasManager = [...roleKeys].some((role) => {
+  const hasManager = members.some((member) => {
+    if (override && "remove" in override && override.remove === member.role) {
+      return false;
+    }
+    const role = member.role;
     const permissions =
       override && "role" in override && override.role === role
         ? override.permissions
@@ -371,13 +371,13 @@ export const listRolePermissions = query({
         .withIndex("by_organizationId_and_key", (q) =>
           q.eq("organizationId", auth.organizationId),
         )
-        .take(100),
+        .collect(),
       ctx.db
         .query("rolePermissions")
         .withIndex("by_organizationId_and_role", (q) =>
           q.eq("organizationId", auth.organizationId),
         )
-        .take(100),
+        .collect(),
     ]);
     const byKey = new Map(roles.map((role) => [role.key, role]));
     const byRole = new Map(
@@ -413,7 +413,7 @@ export const listRoles = query({
       .withIndex("by_organizationId_and_key", (q) =>
         q.eq("organizationId", auth.organizationId),
       )
-      .take(100);
+      .collect();
     const byKey = new Map(roles.map((role) => [role.key, role.name]));
     return [
       ...systemRoleKeys.map((key) => ({

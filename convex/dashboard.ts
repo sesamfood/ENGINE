@@ -37,6 +37,7 @@ import {
 } from "./lib/dashboardShareCrypto";
 import {
   requireDashboardSharer,
+  requireDashboardExporter,
   requireDashboardViewer,
 } from "./lib/auth";
 import { hasPermission } from "../lib/auth-permissions";
@@ -408,10 +409,13 @@ export const getMetric = query({
     scope: scopeValidator,
     range: rangeValidator,
     now: v.number(),
+    export: v.optional(v.boolean()),
   },
   returns: metricResultValidator,
   handler: async (ctx, args) => {
-    const auth = await requireDashboardViewer(ctx);
+    const auth = args.export
+      ? await requireDashboardExporter(ctx)
+      : await requireDashboardViewer(ctx);
     const { organizationId } = auth;
     const definition = metricRegistry[args.metricId];
     if (!definition.visualizations.includes(args.visualization)) {
@@ -449,10 +453,13 @@ export const getMetrics = query({
     scope: scopeValidator,
     range: rangeValidator,
     now: v.number(),
+    export: v.optional(v.boolean()),
   },
   returns: v.array(keyedMetricResultValidator),
   handler: async (ctx, args) => {
-    const auth = await requireDashboardViewer(ctx);
+    const auth = args.export
+      ? await requireDashboardExporter(ctx)
+      : await requireDashboardViewer(ctx);
     const { organizationId } = auth;
     if (
       args.widgets.length > MAX_METRIC_BATCH ||

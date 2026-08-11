@@ -38,6 +38,8 @@ export type DashboardMetricParams = {
   locations: DashboardLocation[];
   compare: boolean;
   comparisonGroups?: DashboardComparisonGroup[];
+  anonymousLocations?: DashboardLocation[];
+  anonymousComparisonGroups?: DashboardComparisonGroup[];
   scopeTruncated?: boolean;
   accessGranularity: DataGranularity;
   salesDetailAllowed: boolean;
@@ -199,6 +201,8 @@ export async function resolveMetricParams(
 ) {
   if (!Number.isFinite(now)) throw new ConvexError("Tidspunktet er ugyldigt");
   const anonymousAccess = access?.granularity === "anonymous";
+  const widenAnonymousScope =
+    anonymousAccess && scope.locationIds === null && scope.level !== "location";
   const [allLocations, scheduleSettings] = await Promise.all([
     ctx.db
       .query("locations")
@@ -276,7 +280,7 @@ export async function resolveMetricParams(
   } else if (
     allowedLocationScope &&
     !allowedLocationScope.all &&
-    !anonymousAccess
+    !widenAnonymousScope
   ) {
     const allowedRows = await Promise.all(
       [...allowedLocationScope.ids]
@@ -356,87 +360,113 @@ export async function resolveMetricParams(
   const selectedIds =
     scope.locationIds === null
       ? candidateLocations
-          .filter(
-            (location) =>
-              (anonymousAccess && scope.level !== "location") ||
-              hasAccess(location._id),
-          )
+          .filter((location) => hasAccess(location._id))
           .map((location) => location._id)
       : [...new Set(scope.locationIds)];
+  const anonymousExpansion = widenAnonymousScope && selectedIds.length > 0;
+  const anonymousSelectedIds = anonymousExpansion
+    ? candidateLocations.map((location) => location._id)
+    : selectedIds;
   const scopeTruncated =
     selectedIds.length > MAX_SCOPE_LOCATIONS ||
     (scope.locationIds === null &&
       candidateLocations.length > MAX_SCOPE_LOCATIONS);
   const resolvedIds = selectedIds.slice(0, MAX_SCOPE_LOCATIONS);
-  const locations = resolvedIds.flatMap((id) => {
-    const location = byId.get(id);
-    if (!location) return [];
-    const marketCurrency = location.marketId
-      ? marketById.get(location.marketId)?.currency
-      : undefined;
-    return [
-      {
-        id: location._id,
-        name: location.name,
-        currency: location.currency || marketCurrency || DEFAULT_CURRENCY,
-      },
-    ];
-  });
+  const anonymousResolvedIds = anonymousSelectedIds.slice(
+    0,
+    MAX_SCOPE_LOCATIONS,
+  );
+  const dashboardLocationsFor = (
+    ids: readonly Id<"locations">[],
+  ): DashboardLocation[] =>
+    ids.flatMap((id) => {
+      const location = byId.get(id);
+      if (!location) return [];
+      const marketCurrency = location.marketId
+        ? marketById.get(location.marketId)?.currency
+        : undefined;
+      return [
+        {
+          id: location._id,
+          name: location.name,
+          currency: location.currency || marketCurrency || DEFAULT_CURRENCY,
+        },
+      ];
+    });
+  const locations = dashboardLocationsFor(resolvedIds);
+  const anonymousLocations = anonymousExpansion
+    ? dashboardLocationsFor(anonymousResolvedIds)
+    : undefined;
 
-  let comparisonGroups: DashboardComparisonGroup[] | undefined;
-  if (scope.level === "organization") {
-    const byMarket = new Map<string, DashboardComparisonGroup>();
-    for (const location of resolvedIds.flatMap((id) => byId.get(id) ?? [])) {
-      const key = location.marketId ?? "unassigned-market";
-      const group = byMarket.get(key) ?? {
-        key,
-        label: location.marketId
-          ? (marketById.get(location.marketId)?.name ?? "Ukendt marked")
-          : "Uden marked",
-        locationIds: [],
-      };
-      byMarket.set(key, {
-        ...group,
-        locationIds: [...group.locationIds, location._id],
-      });
+  const comparisonGroupsFor = (
+    ids: readonly Id<"locations">[],
+    rows: DashboardLocation[],
+  ): DashboardComparisonGroup[] | undefined => {
+    if (scope.level === "organization") {
+      const byMarket = new Map<string, DashboardComparisonGroup>();
+      for (const location of ids.flatMap((id) => byId.get(id) ?? [])) {
+        const key = location.marketId ?? "unassigned-market";
+        const group = byMarket.get(key) ?? {
+          key,
+          label: location.marketId
+            ? (marketById.get(location.marketId)?.name ?? "Ukendt marked")
+            : "Uden marked",
+          locationIds: [],
+        };
+        byMarket.set(key, {
+          ...group,
+          locationIds: [...group.locationIds, location._id],
+        });
+      }
+      return [...byMarket.values()];
     }
-    comparisonGroups = [...byMarket.values()];
-  } else if (scope.level === "market" && scope.parentId) {
-    const byOperator = new Map<string, DashboardComparisonGroup>();
-    for (const location of resolvedIds.flatMap((id) => byId.get(id) ?? [])) {
-      const key = location.operatorId ?? "unassigned-operator";
-      const group = byOperator.get(key) ?? {
-        key,
-        label: location.operatorId
-          ? (operatorById.get(location.operatorId)?.name ?? "Ukendt operatør")
-          : "Uden operatør",
-        locationIds: [],
-      };
-      byOperator.set(key, {
-        ...group,
-        locationIds: [...group.locationIds, location._id],
-      });
+    if (scope.level === "market" && scope.parentId) {
+      const byOperator = new Map<string, DashboardComparisonGroup>();
+      for (const location of ids.flatMap((id) => byId.get(id) ?? [])) {
+        const key = location.operatorId ?? "unassigned-operator";
+        const group = byOperator.get(key) ?? {
+          key,
+          label: location.operatorId
+            ? (operatorById.get(location.operatorId)?.name ??
+              "Ukendt operatør")
+            : "Uden operatør",
+          locationIds: [],
+        };
+        byOperator.set(key, {
+          ...group,
+          locationIds: [...group.locationIds, location._id],
+        });
+      }
+      return [...byOperator.values()];
     }
-    comparisonGroups = [...byOperator.values()];
-  } else if (scope.level === "operator" && scope.parentId) {
-    comparisonGroups = locations.map((location) => ({
-      key: location.id,
-      label: location.name,
-      locationIds: [location.id],
-    }));
-  } else if (scope.level === "location") {
-    comparisonGroups = locations.map((location) => ({
-      key: location.id,
-      label: location.name,
-      locationIds: [location.id],
-    }));
-  }
+    if (scope.level === "operator" && scope.parentId) {
+      return rows.map((location) => ({
+        key: location.id,
+        label: location.name,
+        locationIds: [location.id],
+      }));
+    }
+    if (scope.level === "location") {
+      return rows.map((location) => ({
+        key: location.id,
+        label: location.name,
+        locationIds: [location.id],
+      }));
+    }
+    return undefined;
+  };
+  const comparisonGroups = comparisonGroupsFor(resolvedIds, locations);
+  const anonymousComparisonGroups = anonymousLocations
+    ? comparisonGroupsFor(anonymousResolvedIds, anonymousLocations)
+    : undefined;
 
   return {
     organizationId,
     locations,
     compare: scope.mode === "compare" && locations.length >= 2,
     comparisonGroups,
+    anonymousLocations,
+    anonymousComparisonGroups,
     scopeTruncated:
       scopeTruncated ||
       (scope.locationIds === null &&
@@ -1201,11 +1231,21 @@ const headcountToday: MetricComputer = async (ctx, params) => {
 };
 
 const locationComparison: MetricComputer = async (ctx, params) => {
+  const comparisonParams =
+    params.accessGranularity === "anonymous" && params.anonymousLocations
+      ? {
+          ...params,
+          locations: params.anonymousLocations,
+          comparisonGroups: params.anonymousComparisonGroups,
+          compare: true,
+          cache: new Map<string, Promise<unknown>>(),
+        }
+      : { ...params, compare: true };
   const [waste, deliveries, transferResult, staffFood] = await Promise.all([
-    wasteRows(ctx, params),
-    badDeliveryRows(ctx, params),
-    transferRows(ctx, params),
-    staffFoodRows(ctx, params),
+    wasteRows(ctx, comparisonParams),
+    badDeliveryRows(ctx, comparisonParams),
+    transferRows(ctx, comparisonParams),
+    staffFoodRows(ctx, comparisonParams),
   ]);
   const rows: TimedValue[] = [
     ...waste.rows.map((row) => ({
@@ -1232,7 +1272,7 @@ const locationComparison: MetricComputer = async (ctx, params) => {
   const compared = seriesResult(
     "count",
     rows,
-    { ...params, compare: true },
+    comparisonParams,
     {
       truncated:
         waste.truncated ||
@@ -1241,7 +1281,7 @@ const locationComparison: MetricComputer = async (ctx, params) => {
         staffFood.truncated ||
         undefined,
     },
-    params.comparisonGroups,
+    comparisonParams.comparisonGroups,
   );
   return {
     ...compared,
@@ -1452,11 +1492,14 @@ function restaurantLabel(index: number) {
 async function anonymousAliases(params: DashboardMetricParams) {
   if (params.ownLocationIds === null)
     return new Map<string, { key: string; label: string }>();
+  const locations = params.anonymousLocations ?? params.locations;
+  const comparisonGroups =
+    params.anonymousComparisonGroups ?? params.comparisonGroups;
   const keys = new Set<string>();
-  for (const location of params.locations) {
+  for (const location of locations) {
     if (!params.ownLocationIds.has(location.id)) keys.add(location.id);
   }
-  for (const group of params.comparisonGroups ?? []) {
+  for (const group of comparisonGroups ?? []) {
     if (group.locationIds.some((id) => !params.ownLocationIds?.has(id))) {
       keys.add(group.key);
     }

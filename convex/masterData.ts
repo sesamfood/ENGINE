@@ -458,6 +458,23 @@ export const deleteOperator = mutation({
         "Operatøren bruges af en lokation og kan ikke slettes",
       );
     }
+    const accessRows = await ctx.db
+      .query("memberLocationAccess")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .collect();
+    for (const row of accessRows) {
+      if (row.scope !== "operator" || row.operatorId !== operator._id) {
+        continue;
+      }
+      await ctx.db.patch("memberLocationAccess", row._id, {
+        scope: "selected",
+        locationIds: [],
+        operatorId: undefined,
+        updatedAt: Date.now(),
+      });
+    }
     await ctx.db.delete("operators", operator._id);
     return null;
   },

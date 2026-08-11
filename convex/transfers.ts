@@ -631,13 +631,6 @@ export const getTransfer = query({
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) return null;
     requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
-    if (
-      !auth.locationScope.all &&
-      (!auth.locationScope.ids.has(transfer.fromLocationId) ||
-        !auth.locationScope.ids.has(transfer.toLocationId))
-    ) {
-      return null;
-    }
 
     const items = await ctx.db
       .query("transferItems")
@@ -646,7 +639,12 @@ export const getTransfer = query({
       )
       .take(MAX_TRANSFER_ITEMS);
 
-    const header = await hydrateTransferHeader(ctx, transfer, items);
+    const header = await hydrateTransferHeader(
+      ctx,
+      transfer,
+      items,
+      auth.locationScope.all ? null : auth.locationScope.ids,
+    );
     return {
       ...header,
       fromLocationId: transfer.fromLocationId,
