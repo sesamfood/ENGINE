@@ -4,8 +4,9 @@ import { formatMetricValue, total } from "./utils";
 
 export function GaugeVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
   const value = total(result);
-  const target = result.target ?? Math.max(value, 1);
-  const ratio = Math.max(0, Math.min(1, value / target));
+  const numericValue = value ?? 0;
+  const target = result.target ?? Math.max(numericValue, 1);
+  const ratio = result.mixedCurrency ? 0 : Math.max(0, Math.min(1, numericValue / target));
   return (
     <div className="grid h-full place-items-center">
       <div
@@ -13,17 +14,19 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
         role="meter"
         aria-valuemin={0}
         aria-valuemax={target}
-        aria-valuenow={value}
+        aria-valuenow={result.mixedCurrency ? undefined : numericValue}
         style={{ background: `conic-gradient(var(--primary) ${ratio * 360}deg, var(--muted) 0deg)` } as CSSProperties}
       >
         <div className="grid size-full place-items-center rounded-full bg-card text-center">
           <div>
             <p className={compact ? "text-4xl font-semibold leading-none tracking-tight tabular-nums" : "text-3xl font-semibold tracking-tight tabular-nums"}>
-              {formatMetricValue(value, result.unit)}
+              {formatMetricValue(value, result)}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Mål {formatMetricValue(target, result.unit)}
-            </p>
+            {result.mixedCurrency ? null : (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Mål {formatMetricValue(target, result)}
+              </p>
+            )}
           </div>
         </div>
       </div>

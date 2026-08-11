@@ -32,6 +32,7 @@ import {
   validateBadDeliveryRecipients,
 } from "./lib/badDeliverySettings";
 import { addStock, normalizeStock } from "./lib/stock";
+import { recordAudit, requireAuditReason } from "./lib/audit";
 
 const MAX_PRODUCTS = 500;
 const MAX_CHILD_ROWS = 200;
@@ -1317,10 +1318,14 @@ export const clearShortcutOverride = mutation({
 });
 
 export const voidWasteRegistration = mutation({
-  args: { registrationId: v.id("wasteRegistrations") },
+  args: {
+    registrationId: v.id("wasteRegistrations"),
+    reason: v.string(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOrganization(ctx);
+    const reason = requireAuditReason(args.reason);
     const kioskBypass = await requireKioskDestination(ctx, auth, [
       "waste.register",
       "waste.report",
@@ -1372,6 +1377,14 @@ export const voidWasteRegistration = mutation({
       registration.defaultQuantity,
     );
     await decrementStats(ctx, registration, periods, true);
+    await recordAudit(ctx, auth, {
+      action: "waste.void",
+      entityTable: "wasteRegistrations",
+      entityId: registration._id,
+      locationId: registration.locationId,
+      summary: `Spildregistrering for ${registration.productName} annulleret`,
+      reason,
+    });
     return null;
   },
 });

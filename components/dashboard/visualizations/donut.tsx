@@ -10,8 +10,12 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import type { MetricResult } from "@/lib/dashboard/types";
+import { isMixedCurrency } from "./utils";
 
 export function DonutVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
+  if (isMixedCurrency(result)) {
+    return <div className="grid h-full place-items-center text-sm text-muted-foreground">Flere valutaer</div>;
+  }
   const values = (result.breakdown ?? result.series.map((series) => ({ key: series.key, label: series.label, value: series.total }))).slice(0, 8);
   const config = Object.fromEntries(values.map((item, index) => [item.key, { label: item.label, color: `var(--chart-${(index % 5) + 1})` }])) satisfies ChartConfig;
   const data = values.map((item) => ({ ...item, fill: `var(--color-${item.key})` }));

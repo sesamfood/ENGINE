@@ -179,17 +179,23 @@ export function AddWidgetDialog({
                         return (
                           <CommandItem
                             key={metric.id}
-                            value={`${metric.label} ${metric.description}`}
+                            value={`${metric.label} ${metric.description} ${metric.formula} ${metric.sourceTables.join(" ")}`}
                             onSelect={() => selectMetric(metric.id)}
                             aria-selected={selected}
                             className={cn(
-                              "min-h-24 items-start rounded-lg border bg-card p-3 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
+                              "min-h-32 items-start rounded-lg border bg-card p-3 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
                               selected && "border-primary bg-primary/5 ring-2 ring-primary/20",
                             )}
                           >
                             <div className="min-w-0 flex-1">
                               <p className="font-medium">{metric.label}</p>
                               <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>
+                              <p className="mt-2 text-xs">
+                                <span className="font-medium">Formel:</span> {metric.formula}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">Datakilder:</span> {metric.sourceTables.join(", ")}
+                              </p>
                             </div>
                           </CommandItem>
                         );

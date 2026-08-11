@@ -1,12 +1,18 @@
 import type { ChartConfig } from "@/components/ui/chart";
-import type { MetricResult, MetricUnit } from "@/lib/dashboard/types";
+import {
+  DEFAULT_CURRENCY,
+  type MetricResult,
+  type MetricUnit,
+} from "@/lib/dashboard/types";
 
 export function total(result: MetricResult) {
+  if (result.unit === "currency" && result.mixedCurrency) return null;
   if (result.headlineTotal !== undefined) return result.headlineTotal;
   return result.series.reduce((sum, series) => sum + series.total, 0);
 }
 
 export function previousTotal(result: MetricResult) {
+  if (result.unit === "currency" && result.mixedCurrency) return null;
   if (result.headlinePrevious !== undefined) return result.headlinePrevious;
   const values = result.series.map((series) => series.previousTotal);
   return values.some((value) => value === null)
@@ -14,11 +20,29 @@ export function previousTotal(result: MetricResult) {
     : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
 
-export function formatMetricValue(value: number, unit: MetricUnit) {
+export function isMixedCurrency(result: MetricResult) {
+  return result.unit === "currency" && result.mixedCurrency === true;
+}
+
+type MetricFormatContext = Pick<
+  MetricResult,
+  "unit" | "currency" | "mixedCurrency"
+>;
+
+export function formatMetricValue(
+  value: number | null,
+  unitOrContext: MetricUnit | MetricFormatContext,
+  fallbackCurrency?: string,
+) {
+  const context = typeof unitOrContext === "string" ? null : unitOrContext;
+  const unit: MetricUnit =
+    typeof unitOrContext === "string" ? unitOrContext : unitOrContext.unit;
+  if (unit === "currency" && context?.mixedCurrency) return "Flere valutaer";
+  if (value === null || !Number.isFinite(value)) return "—";
   if (unit === "currency") {
     return new Intl.NumberFormat("da-DK", {
       style: "currency",
-      currency: "DKK",
+      currency: context?.currency ?? fallbackCurrency ?? DEFAULT_CURRENCY,
       maximumFractionDigits: 0,
     }).format(value);
   }

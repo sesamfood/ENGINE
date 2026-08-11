@@ -20,7 +20,17 @@ export const organizationRoles = {
   member: managerAc,
 };
 
-export type OrganizationRole = keyof typeof organizationRoles;
+export const systemRoleKeys = ["admin", "manager", "member"] as const;
+export type SystemOrganizationRole = (typeof systemRoleKeys)[number];
+export type OrganizationRole = string;
+export const systemRoleNames: Record<SystemOrganizationRole, string> = {
+  admin: "Administrator",
+  manager: "Manager",
+  member: "Medlem",
+};
+
+export const dataGranularities = ["detail", "aggregate", "anonymous"] as const;
+export type DataGranularity = (typeof dataGranularities)[number];
 
 export const permissionCatalog = [
   {
@@ -28,6 +38,7 @@ export const permissionCatalog = [
     permissions: [
       { id: "count.register", label: "Registrere optællinger" },
       { id: "count.viewStock", label: "Se lagerbeholdning" },
+      { id: "count.export", label: "Eksportere optællingsdata" },
     ],
   },
   {
@@ -43,6 +54,7 @@ export const permissionCatalog = [
     permissions: [
       { id: "transfers.view", label: "Se flytninger" },
       { id: "transfers.manage", label: "Administrere flytninger" },
+      { id: "transfers.export", label: "Eksportere flytninger" },
     ],
   },
   {
@@ -57,7 +69,10 @@ export const permissionCatalog = [
     permissions: [
       { id: "dashboard.view", label: "Se dashboard" },
       { id: "dashboard.share", label: "Dele dashboard" },
+      { id: "dashboard.export", label: "Eksportere dashboarddata" },
       { id: "dashboard.viewSales", label: "Se salgstal" },
+      { id: "sales.viewAggregate", label: "Se aggregerede salgstal" },
+      { id: "sales.viewDetail", label: "Se detaljerede salgstal" },
     ],
   },
   {
@@ -96,7 +111,10 @@ export const permissionIds = permissionCatalog.flatMap((group) =>
 
 const permissionIdSet = new Set<string>(permissionIds);
 
-export const defaultRolePermissions: Record<OrganizationRole, readonly PermissionId[]> = {
+export const defaultRolePermissions: Record<
+  SystemOrganizationRole,
+  readonly PermissionId[]
+> = {
   admin: permissionIds,
   manager: permissionIds.filter(
     (id) =>
@@ -116,19 +134,32 @@ export const defaultRolePermissions: Record<OrganizationRole, readonly Permissio
     "staffFood.register",
     "employees.schedule",
     "employees.directory",
+    "count.export",
+    "transfers.export",
+    "dashboard.export",
+    "sales.viewAggregate",
+    "sales.viewDetail",
   ],
 };
+
+export function permissionsForRole(
+  role: string,
+  configured?: readonly string[],
+) {
+  return configured ??
+    defaultRolePermissions[role as SystemOrganizationRole] ??
+    [];
+}
 
 export function isPermissionId(value: string): value is PermissionId {
   return permissionIdSet.has(value);
 }
 
 export function hasPermission(
-  role: string | null | undefined,
+  _role: string | null | undefined,
   permissions: ReadonlySet<string> | readonly string[] | undefined,
   permission: PermissionId | string,
 ) {
-  if (role === "admin") return true;
   if (!permissions) return false;
   return "has" in permissions
     ? permissions.has(permission)

@@ -13,6 +13,7 @@ export const authClient = createAuthClient({
     organizationClient({
       ac: organizationAccessControl,
       roles: organizationRoles,
+      dynamicAccessControl: { enabled: true },
     }),
     convexClient(),
   ],

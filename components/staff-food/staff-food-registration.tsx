@@ -22,6 +22,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +68,7 @@ import {
 } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
 import { LocationField } from "@/components/location-field";
+import { Textarea } from "@/components/ui/textarea";
 import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -268,6 +279,8 @@ export function StaffFoodRegistration() {
   const [categoryId, setCategoryId] = useState("all");
   const [submitting, setSubmitting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [voidCheckoutId, setVoidCheckoutId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
   const [success, setSuccess] = useState(false);
   const redirectTimer = useRef<number | null>(null);
   const startSession = useMutation(api.staffFood.startSession);
@@ -468,20 +481,38 @@ export function StaffFoodRegistration() {
         action: {
           label: "Fortryd",
           onClick: () => {
-            void voidCheckout({ checkoutId: result.checkoutId })
-              .then(() => toast.success("Registreringen er fortrudt"))
-              .catch((error) => toast.error(message(error)));
+            if (redirectTimer.current !== null) {
+              window.clearTimeout(redirectTimer.current);
+              redirectTimer.current = null;
+            }
+            setVoidReason("");
+            setVoidCheckoutId(result.checkoutId);
           },
         },
       });
       redirectTimer.current = window.setTimeout(() => {
         redirectTimer.current = null;
         router.replace("/waste");
-      }, 2_000);
+      }, 30_000);
     } catch (error) {
       toast.error(message(error));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function confirmVoidCheckout() {
+    if (!voidCheckoutId || !voidReason.trim()) return;
+    try {
+      await voidCheckout({
+        checkoutId: voidCheckoutId,
+        reason: voidReason,
+      });
+      toast.success("Registreringen er fortrudt");
+      setVoidCheckoutId(null);
+      setVoidReason("");
+    } catch (error) {
+      toast.error(message(error));
     }
   }
 
@@ -1063,6 +1094,42 @@ export function StaffFoodRegistration() {
           </CardFooter>
         </Card>
       ) : null}
+
+      <AlertDialog
+        open={Boolean(voidCheckoutId)}
+        onOpenChange={(open) => {
+          if (!open) setVoidCheckoutId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fortryd personalemadsregistrering?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Lageret bliver ført tilbage. Skriv en begrundelse for ændringen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Field>
+            <FieldLabel htmlFor="staff-food-void-reason">Begrundelse</FieldLabel>
+            <Textarea
+              id="staff-food-void-reason"
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+              placeholder="Skriv, hvorfor registreringen fortrydes"
+              required
+            />
+          </Field>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Behold</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={!voidReason.trim()}
+              onClick={() => void confirmVoidCheckout()}
+            >
+              Fortryd registrering
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

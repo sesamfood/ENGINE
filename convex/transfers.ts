@@ -9,8 +9,10 @@ import { mutation, query } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 import {
   requireKioskTransfer,
+  requirePermission,
   requireTransferManager,
   requireTransferViewer,
+  resolveLocationFilter,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
@@ -576,6 +578,13 @@ export const listTransfers = query({
   handler: async (ctx, args) => {
     const auth = await requireTransferViewer(ctx, "transfers.history");
     const { organizationId } = auth;
+    const locationFilter = resolveLocationFilter(auth);
+    const locationIds =
+      locationFilter === "all"
+        ? null
+        : "locationId" in locationFilter
+          ? [locationFilter.locationId]
+          : locationFilter.locationIds;
     validateDateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     const results = await ctx.db
@@ -587,11 +596,15 @@ export const listTransfers = query({
           .lte("transferredAt", args.endAt),
       )
       .filter((q) =>
-        auth.kioskLocationId
-          ? q.or(
-              q.eq(q.field("fromLocationId"), auth.kioskLocationId),
-              q.eq(q.field("toLocationId"), auth.kioskLocationId),
-            )
+        locationIds
+          ? locationIds.length
+            ? q.or(
+                ...locationIds.flatMap((locationId) => [
+                  q.eq(q.field("fromLocationId"), locationId),
+                  q.eq(q.field("toLocationId"), locationId),
+                ]),
+              )
+            : q.neq(q.field("organizationId"), organizationId)
           : true,
       )
       .order("desc")
@@ -769,8 +782,15 @@ export const exportTransfers = query({
   },
   returns: paginationResultValidator(exportTransferValidator),
   handler: async (ctx, args) => {
-    const auth = await requireTransferViewer(ctx, "transfers.history");
+    const auth = await requirePermission(ctx, "transfers.export");
     const { organizationId } = auth;
+    const locationFilter = resolveLocationFilter(auth);
+    const locationIds =
+      locationFilter === "all"
+        ? null
+        : "locationId" in locationFilter
+          ? [locationFilter.locationId]
+          : locationFilter.locationIds;
     validateDateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, EXPORT_PAGE_SIZE);
     if (
@@ -825,11 +845,15 @@ export const exportTransfers = query({
           .lte("transferredAt", args.endAt),
       )
       .filter((q) =>
-        auth.kioskLocationId
-          ? q.or(
-              q.eq(q.field("fromLocationId"), auth.kioskLocationId),
-              q.eq(q.field("toLocationId"), auth.kioskLocationId),
-            )
+        locationIds
+          ? locationIds.length
+            ? q.or(
+                ...locationIds.flatMap((locationId) => [
+                  q.eq(q.field("fromLocationId"), locationId),
+                  q.eq(q.field("toLocationId"), locationId),
+                ]),
+              )
+            : q.neq(q.field("organizationId"), organizationId)
           : true,
       )
       .order("desc")

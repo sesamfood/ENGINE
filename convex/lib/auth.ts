@@ -1,7 +1,8 @@
 import { ConvexError } from "convex/values";
 import {
-  defaultRolePermissions,
   hasPermission,
+  permissionsForRole,
+  type DataGranularity,
   type OrganizationRole,
   type PermissionId,
 } from "../../lib/auth-permissions";
@@ -28,6 +29,44 @@ type AuthSession = {
   kioskModeEnabled?: boolean | null;
 };
 
+type StoredLocationAccess = {
+  scope: "all" | "selected" | "operator";
+  locationIds: Id<"locations">[];
+  operatorId?: Id<"operators">;
+} | null;
+
+export async function resolveStoredLocationScope(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  access: StoredLocationAccess,
+  kioskLocationId: Id<"locations"> | null,
+) {
+  if (kioskLocationId) {
+    return { all: false, ids: new Set<Id<"locations">>([kioskLocationId]) };
+  }
+  if (access?.scope === "selected") {
+    return { all: false, ids: new Set(access.locationIds) };
+  }
+  if (access?.scope === "operator") {
+    if (!access.operatorId) {
+      return { all: false, ids: new Set<Id<"locations">>() };
+    }
+    const locations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_operatorId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("operatorId", access.operatorId),
+      )
+      .collect();
+    return {
+      all: false,
+      ids: new Set(locations.map((location) => location._id)),
+    };
+  }
+  return { all: true, ids: new Set<Id<"locations">>() };
+}
+
 async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
@@ -43,13 +82,21 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     where: [{ field: "id", value: identity.sessionId as string }],
   });
   const role = member.role;
-  const configured = await ctx.db
-    .query("rolePermissions")
-    .withIndex("by_organizationId_and_role", (q) =>
-      q.eq("organizationId", member.organizationId).eq("role", role),
-    )
-    .unique();
-  const permissions = configured?.permissions ?? defaultRolePermissions[role];
+  const [configured, roleConfig] = await Promise.all([
+    ctx.db
+      .query("rolePermissions")
+      .withIndex("by_organizationId_and_role", (q) =>
+        q.eq("organizationId", member.organizationId).eq("role", role),
+      )
+      .unique(),
+    ctx.db
+      .query("roles")
+      .withIndex("by_organizationId_and_key", (q) =>
+        q.eq("organizationId", member.organizationId).eq("key", role),
+      )
+      .unique(),
+  ]);
+  const permissions = permissionsForRole(role, configured?.permissions);
   const locationAccess = await ctx.db
     .query("memberLocationAccess")
     .withIndex("by_organizationId_and_userId", (q) =>
@@ -59,19 +106,20 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const kioskLocationId = member.kioskLocationId
     ? (member.kioskLocationId as Id<"locations">)
     : null;
-  const locationScope = kioskLocationId
-    ? { all: false, ids: new Set<Id<"locations">>([kioskLocationId]) }
-    : locationAccess?.scope === "selected"
-      ? { all: false, ids: new Set(locationAccess.locationIds) }
-      : { all: true, ids: new Set<Id<"locations">>() };
+  const locationScope = await resolveStoredLocationScope(
+    ctx,
+    member.organizationId,
+    locationAccess,
+    kioskLocationId,
+  );
 
   return {
     organizationId: member.organizationId,
     role,
-    permissions: new Set<string>(
-      role === "admin" ? defaultRolePermissions.admin : permissions,
-    ),
+    granularity: roleConfig?.granularity ?? "detail",
+    permissions: new Set<string>(permissions),
     locationScope,
+    userId: member.userId,
     sessionId: identity.sessionId as string,
     isKioskAccount: session?.isKioskAccount === true,
     kioskModeEnabled: session?.kioskModeEnabled === true,
@@ -84,8 +132,10 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
 type OrganizationAuth = {
   organizationId: string;
   role: OrganizationRole;
+  granularity: DataGranularity;
   permissions: ReadonlySet<string>;
   locationScope: { all: boolean; ids: ReadonlySet<Id<"locations">> };
+  userId: string;
   sessionId: string;
   isKioskAccount: boolean;
   kioskModeEnabled: boolean;
@@ -228,6 +278,13 @@ export function requireKioskTransfer(
     auth.kioskLocationId !== toLocationId
   ) {
     throw new ConvexError("Kioskkontoen har ikke adgang til transferen");
+  }
+  if (
+    !auth.locationScope.all &&
+    !auth.locationScope.ids.has(fromLocationId) &&
+    !auth.locationScope.ids.has(toLocationId)
+  ) {
+    throw new ConvexError("Du har ikke adgang til transferen");
   }
 }
 

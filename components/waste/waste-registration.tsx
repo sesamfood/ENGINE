@@ -48,6 +48,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -163,6 +164,7 @@ export function WasteRegistration() {
   >([]);
   const [undoingIds, setUndoingIds] = useState<Id<"wasteRegistrations">[]>([]);
   const [undoDialogOpen, setUndoDialogOpen] = useState(false);
+  const [undoReason, setUndoReason] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
   const hasUndoRegistrations = undoRegistrations.length > 0;
@@ -293,12 +295,23 @@ export function WasteRegistration() {
     }
   }
 
-  async function undo(items: UndoRegistration[], closeDialog = false) {
+  async function undo(
+    items: UndoRegistration[],
+    reason: string,
+    closeDialog = false,
+  ) {
     if (!items.length) return;
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      toast.error("Angiv en begrundelse");
+      return;
+    }
     const ids = items.map((item) => item.id);
     setUndoingIds((current) => [...new Set([...current, ...ids])]);
     const results = await Promise.allSettled(
-      items.map((item) => voidWaste({ registrationId: item.id })),
+      items.map((item) =>
+        voidWaste({ registrationId: item.id, reason: normalizedReason }),
+      ),
     );
     const succeeded = ids.filter(
       (_, index) => results[index].status === "fulfilled",
@@ -763,8 +776,8 @@ export function WasteRegistration() {
           className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 h-12 px-3 shadow-sm sm:right-4 sm:px-4"
           disabled={undoingIds.length > 0}
           onClick={() => {
-            if (undoRegistrations.length === 1) void undo(undoRegistrations);
-            else setUndoDialogOpen(true);
+            setUndoReason("");
+            setUndoDialogOpen(true);
           }}
         >
           <Undo2Icon data-icon="inline-start" />
@@ -790,9 +803,20 @@ export function WasteRegistration() {
             <DialogTitle>Fortryd spildregistreringer</DialogTitle>
             <DialogDescription>
               Fortryd en enkelt registrering eller annullér dem alle.
-              Registreringerne forsvinder automatisk efter 30 sekunder.
+              Skriv en begrundelse. Registreringerne forsvinder automatisk efter
+              30 sekunder.
             </DialogDescription>
           </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="waste-undo-reason">Begrundelse</FieldLabel>
+            <Textarea
+              id="waste-undo-reason"
+              value={undoReason}
+              onChange={(event) => setUndoReason(event.target.value)}
+              placeholder="Skriv, hvorfor registreringen annulleres"
+              required
+            />
+          </Field>
           <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
             {[...undoRegistrations].reverse().map((registration) => (
               <Field
@@ -816,8 +840,8 @@ export function WasteRegistration() {
                   type="button"
                   variant="destructive"
                   className="h-11 shrink-0 px-4"
-                  disabled={undoingIds.includes(registration.id)}
-                  onClick={() => void undo([registration])}
+                  disabled={undoingIds.includes(registration.id) || !undoReason.trim()}
+                  onClick={() => void undo([registration], undoReason)}
                 >
                   <Undo2Icon data-icon="inline-start" />
                   Fortryd
@@ -831,8 +855,8 @@ export function WasteRegistration() {
             </Button>
             <Button
               variant="destructive"
-              disabled={undoingIds.length > 0}
-              onClick={() => void undo(undoRegistrations, true)}
+              disabled={undoingIds.length > 0 || !undoReason.trim()}
+              onClick={() => void undo(undoRegistrations, undoReason, true)}
             >
               <Undo2Icon data-icon="inline-start" />
               Fortryd alle

@@ -14,6 +14,7 @@ import {
   validateCategoryParentAssignment,
 } from "./lib/categoryHierarchy";
 import { normalizeStock } from "./lib/stock";
+import { recordAudit } from "./lib/audit";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -1125,7 +1126,8 @@ export const createProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
   },
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId, userIdentifier } = auth;
     const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
     await assertProductNameAvailable(ctx, organizationId, normalizedName);
     const categoryId = await resolveCategory(
@@ -1154,6 +1156,12 @@ export const createProduct = mutation({
       units,
       args.ingredients,
     );
+    await recordAudit(ctx, auth, {
+      action: "catalog.productCreated",
+      entityTable: "products",
+      entityId: productId,
+      summary: `Produktet ${name} blev oprettet`,
+    });
     return productId;
   },
 });
@@ -1174,7 +1182,8 @@ export const importProduct = mutation({
     ),
   }),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId, userIdentifier } = auth;
     const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
     const existing = await ctx.db
       .query("products")
@@ -1375,6 +1384,12 @@ export const importProduct = mutation({
         archivedAt: undefined,
         updatedAt,
       });
+      await recordAudit(ctx, auth, {
+        action: "catalog.productImported",
+        entityTable: "products",
+        entityId: existing._id,
+        summary: `Produktet ${name} blev overskrevet fra import`,
+      });
       return { productId: existing._id, status: "overwritten" as const };
     }
 
@@ -1389,6 +1404,12 @@ export const importProduct = mutation({
       updatedAt: Date.now(),
     });
     await replaceProductChildren(ctx, organizationId, productId, units, []);
+    await recordAudit(ctx, auth, {
+      action: "catalog.productImported",
+      entityTable: "products",
+      entityId: productId,
+      summary: `Produktet ${name} blev importeret`,
+    });
     return { productId, status: "created" as const };
   },
 });
@@ -1400,7 +1421,8 @@ export const importProductIngredients = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -1445,6 +1467,12 @@ export const importProductIngredients = mutation({
         unitId: ingredient.unitId,
       });
     }
+    await recordAudit(ctx, auth, {
+      action: "catalog.productIngredientsChanged",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `Ingredienser for ${product.name} blev ændret`,
+    });
     return null;
   },
 });
@@ -1458,7 +1486,8 @@ export const updateProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
   },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -1543,6 +1572,12 @@ export const updateProduct = mutation({
       defaultUnitId,
       updatedAt: Date.now(),
     });
+    await recordAudit(ctx, auth, {
+      action: "catalog.productUpdated",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `Produktet ${name} blev ændret`,
+    });
     return product._id;
   },
 });
@@ -1550,7 +1585,8 @@ export const updateProduct = mutation({
 export const archiveProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -1566,6 +1602,12 @@ export const archiveProduct = mutation({
       internal.catalog.deleteExpiredProduct,
       { productId: product._id, archivedAt },
     );
+    await recordAudit(ctx, auth, {
+      action: "catalog.productArchived",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `Produktet ${product.name} blev arkiveret`,
+    });
     return null;
   },
 });
@@ -1573,7 +1615,8 @@ export const archiveProduct = mutation({
 export const restoreProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -1583,6 +1626,12 @@ export const restoreProduct = mutation({
       archivedAt: undefined,
       updatedAt: Date.now(),
     });
+    await recordAudit(ctx, auth, {
+      action: "catalog.productRestored",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `Produktet ${product.name} blev gendannet`,
+    });
     return null;
   },
 });
@@ -1590,7 +1639,8 @@ export const restoreProduct = mutation({
 export const deleteProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -1599,6 +1649,12 @@ export const deleteProduct = mutation({
       throw new ConvexError("Produktet skal arkiveres, før det kan slettes");
     }
     await permanentlyDeleteProduct(ctx, product);
+    await recordAudit(ctx, auth, {
+      action: "catalog.productDeleted",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `Produktet ${product.name} blev slettet`,
+    });
     return null;
   },
 });
@@ -1642,7 +1698,8 @@ export const createCategory = mutation({
   args: { name: v.string(), placement: categoryPlacementValidator },
   returns: v.id("categories"),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
     const [{ categories }, existing] = await Promise.all([
       loadCategoryHierarchy(ctx, organizationId),
@@ -1693,6 +1750,12 @@ export const createCategory = mutation({
         parentCategoryId: categoryId,
       });
     }
+    await recordAudit(ctx, auth, {
+      action: "catalog.categoryCreated",
+      entityTable: "categories",
+      entityId: categoryId,
+      summary: `Kategorien ${name} blev oprettet`,
+    });
     return categoryId;
   },
 });
@@ -1705,7 +1768,8 @@ export const updateCategory = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
@@ -1740,6 +1804,12 @@ export const updateCategory = mutation({
       normalizedName,
       parentCategoryId: args.parentCategoryId ?? undefined,
     });
+    await recordAudit(ctx, auth, {
+      action: "catalog.categoryUpdated",
+      entityTable: "categories",
+      entityId: category._id,
+      summary: `Kategorien ${name} blev ændret`,
+    });
     return null;
   },
 });
@@ -1748,7 +1818,8 @@ export const deleteCategory = mutation({
   args: { categoryId: v.id("categories") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const category = await ctx.db.get("categories", args.categoryId);
     if (!category || category.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
@@ -1781,6 +1852,12 @@ export const deleteCategory = mutation({
       throw new ConvexError("Kategorien bruges stadig i personalemad");
     }
     await ctx.db.delete("categories", category._id);
+    await recordAudit(ctx, auth, {
+      action: "catalog.categoryDeleted",
+      entityTable: "categories",
+      entityId: category._id,
+      summary: `Kategorien ${category.name} blev slettet`,
+    });
     return null;
   },
 });
@@ -1788,7 +1865,8 @@ export const deleteCategory = mutation({
 export const createUnit = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
     const existing = await ctx.db
       .query("units")
@@ -1799,18 +1877,26 @@ export const createUnit = mutation({
       )
       .unique();
     if (existing) throw new ConvexError("Enheden findes allerede");
-    return await ctx.db.insert("units", {
+    const unitId = await ctx.db.insert("units", {
       organizationId,
       name,
       normalizedName,
     });
+    await recordAudit(ctx, auth, {
+      action: "catalog.unitCreated",
+      entityTable: "units",
+      entityId: unitId,
+      summary: `Enheden ${name} blev oprettet`,
+    });
+    return unitId;
   },
 });
 
 export const renameUnit = mutation({
   args: { unitId: v.id("units"), name: v.string() },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
       throw new ConvexError("Enheden blev ikke fundet");
@@ -1828,6 +1914,12 @@ export const renameUnit = mutation({
       throw new ConvexError("Enheden findes allerede");
     }
     await ctx.db.patch("units", unit._id, { name, normalizedName });
+    await recordAudit(ctx, auth, {
+      action: "catalog.unitRenamed",
+      entityTable: "units",
+      entityId: unit._id,
+      summary: `Enheden blev omdøbt til ${name}`,
+    });
     return null;
   },
 });
@@ -1839,7 +1931,8 @@ export const mergeUnits = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     if (args.sourceUnitId === args.targetUnitId) {
       throw new ConvexError("Vælg to forskellige enheder");
     }
@@ -2016,6 +2109,12 @@ export const mergeUnits = mutation({
     }
 
     await ctx.db.delete("units", sourceUnit._id);
+    await recordAudit(ctx, auth, {
+      action: "catalog.unitMerged",
+      entityTable: "units",
+      entityId: sourceUnit._id,
+      summary: `Enheden ${sourceUnit.name} blev lagt sammen med ${targetUnit.name}`,
+    });
     return null;
   },
 });
@@ -2023,7 +2122,8 @@ export const mergeUnits = mutation({
 export const deleteUnit = mutation({
   args: { unitId: v.id("units") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const unit = await ctx.db.get("units", args.unitId);
     if (!unit || unit.organizationId !== organizationId) {
       throw new ConvexError("Enheden blev ikke fundet");
@@ -2036,6 +2136,12 @@ export const deleteUnit = mutation({
       .first();
     if (productUnit) throw new ConvexError("Enheden er stadig i brug");
     await ctx.db.delete("units", unit._id);
+    await recordAudit(ctx, auth, {
+      action: "catalog.unitDeleted",
+      entityTable: "units",
+      entityId: unit._id,
+      summary: `Enheden ${unit.name} blev slettet`,
+    });
     return null;
   },
 });
@@ -2054,7 +2160,8 @@ export const setProductImage = mutation({
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -2087,6 +2194,12 @@ export const setProductImage = mutation({
       imageStorageId: args.storageId,
       updatedAt: Date.now(),
     });
+    await recordAudit(ctx, auth, {
+      action: "catalog.productImageChanged",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `Billedet for ${product.name} blev ændret`,
+    });
     return null;
   },
 });
@@ -2094,7 +2207,8 @@ export const setProductImage = mutation({
 export const removeProductImage = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -2104,6 +2218,12 @@ export const removeProductImage = mutation({
       await ctx.db.patch("products", product._id, {
         imageStorageId: undefined,
         updatedAt: Date.now(),
+      });
+      await recordAudit(ctx, auth, {
+        action: "catalog.productImageRemoved",
+        entityTable: "products",
+        entityId: product._id,
+        summary: `Billedet for ${product.name} blev fjernet`,
       });
     }
     return null;

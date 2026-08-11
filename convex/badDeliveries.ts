@@ -27,6 +27,8 @@ import {
 } from "./lib/badDeliverySettings";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
+import { resolveTimeZone } from "./lib/timeZone";
+import { recordAudit, requireAuditReason } from "./lib/audit";
 
 const MAX_ITEMS = 200;
 const MAX_PRODUCT_OPTIONS = 50;
@@ -814,10 +816,14 @@ export const exportBadDeliveries = query({
 });
 
 export const voidBadDelivery = mutation({
-  args: { badDeliveryId: v.id("badDeliveries") },
+  args: {
+    badDeliveryId: v.id("badDeliveries"),
+    reason: v.string(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireWasteReporter(ctx);
+    const reason = requireAuditReason(args.reason);
     const { organizationId, userIdentifier, userName } = auth;
     const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
     if (!delivery || delivery.organizationId !== organizationId) {
@@ -866,6 +872,14 @@ export const voidBadDelivery = mutation({
         kind: "cancellation",
       });
     }
+    await recordAudit(ctx, auth, {
+      action: "badDelivery.void",
+      entityTable: "badDeliveries",
+      entityId: delivery._id,
+      locationId: delivery.locationId,
+      summary: "Dårlig leverance annulleret",
+      reason,
+    });
     return null;
   },
 });
@@ -992,7 +1006,7 @@ export const claimNotice = internalMutation({
       internal.badDeliveries.releaseStaleNoticeClaim,
       { ...args, attemptedAt: now },
     );
-    const [items, attachments, scheduleSettings] = await Promise.all([
+    const [items, attachments, timeZone] = await Promise.all([
       ctx.db
         .query("badDeliveryItems")
         .withIndex("by_organizationId_and_badDeliveryId", (q) =>
@@ -1009,12 +1023,11 @@ export const claimNotice = internalMutation({
             .eq("badDeliveryId", delivery._id),
         )
         .take(3),
-      ctx.db
-        .query("organizationScheduleSettings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", delivery.organizationId),
-        )
-        .unique(),
+      resolveTimeZone(
+        ctx,
+        delivery.organizationId,
+        delivery.locationId,
+      ),
     ]);
     if (items.length > MAX_ITEMS || attachments.length !== 2) {
       throw new ConvexError("Registreringens data er ugyldige");
@@ -1033,7 +1046,7 @@ export const claimNotice = internalMutation({
       emailSubject:
         delivery.emailSubject ?? DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT,
       emailBody: delivery.emailBody ?? DEFAULT_BAD_DELIVERY_EMAIL_BODY,
-      timeZone: scheduleSettings?.timeZone ?? "Europe/Copenhagen",
+      timeZone,
       items: items.map((item) => ({
         productName: item.productName,
         quantity: item.quantity,

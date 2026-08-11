@@ -1,5 +1,13 @@
 import { ConvexError } from "convex/values";
-import type { DashboardRange, MetricId, MetricResult, MetricUnit } from "../../lib/dashboard/types";
+import {
+  DEFAULT_CURRENCY,
+  type DashboardRange,
+  type MetricId,
+  type MetricResult,
+  type MetricUnit,
+} from "../../lib/dashboard/types";
+import type { DataGranularity } from "../../lib/auth-permissions";
+import { metricRegistry, type MetricSource } from "../../lib/dashboard/registry";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 
@@ -8,13 +16,30 @@ const MAX_ROWS = 5_000;
 const MAX_SCOPE_LOCATIONS = 200;
 const MAX_TRANSFER_DETAILS = 500;
 const DAY_MS = 24 * 60 * 60 * 1_000;
+const INTEGRATION_FRESHNESS_INTERVAL_MS = 26 * 60 * 60 * 1_000;
 
-export type DashboardLocation = { id: Id<"locations">; name: string };
+export type DashboardLocation = {
+  id: Id<"locations">;
+  name: string;
+  currency: string;
+};
+
+export type DashboardComparisonGroup = {
+  key: string;
+  label: string;
+  locationIds: readonly Id<"locations">[];
+};
 
 export type DashboardMetricParams = {
   organizationId: string;
   locations: DashboardLocation[];
   compare: boolean;
+  comparisonGroups?: DashboardComparisonGroup[];
+  scopeTruncated?: boolean;
+  accessGranularity: DataGranularity;
+  salesDetailAllowed: boolean;
+  anonymousSeed: string;
+  ownLocationIds: ReadonlySet<Id<"locations">> | null;
   from: number;
   to: number;
   previousFrom: number;
@@ -147,10 +172,20 @@ export function resolveDashboardRange(
 export async function resolveMetricParams(
   ctx: QueryCtx,
   organizationId: string,
-  scope: { mode: "aggregate" | "compare"; locationIds: Id<"locations">[] | null },
+  scope: {
+    mode: "aggregate" | "compare";
+    locationIds: Id<"locations">[] | null;
+    level?: "organization" | "market" | "operator" | "location";
+    parentId?: string;
+  },
   range: DashboardRange,
   now: number,
   allowedLocationScope?: { all: boolean; ids: ReadonlySet<Id<"locations">> },
+  access?: {
+    granularity: DataGranularity;
+    anonymousSeed: string;
+    salesDetailAllowed?: boolean;
+  },
 ) {
   if (!Number.isFinite(now)) throw new ConvexError("Tidspunktet er ugyldigt");
   const [allLocations, scheduleSettings] = await Promise.all([
@@ -165,37 +200,226 @@ export async function resolveMetricParams(
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
       .unique(),
   ]);
-  if (allLocations.length > 200) throw new ConvexError("Organisationen har for mange lokationer");
-
-  const byId = new Map(allLocations.map((location) => [location._id, location]));
-  const availableIds = allowedLocationScope?.all
-    ? allLocations.map((location) => location._id)
-    : allowedLocationScope
-      ? allLocations
-          .filter((location) => allowedLocationScope.ids.has(location._id))
-          .map((location) => location._id)
-      : allLocations.map((location) => location._id);
-  const selectedIds = [
-    ...new Set(scope.locationIds ?? availableIds),
-  ];
+  const allLocationsTruncated = allLocations.length > MAX_SCOPE_LOCATIONS;
+  const requestedLocations = scope.locationIds === null
+    ? null
+    : await Promise.all(
+        [...new Set(scope.locationIds)].map((locationId) =>
+          ctx.db.get("locations", locationId),
+        ),
+      );
   if (
-    allowedLocationScope &&
-    selectedIds.some((locationId) => !availableIds.includes(locationId))
+    requestedLocations?.some(
+      (location) => !location || location.organizationId !== organizationId,
+    )
   ) {
+    throw new ConvexError("Lokationen blev ikke fundet");
+  }
+  const requestedRows = requestedLocations?.filter(
+    (location): location is NonNullable<typeof location> => Boolean(location),
+  ) ?? null;
+
+  let candidateLocations: Doc<"locations">[];
+  if (scope.level === "market") {
+    if (!scope.parentId) throw new ConvexError("Vælg et marked");
+    const market = await ctx.db.get("markets", scope.parentId as Id<"markets">);
+    if (!market || market.organizationId !== organizationId) {
+      throw new ConvexError("Markedet blev ikke fundet");
+    }
+    candidateLocations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_marketId", (q) =>
+        q.eq("organizationId", organizationId).eq("marketId", market._id),
+      )
+      .take(MAX_SCOPE_LOCATIONS + 1);
+  } else if (scope.level === "operator") {
+    if (!scope.parentId) throw new ConvexError("Vælg en operatør");
+    const operator = await ctx.db.get(
+      "operators",
+      scope.parentId as Id<"operators">,
+    );
+    if (!operator || operator.organizationId !== organizationId) {
+      throw new ConvexError("Operatøren blev ikke fundet");
+    }
+    candidateLocations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_operatorId", (q) =>
+        q.eq("organizationId", organizationId).eq("operatorId", operator._id),
+      )
+      .take(MAX_SCOPE_LOCATIONS + 1);
+  } else if (scope.level === "location" && scope.parentId) {
+    const location = await ctx.db.get(
+      "locations",
+      scope.parentId as Id<"locations">,
+    );
+    if (!location || location.organizationId !== organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
+    candidateLocations = [location];
+  } else if (requestedRows) {
+    candidateLocations = requestedRows;
+  } else if (allowedLocationScope && !allowedLocationScope.all) {
+    const allowedRows = await Promise.all(
+      [...allowedLocationScope.ids]
+        .slice(0, MAX_SCOPE_LOCATIONS + 1)
+        .map((locationId) => ctx.db.get("locations", locationId)),
+    );
+    candidateLocations = allowedRows.filter(
+      (location): location is NonNullable<typeof location> =>
+        Boolean(location && location.organizationId === organizationId),
+    );
+  } else {
+    candidateLocations = allLocations;
+  }
+  const lookupLocations = [
+    ...new Map(
+      [...allLocations, ...candidateLocations, ...(requestedRows ?? [])].map(
+        (location) => [location._id, location],
+      ),
+    ).values(),
+  ];
+
+  const marketIds = [
+    ...new Set(
+      lookupLocations.flatMap((location) =>
+        location.marketId ? [location.marketId] : [],
+      ),
+    ),
+  ];
+  const markets = await Promise.all(
+    marketIds.map((marketId) => ctx.db.get("markets", marketId)),
+  );
+  const marketById = new Map(
+    markets.flatMap((market) =>
+      market?.organizationId === organizationId
+        ? [[market._id, market] as const]
+        : [],
+    ),
+  );
+
+  const operatorIds = [
+    ...new Set(
+      lookupLocations.flatMap((location) =>
+        location.operatorId ? [location.operatorId] : [],
+      ),
+    ),
+  ];
+  const operators = await Promise.all(
+    operatorIds.map((operatorId) => ctx.db.get("operators", operatorId)),
+  );
+  const operatorById = new Map(
+    operators.flatMap((operator) =>
+      operator?.organizationId === organizationId
+        ? [[operator._id, operator] as const]
+        : [],
+    ),
+  );
+
+  const byId = new Map(lookupLocations.map((location) => [location._id, location]));
+  const candidateIds = new Set(candidateLocations.map((location) => location._id));
+  if (
+    scope.locationIds !== null &&
+    scope.locationIds.some((locationId) => !candidateIds.has(locationId))
+  ) {
+    throw new ConvexError("Scope indeholder en ugyldig lokation");
+  }
+  const hasAccess = (locationId: Id<"locations">) =>
+    !allowedLocationScope ||
+    allowedLocationScope.all ||
+    allowedLocationScope.ids.has(locationId);
+  if (scope.locationIds?.some((locationId) => !hasAccess(locationId))) {
     throw new ConvexError("Du har ikke adgang til en eller flere lokationer");
   }
-  if (selectedIds.length > MAX_SCOPE_LOCATIONS) {
-    throw new ConvexError(`Overblikket kan højst vise ${MAX_SCOPE_LOCATIONS} lokationer ad gangen`);
-  }
-  const locations = selectedIds.flatMap((id) => {
+  const selectedIds = scope.locationIds === null
+    ? candidateLocations
+        .filter((location) => hasAccess(location._id))
+        .map((location) => location._id)
+    : [...new Set(scope.locationIds)];
+  const scopeTruncated =
+    selectedIds.length > MAX_SCOPE_LOCATIONS ||
+    (scope.locationIds === null && candidateLocations.length > MAX_SCOPE_LOCATIONS);
+  const resolvedIds = selectedIds.slice(0, MAX_SCOPE_LOCATIONS);
+  const locations = resolvedIds.flatMap((id) => {
     const location = byId.get(id);
-    return location ? [{ id: location._id, name: location.name }] : [];
+    if (!location) return [];
+    const marketCurrency = location.marketId
+      ? marketById.get(location.marketId)?.currency
+      : undefined;
+    return [
+      {
+        id: location._id,
+        name: location.name,
+        currency: location.currency || marketCurrency || DEFAULT_CURRENCY,
+      },
+    ];
   });
+
+  let comparisonGroups: DashboardComparisonGroup[] | undefined;
+  if (scope.level === "organization") {
+    const byMarket = new Map<string, DashboardComparisonGroup>();
+    for (const location of resolvedIds.flatMap((id) => byId.get(id) ?? [])) {
+      const key = location.marketId ?? "unassigned-market";
+      const group = byMarket.get(key) ?? {
+        key,
+        label: location.marketId
+          ? marketById.get(location.marketId)?.name ?? "Ukendt marked"
+          : "Uden marked",
+        locationIds: [],
+      };
+      byMarket.set(key, {
+        ...group,
+        locationIds: [...group.locationIds, location._id],
+      });
+    }
+    comparisonGroups = [...byMarket.values()];
+  } else if (scope.level === "market" && scope.parentId) {
+    const byOperator = new Map<string, DashboardComparisonGroup>();
+    for (const location of resolvedIds.flatMap((id) => byId.get(id) ?? [])) {
+      const key = location.operatorId ?? "unassigned-operator";
+      const group = byOperator.get(key) ?? {
+        key,
+        label: location.operatorId
+          ? operatorById.get(location.operatorId)?.name ?? "Ukendt operatør"
+          : "Uden operatør",
+        locationIds: [],
+      };
+      byOperator.set(key, {
+        ...group,
+        locationIds: [...group.locationIds, location._id],
+      });
+    }
+    comparisonGroups = [...byOperator.values()];
+  } else if (scope.level === "operator" && scope.parentId) {
+    comparisonGroups = locations.map((location) => ({
+      key: location.id,
+      label: location.name,
+      locationIds: [location.id],
+    }));
+  } else if (scope.level === "location") {
+    comparisonGroups = locations.map((location) => ({
+      key: location.id,
+      label: location.name,
+      locationIds: [location.id],
+    }));
+  }
 
   return {
     organizationId,
     locations,
     compare: scope.mode === "compare" && locations.length >= 2,
+    comparisonGroups,
+    scopeTruncated:
+      scopeTruncated ||
+      (scope.locationIds === null &&
+        (!scope.level || scope.level === "organization") &&
+        allLocationsTruncated) ||
+      undefined,
+    accessGranularity: access?.granularity ?? "detail",
+    salesDetailAllowed: access?.salesDetailAllowed ?? true,
+    anonymousSeed: access?.anonymousSeed ?? "shared-dashboard",
+    ownLocationIds: allowedLocationScope?.all
+      ? null
+      : (allowedLocationScope?.ids ?? null),
     granularity: "day" as const,
     now,
     cache: new Map<string, Promise<unknown>>(),
@@ -213,6 +437,97 @@ function cached<T>(
   const result = load();
   params.cache.set(key, result);
   return result;
+}
+
+type Freshness = NonNullable<MetricResult["freshness"]>;
+
+function withAffectedNames(
+  params: DashboardMetricParams,
+  names: string[],
+  freshness: Omit<Freshness, "affectedLocationNames">,
+): Freshness {
+  return params.accessGranularity === "detail"
+    ? { ...freshness, affectedLocationNames: names }
+    : freshness;
+}
+
+async function onlinePosFreshness(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+): Promise<Freshness> {
+  return await cached(params, "freshness:onlinepos", async () => {
+    const statuses = await Promise.all(
+      params.locations.map((location) =>
+        ctx.db
+          .query("onlinePosSyncStatus")
+          .withIndex("by_organizationId_and_locationId", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .eq("locationId", location.id),
+          )
+          .unique(),
+      ),
+    );
+    const staleNames: string[] = [];
+    const errorNames: string[] = [];
+    const successfulSyncs: number[] = [];
+    const staleBefore = params.now - INTEGRATION_FRESHNESS_INTERVAL_MS;
+    for (const [index, location] of params.locations.entries()) {
+      const status = statuses[index];
+      const lastSuccessAt = status?.lastSuccessAt ?? null;
+      if (lastSuccessAt !== null) successfulSyncs.push(lastSuccessAt);
+      const stale =
+        lastSuccessAt === null ||
+        lastSuccessAt < staleBefore;
+      const error = status?.state === "error" || Boolean(status?.lastError);
+      if (stale) staleNames.push(location.name);
+      if (error) errorNames.push(location.name);
+    }
+    const affectedNames = [...new Set([...staleNames, ...errorNames])];
+    return withAffectedNames(params, affectedNames, {
+      lastSuccessAt:
+        successfulSyncs.length === params.locations.length && successfulSyncs.length > 0
+          ? Math.min(...successfulSyncs)
+          : null,
+      staleLocationCount: staleNames.length,
+      errorLocationCount: errorNames.length,
+    });
+  });
+}
+
+async function workfeedFreshness(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+): Promise<Freshness> {
+  return await cached(params, "freshness:workfeed", async () => {
+    const status = await ctx.db
+      .query("workfeedSyncStatus")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", params.organizationId),
+      )
+      .unique();
+    const lastSuccessAt = status?.lastShiftSuccessAt ?? null;
+    const stale =
+      lastSuccessAt === null ||
+      lastSuccessAt < params.now - INTEGRATION_FRESHNESS_INTERVAL_MS;
+    const error = status?.state === "error" || Boolean(status?.lastError);
+    const names = stale || error ? params.locations.map((location) => location.name) : [];
+    return withAffectedNames(params, names, {
+      lastSuccessAt,
+      staleLocationCount: stale ? params.locations.length : 0,
+      errorLocationCount: error ? params.locations.length : 0,
+    });
+  });
+}
+
+async function integrationFreshness(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+  source: MetricSource,
+): Promise<Freshness> {
+  return source === "onlinepos"
+    ? await onlinePosFreshness(ctx, params)
+    : await workfeedFreshness(ctx, params);
 }
 
 function rounded(value: number) {
@@ -235,14 +550,30 @@ function seriesResult(
   unit: MetricUnit,
   rows: TimedValue[],
   params: DashboardMetricParams,
-  options?: Pick<MetricResult, "breakdown" | "target" | "truncated">,
+  options?: Pick<
+    MetricResult,
+    "breakdown" | "target" | "truncated" | "currency" | "mixedCurrency"
+  >,
+  groupOverride?: DashboardComparisonGroup[],
 ): MetricResult {
-  const groups = params.compare
-    ? params.locations.map((location) => ({ key: location.id, label: location.name }))
+  const groups: Array<{
+    key: string;
+    label: string;
+    locationIds?: readonly Id<"locations">[];
+  }> = groupOverride?.length
+    ? groupOverride
+    : params.compare
+    ? params.locations.map((location) => ({
+        key: location.id,
+        label: location.name,
+        locationIds: [location.id],
+      }))
     : [{ key: "all", label: "Alle lokationer" }];
   const days = dayStarts(params.from, params.to, params.timeZone);
   const series = groups.map((group) => {
-    const relevant = params.compare
+    const relevant = groupOverride?.length
+      ? rows.filter((row) => group.locationIds?.includes(row.locationId))
+      : params.compare
       ? rows.filter((row) => row.locationId === group.key)
       : rows;
     const current = relevant.filter(
@@ -265,6 +596,18 @@ function seriesResult(
     };
   });
   return { unit, series, ...options };
+}
+
+function currencyOptions(
+  params: DashboardMetricParams,
+): Pick<MetricResult, "currency" | "mixedCurrency"> {
+  const currencies = [
+    ...new Set(
+      params.locations.map((location) => location.currency || DEFAULT_CURRENCY),
+    ),
+  ];
+  if (currencies.length > 1) return { mixedCurrency: true };
+  return { currency: currencies[0] ?? DEFAULT_CURRENCY };
 }
 
 async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
@@ -561,7 +904,20 @@ const locationComparison: MetricComputer = async (ctx, params) => {
     ...transferResult.rows.map((row) => ({ timestamp: row.transferredAt, locationId: row.fromLocationId, value: 1 })),
     ...staffFood.rows.map((row) => ({ timestamp: row.registeredAt, locationId: row.locationId, value: 1 })),
   ];
-  const compared = seriesResult("count", rows, { ...params, compare: true }, { truncated: waste.truncated || deliveries.truncated || transferResult.truncated || staffFood.truncated || undefined });
+  const compared = seriesResult(
+    "count",
+    rows,
+    { ...params, compare: true },
+    {
+      truncated:
+        waste.truncated ||
+        deliveries.truncated ||
+        transferResult.truncated ||
+        staffFood.truncated ||
+        undefined,
+    },
+    params.comparisonGroups,
+  );
   return { ...compared, breakdown: compared.series.map((series) => ({ key: series.key, label: series.label, value: series.total })).sort((a, b) => b.value - a.value) };
 };
 
@@ -605,7 +961,7 @@ const salesRevenue: MetricComputer = async (ctx, params) => {
       value: row.revenue / 100,
     })),
     params,
-    { truncated: result.truncated || undefined },
+    { ...currencyOptions(params), truncated: result.truncated || undefined },
   );
 };
 
@@ -625,6 +981,7 @@ const salesOrderCount: MetricComputer = async (ctx, params) => {
 
 const averageBasket: MetricComputer = async (ctx, params) => {
   const result = await salesDailyRows(ctx, params);
+  const currencies = currencyOptions(params);
   const groups = params.compare
     ? params.locations.map((location) => ({ key: location.id, label: location.name }))
     : [{ key: "all" as const, label: "Alle lokationer" }];
@@ -677,35 +1034,167 @@ const averageBasket: MetricComputer = async (ctx, params) => {
   return {
     unit: "currency",
     series,
+    ...currencies,
     truncated: result.truncated || undefined,
-    headlineTotal: rounded(
-      headlineOrders > 0 ? headlineRevenue / 100 / headlineOrders : 0,
-    ),
-    headlinePrevious: rounded(
-      headlinePreviousOrders > 0
-        ? headlinePreviousRevenue / 100 / headlinePreviousOrders
-        : 0,
-    ),
+    ...(currencies.mixedCurrency
+      ? {}
+      : {
+          headlineTotal: rounded(
+            headlineOrders > 0 ? headlineRevenue / 100 / headlineOrders : 0,
+          ),
+          headlinePrevious: rounded(
+            headlinePreviousOrders > 0
+              ? headlinePreviousRevenue / 100 / headlinePreviousOrders
+              : 0,
+          ),
+        }),
   };
 };
 
+function aggregateResult(result: MetricResult): MetricResult {
+  if (result.series.length <= 1) {
+    return { ...result, breakdown: undefined };
+  }
+  const total = result.headlineTotal ??
+    result.series.reduce((sum, series) => sum + series.total, 0);
+  const previousValues = result.series.map((series) => series.previousTotal);
+  const previousTotal = result.headlinePrevious !== undefined
+    ? result.headlinePrevious
+    : previousValues.some((value) => value === null)
+      ? null
+      : previousValues.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+  const byTime = new Map<number, number>();
+  if (result.headlineTotal === undefined) {
+    for (const series of result.series) {
+      for (const point of series.points) {
+        byTime.set(point.t, (byTime.get(point.t) ?? 0) + point.value);
+      }
+    }
+  }
+  return {
+    ...result,
+    breakdown: undefined,
+    series: [
+      {
+        key: "all",
+        label: "Alle lokationer",
+        points: [...byTime.entries()]
+          .sort(([left], [right]) => left - right)
+          .map(([t, value]) => ({ t, value: rounded(value) })),
+        total: rounded(total),
+        previousTotal: previousTotal === null ? null : rounded(previousTotal),
+      },
+    ],
+  };
+}
+
+function restaurantLabel(index: number) {
+  let value = index + 1;
+  let label = "";
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return `Restaurant ${label}`;
+}
+
+async function anonymousAliases(params: DashboardMetricParams) {
+  if (params.ownLocationIds === null) return new Map<string, { key: string; label: string }>();
+  const keys = new Set<string>();
+  for (const location of params.locations) {
+    if (!params.ownLocationIds.has(location.id)) keys.add(location.id);
+  }
+  for (const group of params.comparisonGroups ?? []) {
+    if (group.locationIds.some((id) => !params.ownLocationIds?.has(id))) {
+      keys.add(group.key);
+    }
+  }
+  const scored = await Promise.all(
+    [...keys].map(async (key) => {
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(`${params.anonymousSeed}:${key}`),
+      );
+      return { key, score: [...new Uint8Array(digest)].join(":") };
+    }),
+  );
+  scored.sort((left, right) => left.score.localeCompare(right.score));
+  return new Map(
+    scored.map(({ key }, index) => [
+      key,
+      { key: `restaurant-${index + 1}`, label: restaurantLabel(index) },
+    ]),
+  );
+}
+
+async function applyAccessGranularity(
+  result: MetricResult,
+  params: DashboardMetricParams,
+) {
+  if (params.accessGranularity === "detail") return result;
+  if (params.accessGranularity === "aggregate") return aggregateResult(result);
+  const aliases = await anonymousAliases(params);
+  if (!aliases.size) return result;
+  return {
+    ...result,
+    series: result.series.map((series) => {
+      const alias = aliases.get(series.key);
+      return alias ? { ...series, ...alias } : series;
+    }),
+    breakdown: result.breakdown?.map((item) => {
+      const alias = aliases.get(item.key);
+      return alias ? { ...item, ...alias } : item;
+    }),
+  };
+}
+
+function withAccessGranularity(
+  metricId: MetricId,
+  computer: MetricComputer,
+): MetricComputer {
+  return async (ctx, params) => {
+    const effectiveParams =
+      metricRegistry[metricId].sensitive && !params.salesDetailAllowed
+        ? { ...params, accessGranularity: "aggregate" as const }
+        : params;
+    return await applyAccessGranularity(
+      await computer(ctx, effectiveParams),
+      effectiveParams,
+    );
+  };
+}
+
+function withMetricMetadata(
+  metricId: MetricId,
+  computer: MetricComputer,
+): MetricComputer {
+  const accessAware = withAccessGranularity(metricId, computer);
+  const source = metricRegistry[metricId].source;
+  if (source === "internal") return accessAware;
+  return async (ctx, params) => ({
+    ...(await accessAware(ctx, params)),
+    freshness: await integrationFreshness(ctx, params, source),
+  });
+}
+
 export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {
-  wasteQuantity,
-  wasteRegistrations,
-  topWastedProducts,
-  wasteByCategory,
-  badDeliveries,
-  countCompliance,
-  openCounts,
-  transfers,
-  itemsMoved,
-  topTransferredProducts,
-  staffFoodRegistrations,
-  staffFoodPerEmployee,
-  scheduledHours,
-  headcountToday,
-  locationComparison,
-  salesRevenue,
-  salesOrderCount,
-  averageBasket,
+  wasteQuantity: withMetricMetadata("wasteQuantity", wasteQuantity),
+  wasteRegistrations: withMetricMetadata("wasteRegistrations", wasteRegistrations),
+  topWastedProducts: withMetricMetadata("topWastedProducts", topWastedProducts),
+  wasteByCategory: withMetricMetadata("wasteByCategory", wasteByCategory),
+  badDeliveries: withMetricMetadata("badDeliveries", badDeliveries),
+  countCompliance: withMetricMetadata("countCompliance", countCompliance),
+  openCounts: withMetricMetadata("openCounts", openCounts),
+  transfers: withMetricMetadata("transfers", transfers),
+  itemsMoved: withMetricMetadata("itemsMoved", itemsMoved),
+  topTransferredProducts: withMetricMetadata("topTransferredProducts", topTransferredProducts),
+  staffFoodRegistrations: withMetricMetadata("staffFoodRegistrations", staffFoodRegistrations),
+  staffFoodPerEmployee: withMetricMetadata("staffFoodPerEmployee", staffFoodPerEmployee),
+  scheduledHours: withMetricMetadata("scheduledHours", scheduledHours),
+  headcountToday: withMetricMetadata("headcountToday", headcountToday),
+  locationComparison: withMetricMetadata("locationComparison", locationComparison),
+  salesRevenue: withMetricMetadata("salesRevenue", salesRevenue),
+  salesOrderCount: withMetricMetadata("salesOrderCount", salesOrderCount),
+  averageBasket: withMetricMetadata("averageBasket", averageBasket),
 };

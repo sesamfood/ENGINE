@@ -16,8 +16,9 @@ import {
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
+import { resolveTimeZone } from "./lib/timeZone";
+import { recordAudit, requireAuditReason } from "./lib/audit";
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_TIERS = 10;
 const MAX_ALLOWANCES = 20;
 const MAX_PRODUCTS_PER_TIER = 100;
@@ -93,16 +94,6 @@ async function requireLocation(
     throw new ConvexError("Lokationen blev ikke fundet");
   }
   return location;
-}
-
-async function getTimeZone(ctx: StaffFoodContext, organizationId: string) {
-  const settings = await ctx.db
-    .query("organizationScheduleSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
-  return settings?.timeZone ?? DEFAULT_TIME_ZONE;
 }
 
 function dateInTimeZone(timestamp: number, timeZone: string) {
@@ -195,7 +186,11 @@ async function sessionActive(
   now: number,
 ) {
   if (session.source === "manual") {
-    const timeZone = await getTimeZone(ctx, organizationId);
+    const timeZone = await resolveTimeZone(
+      ctx,
+      organizationId,
+      session.locationId,
+    );
     return session.workDate === dateInTimeZone(now, timeZone);
   }
   if (!session.scheduledShiftId) return false;
@@ -389,7 +384,11 @@ export const startSession = mutation({
       organizationId,
       args.selection.locationId,
     );
-    const timeZone = await getTimeZone(ctx, organizationId);
+    const timeZone = await resolveTimeZone(
+      ctx,
+      organizationId,
+      args.selection.locationId,
+    );
     if (args.selection.kind === "scheduled") {
       const shift = await ctx.db.get("scheduledShifts", args.selection.shiftId);
       if (
@@ -873,10 +872,14 @@ export const register = mutation({
 });
 
 export const voidCheckout = mutation({
-  args: { checkoutId: v.string() },
+  args: {
+    checkoutId: v.string(),
+    reason: v.string(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireStaffFoodRegistrar(ctx);
+    const reason = requireAuditReason(args.reason);
     const { organizationId, userIdentifier, userName } = auth;
     const rows = await ctx.db
       .query("staffFoodRegistrations")
@@ -921,6 +924,14 @@ export const voidCheckout = mutation({
         row.defaultQuantity,
       );
     }
+    await recordAudit(ctx, auth, {
+      action: "staffFood.void",
+      entityTable: "staffFoodRegistrations",
+      entityId: args.checkoutId,
+      locationId: rows[0]!.locationId,
+      summary: "Personalemadsregistrering annulleret",
+      reason,
+    });
     return null;
   },
 });
@@ -982,7 +993,7 @@ export const getSettings = query({
           q.eq("organizationId", organizationId),
         )
         .take(MAX_SETTINGS_PRODUCTS + 1),
-      getTimeZone(ctx, organizationId),
+      resolveTimeZone(ctx, organizationId),
     ]);
     if (tiers.length > MAX_TIERS) {
       throw new ConvexError("Der er for mange regler");

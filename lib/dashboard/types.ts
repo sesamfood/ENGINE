@@ -1,5 +1,7 @@
 import type { Id } from "@/convex/_generated/dataModel";
 
+export const DEFAULT_CURRENCY = "DKK";
+
 export const metricIds = [
   "wasteQuantity",
   "wasteRegistrations",
@@ -68,6 +70,14 @@ export type MetricResult = {
   breakdown?: { key: string; label: string; value: number }[];
   target?: number;
   truncated?: boolean;
+  currency?: string;
+  mixedCurrency?: boolean;
+  freshness?: {
+    lastSuccessAt: number | null;
+    staleLocationCount: number;
+    errorLocationCount: number;
+    affectedLocationNames?: string[];
+  };
   // Optional weighted headline for ratio metrics. KPI/%-change prefer this over
   // summing series totals, which is wrong for averages in compare scope.
   headlineTotal?: number;
@@ -86,6 +96,8 @@ export type WidgetInstance = {
 export type DashboardScope = {
   mode: "aggregate" | "compare";
   locationIds: Id<"locations">[] | null;
+  level?: "organization" | "market" | "operator" | "location";
+  parentId?: string;
 };
 
 export type DashboardRange = {

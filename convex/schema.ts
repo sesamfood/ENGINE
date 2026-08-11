@@ -15,24 +15,59 @@ import {
 export default defineSchema({
   rolePermissions: defineTable({
     organizationId: v.string(),
-    role: v.union(
-      v.literal("admin"),
-      v.literal("manager"),
-      v.literal("member"),
-    ),
+    role: v.string(),
     permissions: v.array(v.string()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_role", ["organizationId", "role"]),
 
+  roles: defineTable({
+    organizationId: v.string(),
+    key: v.string(),
+    name: v.string(),
+    isSystem: v.boolean(),
+    granularity: v.optional(
+      v.union(
+        v.literal("detail"),
+        v.literal("aggregate"),
+        v.literal("anonymous"),
+      ),
+    ),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_key", ["organizationId", "key"]),
+
   memberLocationAccess: defineTable({
     organizationId: v.string(),
     userId: v.string(),
-    scope: v.union(v.literal("all"), v.literal("selected")),
+    scope: v.union(
+      v.literal("all"),
+      v.literal("selected"),
+      v.literal("operator"),
+    ),
     locationIds: v.array(v.id("locations")),
+    operatorId: v.optional(v.id("operators")),
     updatedAt: v.number(),
   })
     .index("by_organizationId_and_userId", ["organizationId", "userId"])
     .index("by_organizationId", ["organizationId"]),
+
+  auditLog: defineTable({
+    organizationId: v.string(),
+    locationId: v.optional(v.id("locations")),
+    actorUserId: v.string(),
+    actorName: v.string(),
+    action: v.string(),
+    entityTable: v.string(),
+    entityId: v.string(),
+    summary: v.string(),
+    reason: v.optional(v.string()),
+    at: v.number(),
+  })
+    .index("by_organizationId_and_at", ["organizationId", "at"])
+    .index("by_organizationId_and_entityTable_and_entityId", [
+      "organizationId",
+      "entityTable",
+      "entityId",
+    ]),
 
   organizationAssets: defineTable({
     organizationId: v.string(),
@@ -104,6 +139,8 @@ export default defineSchema({
     // Set before destroying a day during reconcile; cleared only on success.
     // Dispatcher retries this dayStart until the rebuild completes.
     pendingReconcileDayStart: v.optional(v.number()),
+    dayStartRerollToken: v.optional(v.string()),
+    dayStartRerollTimeZone: v.optional(v.string()),
     // Keep the latest reconciled day hash; replace by dayStart.
     reconcileHashes: v.optional(
       v.array(v.object({ dayStart: v.number(), hash: v.string() })),
@@ -126,9 +163,6 @@ export default defineSchema({
     organizationId: v.string(),
     locationId: v.id("locations"),
     occurredAt: v.number(),
-    // ponytail: dayStart is frozen in the organization time zone at ingest; changing
-    // organizationScheduleSettings.timeZone leaves historical rows on the previous zone.
-    // Upgrade: one-off re-rollup mutation.
     dayStart: v.number(),
     orderNumber: v.number(),
     // Money is stored as integer minor units (øre); readers divide by 100.
@@ -518,6 +552,41 @@ export default defineSchema({
     "normalizedName",
   ]),
 
+  markets: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    currency: v.optional(v.string()),
+    timeZone: v.optional(v.string()),
+  }).index("by_organizationId_and_normalizedName", [
+    "organizationId",
+    "normalizedName",
+  ]),
+
+  legalEntities: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    registrationNumber: v.optional(v.string()),
+  }).index("by_organizationId_and_normalizedName", [
+    "organizationId",
+    "normalizedName",
+  ]),
+
+  operators: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    legalEntityId: v.optional(v.id("legalEntities")),
+    contactEmail: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("inactive")),
+  })
+    .index("by_organizationId_and_normalizedName", [
+      "organizationId",
+      "normalizedName",
+    ])
+    .index("by_organizationId_and_status", ["organizationId", "status"]),
+
   products: defineTable({
     organizationId: v.string(),
     name: v.string(),
@@ -597,10 +666,43 @@ export default defineSchema({
     countProductOrder: v.optional(v.array(v.id("products"))),
     openingHoursMode: v.optional(openingHoursModeValidator),
     weeklyOpeningHours: v.optional(v.array(weeklyOpeningHoursValidator)),
-  }).index("by_organizationId_and_normalizedName", [
-    "organizationId",
-    "normalizedName",
-  ]),
+    marketId: v.optional(v.id("markets")),
+    legalEntityId: v.optional(v.id("legalEntities")),
+    operatorId: v.optional(v.id("operators")),
+    ownershipType: v.optional(
+      v.union(
+        v.literal("owned"),
+        v.literal("franchise"),
+        v.literal("jointVenture"),
+        v.literal("license"),
+      ),
+    ),
+    conceptVersion: v.optional(v.string()),
+    openedAt: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    timeZone: v.optional(v.string()),
+    status: v.optional(
+      v.union(
+        v.literal("planned"),
+        v.literal("open"),
+        v.literal("temporarilyClosed"),
+        v.literal("closed"),
+      ),
+    ),
+  })
+    .index("by_organizationId_and_normalizedName", [
+      "organizationId",
+      "normalizedName",
+    ])
+    .index("by_organizationId_and_status", ["organizationId", "status"])
+    .index("by_organizationId_and_operatorId", [
+      "organizationId",
+      "operatorId",
+    ])
+    .index("by_organizationId_and_marketId", [
+      "organizationId",
+      "marketId",
+    ]),
 
   locationSpecialOpeningHours: defineTable({
     organizationId: v.string(),
@@ -1124,6 +1226,14 @@ export default defineSchema({
     scope: scopeValidator,
     range: rangeValidator,
     createdBy: v.string(),
+    granularity: v.optional(
+      v.union(
+        v.literal("detail"),
+        v.literal("aggregate"),
+        v.literal("anonymous"),
+      ),
+    ),
+    salesDetailAllowed: v.optional(v.boolean()),
     expiresAt: v.number(),
     revokedAt: v.optional(v.number()),
     lastViewedAt: v.optional(v.number()),

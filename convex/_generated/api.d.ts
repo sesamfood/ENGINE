@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as badDeliveries from "../badDeliveries.js";
 import type * as badDeliveryNotices from "../badDeliveryNotices.js";
@@ -20,6 +21,7 @@ import type * as dashboardShare from "../dashboardShare.js";
 import type * as employees from "../employees.js";
 import type * as http from "../http.js";
 import type * as kiosk from "../kiosk.js";
+import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authEmail from "../lib/authEmail.js";
 import type * as lib_badDeliverySettings from "../lib/badDeliverySettings.js";
@@ -30,6 +32,7 @@ import type * as lib_countWindow from "../lib/countWindow.js";
 import type * as lib_dashboardMetrics from "../lib/dashboardMetrics.js";
 import type * as lib_dashboardShareCrypto from "../lib/dashboardShareCrypto.js";
 import type * as lib_dashboardValidators from "../lib/dashboardValidators.js";
+import type * as lib_masterData from "../lib/masterData.js";
 import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
 import type * as lib_openingHours from "../lib/openingHours.js";
 import type * as lib_organizationTheme from "../lib/organizationTheme.js";
@@ -37,8 +40,10 @@ import type * as lib_rateLimits from "../lib/rateLimits.js";
 import type * as lib_resend from "../lib/resend.js";
 import type * as lib_salesRollup from "../lib/salesRollup.js";
 import type * as lib_stock from "../lib/stock.js";
+import type * as lib_timeZone from "../lib/timeZone.js";
 import type * as lib_workfeedApi from "../lib/workfeedApi.js";
 import type * as locations from "../locations.js";
+import type * as masterData from "../masterData.js";
 import type * as navigation from "../navigation.js";
 import type * as onlinePos from "../onlinePos.js";
 import type * as onlinePosSync from "../onlinePosSync.js";
@@ -59,6 +64,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  audit: typeof audit;
   auth: typeof auth;
   badDeliveries: typeof badDeliveries;
   badDeliveryNotices: typeof badDeliveryNotices;
@@ -70,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   employees: typeof employees;
   http: typeof http;
   kiosk: typeof kiosk;
+  "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
   "lib/authEmail": typeof lib_authEmail;
   "lib/badDeliverySettings": typeof lib_badDeliverySettings;
@@ -80,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dashboardMetrics": typeof lib_dashboardMetrics;
   "lib/dashboardShareCrypto": typeof lib_dashboardShareCrypto;
   "lib/dashboardValidators": typeof lib_dashboardValidators;
+  "lib/masterData": typeof lib_masterData;
   "lib/onlinePosApi": typeof lib_onlinePosApi;
   "lib/openingHours": typeof lib_openingHours;
   "lib/organizationTheme": typeof lib_organizationTheme;
@@ -87,8 +95,10 @@ declare const fullApi: ApiFromModules<{
   "lib/resend": typeof lib_resend;
   "lib/salesRollup": typeof lib_salesRollup;
   "lib/stock": typeof lib_stock;
+  "lib/timeZone": typeof lib_timeZone;
   "lib/workfeedApi": typeof lib_workfeedApi;
   locations: typeof locations;
+  masterData: typeof masterData;
   navigation: typeof navigation;
   onlinePos: typeof onlinePos;
   onlinePosSync: typeof onlinePosSync;

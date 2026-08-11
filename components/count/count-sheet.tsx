@@ -76,6 +76,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -789,6 +790,7 @@ export function CountSheet() {
   const kiosk = useKiosk();
   const canRegister = usePermission("count.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("count.register"));
   const canManageCatalog = usePermission("catalog.manage");
+  const canExport = usePermission("count.export");
   const [now, setNow] = useState(() => Date.now());
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
@@ -799,6 +801,7 @@ export function CountSheet() {
   );
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitReason, setSubmitReason] = useState("");
   const [defaultConfirmOpen, setDefaultConfirmOpen] = useState(false);
   const [orderBuilderOpen, setOrderBuilderOpen] = useState(false);
   const [savingDefaultOrder, setSavingDefaultOrder] = useState(false);
@@ -1080,10 +1083,14 @@ export function CountSheet() {
 
   async function confirmSubmit() {
     if (!locationId) return;
+    if (!submitReason.trim()) {
+      toast.error("Angiv en begrundelse");
+      return;
+    }
     setSubmitting(true);
     try {
       await flushPending();
-      await submitCount({ locationId });
+      await submitCount({ locationId, reason: submitReason });
       setConfirmOpen(false);
       toast.success("Optællingen er registreret");
     } catch (error) {
@@ -1391,7 +1398,7 @@ export function CountSheet() {
                 </span>
               </Badge>
             ) : null}
-            {state?.count?.status === "submitted" ? (
+            {state?.count?.status === "submitted" && canExport ? (
               <Button
                 type="button"
                 size="lg"
@@ -1414,7 +1421,10 @@ export function CountSheet() {
                   size="lg"
                   className="min-h-11 shrink-0 px-4 sm:px-6"
                   disabled={Boolean(disabledReason) || submitting}
-                  onClick={() => setConfirmOpen(true)}
+                  onClick={() => {
+                    setSubmitReason("");
+                    setConfirmOpen(true);
+                  }}
                 >
                   {submitting ? <Spinner data-icon="inline-start" /> : null}
                   Registrér optælling
@@ -1432,15 +1442,26 @@ export function CountSheet() {
             <AlertDialogDescription>
               Lageret overskrives for de produkter, der har en mængde i denne
               optælling. Produkter uden en mængde beholder deres nuværende lager.
-              Denne optælling kan ikke ændres bagefter.
+              Denne optælling kan ikke ændres bagefter. Skriv en begrundelse for
+              lagerafstemningen.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <Field>
+            <FieldLabel htmlFor="count-submit-reason">Begrundelse</FieldLabel>
+            <Textarea
+              id="count-submit-reason"
+              value={submitReason}
+              onChange={(event) => setSubmitReason(event.target.value)}
+              placeholder="Skriv, hvorfor optællingen registreres"
+              required
+            />
+          </Field>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={submitting}>
               Fortsæt optælling
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={submitting}
+              disabled={submitting || !submitReason.trim()}
               onClick={() => void confirmSubmit()}
             >
               {submitting ? <Spinner data-icon="inline-start" /> : null}

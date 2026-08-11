@@ -16,8 +16,8 @@ import {
   requireOrganizationAdmin,
 } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
+import { requireTimeZone, resolveTimeZone } from "./lib/timeZone";
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_WEEK_SHIFTS = 2_000;
 const MAX_LOCATION_EMPLOYEES = 500;
 const MAX_ASSIGNMENTS = 200;
@@ -82,25 +82,6 @@ function dateInTimeZone(timestamp: number, timeZone: string) {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
-function requireTimeZone(timeZone: string) {
-  const normalized = timeZone.trim();
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: normalized }).format();
-  } catch {
-    throw new ConvexError("Tidszonen er ugyldig");
-  }
-  return normalized;
-}
-
-async function scheduleSettings(ctx: QueryCtx, organizationId: string) {
-  return await ctx.db
-    .query("organizationScheduleSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
-}
-
 async function hydrateEmployee(
   ctx: QueryCtx,
   organizationId: string,
@@ -151,8 +132,14 @@ export const getContext = query({
       "waste.report",
     ]);
     const { organizationId } = auth;
-    const [settings, integration, status, employee, shift, manualLimit] = await Promise.all([
-      scheduleSettings(ctx, organizationId),
+    const [timeZone, settings, integration, status, employee, shift, manualLimit] = await Promise.all([
+      resolveTimeZone(ctx, organizationId),
+      ctx.db
+        .query("organizationScheduleSettings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
       ctx.db
         .query("workfeedIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -180,7 +167,7 @@ export const getContext = query({
       rateLimiter.check(ctx, "manualWorkfeedSync", { key: organizationId }),
     ]);
     return {
-      timeZone: settings?.timeZone ?? DEFAULT_TIME_ZONE,
+      timeZone,
       usesDefaultTimeZone: !settings,
       workfeedConnected: Boolean(integration),
       workfeedEnabled: Boolean(integration?.enabled),
@@ -233,8 +220,11 @@ export const listWeek = query({
     if (location?.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
     }
-    const settings = await scheduleSettings(ctx, organizationId);
-    const timeZone = settings?.timeZone ?? DEFAULT_TIME_ZONE;
+    const timeZone = await resolveTimeZone(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const dates = Array.from({ length: 7 }, (_, index) =>
       dateValue(new Date(monday.getTime() + index * DAY_MS)),
     );

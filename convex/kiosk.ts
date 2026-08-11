@@ -263,7 +263,7 @@ export const createAccount = mutation({
   handler: async (ctx, args) => {
     const auth = await requireMemberManager(ctx);
     const { organizationId } = auth;
-    if (args.role === "admin" && auth.role !== "admin") {
+    if (args.role === "admin" && !auth.permissions.has("roles.manage")) {
       throw new ConvexError("Kun administratorer kan oprette en administratorkiosk");
     }
     const settings = await ctx.db
