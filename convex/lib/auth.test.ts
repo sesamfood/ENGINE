@@ -18,6 +18,7 @@ function makeAuth(overrides: Partial<TestAuth> = {}): TestAuth {
     granularity: "detail",
     permissions: new Set(["count.register"]),
     locationScope: { all: true, ids: new Set() },
+    userId: "user-id",
     sessionId: "session",
     isKioskAccount: false,
     kioskModeEnabled: false,
@@ -90,7 +91,9 @@ test("requireLocationAccess afviser en kioskkonto på en anden lokation", () => 
 
 test("hasPermission kræver også administratorens gemte tilladelse", () => {
   expect(hasPermission("admin", new Set(), "count.register")).toBe(false);
-  expect(hasPermission("admin", new Set(["count.register"]), "count.register")).toBe(true);
+  expect(
+    hasPermission("admin", new Set(["count.register"]), "count.register"),
+  ).toBe(true);
   expect(hasPermission("member", new Set(), "count.register")).toBe(false);
 });
 
@@ -101,6 +104,7 @@ test("requirePermission afviser et medlem uden tilladelsen", async () => {
       role: "member",
       permissions: [],
       locationScope: { all: true, ids: [] },
+      userId: "user-id",
       sessionId: "session",
       isKioskAccount: false,
       kioskModeEnabled: false,

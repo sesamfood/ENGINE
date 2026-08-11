@@ -121,10 +121,12 @@ function MemberLocationPicker({
     scope: "all" | "selected" | "operator";
     locationIds: Id<"locations">[];
     operatorId?: Id<"operators">;
+    reason: string;
   }) => Promise<unknown>;
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState("");
   const scope = access?.scope ?? "all";
   const selectedIds = access?.locationIds ?? [];
   const operator = operators.find((item) => item.id === access?.operatorId);
@@ -132,7 +134,7 @@ function MemberLocationPicker({
     scope === "all"
       ? "Alle lokationer"
       : scope === "operator"
-        ? operator?.name ?? "Vælg operatør"
+        ? (operator?.name ?? "Vælg operatør")
         : `${selectedIds.length} lokation${selectedIds.length === 1 ? "" : "er"}`;
 
   async function save(
@@ -142,10 +144,20 @@ function MemberLocationPicker({
   ) {
     setSaving(true);
     try {
-      await setAccess({ userId, scope: scopeValue, locationIds, operatorId });
+      await setAccess({
+        userId,
+        scope: scopeValue,
+        locationIds,
+        operatorId,
+        reason,
+      });
       toast.success("Lokationerne er opdateret");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Lokationerne kunne ikke opdateres");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Lokationerne kunne ikke opdateres",
+      );
     } finally {
       setSaving(false);
     }
@@ -163,7 +175,13 @@ function MemberLocationPicker({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setReason("");
+      }}
+    >
       <PopoverTrigger
         render={
           <Button
@@ -178,54 +196,76 @@ function MemberLocationPicker({
         <span className="truncate">{label}</span>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72">
-        <FieldSet className="gap-2">
-          <FieldLegend variant="label">Lokationer</FieldLegend>
-          <label className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
-            <Checkbox
-              checked={scope === "all"}
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`location-access-reason-${userId}`}>
+              Begrundelse
+            </FieldLabel>
+            <Input
+              id={`location-access-reason-${userId}`}
+              value={reason}
+              maxLength={1000}
+              placeholder="Hvorfor ændres adgangen?"
               disabled={saving}
-              onCheckedChange={(checked) => {
-                if (checked === true) void save("all", []);
-              }}
+              onChange={(event) => setReason(event.target.value)}
             />
-            <span>Alle lokationer</span>
-          </label>
-          {locations.map((location) => (
-            <label
-              key={location.id}
-              className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
-            >
+          </Field>
+          <FieldSet className="gap-2">
+            <FieldLegend variant="label">Lokationer</FieldLegend>
+            <label className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
               <Checkbox
-                checked={scope === "selected" && selectedIds.includes(location.id)}
-                disabled={saving}
-                onCheckedChange={(checked) => toggleLocation(location.id, checked === true)}
+                checked={scope === "all"}
+                disabled={saving || !reason.trim()}
+                onCheckedChange={(checked) => {
+                  if (checked === true) void save("all", []);
+                }}
               />
-              <span className="truncate">{location.name}</span>
+              <span>Alle lokationer</span>
             </label>
-          ))}
-          {operators.length ? (
-            <>
-              <FieldLegend variant="label" className="mt-2">
-                Operatør
-              </FieldLegend>
-              {operators.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
-                >
-                  <Checkbox
-                    checked={scope === "operator" && access?.operatorId === item.id}
-                    disabled={saving}
-                    onCheckedChange={(checked) => {
-                      if (checked === true) void save("operator", [], item.id);
-                    }}
-                  />
-                  <span className="truncate">{item.name}</span>
-                </label>
-              ))}
-            </>
-          ) : null}
-        </FieldSet>
+            {locations.map((location) => (
+              <label
+                key={location.id}
+                className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
+              >
+                <Checkbox
+                  checked={
+                    scope === "selected" && selectedIds.includes(location.id)
+                  }
+                  disabled={saving || !reason.trim()}
+                  onCheckedChange={(checked) =>
+                    toggleLocation(location.id, checked === true)
+                  }
+                />
+                <span className="truncate">{location.name}</span>
+              </label>
+            ))}
+            {operators.length ? (
+              <>
+                <FieldLegend variant="label" className="mt-2">
+                  Operatør
+                </FieldLegend>
+                {operators.map((item) => (
+                  <label
+                    key={item.id}
+                    className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
+                  >
+                    <Checkbox
+                      checked={
+                        scope === "operator" && access?.operatorId === item.id
+                      }
+                      disabled={saving || !reason.trim()}
+                      onCheckedChange={(checked) => {
+                        if (checked === true)
+                          void save("operator", [], item.id);
+                      }}
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </label>
+                ))}
+              </>
+            ) : null}
+          </FieldSet>
+        </FieldGroup>
       </PopoverContent>
     </Popover>
   );
@@ -377,7 +417,9 @@ export function MemberManagement() {
     if (!organization) return;
     setPendingId(member.id);
     try {
-      const kioskAccount = kioskAccounts?.find((account) => account.userId === member.userId);
+      const kioskAccount = kioskAccounts?.find(
+        (account) => account.userId === member.userId,
+      );
       if (kioskAccount) {
         await deleteKioskAccount({ memberId: kioskAccount.memberId });
       } else {
@@ -518,7 +560,9 @@ export function MemberManagement() {
           <CardDescription>{members.length} aktive brugere</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {loading || memberLocationAccess === undefined || roleRows === undefined ? (
+          {loading ||
+          memberLocationAccess === undefined ||
+          roleRows === undefined ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 3 }, (_, index) => (
                 <Skeleton key={index} className="h-14 w-full" />
@@ -538,7 +582,9 @@ export function MemberManagement() {
               </TableHeader>
               <TableBody>
                 {members.map((member) => {
-                  const kioskAccount = kioskAccounts?.find((account) => account.userId === member.userId);
+                  const kioskAccount = kioskAccounts?.find(
+                    (account) => account.userId === member.userId,
+                  );
                   const isCurrentUser = member.userId === session?.user.id;
                   const isLastAdmin =
                     member.role === "admin" && adminCount === 1;
@@ -564,7 +610,11 @@ export function MemberManagement() {
                             <span className="truncate font-medium">
                               {member.user.name}
                             </span>
-                            <span className="truncate text-sm text-muted-foreground">{kioskAccount ? `${kioskAccount.username} · ${kioskAccount.locationName}` : member.user.email}</span>
+                            <span className="truncate text-sm text-muted-foreground">
+                              {kioskAccount
+                                ? `${kioskAccount.username} · ${kioskAccount.locationName}`
+                                : member.user.email}
+                            </span>
                           </div>
                           {kioskAccount ? <Badge>Kiosk</Badge> : null}
                           {isCurrentUser ? (
@@ -581,7 +631,10 @@ export function MemberManagement() {
                           }
                           disabled={disabled}
                         >
-                          <SelectTrigger aria-label={`Rolle for ${member.user.name}`} className="h-10 w-40">
+                          <SelectTrigger
+                            aria-label={`Rolle for ${member.user.name}`}
+                            className="h-10 w-40"
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -607,11 +660,15 @@ export function MemberManagement() {
                         ) : (
                           <MemberLocationPicker
                             userId={member.userId}
-                            access={accessRows.find((row) => row.userId === member.userId)}
+                            access={accessRows.find(
+                              (row) => row.userId === member.userId,
+                            )}
                             locations={assignmentLocations}
                             operators={assignmentOperators}
                             disabled={memberLocationAccess === undefined}
-                            setAccess={(args) => updateMemberLocationAccess(args)}
+                            setAccess={(args) =>
+                              updateMemberLocationAccess(args)
+                            }
                           />
                         )}
                       </TableCell>

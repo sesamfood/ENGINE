@@ -20,7 +20,7 @@ import {
   requirePermission,
   resolveStoredLocationScope,
 } from "./lib/auth";
-import { recordAudit } from "./lib/audit";
+import { recordAudit, requireAuditReason } from "./lib/audit";
 
 const roleValidator = v.string();
 const granularityValidator = v.union(
@@ -139,7 +139,8 @@ function customRoleKey(name: string) {
     .replace(/å/g, "aa")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  if (!key) throw new ConvexError("Rollen skal have et navn med bogstaver eller tal");
+  if (!key)
+    throw new ConvexError("Rollen skal have et navn med bogstaver eller tal");
   return key;
 }
 
@@ -155,7 +156,8 @@ function roleDisplayName(value: string) {
 async function assertManagementRoleRemains(
   ctx: QueryCtx | MutationCtx,
   organizationId: string,
-  override?: { role: string; permissions: readonly string[] } | { remove: string },
+  override?:
+    { role: string; permissions: readonly string[] } | { remove: string },
 ) {
   const [roles, permissionRows] = await Promise.all([
     ctx.db
@@ -207,9 +209,9 @@ async function getRoleContextForQuery(ctx: QueryCtx) {
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
   const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-  const member = (await auth.api.getActiveMember({ headers }).catch(() => null)) as
-    | AuthMember
-    | null;
+  const member = (await auth.api
+    .getActiveMember({ headers })
+    .catch(() => null)) as AuthMember | null;
   if (!member) throw new ConvexError("Ingen aktiv organisation");
 
   const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
@@ -296,7 +298,9 @@ export const getMemberPermissionContext = internalQuery({
       .unique();
     return {
       role: member.role,
-      permissions: [...permissionsForRole(member.role, configured?.permissions)],
+      permissions: [
+        ...permissionsForRole(member.role, configured?.permissions),
+      ],
     };
   },
 });
@@ -567,10 +571,12 @@ export const saveRolePermissions = mutation({
     role: roleValidator,
     permissions: v.array(v.string()),
     granularity: v.optional(granularityValidator),
+    reason: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requirePermission(ctx, "roles.manage");
+    const reason = requireAuditReason(args.reason);
     await ensureSystemRoles(ctx, auth.organizationId);
     const role = await ctx.db
       .query("roles")
@@ -623,6 +629,7 @@ export const saveRolePermissions = mutation({
       entityTable: "rolePermissions",
       entityId: args.role,
       summary: `Tilladelser for rollen ${role.name} ændret`,
+      reason,
     });
     return null;
   },
@@ -632,12 +639,8 @@ export const listMemberLocationAccess = query({
   args: {},
   returns: v.object({
     access: v.array(memberLocationAccessValidator),
-    locations: v.array(
-      v.object({ id: v.id("locations"), name: v.string() }),
-    ),
-    operators: v.array(
-      v.object({ id: v.id("operators"), name: v.string() }),
-    ),
+    locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
+    operators: v.array(v.object({ id: v.id("operators"), name: v.string() })),
   }),
   handler: async (ctx) => {
     const auth = await requirePermission(ctx, "members.manage");
@@ -684,10 +687,12 @@ export const setMemberLocationAccess = mutation({
     ),
     locationIds: v.array(v.id("locations")),
     operatorId: v.optional(v.id("operators")),
+    reason: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requirePermission(ctx, "members.manage");
+    const reason = requireAuditReason(args.reason);
     const member = await getDatabaseAdapter(ctx).findOne<AuthMember>({
       model: "member",
       where: [
@@ -695,7 +700,8 @@ export const setMemberLocationAccess = mutation({
         { field: "userId", value: args.userId },
       ],
     });
-    if (!member) throw new ConvexError("Brugeren er ikke medlem af organisationen");
+    if (!member)
+      throw new ConvexError("Brugeren er ikke medlem af organisationen");
     const locationIds = [...new Set(args.locationIds)];
     if (args.scope === "selected" && locationIds.length === 0) {
       throw new ConvexError("Vælg mindst én lokation");
@@ -745,6 +751,7 @@ export const setMemberLocationAccess = mutation({
           : args.scope === "operator"
             ? `Medlem har fået adgang til operatøren ${operatorName}`
             : `Medlem har fået adgang til ${locationIds.length} lokationer`,
+      reason,
     });
     return null;
   },

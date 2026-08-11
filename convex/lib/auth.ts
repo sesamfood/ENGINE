@@ -58,7 +58,7 @@ export async function resolveStoredLocationScope(
           .eq("organizationId", organizationId)
           .eq("operatorId", access.operatorId),
       )
-      .collect();
+      .take(200);
     return {
       all: false,
       ids: new Set(locations.map((location) => location._id)),
@@ -72,9 +72,9 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
   const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-  const member = (await auth.api.getActiveMember({ headers }).catch(() => null)) as
-    | AuthMember
-    | null;
+  const member = (await auth.api
+    .getActiveMember({ headers })
+    .catch(() => null)) as AuthMember | null;
   if (!member) throw new ConvexError("Ingen aktiv organisation");
 
   const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
@@ -144,7 +144,9 @@ type OrganizationAuth = {
   userName: string;
 };
 
-export async function requireOrganization(ctx: AuthContext): Promise<OrganizationAuth> {
+export async function requireOrganization(
+  ctx: AuthContext,
+): Promise<OrganizationAuth> {
   if (!("db" in ctx)) {
     const context = await ctx.runQuery(internal.access.getRoleContext, {});
     return {
@@ -174,7 +176,9 @@ export async function requireKioskDestination(
     .unique();
   const pages = Array.isArray(page) ? page : [page];
   if (
-    pages.some((item) => item === "count.register" || item === "waste.register") &&
+    pages.some(
+      (item) => item === "count.register" || item === "waste.register",
+    ) &&
     auth.kioskLocationId &&
     (await otherFeaturesLocked(
       ctx,
@@ -185,7 +189,10 @@ export async function requireKioskDestination(
   ) {
     return true;
   }
-  if (!settings || !pages.some((item) => settings.enabledPages.includes(item))) {
+  if (
+    !settings ||
+    !pages.some((item) => settings.enabledPages.includes(item))
+  ) {
     throw new ConvexError("Siden er ikke aktiveret i kiosktilstand");
   }
   return true;
@@ -206,7 +213,8 @@ export function requireLocationAccess(
 export function resolveLocationFilter(
   auth: OrganizationAuth,
   locationId?: Id<"locations">,
-): { locationId: Id<"locations"> } | { locationIds: Id<"locations">[] } | "all" {
+):
+  { locationId: Id<"locations"> } | { locationIds: Id<"locations">[] } | "all" {
   if (locationId) {
     requireLocationAccess(auth, locationId);
     return { locationId };
@@ -262,7 +270,8 @@ export async function requireTransferManager(
 
 export async function requireTransferViewer(
   ctx: AuthContext,
-  page: KioskDestinationId | readonly KioskDestinationId[] = "transfers.history",
+  page:
+    KioskDestinationId | readonly KioskDestinationId[] = "transfers.history",
 ) {
   return await requirePermission(ctx, "transfers.view", page);
 }
@@ -311,14 +320,16 @@ export async function requireWasteRegistrar(
 
 export async function requireEmployeeViewer(
   ctx: AuthContext,
-  page: "employees.schedule" | "employees.directory" | readonly (
+  page:
     | "employees.schedule"
     | "employees.directory"
-  )[],
+    | readonly ("employees.schedule" | "employees.directory")[],
 ) {
   return await requirePermission(
     ctx,
-    page === "employees.schedule" ? "employees.schedule" : "employees.directory",
+    page === "employees.schedule"
+      ? "employees.schedule"
+      : "employees.directory",
     page,
   );
 }
@@ -330,7 +341,11 @@ export async function requireNormalOrganization(ctx: AuthContext) {
 }
 
 export async function requireStaffFoodRegistrar(ctx: AuthContext) {
-  return await requirePermission(ctx, "staffFood.register", "staffFood.register");
+  return await requirePermission(
+    ctx,
+    "staffFood.register",
+    "staffFood.register",
+  );
 }
 
 export async function requireWasteReporter(
@@ -373,7 +388,10 @@ export async function requireIntegrationManager(ctx: AuthContext) {
 
 export async function requireDashboardViewer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
-  if (auth.kioskModeEnabled || !hasPermission(auth.role, auth.permissions, "dashboard.view")) {
+  if (
+    auth.kioskModeEnabled ||
+    !hasPermission(auth.role, auth.permissions, "dashboard.view")
+  ) {
     throw new ConvexError("Du har ikke adgang til dashboardet");
   }
   return auth;
@@ -381,7 +399,10 @@ export async function requireDashboardViewer(ctx: AuthContext) {
 
 export async function requireDashboardSharer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
-  if (auth.kioskModeEnabled || !hasPermission(auth.role, auth.permissions, "dashboard.share")) {
+  if (
+    auth.kioskModeEnabled ||
+    !hasPermission(auth.role, auth.permissions, "dashboard.share")
+  ) {
     throw new ConvexError("Kun administratorer kan dele dashboardet");
   }
   return auth;

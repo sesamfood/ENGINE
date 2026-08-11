@@ -62,6 +62,7 @@ export default defineSchema({
     reason: v.optional(v.string()),
     at: v.number(),
   })
+    .index("by_at", ["at"])
     .index("by_organizationId_and_at", ["organizationId", "at"])
     .index("by_organizationId_and_entityTable_and_entityId", [
       "organizationId",
@@ -110,11 +111,10 @@ export default defineSchema({
   onlinePosSalesResets: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
-  })
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ]),
+  }).index("by_organizationId_and_locationId", [
+    "organizationId",
+    "locationId",
+  ]),
 
   onlinePosProductMappings: defineTable({
     organizationId: v.string(),
@@ -179,20 +179,14 @@ export default defineSchema({
       "locationId",
       "occurredAt",
     ])
-    .index("by_organizationId_and_occurredAt", [
+    .index("by_organizationId_and_occurredAt", ["organizationId", "occurredAt"])
+    .index("by_org_location_day_order_department", [
       "organizationId",
-      "occurredAt",
+      "locationId",
+      "dayStart",
+      "orderNumber",
+      "department",
     ])
-    .index(
-      "by_org_location_day_order_department",
-      [
-        "organizationId",
-        "locationId",
-        "dayStart",
-        "orderNumber",
-        "department",
-      ],
-    )
     .index("by_occurredAt", ["occurredAt"]),
 
   salesLines: defineTable({
@@ -231,10 +225,10 @@ export default defineSchema({
     itemCount: v.number(),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId_and_dayStart", [
-      "organizationId",
-      "locationId",
-      "dayStart",
-    ]),
+    "organizationId",
+    "locationId",
+    "dayStart",
+  ]),
 
   workfeedIntegrations: defineTable({
     organizationId: v.string(),
@@ -585,7 +579,11 @@ export default defineSchema({
       "organizationId",
       "normalizedName",
     ])
-    .index("by_organizationId_and_status", ["organizationId", "status"]),
+    .index("by_organizationId_and_status", ["organizationId", "status"])
+    .index("by_organizationId_and_legalEntityId", [
+      "organizationId",
+      "legalEntityId",
+    ]),
 
   products: defineTable({
     organizationId: v.string(),
@@ -695,14 +693,12 @@ export default defineSchema({
       "normalizedName",
     ])
     .index("by_organizationId_and_status", ["organizationId", "status"])
-    .index("by_organizationId_and_operatorId", [
+    .index("by_organizationId_and_operatorId", ["organizationId", "operatorId"])
+    .index("by_organizationId_and_legalEntityId", [
       "organizationId",
-      "operatorId",
+      "legalEntityId",
     ])
-    .index("by_organizationId_and_marketId", [
-      "organizationId",
-      "marketId",
-    ]),
+    .index("by_organizationId_and_marketId", ["organizationId", "marketId"]),
 
   locationSpecialOpeningHours: defineTable({
     organizationId: v.string(),

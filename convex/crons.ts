@@ -34,12 +34,7 @@ crons.interval(
 );
 
 // Audit history follows the existing 400-day sales retention window.
-crons.interval(
-  "prune audit log",
-  { hours: 24 },
-  internal.audit.prune,
-  { cursor: null },
-);
+crons.interval("prune audit log", { hours: 24 }, internal.audit.prune, {});
 
 crons.cron(
   "delete orphaned uploads",

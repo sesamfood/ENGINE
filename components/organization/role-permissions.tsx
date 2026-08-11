@@ -34,7 +34,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -70,14 +75,17 @@ type RoleRow = {
 type Draft = Record<string, string[]>;
 
 function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Handlingen kunne ikke gennemføres";
+  return error instanceof Error
+    ? error.message
+    : "Handlingen kunne ikke gennemføres";
 }
 
 export function RolePermissions() {
   const allowed = usePermission("roles.manage");
-  const rows = useQuery(api.access.listRolePermissions, allowed ? {} : "skip") as
-    | RoleRow[]
-    | undefined;
+  const rows = useQuery(
+    api.access.listRolePermissions,
+    allowed ? {} : "skip",
+  ) as RoleRow[] | undefined;
   const ensureRoles = useMutation(api.access.ensureRoles);
   const createRole = useMutation(api.access.createRole);
   const deleteRole = useMutation(api.access.deleteRole);
@@ -88,6 +96,7 @@ export function RolePermissions() {
     DataGranularity
   > | null>(null);
   const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState("");
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [roleName, setRoleName] = useState("");
@@ -107,6 +116,16 @@ export function RolePermissions() {
     (rows ?? []).map((row) => [row.role, row.granularity]),
   ) as Record<string, DataGranularity>;
   const currentGranularity = granularityDraft ?? initialGranularity;
+  const changedRoles =
+    rows?.filter((role) => {
+      const before = role.permissions;
+      const after = currentDraft[role.role] ?? [];
+      return (
+        before.length !== after.length ||
+        before.some((permission) => !after.includes(permission)) ||
+        role.granularity !== (currentGranularity[role.role] ?? "detail")
+      );
+    }) ?? [];
 
   function setPermission(role: string, permission: string, checked: boolean) {
     const existing = new Set(currentDraft[role] ?? []);
@@ -116,10 +135,14 @@ export function RolePermissions() {
   }
 
   async function save() {
-    if (!rows) return;
+    if (!rows || !changedRoles.length) return;
+    if (!reason.trim()) {
+      toast.error("Angiv en begrundelse for ændringerne");
+      return;
+    }
     setSaving(true);
     try {
-      const ordered = [...rows].sort((left, right) => {
+      const ordered = [...changedRoles].sort((left, right) => {
         const manages = (role: string) =>
           currentDraft[role]?.includes("roles.manage") &&
           currentDraft[role]?.includes("members.manage");
@@ -130,10 +153,12 @@ export function RolePermissions() {
           role: role.role,
           permissions: currentDraft[role.role] ?? [],
           granularity: currentGranularity[role.role] ?? "detail",
+          reason,
         });
       }
       setDraft(null);
       setGranularityDraft(null);
+      setReason("");
       toast.success("Rollerne er gemt");
     } catch (error) {
       toast.error(messageFrom(error));
@@ -261,13 +286,18 @@ export function RolePermissions() {
               {permissionCatalog.map((group) => (
                 <Fragment key={group.group}>
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableCell colSpan={rows.length + 1} className="font-semibold">
+                    <TableCell
+                      colSpan={rows.length + 1}
+                      className="font-semibold"
+                    >
                       {group.group}
                     </TableCell>
                   </TableRow>
                   {group.permissions.map((permission) => (
                     <TableRow key={permission.id}>
-                      <TableCell className="font-medium">{permission.label}</TableCell>
+                      <TableCell className="font-medium">
+                        {permission.label}
+                      </TableCell>
                       {rows.map((role) => (
                         <TableCell
                           key={role.role}
@@ -297,8 +327,22 @@ export function RolePermissions() {
             </TableBody>
           </Table>
         </CardContent>
-        <CardFooter className="justify-end">
-          <Button onClick={save} disabled={saving}>
+        <CardFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-end">
+          <Field className="sm:max-w-md sm:flex-1">
+            <FieldLabel htmlFor="role-change-reason">Begrundelse</FieldLabel>
+            <Input
+              id="role-change-reason"
+              value={reason}
+              maxLength={1000}
+              placeholder="Beskriv hvorfor adgangen ændres"
+              disabled={saving}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </Field>
+          <Button
+            onClick={save}
+            disabled={saving || !changedRoles.length || !reason.trim()}
+          >
             {saving ? (
               <Spinner data-icon="inline-start" />
             ) : (

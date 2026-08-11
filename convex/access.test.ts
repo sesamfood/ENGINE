@@ -182,6 +182,7 @@ test("en manager uden waste.report kan ikke se spildregistreringer", async () =>
   const manager = await createUser(t, org._id, "manager", 1);
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "manager",
+    reason: "Testændring",
     permissions: defaultRolePermissions.manager.filter(
       (permission) => permission !== "waste.report",
     ),
@@ -201,6 +202,7 @@ test("rolleindstillinger beskytter administrationsadgang og afviser ukendte till
   await expect(
     asUser.mutation(api.access.saveRolePermissions, {
       role: "admin",
+      reason: "Testændring",
       permissions: [],
     }),
   ).rejects.toThrowError(
@@ -209,9 +211,57 @@ test("rolleindstillinger beskytter administrationsadgang og afviser ukendte till
   await expect(
     asUser.mutation(api.access.saveRolePermissions, {
       role: "manager",
+      reason: "Testændring",
       permissions: ["not.a.permission"],
     }),
   ).rejects.toThrowError("En eller flere tilladelser findes ikke");
+});
+
+test("adgangsændringer kræver en begrundelse og opretter ét auditspor", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId } = await seedLocations(t, org._id);
+
+  await expect(
+    asUser.mutation(api.access.saveRolePermissions, {
+      role: "manager",
+      reason: " ",
+      permissions: [...defaultRolePermissions.manager],
+    }),
+  ).rejects.toThrowError("Angiv en begrundelse");
+
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role: "manager",
+    reason: "Managerrollen skal begrænses",
+    permissions: defaultRolePermissions.manager.filter(
+      (permission) => permission !== "waste.report",
+    ),
+  });
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: user._id,
+    reason: "Brugeren arbejder kun i Nord",
+    scope: "selected",
+    locationIds: [allowedLocationId],
+  });
+
+  const rows = await t.run(async (ctx) =>
+    ctx.db
+      .query("auditLog")
+      .withIndex("by_organizationId_and_at", (q) =>
+        q.eq("organizationId", org._id),
+      )
+      .take(10),
+  );
+  expect(rows.map(({ action, reason }) => ({ action, reason }))).toEqual([
+    {
+      action: "roles.permissionsChanged",
+      reason: "Managerrollen skal begrænses",
+    },
+    {
+      action: "members.locationAccessChanged",
+      reason: "Brugeren arbejder kun i Nord",
+    },
+  ]);
 });
 
 test("valgte lokationer filtrerer valgmuligheder og optællinger", async () => {
@@ -221,12 +271,13 @@ test("valgte lokationer filtrerer valgmuligheder og optællinger", async () => {
     await seedLocations(t, org._id);
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "selected",
     locationIds: [allowedLocationId],
   });
-  await expect(asUser.query(api.locations.listLocationOptions, {})).resolves.toEqual([
-    { id: allowedLocationId, name: "Nord" },
-  ]);
+  await expect(
+    asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
   await expect(
     asUser.mutation(api.count.setCountQuantity, {
       locationId: foreignLocationId,
@@ -244,6 +295,7 @@ test("spildrapport uden lokation viser kun brugerens valgte lokationer", async (
     await seedLocations(t, org._id);
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "selected",
     locationIds: [allowedLocationId],
   });
@@ -281,6 +333,7 @@ test("valgt lokationsscope begrænser optællingslinjer", async () => {
     await seedLocations(t, org._id);
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "selected",
     locationIds: [allowedLocationId],
   });
@@ -341,6 +394,7 @@ test("valgt lokationsscope skjuler flytninger fra andre lokationer", async () =>
     await seedLocations(t, org._id);
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "selected",
     locationIds: [allowedLocationId],
   });
@@ -409,9 +463,13 @@ test("valgt lokationsscope skjuler flytninger fra andre lokationer", async () =>
 test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
   const t = convexTest(schema, modules);
   const { org, asUser } = await setupAuthOrg(t);
-  const { allowedLocationId, foreignLocationId } = await seedLocations(t, org._id);
+  const { allowedLocationId, foreignLocationId } = await seedLocations(
+    t,
+    org._id,
+  );
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "member",
+    reason: "Testændring",
     permissions: [],
   });
   await t.run(async (ctx) => {
@@ -427,9 +485,9 @@ test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
     kioskLocationId: allowedLocationId,
     isKioskAccount: true,
   });
-  await expect(kiosk.asUser.query(api.locations.listLocationOptions, {})).resolves.toEqual([
-    { id: allowedLocationId, name: "Nord" },
-  ]);
+  await expect(
+    kiosk.asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
   await expect(
     kiosk.asUser.query(api.count.getCountState, {
       locationId: allowedLocationId,
@@ -451,22 +509,20 @@ test("navngivne roller registreres og håndhæves af Convex", async () => {
     name: "Franchisetager",
   });
   expect(role).toBe("franchisetager");
-  const registered = await t.query(
-    components.betterAuth.adapter.findMany,
-    {
-      model: "organizationRole",
-      where: [
-        { field: "organizationId", value: org._id },
-        { field: "role", value: role },
-      ],
-      paginationOpts: { numItems: 10, cursor: null },
-    } as never,
-  );
+  const registered = await t.query(components.betterAuth.adapter.findMany, {
+    model: "organizationRole",
+    where: [
+      { field: "organizationId", value: org._id },
+      { field: "role", value: role },
+    ],
+    paginationOpts: { numItems: 10, cursor: null },
+  } as never);
   expect(registered.page).toHaveLength(1);
 
   await expect(
     asUser.mutation(api.access.saveRolePermissions, {
       role: "admin",
+      reason: "Testændring",
       permissions: ["count.register"],
     }),
   ).rejects.toThrowError(
@@ -474,11 +530,13 @@ test("navngivne roller registreres og håndhæves af Convex", async () => {
   );
   await asUser.mutation(api.access.saveRolePermissions, {
     role,
+    reason: "Testændring",
     permissions: ["count.register", "roles.manage", "members.manage"],
   });
   await expect(
     asUser.mutation(api.access.saveRolePermissions, {
       role: "admin",
+      reason: "Testændring",
       permissions: ["count.register"],
     }),
   ).resolves.toBeNull();
@@ -623,13 +681,14 @@ test("operatørscope begrænser lokationer, spild, optællinger og flytninger", 
 
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "operator",
     locationIds: [],
     operatorId,
   });
-  await expect(asUser.query(api.locations.listLocationOptions, {})).resolves.toEqual([
-    { id: allowedLocationId, name: "Nord" },
-  ]);
+  await expect(
+    asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
   const waste = await asUser.query(api.waste.listRegistrations, {
     paginationOpts: { numItems: 10, cursor: null },
     startAt: now - 100,
@@ -655,7 +714,10 @@ test("operatørscope begrænser lokationer, spild, optællinger og flytninger", 
   });
   expect(transfers.page).toHaveLength(1);
   expect(transfers.page[0]?.fromLocationName).toBe("Nord");
-  const onlinePos = await asUser.query(api.onlinePos.listLocationConnections, {});
+  const onlinePos = await asUser.query(
+    api.onlinePos.listLocationConnections,
+    {},
+  );
   expect(onlinePos.locations.map((location) => location.id)).toEqual([
     allowedLocationId,
   ]);
@@ -675,11 +737,14 @@ test("operatørscope begrænser lokationer, spild, optællinger og flytninger", 
 
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "operator",
     locationIds: [],
     operatorId: emptyOperatorId,
   });
-  await expect(asUser.query(api.locations.listLocationOptions, {})).resolves.toEqual([]);
+  await expect(
+    asUser.query(api.locations.listLocationOptions, {}),
+  ).resolves.toEqual([]);
 });
 
 test("dashboardets datavisning håndhæves i API-svaret", async () => {
@@ -714,6 +779,7 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
   await asUser.mutation(api.access.ensureRoles, {});
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "admin",
+    reason: "Testændring",
     permissions: [...defaultRolePermissions.admin],
     granularity: "aggregate",
   });
@@ -768,6 +834,7 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
 
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "admin",
+    reason: "Testændring",
     permissions: defaultRolePermissions.admin.filter(
       (permission) =>
         permission !== "dashboard.viewSales" &&
@@ -810,12 +877,14 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
   });
   await asUser.mutation(api.access.setMemberLocationAccess, {
     userId: user._id,
+    reason: "Testændring",
     scope: "operator",
     locationIds: [],
     operatorId,
   });
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "admin",
+    reason: "Testændring",
     permissions: [...defaultRolePermissions.admin],
     granularity: "anonymous",
   });

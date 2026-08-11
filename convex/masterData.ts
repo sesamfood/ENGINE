@@ -165,7 +165,9 @@ export const deleteMarket = mutation({
       )
       .first();
     if (location) {
-      throw new ConvexError("Markedet bruges af en lokation og kan ikke slettes");
+      throw new ConvexError(
+        "Markedet bruges af en lokation og kan ikke slettes",
+      );
     }
     await ctx.db.delete("markets", market._id);
     return null;
@@ -270,17 +272,19 @@ export const deleteLegalEntity = mutation({
     const [location, operator] = await Promise.all([
       ctx.db
         .query("locations")
-        .withIndex("by_organizationId_and_normalizedName", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_legalEntityId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("legalEntityId", legalEntity._id),
         )
-        .filter((q) => q.eq(q.field("legalEntityId"), legalEntity._id))
         .first(),
       ctx.db
         .query("operators")
-        .withIndex("by_organizationId_and_normalizedName", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_legalEntityId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("legalEntityId", legalEntity._id),
         )
-        .filter((q) => q.eq(q.field("legalEntityId"), legalEntity._id))
         .first(),
     ]);
     if (location || operator) {
@@ -413,7 +417,9 @@ export const deleteOperator = mutation({
       )
       .first();
     if (location) {
-      throw new ConvexError("Operatøren bruges af en lokation og kan ikke slettes");
+      throw new ConvexError(
+        "Operatøren bruges af en lokation og kan ikke slettes",
+      );
     }
     await ctx.db.delete("operators", operator._id);
     return null;

@@ -6,21 +6,17 @@ const RETENTION_MS = 400 * 24 * 60 * 60 * 1_000;
 const PAGE_SIZE = 100;
 
 export const prune = internalMutation({
-  args: { cursor: v.union(v.string(), v.null()) },
+  args: {},
   returns: v.null(),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
     const cutoff = Date.now() - RETENTION_MS;
-    const page = await ctx.db
+    const rows = await ctx.db
       .query("auditLog")
-      .withIndex("by_organizationId_and_at")
-      .paginate({ cursor: args.cursor, numItems: PAGE_SIZE });
-    for (const row of page.page) {
-      if (row.at < cutoff) await ctx.db.delete("auditLog", row._id);
-    }
-    if (!page.isDone) {
-      await ctx.scheduler.runAfter(0, internal.audit.prune, {
-        cursor: page.continueCursor,
-      });
+      .withIndex("by_at", (q) => q.lt("at", cutoff))
+      .take(PAGE_SIZE);
+    for (const row of rows) await ctx.db.delete("auditLog", row._id);
+    if (rows.length === PAGE_SIZE) {
+      await ctx.scheduler.runAfter(0, internal.audit.prune, {});
     }
     return null;
   },
