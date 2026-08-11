@@ -41,6 +41,7 @@ export type DashboardMetricParams = {
   anonymousLocations?: DashboardLocation[];
   anonymousComparisonGroups?: DashboardComparisonGroup[];
   scopeTruncated?: boolean;
+  anonymousScopeTruncated?: boolean;
   accessGranularity: DataGranularity;
   salesDetailAllowed: boolean;
   anonymousSeed: string;
@@ -217,7 +218,6 @@ export async function resolveMetricParams(
       )
       .unique(),
   ]);
-  const allLocationsTruncated = allLocations.length > MAX_SCOPE_LOCATIONS;
   const requestedLocations =
     scope.locationIds === null
       ? null
@@ -368,9 +368,9 @@ export async function resolveMetricParams(
     ? candidateLocations.map((location) => location._id)
     : selectedIds;
   const scopeTruncated =
-    selectedIds.length > MAX_SCOPE_LOCATIONS ||
-    (scope.locationIds === null &&
-      candidateLocations.length > MAX_SCOPE_LOCATIONS);
+    selectedIds.length > MAX_SCOPE_LOCATIONS;
+  const anonymousScopeTruncated =
+    anonymousExpansion && anonymousSelectedIds.length > MAX_SCOPE_LOCATIONS;
   const resolvedIds = selectedIds.slice(0, MAX_SCOPE_LOCATIONS);
   const anonymousResolvedIds = anonymousSelectedIds.slice(
     0,
@@ -467,12 +467,9 @@ export async function resolveMetricParams(
     comparisonGroups,
     anonymousLocations,
     anonymousComparisonGroups,
+    anonymousScopeTruncated: anonymousScopeTruncated || undefined,
     scopeTruncated:
-      scopeTruncated ||
-      (scope.locationIds === null &&
-        (!scope.level || scope.level === "organization") &&
-        allLocationsTruncated) ||
-      undefined,
+      scopeTruncated || undefined,
     accessGranularity: access?.granularity ?? "detail",
     salesDetailAllowed: access?.salesDetailAllowed ?? true,
     anonymousSeed: access?.anonymousSeed ?? "shared-dashboard",
@@ -1279,6 +1276,7 @@ const locationComparison: MetricComputer = async (ctx, params) => {
         deliveries.truncated ||
         transferResult.truncated ||
         staffFood.truncated ||
+        comparisonParams.anonymousScopeTruncated ||
         undefined,
     },
     comparisonParams.comparisonGroups,

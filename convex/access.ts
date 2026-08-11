@@ -162,26 +162,30 @@ async function assertManagementRoleRemains(
   override?:
     { role: string; permissions: readonly string[] } | { remove: string },
 ) {
-  const [permissionRows, members] = await Promise.all([
+  const [roles, permissionRows] = await Promise.all([
+    ctx.db
+      .query("roles")
+      .withIndex("by_organizationId_and_key", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .collect(),
     ctx.db
       .query("rolePermissions")
       .withIndex("by_organizationId_and_role", (q) =>
         q.eq("organizationId", organizationId),
       )
       .collect(),
-    getDatabaseAdapter(ctx).findMany<AuthMember>({
-      model: "member",
-      where: [{ field: "organizationId", value: organizationId }],
-    }),
   ]);
   const configured = new Map(
     permissionRows.map((row) => [row.role, row.permissions] as const),
   );
-  const hasManager = members.some((member) => {
-    if (override && "remove" in override && override.remove === member.role) {
-      return false;
-    }
-    const role = member.role;
+  const roleKeys = new Set<string>([
+    ...systemRoleKeys,
+    ...roles.map((role) => role.key),
+    ...permissionRows.map((row) => row.role),
+  ]);
+  if (override && "remove" in override) roleKeys.delete(override.remove);
+  const managementRoleKeys = [...roleKeys].filter((role) => {
     const permissions =
       override && "role" in override && override.role === role
         ? override.permissions
@@ -191,6 +195,20 @@ async function assertManagementRoleRemains(
       permissions.includes("members.manage")
     );
   });
+  const adapter = getDatabaseAdapter(ctx);
+  const members = await Promise.all(
+    managementRoleKeys.map((role) =>
+      adapter.findMany<AuthMember>({
+        model: "member",
+        where: [
+          { field: "organizationId", value: organizationId },
+          { field: "role", value: role },
+        ],
+        limit: 1,
+      }),
+    ),
+  );
+  const hasManager = members.some((matches) => matches.length > 0);
   if (!hasManager) {
     throw new ConvexError(
       "Mindst én rolle skal kunne administrere både roller og brugere",

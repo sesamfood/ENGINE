@@ -15,6 +15,7 @@ import {
 } from "./lib/timeZone";
 
 const MAX_ROWS = 200;
+const MAX_MEMBER_ACCESS_ROWS = 1_000;
 const operatorStatusValidator = v.union(
   v.literal("active"),
   v.literal("inactive"),
@@ -463,7 +464,10 @@ export const deleteOperator = mutation({
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", organizationId),
       )
-      .collect();
+      .take(MAX_MEMBER_ACCESS_ROWS + 1);
+    if (accessRows.length > MAX_MEMBER_ACCESS_ROWS) {
+      throw new ConvexError("Der er for mange adgangsbegrænsninger");
+    }
     for (const row of accessRows) {
       if (row.scope !== "operator" || row.operatorId !== operator._id) {
         continue;

@@ -69,7 +69,6 @@ export const permissionCatalog = [
     permissions: [
       { id: "dashboard.view", label: "Se dashboard" },
       { id: "dashboard.share", label: "Dele dashboard" },
-      { id: "dashboard.export", label: "Eksportere dashboarddata" },
       { id: "dashboard.viewSales", label: "Se salgstal" },
       { id: "sales.viewAggregate", label: "Se aggregerede salgstal" },
       { id: "sales.viewDetail", label: "Se detaljerede salgstal" },

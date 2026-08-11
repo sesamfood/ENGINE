@@ -426,14 +426,6 @@ export async function requireDashboardViewer(ctx: AuthContext) {
   return auth;
 }
 
-export async function requireDashboardExporter(ctx: AuthContext) {
-  const auth = await requireDashboardViewer(ctx);
-  if (!auth.permissions.has("dashboard.export")) {
-    throw new ConvexError("Du har ikke adgang til at eksportere dashboarddata");
-  }
-  return auth;
-}
-
 export async function requireDashboardSharer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (
