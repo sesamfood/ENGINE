@@ -11,7 +11,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/compress-image";
@@ -107,6 +107,16 @@ function FormLoading() {
 
 export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnHref = useMemo(() => {
+    const params = new URLSearchParams();
+    const search = searchParams.get("search");
+    const status = searchParams.get("status");
+    if (search) params.set("search", search);
+    params.set("status", status === "archived" ? "archived" : "active");
+    return `/organization/products?${params.toString()}`;
+  }, [searchParams]);
+  const returnQuery = returnHref.slice("/organization/products".length);
   const product = useQuery(
     api.catalog.getProduct,
     productId ? { productId } : "skip",
@@ -412,14 +422,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         }
       } catch (imageError) {
         toast.error(`Produktet blev gemt, men ${messageFrom(imageError)}`);
-        router.push(`/organization/products/${savedProductId}`);
+        router.push(`/organization/products/${savedProductId}${returnQuery}`);
         return;
       }
 
       toast.success(
         productId ? "Produktet er opdateret" : "Produktet er oprettet",
       );
-      router.push("/organization/products");
+      router.push(returnHref);
     } catch (caught) {
       toast.error(messageFrom(caught));
     } finally {
@@ -438,7 +448,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Link href="/organization/products" className={buttonVariants()}>
+          <Link href={returnHref} className={buttonVariants()}>
             Tilbage til produkter
           </Link>
         </CardContent>
@@ -453,7 +463,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     <div className="flex flex-col gap-7">
       <div className="flex items-start gap-3">
         <Link
-          href="/organization/products"
+          href={returnHref}
           aria-label="Tilbage til produkter"
           className={buttonVariants({ variant: "outline", size: "icon-lg" })}
         >
@@ -471,13 +481,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Card className="xl:h-full">
+      <div className="grid gap-6 xl:items-start xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <Card>
           <CardHeader>
             <CardTitle>Produktdetaljer</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-1 flex-col">
-            <FieldGroup className="flex-1">
+          <CardContent className="flex flex-col">
+            <FieldGroup>
               <Field data-invalid={Boolean(errors.name)}>
                 <FieldLabel htmlFor="product-name">Navn</FieldLabel>
                 <Input
@@ -505,24 +515,24 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               </Field>
 
               <Field
-                className="max-w-xl flex-1"
+                className="max-w-xl"
                 data-invalid={Boolean(errors.image)}
               >
                 <FieldLabel htmlFor="product-picture">Billede</FieldLabel>
-                <div className="flex flex-1 flex-col overflow-hidden rounded-xl border">
+                <div className="flex flex-col overflow-hidden rounded-xl border">
                   <label
                     htmlFor="product-picture"
-                    className="block min-h-56 flex-1 cursor-pointer"
+                    className="block min-h-56 cursor-pointer"
                   >
                     {shownImage ? (
                       <span
                         role="img"
                         aria-label="Forhåndsvisning af produktbillede"
-                        className="block h-full min-h-56 w-full bg-muted bg-contain bg-center bg-no-repeat"
+                        className="block min-h-56 w-full bg-muted bg-contain bg-center bg-no-repeat"
                         style={{ backgroundImage: `url("${shownImage}")` }}
                       />
                     ) : (
-                      <span className="flex h-full min-h-56 w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
+                      <span className="flex min-h-56 w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
                         <ImageIcon className="size-10" aria-hidden="true" />
                         <span className="text-sm">Intet billede valgt</span>
                       </span>
@@ -818,7 +828,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             </Button>
           ) : (
             <Link
-              href="/organization/products"
+              href={returnHref}
               className={buttonVariants({
                 variant: "outline",
                 size: "lg",

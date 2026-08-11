@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "convex/react";
 import { CheckCircle2Icon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -8,12 +7,9 @@ import { createPortal } from "react-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { LocationField } from "@/components/location-field";
-import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
-import { authClient } from "@/lib/auth-client";
-import { setCountLocation, useCountLocation } from "@/lib/count-prefs";
-import { useLastDefined } from "@/lib/use-last-defined";
+import { useCountState } from "@/components/count/count-state-provider";
+import { setCountLocation } from "@/lib/count-prefs";
 
 const periodFormatter = new Intl.DateTimeFormat("da-DK", {
   month: "long",
@@ -90,19 +86,9 @@ function CountHeaderControls({
 
 export function CountHeader() {
   const pathname = usePathname();
-  const organization = authClient.useActiveOrganization();
-  const organizationId = organization.data?.id;
-  const storedLocationId = useCountLocation(organizationId);
-  const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
-  const kiosk = useKiosk();
-  const canRegister = usePermission("count.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("count.register"));
-  const [now, setNow] = useState(() => Date.now());
   const [desktopTarget, setDesktopTarget] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
+  const { organizationId, locations, isLocked, lockedName, locationId, state } =
+    useCountState();
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -111,29 +97,6 @@ export function CountHeader() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  useEffect(() => {
-    if (!organizationId || !locations || isLocked) return;
-    const valid = locations.some(
-      (location) => location.id === storedLocationId,
-    );
-    if (!valid) {
-      setCountLocation(organizationId, locations[0]?.id ?? null);
-    }
-  }, [isLocked, locations, organizationId, storedLocationId]);
-
-  const locationId = isLocked
-    ? lockedId
-    : locations?.some((location) => location.id === storedLocationId)
-      ? (storedLocationId as Id<"locations">)
-      : (locations?.[0]?.id ?? null);
-  const queryNow = Math.floor(now / 60_000) * 60_000;
-  const queriedState = useQuery(
-    api.count.getCountState,
-    canRegister && pathname === "/count" && locationId
-      ? { locationId, now: queryNow }
-      : "skip",
-  );
-  const state = useLastDefined(queriedState, locationId);
   const submitted = state?.count?.status === "submitted";
   const statusDescription =
     state?.count?.submittedAt

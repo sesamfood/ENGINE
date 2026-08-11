@@ -13,12 +13,11 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
-import { authComponent, createAuth, getDatabaseAdapter } from "./auth";
+import { getDatabaseAdapter } from "./auth";
+import { listScopedLocationOptions } from "./locations";
 import {
   requireOrganization,
   requirePermission,
-  resolveStoredLocationScope,
 } from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 
@@ -32,6 +31,11 @@ const granularityValidator = v.union(
 const locationScopeValidator = v.object({
   all: v.boolean(),
   ids: v.array(v.id("locations")),
+});
+
+const locationOptionValidator = v.object({
+  id: v.id("locations"),
+  name: v.string(),
 });
 
 const kioskSettingsValidator = v.object({
@@ -48,6 +52,18 @@ const kioskContextValidator = v.object({
   locationName: v.union(v.string(), v.null()),
   role: v.string(),
   settings: v.union(kioskSettingsValidator, v.null()),
+});
+
+const accessContextValidator = v.object({
+  role: roleValidator,
+  granularity: granularityValidator,
+  permissions: v.array(v.string()),
+  locationScope: locationScopeValidator,
+  kiosk: kioskContextValidator,
+});
+
+const runtimeContextValidator = accessContextValidator.extend({
+  locations: v.array(locationOptionValidator),
 });
 
 const roleContextValidator = v.object({
@@ -216,77 +232,24 @@ async function assertManagementRoleRemains(
   }
 }
 
-type AuthSession = {
-  id: string;
-  isKioskAccount?: boolean | null;
-  kioskModeEnabled?: boolean | null;
-};
-
 async function getRoleContextForQuery(ctx: QueryCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new ConvexError("Du er ikke logget ind");
-
-  const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-  const member = (await auth.api
-    .getActiveMember({ headers })
-    .catch(() => null)) as AuthMember | null;
-  if (!member) throw new ConvexError("Ingen aktiv organisation");
-
-  const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
-    model: "session",
-    where: [{ field: "id", value: identity.sessionId as string }],
-  });
-  const role = member.role;
-  const [rolePermissions, roleConfig] = await Promise.all([
-    ctx.db
-      .query("rolePermissions")
-      .withIndex("by_organizationId_and_role", (q) =>
-        q.eq("organizationId", member.organizationId).eq("role", role),
-      )
-      .unique(),
-    ctx.db
-      .query("roles")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", member.organizationId).eq("key", role),
-      )
-      .unique(),
-  ]);
-  const permissions = permissionsForRole(role, rolePermissions?.permissions);
-  const access = await ctx.db
-    .query("memberLocationAccess")
-    .withIndex("by_organizationId_and_userId", (q) =>
-      q.eq("organizationId", member.organizationId).eq("userId", member.userId),
-    )
-    .unique();
-
-  const kioskLocationId = member.kioskLocationId
-    ? (member.kioskLocationId as Id<"locations">)
-    : null;
-  const isKioskAccount = session?.isKioskAccount === true;
-  const resolvedLocationScope = await resolveStoredLocationScope(
-    ctx,
-    member.organizationId,
-    access,
-    kioskLocationId,
-  );
-  const locationScope = {
-    all: resolvedLocationScope.all,
-    ids: [...resolvedLocationScope.ids],
-  };
-
+  const auth = await requireOrganization(ctx);
   return {
-    organizationId: member.organizationId,
-    role,
-    granularity: roleConfig?.granularity ?? "detail",
-    permissions: [...permissions],
-    locationScope,
-    userId: member.userId,
-    sessionId: identity.sessionId as string,
-    isKioskAccount,
-    kioskModeEnabled: session?.kioskModeEnabled === true,
-    kioskLocationId,
-    userIdentifier: identity.tokenIdentifier,
-    userName: identity.name?.trim() || identity.email || "Ukendt bruger",
+    organizationId: auth.organizationId,
+    role: auth.role,
+    granularity: auth.granularity,
+    permissions: [...auth.permissions],
+    locationScope: {
+      all: auth.locationScope.all,
+      ids: [...auth.locationScope.ids],
+    },
+    userId: auth.userId,
+    sessionId: auth.sessionId,
+    isKioskAccount: auth.isKioskAccount,
+    kioskModeEnabled: auth.kioskModeEnabled,
+    kioskLocationId: auth.kioskLocationId,
+    userIdentifier: auth.userIdentifier,
+    userName: auth.userName,
   };
 }
 
@@ -323,27 +286,36 @@ export const getMemberPermissionContext = internalQuery({
   },
 });
 
-export const getContext = query({
+export const getRuntimeContext = query({
   args: {},
-  returns: v.object({
-    role: roleValidator,
-    granularity: granularityValidator,
-    permissions: v.array(v.string()),
-    locationScope: locationScopeValidator,
-    kiosk: kioskContextValidator,
-  }),
+  returns: runtimeContextValidator,
   handler: async (ctx) => {
-    const auth = await requireOrganization(ctx);
-    const settings = await ctx.db
-      .query("kioskSettings")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .unique();
-    const location = auth.kioskLocationId
-      ? await ctx.db.get("locations", auth.kioskLocationId)
-      : null;
+    const { auth, context } = await getAccessContext(ctx);
     return {
+      ...context,
+      locations: await listScopedLocationOptions(
+        ctx,
+        auth.organizationId,
+        auth.locationScope,
+      ),
+    };
+  },
+});
+
+async function getAccessContext(ctx: QueryCtx) {
+  const auth = await requireOrganization(ctx);
+  const settings = await ctx.db
+    .query("kioskSettings")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", auth.organizationId),
+    )
+    .unique();
+  const location = auth.kioskLocationId
+    ? await ctx.db.get("locations", auth.kioskLocationId)
+    : null;
+  return {
+    auth,
+    context: {
       role: auth.role,
       granularity: auth.granularity,
       permissions: [...auth.permissions],
@@ -366,9 +338,9 @@ export const getContext = query({
             }
           : null,
       },
-    };
-  },
-});
+    },
+  };
+}
 
 export const listRolePermissions = query({
   args: {},

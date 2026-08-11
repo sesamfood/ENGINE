@@ -4,12 +4,17 @@ import {
   MAX_SPECIAL_OPENING_DATES,
 } from "../lib/count-window";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { getDatabaseAdapter } from "./auth";
 import {
   requireLocationAccess,
   requireLocationManager,
-  requireOrganization,
   requireTransferManager,
 } from "./lib/auth";
 import {
@@ -42,6 +47,29 @@ const locationOptionValidator = v.object({
 const locationAdminValidator = locationOptionValidator.extend({
   inUse: v.boolean(),
 });
+
+export async function listScopedLocationOptions(
+  ctx: QueryCtx,
+  organizationId: string,
+  locationScope: { all: boolean; ids: ReadonlySet<Id<"locations">> },
+) {
+  const locations = await ctx.db
+    .query("locations")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .take(MAX_LOCATIONS);
+
+  return locations
+    .filter(
+      (location) =>
+        locationScope.all || locationScope.ids.has(location._id),
+    )
+    .map((location) => ({
+      id: location._id,
+      name: location.name,
+    }));
+}
 
 const openingHoursSettingsValidator = v.object({
   mode: openingHoursModeValidator,
@@ -242,31 +270,6 @@ export const listLocations = query({
           };
         }),
     );
-  },
-});
-
-export const listLocationOptions = query({
-  args: {},
-  returns: v.array(locationOptionValidator),
-  handler: async (ctx) => {
-    const auth = await requireOrganization(ctx);
-    const { organizationId } = auth;
-    const locations = await ctx.db
-      .query("locations")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .take(MAX_LOCATIONS);
-
-    return locations
-      .filter(
-        (location) =>
-          auth.locationScope.all || auth.locationScope.ids.has(location._id),
-      )
-      .map((location) => ({
-        id: location._id,
-        name: location.name,
-      }));
   },
 });
 

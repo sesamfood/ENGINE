@@ -99,6 +99,13 @@ const importedIngredientValidator = v.object({
   unitName: v.string(),
 });
 
+const bulkProductCategoryArgs = v.object({
+  productIds: v.array(v.id("products")),
+  categoryId: v.id("categories"),
+});
+
+type ProductStatus = "active" | "archived";
+
 type CategoryReference =
   { kind: "existing"; id: Id<"categories"> } | { kind: "new"; name: string };
 
@@ -119,6 +126,7 @@ type IngredientInput = {
 
 const MAX_NAME_LENGTH = 100;
 const MAX_CHILD_ROWS = 200;
+const MAX_BULK_PRODUCT_SELECTION = 200;
 const MAX_GRAPH_PRODUCTS = 500;
 const MAX_PRODUCT_LEDGER_ROWS = 2000;
 const MAX_FUZZY_SEARCH_SCAN = 500;
@@ -228,6 +236,86 @@ function fuzzyScore(name: string, search: string) {
   }
 
   return score;
+}
+
+type CategorySearchCursor = {
+  searchKey: string;
+  status: ProductStatus;
+  categoryId: string | null;
+  categoryIds: string[];
+  categoryCursor: string | null;
+  categoryDone: boolean;
+  nameOffset: number;
+};
+
+function parseCategorySearchCursor(
+  cursor: string | null,
+  categoryIds: Id<"categories">[],
+  searchKey: string,
+  status: ProductStatus,
+  categoryId: Id<"categories"> | undefined,
+): CategorySearchCursor {
+  const expectedCategoryIds = categoryIds as string[];
+  if (!cursor) {
+    return {
+      searchKey,
+      status,
+      categoryId: categoryId ?? null,
+      categoryIds: expectedCategoryIds,
+      categoryCursor: null,
+      categoryDone: false,
+      nameOffset: 0,
+    };
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(cursor);
+  } catch {
+    throw new ConvexError("InvalidCursor");
+  }
+  if (!value || typeof value !== "object") {
+    throw new ConvexError("InvalidCursor");
+  }
+
+  const parsed = value as {
+    searchKey?: unknown;
+    status?: unknown;
+    categoryId?: unknown;
+    categoryIds?: unknown;
+    categoryCursor?: unknown;
+    categoryDone?: unknown;
+    nameOffset?: unknown;
+  };
+  if (
+    parsed.searchKey !== searchKey ||
+    parsed.status !== status ||
+    parsed.categoryId !== (categoryId ?? null) ||
+    !Array.isArray(parsed.categoryIds) ||
+    parsed.categoryIds.some((id) => typeof id !== "string") ||
+    parsed.categoryIds.length !== expectedCategoryIds.length ||
+    parsed.categoryIds.some(
+      (id, index) => id !== expectedCategoryIds[index],
+    ) ||
+    (parsed.categoryCursor !== null &&
+      typeof parsed.categoryCursor !== "string") ||
+    typeof parsed.categoryDone !== "boolean" ||
+    typeof parsed.nameOffset !== "number" ||
+    !Number.isInteger(parsed.nameOffset) ||
+    parsed.nameOffset < 0
+  ) {
+    throw new ConvexError("InvalidCursor");
+  }
+
+  return {
+    searchKey: parsed.searchKey as string,
+    status: parsed.status as ProductStatus,
+    categoryId: parsed.categoryId as string | null,
+    categoryIds: parsed.categoryIds as string[],
+    categoryCursor: parsed.categoryCursor as string | null,
+    categoryDone: parsed.categoryDone as boolean,
+    nameOffset: parsed.nameOffset as number,
+  };
 }
 
 function requirePositiveNumber(value: number, label: string) {
@@ -685,8 +773,8 @@ export const listProducts = query({
       ctx,
       organizationId,
     );
-    const categoryNames = new Map(
-      categoryHierarchy.map((category) => [category.id, category.name]),
+    const categoryPaths = new Map(
+      categoryHierarchy.map((category) => [category.id, category.path]),
     );
     if (args.categoryId) {
       const category = await ctx.db.get("categories", args.categoryId);
@@ -721,6 +809,110 @@ export const listProducts = query({
                   )
           ).take(MAX_FUZZY_SEARCH_SCAN + 1);
           if (scanned.length > MAX_FUZZY_SEARCH_SCAN) {
+            const matchingCategoryIds = categoryHierarchy
+              .filter((category) => fuzzyScore(category.path, search) !== null)
+              .filter(
+                (category) =>
+                  !args.categoryId || category.id === args.categoryId,
+                )
+                .map((category) => category.id);
+            if (matchingCategoryIds.length > 0) {
+              const cursor = parseCategorySearchCursor(
+                args.paginationOpts.cursor,
+                matchingCategoryIds,
+                normalizeSearch(search),
+                args.status,
+                args.categoryId,
+              );
+              const matchingCategoryIdSet = new Set(cursor.categoryIds);
+              const categoryQuery = () =>
+                ctx.db
+                  .query("products")
+                  .withIndex(
+                    "by_organizationId_and_status_and_categoryId_and_normalizedName",
+                    (q) =>
+                      q
+                        .eq("organizationId", organizationId)
+                        .eq("status", args.status),
+                  )
+                  .filter((q) =>
+                    q.or(
+                      ...matchingCategoryIds.map((categoryId) =>
+                        q.eq(q.field("categoryId"), categoryId),
+                      ),
+                    ),
+                  )
+                  .order("asc");
+              const nameMatches = async () =>
+                await ctx.db
+                  .query("products")
+                  .withSearchIndex("search_name", (q) => {
+                    const productSearch = q
+                      .search("name", search)
+                      .eq("organizationId", organizationId)
+                      .eq("status", args.status);
+                    return args.categoryId
+                      ? productSearch.eq("categoryId", args.categoryId)
+                      : productSearch;
+                  })
+                  .take(MAX_FUZZY_SEARCH_SCAN);
+
+              if (!cursor.categoryDone) {
+                const categoryResults = await categoryQuery().paginate({
+                  ...args.paginationOpts,
+                  cursor: cursor.categoryCursor,
+                });
+                if (!categoryResults.isDone) {
+                  return {
+                    ...categoryResults,
+                    continueCursor: JSON.stringify({
+                      ...cursor,
+                      categoryCursor: categoryResults.continueCursor,
+                    }),
+                  };
+                }
+
+                const matchingNames = (await nameMatches()).filter(
+                  (product) => !matchingCategoryIdSet.has(product.categoryId),
+                );
+                const remainingItems = Math.max(
+                  args.paginationOpts.numItems - categoryResults.page.length,
+                  0,
+                );
+                const namePage = matchingNames.slice(
+                  cursor.nameOffset,
+                  cursor.nameOffset + remainingItems,
+                );
+                const nextNameOffset = cursor.nameOffset + namePage.length;
+                return {
+                  page: [...categoryResults.page, ...namePage],
+                  isDone: nextNameOffset >= matchingNames.length,
+                  continueCursor: JSON.stringify({
+                    ...cursor,
+                    categoryCursor: categoryResults.continueCursor,
+                    categoryDone: true,
+                    nameOffset: nextNameOffset,
+                  }),
+                };
+              }
+
+              const matchingNames = (await nameMatches()).filter(
+                (product) => !matchingCategoryIdSet.has(product.categoryId),
+              );
+              const namePage = matchingNames.slice(
+                cursor.nameOffset,
+                cursor.nameOffset + args.paginationOpts.numItems,
+              );
+              return {
+                page: namePage,
+                isDone:
+                  cursor.nameOffset + namePage.length >= matchingNames.length,
+                continueCursor: JSON.stringify({
+                  ...cursor,
+                  nameOffset: cursor.nameOffset + namePage.length,
+                }),
+              };
+            }
             return await ctx.db
               .query("products")
               .withSearchIndex("search_name", (q) => {
@@ -734,11 +926,17 @@ export const listProducts = query({
               })
               .paginate(args.paginationOpts);
           }
+          if (
+            args.paginationOpts.cursor &&
+            !/^\d+$/.test(args.paginationOpts.cursor)
+          ) {
+            throw new ConvexError("InvalidCursor");
+          }
           const matches = scanned
             .map((product) => {
               const productScore = fuzzyScore(product.name, search);
               const categoryScore = fuzzyScore(
-                categoryNames.get(product.categoryId) ?? "",
+                categoryPaths.get(product.categoryId) ?? "",
                 search,
               );
               return {
@@ -1579,6 +1777,55 @@ export const updateProduct = mutation({
       summary: `Produktet ${name} blev ændret`,
     });
     return product._id;
+  },
+});
+
+export const bulkUpdateProductCategory = mutation({
+  args: bulkProductCategoryArgs.fields,
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
+    if (args.productIds.length === 0) {
+      throw new ConvexError("Vælg mindst ét produkt");
+    }
+    if (args.productIds.length > MAX_BULK_PRODUCT_SELECTION) {
+      throw new ConvexError(
+        `Der kan højst ændres kategori for ${MAX_BULK_PRODUCT_SELECTION} produkter ad gangen`,
+      );
+    }
+    if (new Set(args.productIds).size !== args.productIds.length) {
+      throw new ConvexError("Et produkt må kun vælges én gang");
+    }
+
+    const category = await ctx.db.get("categories", args.categoryId);
+    if (!category || category.organizationId !== organizationId) {
+      throw new ConvexError("Kategorien blev ikke fundet");
+    }
+
+    const products: Doc<"products">[] = [];
+    for (const productId of args.productIds) {
+      const product = await ctx.db.get("products", productId);
+      if (!product || product.organizationId !== organizationId) {
+        throw new ConvexError("Et eller flere produkter blev ikke fundet");
+      }
+      products.push(product);
+    }
+
+    const updatedAt = Date.now();
+    for (const product of products) {
+      await ctx.db.patch("products", product._id, {
+        categoryId: category._id,
+        updatedAt,
+      });
+    }
+    await recordAudit(ctx, auth, {
+      action: "catalog.productsCategoryChanged",
+      entityTable: "products",
+      entityId: category._id,
+      summary: `${products.length} produkter fik ændret kategori til ${category.name}`,
+    });
+    return null;
   },
 });
 

@@ -9,7 +9,7 @@ import {
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { authComponent, createAuth, getDatabaseAdapter } from "../auth";
+import { getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
 
@@ -24,7 +24,9 @@ type AuthMember = {
 };
 
 type AuthSession = {
-  id: string;
+  userId: string;
+  expiresAt: number;
+  activeOrganizationId?: string | null;
   isKioskAccount?: boolean | null;
   kioskModeEnabled?: boolean | null;
 };
@@ -71,16 +73,26 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
-  const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
-  const member = (await auth.api
-    .getActiveMember({ headers })
-    .catch(() => null)) as AuthMember | null;
-  if (!member) throw new ConvexError("Ingen aktiv organisation");
-
-  const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
+  const adapter = getDatabaseAdapter(ctx);
+  const session = await adapter.findOne<AuthSession>({
     model: "session",
     where: [{ field: "id", value: identity.sessionId as string }],
   });
+  if (
+    !session ||
+    session.expiresAt < Date.now() ||
+    !session.activeOrganizationId
+  ) {
+    throw new ConvexError("Ingen aktiv organisation");
+  }
+  const member = await adapter.findOne<AuthMember>({
+    model: "member",
+    where: [
+      { field: "organizationId", value: session.activeOrganizationId },
+      { field: "userId", value: session.userId },
+    ],
+  });
+  if (!member) throw new ConvexError("Ingen aktiv organisation");
   const role = member.role;
   const [configured, roleConfig] = await Promise.all([
     ctx.db

@@ -2,19 +2,21 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, usePaginatedQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
   BoxesIcon,
   PackageOpenIcon,
   PlusIcon,
+  MoreHorizontalIcon,
   SearchIcon,
+  TagsIcon,
   Trash2Icon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ProductImportExport } from "@/components/catalog/product-import-export";
@@ -30,6 +32,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardAction,
@@ -48,8 +51,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type ProductStatus = "active" | "archived";
+const MAX_BULK_PRODUCT_SELECTION = 200;
 type CatalogProduct = {
   id: Id<"products">;
   name: string;
@@ -59,8 +74,87 @@ type CatalogProduct = {
   deletesAt: number | null;
 };
 
+type CategoryMenuOption = {
+  id: Id<"categories">;
+  name: string;
+  parentCategoryId: Id<"categories"> | null;
+  path: string;
+  depth: number;
+};
+
+function CategoryMenuItems({
+  categories,
+  parentCategoryId,
+  onSelect,
+}: {
+  categories: CategoryMenuOption[];
+  parentCategoryId: Id<"categories"> | null;
+  onSelect: (categoryId: Id<"categories">) => void;
+}) {
+  return categories
+    .filter((category) => category.parentCategoryId === parentCategoryId)
+    .map((category) => {
+      const hasChildren = categories.some(
+        (child) => child.parentCategoryId === category.id,
+      );
+
+      if (!hasChildren) {
+        return (
+          <DropdownMenuItem
+            key={category.id}
+            onClick={() => onSelect(category.id)}
+          >
+            {category.name}
+          </DropdownMenuItem>
+        );
+      }
+
+      return (
+        <DropdownMenuSub key={category.id}>
+          <DropdownMenuSubTrigger onClick={() => onSelect(category.id)}>
+            {category.name}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => onSelect(category.id)}>
+                Vælg {category.name}
+              </DropdownMenuItem>
+              <CategoryMenuItems
+                categories={categories}
+                parentCategoryId={category.id}
+                onSelect={onSelect}
+              />
+            </DropdownMenuGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    });
+}
+
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
+}
+
+function catalogQuery(
+  search: string,
+  status: ProductStatus,
+) {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  params.set("status", status);
+  return `?${params.toString()}`;
+}
+
+function productEditHref(
+  productId: Id<"products">,
+  search: string,
+  status: ProductStatus,
+) {
+  return `/organization/products/${productId}${catalogQuery(search, status)}`;
+}
+
+function newProductHref(search: string, status: ProductStatus) {
+  return `/organization/products/new${catalogQuery(search, status)}`;
 }
 
 function ProductImage({ product }: { product: CatalogProduct }) {
@@ -87,11 +181,19 @@ function ProductImage({ product }: { product: CatalogProduct }) {
 
 function ProductCard({
   product,
+  editHref,
+  isSelectionMode,
+  isSelected,
+  onSelect,
   onArchive,
   onRestore,
   onDelete,
 }: {
   product: CatalogProduct;
+  editHref: string;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  onSelect: (productId: Id<"products">, selected: boolean) => void;
   onArchive: (product: CatalogProduct) => void;
   onRestore: (product: CatalogProduct) => void;
   onDelete: (product: CatalogProduct) => void;
@@ -99,10 +201,28 @@ function ProductCard({
   return (
     <Card className="relative gap-0 py-0 transition-shadow hover:shadow-sm">
       <Link
-        href={`/organization/products/${product.id}`}
-        aria-label={`Rediger ${product.name}`}
-        className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
+        href={editHref}
+        aria-label={
+          isSelectionMode ? `Vælg ${product.name}` : `Rediger ${product.name}`
+        }
+        className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
+        onClick={(event) => {
+          if (!isSelectionMode) return;
+          event.preventDefault();
+          onSelect(product.id, !isSelected);
+        }}
       />
+      {isSelectionMode ? (
+        <div className="absolute left-3 top-3 z-20 rounded-md bg-background/90 p-1 shadow-sm">
+          <Checkbox
+            checked={isSelected}
+            aria-label={`Vælg ${product.name}`}
+            onCheckedChange={(checked) =>
+              onSelect(product.id, checked === true)
+            }
+          />
+        </div>
+      ) : null}
       <ProductImage product={product} />
       <CardHeader className="py-4">
         <CardTitle>{product.name}</CardTitle>
@@ -112,7 +232,7 @@ function ProductCard({
             ? ` · Slettes automatisk ${new Intl.DateTimeFormat("da-DK", { dateStyle: "long" }).format(product.deletesAt)}`
             : null}
         </CardDescription>
-        <CardAction className="relative z-10 flex gap-1">
+        <CardAction className="relative z-20 flex gap-1">
           <Button
             type="button"
             variant="ghost"
@@ -167,8 +287,10 @@ function CatalogSkeleton() {
 
 export function ProductCatalog() {
   const router = useRouter();
-  const [status, setStatus] = useState<ProductStatus>("active");
-  const [search, setSearch] = useState("");
+  const searchParams = useSearchParams();
+  const status: ProductStatus =
+    searchParams.get("status") === "archived" ? "archived" : "active";
+  const search = searchParams.get("search") ?? "";
   const [pendingProduct, setPendingProduct] = useState<CatalogProduct | null>(
     null,
   );
@@ -176,11 +298,22 @@ export function ProductCatalog() {
     useState<CatalogProduct | null>(null);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Id<"products">[]>([]);
+  const [bulkCategoryId, setBulkCategoryId] =
+    useState<Id<"categories"> | null>(null);
+  const [isBulkCategoryDialogOpen, setIsBulkCategoryDialogOpen] =
+    useState(false);
+  const [isChangingCategory, setIsChangingCategory] = useState(false);
   const [querySearch, setQuerySearch] = useState("");
   const [visibleResults, setVisibleResults] = useState<CatalogProduct[]>([]);
   const archiveProduct = useMutation(api.catalog.archiveProduct);
   const restoreProduct = useMutation(api.catalog.restoreProduct);
   const deleteProduct = useMutation(api.catalog.deleteProduct);
+  const bulkUpdateProductCategory = useMutation(
+    api.catalog.bulkUpdateProductCategory,
+  );
+  const categoryOptions = useQuery(api.catalog.listCategoryOptions);
   const {
     results,
     status: paginationStatus,
@@ -210,6 +343,9 @@ export function ProductCatalog() {
         await restoreProduct({ productId: pendingProduct.id });
         toast.success(`${pendingProduct.name} er gendannet`);
       }
+      setSelectedIds((current) =>
+        current.filter((productId) => productId !== pendingProduct.id),
+      );
       setPendingProduct(null);
     } catch (error) {
       toast.error(messageFrom(error));
@@ -224,6 +360,9 @@ export function ProductCatalog() {
     try {
       await deleteProduct({ productId: pendingDeleteProduct.id });
       toast.success(`${pendingDeleteProduct.name} er slettet permanent`);
+      setSelectedIds((current) =>
+        current.filter((productId) => productId !== pendingDeleteProduct.id),
+      );
       setPendingDeleteProduct(null);
     } catch (error) {
       toast.error(messageFrom(error));
@@ -249,51 +388,168 @@ export function ProductCatalog() {
   const showSkeleton = useDelayedLoading(
     loading && displayedResults.length === 0,
   );
+  const selectedProductIds = new Set(selectedIds);
+
+  function selectProduct(productId: Id<"products">, selected: boolean) {
+    setSelectedIds((current) => {
+      if (selected) {
+        if (current.includes(productId)) return current;
+        if (current.length >= MAX_BULK_PRODUCT_SELECTION) {
+          toast.error(
+            `Du kan højst vælge ${MAX_BULK_PRODUCT_SELECTION} produkter ad gangen`,
+          );
+          return current;
+        }
+        return [...current, productId];
+      }
+      return current.filter((id) => id !== productId);
+    });
+  }
+
+  function changeSearch(value: string) {
+    setSelectedIds([]);
+    setBulkCategoryId(null);
+    router.replace(
+      `/organization/products${catalogQuery(value, status)}`,
+      { scroll: false },
+    );
+  }
+
+  function toggleStatus() {
+    const nextStatus = status === "active" ? "archived" : "active";
+    setSelectedIds([]);
+    setBulkCategoryId(null);
+    router.replace(
+      `/organization/products${catalogQuery(search, nextStatus)}`,
+      { scroll: false },
+    );
+  }
+
+  function toggleSelectionMode() {
+    setIsSelectionMode((current) => !current);
+    setSelectedIds([]);
+    setBulkCategoryId(null);
+  }
+
+  async function confirmBulkCategory() {
+    if (!bulkCategoryId || selectedIds.length === 0) return;
+    setIsChangingCategory(true);
+    try {
+      await bulkUpdateProductCategory({
+        productIds: selectedIds,
+        categoryId: bulkCategoryId,
+      });
+      toast.success(`Kategori ændret for ${selectedIds.length} produkter`);
+      setSelectedIds([]);
+      setBulkCategoryId(null);
+      setIsSelectionMode(false);
+      setIsBulkCategoryDialogOpen(false);
+    } catch (error) {
+      toast.error(messageFrom(error));
+    } finally {
+      setIsChangingCategory(false);
+    }
+  }
+
+  function selectBulkCategory(categoryId: Id<"categories">) {
+    setBulkCategoryId(categoryId);
+    setIsBulkCategoryDialogOpen(true);
+  }
+
+  const selectedBulkCategory = categoryOptions?.find(
+    (category) => category.id === bulkCategoryId,
+  );
 
   return (
     <div className="flex flex-col gap-7">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Søg efter produkter"
-            aria-label="Søg efter produkter eller kategorier"
-            className="h-11 pl-10"
-          />
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row md:flex-none">
-          <ProductImportExport />
-          <Button
-            variant="outline"
-            className="min-h-11 px-3"
-            onClick={() =>
-              setStatus((current) =>
-                current === "active" ? "archived" : "active",
-              )
-            }
-          >
-            {status === "active" ? (
-              <ArchiveIcon data-icon="inline-start" />
-            ) : (
-              <ArchiveRestoreIcon data-icon="inline-start" />
-            )}
-            {status === "active"
-              ? "Arkiverede produkter"
-              : "Aktive produkter"}
-          </Button>
-          <Button
-            size="lg"
-            className="min-h-11 px-4"
-            onClick={() => router.push("/organization/products/new")}
-          >
-            <PlusIcon data-icon="inline-start" />
-            Nyt produkt
-          </Button>
+      <div className="sticky top-16 z-30 -mx-4 bg-background px-4 py-3 md:top-24 md:py-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="relative min-w-0 flex-1">
+            <SearchIcon
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={search}
+              onChange={(event) => changeSearch(event.target.value)}
+              placeholder="Søg efter produkter"
+              aria-label="Søg efter produkter eller kategorier"
+              className="h-11 pl-10"
+            />
+          </div>
+          <div className="flex flex-row flex-wrap items-center gap-3 md:flex-none">
+            <Button
+              type="button"
+              variant={isSelectionMode ? "secondary" : "outline"}
+              className="min-h-11 px-3"
+              aria-pressed={isSelectionMode}
+              onClick={toggleSelectionMode}
+            >
+              {isSelectionMode ? "Annuller valg" : "Vælg"}
+            </Button>
+            {isSelectionMode ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11 px-3"
+                      aria-label="Handlinger for valgte produkter"
+                      disabled={selectedIds.length === 0}
+                    />
+                  }
+                >
+                  <span>{selectedIds.length} valgte</span>
+                  <MoreHorizontalIcon data-icon="inline-end" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>
+                      {selectedIds.length} valgt
+                    </DropdownMenuLabel>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <TagsIcon />
+                        Skift kategori
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuGroup>
+                          {categoryOptions === undefined ? (
+                            <DropdownMenuItem disabled>
+                              Indlæser kategorier
+                            </DropdownMenuItem>
+                          ) : categoryOptions.length === 0 ? (
+                            <DropdownMenuItem disabled>
+                              Ingen kategorier
+                            </DropdownMenuItem>
+                          ) : (
+                            <CategoryMenuItems
+                              categories={categoryOptions}
+                              parentCategoryId={null}
+                              onSelect={selectBulkCategory}
+                            />
+                          )}
+                        </DropdownMenuGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            <ProductImportExport
+              status={status}
+              onToggleStatus={toggleStatus}
+            />
+            <Button
+              size="lg"
+              className="min-h-11 px-4"
+              onClick={() => router.push(newProductHref(search, status))}
+            >
+              <PlusIcon data-icon="inline-start" />
+              Nyt produkt
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -322,7 +578,7 @@ export function ProductCatalog() {
             <EmptyContent>
               <Button
                 className="min-h-11 px-4"
-                onClick={() => router.push("/organization/products/new")}
+                onClick={() => router.push(newProductHref(search, status))}
               >
                 <PlusIcon data-icon="inline-start" />
                 Nyt produkt
@@ -338,6 +594,10 @@ export function ProductCatalog() {
             <ProductCard
               key={product.id}
               product={product}
+              editHref={productEditHref(product.id, search, status)}
+              isSelectionMode={isSelectionMode}
+              isSelected={selectedProductIds.has(product.id)}
+              onSelect={selectProduct}
               onArchive={setPendingProduct}
               onRestore={setPendingProduct}
               onDelete={setPendingDeleteProduct}
@@ -396,6 +656,37 @@ export function ProductCatalog() {
             >
               {isChangingStatus ? <Spinner data-icon="inline-start" /> : null}
               {pendingProduct?.status === "active" ? "Arkivér" : "Gendan"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={isBulkCategoryDialogOpen}
+        onOpenChange={(open) => {
+          if (!isChangingCategory) setIsBulkCategoryDialogOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Skift kategori for produkter?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Kategorien ændres for {selectedIds.length} valgte produkter til
+              {" "}
+              {selectedBulkCategory?.path ?? "den valgte kategori"}. Handlingen
+              kan ikke fortrydes automatisk.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isChangingCategory}>
+              Annuller
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isChangingCategory}
+              onClick={confirmBulkCategory}
+            >
+              {isChangingCategory ? <Spinner data-icon="inline-start" /> : null}
+              Skift kategori
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

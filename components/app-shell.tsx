@@ -286,19 +286,15 @@ function effectiveKioskHome(runtime: KioskRuntime, countLocked: boolean) {
 function AccessBoundary({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
   const organization = authClient.useActiveOrganization();
-  const access = useQuery(
-    api.access.getContext,
-    isAuthenticated && organization.data ? {} : "skip",
-  );
-  const locations = useQuery(
-    api.locations.listLocationOptions,
+  const runtime = useQuery(
+    api.access.getRuntimeContext,
     isAuthenticated && organization.data ? {} : "skip",
   );
 
   if (
     isAuthenticated &&
     organization.data &&
-    (access === undefined || locations === undefined)
+    runtime === undefined
   ) {
     return (
       <main className="grid min-h-screen place-items-center" aria-label="Indlæser adgange">
@@ -307,9 +303,7 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const contextValue = access
-    ? { ...access, locations: locations ?? [] }
-    : null;
+  const contextValue = runtime ?? null;
   return <AccessContext.Provider value={contextValue}>{children}</AccessContext.Provider>;
 }
 
@@ -384,6 +378,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
   const kiosk = useKiosk();
   const organization = authClient.useActiveOrganization();
+  const exempt = featureLockExempt(pathname);
   const [now, setNow] = useState(() => Date.now());
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
@@ -410,7 +405,6 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     lockState,
     organizationId && locationId ? `${organizationId}:${locationId}` : null,
   );
-  const exempt = featureLockExempt(pathname);
   const isLocked = lockEnabled ? (currentLockState?.isLocked ?? false) : false;
   const lockReady =
     locations !== undefined &&
@@ -1243,7 +1237,7 @@ export function AppShell({
           <SidebarInset className="min-w-0">
             <header
               className={cn(
-                "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
+                "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
                 showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
               )}
             >

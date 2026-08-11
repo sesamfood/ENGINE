@@ -8,6 +8,9 @@ import {
 import { usernameClient } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
+  sessionOptions: {
+    refetchOnWindowFocus: false,
+  },
   plugins: [
     usernameClient(),
     organizationClient({

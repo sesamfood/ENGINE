@@ -145,6 +145,29 @@ async function seedLocations(
   });
 }
 
+test("udløbet session afvises", async () => {
+  const t = convexTest(schema, modules);
+  const { user, org, now } = await setupAuthOrg(t);
+  const session = await baCreate(t, "session", {
+    expiresAt: now - 1,
+    token: `expired-token-${now}`,
+    createdAt: now,
+    updatedAt: now,
+    userId: user._id,
+    activeOrganizationId: org._id,
+  });
+  const asExpiredUser = t.withIdentity({
+    subject: user._id,
+    issuer: "http://localhost:3000",
+    tokenIdentifier: `http://localhost:3000|${user._id}`,
+    sessionId: session._id,
+  } as never);
+
+  await expect(
+    asExpiredUser.query(api.access.getRuntimeContext, {}),
+  ).rejects.toThrowError("Ingen aktiv organisation");
+});
+
 function wasteRow(
   organizationId: string,
   locationId: Id<"locations">,
@@ -275,9 +298,8 @@ test("valgte lokationer filtrerer valgmuligheder og optællinger", async () => {
     scope: "selected",
     locationIds: [allowedLocationId],
   });
-  await expect(
-    asUser.query(api.locations.listLocationOptions, {}),
-  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
+  const runtime = await asUser.query(api.access.getRuntimeContext, {});
+  expect(runtime.locations).toEqual([{ id: allowedLocationId, name: "Nord" }]);
   await expect(
     asUser.mutation(api.count.setCountQuantity, {
       locationId: foreignLocationId,
@@ -485,9 +507,10 @@ test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
     kioskLocationId: allowedLocationId,
     isKioskAccount: true,
   });
-  await expect(
-    kiosk.asUser.query(api.locations.listLocationOptions, {}),
-  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
+  const runtime = await kiosk.asUser.query(api.access.getRuntimeContext, {});
+  expect(runtime.locations).toEqual([
+    { id: allowedLocationId, name: "Nord" },
+  ]);
   await expect(
     kiosk.asUser.query(api.count.getCountState, {
       locationId: allowedLocationId,
@@ -570,9 +593,10 @@ test("navngivne roller registreres og håndhæves af Convex", async () => {
     tokenIdentifier: `http://localhost:3000|${customUser._id}`,
     sessionId: customSession._id,
   } as never);
-  const context = await asCustomUser.query(api.access.getContext, {});
+  const context = await asCustomUser.query(api.access.getRuntimeContext, {});
   expect(context.role).toBe(role);
   expect(context.permissions).toContain("count.register");
+  expect(context.locations).toEqual([]);
   await expect(
     asCustomUser.mutation(api.access.deleteRole, { role }),
   ).rejects.toThrowError("Rollen bruges af et medlem og kan ikke slettes");
@@ -688,9 +712,8 @@ test("operatørscope begrænser lokationer, spild, optællinger og flytninger", 
     locationIds: [],
     operatorId,
   });
-  await expect(
-    asUser.query(api.locations.listLocationOptions, {}),
-  ).resolves.toEqual([{ id: allowedLocationId, name: "Nord" }]);
+  const runtime = await asUser.query(api.access.getRuntimeContext, {});
+  expect(runtime.locations).toEqual([{ id: allowedLocationId, name: "Nord" }]);
   const waste = await asUser.query(api.waste.listRegistrations, {
     paginationOpts: { numItems: 10, cursor: null },
     startAt: now - 100,
@@ -744,9 +767,8 @@ test("operatørscope begrænser lokationer, spild, optællinger og flytninger", 
     locationIds: [],
     operatorId: emptyOperatorId,
   });
-  await expect(
-    asUser.query(api.locations.listLocationOptions, {}),
-  ).resolves.toEqual([]);
+  const emptyRuntime = await asUser.query(api.access.getRuntimeContext, {});
+  expect(emptyRuntime.locations).toEqual([]);
 });
 
 test("dashboardets datavisning håndhæves i API-svaret", async () => {
