@@ -3,7 +3,13 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useConvex, useMutation } from "convex/react";
-import { DownloadIcon, UploadIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  DownloadIcon,
+  MoreHorizontalIcon,
+  UploadIcon,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -17,6 +23,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldTitle } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -34,7 +48,15 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
-export function ProductImportExport() {
+type ProductStatus = "active" | "archived";
+
+export function ProductImportExport({
+  status,
+  onToggleStatus,
+}: {
+  status: ProductStatus;
+  onToggleStatus: () => void;
+}) {
   const convex = useConvex();
   const inputRef = useRef<HTMLInputElement>(null);
   const [archive, setArchive] = useState<ParsedProductArchive | null>(null);
@@ -97,6 +119,10 @@ export function ProductImportExport() {
       setIsReading(false);
       if (inputRef.current) inputRef.current.value = "";
     }
+  }
+
+  function openImport() {
+    inputRef.current?.click();
   }
 
   async function uploadImage(
@@ -234,34 +260,52 @@ export function ProductImportExport() {
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        className="min-h-11 px-3"
-        disabled={isExporting || isImporting}
-        onClick={exportProducts}
-      >
-        {isExporting ? (
-          <Spinner data-icon="inline-start" />
-        ) : (
-          <DownloadIcon data-icon="inline-start" />
-        )}
-        Eksportér
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        className="min-h-11 px-3"
-        disabled={isReading || isImporting}
-        onClick={() => inputRef.current?.click()}
-      >
-        {isReading ? (
-          <Spinner data-icon="inline-start" />
-        ) : (
-          <UploadIcon data-icon="inline-start" />
-        )}
-        Importér
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-lg"
+              className="size-11"
+              aria-label="Flere handlinger"
+            />
+          }
+        >
+          <MoreHorizontalIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              disabled={isExporting || isImporting}
+              onClick={() => void exportProducts()}
+            >
+              {isExporting ? <Spinner /> : <DownloadIcon />}
+              Eksportér
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={isReading || isImporting}
+              onClick={openImport}
+            >
+              {isReading ? <Spinner /> : <UploadIcon />}
+              Importér
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={onToggleStatus}>
+              {status === "active" ? (
+                <ArchiveIcon />
+              ) : (
+                <ArchiveRestoreIcon />
+              )}
+              {status === "active"
+                ? "Arkiverede produkter"
+                : "Aktive produkter"}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <input
         ref={inputRef}
         type="file"
