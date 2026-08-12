@@ -57,7 +57,7 @@ export function OwnChecksOverview() {
   const [performedBy, setPerformedBy] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState<Id<"ownCheckEntries"> | null>(null);
   const locationId = lockedId ?? selectedLocation ?? locations?.[0]?.id ?? null;
-  const now = useOwnCheckNow(locationId ?? "");
+  const now = useOwnCheckNow(`${locationId ?? ""}:${manualRange?.from ?? ""}:${manualRange?.to ?? ""}`);
   const dateContext = useQuery(api.ownCheckOverview.getOverviewDateContext, locationId ? { locationId, now } : "skip");
   const activeManualRange = manualRange?.locationId === locationId ? manualRange : null;
   const toDateKey = activeManualRange?.to ?? dateContext?.todayDateKey ?? "";

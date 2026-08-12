@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { evaluateCompliance, formatValue, ownCheckControlTypeLabels, ownCheckStatusLabels } from "@/lib/own-checks";
+import { evaluateCompliance, formatValue, ownCheckControlTypeLabels, ownCheckStatus, ownCheckStatusLabels } from "@/lib/own-checks";
 
 export type DocumentationResult = NonNullable<ReturnType<typeof import("convex/react").usePaginatedQuery<typeof api.ownCheckDocumentation.buildDocumentation>>>;
 export type DocumentationRecord = DocumentationResult["results"][number];
@@ -36,7 +36,7 @@ function limitText(field: DocumentationRecord["fields"][number]) {
 }
 
 function statusBadge(record: DocumentationRecord) {
-  const status = record.status === "approved" ? "approved" : record.hasDeviation ? "deviation" : record.status;
+  const status = ownCheckStatus(record);
   return <Badge variant={status === "deviation" ? "destructive" : status === "approved" ? "default" : "secondary"}>{status === "approved" ? <CheckCircle2Icon data-icon="inline-start" /> : status === "deviation" ? <AlertTriangleIcon data-icon="inline-start" /> : null}{ownCheckStatusLabels[status]}</Badge>;
 }
 

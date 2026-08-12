@@ -7,7 +7,7 @@ import {
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 import {
   isMultiLocationFilter,
@@ -159,6 +159,17 @@ function withinStatus(
   return ownCheckStatus(item.entry) === filter;
 }
 
+function locationFilter(
+  q: FilterBuilder<GenericTableInfo>,
+  locationIds: ReadonlySet<Id<"locations">>,
+) {
+  return q.or(...[...locationIds].map((locationId) => q.eq(q.field("locationId"), locationId)));
+}
+
+function overviewEntryKey(locationId: Id<"locations">, templateId: string, dueDateKey: string) {
+  return `${locationId}:${occurrenceKey(templateId, dueDateKey)}`;
+}
+
 async function resolveOverviewLocations(ctx: QueryCtx, organizationId: string, filter: OverviewFilter) {
   const locationIds = isSingleLocationFilter(filter)
     ? [filter.locationId]
@@ -172,21 +183,21 @@ async function resolveOverviewLocations(ctx: QueryCtx, organizationId: string, f
 }
 
 async function locationRows(
-  ctx: QueryCtx,
-  organizationId: string,
   locations: Doc<"locations">[],
   fromDateKey: string,
   toDateKey: string,
   now: number,
   versions: Doc<"ownCheckTemplateVersions">[],
   timeZones: Map<Id<"locations">, string>,
+  entriesByKey: Map<string, Doc<"ownCheckEntries">>,
+  entriesTruncated: boolean,
   controlType: Doc<"ownCheckTemplateVersions">["controlType"] | undefined,
   status: "notCompleted" | "completed" | "approved" | "deviation" | undefined,
   performedBy: string | undefined,
   performedRole: string | undefined,
 ) {
   const rows: OverviewRow[] = [];
-  let truncated = false;
+  let truncated = entriesTruncated;
   const versionsById = new Map(versions.map((version) => [version._id, version]));
   for (const location of locations) {
     if (rows.length >= MAX_OVERVIEW_ROWS) {
@@ -197,17 +208,11 @@ async function locationRows(
     const timeZone = timeZones.get(locationId);
     if (!timeZone) continue;
     const occurrences = expandOwnCheckOccurrences({ versions: versions.map(versionInput), locationId, fromDateKey, toDateKey, timeZone });
-    const entries = await ctx.db
-      .query("ownCheckEntries")
-      .withIndex("by_organizationId_and_locationId_and_dueDateKey", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId).gte("dueDateKey", fromDateKey).lte("dueDateKey", toDateKey))
-      .take(MAX_OVERVIEW_ROWS + 1);
-    if (entries.length > MAX_OVERVIEW_ROWS) truncated = true;
-    const entriesByKey = new Map(entries.map((entry) => [occurrenceKey(entry.templateId, entry.dueDateKey), entry]));
     for (const occurrence of occurrences) {
       if (controlType && occurrence.controlType !== controlType) continue;
       const version = versionsById.get(occurrence.templateVersionId as Id<"ownCheckTemplateVersions">);
       if (!version) continue;
-      const entry = entriesByKey.get(occurrenceKey(version.templateId, occurrence.dueDateKey)) ?? null;
+      const entry = entriesByKey.get(overviewEntryKey(locationId, version.templateId, occurrence.dueDateKey)) ?? null;
       if (performedBy && entry && entry.performedBy !== performedBy) continue;
       if (performedBy && !entry && (!version.responsibleRole || version.responsibleRole !== performedRole)) continue;
       const item = planItem(occurrence, version, entry, now);
@@ -243,9 +248,6 @@ async function entryRows(
   const allowedLocationIds = new Set(locations.map((location) => location._id));
   const startDate = fromDateKey;
   const endDate = toDateKey;
-  const locationFilter = (q: FilterBuilder<GenericTableInfo>) => q.or(
-    ...[...allowedLocationIds].map((locationId) => q.eq(q.field("locationId"), locationId)),
-  );
   const page = isSingleLocationFilter(filter)
     ? status === "deviation"
       ? await ctx.db.query("ownCheckEntries")
@@ -254,16 +256,16 @@ async function entryRows(
         .paginate(paginationOpts)
       : await ctx.db.query("ownCheckEntries")
         .withIndex("by_org_location_status_dueDateKey_dueAt", (q) => q.eq("organizationId", organizationId).eq("locationId", filter.locationId).eq("status", status).gte("dueDateKey", startDate).lte("dueDateKey", endDate))
-        .filter((q) => q.and(...(controlType ? [q.eq(q.field("controlType"), controlType)] : []), ...(performedBy ? [q.eq(q.field("performedBy"), performedBy)] : [])))
+        .filter((q) => q.and(...(controlType ? [q.eq(q.field("controlType"), controlType)] : []), ...(performedBy ? [q.eq(q.field("performedBy"), performedBy)] : []), ...(status === "completed" ? [q.eq(q.field("hasDeviation"), false), q.neq(q.field("followUp"), "open")] : [])))
         .paginate(paginationOpts)
     : status === "deviation"
       ? await ctx.db.query("ownCheckEntries")
         .withIndex("by_org_dueDateKey_dueAt", (q) => q.eq("organizationId", organizationId).gte("dueDateKey", startDate).lte("dueDateKey", endDate))
-        .filter((q) => q.and(locationFilter(q), q.eq(q.field("hasDeviation"), true), ...(controlType ? [q.eq(q.field("controlType"), controlType)] : []), ...(performedBy ? [q.eq(q.field("performedBy"), performedBy)] : [])))
+        .filter((q) => q.and(locationFilter(q, allowedLocationIds), q.eq(q.field("hasDeviation"), true), ...(controlType ? [q.eq(q.field("controlType"), controlType)] : []), ...(performedBy ? [q.eq(q.field("performedBy"), performedBy)] : [])))
         .paginate(paginationOpts)
       : await ctx.db.query("ownCheckEntries")
         .withIndex("by_org_dueDateKey_dueAt", (q) => q.eq("organizationId", organizationId).gte("dueDateKey", startDate).lte("dueDateKey", endDate))
-        .filter((q) => q.and(locationFilter(q), q.eq(q.field("status"), status), ...(controlType ? [q.eq(q.field("controlType"), controlType)] : []), ...(performedBy ? [q.eq(q.field("performedBy"), performedBy)] : [])))
+        .filter((q) => q.and(locationFilter(q, allowedLocationIds), q.eq(q.field("status"), status), ...(controlType ? [q.eq(q.field("controlType"), controlType)] : []), ...(performedBy ? [q.eq(q.field("performedBy"), performedBy)] : []), ...(status === "completed" ? [q.eq(q.field("hasDeviation"), false), q.neq(q.field("followUp"), "open")] : [])))
         .paginate(paginationOpts);
   const rows: OverviewRow[] = [];
   for (const entry of page.page) {
@@ -321,7 +323,16 @@ export const listOwnChecks = query({
           ],
         }))?.role
       : undefined;
-    const result = await locationRows(ctx, auth.organizationId, locations, args.fromDateKey, args.toDateKey, args.now, versions, timeZones, args.controlType, args.status, args.performedBy, performedRole);
+    const allowedLocationIds = new Set(locations.map((location) => location._id));
+    const entries = versions.length === 0
+      ? []
+      : await ctx.db
+        .query("ownCheckEntries")
+        .withIndex("by_org_dueDateKey_dueAt", (q) => q.eq("organizationId", auth.organizationId).gte("dueDateKey", args.fromDateKey).lte("dueDateKey", args.toDateKey))
+        .filter((q) => locationFilter(q, allowedLocationIds))
+        .take(MAX_OVERVIEW_ROWS + 1);
+    const entriesByKey = new Map(entries.map((entry) => [overviewEntryKey(entry.locationId, entry.templateId, entry.dueDateKey), entry]));
+    const result = await locationRows(locations, args.fromDateKey, args.toDateKey, args.now, versions, timeZones, entriesByKey, entries.length > MAX_OVERVIEW_ROWS, args.controlType, args.status, args.performedBy, performedRole);
     const rows = result.rows;
     rows.sort((a, b) => a.dueAt - b.dueAt || Number(Boolean(b.entry?.followUp === "open")) - Number(Boolean(a.entry?.followUp === "open")) || a.name.localeCompare(b.name, "da"));
     return { page: rows, isDone: true, continueCursor: "", truncated: result.truncated };

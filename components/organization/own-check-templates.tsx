@@ -40,6 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import type { OwnCheckControlType, OwnCheckField, OwnCheckSchedule } from "@/lib/own-checks";
+import { useOwnCheckNow } from "@/components/own-checks/use-own-check-now";
 
 type Template = NonNullable<ReturnType<typeof useQuery<typeof api.ownCheckTemplates.listTemplates>>>[number];
 type EditorMode = Template | "new" | null;
@@ -76,7 +77,11 @@ const fieldTypes = [
   { value: "attachment", label: "Fil" },
 ] as const;
 
-function defaultField(key = "felt1"): OwnCheckField {
+function newFieldKey() {
+  return `field-${crypto.randomUUID()}`;
+}
+
+function defaultField(key = "field-initial"): OwnCheckField {
   return { key, label: "Felt", type: "number", required: true, unit: "", min: undefined, max: undefined, decimals: 1 };
 }
 
@@ -161,7 +166,7 @@ function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispat
   return (
     <FieldSet>
       <FieldTitle>Felter</FieldTitle>
-      <FieldDescription>Felternes nøgler gemmes som stabile identifikatorer, så historikken kan sammenlignes.</FieldDescription>
+      <FieldDescription>Felternes nøgler oprettes automatisk og gemmes som stabile identifikatorer, så historikken kan sammenlignes.</FieldDescription>
       <div className="flex flex-col gap-3">
         {draft.fields.map((field, index) => (
           <div key={`${field.key}-${index}`} className="rounded-xl border p-3">
@@ -183,11 +188,7 @@ function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispat
                 <Button type="button" variant="ghost" size="icon" aria-label="Slet felt" disabled={draft.fields.length === 1} onClick={() => setDraft((current) => ({ ...current, fields: current.fields.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2Icon /></Button>
               </div>
             </div>
-            <FieldGroup className="mt-3 grid md:grid-cols-3">
-              <Field>
-                <FieldLabel htmlFor={`own-field-key-${index}`}>Nøgle</FieldLabel>
-                <Input id={`own-field-key-${index}`} value={field.key} onChange={(event) => patchField(index, { key: event.target.value })} />
-              </Field>
+            <FieldGroup className="mt-3 grid md:grid-cols-2">
               <Field orientation="horizontal" className="md:pt-7">
                 <FieldContent><FieldLabel htmlFor={`own-field-required-${index}`}>Påkrævet</FieldLabel></FieldContent>
                 <Switch id={`own-field-required-${index}`} checked={field.required} onCheckedChange={(checked) => patchField(index, { required: checked })} />
@@ -214,7 +215,7 @@ function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispat
           </div>
         ))}
       </div>
-      <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => setDraft((current) => ({ ...current, fields: [...current.fields, defaultField(`felt${current.fields.length + 1}`)] }))}><PlusIcon data-icon="inline-start" />Tilføj felt</Button>
+      <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => setDraft((current) => ({ ...current, fields: [...current.fields, defaultField(newFieldKey())] }))}><PlusIcon data-icon="inline-start" />Tilføj felt</Button>
     </FieldSet>
   );
 }
@@ -224,6 +225,10 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
   const updateTemplate = useMutation(api.ownCheckTemplates.updateTemplate);
   const [draft, setDraft] = useState<Draft>(() => mode && mode !== "new" ? draftFromTemplate(mode) : newDraft());
   const [saving, setSaving] = useState(false);
+  const dateContextLocationId = draft.allLocations ? locations[0]?.id : draft.locationIds[0] ?? locations[0]?.id;
+  const now = useOwnCheckNow(`${mode && mode !== "new" ? mode.id : "new"}:${dateContextLocationId ?? ""}`);
+  const dateContext = useQuery(api.ownCheckTemplates.getTemplateDateContext, dateContextLocationId ? { locationId: dateContextLocationId, now } : "skip");
+  const templateDetails = useQuery(api.ownCheckTemplates.getTemplate, mode && mode !== "new" ? { templateId: mode.id } : "skip");
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -268,10 +273,10 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
           <FieldSet>
             <FieldTitle>Frekvens og tidsrum</FieldTitle>
             <FieldGroup className="grid md:grid-cols-2">
-              <Field><FieldLabel htmlFor="own-template-schedule">Frekvens</FieldLabel><Select items={[{ value: "daily", label: "Dagligt" }, { value: "weekly", label: "Ugentligt" }, { value: "monthly", label: "Månedligt" }, { value: "interval", label: "Fast interval" }]} value={draft.schedule.type} onValueChange={(value) => setDraft((current) => ({ ...current, schedule: value === "weekly" ? { type: "weekly", weekdays: [1] } : value === "monthly" ? { type: "monthly", days: [0] } : value === "interval" ? { type: "interval", intervalDays: 7, anchorDate: new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Copenhagen" }).format(new Date()) } : { type: "daily" } }))}><SelectTrigger id="own-template-schedule" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="daily">Dagligt</SelectItem><SelectItem value="weekly">Ugentligt</SelectItem><SelectItem value="monthly">Månedligt</SelectItem><SelectItem value="interval">Fast interval</SelectItem></SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel htmlFor="own-template-schedule">Frekvens</FieldLabel><Select items={[{ value: "daily", label: "Dagligt" }, { value: "weekly", label: "Ugentligt" }, { value: "monthly", label: "Månedligt" }, { value: "interval", label: "Fast interval" }]} value={draft.schedule.type} onValueChange={(value) => setDraft((current) => ({ ...current, schedule: value === "weekly" ? { type: "weekly", weekdays: [1] } : value === "monthly" ? { type: "monthly", days: [0] } : value === "interval" ? { type: "interval", intervalDays: 7, anchorDate: dateContext?.todayDateKey ?? new Intl.DateTimeFormat("en-CA").format(new Date()) } : { type: "daily" } }))}><SelectTrigger id="own-template-schedule" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="daily">Dagligt</SelectItem><SelectItem value="weekly">Ugentligt</SelectItem><SelectItem value="monthly">Månedligt</SelectItem><SelectItem value="interval">Fast interval</SelectItem></SelectGroup></SelectContent></Select></Field>
               {draft.schedule.type === "weekly" ? <Field><FieldLabel>Ugedage</FieldLabel><div className="grid grid-cols-4 gap-2">{["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"].map((label, day) => <label key={label} className="flex min-h-11 items-center gap-2 rounded-md border px-2 text-sm"><Checkbox checked={draft.schedule.type === "weekly" && draft.schedule.weekdays.includes(day)} onCheckedChange={(checked) => setDraft((current) => current.schedule.type !== "weekly" ? current : { ...current, schedule: { ...current.schedule, weekdays: checked ? [...current.schedule.weekdays, day] : current.schedule.weekdays.filter((item) => item !== day) } })} />{label}</label>)}</div></Field> : null}
               {draft.schedule.type === "monthly" ? <Field><FieldLabel htmlFor="own-template-month-days">Månedsdage</FieldLabel><Input id="own-template-month-days" value={draft.schedule.days.join(",")} onChange={(event) => setDraft((current) => current.schedule.type !== "monthly" ? current : { ...current, schedule: { ...current.schedule, days: event.target.value.split(",").map(Number).filter((value) => Number.isFinite(value)) } })} /><FieldDescription>Brug 1–28 eller 0 for sidste dag i måneden.</FieldDescription></Field> : null}
-              {draft.schedule.type === "interval" ? <FieldGroup className="grid grid-cols-2"><Field><FieldLabel htmlFor="own-template-interval">Antal dage</FieldLabel><Input id="own-template-interval" type="number" min={1} max={365} value={draft.schedule.intervalDays} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, intervalDays: Number(event.target.value) } })} /></Field><Field><FieldLabel htmlFor="own-template-anchor">Startdato</FieldLabel><Input id="own-template-anchor" type="date" value={draft.schedule.anchorDate} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, anchorDate: event.target.value } })} /></Field></FieldGroup> : null}
+              {draft.schedule.type === "interval" ? <FieldGroup className="grid grid-cols-2"><Field><FieldLabel htmlFor="own-template-interval">Antal dage</FieldLabel><Input id="own-template-interval" type="number" min={1} max={365} value={draft.schedule.intervalDays} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, intervalDays: Number(event.target.value) } })} /></Field><Field><FieldLabel htmlFor="own-template-anchor">Startdato</FieldLabel><Input id="own-template-anchor" type="date" value={draft.schedule.anchorDate} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, anchorDate: event.target.value } })} /><FieldDescription>Standarddatoen følger den valgte lokations tidszone.</FieldDescription></Field></FieldGroup> : null}
             </FieldGroup>
             <FieldGroup className="grid md:grid-cols-2">
               <Field><FieldLabel htmlFor="own-template-start">Starter kl.</FieldLabel><Input id="own-template-start" type="time" value={minutesLabel(draft.startMinuteOfDay).replace(".", ":")} onChange={(event) => setDraft((current) => ({ ...current, startMinuteOfDay: parseMinute(event.target.value) }))} /></Field>
@@ -285,6 +290,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
           </FieldSet>
           <Field><FieldLabel htmlFor="own-template-role">Ansvarlig rolle</FieldLabel><Input id="own-template-role" value={draft.responsibleRole} onChange={(event) => setDraft((current) => ({ ...current, responsibleRole: event.target.value }))} placeholder="Valgfrit" /><FieldDescription>Rollen bruges kun til visning og filtrering. Den begrænser ikke, hvem der må udføre kontrollen.</FieldDescription></Field>
           <FieldEditor draft={draft} setDraft={setDraft} />
+          {mode && mode !== "new" ? <Card><CardHeader><CardTitle className="text-base">Versionshistorik</CardTitle><CardDescription>Historiske felter og grænser bevares for tidligere registreringer.</CardDescription></CardHeader><CardContent>{templateDetails === undefined ? <Spinner /> : templateDetails?.versions.length ? <div className="flex flex-col gap-3">{templateDetails.versions.map((version) => <div key={version.id} className="rounded-lg border p-3 text-sm"><div className="flex flex-wrap items-baseline justify-between gap-2"><p className="font-medium">Version {version.version}</p><p className="text-muted-foreground">{new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validFrom)} – {version.validTo === null ? "nu" : new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validTo)}</p></div><p className="text-muted-foreground">Oprettet af {version.createdByName}</p><ul className="mt-2 flex flex-col gap-1">{version.fields.map((field) => <li key={field.key}>{field.label} · {field.type}{field.type === "number" && (field.min !== undefined || field.max !== undefined) ? ` · ${field.min ?? ""}–${field.max ?? ""}` : ""}</li>)}</ul></div>)}</div> : <p className="text-sm text-muted-foreground">Ingen historik tilgængelig.</p>}</CardContent></Card> : null}
           {mode && mode !== "new" ? <Field><FieldLabel htmlFor="own-template-reason">Begrundelse</FieldLabel><Input id="own-template-reason" value={draft.reason} onChange={(event) => setDraft((current) => ({ ...current, reason: event.target.value }))} placeholder="Angiv en begrundelse" required /></Field> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuller</Button>

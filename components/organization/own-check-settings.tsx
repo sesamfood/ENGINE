@@ -52,10 +52,11 @@ export function OwnCheckSettings() {
       </Alert>
     );
   }
+  if (!settings) return <Skeleton className="h-80 w-full max-w-3xl" />;
 
-  const days = lateSubmissionDays ?? settings?.lateSubmissionDays ?? 7;
-  const secondPerson = requireSecondPersonApproval ?? settings?.requireSecondPersonApproval ?? true;
-  const blockCount = blockDuringCount ?? settings?.blockDuringCount ?? false;
+  const days = lateSubmissionDays ?? settings.lateSubmissionDays;
+  const secondPerson = requireSecondPersonApproval ?? settings.requireSecondPersonApproval;
+  const blockCount = blockDuringCount ?? settings.blockDuringCount;
 
   async function save() {
     if (!reason.trim()) {

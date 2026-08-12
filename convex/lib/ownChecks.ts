@@ -281,8 +281,8 @@ export async function appendRevision(
   addChange(
     "status",
     "Status",
-    ownCheckStatusLabels[entry.status === "approved" ? "approved" : entry.hasDeviation ? "deviation" : "completed"],
-    ownCheckStatusLabels[next.status === "approved" ? "approved" : next.hasDeviation ? "deviation" : "completed"],
+    ownCheckStatusLabels[ownCheckStatus(entry)],
+    ownCheckStatusLabels[ownCheckStatus(next)],
   );
   addChange("followUp", "Opfølgning", followUpLabel(entry.followUp), followUpLabel(next.followUp));
   addChange("note", "Note", entry.note ?? null, next.note ?? null);

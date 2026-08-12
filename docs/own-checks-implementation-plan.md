@@ -78,6 +78,9 @@ Settled. Do not re-litigate while implementing.
     configurable, and not to be made configurable without a new decision here: a deviation
     always requires a description, an amendment always requires a reason, approval always
     waits for a corrective action, and the range caps stay in code.
+14. **Approved records are closed.** An approved record cannot be edited or receive a new
+    corrective-action revision. A correction requires a separately designed superseding-record
+    flow; an ordinary amendment must never silently invalidate an approval.
 
 ## Rules that apply to every task
 

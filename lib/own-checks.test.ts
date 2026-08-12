@@ -8,6 +8,7 @@ import {
   ownCheckStatus,
   zonedTimestamp,
 } from "./own-checks";
+import { isDocumentationReportReady } from "./own-check-documentation";
 
 const baseVersion = {
   templateId: "template",
@@ -25,8 +26,21 @@ describe("egenkontrolplaner", () => {
   it("holder lokal dato over sommertidsskift", () => {
     const before = zonedTimestamp("2026-03-29", 23 * 60 + 59, "Europe/Copenhagen");
     const after = zonedTimestamp("2026-10-25", 23 * 60 + 59, "Europe/Copenhagen");
+    expect(before).toBe(Date.parse("2026-03-29T21:59:00Z"));
+    expect(after).toBe(Date.parse("2026-10-25T22:59:00Z"));
     expect(dateKeyInZone(before, "Europe/Copenhagen")).toBe("2026-03-29");
     expect(dateKeyInZone(after, "Europe/Copenhagen")).toBe("2026-10-25");
+  });
+
+  it("udvider faste intervaller fra den lokale ank dato", () => {
+    const occurrences = expandOccurrences({
+      versions: [{ ...baseVersion, schedule: { type: "interval", intervalDays: 2, anchorDate: "2026-03-28" } }],
+      locationId: "location",
+      fromDateKey: "2026-03-28",
+      toDateKey: "2026-04-02",
+      timeZone: "Europe/Copenhagen",
+    });
+    expect(occurrences.map((item) => item.dueDateKey)).toEqual(["2026-03-28", "2026-03-30", "2026-04-01"]);
   });
 
   it("udvider månedens sidste dag", () => {
@@ -103,5 +117,11 @@ describe("egenkontrolplaner", () => {
     expect(ownCheckStatus(null)).toBe("notCompleted");
     expect(ownCheckStatus({ status: "approved", hasDeviation: true, followUp: "resolved" })).toBe("approved");
     expect(addDateKey("2026-02-28", 1)).toBe("2026-03-01");
+  });
+
+  it("afviser rapporter med afgrænsede data", () => {
+    expect(isDocumentationReportReady({ entriesExhausted: true, entriesTruncated: false, prepared: true, missingTruncated: false })).toBe(true);
+    expect(isDocumentationReportReady({ entriesExhausted: true, entriesTruncated: false, prepared: true, missingTruncated: true })).toBe(false);
+    expect(isDocumentationReportReady({ entriesExhausted: false, entriesTruncated: false, prepared: true, missingTruncated: false })).toBe(false);
   });
 });

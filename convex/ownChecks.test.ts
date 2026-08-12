@@ -72,10 +72,10 @@ test("et medlem kan indsende, men ikke læse historik, godkende, rette eller eks
   const submitted = await member.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "same-request" });
   await expect(member.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "same-request" })).resolves.toEqual(submitted);
   await expect(member.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "another-request" })).rejects.toThrowError("allerede registreret");
-  await expect(member.asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: north })).rejects.toThrowError("Du har ikke adgang");
+  await expect(member.asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 25, cursor: null }, now: Date.now(), fromDateKey: dateKey, toDateKey: dateKey, locationId: north })).rejects.toThrowError("Du har ikke adgang");
   await expect(member.asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: submitted.entryId })).rejects.toThrowError("Du har ikke adgang");
   await expect(member.asUser.mutation(api.ownChecks.editOwnCheck, { entryId: submitted.entryId, values: values(3), reason: "Rettelse" })).rejects.toThrowError("Du har ikke adgang");
-  await expect(member.asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: north })).rejects.toThrowError("Du har ikke adgang");
+  await expect(member.asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: north, generatedAt: Date.now() })).rejects.toThrowError("Du har ikke adgang");
 });
 
 test("lokationsscope gælder for både udførte og afledte manglende kontroller", async () => {
@@ -85,13 +85,13 @@ test("lokationsscope gælder for både udførte og afledte manglende kontroller"
   const { templateId } = await seedTemplate(t, org._id, north, { allLocations: true });
   await asUser.mutation(api.access.setMemberLocationAccess, { userId: user._id, reason: "Kun Nord", scope: "selected", locationIds: [north] });
   const dateKey = today();
-  const overview = await asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey });
+  const overview = await asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 25, cursor: null }, now: Date.now(), fromDateKey: dateKey, toDateKey: dateKey });
   expect(overview.page.every((row) => row.locationId === north)).toBe(true);
-  await expect(asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: south })).rejects.toThrowError("Du har ikke adgang til denne lokation");
-  await expect(asUser.query(api.ownChecks.listToday, { locationId: south })).rejects.toThrowError("Du har ikke adgang til denne lokation");
-  await expect(asUser.query(api.ownCheckDocumentation.listMissingOwnChecks, { fromDateKey: dateKey, toDateKey: dateKey, locationId: south })).rejects.toThrowError("Du har ikke adgang til denne lokation");
+  await expect(asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 25, cursor: null }, now: Date.now(), fromDateKey: dateKey, toDateKey: dateKey, locationId: south })).rejects.toThrowError("Du har ikke adgang til denne lokation");
+  await expect(asUser.query(api.ownChecks.listToday, { locationId: south, now: Date.now() })).rejects.toThrowError("Du har ikke adgang til denne lokation");
+  await expect(asUser.query(api.ownCheckDocumentation.listMissingOwnChecks, { fromDateKey: dateKey, toDateKey: dateKey, locationId: south, generatedAt: Date.now() })).rejects.toThrowError("Du har ikke adgang til denne lokation");
   await expect(asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: south, templateId, dueDateKey: dateKey, values: values(4) })).rejects.toThrowError("Du har ikke adgang til denne lokation");
-  await expect(asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: south })).rejects.toThrowError("Du har ikke adgang til denne lokation");
+  await expect(asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: south, generatedAt: Date.now() })).rejects.toThrowError("Du har ikke adgang til denne lokation");
 });
 
 test("kiosk kan bruge aktiverede egenkontroldestinationer uden den normale eksporttilladelse", async () => {
@@ -105,13 +105,16 @@ test("kiosk kan bruge aktiverede egenkontroldestinationer uden den normale ekspo
   const kiosk = await createUser(t, org._id, "member", 2, { kioskLocationId: north, isKioskAccount: true });
   const dateKey = today();
   await expect(kiosk.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId, dueDateKey: dateKey, values: values(4) })).resolves.toMatchObject({ status: "completed" });
-  await expect(kiosk.asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: north })).resolves.toMatchObject({ page: expect.any(Array) });
+  const generatedAt = Date.now();
+  await expect(kiosk.asUser.mutation(api.ownCheckDocumentation.prepareDocumentation, { fromDateKey: dateKey, toDateKey: dateKey, locationId: north })).resolves.toMatchObject({ header: { locationId: north }, missing: { truncated: false } });
+  await expect(kiosk.asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: north, generatedAt })).resolves.toMatchObject({ page: expect.any(Array) });
   await expect(kiosk.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: south, templateId, dueDateKey: dateKey, values: values(4) })).rejects.toThrowError("Kioskkontoen har ikke adgang");
   await t.run(async (ctx) => {
     const settings = await ctx.db.query("kioskSettings").withIndex("by_organizationId", (q) => q.eq("organizationId", org._id)).unique();
-    if (settings) await ctx.db.patch(settings._id, { enabledPages: ["ownChecks.documentation"] });
+    if (settings) await ctx.db.patch(settings._id, { enabledPages: [] });
   });
-  await expect(kiosk.asUser.query(api.ownChecks.listToday, { locationId: north })).rejects.toThrowError("Siden er ikke aktiveret");
+  await expect(kiosk.asUser.query(api.ownChecks.listToday, { locationId: north, now: Date.now() })).rejects.toThrowError("Siden er ikke aktiveret");
+  await expect(kiosk.asUser.mutation(api.ownCheckDocumentation.prepareDocumentation, { fromDateKey: dateKey, toDateKey: dateKey, locationId: north })).rejects.toThrowError("Siden er ikke aktiveret");
   const another = await seedTemplate(t, org._id, north, { name: "Modtagekontrol", allLocations: true });
   await expect(kiosk.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: another.templateId, dueDateKey: dateKey, values: values(4) })).rejects.toThrowError("Siden er ikke aktiveret");
 });
@@ -129,6 +132,8 @@ test("serveren håndhæver afvigelser, immutable revisioner og fire øjne", asyn
   await expect(approver.asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: deviation.entryId })).rejects.toThrowError("følges op");
   await performer.asUser.mutation(api.ownChecks.recordCorrectiveAction, { entryId: deviation.entryId, description: "Produktet blev kasseret" });
   await approver.asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: deviation.entryId });
+  await expect(performer.asUser.mutation(api.ownChecks.editOwnCheck, { entryId: deviation.entryId, values: values(5), reason: "Forsøg på rettelse" })).rejects.toThrowError("godkendt");
+  await expect(performer.asUser.mutation(api.ownChecks.recordCorrectiveAction, { entryId: deviation.entryId, description: "Ny handling" })).rejects.toThrowError("godkendt");
   const compliantTemplate = await seedTemplate(t, org._id, north, { name: "Godkendelig temperatur" });
   const completed = await performer.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: compliantTemplate.templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "completed" });
   await expect(performer.asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: completed.entryId })).rejects.toThrowError("anden person");
@@ -137,6 +142,18 @@ test("serveren håndhæver afvigelser, immutable revisioner og fire øjne", asyn
   const revisions = await t.run(async (ctx) => ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", org._id).eq("entryId", completed.entryId)).collect());
   expect(revisions.map((revision) => revision.revision)).toEqual([1, 2]);
   expect((revisions[0]?.values[0] as { number: number }).number).toBe(4);
+  const attributionTemplate = await seedTemplate(t, org._id, north, { name: "Attributionstest", max: 5 });
+  const attribution = await performer.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: attributionTemplate.templateId, dueDateKey: dateKey, values: values(6), deviationDescription: "Original afvigelse", correctiveAction: "Original handling" });
+  await performer.asUser.mutation(api.ownChecks.editOwnCheck, { entryId: attribution.entryId, values: values(5), reason: "Ny måling" });
+  const attributionState = await t.run(async (ctx) => {
+    const entry = await ctx.db.get("ownCheckEntries", attribution.entryId);
+    const entryRevisions = await ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", org._id).eq("entryId", attribution.entryId)).collect();
+    return { entry, entryRevisions };
+  });
+  expect(attributionState.entry?.deviation?.description).toBe("Original afvigelse");
+  expect(attributionState.entry?.correctiveAction?.description).toBe("Original handling");
+  expect(attributionState.entryRevisions[1]?.deviation?.recordedBy).toBe(attributionState.entryRevisions[0]?.deviation?.recordedBy);
+  expect(attributionState.entryRevisions[1]?.correctiveAction?.recordedAt).toBe(attributionState.entryRevisions[0]?.correctiveAction?.recordedAt);
   await approver.asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: completed.entryId });
   await asUser.mutation(api.ownCheckTemplates.saveSettings, { lateSubmissionDays: 7, requireSecondPersonApproval: false, blockDuringCount: false, reason: "Test af selv-godkendelse" });
   const selfTemplate = await seedTemplate(t, org._id, north, { name: "Selvgodkendelig temperatur" });
@@ -155,6 +172,155 @@ test("indstillinger uden række bruger standarderne og kan lukke for sene regist
   const yesterday = addDateKey(today(), -1);
   await asUser.mutation(api.ownCheckTemplates.saveSettings, { lateSubmissionDays: 0, requireSecondPersonApproval: true, blockDuringCount: false, reason: "Ingen sene registreringer i testen" });
   await expect(member.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: yesterday, values: values(4) })).rejects.toThrowError("op til 0 dage tilbage");
+});
+
+test("standardfristen accepterer syv dage og afviser otte dage", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  const { north } = await seedLocations(t, org._id);
+  const template = await seedTemplate(t, org._id, north, { name: "Syv dages frist", validFrom: Date.now() - 10 * 86_400_000 });
+  const dateKey = today();
+  await expect(asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: addDateKey(dateKey, -7), values: values(4) })).resolves.toMatchObject({ status: "completed" });
+  await expect(asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: addDateKey(dateKey, -8), values: values(4) })).rejects.toThrowError("op til 7 dage tilbage");
+});
+
+test("den aktive egenkontrolgrænse afviser kontrol nummer 201", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  await t.run(async (ctx) => {
+    for (let index = 0; index < 200; index += 1) {
+      await ctx.db.insert("ownCheckTemplates", { organizationId: org._id, name: `Kontrol ${index}`, normalizedName: `kontrol-${index}`, currentVersion: 1, status: "active", createdBy: "test", updatedAt: Date.now() });
+    }
+  });
+  await expect(asUser.mutation(api.ownCheckTemplates.createTemplate, {
+    name: "Kontrol 201",
+    description: "",
+    controlType: "temperature",
+    schedule: { type: "daily" },
+    fields: [{ key: "field-initial", label: "Temperatur", type: "number", required: true, min: 0, max: 5, decimals: 1 }],
+    allLocations: true,
+    locationIds: [],
+  })).rejects.toThrowError("højst have 200 aktive");
+});
+
+test("et felts nøgle overlever en labelændring", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  const { north } = await seedLocations(t, org._id);
+  const templateId = await asUser.mutation(api.ownCheckTemplates.createTemplate, {
+    name: "Stabil nøgle",
+    description: "",
+    controlType: "temperature",
+    schedule: { type: "daily" },
+    fields: [{ key: "field-temperature", label: "Temperatur", type: "number", required: true, min: 0, max: 5, decimals: 1 }],
+    allLocations: false,
+    locationIds: [north],
+  });
+  await asUser.mutation(api.ownCheckTemplates.updateTemplate, {
+    templateId,
+    name: "Stabil nøgle",
+    description: "",
+    controlType: "temperature",
+    schedule: { type: "daily" },
+    fields: [{ key: "field-temperature", label: "Ny temperatur", type: "number", required: true, min: 0, max: 5, decimals: 1 }],
+    allLocations: false,
+    locationIds: [north],
+    reason: "Klarere feltnavn",
+  });
+  const template = await asUser.query(api.ownCheckTemplates.getTemplate, { templateId });
+  expect(template?.versions[0]?.fields[0]?.key).toBe("field-temperature");
+  expect(template?.versions[0]?.fields[0]?.label).toBe("Ny temperatur");
+});
+
+test("en afgrænset backlog returnerer ingen delvise manglende rækker", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  const { north } = await seedLocations(t, org._id);
+  const template = await seedTemplate(t, org._id, north, { name: "Stor backlog", validFrom: Date.now() - 10 * 86_400_000 });
+  const oldDate = addDateKey(today(), -1);
+  await t.run(async (ctx) => {
+    for (let index = 0; index < 2_001; index += 1) {
+      await ctx.db.insert("ownCheckEntries", {
+        organizationId: org._id,
+        locationId: north,
+        locationName: "Nord",
+        templateId: template.templateId,
+        templateVersionId: template.versionId,
+        templateVersion: 1,
+        name: "Stor backlog",
+        controlType: "temperature",
+        dueDateKey: oldDate,
+        dueAt: Date.parse(`${oldDate}T12:00:00Z`) + index,
+        status: "completed",
+        hasDeviation: false,
+        followUp: "none",
+        compliant: true,
+        values: values(4),
+        performedAt: Date.parse(`${oldDate}T12:00:00Z`),
+        performedBy: "test",
+        performedByName: "Test",
+        revision: 1,
+        updatedAt: Date.parse(`${oldDate}T12:00:00Z`),
+      });
+    }
+  });
+  const result = await asUser.query(api.ownChecks.listToday, { locationId: north, now: Date.now() });
+  expect(result.truncated).toBe(true);
+  expect(result.backlog).toEqual([]);
+});
+
+test("statuspagination filtrerer før cursoren og holder lokationsscope", async () => {
+  const t = convexTest(schema, modules);
+  const { org, user, asUser } = await setupAuthOrg(t);
+  const { north, south } = await seedLocations(t, org._id);
+  const west = await t.run(async (ctx) => await ctx.db.insert("locations", { organizationId: org._id, name: "Vest", normalizedName: "vest" }));
+  const performer = await createUser(t, org._id, "manager", 6);
+  const template = await seedTemplate(t, org._id, north, { name: "Flere lokationer", allLocations: true });
+  const dateKey = today();
+  await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "north-status" });
+  await performer.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: south, templateId: template.templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "south-status" });
+  await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: west, templateId: template.templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "west-status" });
+  await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: south, templateId: template.templateId, dueDateKey: addDateKey(dateKey, -1), values: values(4), clientRequestId: "south-old-status" });
+  await asUser.mutation(api.access.setMemberLocationAccess, { userId: user._id, reason: "To valgte lokationer", scope: "selected", locationIds: [north, south] });
+  const filtered = await asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 1, cursor: null }, now: Date.now(), fromDateKey: dateKey, toDateKey: dateKey, status: "completed", performedBy: performer.user._id });
+  expect(filtered.page).toHaveLength(1);
+  expect(filtered.page[0]?.locationId).toBe(south);
+  const firstPage = await asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 1, cursor: null }, now: Date.now(), fromDateKey: dateKey, toDateKey: dateKey, status: "completed" });
+  expect(firstPage.page).toHaveLength(1);
+  expect(firstPage.page[0]?.locationId).toBe(north);
+  expect(firstPage.truncated).toBe(false);
+  if (!firstPage.isDone) {
+    const secondPage = await asUser.query(api.ownChecks.listOwnChecks, { paginationOpts: { numItems: 1, cursor: firstPage.continueCursor }, now: Date.now(), fromDateKey: dateKey, toDateKey: dateKey, status: "completed" });
+    expect(secondPage.page).toHaveLength(1);
+    expect(secondPage.page[0]?.locationId).toBe(south);
+  }
+});
+
+test("en templateændring ændrer ikke den første registrering eller dens revision", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  const { north } = await seedLocations(t, org._id);
+  const template = await seedTemplate(t, org._id, north, { name: "Historisk temperatur" });
+  const dateKey = today();
+  const submitted = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: dateKey, values: values(4) });
+  await asUser.mutation(api.ownCheckTemplates.updateTemplate, {
+    templateId: template.templateId,
+    name: "Historisk temperatur ny",
+    description: "Ny beskrivelse",
+    controlType: "temperature",
+    schedule: { type: "daily" },
+    dueMinuteOfDay: 1_438,
+    fields: [{ key: "temperature", label: "Ny temperatur", type: "number", required: true, min: 0, max: 4, unit: "°C", decimals: 1 }],
+    allLocations: false,
+    locationIds: [north],
+    reason: "Opdaterede grænser",
+  });
+  const record = await asUser.query(api.ownChecks.getOwnCheckRecord, { entryId: submitted.entryId });
+  expect(record?.entry.name).toBe("Historisk temperatur");
+  expect(record?.entry.templateVersion).toBe(1);
+  expect(record?.fields[0]?.label).toBe("Temperatur");
+  expect(record?.revisions).toHaveLength(1);
+  expect((record?.revisions[0]?.values[0] as { number: number }).number).toBe(4);
 });
 
 test("count lock følger egenkontrolindstillingen i begge retninger", async () => {

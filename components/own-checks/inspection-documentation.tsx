@@ -1,6 +1,6 @@
 "use client";
 
-import { usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { DownloadIcon, FileDownIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -9,7 +9,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { downloadCsv } from "@/lib/download-csv";
 import { buildInspectionPdf } from "@/lib/own-check-pdf";
-import { formatValue, evaluateCompliance, ownCheckControlTypeLabels, ownCheckStatusLabels } from "@/lib/own-checks";
+import { isDocumentationReportReady } from "@/lib/own-check-documentation";
+import { formatValue, evaluateCompliance, ownCheckControlTypeLabels, ownCheckStatus, ownCheckStatusLabels } from "@/lib/own-checks";
 import { LocationField } from "@/components/location-field";
 import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -21,12 +22,26 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { InspectionReport, type DocumentationRecord, type MissingRecord } from "./inspection-report";
+import { useOwnCheckNow } from "./use-own-check-now";
 
-function dateKey(offsetDays = 0) {
-  const now = new Date();
-  now.setDate(now.getDate() + offsetDays);
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Copenhagen" }).format(now);
-}
+const MAX_EXPORT_RECORDS = 5_000;
+
+type PreparedValue = {
+  header: {
+    locationId: Id<"locations">;
+    locationName: string;
+    legalEntityName: string | null;
+    registrationNumber: string | null;
+    operatorName: string | null;
+    marketName: string | null;
+    fromDateKey: string;
+    toDateKey: string;
+    generatedAt: number;
+    generatedBy: string;
+    timeZone: string;
+  };
+  missing: { items: MissingRecord[]; truncated: boolean };
+};
 
 function shiftDate(dateKeyValue: string, days: number) {
   const date = new Date(`${dateKeyValue}T12:00:00Z`);
@@ -41,6 +56,7 @@ function startOfWeek(dateKeyValue: string) {
 }
 
 function rangeDays(from: string, to: string) {
+  if (!from || !to) return Number.NaN;
   return (new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 86_400_000 + 1;
 }
 
@@ -76,7 +92,6 @@ function csvRows(records: DocumentationRecord[], missing: MissingRecord[], timeZ
     for (const value of record.values) {
       const field = record.fields.find((candidate) => candidate.key === value.key);
       if (!field) continue;
-      const violation = violations.get(field.key);
       rows.push([
         record.dueDateKey,
         new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short", timeZone }).format(record.performedAt),
@@ -87,8 +102,8 @@ function csvRows(records: DocumentationRecord[], missing: MissingRecord[], timeZ
         field.label,
         formatValue(field, value as never),
         limitText(field),
-        violation ? "Nej" : "Ja",
-        ownCheckStatusLabels[record.status],
+        violations.has(field.key) ? "Nej" : "Ja",
+        ownCheckStatusLabels[ownCheckStatus(record)],
         record.deviation?.description ?? "",
         record.correctiveAction?.description ?? "",
         record.approvedByName ?? "",
@@ -100,44 +115,75 @@ function csvRows(records: DocumentationRecord[], missing: MissingRecord[], timeZ
   return rows;
 }
 
-const MAX_EXPORT_RECORDS = 5_000;
-
 export function InspectionDocumentation() {
   const organization = authClient.useActiveOrganization();
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const kiosk = useKiosk();
   const canExport = usePermission("ownChecks.export") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("ownChecks.documentation"));
   const [selectedLocation, setSelectedLocation] = useState<Id<"locations"> | null>(lockedId);
-  const [fromDateKey, setFromDateKey] = useState(() => startOfWeek(dateKey()));
-  const [toDateKey, setToDateKey] = useState(() => dateKey());
+  const [manualRange, setManualRange] = useState<{ locationId: Id<"locations">; from: string; to: string } | null>(null);
+  const [prepared, setPrepared] = useState<{ key: string; value: PreparedValue } | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const locationId = lockedId ?? selectedLocation ?? locations?.[0]?.id ?? null;
+  const now = useOwnCheckNow(`${locationId ?? ""}:${manualRange?.from ?? ""}:${manualRange?.to ?? ""}`);
+  const dateContext = useQuery(api.ownCheckDocumentation.getDocumentationDateContext, locationId && canExport ? { locationId, now } : "skip");
+  const activeManualRange = manualRange?.locationId === locationId ? manualRange : null;
+  const toDateKey = activeManualRange?.to ?? dateContext?.todayDateKey ?? "";
+  const fromDateKey = activeManualRange?.from ?? (dateContext ? startOfWeek(dateContext.todayDateKey) : "");
   const days = rangeDays(fromDateKey, toDateKey);
-  const rangeValid = Boolean(fromDateKey && toDateKey && days >= 1 && days <= 366);
-  const args = canExport && locationId && rangeValid ? { paginationOpts: { numItems: 25, cursor: null }, fromDateKey, toDateKey, locationId } : "skip";
-  const { results, status, loadMore } = usePaginatedQuery(api.ownCheckDocumentation.buildDocumentation, args, { initialNumItems: 25 });
-  const header = useQuery(api.ownCheckDocumentation.getDocumentationHeader, args === "skip" ? "skip" : { fromDateKey, toDateKey, locationId: locationId! });
-  const missingResult = useQuery(api.ownCheckDocumentation.listMissingOwnChecks, args === "skip" ? "skip" : { fromDateKey, toDateKey, locationId: locationId! });
+  const rangeValid = Number.isFinite(days) && days >= 1 && days <= 366;
+  const preparedKey = `${locationId ?? ""}:${fromDateKey}:${toDateKey}`;
+  const preparedForCurrent = prepared?.key === preparedKey ? prepared.value : null;
+  const prepare = useMutation(api.ownCheckDocumentation.prepareDocumentation);
+  const documentationArgs = preparedForCurrent && !preparedForCurrent.missing.truncated ? { fromDateKey, toDateKey, locationId: locationId!, generatedAt: preparedForCurrent.header.generatedAt } : "skip";
+  const { results, status, loadMore } = usePaginatedQuery(api.ownCheckDocumentation.buildDocumentation, documentationArgs, { initialNumItems: 25 });
   const branding = useQuery(api.organization.getBranding, canExport && organization.data ? {} : "skip");
 
   useEffect(() => {
-    if (status === "CanLoadMore" && results.length < MAX_EXPORT_RECORDS) loadMore(25);
-  }, [loadMore, results.length, status]);
+    if (preparedForCurrent && status === "CanLoadMore" && results.length <= MAX_EXPORT_RECORDS) loadMore(25);
+  }, [loadMore, preparedForCurrent, results.length, status]);
 
-  const exportTooLarge = results.length >= MAX_EXPORT_RECORDS && status !== "Exhausted";
-  const reportReady = status === "Exhausted" && !exportTooLarge && header !== undefined && missingResult !== undefined;
+  const completedTooLarge = Boolean(preparedForCurrent && (results.length > MAX_EXPORT_RECORDS || (results.length === MAX_EXPORT_RECORDS && status !== "Exhausted")));
+  const missingTooLarge = preparedForCurrent?.missing.truncated === true;
+  const exportTooLarge = completedTooLarge || missingTooLarge;
+  const reportReady = isDocumentationReportReady({ entriesExhausted: status === "Exhausted", entriesTruncated: completedTooLarge, prepared: Boolean(preparedForCurrent), missingTruncated: missingTooLarge });
   const reportRecords = results as DocumentationRecord[];
-  const missing = missingResult?.items ?? [];
+  const missing = preparedForCurrent?.missing.items ?? [];
   const exportName = locationId && locations ? fileNamePart(locations.find((location) => location.id === locationId)?.name ?? "lokation") : "lokation";
   const organizationName = organization.data?.name ?? "Organisation";
   const progressText = status === "LoadingFirstPage" ? "Henter dokumentation…" : status === "LoadingMore" ? `Henter flere registreringer (${results.length})…` : "Gør dokumentationen klar…";
 
+  function invalidatePrepared() {
+    setPrepared(null);
+  }
+
+  function updateRange(next: Partial<{ from: string; to: string }>) {
+    if (!locationId) return;
+    invalidatePrepared();
+    setManualRange({ locationId, from: next.from ?? fromDateKey, to: next.to ?? toDateKey });
+  }
+
   function choosePreset(preset: "week" | "month" | "quarter") {
-    const today = dateKey();
-    if (preset === "week") setFromDateKey(startOfWeek(today));
-    if (preset === "month") setFromDateKey(`${today.slice(0, 8)}01`);
-    if (preset === "quarter") setFromDateKey(shiftDate(today, -89));
-    setToDateKey(today);
+    if (!dateContext?.todayDateKey || !locationId) return;
+    const today = dateContext.todayDateKey;
+    const from = preset === "week" ? startOfWeek(today) : preset === "month" ? `${today.slice(0, 8)}01` : shiftDate(today, -89);
+    invalidatePrepared();
+    setManualRange({ locationId, from, to: today });
+  }
+
+  async function prepareReport() {
+    if (!locationId || !rangeValid) return;
+    setPreparing(true);
+    invalidatePrepared();
+    try {
+      const value = await prepare({ fromDateKey, toDateKey, locationId });
+      setPrepared({ key: preparedKey, value: value as PreparedValue });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Dokumentationen kunne ikke klargøres");
+    } finally {
+      setPreparing(false);
+    }
   }
 
   async function fetchAttachmentBytes(records: DocumentationRecord[]) {
@@ -160,7 +206,10 @@ export function InspectionDocumentation() {
   }
 
   async function exportPdf() {
-    if (!reportReady || !header) return;
+    if (!reportReady || !preparedForCurrent) {
+      toast.error("Dokumentationen er ikke komplet endnu");
+      return;
+    }
     setGenerating(true);
     try {
       let logoBytes: Uint8Array | null = null;
@@ -170,7 +219,7 @@ export function InspectionDocumentation() {
       const attachments = await fetchAttachmentBytes(reportRecords);
       const pdf = await buildInspectionPdf({
         header: {
-          ...header,
+          ...preparedForCurrent.header,
           organizationName,
           logoBytes,
           completedCount: reportRecords.length,
@@ -190,8 +239,11 @@ export function InspectionDocumentation() {
   }
 
   function exportCsv() {
-    if (!reportReady) return;
-    downloadCsv(`egenkontrol-${exportName}-${fromDateKey}-${toDateKey}.csv`, ["Dato", "Tidspunkt", "Egenkontrol", "Kontroltype", "Lokation", "Udført af", "Felt", "Værdi", "Grænse", "Inden for grænsen", "Status", "Afvigelse", "Korrigerende handling", "Godkendt af", "Rettelser"], csvRows(reportRecords, missing, header?.timeZone ?? "Europe/Copenhagen", header?.locationName ?? ""));
+    if (!reportReady || !preparedForCurrent) {
+      toast.error("Dokumentationen er ikke komplet endnu");
+      return;
+    }
+    downloadCsv(`egenkontrol-${exportName}-${fromDateKey}-${toDateKey}.csv`, ["Dato", "Tidspunkt", "Egenkontrol", "Kontroltype", "Lokation", "Udført af", "Felt", "Værdi", "Grænse", "Inden for grænsen", "Status", "Afvigelse", "Korrigerende handling", "Godkendt af", "Rettelser"], csvRows(reportRecords, missing, preparedForCurrent.header.timeZone, preparedForCurrent.header.locationName));
     toast.success("CSV-dokumentationen er hentet");
   }
 
@@ -200,9 +252,9 @@ export function InspectionDocumentation() {
   if (!locations.length || !locationId) return <Card><CardContent className="p-8 text-center text-muted-foreground">Opret en lokation, før dokumentationen kan vises.</CardContent></Card>;
 
   return <div className="flex flex-col gap-5">
-    <Card><CardContent className="pt-6"><FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"><Field className="xl:col-span-2"><FieldLabel htmlFor="own-documentation-location">Lokation</FieldLabel><LocationField id="own-documentation-location" locations={locations} value={locationId} locked={isLocked} lockedName={lockedName} onValueChange={(value) => setSelectedLocation(value as Id<"locations">)} /></Field><Field><FieldLabel htmlFor="own-documentation-from">Fra dato</FieldLabel><Input id="own-documentation-from" type="date" value={fromDateKey} onChange={(event) => setFromDateKey(event.target.value)} /></Field><Field><FieldLabel htmlFor="own-documentation-to">Til dato</FieldLabel><Input id="own-documentation-to" type="date" value={toDateKey} onChange={(event) => setToDateKey(event.target.value)} /></Field><Field><FieldLabel>Hurtig periode</FieldLabel><Select items={[{ value: "week", label: "Denne uge" }, { value: "month", label: "Denne måned" }, { value: "quarter", label: "Sidste 3 måneder" }]} onValueChange={(value) => value && choosePreset(value as "week" | "month" | "quarter")}><SelectTrigger className="w-full"><SelectValue placeholder="Vælg periode" /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="week">Denne uge</SelectItem><SelectItem value="month">Denne måned</SelectItem><SelectItem value="quarter">Sidste 3 måneder</SelectItem></SelectGroup></SelectContent></Select></Field></FieldGroup><FieldDescription className="mt-4">Vælg højst 366 dage. PDF- og CSV-eksporten indeholder både udførte og manglende kontroller.</FieldDescription></CardContent></Card>
+    <Card><CardContent className="pt-6"><FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"><Field className="xl:col-span-2"><FieldLabel htmlFor="own-documentation-location">Lokation</FieldLabel><LocationField id="own-documentation-location" locations={locations} value={locationId} locked={isLocked} lockedName={lockedName} onValueChange={(value) => { invalidatePrepared(); setSelectedLocation(value as Id<"locations">); }} /></Field><Field><FieldLabel htmlFor="own-documentation-from">Fra dato</FieldLabel><Input id="own-documentation-from" type="date" value={fromDateKey} onChange={(event) => updateRange({ from: event.target.value })} /></Field><Field><FieldLabel htmlFor="own-documentation-to">Til dato</FieldLabel><Input id="own-documentation-to" type="date" value={toDateKey} onChange={(event) => updateRange({ to: event.target.value })} /></Field><Field><FieldLabel>Hurtig periode</FieldLabel><Select items={[{ value: "week", label: "Denne uge" }, { value: "month", label: "Denne måned" }, { value: "quarter", label: "Sidste 3 måneder" }]} onValueChange={(value) => value && choosePreset(value as "week" | "month" | "quarter")}><SelectTrigger className="w-full"><SelectValue placeholder="Vælg periode" /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="week">Denne uge</SelectItem><SelectItem value="month">Denne måned</SelectItem><SelectItem value="quarter">Sidste 3 måneder</SelectItem></SelectGroup></SelectContent></Select></Field></FieldGroup><FieldDescription className="mt-4">Vælg højst 366 dage. PDF- og CSV-eksporten indeholder både udførte og manglende kontroller.</FieldDescription></CardContent></Card>
     {!rangeValid ? <Alert variant="destructive"><AlertTitle>Ugyldig periode</AlertTitle><AlertDescription>Vælg en periode på mellem 1 og 366 dage, hvor fra-datoen ligger før til-datoen.</AlertDescription></Alert> : null}
-    <div className="flex flex-wrap gap-2"><Button variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={() => void exportPdf()}>{generating ? <Spinner data-icon="inline-start" /> : <FileDownIcon data-icon="inline-start" />}Hent PDF</Button><Button variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={exportCsv}><DownloadIcon data-icon="inline-start" />Eksportér CSV</Button></div>
-    {exportTooLarge ? <Alert variant="destructive"><AlertTitle>Perioden er for stor</AlertTitle><AlertDescription>Dokumentationen indeholder mindst 5.000 registreringer. Vælg en kortere periode.</AlertDescription></Alert> : !reportReady || !header ? <Card><CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground"><Spinner /><p>{progressText}</p><p className="text-sm">Alle sider hentes, før rapporten kan eksporteres.</p></CardContent></Card> : <><InspectionReport header={{ organizationName, locationName: header.locationName, fromDateKey, toDateKey, generatedAt: header.generatedAt, generatedBy: header.generatedBy, timeZone: header.timeZone }} records={reportRecords} missing={missing} />{missingResult?.truncated ? <Alert><AlertTitle>Rapporten er afgrænset</AlertTitle><AlertDescription>Der er flere end 5.000 manglende kontroller. Vælg en kortere periode for at få hele listen med.</AlertDescription></Alert> : null}</>}
+    <div className="flex flex-wrap gap-2"><Button type="button" variant="default" className="min-h-11" disabled={!rangeValid || preparing || generating} onClick={() => void prepareReport()}>{preparing ? <Spinner data-icon="inline-start" /> : null}{preparedForCurrent ? "Opdatér dokumentation" : "Vis dokumentation"}</Button><Button type="button" variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={() => void exportPdf()}>{generating ? <Spinner data-icon="inline-start" /> : <FileDownIcon data-icon="inline-start" />}Hent PDF</Button><Button type="button" variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={exportCsv}><DownloadIcon data-icon="inline-start" />Eksportér CSV</Button></div>
+    {preparing ? <Card><CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground"><Spinner /><p>Forbereder dokumentationen…</p></CardContent></Card> : exportTooLarge ? <Alert variant="destructive"><AlertTitle>Dokumentationen er for stor</AlertTitle><AlertDescription>Der er for mange registreringer eller manglende kontroller til en komplet rapport. Vælg en kortere periode.</AlertDescription></Alert> : !preparedForCurrent ? <Card><CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground"><p>Vælg perioden, og tryk på “Vis dokumentation”.</p><p className="text-sm">Alle registreringer hentes, før rapporten kan eksporteres.</p></CardContent></Card> : !reportReady ? <Card><CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground"><Spinner /><p>{progressText}</p><p className="text-sm">Alle sider hentes, før rapporten kan eksporteres.</p></CardContent></Card> : <InspectionReport header={{ organizationName, locationName: preparedForCurrent.header.locationName, fromDateKey, toDateKey, generatedAt: preparedForCurrent.header.generatedAt, generatedBy: preparedForCurrent.header.generatedBy, timeZone: preparedForCurrent.header.timeZone }} records={reportRecords} missing={missing} />}
   </div>;
 }

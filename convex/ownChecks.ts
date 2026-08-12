@@ -270,8 +270,8 @@ async function validateValues(
     const existing = await ctx.db
       .query("ownCheckAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", attachmentIds[index]))
-      .first();
-    if (existing && (existing.organizationId !== organizationId || existingEntryId === undefined || existing.entryId !== existingEntryId)) {
+      .collect();
+    if (existing.some((attachment) => attachment.organizationId !== organizationId || existingEntryId === undefined || attachment.entryId !== existingEntryId)) {
       throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
     }
   }

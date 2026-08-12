@@ -31,6 +31,7 @@ import {
   evaluateCompliance,
   formatValue,
   ownCheckControlTypeLabels,
+  ownCheckStatus,
   ownCheckStatusLabels,
   type OwnCheckField,
   type OwnCheckValue,
@@ -73,8 +74,8 @@ function valueFor(values: RecordValue[], key: string) {
   return values.find((value) => value.key === key);
 }
 
-function StatusBadge({ status, hasDeviation }: { status: keyof typeof ownCheckStatusLabels; hasDeviation: boolean }) {
-  const actualStatus = status === "approved" ? "approved" : hasDeviation ? "deviation" : status;
+function StatusBadge({ status, hasDeviation, followUp }: { status: keyof typeof ownCheckStatusLabels; hasDeviation: boolean; followUp: "none" | "open" | "resolved" }) {
+  const actualStatus = ownCheckStatus({ status: status === "notCompleted" ? "completed" : status, hasDeviation, followUp });
   return <Badge variant={actualStatus === "deviation" ? "destructive" : actualStatus === "approved" ? "default" : "secondary"}>{actualStatus === "approved" ? <CheckCircle2Icon data-icon="inline-start" /> : null}{ownCheckStatusLabels[actualStatus]}</Badge>;
 }
 
@@ -105,7 +106,7 @@ function FieldEditor({
     {field.type === "checkbox" ? <Switch id={`edit-own-check-${field.key}`} checked={value?.type === "checkbox" ? value.checked : false} onCheckedChange={(checked) => onChange({ key: field.key, type: "checkbox", checked })} /> : null}
     {field.type === "choice" ? <RadioGroup value={value?.type === "choice" ? value.value : ""} onValueChange={(next) => onChange({ key: field.key, type: "choice", value: next })} className="gap-2">{field.options.map((option) => <label key={option.value} className="flex min-h-11 items-center gap-3 rounded-md border px-3"><RadioGroupItem value={option.value} id={`edit-own-check-${field.key}-${option.value}`} />{option.label}</label>)}</RadioGroup> : null}
     {field.type === "text" ? <Textarea id={`edit-own-check-${field.key}`} value={value?.type === "text" ? value.text : ""} maxLength={field.maxLength ?? 2_000} onChange={(event) => onChange({ key: field.key, type: "text", text: event.target.value })} /> : null}
-    {field.type === "attachment" ? <div className="flex flex-col gap-2"><Input id={`edit-own-check-${field.key}`} type="file" accept="image/jpeg,image/png,application/pdf" multiple={field.maxFiles > 1} disabled={uploading || (value?.type === "attachment" && value.storageIds.length >= field.maxFiles)} onChange={(event) => onUpload(field, event.target.files)} /><div className="flex flex-wrap gap-2">{value?.type === "attachment" ? value.storageIds.map((storageId) => <Button key={storageId} type="button" variant="outline" size="sm" onClick={() => onRemoveAttachment(storageId)}>Fjern fil</Button>) : null}</div></div> : null}
+    {field.type === "attachment" ? <div className="flex flex-col gap-2"><Input id={`edit-own-check-${field.key}`} type="file" accept="image/*,application/pdf" multiple={field.maxFiles > 1} disabled={uploading || (value?.type === "attachment" && value.storageIds.length >= field.maxFiles)} onChange={(event) => onUpload(field, event.target.files)} /><div className="flex flex-wrap gap-2">{value?.type === "attachment" ? value.storageIds.map((storageId) => <Button key={storageId} type="button" variant="outline" size="sm" onClick={() => onRemoveAttachment(storageId)}>Fjern fil</Button>) : null}</div></div> : null}
     {field.type === "number" && (field.min !== undefined || field.max !== undefined || field.unit) ? <FieldDescription>{limitText(field)}</FieldDescription> : null}
   </Field>;
 }
@@ -173,7 +174,7 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
           const signature = new TextDecoder().decode(new Uint8Array(await file.slice(0, 5).arrayBuffer()));
           if (signature !== "%PDF-") throw new Error("PDF-filen er ugyldig");
         }
-        const prepared = file.type === "image/jpeg" || file.type === "image/png"
+        const prepared = file.type.startsWith("image/")
           ? await compressImage(file, { maxWidth: 2_000, maxHeight: 2_000, quality: 0.8, type: "image/jpeg", alwaysReencode: true })
           : file;
         const url = await uploadUrl({});
@@ -203,12 +204,14 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
     }
     setSaving(true);
     try {
+      const currentDeviation = currentRecord.entry.deviation?.description ?? "";
+      const currentCorrectiveAction = currentRecord.entry.correctiveAction?.description ?? "";
       await edit({
         entryId,
         values: editValues.map((value) => value.type === "attachment" ? { ...value, storageIds: value.storageIds as Id<"_storage">[] } : value),
         note: editNote,
-        deviationDescription: editDeviation,
-        correctiveAction: editCorrectiveAction,
+        ...(editDeviation.trim() === currentDeviation ? {} : { deviationDescription: editDeviation }),
+        ...(editCorrectiveAction.trim() === currentCorrectiveAction ? {} : { correctiveAction: editCorrectiveAction }),
         reason: editReason,
       });
       toast.success("Rettelsen er gemt");
@@ -250,7 +253,7 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
   return <div className="flex flex-col gap-5">
     <div className="flex flex-col gap-3 border-b pb-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0"><h2 className="font-heading text-xl font-semibold">{record.entry.name}</h2><p className="mt-1 text-sm text-muted-foreground">{record.entry.locationName} · {ownCheckControlTypeLabels[record.entry.controlType]} · {formatDate(record.entry.dueDateKey)}</p><p className="text-sm text-muted-foreground">Planlagt {formatDateTime(record.entry.dueAt, record.timeZone)} · Udført {formatDateTime(record.entry.performedAt, record.timeZone)} af {record.entry.performedByName}</p></div>
-      <StatusBadge status={record.entry.status === "approved" ? "approved" : record.entry.hasDeviation ? "deviation" : "completed"} hasDeviation={record.entry.hasDeviation} />
+      <StatusBadge status={record.entry.status} hasDeviation={record.entry.hasDeviation} followUp={record.entry.followUp} />
     </div>
 
     <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">

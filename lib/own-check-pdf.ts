@@ -68,7 +68,7 @@ export type InspectionPdfRecord = {
   performedAt: number;
   name: string;
   controlType: keyof typeof ownCheckControlTypeLabels;
-  status: keyof typeof ownCheckStatusLabels;
+  status: "completed" | "deviation" | "approved";
   hasDeviation: boolean;
   performedByName: string;
   fields: OwnCheckField[];
@@ -115,7 +115,7 @@ function displayClock(timestamp: number, timeZone: string) {
   return new Intl.DateTimeFormat("da-DK", { hour: "2-digit", minute: "2-digit", timeZone }).format(timestamp);
 }
 
-function limitText(field: OwnCheckField) {
+export function pdfLimitText(field: OwnCheckField) {
   if (field.type !== "number") return "—";
   const unit = field.unit ? ` ${field.unit}` : "";
   const number = (value: number) => String(value).replace(".", ",");
@@ -123,6 +123,10 @@ function limitText(field: OwnCheckField) {
   if (field.min !== undefined) return `Mindst ${number(field.min)}${unit}`;
   if (field.max !== undefined) return `Højst ${number(field.max)}${unit}`;
   return "—";
+}
+
+export function pdfRevisionChanges(changes: Array<{ label: string; from: string | null; to: string | null }>) {
+  return changes.map((change) => `${change.label}: ${change.from ?? "—"} -> ${change.to ?? "—"}`).join("; ");
 }
 
 function wrapText(font: PDFFont, value: string, size: number, maxWidth: number) {
@@ -263,7 +267,7 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
         const violation = violations.get(field.key);
         text(field.label, MARGIN, cursor, 8, bold);
         text(value, MARGIN + 128, cursor, 8);
-        text(limitText(field), MARGIN + 330, cursor, 8, regular, rgb(0.35, 0.35, 0.38));
+        text(pdfLimitText(field), MARGIN + 330, cursor, 8, regular, rgb(0.35, 0.35, 0.38));
         text(violation ? "Uden for grænsen" : "Inden for grænsen", MARGIN + 420, cursor, 7, regular, violation ? rgb(0.7, 0.08, 0.08) : rgb(0.2, 0.4, 0.25));
         cursor -= 13;
       }
@@ -275,7 +279,7 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
         text("Revisionshistorik", MARGIN, cursor, 8, bold);
         cursor -= 11;
         for (const revision of record.revisions) {
-          const changes = revision.changes.map((change) => `${change.label}: ${change.from ?? "—"} -> ${change.to ?? "—"}`).join("; ");
+          const changes = pdfRevisionChanges(revision.changes);
           paragraph(`${revisionKind(revision.kind)} ${revision.revision} · ${displayTime(revision.at, input.header.timeZone)} · ${revision.actorName}${revision.reason ? ` · Årsag: ${revision.reason}` : ""}${changes ? ` · ${changes}` : ""}`, 7, rgb(0.35, 0.35, 0.38), 10);
         }
       }
