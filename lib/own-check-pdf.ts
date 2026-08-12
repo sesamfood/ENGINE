@@ -120,8 +120,8 @@ function limitText(field: OwnCheckField) {
   const unit = field.unit ? ` ${field.unit}` : "";
   const number = (value: number) => String(value).replace(".", ",");
   if (field.min !== undefined && field.max !== undefined) return `${number(field.min)}–${number(field.max)}${unit}`;
-  if (field.min !== undefined) return `≥ ${number(field.min)}${unit}`;
-  if (field.max !== undefined) return `≤ ${number(field.max)}${unit}`;
+  if (field.min !== undefined) return `Mindst ${number(field.min)}${unit}`;
+  if (field.max !== undefined) return `Højst ${number(field.max)}${unit}`;
   return "—";
 }
 
@@ -275,7 +275,7 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
         text("Revisionshistorik", MARGIN, cursor, 8, bold);
         cursor -= 11;
         for (const revision of record.revisions) {
-          const changes = revision.changes.map((change) => `${change.label}: ${change.from ?? "—"} → ${change.to ?? "—"}`).join("; ");
+          const changes = revision.changes.map((change) => `${change.label}: ${change.from ?? "—"} -> ${change.to ?? "—"}`).join("; ");
           paragraph(`${revisionKind(revision.kind)} ${revision.revision} · ${displayTime(revision.at, input.header.timeZone)} · ${revision.actorName}${revision.reason ? ` · Årsag: ${revision.reason}` : ""}${changes ? ` · ${changes}` : ""}`, 7, rgb(0.35, 0.35, 0.38), 10);
         }
       }

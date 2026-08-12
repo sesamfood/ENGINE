@@ -1329,6 +1329,15 @@ export default defineSchema({
       "organizationId", "locationId", "dueAt",
     ])
     .index("by_organizationId_and_dueAt", ["organizationId", "dueAt"])
+    .index("by_org_dueDateKey_dueAt", [
+      "organizationId", "dueDateKey", "dueAt",
+    ])
+    .index("by_org_location_status_dueDateKey_dueAt", [
+      "organizationId", "locationId", "status", "dueDateKey", "dueAt",
+    ])
+    .index("by_org_location_hasDeviation_dueDateKey_dueAt", [
+      "organizationId", "locationId", "hasDeviation", "dueDateKey", "dueAt",
+    ])
     .index("by_organizationId_and_status_and_dueAt", [
       "organizationId", "status", "dueAt",
     ])

@@ -21,14 +21,15 @@ import {
   loadTemplateVersions,
   occurrenceForTemplate,
   occurrenceKey,
+  expandOwnCheckOccurrences,
   planItem,
   requireLocation,
+  requireFiniteNow,
   resolveLocationId,
   versionInput,
 } from "./lib/ownChecks";
 import {
   dateKeyInZone,
-  expandOccurrences,
   evaluateCompliance,
   addDateKey,
   zonedTimestamp,
@@ -97,6 +98,7 @@ const listTodayOutput = v.object({
   locationId: v.id("locations"),
   locationName: v.string(),
   dateKey: v.string(),
+  timeZone: v.string(),
   lateSubmissionDays: v.number(),
   items: v.array(planItemValidator),
   backlog: v.array(planItemValidator),
@@ -124,7 +126,7 @@ async function mergedPlan(
   now: number,
 ) {
   const versions = await loadTemplateVersions(ctx, organizationId, dateKey, dateKey, timeZone);
-  const occurrences = expandOccurrences({
+  const occurrences = expandOwnCheckOccurrences({
     versions: versions.map(versionInput),
     locationId,
     fromDateKey: dateKey,
@@ -164,30 +166,32 @@ export const getApprovalSettings = query({
 
 export const listToday = query({
   args: {
+    now: v.number(),
     locationId: v.optional(v.id("locations")),
     dateKey: v.optional(v.string()),
   },
   returns: listTodayOutput,
   handler: async (ctx, args) => {
-    const auth = await requireOwnCheckPerformer(ctx);
+    const auth = await requireOwnCheckPerformer(ctx, ["ownChecks.today", "ownChecks.overview"]);
+    requireFiniteNow(args.now);
     const locationFilter = resolveLocationFilter(auth, args.locationId);
     const locationId = await resolveLocationId(ctx, auth.organizationId, locationFilter);
     requireLocationAccess(auth, locationId);
     const location = await requireLocation(ctx, auth.organizationId, locationId);
     const timeZone = await resolveTimeZone(ctx, auth.organizationId, locationId);
-    const today = dateKeyInZone(Date.now(), timeZone);
+    const today = dateKeyInZone(args.now, timeZone);
     const dateKey = args.dateKey ?? today;
     const offset = dateKeyDifference(today, dateKey);
     if (Math.abs(offset) > 366) throw new ConvexError("Datoen skal ligge inden for 366 dage fra i dag");
     const configuration = await getOwnCheckConfiguration(ctx, auth.organizationId);
-    const now = Date.now();
+    const now = args.now;
     const items = await mergedPlan(ctx, auth.organizationId, locationId, dateKey, timeZone, now);
     let backlog: typeof items = [];
     let truncated = false;
     if (configuration.lateSubmissionDays > 0) {
       const fromDateKey = addDateKey(dateKey, -configuration.lateSubmissionDays);
       const versions = await loadTemplateVersions(ctx, auth.organizationId, fromDateKey, addDateKey(dateKey, -1), timeZone);
-      const occurrences = expandOccurrences({
+      const occurrences = expandOwnCheckOccurrences({
         versions: versions.map(versionInput),
         locationId,
         fromDateKey,
@@ -200,26 +204,27 @@ export const listToday = query({
         .query("ownCheckEntries")
         .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", locationId).gte("dueAt", startAt).lt("dueAt", endAt))
         .take(MAX_BACKLOG_OCCURRENCES + 1);
-      if (oldEntries.length > MAX_BACKLOG_OCCURRENCES) {
+      if (oldEntries.length > MAX_BACKLOG_OCCURRENCES || occurrences.length > MAX_BACKLOG_OCCURRENCES) {
         truncated = true;
-        oldEntries.length = MAX_BACKLOG_OCCURRENCES;
-      }
-      const byKey = new Map(oldEntries.map((entry) => [occurrenceKey(entry.templateId, entry.dueDateKey), entry]));
-      const versionsById = new Map(versions.map((version) => [version._id, version]));
-      backlog = occurrences.flatMap((occurrence) => {
-        const version = versionsById.get(occurrence.templateVersionId as Id<"ownCheckTemplateVersions">);
-        if (!version || byKey.has(occurrenceKey(version.templateId, occurrence.dueDateKey))) return [];
-        return [planItem(occurrence, version, null, now)];
-      });
-      if (backlog.length > MAX_BACKLOG_OCCURRENCES) {
-        truncated = true;
-        backlog = backlog.slice(0, MAX_BACKLOG_OCCURRENCES);
+      } else {
+        const byKey = new Map(oldEntries.map((entry) => [occurrenceKey(entry.templateId, entry.dueDateKey), entry]));
+        const versionsById = new Map(versions.map((version) => [version._id, version]));
+        backlog = occurrences.flatMap((occurrence) => {
+          const version = versionsById.get(occurrence.templateVersionId as Id<"ownCheckTemplateVersions">);
+          if (!version || byKey.has(occurrenceKey(version.templateId, occurrence.dueDateKey))) return [];
+          return [planItem(occurrence, version, null, now)];
+        });
+        if (backlog.length > MAX_BACKLOG_OCCURRENCES) {
+          truncated = true;
+          backlog = [];
+        }
       }
     }
     return {
       locationId,
       locationName: location.name,
       dateKey,
+      timeZone,
       lateSubmissionDays: configuration.lateSubmissionDays,
       items,
       backlog,
@@ -266,7 +271,7 @@ async function validateValues(
       .query("ownCheckAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", attachmentIds[index]))
       .first();
-    if (existing && (existing.organizationId !== organizationId || existing.entryId !== existingEntryId || existing.removedAtRevision !== undefined)) {
+    if (existing && (existing.organizationId !== organizationId || existingEntryId === undefined || existing.entryId !== existingEntryId)) {
       throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
     }
   }
@@ -311,7 +316,7 @@ export const submitOwnCheck = mutation({
     if (daysBack < 0) throw new ConvexError("Egenkontrollen kan ikke registreres for en fremtidig dato");
     if (daysBack > configuration.lateSubmissionDays) throw new ConvexError(`Egenkontrollen kan kun registreres op til ${configuration.lateSubmissionDays} dage tilbage`);
     const versions = await loadTemplateVersions(ctx, auth.organizationId, args.dueDateKey, args.dueDateKey, timeZone);
-    const occurrences = expandOccurrences({ versions: versions.map(versionInput), locationId: args.locationId, fromDateKey: args.dueDateKey, toDateKey: args.dueDateKey, timeZone });
+    const occurrences = expandOwnCheckOccurrences({ versions: versions.map(versionInput), locationId: args.locationId, fromDateKey: args.dueDateKey, toDateKey: args.dueDateKey, timeZone });
     const occurrence = occurrenceForTemplate(occurrences, args.templateId);
     const version = versions.find((candidate) => candidate._id === occurrence.templateVersionId);
     if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
@@ -430,16 +435,24 @@ export const editOwnCheck = mutation({
     await validateValues(ctx, auth.organizationId, version.fields, args.values, entry._id);
     const compliance = evaluateCompliance(version.fields, args.values);
     const requestedDeviation = args.deviationDescription === undefined ? undefined : optionalText(args.deviationDescription, "Afvigelsen");
+    const requestedCorrectiveAction = args.correctiveAction === undefined ? undefined : optionalText(args.correctiveAction, "Den korrigerende handling");
+    const amendmentAt = Date.now();
     const nextDeviation = entry.hasDeviation
-      ? requestedDeviation === undefined ? entry.deviation : { description: requestedDeviation || "Afvigelse registreret", recordedAt: Date.now(), recordedBy: auth.userId, recordedByName: auth.userName }
-      : requestedDeviation ? { description: requestedDeviation, recordedAt: Date.now(), recordedBy: auth.userId, recordedByName: auth.userName } : undefined;
+      ? requestedDeviation === undefined || requestedDeviation === entry.deviation?.description
+        ? entry.deviation
+        : requestedDeviation
+          ? { description: requestedDeviation, recordedAt: amendmentAt, recordedBy: auth.userId, recordedByName: auth.userName }
+          : undefined
+      : requestedDeviation
+        ? { description: requestedDeviation, recordedAt: amendmentAt, recordedBy: auth.userId, recordedByName: auth.userName }
+        : undefined;
     const hasDeviation = entry.hasDeviation || !compliance.compliant || Boolean(requestedDeviation);
-    if (!compliance.compliant && !nextDeviation) throw new ConvexError("Beskriv afvigelsen");
+    if (hasDeviation && !nextDeviation) throw new ConvexError("Beskriv afvigelsen");
     const nextNote = args.note === undefined ? entry.note : optionalText(args.note, "Noten");
-    const nextCorrective = args.correctiveAction === undefined
+    const nextCorrective = requestedCorrectiveAction === undefined || requestedCorrectiveAction === entry.correctiveAction?.description
       ? entry.correctiveAction
-      : optionalText(args.correctiveAction, "Den korrigerende handling")
-        ? { description: optionalText(args.correctiveAction, "Den korrigerende handling")!, recordedAt: Date.now(), recordedBy: auth.userId, recordedByName: auth.userName }
+      : requestedCorrectiveAction
+        ? { description: requestedCorrectiveAction, recordedAt: amendmentAt, recordedBy: auth.userId, recordedByName: auth.userName }
         : undefined;
     const nextStatus = hasDeviation ? "deviation" : "completed";
     const nextFollowUp = hasDeviation ? (nextCorrective ? "resolved" : "open") : "none";

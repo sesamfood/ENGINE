@@ -20,8 +20,8 @@ import { compressImage } from "@/lib/compress-image";
 type TodayResult = NonNullable<ReturnType<typeof import("convex/react").useQuery<typeof api.ownChecks.listToday>>>;
 type PlanItem = TodayResult["items"][number];
 
-function formatTime(timestamp: number) {
-  return new Intl.DateTimeFormat("da-DK", { hour: "2-digit", minute: "2-digit" }).format(timestamp);
+function formatTime(timestamp: number, timeZone: string) {
+  return new Intl.DateTimeFormat("da-DK", { hour: "2-digit", minute: "2-digit", timeZone }).format(timestamp);
 }
 
 function limitText(field: OwnCheckField) {
@@ -36,7 +36,7 @@ function valueFor(values: OwnCheckValue[], key: string) {
   return values.find((value) => value.key === key);
 }
 
-export function OwnCheckSheet({ item, locationId, open, onOpenChange }: { item: PlanItem | null; locationId: Id<"locations">; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function OwnCheckSheet({ item, locationId, timeZone, open, onOpenChange }: { item: PlanItem | null; locationId: Id<"locations">; timeZone: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const uploadUrl = useMutation(api.ownChecks.generateAttachmentUploadUrl);
   const submit = useMutation(api.ownChecks.submitOwnCheck);
   const [values, setValues] = useState<OwnCheckValue[]>(() => (item?.entry?.values ?? []) as unknown as OwnCheckValue[]);
@@ -66,7 +66,7 @@ export function OwnCheckSheet({ item, locationId, open, onOpenChange }: { item: 
     try {
       const storageIds: Id<"_storage">[] = [];
       for (const file of Array.from(files)) {
-        const prepared = file.type === "image/jpeg" || file.type === "image/png"
+        const prepared = file.type.startsWith("image/")
           ? await compressImage(file, { maxWidth: 2_000, maxHeight: 2_000, quality: 0.8, type: "image/jpeg", alwaysReencode: true })
           : file;
         const url = await uploadUrl({});
@@ -120,7 +120,7 @@ export function OwnCheckSheet({ item, locationId, open, onOpenChange }: { item: 
       <SheetContent side="bottom" className="max-h-[92vh] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{item.name}</SheetTitle>
-          <SheetDescription>{ownCheckControlTypeLabels[item.controlType]} · {item.status === "notCompleted" ? (item.startsAt ? `Kl. ${formatTime(item.startsAt)}–${formatTime(item.dueAt)}` : `Inden kl. ${formatTime(item.dueAt)}`) : "Registreret"}</SheetDescription>
+          <SheetDescription>{ownCheckControlTypeLabels[item.controlType]} · {item.status === "notCompleted" ? (item.startsAt ? `Kl. ${formatTime(item.startsAt, timeZone)}–${formatTime(item.dueAt, timeZone)}` : `Inden kl. ${formatTime(item.dueAt, timeZone)}`) : "Registreret"}</SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-6 px-4">
           {readOnly ? <div className="rounded-xl border bg-muted/30 p-4 text-sm">Denne egenkontrol er allerede registreret. Brug oversigten for at se hele dokumentationen.</div> : null}
@@ -134,7 +134,7 @@ export function OwnCheckSheet({ item, locationId, open, onOpenChange }: { item: 
                   {field.type === "checkbox" ? <Switch id={`own-check-${field.key}`} checked={value?.type === "checkbox" ? value.checked : false} onCheckedChange={(checked) => setValue({ key: field.key, type: "checkbox", checked })} disabled={readOnly} /> : null}
                   {field.type === "choice" ? <RadioGroup value={value?.type === "choice" ? value.value : ""} onValueChange={(next) => setValue({ key: field.key, type: "choice", value: next })} className="gap-3">{field.options.map((option) => <label key={option.value} className="flex min-h-11 items-center gap-3 rounded-md border px-3"><RadioGroupItem value={option.value} id={`own-check-${field.key}-${option.value}`} disabled={readOnly} />{option.label}</label>)}</RadioGroup> : null}
                   {field.type === "text" ? <Textarea id={`own-check-${field.key}`} value={value?.type === "text" ? value.text : ""} onChange={(event) => setValue({ key: field.key, type: "text", text: event.target.value })} disabled={readOnly} maxLength={field.maxLength ?? 2_000} /> : null}
-                  {field.type === "attachment" ? <><Input id={`own-check-${field.key}`} type="file" accept="image/jpeg,image/png,application/pdf" multiple={field.maxFiles > 1} onChange={(event) => { void uploadFiles(field, event.target.files); event.target.value = ""; }} disabled={readOnly || uploadingKey === field.key} />{value?.type === "attachment" && value.storageIds.length ? <FieldDescription>{value.storageIds.length} fil{value.storageIds.length === 1 ? "" : "er"} valgt</FieldDescription> : null}</> : null}
+                  {field.type === "attachment" ? <><Input id={`own-check-${field.key}`} type="file" accept="image/*,application/pdf" multiple={field.maxFiles > 1} onChange={(event) => { void uploadFiles(field, event.target.files); event.target.value = ""; }} disabled={readOnly || uploadingKey === field.key} />{value?.type === "attachment" && value.storageIds.length ? <FieldDescription>{value.storageIds.length} fil{value.storageIds.length === 1 ? "" : "er"} valgt</FieldDescription> : null}</> : null}
                   {limitText(field) ? <FieldDescription>{limitText(field)}</FieldDescription> : null}
                 </Field>
               );

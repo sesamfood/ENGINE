@@ -4,12 +4,15 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
   addDateKey,
   formatValue,
+  isOverdue,
+  ownCheckStatus,
   ownCheckStatusLabels,
   type OwnCheckOccurrence,
   type OwnCheckTemplateVersionInput,
 } from "../../lib/own-checks";
-import { zonedTimestamp } from "../../lib/own-checks";
+import { dateKeyInZone, expandOccurrences, zonedTimestamp } from "../../lib/own-checks";
 import { recordAudit, requireAuditReason, type AuditActor } from "./audit";
+import { resolveTimeZone } from "./timeZone";
 
 export const MAX_TEMPLATE_VERSIONS = 2_000;
 export const MAX_BACKLOG_OCCURRENCES = 2_000;
@@ -56,6 +59,14 @@ export async function loadTemplateVersions(
   timeZone: string,
 ) {
   const endExclusive = zonedTimestamp(addDateKey(toDateKey, 1), 0, timeZone);
+  return await loadTemplateVersionsUntil(ctx, organizationId, endExclusive);
+}
+
+export async function loadTemplateVersionsUntil(
+  ctx: OwnCheckContext,
+  organizationId: string,
+  endExclusive: number,
+) {
   const versions = await ctx.db
     .query("ownCheckTemplateVersions")
     .withIndex("by_organizationId_and_validFrom", (q) =>
@@ -66,6 +77,39 @@ export async function loadTemplateVersions(
     throw new ConvexError("Der er for mange egenkontrolversioner i perioden");
   }
   return versions;
+}
+
+export function expandOwnCheckOccurrences(input: Parameters<typeof expandOccurrences>[0]) {
+  try {
+    return expandOccurrences(input);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      new Set([
+        "Datointervallet er ugyldigt",
+        "Datointervallet er for langt",
+        "Der er for mange egenkontroller i perioden",
+      ]).has(error.message)
+    ) {
+      throw new ConvexError(error.message);
+    }
+    throw error;
+  }
+}
+
+export function requireFiniteNow(now: number) {
+  if (!Number.isFinite(now)) throw new ConvexError("Tidspunktet er ugyldigt");
+}
+
+export async function ownCheckDateContext(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  now: number,
+) {
+  requireFiniteNow(now);
+  const timeZone = await resolveTimeZone(ctx, organizationId, locationId);
+  return { timeZone, todayDateKey: dateKeyInZone(now, timeZone) };
 }
 
 export async function requireLocation(
@@ -166,14 +210,8 @@ export function planItem(
     dueDateKey: occurrence.dueDateKey,
     startsAt: occurrence.startsAt,
     dueAt: occurrence.dueAt,
-    overdue: now > occurrence.dueAt,
-    status: (entry
-      ? entry.status === "approved"
-        ? "approved"
-        : entry.hasDeviation || entry.status === "deviation"
-          ? "deviation"
-          : "completed"
-      : "notCompleted") as "notCompleted" | "completed" | "approved" | "deviation",
+    overdue: isOverdue(occurrence, now),
+    status: ownCheckStatus(entry),
     entry: entrySummary(entry),
   };
 }

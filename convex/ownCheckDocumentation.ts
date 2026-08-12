@@ -4,13 +4,13 @@ import {
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
-import { query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { requireLocationAccess, requireOwnCheckExporter } from "./lib/auth";
-import { dateKeyDifference, loadTemplateVersions, occurrenceKey, versionInput } from "./lib/ownChecks";
+import { dateKeyDifference, expandOwnCheckOccurrences, loadTemplateVersions, occurrenceKey, requireFiniteNow, versionInput } from "./lib/ownChecks";
 import { requireLocation } from "./lib/ownChecks";
 import { resolveTimeZone } from "./lib/timeZone";
-import { addDateKey, expandOccurrences, zonedTimestamp } from "../lib/own-checks";
+import { addDateKey, dateKeyInZone, zonedTimestamp } from "../lib/own-checks";
 import {
   ownCheckControlTypeValidator,
   ownCheckFieldValidator,
@@ -103,7 +103,7 @@ function requirePageSize(numItems: number) {
   }
 }
 
-async function exportContext(ctx: QueryCtx, args: { fromDateKey: string; toDateKey: string; locationId: Id<"locations"> }) {
+async function exportContext(ctx: QueryCtx | MutationCtx, args: { fromDateKey: string; toDateKey: string; locationId: Id<"locations"> }) {
   const auth = await requireOwnCheckExporter(ctx);
   const range = dateKeyDifference(args.fromDateKey, args.toDateKey);
   if (range < 0 || range + 1 > 366) throw new ConvexError("Vælg højst 366 dage i dokumentationen");
@@ -112,6 +112,11 @@ async function exportContext(ctx: QueryCtx, args: { fromDateKey: string; toDateK
   const timeZone = await resolveTimeZone(ctx, auth.organizationId, args.locationId);
   return { auth, location, timeZone };
 }
+
+const preparedDocumentationValidator = v.object({
+  header: headerValidator,
+  missing: v.object({ items: v.array(missingValidator), truncated: v.boolean() }),
+});
 
 async function recordForDocumentation(ctx: QueryCtx, entry: Doc<"ownCheckEntries">, organizationId: string, timeZone: string) {
   const version = await ctx.db.get("ownCheckTemplateVersions", entry.templateVersionId);
@@ -175,65 +180,124 @@ export const buildDocumentation = query({
     fromDateKey: v.string(),
     toDateKey: v.string(),
     locationId: v.id("locations"),
+    generatedAt: v.number(),
   },
   returns: paginationResultValidator(documentationRecordValidator),
   handler: async (ctx, args) => {
     const { auth, timeZone } = await exportContext(ctx, args);
+    requireFiniteNow(args.generatedAt);
     requirePageSize(args.paginationOpts.numItems);
     const startAt = zonedTimestamp(args.fromDateKey, 0, timeZone);
     const endAt = zonedTimestamp(addDateKey(args.toDateKey, 1), 0, timeZone);
+    if (args.generatedAt < startAt) return { page: [], isDone: true, continueCursor: "", splitCursor: null, pageStatus: null };
     const page = await ctx.db.query("ownCheckEntries")
-      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).gte("dueAt", startAt).lt("dueAt", endAt))
+      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).gte("dueAt", startAt).lte("dueAt", Math.min(endAt, args.generatedAt)))
       .order("asc")
       .paginate(args.paginationOpts);
     return { ...page, page: await Promise.all(page.page.map((entry) => recordForDocumentation(ctx, entry, auth.organizationId, timeZone))) };
   },
 });
 
-export const getDocumentationHeader = query({
+async function documentationHeader(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  userName: string,
+  location: Doc<"locations">,
+  fromDateKey: string,
+  toDateKey: string,
+  generatedAt: number,
+  timeZone: string,
+) {
+  const [legalEntity, operator, market] = await Promise.all([
+    location.legalEntityId ? ctx.db.get("legalEntities", location.legalEntityId) : null,
+    location.operatorId ? ctx.db.get("operators", location.operatorId) : null,
+    location.marketId ? ctx.db.get("markets", location.marketId) : null,
+  ]);
+  for (const row of [legalEntity, operator, market]) {
+    if (row && row.organizationId !== organizationId) throw new ConvexError("Masterdata blev ikke fundet");
+  }
+  return {
+    locationId: location._id,
+    locationName: location.name,
+    legalEntityName: legalEntity?.name ?? null,
+    registrationNumber: legalEntity?.registrationNumber ?? null,
+    operatorName: operator?.name ?? null,
+    marketName: market?.name ?? null,
+    fromDateKey,
+    toDateKey,
+    generatedAt,
+    generatedBy: userName,
+    timeZone,
+  };
+}
+
+async function missingDocumentation(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  fromDateKey: string,
+  toDateKey: string,
+  timeZone: string,
+  generatedAt: number,
+) {
+  const versions = await loadTemplateVersions(ctx, organizationId, fromDateKey, toDateKey, timeZone);
+  const occurrences = expandOwnCheckOccurrences({ versions: versions.map(versionInput), locationId, fromDateKey, toDateKey, timeZone })
+    .filter((occurrence) => occurrence.dueAt <= generatedAt);
+  if (occurrences.length > MAX_MISSING) return { items: [], truncated: true };
+  const startAt = zonedTimestamp(fromDateKey, 0, timeZone);
+  const endAt = zonedTimestamp(addDateKey(toDateKey, 1), 0, timeZone);
+  const entries = generatedAt < startAt
+    ? []
+    : await ctx.db.query("ownCheckEntries")
+      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId).gte("dueAt", startAt).lte("dueAt", Math.min(endAt, generatedAt)))
+      .take(MAX_MISSING + 1);
+  if (entries.length > MAX_MISSING) return { items: [], truncated: true };
+  const byKey = new Set(entries.map((entry) => occurrenceKey(entry.templateId, entry.dueDateKey)));
+  const versionsById = new Map(versions.map((version) => [version._id, version]));
+  const items = occurrences.flatMap((occurrence) => byKey.has(occurrenceKey(occurrence.templateId, occurrence.dueDateKey)) ? [] : [{
+    templateId: occurrence.templateId as Id<"ownCheckTemplates">,
+    name: occurrence.name,
+    controlType: occurrence.controlType,
+    dueDateKey: occurrence.dueDateKey,
+    dueAt: occurrence.dueAt,
+    responsibleRole: versionsById.get(occurrence.templateVersionId as Id<"ownCheckTemplateVersions">)?.responsibleRole ?? null,
+  }]);
+  return items.length > MAX_MISSING ? { items: [], truncated: true } : { items, truncated: false };
+}
+
+export const prepareDocumentation = mutation({
   args: { fromDateKey: v.string(), toDateKey: v.string(), locationId: v.id("locations") },
-  returns: headerValidator,
+  returns: preparedDocumentationValidator,
   handler: async (ctx, args) => {
     const { auth, location, timeZone } = await exportContext(ctx, args);
-    const [legalEntity, operator, market] = await Promise.all([
-      location.legalEntityId ? ctx.db.get("legalEntities", location.legalEntityId) : null,
-      location.operatorId ? ctx.db.get("operators", location.operatorId) : null,
-      location.marketId ? ctx.db.get("markets", location.marketId) : null,
+    const generatedAt = Date.now();
+    const [header, missing] = await Promise.all([
+      documentationHeader(ctx, auth.organizationId, auth.userName, location, args.fromDateKey, args.toDateKey, generatedAt, timeZone),
+      missingDocumentation(ctx, auth.organizationId, args.locationId, args.fromDateKey, args.toDateKey, timeZone, generatedAt),
     ]);
-    for (const row of [legalEntity, operator, market]) {
-      if (row && row.organizationId !== auth.organizationId) throw new ConvexError("Masterdata blev ikke fundet");
-    }
-    return {
-      locationId: location._id,
-      locationName: location.name,
-      legalEntityName: legalEntity?.name ?? null,
-      registrationNumber: legalEntity?.registrationNumber ?? null,
-      operatorName: operator?.name ?? null,
-      marketName: market?.name ?? null,
-      fromDateKey: args.fromDateKey,
-      toDateKey: args.toDateKey,
-      generatedAt: Date.now(),
-      generatedBy: auth.userName,
-      timeZone,
-    };
+    return { header, missing };
+  },
+});
+
+export const getDocumentationDateContext = query({
+  args: { locationId: v.id("locations"), now: v.number() },
+  returns: v.object({ timeZone: v.string(), todayDateKey: v.string() }),
+  handler: async (ctx, args) => {
+    const auth = await requireOwnCheckExporter(ctx);
+    requireFiniteNow(args.now);
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(ctx, auth.organizationId, args.locationId);
+    const timeZone = await resolveTimeZone(ctx, auth.organizationId, location._id);
+    return { timeZone, todayDateKey: dateKeyInZone(args.now, timeZone) };
   },
 });
 
 export const listMissingOwnChecks = query({
-  args: { fromDateKey: v.string(), toDateKey: v.string(), locationId: v.id("locations") },
+  args: { fromDateKey: v.string(), toDateKey: v.string(), locationId: v.id("locations"), generatedAt: v.number() },
   returns: v.object({ items: v.array(missingValidator), truncated: v.boolean() }),
   handler: async (ctx, args) => {
     const { auth, timeZone } = await exportContext(ctx, args);
-    const versions = await loadTemplateVersions(ctx, auth.organizationId, args.fromDateKey, args.toDateKey, timeZone);
-    const occurrences = expandOccurrences({ versions: versions.map(versionInput), locationId: args.locationId, fromDateKey: args.fromDateKey, toDateKey: args.toDateKey, timeZone });
-    const startAt = zonedTimestamp(args.fromDateKey, 0, timeZone);
-    const endAt = zonedTimestamp(addDateKey(args.toDateKey, 1), 0, timeZone);
-    const entries = await ctx.db.query("ownCheckEntries")
-      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).gte("dueAt", startAt).lt("dueAt", endAt))
-      .take(MAX_MISSING + 1);
-    if (entries.length > MAX_MISSING || (entries.length === MAX_MISSING && occurrences.length > MAX_MISSING)) return { items: [], truncated: true };
-    const byKey = new Set(entries.map((entry) => occurrenceKey(entry.templateId, entry.dueDateKey)));
-    const items = occurrences.flatMap((occurrence) => byKey.has(occurrenceKey(occurrence.templateId, occurrence.dueDateKey)) ? [] : [{ templateId: occurrence.templateId as Id<"ownCheckTemplates">, name: occurrence.name, controlType: occurrence.controlType, dueDateKey: occurrence.dueDateKey, dueAt: occurrence.dueAt, responsibleRole: versions.find((version) => version._id === occurrence.templateVersionId)?.responsibleRole ?? null }]);
-    return { items: items.slice(0, MAX_MISSING), truncated: items.length > MAX_MISSING || entries.length > MAX_MISSING };
+    requireFiniteNow(args.generatedAt);
+    return await missingDocumentation(ctx, auth.organizationId, args.locationId, args.fromDateKey, args.toDateKey, timeZone, args.generatedAt);
   },
 });

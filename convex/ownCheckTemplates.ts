@@ -7,8 +7,10 @@ import {
   ownCheckFieldValidator,
   ownCheckScheduleValidator,
 } from "./lib/ownCheckValidators";
-import { requireOwnCheckManager } from "./lib/auth";
+import { requireLocationAccess, requireOwnCheckManager } from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
+import { getOwnCheckConfiguration } from "./lib/ownCheckSettings";
+import { MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./lib/ownChecks";
 
 const MAX_ACTIVE_TEMPLATES = 200;
 type TemplateContext = QueryCtx | MutationCtx;
@@ -303,7 +305,8 @@ export const getTemplate = query({
     const versions = await ctx.db
       .query("ownCheckTemplateVersions")
       .withIndex("by_organizationId_and_templateId_and_version", (q) => q.eq("organizationId", auth.organizationId).eq("templateId", template._id))
-      .collect();
+      .take(MAX_TEMPLATE_VERSIONS + 1);
+    if (versions.length > MAX_TEMPLATE_VERSIONS) throw new ConvexError("Der er for mange egenkontrolversioner");
     const current = versions.find((version) => version.version === template.currentVersion);
     if (!current) throw new ConvexError("Egenkontrollen mangler sin aktuelle version");
     return {
@@ -322,7 +325,7 @@ export const createTemplate = mutation({
       .query("ownCheckTemplates")
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId).eq("status", "active"))
       .take(MAX_ACTIVE_TEMPLATES + 1);
-    if (activeCount.length > MAX_ACTIVE_TEMPLATES) throw new ConvexError("Organisationen må højst have 200 aktive egenkontroller");
+    if (activeCount.length >= MAX_ACTIVE_TEMPLATES) throw new ConvexError("Organisationen må højst have 200 aktive egenkontroller");
     const validated = await validateVersionFields(ctx, auth.organizationId, args);
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName);
     const now = Date.now();
@@ -493,15 +496,18 @@ export const getSettings = query({
   returns: settingsOutputValidator,
   handler: async (ctx) => {
     const auth = await requireOwnCheckManager(ctx);
-    const row = await ctx.db
-      .query("ownCheckSettings")
-      .withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId))
-      .unique();
-    return {
-      lateSubmissionDays: row?.lateSubmissionDays ?? 7,
-      requireSecondPersonApproval: row?.requireSecondPersonApproval ?? true,
-      blockDuringCount: row?.blockDuringCount ?? false,
-    };
+    return await getOwnCheckConfiguration(ctx, auth.organizationId);
+  },
+});
+
+export const getTemplateDateContext = query({
+  args: { locationId: v.id("locations"), now: v.number() },
+  returns: v.object({ timeZone: v.string(), todayDateKey: v.string() }),
+  handler: async (ctx, args) => {
+    const auth = await requireOwnCheckManager(ctx);
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, auth.organizationId, args.locationId);
+    return await ownCheckDateContext(ctx, auth.organizationId, args.locationId, args.now);
   },
 });
 

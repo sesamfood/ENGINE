@@ -16,9 +16,14 @@ export async function compressImage(
     alwaysReencode = false,
   }: ImageCompressionOptions,
 ) {
-  const image = await createImageBitmap(file, {
-    imageOrientation: "from-image",
-  });
+  let image: ImageBitmap;
+  try {
+    image = await createImageBitmap(file, {
+      imageOrientation: "from-image",
+    });
+  } catch {
+    throw new Error("Billedet kunne ikke læses. Brug et JPEG-, PNG- eller PDF-billede.");
+  }
 
   try {
     const scale = Math.min(
