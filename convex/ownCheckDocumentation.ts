@@ -118,13 +118,17 @@ const preparedDocumentationValidator = v.object({
   missing: v.object({ items: v.array(missingValidator), truncated: v.boolean() }),
 });
 
-async function recordForDocumentation(ctx: QueryCtx, entry: Doc<"ownCheckEntries">, organizationId: string, timeZone: string) {
+async function recordForDocumentation(ctx: QueryCtx, entry: Doc<"ownCheckEntries">, organizationId: string, timeZone: string, generatedAt: number) {
   const version = await ctx.db.get("ownCheckTemplateVersions", entry.templateVersionId);
   if (!version || version.organizationId !== organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
   const [attachments, revisions] = await Promise.all([
     ctx.db.query("ownCheckAttachments").withIndex("by_organizationId_and_entryId", (q) => q.eq("organizationId", organizationId).eq("entryId", entry._id)).collect(),
     ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", organizationId).eq("entryId", entry._id)).collect(),
   ]);
+  const snapshotRevisions = revisions.filter((revision) => revision.at <= generatedAt).sort((a, b) => a.revision - b.revision);
+  const snapshot = snapshotRevisions.at(-1);
+  if (!snapshot) throw new ConvexError("Egenkontrolrevisionen blev ikke fundet");
+  const approval = snapshotRevisions.findLast((revision) => revision.kind === "approved");
   return {
     id: entry._id,
     locationName: entry.locationName,
@@ -133,17 +137,17 @@ async function recordForDocumentation(ctx: QueryCtx, entry: Doc<"ownCheckEntries
     performedAt: entry.performedAt,
     name: entry.name,
     controlType: entry.controlType,
-    status: entry.status,
-    hasDeviation: entry.hasDeviation,
-    followUp: entry.followUp,
-    performedByName: entry.performedByName,
+    status: snapshot.status,
+    hasDeviation: snapshot.hasDeviation,
+    followUp: snapshot.followUp,
+    performedByName: snapshotRevisions[0]?.actorName ?? entry.performedByName,
     fields: version.fields,
-    values: entry.values,
-    note: entry.note ?? null,
-    deviation: entry.deviation ?? null,
-    correctiveAction: entry.correctiveAction ?? null,
-    approvedByName: entry.approvedByName ?? null,
-    attachments: await Promise.all(attachments.map(async (attachment) => ({
+    values: snapshot.values,
+    note: snapshot.note ?? null,
+    deviation: snapshot.deviation ?? null,
+    correctiveAction: snapshot.correctiveAction ?? null,
+    approvedByName: snapshot.status === "approved" ? approval?.actorName ?? null : null,
+    attachments: await Promise.all(attachments.filter((attachment) => attachment.addedAtRevision <= snapshot.revision).map(async (attachment) => ({
       id: attachment._id,
       fieldKey: attachment.fieldKey,
       url: await ctx.storage.getUrl(attachment.storageId),
@@ -151,9 +155,9 @@ async function recordForDocumentation(ctx: QueryCtx, entry: Doc<"ownCheckEntries
       fileSize: attachment.fileSize,
       storageId: attachment.storageId,
       addedAtRevision: attachment.addedAtRevision,
-      removedAtRevision: attachment.removedAtRevision ?? null,
+      removedAtRevision: attachment.removedAtRevision !== undefined && attachment.removedAtRevision <= snapshot.revision ? attachment.removedAtRevision : null,
     }))),
-    revisions: revisions.sort((a, b) => a.revision - b.revision).map((revision) => ({
+    revisions: snapshotRevisions.map((revision) => ({
       id: revision._id,
       revision: revision.revision,
       kind: revision.kind,
@@ -194,7 +198,7 @@ export const buildDocumentation = query({
       .filter((q) => q.lte(q.field("performedAt"), args.generatedAt))
       .order("asc")
       .paginate(args.paginationOpts);
-    return { ...page, page: await Promise.all(page.page.map((entry) => recordForDocumentation(ctx, entry, auth.organizationId, timeZone))) };
+    return { ...page, page: await Promise.all(page.page.map((entry) => recordForDocumentation(ctx, entry, auth.organizationId, timeZone, args.generatedAt))) };
   },
 });
 

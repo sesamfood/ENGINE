@@ -140,6 +140,11 @@ test("dokumentation bruger en stabil forberedelsessnapshot og respekterer midnat
   await t.run(async (ctx) => {
     await ctx.db.patch("ownCheckEntries", earlyEntry.entryId, { performedAt: generatedAt - 1 });
     await ctx.db.patch("ownCheckEntries", lateEntry.entryId, { performedAt: generatedAt + 1 });
+    const earlyRevision = await ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", org._id).eq("entryId", earlyEntry.entryId).eq("revision", 1)).unique();
+    const lateRevision = await ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", org._id).eq("entryId", lateEntry.entryId).eq("revision", 1)).unique();
+    if (!earlyRevision || !lateRevision) throw new Error("Testrevisionen blev ikke fundet");
+    await ctx.db.patch("ownCheckEntryRevisions", earlyRevision._id, { at: generatedAt - 1 });
+    await ctx.db.patch("ownCheckEntryRevisions", lateRevision._id, { at: generatedAt + 1 });
     const nextDay = addDateKey(dateKey, 1);
     const dueAt = zonedTimestamp(nextDay, 0, "Europe/Copenhagen");
     const entryId = await ctx.db.insert("ownCheckEntries", {
@@ -180,8 +185,16 @@ test("dokumentation bruger en stabil forberedelsessnapshot og respekterer midnat
       actorName: "Snapshot",
     });
   });
+  await asUser.mutation(api.ownChecks.editOwnCheck, { entryId: earlyEntry.entryId, values: values(3), reason: "Rettelse efter forberedelse" });
+  await t.run(async (ctx) => {
+    const revision = await ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", org._id).eq("entryId", earlyEntry.entryId).eq("revision", 2)).unique();
+    if (!revision) throw new Error("Testrevisionen blev ikke fundet");
+    await ctx.db.patch("ownCheckEntryRevisions", revision._id, { at: generatedAt + 1 });
+  });
   const documentation = await asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 100, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: north, generatedAt });
   expect(documentation.page.map((record) => record.name)).toEqual(["Tidlig udført"]);
+  expect(documentation.page[0]?.values).toEqual(values(4));
+  expect(documentation.page[0]?.revisions.map((revision) => revision.revision)).toEqual([1]);
   const missing = await asUser.query(api.ownCheckDocumentation.listMissingOwnChecks, { fromDateKey: dateKey, toDateKey: dateKey, locationId: north, generatedAt });
   expect(missing.items.map((item) => item.name)).toEqual(["Efter snapshot"]);
 });
@@ -198,14 +211,26 @@ test("et afkoblet bilag kan genbruges i en ny livscyklus på samme registrering"
     return id;
   });
   const submitted = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: today(), values: [...values(4), { key: "evidence", type: "attachment", storageIds: [storageId] }] });
+  const generatedAt = await t.run(async (ctx) => {
+    const revision = await ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", org._id).eq("entryId", submitted.entryId).eq("revision", 1)).unique();
+    if (!revision) throw new Error("Testrevisionen blev ikke fundet");
+    return revision.at;
+  });
   await asUser.mutation(api.ownChecks.editOwnCheck, { entryId: submitted.entryId, values: values(4), reason: "Bilaget blev fjernet" });
   await asUser.mutation(api.ownChecks.editOwnCheck, { entryId: submitted.entryId, values: [...values(4), { key: "evidence", type: "attachment", storageIds: [storageId] }], reason: "Bilaget blev genindsat" });
+  await t.run(async (ctx) => {
+    const revisions = await ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", org._id).eq("entryId", submitted.entryId)).collect();
+    for (const revision of revisions.filter((revision) => revision.revision > 1)) await ctx.db.patch("ownCheckEntryRevisions", revision._id, { at: generatedAt + 1 });
+  });
   const attachments = await t.run(async (ctx) => await ctx.db.query("ownCheckAttachments").withIndex("by_organizationId_and_entryId", (q) => q.eq("organizationId", org._id).eq("entryId", submitted.entryId)).collect());
   expect(attachments).toHaveLength(2);
   expect(attachments.sort((a, b) => a.addedAtRevision - b.addedAtRevision).map((attachment) => ({ addedAtRevision: attachment.addedAtRevision, removedAtRevision: attachment.removedAtRevision }))).toEqual([
     { addedAtRevision: 1, removedAtRevision: 2 },
     { addedAtRevision: 3, removedAtRevision: undefined },
   ]);
+  const documentation = await asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 25, cursor: null }, fromDateKey: today(), toDateKey: today(), locationId: north, generatedAt });
+  expect(documentation.page[0]?.revisions.map((revision) => revision.revision)).toEqual([1]);
+  expect(documentation.page[0]?.attachments.map((attachment) => ({ addedAtRevision: attachment.addedAtRevision, removedAtRevision: attachment.removedAtRevision }))).toEqual([{ addedAtRevision: 1, removedAtRevision: null }]);
 });
 
 test("serveren håndhæver afvigelser, immutable revisioner og fire øjne", async () => {
