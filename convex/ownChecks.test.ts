@@ -6,7 +6,7 @@ import { api, components } from "./_generated/api";
 import schema from "./schema";
 import betterAuthSchema from "./betterAuth/schema";
 import type { Id } from "./_generated/dataModel";
-import { addDateKey, dateKeyInZone } from "../lib/own-checks";
+import { addDateKey, dateKeyInZone, zonedTimestamp } from "../lib/own-checks";
 
 const modules = import.meta.glob("./**/*.ts");
 const betterAuthModules = import.meta.glob("./betterAuth/**/*.ts");
@@ -45,11 +45,14 @@ async function seedLocations(t: ReturnType<typeof convexTest>, organizationId: s
   });
 }
 
-async function seedTemplate(t: ReturnType<typeof convexTest>, organizationId: string, locationId: Id<"locations">, options?: { name?: string; max?: number; allLocations?: boolean; schedule?: { type: "daily" } | { type: "weekly"; weekdays: number[] }; validFrom?: number }) {
+async function seedTemplate(t: ReturnType<typeof convexTest>, organizationId: string, locationId: Id<"locations">, options?: { name?: string; max?: number; allLocations?: boolean; schedule?: { type: "daily" } | { type: "weekly"; weekdays: number[] }; validFrom?: number; dueMinuteOfDay?: number; attachment?: boolean }) {
   const now = Date.now();
   return await t.run(async (ctx) => {
     const templateId = await ctx.db.insert("ownCheckTemplates", { organizationId, name: options?.name ?? "Kølekontrol", normalizedName: (options?.name ?? "Kølekontrol").toLocaleLowerCase("da"), currentVersion: 1, status: "active", createdBy: "test", updatedAt: now });
-    const versionId = await ctx.db.insert("ownCheckTemplateVersions", { organizationId, templateId, version: 1, name: options?.name ?? "Kølekontrol", description: "Daglig kontrol", controlType: "temperature", schedule: options?.schedule ?? { type: "daily" }, dueMinuteOfDay: 1_439, fields: [{ key: "temperature", label: "Temperatur", type: "number", required: true, min: 0, max: options?.max ?? 5, unit: "°C", decimals: 1 }], allLocations: options?.allLocations ?? false, locationIds: options?.allLocations ? [] : [locationId], validFrom: options?.validFrom ?? now - 86_400_000, createdAt: now, createdBy: "test", createdByName: "Test" });
+    const fields = options?.attachment
+      ? [{ key: "temperature", label: "Temperatur", type: "number" as const, required: true, min: 0, max: options?.max ?? 5, unit: "°C", decimals: 1 }, { key: "evidence", label: "Dokumentation", type: "attachment" as const, required: false, maxFiles: 1 }]
+      : [{ key: "temperature", label: "Temperatur", type: "number" as const, required: true, min: 0, max: options?.max ?? 5, unit: "°C", decimals: 1 }];
+    const versionId = await ctx.db.insert("ownCheckTemplateVersions", { organizationId, templateId, version: 1, name: options?.name ?? "Kølekontrol", description: "Daglig kontrol", controlType: "temperature", schedule: options?.schedule ?? { type: "daily" }, dueMinuteOfDay: options?.dueMinuteOfDay ?? 1_439, fields, allLocations: options?.allLocations ?? false, locationIds: options?.allLocations ? [] : [locationId], validFrom: options?.validFrom ?? now - 86_400_000, createdAt: now, createdBy: "test", createdByName: "Test" });
     return { templateId, versionId };
   });
 }
@@ -119,6 +122,92 @@ test("kiosk kan bruge aktiverede egenkontroldestinationer uden den normale ekspo
   await expect(kiosk.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: another.templateId, dueDateKey: dateKey, values: values(4) })).rejects.toThrowError("Siden er ikke aktiveret");
 });
 
+test("dokumentation bruger en stabil forberedelsessnapshot og respekterer midnatsgrænsen", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  const { north } = await seedLocations(t, org._id);
+  const dateKey = today();
+  const earlyTemplate = await seedTemplate(t, org._id, north, { name: "Tidlig udført", dueMinuteOfDay: 1_439 });
+  const lateTemplate = await seedTemplate(t, org._id, north, { name: "Efter snapshot", dueMinuteOfDay: 60 });
+  const earlyEntry = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: earlyTemplate.templateId, dueDateKey: dateKey, values: values(4) });
+  const lateEntry = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: lateTemplate.templateId, dueDateKey: dateKey, values: values(4) });
+  const dueTimes = await t.run(async (ctx) => {
+    const early = await ctx.db.get("ownCheckEntries", earlyEntry.entryId);
+    const late = await ctx.db.get("ownCheckEntries", lateEntry.entryId);
+    return { earlyDueAt: early!.dueAt, lateDueAt: late!.dueAt };
+  });
+  const generatedAt = Math.floor((dueTimes.lateDueAt + dueTimes.earlyDueAt) / 2);
+  await t.run(async (ctx) => {
+    await ctx.db.patch("ownCheckEntries", earlyEntry.entryId, { performedAt: generatedAt - 1 });
+    await ctx.db.patch("ownCheckEntries", lateEntry.entryId, { performedAt: generatedAt + 1 });
+    const nextDay = addDateKey(dateKey, 1);
+    const dueAt = zonedTimestamp(nextDay, 0, "Europe/Copenhagen");
+    const entryId = await ctx.db.insert("ownCheckEntries", {
+      organizationId: org._id,
+      locationId: north,
+      locationName: "Nord",
+      templateId: earlyTemplate.templateId,
+      templateVersionId: earlyTemplate.versionId,
+      templateVersion: 1,
+      name: "Midnatsgrænse",
+      controlType: "temperature",
+      dueDateKey: nextDay,
+      dueAt,
+      status: "completed",
+      hasDeviation: false,
+      followUp: "none",
+      compliant: true,
+      values: values(4),
+      performedAt: generatedAt - 1,
+      performedBy: "snapshot-user",
+      performedByName: "Snapshot",
+      revision: 1,
+      updatedAt: generatedAt - 1,
+    });
+    await ctx.db.insert("ownCheckEntryRevisions", {
+      organizationId: org._id,
+      entryId,
+      revision: 1,
+      kind: "submitted",
+      values: values(4),
+      status: "completed",
+      hasDeviation: false,
+      followUp: "none",
+      compliant: true,
+      changes: [],
+      at: generatedAt - 1,
+      actorUserId: "snapshot-user",
+      actorName: "Snapshot",
+    });
+  });
+  const documentation = await asUser.query(api.ownCheckDocumentation.buildDocumentation, { paginationOpts: { numItems: 100, cursor: null }, fromDateKey: dateKey, toDateKey: dateKey, locationId: north, generatedAt });
+  expect(documentation.page.map((record) => record.name)).toEqual(["Tidlig udført"]);
+  const missing = await asUser.query(api.ownCheckDocumentation.listMissingOwnChecks, { fromDateKey: dateKey, toDateKey: dateKey, locationId: north, generatedAt });
+  expect(missing.items.map((item) => item.name)).toEqual(["Efter snapshot"]);
+});
+
+test("et afkoblet bilag kan genbruges i en ny livscyklus på samme registrering", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  const { north } = await seedLocations(t, org._id);
+  const template = await seedTemplate(t, org._id, north, { name: "Bilagskontrol", attachment: true });
+  const storageId = await t.run(async (ctx) => {
+    const id = await ctx.storage.store(new Blob(["bilag"], { type: "application/pdf" }));
+    const systemWriter = ctx.db as unknown as { patch(table: string, id: Id<"_storage">, value: { contentType: string }): Promise<void> };
+    await systemWriter.patch("_storage", id, { contentType: "application/pdf" });
+    return id;
+  });
+  const submitted = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: today(), values: [...values(4), { key: "evidence", type: "attachment", storageIds: [storageId] }] });
+  await asUser.mutation(api.ownChecks.editOwnCheck, { entryId: submitted.entryId, values: values(4), reason: "Bilaget blev fjernet" });
+  await asUser.mutation(api.ownChecks.editOwnCheck, { entryId: submitted.entryId, values: [...values(4), { key: "evidence", type: "attachment", storageIds: [storageId] }], reason: "Bilaget blev genindsat" });
+  const attachments = await t.run(async (ctx) => await ctx.db.query("ownCheckAttachments").withIndex("by_organizationId_and_entryId", (q) => q.eq("organizationId", org._id).eq("entryId", submitted.entryId)).collect());
+  expect(attachments).toHaveLength(2);
+  expect(attachments.sort((a, b) => a.addedAtRevision - b.addedAtRevision).map((attachment) => ({ addedAtRevision: attachment.addedAtRevision, removedAtRevision: attachment.removedAtRevision }))).toEqual([
+    { addedAtRevision: 1, removedAtRevision: 2 },
+    { addedAtRevision: 3, removedAtRevision: undefined },
+  ]);
+});
+
 test("serveren håndhæver afvigelser, immutable revisioner og fire øjne", async () => {
   const t = convexTest(schema, modules);
   const { org, asUser } = await setupAuthOrg(t);
@@ -155,10 +244,9 @@ test("serveren håndhæver afvigelser, immutable revisioner og fire øjne", asyn
   expect(attributionState.entryRevisions[1]?.deviation?.recordedBy).toBe(attributionState.entryRevisions[0]?.deviation?.recordedBy);
   expect(attributionState.entryRevisions[1]?.correctiveAction?.recordedAt).toBe(attributionState.entryRevisions[0]?.correctiveAction?.recordedAt);
   await approver.asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: completed.entryId });
-  await asUser.mutation(api.ownCheckTemplates.saveSettings, { lateSubmissionDays: 7, requireSecondPersonApproval: false, blockDuringCount: false, reason: "Test af selv-godkendelse" });
   const selfTemplate = await seedTemplate(t, org._id, north, { name: "Selvgodkendelig temperatur" });
-  const selfEntry = await performer.asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: selfTemplate.templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "self" });
-  await expect(performer.asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: selfEntry.entryId })).resolves.toBeNull();
+  const selfEntry = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: selfTemplate.templateId, dueDateKey: dateKey, values: values(4), clientRequestId: "self" });
+  await expect(asUser.mutation(api.ownChecks.approveOwnCheck, { entryId: selfEntry.entryId })).resolves.toBeNull();
 });
 
 test("indstillinger uden række bruger standarderne og kan lukke for sene registreringer", async () => {
@@ -230,6 +318,17 @@ test("et felts nøgle overlever en labelændring", async () => {
   const template = await asUser.query(api.ownCheckTemplates.getTemplate, { templateId });
   expect(template?.versions[0]?.fields[0]?.key).toBe("field-temperature");
   expect(template?.versions[0]?.fields[0]?.label).toBe("Ny temperatur");
+  await expect(asUser.mutation(api.ownCheckTemplates.updateTemplate, {
+    templateId,
+    name: "Stabil nøgle",
+    description: "",
+    controlType: "temperature",
+    schedule: { type: "daily" },
+    fields: [{ key: "field-renamed", label: "Endnu en temperatur", type: "number", required: true, min: 0, max: 5, decimals: 1 }],
+    allLocations: false,
+    locationIds: [north],
+    reason: "Forsøg på at omgå nøglestabilitet",
+  })).rejects.toThrowError("felternes nøgler");
 });
 
 test("en afgrænset backlog returnerer ingen delvise manglende rækker", async () => {
@@ -302,7 +401,7 @@ test("en templateændring ændrer ikke den første registrering eller dens revis
   const { north } = await seedLocations(t, org._id);
   const template = await seedTemplate(t, org._id, north, { name: "Historisk temperatur" });
   const dateKey = today();
-  const submitted = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: dateKey, values: values(4) });
+  const submitted = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: addDateKey(dateKey, -1), values: values(4) });
   await asUser.mutation(api.ownCheckTemplates.updateTemplate, {
     templateId: template.templateId,
     name: "Historisk temperatur ny",
@@ -321,6 +420,10 @@ test("en templateændring ændrer ikke den første registrering eller dens revis
   expect(record?.fields[0]?.label).toBe("Temperatur");
   expect(record?.revisions).toHaveLength(1);
   expect((record?.revisions[0]?.values[0] as { number: number }).number).toBe(4);
+  const second = await asUser.mutation(api.ownChecks.submitOwnCheck, { locationId: north, templateId: template.templateId, dueDateKey: dateKey, values: values(3) });
+  const secondRecord = await asUser.query(api.ownChecks.getOwnCheckRecord, { entryId: second.entryId });
+  expect(secondRecord?.entry.templateVersion).toBe(2);
+  expect(secondRecord?.fields[0]?.label).toBe("Ny temperatur");
 });
 
 test("count lock følger egenkontrolindstillingen i begge retninger", async () => {

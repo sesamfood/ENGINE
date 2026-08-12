@@ -189,9 +189,9 @@ export const buildDocumentation = query({
     requirePageSize(args.paginationOpts.numItems);
     const startAt = zonedTimestamp(args.fromDateKey, 0, timeZone);
     const endAt = zonedTimestamp(addDateKey(args.toDateKey, 1), 0, timeZone);
-    if (args.generatedAt < startAt) return { page: [], isDone: true, continueCursor: "", splitCursor: null, pageStatus: null };
     const page = await ctx.db.query("ownCheckEntries")
-      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).gte("dueAt", startAt).lte("dueAt", Math.min(endAt, args.generatedAt)))
+      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).gte("dueAt", startAt).lt("dueAt", endAt))
+      .filter((q) => q.lte(q.field("performedAt"), args.generatedAt))
       .order("asc")
       .paginate(args.paginationOpts);
     return { ...page, page: await Promise.all(page.page.map((entry) => recordForDocumentation(ctx, entry, auth.organizationId, timeZone))) };
@@ -249,7 +249,8 @@ async function missingDocumentation(
   const entries = generatedAt < startAt
     ? []
     : await ctx.db.query("ownCheckEntries")
-      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId).gte("dueAt", startAt).lte("dueAt", Math.min(endAt, generatedAt)))
+      .withIndex("by_organizationId_and_locationId_and_dueAt", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId).gte("dueAt", startAt).lt("dueAt", endAt))
+      .filter((q) => q.lte(q.field("performedAt"), generatedAt))
       .take(MAX_MISSING + 1);
   if (entries.length > MAX_MISSING) return { items: [], truncated: true };
   const byKey = new Set(entries.map((entry) => occurrenceKey(entry.templateId, entry.dueDateKey)));

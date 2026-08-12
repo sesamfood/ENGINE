@@ -53,6 +53,7 @@ type Draft = {
   startMinuteOfDay: number | undefined;
   dueMinuteOfDay: number | undefined;
   fields: OwnCheckField[];
+  originalFieldKeys: string[];
   allLocations: boolean;
   locationIds: Id<"locations">[];
   responsibleRole: string;
@@ -94,6 +95,7 @@ function newDraft(): Draft {
     startMinuteOfDay: undefined,
     dueMinuteOfDay: undefined,
     fields: [defaultField()],
+    originalFieldKeys: [],
     allLocations: true,
     locationIds: [],
     responsibleRole: "",
@@ -110,6 +112,7 @@ function draftFromTemplate(template: Template): Draft {
     startMinuteOfDay: template.startMinuteOfDay ?? undefined,
     dueMinuteOfDay: template.dueMinuteOfDay ?? undefined,
     fields: template.fields,
+    originalFieldKeys: template.fields.map((field) => field.key),
     allLocations: template.allLocations,
     locationIds: template.locationIds,
     responsibleRole: template.responsibleRole ?? "",
@@ -246,7 +249,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
         locationIds: draft.locationIds,
         ...(draft.responsibleRole.trim() ? { responsibleRole: draft.responsibleRole.trim() } : {}),
       };
-      if (mode && mode !== "new") await updateTemplate({ ...payload, templateId: mode.id, reason: draft.reason });
+      if (mode && mode !== "new") await updateTemplate({ ...payload, templateId: mode.id, reason: draft.reason, removedFieldKeys: draft.originalFieldKeys.filter((key) => !draft.fields.some((field) => field.key === key)) });
       else await createTemplate(payload);
       toast.success(mode && mode !== "new" ? "Egenkontrollen er opdateret" : "Egenkontrollen er oprettet");
       onSaved();
@@ -255,6 +258,22 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
     } finally {
       setSaving(false);
     }
+  }
+
+  function changeSchedule(value: string | null) {
+    if (!value) return;
+    setDraft((current) => {
+      if (value === "interval") {
+        if (!dateContext?.todayDateKey) {
+          toast.error("Lokationens dato er ikke klar endnu. Prøv igen om et øjeblik.");
+          return current;
+        }
+        return { ...current, schedule: { type: "interval", intervalDays: 7, anchorDate: dateContext.todayDateKey } };
+      }
+      if (value === "weekly") return { ...current, schedule: { type: "weekly", weekdays: [1] } };
+      if (value === "monthly") return { ...current, schedule: { type: "monthly", days: [0] } };
+      return { ...current, schedule: { type: "daily" } };
+    });
   }
 
   return (
@@ -273,7 +292,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
           <FieldSet>
             <FieldTitle>Frekvens og tidsrum</FieldTitle>
             <FieldGroup className="grid md:grid-cols-2">
-              <Field><FieldLabel htmlFor="own-template-schedule">Frekvens</FieldLabel><Select items={[{ value: "daily", label: "Dagligt" }, { value: "weekly", label: "Ugentligt" }, { value: "monthly", label: "Månedligt" }, { value: "interval", label: "Fast interval" }]} value={draft.schedule.type} onValueChange={(value) => setDraft((current) => ({ ...current, schedule: value === "weekly" ? { type: "weekly", weekdays: [1] } : value === "monthly" ? { type: "monthly", days: [0] } : value === "interval" ? { type: "interval", intervalDays: 7, anchorDate: dateContext?.todayDateKey ?? new Intl.DateTimeFormat("en-CA").format(new Date()) } : { type: "daily" } }))}><SelectTrigger id="own-template-schedule" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="daily">Dagligt</SelectItem><SelectItem value="weekly">Ugentligt</SelectItem><SelectItem value="monthly">Månedligt</SelectItem><SelectItem value="interval">Fast interval</SelectItem></SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel htmlFor="own-template-schedule">Frekvens</FieldLabel><Select items={[{ value: "daily", label: "Dagligt" }, { value: "weekly", label: "Ugentligt" }, { value: "monthly", label: "Månedligt" }, { value: "interval", label: "Fast interval" }]} value={draft.schedule.type} onValueChange={changeSchedule}><SelectTrigger id="own-template-schedule" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="daily">Dagligt</SelectItem><SelectItem value="weekly">Ugentligt</SelectItem><SelectItem value="monthly">Månedligt</SelectItem><SelectItem value="interval">Fast interval</SelectItem></SelectGroup></SelectContent></Select></Field>
               {draft.schedule.type === "weekly" ? <Field><FieldLabel>Ugedage</FieldLabel><div className="grid grid-cols-4 gap-2">{["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"].map((label, day) => <label key={label} className="flex min-h-11 items-center gap-2 rounded-md border px-2 text-sm"><Checkbox checked={draft.schedule.type === "weekly" && draft.schedule.weekdays.includes(day)} onCheckedChange={(checked) => setDraft((current) => current.schedule.type !== "weekly" ? current : { ...current, schedule: { ...current.schedule, weekdays: checked ? [...current.schedule.weekdays, day] : current.schedule.weekdays.filter((item) => item !== day) } })} />{label}</label>)}</div></Field> : null}
               {draft.schedule.type === "monthly" ? <Field><FieldLabel htmlFor="own-template-month-days">Månedsdage</FieldLabel><Input id="own-template-month-days" value={draft.schedule.days.join(",")} onChange={(event) => setDraft((current) => current.schedule.type !== "monthly" ? current : { ...current, schedule: { ...current.schedule, days: event.target.value.split(",").map(Number).filter((value) => Number.isFinite(value)) } })} /><FieldDescription>Brug 1–28 eller 0 for sidste dag i måneden.</FieldDescription></Field> : null}
               {draft.schedule.type === "interval" ? <FieldGroup className="grid grid-cols-2"><Field><FieldLabel htmlFor="own-template-interval">Antal dage</FieldLabel><Input id="own-template-interval" type="number" min={1} max={365} value={draft.schedule.intervalDays} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, intervalDays: Number(event.target.value) } })} /></Field><Field><FieldLabel htmlFor="own-template-anchor">Startdato</FieldLabel><Input id="own-template-anchor" type="date" value={draft.schedule.anchorDate} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, anchorDate: event.target.value } })} /><FieldDescription>Standarddatoen følger den valgte lokations tidszone.</FieldDescription></Field></FieldGroup> : null}

@@ -71,6 +71,11 @@ const versionOutputValidator = v.object({
 });
 
 const templateInput = versionFieldsValidator;
+const templateUpdateInput = templateInput.extend({
+  templateId: v.id("ownCheckTemplates"),
+  reason: v.string(),
+  removedFieldKeys: v.optional(v.array(v.string())),
+});
 
 function normalizeName(value: string) {
   const name = value.trim().replace(/\s+/g, " ");
@@ -368,7 +373,7 @@ export const createTemplate = mutation({
 });
 
 export const updateTemplate = mutation({
-  args: templateInput.extend({ templateId: v.id("ownCheckTemplates"), reason: v.string() }).fields,
+  args: templateUpdateInput.fields,
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckManager(ctx);
@@ -377,9 +382,19 @@ export const updateTemplate = mutation({
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const validated = await validateVersionFields(ctx, auth.organizationId, args);
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName, template._id);
+    const currentKeys = new Set(current.fields.map((field) => field.key));
+    const nextFieldsByKey = new Map(args.fields.map((field) => [field.key, field]));
+    const removedFieldKeys = args.removedFieldKeys ?? [];
+    if (new Set(removedFieldKeys).size !== removedFieldKeys.length || removedFieldKeys.some((key) => !currentKeys.has(key))) {
+      throw new ConvexError("De slettede felter er ugyldige");
+    }
     for (const oldField of current.fields) {
-      const nextField = args.fields.find((field) => field.label === oldField.label);
-      if (nextField && nextField.key !== oldField.key) throw new ConvexError("Et felts nøgle må ikke ændres, når labelen er den samme");
+      const nextField = nextFieldsByKey.get(oldField.key);
+      if (removedFieldKeys.includes(oldField.key)) {
+        if (nextField) throw new ConvexError("Et felt kan ikke både slettes og bevares");
+      } else if (!nextField) {
+        throw new ConvexError("Angiv slettede felter eksplicit, så felternes nøgler forbliver stabile");
+      }
     }
     const reason = requireAuditReason(args.reason);
     const now = Math.max(Date.now(), current.validFrom + 1);
