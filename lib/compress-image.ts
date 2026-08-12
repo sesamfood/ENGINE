@@ -2,11 +2,19 @@ type ImageCompressionOptions = {
   maxWidth: number;
   maxHeight: number;
   quality?: number;
+  type?: "image/webp" | "image/jpeg";
+  alwaysReencode?: boolean;
 };
 
 export async function compressImage(
   file: File,
-  { maxWidth, maxHeight, quality = 0.86 }: ImageCompressionOptions,
+  {
+    maxWidth,
+    maxHeight,
+    quality = 0.86,
+    type = "image/webp",
+    alwaysReencode = false,
+  }: ImageCompressionOptions,
 ) {
   const image = await createImageBitmap(file, {
     imageOrientation: "from-image",
@@ -34,12 +42,14 @@ export async function compressImage(
           blob
             ? resolve(blob)
             : reject(new Error("Billedet kunne ikke komprimeres")),
-        "image/webp",
+        type,
         quality,
       );
     });
 
-    return scale < 1 || compressed.size < file.size ? compressed : file;
+    return alwaysReencode || scale < 1 || compressed.size < file.size
+      ? compressed
+      : file;
   } finally {
     image.close();
   }

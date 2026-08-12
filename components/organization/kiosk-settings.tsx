@@ -65,7 +65,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { useAccess, usePermission } from "@/components/app-shell";
-import { kioskDestinations, type KioskDestinationId } from "@/lib/kiosk";
+import {
+  kioskDestinationWarnings,
+  kioskDestinations,
+  type KioskDestinationId,
+} from "@/lib/kiosk";
 import type { SystemOrganizationRole } from "@/lib/auth-permissions";
 
 const roleLabels: Record<SystemOrganizationRole, string> = {
@@ -351,11 +355,38 @@ export function KioskSettings() {
             <FieldSet>
               <FieldLegend>Aktiverede sider</FieldLegend>
               <div data-slot="checkbox-group" className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {groups.map((group) => <FieldSet key={group} className="rounded-xl border p-4"><FieldLegend variant="label">{group}</FieldLegend>{kioskDestinations.filter((page) => page.group === group).map((page) => <Field key={page.id} orientation="horizontal"><Checkbox id={`page-${page.id}`} checked={enabledPages.includes(page.id)} onCheckedChange={(checked) => {
-                  const next = checked ? [...enabledPages, page.id] : enabledPages.filter((id) => id !== page.id);
-                  setEnabledPages(next);
-                  if (homePage === page.id && !checked) setHomePage("");
-                }} /><FieldLabel htmlFor={`page-${page.id}`}>{page.label}</FieldLabel></Field>)}</FieldSet>)}
+                {groups.map((group) => (
+                  <FieldSet key={group} className="rounded-xl border p-4">
+                    <FieldLegend variant="label">{group}</FieldLegend>
+                    {kioskDestinations
+                      .filter((page) => page.group === group)
+                      .map((page) => (
+                        <Field key={page.id} orientation="horizontal">
+                          <Checkbox
+                            id={`page-${page.id}`}
+                            checked={enabledPages.includes(page.id)}
+                            onCheckedChange={(checked) => {
+                              const next = checked
+                                ? [...enabledPages, page.id]
+                                : enabledPages.filter((id) => id !== page.id);
+                              setEnabledPages(next);
+                              if (homePage === page.id && !checked) setHomePage("");
+                            }}
+                          />
+                          <FieldContent>
+                            <FieldLabel htmlFor={`page-${page.id}`}>
+                              {page.label}
+                            </FieldLabel>
+                            {kioskDestinationWarnings[page.id] ? (
+                              <FieldDescription>
+                                {kioskDestinationWarnings[page.id]}
+                              </FieldDescription>
+                            ) : null}
+                          </FieldContent>
+                        </Field>
+                      ))}
+                  </FieldSet>
+                ))}
               </div>
             </FieldSet>
             <FieldGroup className="md:grid md:grid-cols-2">

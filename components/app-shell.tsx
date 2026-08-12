@@ -5,6 +5,7 @@ import {
   ArrowRightLeftIcon,
   Building2Icon,
   ChevronsUpDownIcon,
+  ClipboardCheckIcon,
   ClipboardListIcon,
   LogOutIcon,
   LayoutDashboardIcon,
@@ -91,6 +92,7 @@ const primaryNavigation = [
   { id: "dashboard", label: "Overblik", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
   { id: "transfers", label: "Flytninger", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
   { id: "waste", label: "Spild", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
+  { id: "ownChecks", label: "Egenkontrol", href: "/own-checks", icon: ClipboardCheckIcon, pages: ["ownChecks.today", "ownChecks.overview", "ownChecks.documentation"] },
   { id: "staffFood", label: "Personalemad", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
   { id: "count", label: "Optælling", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
 ];
@@ -461,6 +463,9 @@ function OrganizationHome() {
   const canTransfersView = usePermission("transfers.view");
   const canWasteRegister = usePermission("waste.register");
   const canWasteReport = usePermission("waste.report");
+  const canOwnChecks = usePermission("ownChecks.perform");
+  const canOwnChecksView = usePermission("ownChecks.view");
+  const canOwnChecksExport = usePermission("ownChecks.export");
   const canStaffFood = usePermission("staffFood.register");
   const canCountRegister = usePermission("count.register");
   const canCountStock = usePermission("count.viewStock");
@@ -471,6 +476,7 @@ function OrganizationHome() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canOwnChecksManage = usePermission("ownChecks.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
   const canMembers = usePermission("members.manage");
@@ -481,6 +487,7 @@ function OrganizationHome() {
     canOrganizationSettings ||
     canCountSettings ||
     canWasteSettings ||
+    canOwnChecksManage ||
     canIntegrations ||
     canStaffFoodManage ||
     canMembers ||
@@ -505,7 +512,13 @@ function OrganizationHome() {
               ? "/waste"
               : canWasteReport
                 ? "/waste/report"
-            : canStaffFood
+                : canOwnChecks
+                  ? "/own-checks"
+                  : canOwnChecksView
+                    ? "/own-checks/overview"
+                    : canOwnChecksExport
+                      ? "/own-checks/documentation"
+                      : canStaffFood
                 ? "/staff-food"
                 : canCountRegister
                   ? "/count"
@@ -585,6 +598,10 @@ function NavigationList() {
   const canWasteRegister = usePermission("waste.register");
   const canWasteReport = usePermission("waste.report");
   const canWaste = canWasteRegister || canWasteReport;
+  const canOwnChecks = usePermission("ownChecks.perform");
+  const canOwnChecksView = usePermission("ownChecks.view");
+  const canOwnChecksExport = usePermission("ownChecks.export");
+  const canOwnChecksAccess = canOwnChecks || canOwnChecksView || canOwnChecksExport;
   const canStaffFood = usePermission("staffFood.register");
   const canCountRegister = usePermission("count.register");
   const canCountStock = usePermission("count.viewStock");
@@ -597,6 +614,7 @@ function NavigationList() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canOwnChecksManage = usePermission("ownChecks.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
   const canMembers = usePermission("members.manage");
@@ -607,6 +625,7 @@ function NavigationList() {
     canOrganizationSettings ||
     canCountSettings ||
     canWasteSettings ||
+    canOwnChecksManage ||
     canIntegrations ||
     canStaffFoodManage ||
     canMembers ||
@@ -647,6 +666,7 @@ function NavigationList() {
       if (item.id === "dashboard") return canDashboard && !featureLocked;
       if (item.id === "transfers") return canTransfers && !featureLocked;
       if (item.id === "waste") return canWaste;
+      if (item.id === "ownChecks") return canOwnChecksAccess;
       if (item.id === "staffFood") return canStaffFood && !featureLocked;
       if (item.id === "count") return canCount;
       if (item.id === "employees") return canEmployees && !featureLocked;
@@ -659,6 +679,9 @@ function NavigationList() {
       }
       if (item.id === "waste" && !canWasteRegister) {
         return { ...item, href: "/waste/report" };
+      }
+      if (item.id === "ownChecks" && !canOwnChecks) {
+        return { ...item, href: canOwnChecksView ? "/own-checks/overview" : "/own-checks/documentation" };
       }
       if (item.id === "count" && !canCountRegister) {
         return { ...item, href: "/count/stock" };

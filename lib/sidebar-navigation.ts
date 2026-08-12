@@ -2,6 +2,7 @@ export const sidebarItems = [
   { id: "dashboard", label: "Overblik" },
   { id: "transfers", label: "Flytninger" },
   { id: "waste", label: "Spild" },
+  { id: "ownChecks", label: "Egenkontrol" },
   { id: "staffFood", label: "Personalemad" },
   { id: "count", label: "Optælling" },
   { id: "employees", label: "Medarbejdere" },

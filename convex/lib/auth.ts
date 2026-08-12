@@ -403,6 +403,57 @@ export async function requireWasteExporter(
   return await requirePermission(ctx, "waste.export", page);
 }
 
+export async function requireOwnCheckPerformer(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "ownChecks.today",
+) {
+  return await requirePermission(ctx, "ownChecks.perform", page);
+}
+
+export async function requireOwnCheckViewer(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "ownChecks.overview",
+) {
+  return await requirePermission(ctx, "ownChecks.view", page);
+}
+
+export async function requireOwnCheckCorrector(ctx: AuthContext) {
+  return await requirePermission(ctx, "ownChecks.correct", "ownChecks.overview");
+}
+
+export async function requireOwnCheckApprover(ctx: AuthContext) {
+  return await requirePermission(ctx, "ownChecks.approve");
+}
+
+export async function requireOwnCheckEditor(ctx: AuthContext) {
+  return await requirePermission(ctx, "ownChecks.edit");
+}
+
+export async function requireOwnCheckAttachmentUploader(ctx: AuthContext) {
+  const auth = await requireOrganization(ctx);
+  if (auth.kioskModeEnabled) return await requireOwnCheckPerformer(ctx);
+  if (
+    !hasPermission(auth.role, auth.permissions, "ownChecks.perform") &&
+    !hasPermission(auth.role, auth.permissions, "ownChecks.edit")
+  ) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  return auth;
+}
+
+export async function requireOwnCheckExporter(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "ownChecks.documentation",
+) {
+  return await requirePermission(ctx, "ownChecks.export", page);
+}
+
+export async function requireOwnCheckManager(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "ownChecks.manage");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
 export async function requireWasteSettings(ctx: AuthContext) {
   const auth = await requirePermission(ctx, "waste.settings");
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
