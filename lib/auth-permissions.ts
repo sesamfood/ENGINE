@@ -50,6 +50,17 @@ export const permissionCatalog = [
     ],
   },
   {
+    group: "Egenkontrol",
+    permissions: [
+      { id: "ownChecks.perform", label: "Udføre egenkontroller" },
+      { id: "ownChecks.correct", label: "Registrere korrigerende handlinger" },
+      { id: "ownChecks.view", label: "Se tidligere egenkontroller" },
+      { id: "ownChecks.approve", label: "Godkende egenkontroller" },
+      { id: "ownChecks.edit", label: "Rette indsendte egenkontroller" },
+      { id: "ownChecks.export", label: "Eksportere kontroldokumentation" },
+    ],
+  },
+  {
     group: "Flytninger",
     permissions: [
       { id: "transfers.view", label: "Se flytninger" },
@@ -88,6 +99,7 @@ export const permissionCatalog = [
       { id: "locations.manage", label: "Administrere lokationer" },
       { id: "count.settings", label: "Administrere optællingsindstillinger" },
       { id: "waste.settings", label: "Administrere spildindstillinger" },
+      { id: "ownChecks.manage", label: "Administrere egenkontroller" },
       {
         id: "organization.settings",
         label: "Administrere organisationsindstillinger",
@@ -123,6 +135,7 @@ export const defaultRolePermissions: Record<
       !id.endsWith(".settings") &&
       id !== "integrations.manage" &&
       id !== "locations.manage" &&
+      id !== "ownChecks.manage" &&
       id !== "members.manage" &&
       id !== "roles.manage" &&
       id !== "staffFood.manage" &&
@@ -135,6 +148,7 @@ export const defaultRolePermissions: Record<
     "count.register",
     "count.viewStock",
     "waste.register",
+    "ownChecks.perform",
     "staffFood.register",
     "employees.schedule",
     "employees.directory",

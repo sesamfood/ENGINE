@@ -4,6 +4,7 @@ import {
   Building2Icon,
   CalendarClockIcon,
   ClipboardListIcon,
+  ClipboardCheckIcon,
   ListOrderedIcon,
   PackageIcon,
   PlugIcon,
@@ -76,6 +77,13 @@ const sections = [
     permissions: ["waste.settings"],
   },
   {
+    title: "Egenkontrol",
+    description: "Opret kontroller, tidsplaner og regler for dokumentation.",
+    href: "/organization/own-checks",
+    icon: ClipboardCheckIcon,
+    permissions: ["ownChecks.manage"],
+  },
+  {
     title: "Personalemad",
     description: "Indstil vagtlængder, kategorier og tilladte produkter.",
     href: "/organization/staff-food",
@@ -114,6 +122,7 @@ export function OrganizationOverview() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canOwnChecksManage = usePermission("ownChecks.manage");
   const canStaffFood = usePermission("staffFood.manage");
   const canIntegrations = usePermission("integrations.manage");
   const allowedPermissions = {
@@ -124,6 +133,7 @@ export function OrganizationOverview() {
     "organization.settings": canOrganizationSettings,
     "count.settings": canCountSettings,
     "waste.settings": canWasteSettings,
+    "ownChecks.manage": canOwnChecksManage,
     "staffFood.manage": canStaffFood,
     "integrations.manage": canIntegrations,
   };

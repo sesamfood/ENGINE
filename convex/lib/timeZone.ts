@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 export const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
@@ -96,4 +96,29 @@ export async function resolveTimeZone(
     )
     .unique();
   return settings?.timeZone ?? DEFAULT_TIME_ZONE;
+}
+
+export async function resolveLocationTimeZones(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  locations: ReadonlyArray<Pick<Doc<"locations">, "_id" | "timeZone" | "marketId">>,
+) {
+  const settings = await ctx.db
+    .query("organizationScheduleSettings")
+    .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+    .unique();
+  const marketIds = [...new Set(locations.flatMap((location) => location.marketId ? [location.marketId] : []))];
+  const markets = await Promise.all(marketIds.map((marketId) => ctx.db.get("markets", marketId)));
+  const marketTimeZones = new Map(
+    markets
+      .filter((market) => market?.organizationId === organizationId && market.timeZone)
+      .map((market) => [market!._id, market!.timeZone!]),
+  );
+  const fallback = settings?.timeZone ?? DEFAULT_TIME_ZONE;
+  return new Map(
+    locations.map((location) => [
+      location._id,
+      location.timeZone ?? (location.marketId ? marketTimeZones.get(location.marketId) : undefined) ?? fallback,
+    ]),
+  );
 }

@@ -17,4 +17,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
     period: MINUTE,
     rate: 5,
   },
+  ownCheckSubmit: {
+    kind: "fixed window",
+    period: MINUTE,
+    rate: 60,
+  },
 });
