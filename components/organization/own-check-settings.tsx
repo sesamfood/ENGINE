@@ -122,8 +122,9 @@ export function OwnCheckSettings() {
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="own-check-settings-reason">Begrundelse</FieldLabel>
-              <Input id="own-check-settings-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Angiv en begrundelse" maxLength={1_000} />
+              <FieldLabel htmlFor="own-check-settings-reason">Begrundelse for ændringer</FieldLabel>
+              <FieldDescription>Skriv, hvorfor egenkontrolindstillingerne ændres. Begrundelsen gemmes i ændringshistorikken.</FieldDescription>
+              <Input id="own-check-settings-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Fx ændrede krav til efterregistrering" maxLength={1_000} />
             </Field>
           </FieldGroup>
         </CardContent>
