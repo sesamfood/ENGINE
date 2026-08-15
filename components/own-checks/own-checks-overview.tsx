@@ -21,8 +21,9 @@ import { addDateKey, ownCheckControlTypeLabels, ownCheckStatusLabels, type OwnCh
 import { OwnCheckRecord } from "./own-check-record";
 import { useOwnCheckNow } from "./use-own-check-now";
 
-type OverviewResult = NonNullable<ReturnType<typeof useQuery<typeof api.ownChecks.listOwnChecks>>>;
-type Row = OverviewResult["page"][number];
+type PlanResult = NonNullable<ReturnType<typeof useQuery<typeof api.ownChecks.listOwnCheckPlan>>>;
+type EntriesResult = NonNullable<ReturnType<typeof useQuery<typeof api.ownChecks.listOwnCheckEntries>>>;
+type Row = PlanResult["rows"][number] | EntriesResult["page"][number];
 const emptyRows: Row[] = [];
 
 function formatDate(key: string) {
@@ -44,8 +45,12 @@ function StatusBadge({ row }: { row: Row }) {
   return <Badge variant={variant}>{icon}{ownCheckStatusLabels[row.status as OwnCheckStatus]}</Badge>;
 }
 
-function RowContent({ row, onOpen }: { row: Row; onOpen: () => void }) {
-  return <div role={row.entry ? "button" : undefined} tabIndex={row.entry ? 0 : undefined} className={`flex min-h-16 items-center gap-3 rounded-xl border p-3 text-left ${row.entry ? "cursor-pointer hover:bg-muted/50" : "opacity-80"} ${row.entry?.followUp === "open" ? "border-l-4 border-l-destructive" : ""}`} onClick={() => row.entry && onOpen()} onKeyDown={(event) => { if (row.entry && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }}><div className="min-w-0 flex-1"><p className="truncate font-medium">{row.name}</p><p className="text-sm text-muted-foreground">{row.locationName} · {ownCheckControlTypeLabels[row.controlType]} · {formatTime(row.dueAt, row.timeZone)}</p></div><div className="flex shrink-0 items-end gap-2"><StatusBadge row={row} />{row.overdue && row.status === "notCompleted" ? <span className="text-xs font-medium text-destructive">Overskredet</span> : null}</div></div>;
+function isOverdue(row: Row, now: number) {
+  return row.status === "notCompleted" && now > row.dueAt;
+}
+
+function RowContent({ row, now, onOpen }: { row: Row; now: number; onOpen: () => void }) {
+  return <div role={row.entry ? "button" : undefined} tabIndex={row.entry ? 0 : undefined} className={`flex min-h-16 items-center gap-3 rounded-xl border p-3 text-left ${row.entry ? "cursor-pointer hover:bg-muted/50" : "opacity-80"} ${row.entry?.followUp === "open" ? "border-l-4 border-l-destructive" : ""}`} onClick={() => row.entry && onOpen()} onKeyDown={(event) => { if (row.entry && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }}><div className="min-w-0 flex-1"><p className="truncate font-medium">{row.name}</p><p className="text-sm text-muted-foreground">{row.locationName} · {ownCheckControlTypeLabels[row.controlType]} · {formatTime(row.dueAt, row.timeZone)}</p></div><div className="flex shrink-0 items-end gap-2"><StatusBadge row={row} />{isOverdue(row, now) ? <span className="text-xs font-medium text-destructive">Overskredet</span> : null}</div></div>;
 }
 
 export function OwnChecksOverview() {
@@ -57,7 +62,7 @@ export function OwnChecksOverview() {
   const [performedBy, setPerformedBy] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState<Id<"ownCheckEntries"> | null>(null);
   const locationId = lockedId ?? selectedLocation ?? locations?.[0]?.id ?? null;
-  const now = useOwnCheckNow(`${locationId ?? ""}:${manualRange?.from ?? ""}:${manualRange?.to ?? ""}`);
+  const now = useOwnCheckNow(locationId ?? "");
   const dateContext = useQuery(api.ownCheckOverview.getOverviewDateContext, locationId ? { locationId, now } : "skip");
   const activeManualRange = manualRange?.locationId === locationId ? manualRange : null;
   const toDateKey = activeManualRange?.to ?? dateContext?.todayDateKey ?? "";
@@ -65,20 +70,24 @@ export function OwnChecksOverview() {
   const days = rangeDays(fromDateKey, toDateKey);
   const rangeValid = Number.isFinite(days) && days >= 1 && days <= 92;
   const isEntryStatus = Boolean(status && status !== "notCompleted");
-  const baseArgs = locationId && rangeValid ? {
-    now,
+  const commonArgs = locationId && rangeValid ? {
     fromDateKey,
     toDateKey,
     locationId,
     ...(controlType ? { controlType } : {}),
-    ...(status ? { status } : {}),
     ...(performedBy.trim() ? { performedBy: performedBy.trim() } : {}),
-  } : "skip";
-  const paginated = usePaginatedQuery(api.ownChecks.listOwnChecks, isEntryStatus ? baseArgs : "skip", { initialNumItems: 50 });
-  const derived = useQuery(api.ownChecks.listOwnChecks, !isEntryStatus && baseArgs !== "skip" ? { ...baseArgs, paginationOpts: { numItems: 2_000, cursor: null } } : "skip");
-  const rows = (isEntryStatus ? paginated.results : derived?.page) ?? emptyRows;
+  } : null;
+  const planArgs = commonArgs && !isEntryStatus
+    ? { ...commonArgs, ...(status === "notCompleted" ? { status: "notCompleted" as const } : {}) }
+    : "skip";
+  const entryArgs = commonArgs && isEntryStatus
+    ? { ...commonArgs, status: status as "completed" | "approved" | "deviation" }
+    : "skip";
+  const paginated = usePaginatedQuery(api.ownChecks.listOwnCheckEntries, entryArgs, { initialNumItems: 50 });
+  const plan = useQuery(api.ownChecks.listOwnCheckPlan, planArgs);
+  const rows = (isEntryStatus ? paginated.results : plan?.rows) ?? emptyRows;
   const performerOptions = useMemo(() => [...new Map(rows.filter((row) => row.entry).map((row) => [row.entry!.performedBy, row.entry!.performedByName])).entries()], [rows]);
-  const loading = locations === undefined || (Boolean(locationId && rangeValid && dateContext === undefined) || (isEntryStatus ? paginated.status === "LoadingFirstPage" : baseArgs !== "skip" && derived === undefined));
+  const loading = locations === undefined || (Boolean(locationId && rangeValid && dateContext === undefined) || (isEntryStatus ? paginated.status === "LoadingFirstPage" : planArgs !== "skip" && plan === undefined));
 
   function updateRange(next: Partial<{ from: string; to: string }>) {
     if (!locationId) return;
@@ -106,8 +115,8 @@ export function OwnChecksOverview() {
       <Card>
         <CardHeader><CardTitle>Kontroller · {fromDateKey ? formatDate(fromDateKey) : ""} – {toDateKey ? formatDate(toDateKey) : ""}</CardTitle></CardHeader>
         <CardContent>
-          {rows.length ? <><div className="hidden overflow-x-auto md:block"><Table><TableHeader><TableRow><TableHead>Dato</TableHead><TableHead>Egenkontrol</TableHead><TableHead>Lokation</TableHead><TableHead>Kontroltype</TableHead><TableHead>Planlagt</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={`${row.locationId}-${row.templateId}-${row.dueDateKey}`} tabIndex={row.entry ? 0 : undefined} className={row.entry ? "cursor-pointer" : undefined} onClick={() => row.entry && setSelectedEntryId(row.entry.id)} onKeyDown={(event) => { if (row.entry && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setSelectedEntryId(row.entry.id); } }}><TableCell>{formatDate(row.dueDateKey)}</TableCell><TableCell className="font-medium">{row.name}</TableCell><TableCell>{row.locationName}</TableCell><TableCell>{ownCheckControlTypeLabels[row.controlType]}</TableCell><TableCell>{formatTime(row.dueAt, row.timeZone)}</TableCell><TableCell><StatusBadge row={row} /></TableCell></TableRow>)}</TableBody></Table></div><div className="flex flex-col gap-2 md:hidden">{rows.map((row) => <RowContent key={`${row.locationId}-${row.templateId}-${row.dueDateKey}`} row={row} onOpen={() => row.entry && setSelectedEntryId(row.entry.id)} />)}</div></> : <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground"><CircleHelpIcon /><p>Ingen egenkontroller matcher filtrene.</p></div>}
-          {derived?.truncated ? <p className="mt-4 text-sm text-muted-foreground">Listen er begrænset til 2.000 rækker. Vælg en kortere periode.</p> : null}
+          {rows.length ? <><div className="hidden overflow-x-auto md:block"><Table><TableHeader><TableRow><TableHead>Dato</TableHead><TableHead>Egenkontrol</TableHead><TableHead>Lokation</TableHead><TableHead>Kontroltype</TableHead><TableHead>Planlagt</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={`${row.locationId}-${row.templateId}-${row.dueDateKey}`} tabIndex={row.entry ? 0 : undefined} className={row.entry ? "cursor-pointer" : undefined} onClick={() => row.entry && setSelectedEntryId(row.entry.id)} onKeyDown={(event) => { if (row.entry && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setSelectedEntryId(row.entry.id); } }}><TableCell>{formatDate(row.dueDateKey)}</TableCell><TableCell className="font-medium">{row.name}</TableCell><TableCell>{row.locationName}</TableCell><TableCell>{ownCheckControlTypeLabels[row.controlType]}</TableCell><TableCell>{formatTime(row.dueAt, row.timeZone)}</TableCell><TableCell><div className="flex items-center gap-2"><StatusBadge row={row} />{isOverdue(row, now) ? <span className="text-xs font-medium text-destructive">Overskredet</span> : null}</div></TableCell></TableRow>)}</TableBody></Table></div><div className="flex flex-col gap-2 md:hidden">{rows.map((row) => <RowContent key={`${row.locationId}-${row.templateId}-${row.dueDateKey}`} row={row} now={now} onOpen={() => row.entry && setSelectedEntryId(row.entry.id)} />)}</div></> : <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground"><CircleHelpIcon /><p>Ingen egenkontroller matcher filtrene.</p></div>}
+          {!isEntryStatus && plan?.truncated ? <p className="mt-4 text-sm text-muted-foreground">Listen er begrænset til 2.000 rækker. Vælg en kortere periode.</p> : null}
           {isEntryStatus && paginated.status === "CanLoadMore" ? <Button type="button" variant="outline" className="mt-4 min-h-11" onClick={() => paginated.loadMore(50)}>Vis flere</Button> : null}
         </CardContent>
       </Card>

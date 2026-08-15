@@ -4,7 +4,6 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
   addDateKey,
   formatValue,
-  isOverdue,
   ownCheckStatus,
   ownCheckStatusLabels,
   type OwnCheckOccurrence,
@@ -192,11 +191,29 @@ export function entrySummary(entry: Doc<"ownCheckEntries"> | null) {
   };
 }
 
+export function occurrenceForEntry(
+  entry: Doc<"ownCheckEntries">,
+  version: Doc<"ownCheckTemplateVersions">,
+  timeZone: string,
+): OwnCheckOccurrence {
+  return {
+    templateId: version.templateId,
+    templateVersionId: version._id,
+    templateVersion: version.version,
+    name: version.name,
+    controlType: version.controlType,
+    dueDateKey: entry.dueDateKey,
+    startsAt: version.startMinuteOfDay === undefined
+      ? null
+      : zonedTimestamp(entry.dueDateKey, version.startMinuteOfDay, timeZone),
+    dueAt: entry.dueAt,
+  };
+}
+
 export function planItem(
   occurrence: OwnCheckOccurrence,
   version: Doc<"ownCheckTemplateVersions">,
   entry: Doc<"ownCheckEntries"> | null,
-  now: number,
 ) {
   return {
     templateId: version.templateId,
@@ -210,7 +227,6 @@ export function planItem(
     dueDateKey: occurrence.dueDateKey,
     startsAt: occurrence.startsAt,
     dueAt: occurrence.dueAt,
-    overdue: isOverdue(occurrence, now),
     status: ownCheckStatus(entry),
     entry: entrySummary(entry),
   };

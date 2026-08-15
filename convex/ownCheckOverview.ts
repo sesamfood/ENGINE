@@ -22,22 +22,23 @@ import {
   loadTemplateVersionsUntil,
   MAX_OVERVIEW_ROWS,
   occurrenceKey,
+  occurrenceForEntry,
   planItem,
   ownCheckDateContext,
   requireLocation,
-  requireFiniteNow,
   versionInput,
 } from "./lib/ownChecks";
 import { resolveLocationTimeZones, resolveTimeZone } from "./lib/timeZone";
 import { ownCheckControlTypeValidator, ownCheckFieldValidator, ownCheckNoteValidator, ownCheckValueValidator } from "./lib/ownCheckValidators";
 import { addDateKey, ownCheckStatus, zonedTimestamp } from "../lib/own-checks";
 
-const statusFilterValidator = v.union(
-  v.literal("notCompleted"),
-  v.literal("completed"),
-  v.literal("approved"),
-  v.literal("deviation"),
-);
+const MAX_OVERVIEW_PAGE_SIZE = 100;
+
+function requirePageSize(numItems: number) {
+  if (!Number.isInteger(numItems) || numItems <= 0 || numItems > MAX_OVERVIEW_PAGE_SIZE) {
+    throw new ConvexError("Siden er for stor");
+  }
+}
 
 const overviewRowValidator = v.object({
   locationId: v.id("locations"),
@@ -47,36 +48,27 @@ const overviewRowValidator = v.object({
   templateVersion: v.number(),
   name: v.string(),
   controlType: ownCheckControlTypeValidator,
-  description: v.string(),
-  fields: v.array(ownCheckFieldValidator),
-  responsibleRole: v.union(v.string(), v.null()),
   dueDateKey: v.string(),
   startsAt: v.union(v.number(), v.null()),
   dueAt: v.number(),
   timeZone: v.string(),
-  overdue: v.boolean(),
   status: v.union(v.literal("notCompleted"), v.literal("completed"), v.literal("approved"), v.literal("deviation")),
   entry: v.union(v.object({
     id: v.id("ownCheckEntries"),
     status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
     hasDeviation: v.boolean(),
     followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
-    compliant: v.boolean(),
-    values: v.array(ownCheckValueValidator),
-    note: v.union(v.string(), v.null()),
-    deviation: v.union(ownCheckNoteValidator, v.null()),
-    correctiveAction: v.union(ownCheckNoteValidator, v.null()),
-    performedAt: v.number(),
     performedBy: v.string(),
     performedByName: v.string(),
-    approvedAt: v.union(v.number(), v.null()),
-    approvedBy: v.union(v.string(), v.null()),
-    approvedByName: v.union(v.string(), v.null()),
-    revision: v.number(),
   }), v.null()),
 });
 
-const overviewPaginationValidator = v.object({
+const overviewPlanValidator = v.object({
+  rows: v.array(overviewRowValidator),
+  truncated: v.boolean(),
+});
+
+const overviewEntriesPaginationValidator = v.object({
   ...paginationResultValidator(overviewRowValidator).fields,
   truncated: v.boolean(),
 });
@@ -144,7 +136,29 @@ const revisionValidator = v.object({
 const locationIdsValidator = v.optional(v.id("locations"));
 
 type OverviewFilter = ReturnType<typeof resolveLocationFilter>;
-type OverviewRow = ReturnType<typeof planItem> & { locationId: Id<"locations">; locationName: string; timeZone: string };
+type OverviewEntry = {
+  id: Id<"ownCheckEntries">;
+  status: "completed" | "deviation" | "approved";
+  hasDeviation: boolean;
+  followUp: "none" | "open" | "resolved";
+  performedBy: string;
+  performedByName: string;
+};
+type OverviewRow = {
+  locationId: Id<"locations">;
+  locationName: string;
+  templateId: Id<"ownCheckTemplates">;
+  templateVersionId: Id<"ownCheckTemplateVersions">;
+  templateVersion: number;
+  name: string;
+  controlType: Doc<"ownCheckTemplateVersions">["controlType"];
+  dueDateKey: string;
+  startsAt: number | null;
+  dueAt: number;
+  timeZone: string;
+  status: "notCompleted" | "completed" | "approved" | "deviation";
+  entry: OverviewEntry | null;
+};
 
 const MAX_OVERVIEW_LOCATIONS = 200;
 
@@ -182,14 +196,65 @@ async function resolveOverviewLocations(ctx: QueryCtx, organizationId: string, f
   return await Promise.all(locationIds.map((locationId) => requireLocation(ctx, organizationId, locationId)));
 }
 
+function slimOverviewRow(
+  item: ReturnType<typeof planItem>,
+  locationId: Id<"locations">,
+  locationName: string,
+  timeZone: string,
+): OverviewRow {
+  return {
+    locationId,
+    locationName,
+    templateId: item.templateId as Id<"ownCheckTemplates">,
+    templateVersionId: item.templateVersionId as Id<"ownCheckTemplateVersions">,
+    templateVersion: item.templateVersion,
+    name: item.name,
+    controlType: item.controlType,
+    dueDateKey: item.dueDateKey,
+    startsAt: item.startsAt,
+    dueAt: item.dueAt,
+    timeZone,
+    status: item.status,
+    entry: item.entry
+      ? {
+          id: item.entry.id,
+          status: item.entry.status,
+          hasDeviation: item.entry.hasDeviation,
+          followUp: item.entry.followUp,
+          performedBy: item.entry.performedBy,
+          performedByName: item.entry.performedByName,
+        }
+      : null,
+  };
+}
+
+async function resolveOverviewVersion(
+  ctx: QueryCtx,
+  organizationId: string,
+  versionsById: Map<Id<"ownCheckTemplateVersions">, Doc<"ownCheckTemplateVersions">>,
+  versionId: Id<"ownCheckTemplateVersions">,
+  templateId: Id<"ownCheckTemplates">,
+) {
+  let version = versionsById.get(versionId);
+  if (!version) {
+    version = await ctx.db.get("ownCheckTemplateVersions", versionId) ?? undefined;
+    if (version) versionsById.set(version._id, version);
+  }
+  if (!version || version.organizationId !== organizationId || version.templateId !== templateId) {
+    throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+  }
+  return version;
+}
+
 async function locationRows(
+  ctx: QueryCtx,
+  organizationId: string,
   locations: Doc<"locations">[],
   fromDateKey: string,
   toDateKey: string,
-  now: number,
   versions: Doc<"ownCheckTemplateVersions">[],
   timeZones: Map<Id<"locations">, string>,
-  entriesByKey: Map<string, Doc<"ownCheckEntries">>,
+  entries: Doc<"ownCheckEntries">[],
   entriesTruncated: boolean,
   controlType: Doc<"ownCheckTemplateVersions">["controlType"] | undefined,
   status: "notCompleted" | "completed" | "approved" | "deviation" | undefined,
@@ -199,6 +264,10 @@ async function locationRows(
   const rows: OverviewRow[] = [];
   let truncated = entriesTruncated;
   const versionsById = new Map(versions.map((version) => [version._id, version]));
+  const locationsById = new Map(locations.map((location) => [location._id, location]));
+  const entriesByKey = new Map(entries.map((entry) => [overviewEntryKey(entry.locationId, entry.templateId, entry.dueDateKey), entry]));
+  const consumedKeys = new Set<string>();
+
   for (const location of locations) {
     if (rows.length >= MAX_OVERVIEW_ROWS) {
       truncated = true;
@@ -209,15 +278,48 @@ async function locationRows(
     if (!timeZone) continue;
     const occurrences = expandOwnCheckOccurrences({ versions: versions.map(versionInput), locationId, fromDateKey, toDateKey, timeZone });
     for (const occurrence of occurrences) {
-      if (controlType && occurrence.controlType !== controlType) continue;
-      const version = versionsById.get(occurrence.templateVersionId as Id<"ownCheckTemplateVersions">);
-      if (!version) continue;
-      const entry = entriesByKey.get(overviewEntryKey(locationId, version.templateId, occurrence.dueDateKey)) ?? null;
+      const key = overviewEntryKey(locationId, occurrence.templateId, occurrence.dueDateKey);
+      consumedKeys.add(key);
+      const entry = entriesByKey.get(key) ?? null;
+
+      const currentVersion = await resolveOverviewVersion(
+        ctx,
+        organizationId,
+        versionsById,
+        occurrence.templateVersionId as Id<"ownCheckTemplateVersions">,
+        occurrence.templateId as Id<"ownCheckTemplates">,
+      );
+      const version = entry
+        ? await resolveOverviewVersion(ctx, organizationId, versionsById, entry.templateVersionId, entry.templateId)
+        : currentVersion;
+      const rowOccurrence = entry ? occurrenceForEntry(entry, version, timeZone) : occurrence;
+      if (controlType && rowOccurrence.controlType !== controlType) continue;
       if (performedBy && entry && entry.performedBy !== performedBy) continue;
       if (performedBy && !entry && (!version.responsibleRole || version.responsibleRole !== performedRole)) continue;
-      const item = planItem(occurrence, version, entry, now);
+      const item = planItem(rowOccurrence, version, entry);
       if (!withinStatus(item, status)) continue;
-      rows.push({ ...item, locationId, locationName: location.name, timeZone });
+      rows.push(slimOverviewRow(item, locationId, location.name, timeZone));
+      if (rows.length >= MAX_OVERVIEW_ROWS) {
+        truncated = true;
+        break;
+      }
+    }
+  }
+
+  if (status !== "notCompleted" && rows.length < MAX_OVERVIEW_ROWS) {
+    for (const entry of entries) {
+      const key = overviewEntryKey(entry.locationId, entry.templateId, entry.dueDateKey);
+      if (consumedKeys.has(key)) continue;
+      const location = locationsById.get(entry.locationId);
+      const timeZone = timeZones.get(entry.locationId);
+      if (!location || !timeZone) continue;
+      const version = await resolveOverviewVersion(ctx, organizationId, versionsById, entry.templateVersionId, entry.templateId);
+      const occurrence = occurrenceForEntry(entry, version, timeZone);
+      if (controlType && occurrence.controlType !== controlType) continue;
+      if (performedBy && entry.performedBy !== performedBy) continue;
+      const item = planItem(occurrence, version, entry);
+      if (!withinStatus(item, status)) continue;
+      rows.push(slimOverviewRow(item, entry.locationId, location.name, timeZone));
       if (rows.length >= MAX_OVERVIEW_ROWS) {
         truncated = true;
         break;
@@ -236,7 +338,6 @@ async function entryRows(
   versions: Doc<"ownCheckTemplateVersions">[],
   fromDateKey: string,
   toDateKey: string,
-  now: number,
   controlType: Doc<"ownCheckTemplateVersions">["controlType"] | undefined,
   status: "completed" | "approved" | "deviation",
   performedBy: string | undefined,
@@ -269,51 +370,36 @@ async function entryRows(
         .paginate(paginationOpts);
   const rows: OverviewRow[] = [];
   for (const entry of page.page) {
-    const version = versionsById.get(entry.templateVersionId);
     const location = locationsById.get(entry.locationId);
     const entryTimeZone = timeZones.get(entry.locationId);
-    if (!version || !location || !entryTimeZone) continue;
-    const occurrence = {
-      templateId: entry.templateId,
-      templateVersionId: entry.templateVersionId,
-      templateVersion: entry.templateVersion,
-      name: entry.name,
-      controlType: entry.controlType,
-      dueDateKey: entry.dueDateKey,
-      startsAt: version.startMinuteOfDay === undefined ? null : zonedTimestamp(entry.dueDateKey, version.startMinuteOfDay, entryTimeZone),
-      dueAt: entry.dueAt,
-    };
-    rows.push({ ...planItem(occurrence, version, entry, now), locationId: entry.locationId, locationName: location.name, timeZone: entryTimeZone });
+    if (!location || !entryTimeZone) continue;
+    const version = await resolveOverviewVersion(ctx, organizationId, versionsById, entry.templateVersionId, entry.templateId);
+    const occurrence = occurrenceForEntry(entry, version, entryTimeZone);
+    rows.push(slimOverviewRow(planItem(occurrence, version, entry), entry.locationId, location.name, entryTimeZone));
   }
   return { ...page, page: rows, truncated: false };
 }
 
-export const listOwnChecks = query({
+export const listOwnCheckPlan = query({
   args: {
-    paginationOpts: paginationOptsValidator,
-    now: v.number(),
     fromDateKey: v.string(),
     toDateKey: v.string(),
     locationId: locationIdsValidator,
     controlType: v.optional(ownCheckControlTypeValidator),
-    status: v.optional(statusFilterValidator),
+    status: v.optional(v.literal("notCompleted")),
     performedBy: v.optional(v.string()),
   },
-  returns: overviewPaginationValidator,
+  returns: overviewPlanValidator,
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckViewer(ctx);
-    requireFiniteNow(args.now);
     const range = dateKeyDifference(args.fromDateKey, args.toDateKey);
     if (range < 0 || range + 1 > 92) throw new ConvexError("Vælg højst 92 dage i oversigten");
     const filter = resolveLocationFilter(auth, args.locationId);
     const locations = await resolveOverviewLocations(ctx, auth.organizationId, filter);
-    if (!locations.length) return { page: [], isDone: true, continueCursor: "", truncated: false };
+    if (!locations.length) return { rows: [], truncated: false };
     const timeZones = await resolveLocationTimeZones(ctx, auth.organizationId, locations);
     const latestEndExclusive = Math.max(...locations.map((location) => zonedTimestamp(addDateKey(args.toDateKey, 1), 0, timeZones.get(location._id)!)));
     const versions = await loadTemplateVersionsUntil(ctx, auth.organizationId, latestEndExclusive);
-    if (args.status && args.status !== "notCompleted") {
-      return await entryRows(ctx, auth.organizationId, filter, locations, timeZones, versions, args.fromDateKey, args.toDateKey, args.now, args.controlType, args.status, args.performedBy, args.paginationOpts);
-    }
     const performedRole = args.performedBy
       ? (await getDatabaseAdapter(ctx).findOne<{ role?: string }>({
           model: "member",
@@ -324,18 +410,41 @@ export const listOwnChecks = query({
         }))?.role
       : undefined;
     const allowedLocationIds = new Set(locations.map((location) => location._id));
-    const entries = versions.length === 0
-      ? []
-      : await ctx.db
-        .query("ownCheckEntries")
-        .withIndex("by_org_dueDateKey_dueAt", (q) => q.eq("organizationId", auth.organizationId).gte("dueDateKey", args.fromDateKey).lte("dueDateKey", args.toDateKey))
-        .filter((q) => locationFilter(q, allowedLocationIds))
-        .take(MAX_OVERVIEW_ROWS + 1);
-    const entriesByKey = new Map(entries.map((entry) => [overviewEntryKey(entry.locationId, entry.templateId, entry.dueDateKey), entry]));
-    const result = await locationRows(locations, args.fromDateKey, args.toDateKey, args.now, versions, timeZones, entriesByKey, entries.length > MAX_OVERVIEW_ROWS, args.controlType, args.status, args.performedBy, performedRole);
+    const entries = await ctx.db
+      .query("ownCheckEntries")
+      .withIndex("by_org_dueDateKey_dueAt", (q) => q.eq("organizationId", auth.organizationId).gte("dueDateKey", args.fromDateKey).lte("dueDateKey", args.toDateKey))
+      .filter((q) => locationFilter(q, allowedLocationIds))
+      .take(MAX_OVERVIEW_ROWS + 1);
+    const result = await locationRows(ctx, auth.organizationId, locations, args.fromDateKey, args.toDateKey, versions, timeZones, entries, entries.length > MAX_OVERVIEW_ROWS, args.controlType, args.status, args.performedBy, performedRole);
     const rows = result.rows;
     rows.sort((a, b) => a.dueAt - b.dueAt || Number(Boolean(b.entry?.followUp === "open")) - Number(Boolean(a.entry?.followUp === "open")) || a.name.localeCompare(b.name, "da"));
-    return { page: rows, isDone: true, continueCursor: "", truncated: result.truncated };
+    return { rows, truncated: result.truncated };
+  },
+});
+
+export const listOwnCheckEntries = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    fromDateKey: v.string(),
+    toDateKey: v.string(),
+    locationId: locationIdsValidator,
+    controlType: v.optional(ownCheckControlTypeValidator),
+    status: v.union(v.literal("completed"), v.literal("approved"), v.literal("deviation")),
+    performedBy: v.optional(v.string()),
+  },
+  returns: overviewEntriesPaginationValidator,
+  handler: async (ctx, args) => {
+    const auth = await requireOwnCheckViewer(ctx);
+    requirePageSize(args.paginationOpts.numItems);
+    const range = dateKeyDifference(args.fromDateKey, args.toDateKey);
+    if (range < 0 || range + 1 > 92) throw new ConvexError("Vælg højst 92 dage i oversigten");
+    const filter = resolveLocationFilter(auth, args.locationId);
+    const locations = await resolveOverviewLocations(ctx, auth.organizationId, filter);
+    if (!locations.length) return { page: [], isDone: true, continueCursor: "", truncated: false };
+    const timeZones = await resolveLocationTimeZones(ctx, auth.organizationId, locations);
+    const latestEndExclusive = Math.max(...locations.map((location) => zonedTimestamp(addDateKey(args.toDateKey, 1), 0, timeZones.get(location._id)!)));
+    const versions = await loadTemplateVersionsUntil(ctx, auth.organizationId, latestEndExclusive);
+    return await entryRows(ctx, auth.organizationId, filter, locations, timeZones, versions, args.fromDateKey, args.toDateKey, args.controlType, args.status, args.performedBy, args.paginationOpts);
   },
 });
 

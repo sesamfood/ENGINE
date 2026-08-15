@@ -14,6 +14,10 @@ import {
   type OwnCheckField,
   type OwnCheckValue,
 } from "./own-checks";
+import {
+  MAX_EMBEDDED_ATTACHMENT_BYTES,
+  MAX_EMBEDDED_ATTACHMENTS,
+} from "./own-check-documentation";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -21,7 +25,6 @@ const MARGIN = 40;
 const FOOTER_HEIGHT = 42;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 const MAX_RECORDS = 5_000;
-const MAX_IMAGES = 2_000;
 const MAX_OUTPUT_SIZE = 100 * 1024 * 1024;
 const WIN_ANSI_EXTRA_CHARACTERS = new Set("€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ");
 
@@ -48,7 +51,8 @@ export type InspectionPdfAttachment = {
   fieldLabel: string;
   fileName: string;
   contentType: string;
-  bytes: Uint8Array;
+  bytes?: Uint8Array;
+  omittedReason?: string;
   addedAtRevision: number;
   removedAtRevision: number | null;
 };
@@ -162,7 +166,9 @@ function imageDimensions(image: PDFImage, maxWidth: number, maxHeight: number) {
 }
 
 export async function buildInspectionPdf(input: InspectionPdfInput) {
-  if (input.records.length > MAX_RECORDS || input.missing.length > MAX_RECORDS || input.records.reduce((sum, record) => sum + record.attachments.filter((attachment) => attachment.contentType.startsWith("image/")).length, 0) > MAX_IMAGES) {
+  const embeddedAttachments = input.records.flatMap((record) => record.attachments).filter((attachment): attachment is InspectionPdfAttachment & { bytes: Uint8Array } => Boolean(attachment.bytes));
+  const embeddedAttachmentBytes = embeddedAttachments.reduce((sum, attachment) => sum + attachment.bytes.byteLength, 0);
+  if (input.records.length > MAX_RECORDS || input.missing.length > MAX_RECORDS || embeddedAttachments.length > MAX_EMBEDDED_ATTACHMENTS || embeddedAttachmentBytes > MAX_EMBEDDED_ATTACHMENT_BYTES) {
     throw new Error("PDF-eksporten er for stor. Vælg en kortere periode.");
   }
 
@@ -217,6 +223,11 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
     text(`${label}:`, MARGIN, cursor, 9, bold, rgb(0.35, 0.35, 0.38));
     text(value, MARGIN + 112, cursor, 9);
     cursor -= 14;
+  }
+
+  function omittedAttachment(attachment: InspectionPdfAttachment) {
+    ensure(30);
+    paragraph(`${attachment.fieldLabel} · ${attachment.fileName}: ${attachment.omittedReason ?? "Filen blev ikke indlejret på grund af eksportgrænsen."}`, 8, rgb(0.7, 0.08, 0.08));
   }
 
   if (input.header.logoBytes) {
@@ -285,6 +296,10 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
       }
       const imageAttachments = record.attachments.filter((attachment) => attachment.contentType.startsWith("image/"));
       for (const attachment of imageAttachments) {
+        if (!attachment.bytes) {
+          omittedAttachment(attachment);
+          continue;
+        }
         ensure(150);
         try {
           const image = attachment.contentType === "image/png" ? await pdf.embedPng(attachment.bytes) : await pdf.embedJpg(attachment.bytes);
@@ -324,6 +339,10 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
       ensure(28);
       text(`${record.name} · ${attachment.fieldLabel} · ${attachment.fileName}`, MARGIN, cursor, 8, bold);
       cursor -= 14;
+      if (!attachment.bytes) {
+        omittedAttachment(attachment);
+        continue;
+      }
       try {
         const source = await PDFDocument.load(attachment.bytes);
         const copiedPages = await pdf.copyPages(source, source.getPageIndices());
