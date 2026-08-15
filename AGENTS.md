@@ -1,7 +1,9 @@
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
 <!-- END:nextjs-agent-rules -->
 
 # Project overview
@@ -67,12 +69,12 @@ Always follow this section when orchestrating work or delegating to subagents. T
 
 Scores are 1–10, higher is better. Cost is value for money (higher = cheaper), intelligence is capability.
 
-| Model | Cost | Intelligence | Use for |
-| --- | --- | --- | --- |
-| `gpt-5.6-sol` (high) | 1 | 9 | Last resort. Hard debugging, subtle correctness or security problems, and tasks the other models have already failed at. |
-| Claude Opus 5 (high) | 2 | 8 | Orchestration, task breakdown, planning, and architecture. Reviews the finished work and owns changes touching auth, permissions, or the data model. |
-| `gpt-5.6-terra` (high) | 4 | 7 | First escalation. Reviewing and debugging luna's output, and bug fixes luna could not land. |
-| `gpt-5.6-luna` (max) | 7 | 5 | **Default workhorse.** All delegated implementation: features, refactors, tests, boilerplate, Danish text, docs. |
+| Model                  | Cost | Intelligence | Use for                                                                                                                                              |
+| ---------------------- | ---- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gpt-5.6-sol` (high)   | 1    | 9            | Last resort. Hard debugging, subtle correctness or security problems, and tasks the other models have already failed at.                             |
+| Claude Opus 5 (high)   | 2    | 8            | Orchestration, task breakdown, planning, and architecture. Reviews the finished work and owns changes touching auth, permissions, or the data model. |
+| `gpt-5.6-terra` (high) | 4    | 7            | First escalation. Reviewing and debugging luna's output, and bug fixes luna could not land.                                                          |
+| `gpt-5.6-luna` (max)   | 7    | 5            | **Default workhorse.** All delegated implementation: features, refactors, tests, boilerplate, Danish text, docs.                                     |
 
 Rules:
 
@@ -95,32 +97,6 @@ Before sending anything to a subagent, split the work into tasks that are indepe
 5. **Verification** — the command, test, or observable behaviour that proves it works.
 
 If a task cannot be described this way, it is not ready to delegate: investigate it first, or split it further.
-
-## Using the GPT models via Codex CLI
-
-The `gpt-5.6-*` models run through the Codex CLI, which is installed locally.
-
-```bash
-# Default: implement with luna, editing files in the workspace
-codex exec -m gpt-5.6-luna -c model_reasoning_effort="max" -s workspace-write \
-  "Add a Danish empty-state message to the count report table"
-
-# Review or debug the result with a stronger model (read-only)
-codex exec -m gpt-5.6-terra -c model_reasoning_effort="high" \
-  "Review the uncommitted changes for correctness and organization scoping"
-
-# Last resort debugging
-codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" \
-  "Find why salesDaily totals drift after a resync"
-
-# Continue the previous session
-codex exec resume --last "Also update the tests"
-
-# Interactive session
-codex -m gpt-5.6-luna
-```
-
-Pass the full task definition from the section above as the prompt. Codex starts with no knowledge of this conversation, so include the goal, scope, constraints, and verification step in the prompt itself.
 
 <!-- convex-ai-start -->
 
