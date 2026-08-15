@@ -19,6 +19,8 @@ export type KioskDestinationId = (typeof kioskDestinations)[number]["id"];
 export const kioskDestinationWarnings: Partial<
   Record<KioskDestinationId, string>
 > = {
+  "ownChecks.overview":
+    "Tabletten kan registrere korrigerende handlinger fra egenkontroloversigten, uanset hvilken rolle den er logget ind med.",
   "ownChecks.documentation":
     "Tabletten kan eksportere kontroldokumentation, uanset hvilken rolle den er logget ind med.",
 };

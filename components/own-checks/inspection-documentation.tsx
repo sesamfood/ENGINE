@@ -9,7 +9,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { downloadCsv } from "@/lib/download-csv";
 import { buildInspectionPdf } from "@/lib/own-check-pdf";
-import { isDocumentationReportReady } from "@/lib/own-check-documentation";
+import { MAX_EMBEDDED_ATTACHMENT_BYTES, MAX_EMBEDDED_ATTACHMENTS, isDocumentationReportReady } from "@/lib/own-check-documentation";
 import { formatValue, evaluateCompliance, ownCheckControlTypeLabels, ownCheckStatus, ownCheckStatusLabels } from "@/lib/own-checks";
 import { LocationField } from "@/components/location-field";
 import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
@@ -25,6 +25,20 @@ import { InspectionReport, type DocumentationRecord, type MissingRecord } from "
 import { useOwnCheckNow } from "./use-own-check-now";
 
 const MAX_EXPORT_RECORDS = 5_000;
+const MAX_EXPORT_PAGE_SIZE = 100;
+const MAX_ATTACHMENT_FETCH_CONCURRENCY = 4;
+
+type ExportAttachment = {
+  recordId: DocumentationRecord["id"];
+  fieldKey: string;
+  fieldLabel: string;
+  fileName: string;
+  contentType: string;
+  bytes?: Uint8Array;
+  omittedReason?: string;
+  addedAtRevision: number;
+  removedAtRevision: number | null;
+};
 
 type PreparedValue = {
   header: {
@@ -137,11 +151,11 @@ export function InspectionDocumentation() {
   const preparedForCurrent = prepared?.key === preparedKey ? prepared.value : null;
   const prepare = useMutation(api.ownCheckDocumentation.prepareDocumentation);
   const documentationArgs = preparedForCurrent && !preparedForCurrent.missing.truncated ? { fromDateKey, toDateKey, locationId: locationId!, generatedAt: preparedForCurrent.header.generatedAt } : "skip";
-  const { results, status, loadMore } = usePaginatedQuery(api.ownCheckDocumentation.buildDocumentation, documentationArgs, { initialNumItems: 25 });
+  const { results, status, loadMore } = usePaginatedQuery(api.ownCheckDocumentation.buildDocumentation, documentationArgs, { initialNumItems: MAX_EXPORT_PAGE_SIZE });
   const branding = useQuery(api.organization.getBranding, canExport && organization.data ? {} : "skip");
 
   useEffect(() => {
-    if (preparedForCurrent && status === "CanLoadMore" && results.length <= MAX_EXPORT_RECORDS) loadMore(25);
+    if (preparedForCurrent && status === "CanLoadMore" && results.length <= MAX_EXPORT_RECORDS) loadMore(MAX_EXPORT_PAGE_SIZE);
   }, [loadMore, preparedForCurrent, results.length, status]);
 
   const completedTooLarge = Boolean(preparedForCurrent && (results.length > MAX_EXPORT_RECORDS || (results.length === MAX_EXPORT_RECORDS && status !== "Exhausted")));
@@ -186,22 +200,60 @@ export function InspectionDocumentation() {
     }
   }
 
-  async function fetchAttachmentBytes(records: DocumentationRecord[]) {
-    let totalBytes = 0;
-    const output = [];
+  async function fetchAttachmentBytes(records: DocumentationRecord[]): Promise<ExportAttachment[]> {
+    const output: ExportAttachment[] = [];
+    const selected: Array<{ outputIndex: number; url: string }> = [];
+    let selectedCount = 0;
+    let selectedBytes = 0;
+    let limitReached = false;
+
     for (const record of records) {
       for (const attachment of record.attachments) {
-        if (!attachment.url) continue;
-        const response = await fetch(attachment.url);
-        if (!response.ok) throw new Error("En vedhæftet fil kunne ikke hentes");
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        totalBytes += bytes.byteLength;
-        if (totalBytes > 100 * 1024 * 1024) throw new Error("PDF-eksporten er for stor. Vælg en kortere periode.");
         const field = record.fields.find((candidate) => candidate.key === attachment.fieldKey);
         const extension = attachment.contentType === "application/pdf" ? "pdf" : attachment.contentType === "image/png" ? "png" : "jpg";
-        output.push({ recordId: record.id, fieldKey: attachment.fieldKey, fieldLabel: field?.label ?? attachment.fieldKey, fileName: `${record.dueDateKey}-${String(record.id)}-${attachment.fieldKey}.${extension}`, contentType: attachment.contentType, bytes, addedAtRevision: attachment.addedAtRevision, removedAtRevision: attachment.removedAtRevision });
+        const metadata: ExportAttachment = {
+          recordId: record.id,
+          fieldKey: attachment.fieldKey,
+          fieldLabel: field?.label ?? attachment.fieldKey,
+          fileName: `${record.dueDateKey}-${String(record.id)}-${attachment.fieldKey}.${extension}`,
+          contentType: attachment.contentType,
+          addedAtRevision: attachment.addedAtRevision,
+          removedAtRevision: attachment.removedAtRevision,
+        };
+        const outputIndex = output.length;
+        output.push(metadata);
+        if (!attachment.url) {
+          output[outputIndex] = { ...metadata, omittedReason: "Filen var ikke tilgængelig ved eksporten." };
+          continue;
+        }
+
+        const fileSize = Number.isFinite(attachment.fileSize) ? Math.max(0, attachment.fileSize) : 0;
+        if (limitReached || selectedCount >= MAX_EMBEDDED_ATTACHMENTS || selectedBytes + fileSize > MAX_EMBEDDED_ATTACHMENT_BYTES) {
+          limitReached = true;
+          output[outputIndex] = { ...metadata, omittedReason: "Filen blev ikke indlejret på grund af eksportgrænsen." };
+          continue;
+        }
+
+        selectedCount += 1;
+        selectedBytes += fileSize;
+        selected.push({ outputIndex, url: attachment.url });
       }
     }
+
+    let nextIndex = 0;
+    async function fetchWorker() {
+      while (true) {
+        const item = selected[nextIndex];
+        if (!item) return;
+        nextIndex += 1;
+        const response = await fetch(item.url);
+        if (!response.ok) throw new Error("En vedhæftet fil kunne ikke hentes");
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        output[item.outputIndex] = { ...output[item.outputIndex]!, bytes };
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(MAX_ATTACHMENT_FETCH_CONCURRENCY, selected.length) }, () => fetchWorker()));
     return output;
   }
 
@@ -212,11 +264,11 @@ export function InspectionDocumentation() {
     }
     setGenerating(true);
     try {
+      const attachments = await fetchAttachmentBytes(reportRecords);
       let logoBytes: Uint8Array | null = null;
       if (branding?.wideLogoUrl) {
         try { const response = await fetch(branding.wideLogoUrl); if (response.ok) logoBytes = new Uint8Array(await response.arrayBuffer()); } catch { logoBytes = null; }
       }
-      const attachments = await fetchAttachmentBytes(reportRecords);
       const pdf = await buildInspectionPdf({
         header: {
           ...preparedForCurrent.header,
@@ -226,7 +278,7 @@ export function InspectionDocumentation() {
           deviationCount: reportRecords.filter((record) => record.hasDeviation).length,
           missingCount: missing.length,
         },
-        records: reportRecords.map((record) => ({ ...record, values: record.values as never, attachments: attachments.filter((attachment) => attachment.recordId === record.id).map((attachment) => ({ fieldKey: attachment.fieldKey, fieldLabel: attachment.fieldLabel, fileName: attachment.fileName, contentType: attachment.contentType, bytes: attachment.bytes, addedAtRevision: attachment.addedAtRevision, removedAtRevision: attachment.removedAtRevision })), revisions: record.revisions.map((revision) => ({ ...revision, changes: revision.changes.map((change) => ({ label: change.label, from: change.from, to: change.to })) })) })),
+        records: reportRecords.map((record) => ({ ...record, values: record.values as never, attachments: attachments.filter((attachment) => attachment.recordId === record.id).map((attachment) => ({ fieldKey: attachment.fieldKey, fieldLabel: attachment.fieldLabel, fileName: attachment.fileName, contentType: attachment.contentType, ...(attachment.bytes ? { bytes: attachment.bytes } : {}), ...(attachment.omittedReason ? { omittedReason: attachment.omittedReason } : {}), addedAtRevision: attachment.addedAtRevision, removedAtRevision: attachment.removedAtRevision })), revisions: record.revisions.map((revision) => ({ ...revision, changes: revision.changes.map((change) => ({ label: change.label, from: change.from, to: change.to })) })) })),
         missing: missing.map((item) => ({ dueDateKey: item.dueDateKey, dueAt: item.dueAt, name: item.name, responsibleRole: item.responsibleRole })),
       });
       downloadBytes(`egenkontrol-${exportName}-${fromDateKey}-${toDateKey}.pdf`, pdf, "application/pdf");

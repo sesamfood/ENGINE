@@ -7,6 +7,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireLocationAccess, requireOwnCheckExporter } from "./lib/auth";
+import { recordAudit } from "./lib/audit";
 import { dateKeyDifference, expandOwnCheckOccurrences, loadTemplateVersions, occurrenceKey, requireFiniteNow, versionInput } from "./lib/ownChecks";
 import { requireLocation } from "./lib/ownChecks";
 import { resolveTimeZone } from "./lib/timeZone";
@@ -280,6 +281,13 @@ export const prepareDocumentation = mutation({
       documentationHeader(ctx, auth.organizationId, auth.userName, location, args.fromDateKey, args.toDateKey, generatedAt, timeZone),
       missingDocumentation(ctx, auth.organizationId, args.locationId, args.fromDateKey, args.toDateKey, timeZone, generatedAt),
     ]);
+    await recordAudit(ctx, auth, {
+      action: "ownChecks.documentationPrepared",
+      entityTable: "locations",
+      entityId: location._id,
+      locationId: location._id,
+      summary: `Kontroldokumentation for ${location.name} blev klargjort for perioden ${args.fromDateKey} til ${args.toDateKey}`,
+    });
     return { header, missing };
   },
 });

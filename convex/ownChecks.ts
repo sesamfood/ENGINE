@@ -20,11 +20,12 @@ import {
   entriesForDate,
   loadTemplateVersions,
   occurrenceForTemplate,
+  occurrenceForEntry,
   occurrenceKey,
   expandOwnCheckOccurrences,
+  ownCheckDateContext,
   planItem,
   requireLocation,
-  requireFiniteNow,
   resolveLocationId,
   versionInput,
 } from "./lib/ownChecks";
@@ -89,7 +90,6 @@ const planItemValidator = v.object({
   dueDateKey: v.string(),
   startsAt: v.union(v.number(), v.null()),
   dueAt: v.number(),
-  overdue: v.boolean(),
   status: ownCheckStatusValidator,
   entry: entrySummaryValidator,
 });
@@ -123,7 +123,6 @@ async function mergedPlan(
   locationId: Id<"locations">,
   dateKey: string,
   timeZone: string,
-  now: number,
 ) {
   const versions = await loadTemplateVersions(ctx, organizationId, dateKey, dateKey, timeZone);
   const occurrences = expandOwnCheckOccurrences({
@@ -134,13 +133,48 @@ async function mergedPlan(
     timeZone,
   });
   const entries = await entriesForDate(ctx, organizationId, locationId, dateKey);
-  const byKey = new Map(entries.map((entry) => [occurrenceKey(entry.templateId, entry.dueDateKey), entry]));
   const versionsById = new Map(versions.map((version) => [version._id, version]));
-  return occurrences.flatMap((occurrence) => {
+  const entriesByKey = new Map<string, Doc<"ownCheckEntries">[]>();
+  for (const entry of entries) {
+    const key = occurrenceKey(entry.templateId, entry.dueDateKey);
+    const matching = entriesByKey.get(key) ?? [];
+    matching.push(entry);
+    entriesByKey.set(key, matching);
+  }
+  const consumedKeys = new Set<string>();
+  const consumedEntryIds = new Set<Id<"ownCheckEntries">>();
+  const resolveEntryVersion = async (entry: Doc<"ownCheckEntries">) => {
+    let version = versionsById.get(entry.templateVersionId);
+    if (!version) {
+      version = await ctx.db.get("ownCheckTemplateVersions", entry.templateVersionId) ?? undefined;
+      if (version) versionsById.set(version._id, version);
+    }
+    if (!version || version.organizationId !== organizationId || version.templateId !== entry.templateId) {
+      throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    }
+    return version;
+  };
+  const items = [] as Array<ReturnType<typeof planItem>>;
+  for (const occurrence of occurrences) {
     const version = versionsById.get(occurrence.templateVersionId as Id<"ownCheckTemplateVersions">);
-    if (!version) return [];
-    return [planItem(occurrence, version, byKey.get(occurrenceKey(version.templateId, dateKey)) ?? null, now)];
-  });
+    if (!version) continue;
+    const key = occurrenceKey(version.templateId, dateKey);
+    const entry = consumedKeys.has(key) ? undefined : entriesByKey.get(key)?.[0];
+    if (!entry) {
+      items.push(planItem(occurrence, version, null));
+      continue;
+    }
+    const entryVersion = await resolveEntryVersion(entry);
+    consumedKeys.add(key);
+    consumedEntryIds.add(entry._id);
+    items.push(planItem(occurrenceForEntry(entry, entryVersion, timeZone), entryVersion, entry));
+  }
+  for (const entry of entries) {
+    if (consumedEntryIds.has(entry._id)) continue;
+    const version = await resolveEntryVersion(entry);
+    items.push(planItem(occurrenceForEntry(entry, version, timeZone), version, entry));
+  }
+  return items;
 }
 
 export const generateAttachmentUploadUrl = mutation({
@@ -164,28 +198,34 @@ export const getApprovalSettings = query({
   },
 });
 
+export const getTodayDateContext = query({
+  args: { locationId: v.id("locations"), now: v.number() },
+  returns: v.object({ timeZone: v.string(), todayDateKey: v.string() }),
+  handler: async (ctx, args) => {
+    const auth = await requireOwnCheckPerformer(ctx, ["ownChecks.today", "ownChecks.overview"]);
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, auth.organizationId, args.locationId);
+    return await ownCheckDateContext(ctx, auth.organizationId, args.locationId, args.now);
+  },
+});
+
 export const listToday = query({
   args: {
-    now: v.number(),
     locationId: v.optional(v.id("locations")),
-    dateKey: v.optional(v.string()),
+    dateKey: v.string(),
   },
   returns: listTodayOutput,
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckPerformer(ctx, ["ownChecks.today", "ownChecks.overview"]);
-    requireFiniteNow(args.now);
+    dateKeyDifference(args.dateKey, args.dateKey);
     const locationFilter = resolveLocationFilter(auth, args.locationId);
     const locationId = await resolveLocationId(ctx, auth.organizationId, locationFilter);
     requireLocationAccess(auth, locationId);
     const location = await requireLocation(ctx, auth.organizationId, locationId);
     const timeZone = await resolveTimeZone(ctx, auth.organizationId, locationId);
-    const today = dateKeyInZone(args.now, timeZone);
-    const dateKey = args.dateKey ?? today;
-    const offset = dateKeyDifference(today, dateKey);
-    if (Math.abs(offset) > 366) throw new ConvexError("Datoen skal ligge inden for 366 dage fra i dag");
+    const dateKey = args.dateKey;
     const configuration = await getOwnCheckConfiguration(ctx, auth.organizationId);
-    const now = args.now;
-    const items = await mergedPlan(ctx, auth.organizationId, locationId, dateKey, timeZone, now);
+    const items = await mergedPlan(ctx, auth.organizationId, locationId, dateKey, timeZone);
     let backlog: typeof items = [];
     let truncated = false;
     if (configuration.lateSubmissionDays > 0) {
@@ -212,7 +252,7 @@ export const listToday = query({
         backlog = occurrences.flatMap((occurrence) => {
           const version = versionsById.get(occurrence.templateVersionId as Id<"ownCheckTemplateVersions">);
           if (!version || byKey.has(occurrenceKey(version.templateId, occurrence.dueDateKey))) return [];
-          return [planItem(occurrence, version, null, now)];
+          return [planItem(occurrence, version, null)];
         });
         if (backlog.length > MAX_BACKLOG_OCCURRENCES) {
           truncated = true;
@@ -271,6 +311,9 @@ async function validateValues(
       .query("ownCheckAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", attachmentIds[index]))
       .collect();
+    if (existing.some((attachment) => attachment.removedAtRevision !== undefined)) {
+      throw new ConvexError("Filen blev fjernet fra en tidligere rettelse. Upload filen igen");
+    }
     if (existing.some((attachment) => attachment.organizationId !== organizationId || existingEntryId === undefined || attachment.entryId !== existingEntryId)) {
       throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
     }
@@ -279,6 +322,27 @@ async function validateValues(
     if (!file?.contentType) throw new ConvexError("Filen blev ikke fundet");
     return { id: attachmentIds[index], contentType: file.contentType, size: file.size };
   });
+}
+
+async function ensureAttachmentCanBeInserted(
+  ctx: MutationCtx,
+  organizationId: string,
+  entryId: Id<"ownCheckEntries">,
+  storageId: Id<"_storage">,
+) {
+  const existing = await ctx.db
+    .query("ownCheckAttachments")
+    .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
+    .collect();
+  if (existing.some((attachment) => attachment.removedAtRevision !== undefined)) {
+    throw new ConvexError("Filen blev fjernet fra en tidligere rettelse. Upload filen igen");
+  }
+  if (existing.some((attachment) => attachment.organizationId !== organizationId || attachment.entryId !== entryId)) {
+    throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
+  }
+  if (existing.length > 0) {
+    throw new ConvexError("Filen er allerede knyttet til en egenkontrol");
+  }
 }
 
 export const submitOwnCheck = mutation({
@@ -306,7 +370,12 @@ export const submitOwnCheck = mutation({
         .query("ownCheckEntries")
         .withIndex("by_organizationId_and_clientRequestId", (q) => q.eq("organizationId", auth.organizationId).eq("clientRequestId", clientRequestId))
         .unique();
-      if (existingRequest) return { entryId: existingRequest._id, status: existingRequest.status, compliant: existingRequest.compliant };
+      if (existingRequest) {
+        if (existingRequest.locationId !== args.locationId || existingRequest.templateId !== args.templateId || existingRequest.dueDateKey !== args.dueDateKey) {
+          throw new ConvexError("Klientanmodningen kan ikke genbruges til en anden egenkontrol");
+        }
+        return { entryId: existingRequest._id, status: existingRequest.status, compliant: existingRequest.compliant };
+      }
     }
     const location = await requireLocation(ctx, auth.organizationId, args.locationId);
     const timeZone = await resolveTimeZone(ctx, auth.organizationId, args.locationId);
@@ -370,6 +439,7 @@ export const submitOwnCheck = mutation({
     for (const value of args.values) {
       if (value.type !== "attachment") continue;
       for (const storageId of value.storageIds) {
+        await ensureAttachmentCanBeInserted(ctx, auth.organizationId, entryId, storageId);
         const file = await ctx.db.system.get("_storage", storageId);
         if (!file?.contentType) throw new ConvexError("Filen blev ikke fundet");
         await ctx.db.insert("ownCheckAttachments", {
@@ -468,6 +538,7 @@ export const editOwnCheck = mutation({
       for (const storageId of value.storageIds) {
         const current = currentAttachments.find((attachment) => attachment.storageId === storageId && attachment.removedAtRevision === undefined);
         if (current) continue;
+        await ensureAttachmentCanBeInserted(ctx, auth.organizationId, entry._id, storageId);
         const file = await ctx.db.system.get("_storage", storageId);
         if (!file?.contentType) throw new ConvexError("Filen blev ikke fundet");
         await ctx.db.insert("ownCheckAttachments", { organizationId: auth.organizationId, entryId: entry._id, fieldKey: value.key, storageId, contentType: file.contentType, fileSize: file.size, addedAtRevision: entry.revision + 1, uploadedAt: Date.now(), uploadedBy: auth.userId });
@@ -550,4 +621,4 @@ export const approveOwnCheck = mutation({
   },
 });
 
-export { getOwnCheckRecord, listOwnChecks } from "./ownCheckOverview";
+export { getOwnCheckRecord, listOwnCheckPlan, listOwnCheckEntries } from "./ownCheckOverview";

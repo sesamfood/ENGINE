@@ -1,3 +1,7 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { systemRoleKeys } from "../lib/auth-permissions";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -13,7 +17,14 @@ import { getOwnCheckConfiguration } from "./lib/ownCheckSettings";
 import { MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./lib/ownChecks";
 
 const MAX_ACTIVE_TEMPLATES = 200;
+const MAX_TEMPLATE_PAGE_SIZE = 100;
 type TemplateContext = QueryCtx | MutationCtx;
+
+function requirePageSize(numItems: number) {
+  if (!Number.isInteger(numItems) || numItems <= 0 || numItems > MAX_TEMPLATE_PAGE_SIZE) {
+    throw new ConvexError("Siden er for stor");
+  }
+}
 
 const versionFieldsValidator = v.object({
   name: v.string(),
@@ -286,17 +297,20 @@ async function ensureUniqueName(
 }
 
 export const listTemplates = query({
-  args: { includeArchived: v.boolean() },
-  returns: v.array(templateSummaryValidator),
+  args: {
+    status: v.union(v.literal("active"), v.literal("archived")),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(templateSummaryValidator),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckManager(ctx);
-    const templates = await ctx.db
+    requirePageSize(args.paginationOpts.numItems);
+    const page = await ctx.db
       .query("ownCheckTemplates")
-      .withIndex("by_organizationId_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId))
-      .collect();
-    const filtered = args.includeArchived ? templates : templates.filter((template) => template.status === "active");
-    const result = await Promise.all(filtered.map(async (template) => summaryOutput(template, await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion))));
-    return result.sort((a, b) => a.name.localeCompare(b.name, "da"));
+      .withIndex("by_organizationId_and_status_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId).eq("status", args.status))
+      .paginate(args.paginationOpts);
+    const hydrated = await Promise.all(page.page.map(async (template) => summaryOutput(template, await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion))));
+    return { ...page, page: hydrated };
   },
 });
 
@@ -545,7 +559,9 @@ export const saveSettings = mutation({
       .withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId))
       .unique();
     const now = Date.now();
+    let settingsId: Id<"ownCheckSettings">;
     if (existing) {
+      settingsId = existing._id;
       await ctx.db.patch(existing._id, {
         lateSubmissionDays: args.lateSubmissionDays,
         requireSecondPersonApproval: args.requireSecondPersonApproval,
@@ -553,7 +569,7 @@ export const saveSettings = mutation({
         updatedAt: now,
       });
     } else {
-      await ctx.db.insert("ownCheckSettings", {
+      settingsId = await ctx.db.insert("ownCheckSettings", {
         organizationId: auth.organizationId,
         lateSubmissionDays: args.lateSubmissionDays,
         requireSecondPersonApproval: args.requireSecondPersonApproval,
@@ -564,7 +580,7 @@ export const saveSettings = mutation({
     await recordAudit(ctx, auth, {
       action: "ownChecks.settingsChanged",
       entityTable: "ownCheckSettings",
-      entityId: existing?._id ?? auth.organizationId,
+      entityId: settingsId,
       summary: "Egenkontrolindstillingerne blev ændret",
       reason,
     });
