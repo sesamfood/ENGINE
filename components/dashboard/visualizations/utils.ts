@@ -79,6 +79,26 @@ export function chartModel(result: MetricResult) {
   };
 }
 
+export function chartValueDomain(model: ReturnType<typeof chartModel>) {
+  const values = model.data.flatMap((row) =>
+    model.keys.flatMap((key) => {
+      const value = row[key];
+      return typeof value === "number" && Number.isFinite(value) ? [value] : [];
+    }),
+  );
+  if (!values.length) return [0, 1] as const;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) {
+    const padding = Math.max(Math.abs(min) * 0.1, 1);
+    return [min - padding, max + padding] as const;
+  }
+
+  const padding = (max - min) * 0.1;
+  return [min >= 0 ? Math.max(0, min - padding) : min - padding, max + padding] as const;
+}
+
 export function shortDate(timestamp: number) {
   return new Intl.DateTimeFormat("da-DK", {
     day: "numeric",

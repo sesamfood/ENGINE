@@ -6,7 +6,6 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowLeftIcon,
   ImageIcon,
-  Link2Icon,
   PlusIcon,
   RefreshCwIcon,
   SaveIcon,
@@ -18,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/compress-image";
 import { usePermission } from "@/components/app-shell";
+import { getOnlinePosProductSuggestions } from "@/components/catalog/online-pos-product-suggestions";
 import {
   CreatableCombobox,
   type ComboboxOption,
@@ -102,10 +102,6 @@ function formatFactor(value: number) {
   return Number(value.toPrecision(10)).toString();
 }
 
-function normalizedProductName(value: string) {
-  return value.trim().toLocaleLowerCase("da");
-}
-
 function OnlinePosProductMappingField({
   productId,
   productName,
@@ -151,14 +147,11 @@ function OnlinePosProductMappingField({
       })),
     [onlinePosProducts],
   );
-  const suggestion =
-    currentMapping == null
-      ? (onlinePosProducts ?? []).find(
-          (product) =>
-            normalizedProductName(product.name) ===
-            normalizedProductName(productName),
-        )
-      : undefined;
+  const { exactMatch, suggestions: nameSuggestions } =
+    getOnlinePosProductSuggestions(onlinePosProducts ?? [], productName);
+  const suggestion = currentMapping == null ? exactMatch : undefined;
+  const suggestions =
+    currentMapping == null ? (suggestion ? [suggestion] : nameSuggestions) : [];
 
   async function changeMapping(value: string | null) {
     setSaving(true);
@@ -199,6 +192,17 @@ function OnlinePosProductMappingField({
       ) : (
         <CreatableCombobox
           options={comboboxOptions}
+          suggestionLabel={
+            suggestion
+              ? "Forslag med samme navn"
+              : "Forslag ud fra produktnavnet"
+          }
+          suggestionOptions={suggestions.map((product) => ({
+            value: String(product.id),
+            label: product.groupName
+              ? `${product.name} — ${product.groupName}`
+              : product.name,
+          }))}
           value={
             currentMapping === null || currentMapping === undefined
               ? null
@@ -210,25 +214,7 @@ function OnlinePosProductMappingField({
           disabled={saving}
         />
       )}
-      {suggestion ? (
-        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <FieldDescription>
-            Forslag med samme navn: {suggestion.name}
-          </FieldDescription>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={saving}
-            onClick={() => void changeMapping(String(suggestion.id))}
-          >
-            <Link2Icon data-icon="inline-start" />
-            Brug forslag
-          </Button>
-        </div>
-      ) : onlinePosProducts ? (
-        <FieldDescription>Koblingen gemmes med det samme.</FieldDescription>
-      ) : null}
+      <FieldDescription>Koblingen gemmes med det samme.</FieldDescription>
     </Field>
   );
 }

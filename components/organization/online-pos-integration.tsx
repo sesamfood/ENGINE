@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
+import {
+  CreatableCombobox,
+  type ComboboxOption,
+} from "@/components/catalog/creatable-combobox";
+import { getOnlinePosProductSuggestions } from "@/components/catalog/online-pos-product-suggestions";
 import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -445,6 +449,32 @@ function ProductMappings({
       })),
     [onlinePosProducts],
   );
+  const suggestionsByProductId = useMemo(() => {
+    const suggestions = new Map<
+      Id<"products">,
+      { exactMatch: boolean; options: ComboboxOption[] }
+    >();
+
+    for (const product of mappingOptions?.products ?? []) {
+      if (product.onlinePosProductId !== null) continue;
+      const { exactMatch, suggestions: matchingProducts } =
+        getOnlinePosProductSuggestions(onlinePosProducts ?? [], product.name);
+      const suggestionProducts = exactMatch
+        ? [exactMatch]
+        : matchingProducts;
+      suggestions.set(product.id, {
+        exactMatch: Boolean(exactMatch),
+        options: suggestionProducts.map((suggestion) => ({
+          value: String(suggestion.id),
+          label: suggestion.groupName
+            ? `${suggestion.name} — ${suggestion.groupName}`
+            : suggestion.name,
+        })),
+      });
+    }
+
+    return suggestions;
+  }, [mappingOptions?.products, onlinePosProducts]);
 
   async function changeMapping(
     productId: Id<"products">,
@@ -529,28 +559,39 @@ function ProductMappings({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mappingOptions.products.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>
-                    <CreatableCombobox
-                      options={comboboxOptions}
-                      value={
-                        product.onlinePosProductId === null
-                          ? null
-                          : String(product.onlinePosProductId)
-                      }
-                      onValueChange={(value) =>
-                        void changeMapping(product.id, value)
-                      }
-                      placeholder="Søg efter OnlinePOS-produkt"
-                      ariaLabel={`OnlinePOS-produkt for ${product.name}`}
-                      allowCreate={false}
-                      disabled={savingProductId === product.id}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {mappingOptions.products.map((product) => {
+                const suggestions = suggestionsByProductId.get(product.id);
+                return (
+                  <TableRow key={product.id}>
+                    <TableCell className="font-medium">
+                      {product.name}
+                    </TableCell>
+                    <TableCell>
+                      <CreatableCombobox
+                        options={comboboxOptions}
+                        suggestionLabel={
+                          suggestions?.exactMatch
+                            ? "Forslag med samme navn"
+                            : "Forslag ud fra produktnavnet"
+                        }
+                        suggestionOptions={suggestions?.options}
+                        value={
+                          product.onlinePosProductId === null
+                            ? null
+                            : String(product.onlinePosProductId)
+                        }
+                        onValueChange={(value) =>
+                          void changeMapping(product.id, value)
+                        }
+                        placeholder="Søg efter OnlinePOS-produkt"
+                        ariaLabel={`OnlinePOS-produkt for ${product.name}`}
+                        allowCreate={false}
+                        disabled={savingProductId === product.id}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         ) : (

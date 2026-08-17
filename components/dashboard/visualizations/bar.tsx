@@ -10,7 +10,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import type { MetricResult } from "@/lib/dashboard/types";
-import { chartModel, isMixedCurrency, shortDate } from "./utils";
+import { chartModel, chartValueDomain, isMixedCurrency, shortDate } from "./utils";
 
 export function BarVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
   if (isMixedCurrency(result)) {
@@ -31,12 +31,13 @@ export function BarVisualization({ result, compact = false }: { result: MetricRe
     );
   }
   const model = chartModel(result);
+  const domain = chartValueDomain(model);
   return (
     <ChartContainer config={model.config} className="h-full min-h-0 w-full aspect-auto">
       <BarChart accessibilityLayer data={model.data} margin={compact ? { left: 0, right: 4, top: 2, bottom: 0 } : { left: 0, right: 12, top: 8 }}>
         <CartesianGrid vertical={false} />
         <XAxis hide={compact} dataKey="t" tickFormatter={shortDate} tickLine={false} axisLine={false} minTickGap={24} />
-        <YAxis hide={compact} width={36} tickLine={false} axisLine={false} />
+        <YAxis hide={compact} width={36} domain={domain} tickLine={false} axisLine={false} />
         <ChartTooltip content={<ChartTooltipContent />} />
         {!compact && result.series.length > 1 ? <ChartLegend content={<ChartLegendContent />} /> : null}
         {model.keys.map((key) => <Bar key={key} dataKey={key} fill={`var(--color-${key})`} radius={3} />)}
