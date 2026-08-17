@@ -63,14 +63,14 @@ const sections = [
     permissions: ["organization.settings"],
   },
   {
-    title: "Optælling",
+    title: "Count",
     description: "Indstil frekvens og regler for optællingsvinduet.",
     href: "/organization/count",
     icon: ClipboardListIcon,
     permissions: ["count.settings"],
   },
   {
-    title: "Spild",
+    title: "Waste",
     description: "Indstil nulstilling og popularitet for spild.",
     href: "/organization/waste",
     icon: Trash2Icon,
@@ -84,7 +84,7 @@ const sections = [
     permissions: ["ownChecks.manage"],
   },
   {
-    title: "Personalemad",
+    title: "Staff food",
     description: "Indstil vagtlængder, kategorier og tilladte produkter.",
     href: "/organization/staff-food",
     icon: UtensilsIcon,

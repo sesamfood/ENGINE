@@ -44,11 +44,11 @@ export function OrganizationHeader() {
         : pathname.startsWith("/organization/schedule")
           ? "Vagtplan"
           : pathname.startsWith("/organization/staff-food")
-            ? "Personalemad"
+            ? "Staff food"
           : pathname.startsWith("/organization/count")
-            ? "Optælling"
+            ? "Count"
             : pathname.startsWith("/organization/waste")
-              ? "Spild"
+              ? "Waste"
               : pathname.startsWith("/organization/users/roles")
                 ? "Roller og adgang"
                 : pathname.startsWith("/organization/users")
@@ -56,7 +56,7 @@ export function OrganizationHeader() {
                 : pathname.startsWith("/organization/sidebar")
                   ? "Sidemenu"
                 : pathname === "/organization"
-                  ? "Organisation"
+                  ? "Settings"
                   : "Organisationens oplysninger";
 
   useEffect(() => {
