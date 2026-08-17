@@ -2,6 +2,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import type { MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { WidgetCard } from "./widget-card";
 
@@ -11,6 +12,7 @@ export function DashboardWidget({
   editable,
   resizing,
   onVisualizationChange,
+  onYAxisChange,
   onResize,
   onRemove,
 }: {
@@ -19,6 +21,7 @@ export function DashboardWidget({
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
+  onYAxisChange?: (axis: YAxisValues) => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
 }) {
@@ -32,6 +35,7 @@ export function DashboardWidget({
       editable={editable}
       resizing={resizing}
       onVisualizationChange={onVisualizationChange}
+      onYAxisChange={onYAxisChange}
       onResize={onResize}
       onRemove={onRemove}
     >
@@ -41,7 +45,7 @@ export function DashboardWidget({
           <Skeleton className="min-h-24 flex-1" />
         </div>
       ) : (
-        <Visualization result={result} compact={compact} />
+        <Visualization result={result} compact={compact} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} />
       )}
     </WidgetCard>
   );

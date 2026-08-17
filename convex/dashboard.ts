@@ -117,6 +117,17 @@ function validateWidgets(widgets: WidgetInstance[], canViewSales: boolean) {
     if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 50)) {
       throw new ConvexError("Widgetgrænsen skal være mellem 1 og 50");
     }
+    const yAxisMin = widget.options?.yAxisMin;
+    const yAxisMax = widget.options?.yAxisMax;
+    if (
+      (yAxisMin !== undefined && !Number.isFinite(yAxisMin)) ||
+      (yAxisMax !== undefined && !Number.isFinite(yAxisMax))
+    ) {
+      throw new ConvexError("Y-aksens grænser skal være gyldige tal");
+    }
+    if (yAxisMin !== undefined && yAxisMax !== undefined && yAxisMin >= yAxisMax) {
+      throw new ConvexError("Y-aksens minimum skal være mindre end maksimum");
+    }
   }
 }
 

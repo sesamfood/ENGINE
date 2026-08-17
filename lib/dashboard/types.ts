@@ -90,7 +90,7 @@ export type WidgetInstance = {
   visualization: VisualizationId;
   size: WidgetSize;
   position?: { column: number; row: number };
-  options?: { limit?: number };
+  options?: { limit?: number; yAxisMin?: number; yAxisMax?: number };
 };
 
 export type DashboardScope = {

@@ -46,7 +46,13 @@ export const widgetValidator = v.object({
   visualization: visualizationValidator,
   size: widgetSizeValidator,
   position: v.optional(v.object({ column: v.number(), row: v.number() })),
-  options: v.optional(v.object({ limit: v.optional(v.number()) })),
+  options: v.optional(
+    v.object({
+      limit: v.optional(v.number()),
+      yAxisMin: v.optional(v.number()),
+      yAxisMax: v.optional(v.number()),
+    }),
+  ),
 });
 
 export const scopeValidator = v.object({

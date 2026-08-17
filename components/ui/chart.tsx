@@ -242,7 +242,7 @@ function ChartTooltipContent({
                     )}
                     <div
                       className={cn(
-                        "flex flex-1 justify-between leading-none",
+                        "flex min-w-0 flex-1 justify-between gap-3 leading-none",
                         nestLabel ? "items-end" : "items-center"
                       )}
                     >

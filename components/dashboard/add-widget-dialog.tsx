@@ -36,6 +36,7 @@ import { metricRegistry, metrics, sizeLabels, visualizationLabels } from "@/lib/
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 
 type Step = 1 | 2 | 3;
 
@@ -75,6 +76,9 @@ export function AddWidgetDialog({
   const definition = metricRegistry[metricId];
   const [visualization, setVisualization] = useState<VisualizationId>(definition.defaultVisualization);
   const [size, setSize] = useState<WidgetSize>(definition.defaultSize);
+  const [yAxisMin, setYAxisMin] = useState<number>();
+  const [yAxisMax, setYAxisMax] = useState<number>();
+  const [yAxisValid, setYAxisValid] = useState(true);
   const previewResult = useQuery(
     api.dashboard.getMetric,
     !open || step !== 2
@@ -93,6 +97,9 @@ export function AddWidgetDialog({
     setMetricId(next.id);
     setVisualization(next.defaultVisualization);
     setSize(next.defaultSize);
+    setYAxisMin(undefined);
+    setYAxisMax(undefined);
+    setYAxisValid(true);
   }
 
   function selectVisualization(nextVisualization: VisualizationId) {
@@ -100,11 +107,18 @@ export function AddWidgetDialog({
   }
 
   function add() {
+    const options = yAxisMin !== undefined || yAxisMax !== undefined
+      ? {
+          ...(yAxisMin !== undefined ? { yAxisMin } : {}),
+          ...(yAxisMax !== undefined ? { yAxisMax } : {}),
+        }
+      : undefined;
     onAdd({
       key: crypto.randomUUID(),
       metricId,
       visualization,
       size,
+      options,
     });
     setOpen(false);
     setStep(1);
@@ -120,7 +134,10 @@ export function AddWidgetDialog({
 
   function setDialogOpen(nextOpen: boolean) {
     setOpen(nextOpen);
-    if (nextOpen) setStep(1);
+    if (nextOpen) {
+      setStep(1);
+      setYAxisValid(true);
+    }
   }
 
   return (
@@ -291,6 +308,24 @@ export function AddWidgetDialog({
                   );
                 })}
               </div>
+              {visualizationHasYAxis(visualization) ? (
+                <div className="flex flex-col gap-3 border-t pt-4">
+                  <div>
+                    <h2 className="text-sm font-medium">Y-akse</h2>
+                    <p className="text-sm text-muted-foreground">Angiv grænser eller brug automatisk skala.</p>
+                  </div>
+                  <YAxisSettings
+                    idPrefix="new-widget-y-axis"
+                    min={yAxisMin}
+                    max={yAxisMax}
+                    onChange={({ min, max }) => {
+                      setYAxisMin(min);
+                      setYAxisMax(max);
+                    }}
+                    onValidityChange={setYAxisValid}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -304,7 +339,7 @@ export function AddWidgetDialog({
               Næste <ChevronRightIcon data-icon="inline-end" />
             </Button>
           ) : (
-            <Button type="button" onClick={add}>Tilføj widget</Button>
+            <Button type="button" onClick={add} disabled={!yAxisValid}>Tilføj widget</Button>
           )}
         </DialogFooter>
       </DialogContent>

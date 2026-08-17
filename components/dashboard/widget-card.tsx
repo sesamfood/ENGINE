@@ -7,7 +7,6 @@ import {
   ChartNoAxesCombinedIcon,
   CircleAlertIcon,
   CircleCheckIcon,
-  CircleQuestionMarkIcon,
   MinusIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +40,7 @@ import { metricRegistry, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { widgetSizes, type MetricResult, type WidgetInstance, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
+import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { previousTotal, total } from "./visualizations/utils";
 
 type ResizeSession = {
@@ -82,19 +82,17 @@ function FreshnessNotice({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 px-1"
+            size="icon-sm"
+            className="shrink-0"
             aria-label={label}
           />
         }
       >
-        <Badge
-          variant={hasError ? "destructive" : isStale ? "outline" : "secondary"}
-          className="h-5"
-        >
-          {hasError || isStale ? <CircleAlertIcon /> : <CircleCheckIcon />}
-          {label}
-        </Badge>
+        {hasError || isStale ? (
+          <CircleAlertIcon className={hasError ? "text-destructive" : "text-muted-foreground"} />
+        ) : (
+          <CircleCheckIcon className="text-primary" />
+        )}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <PopoverHeader>
@@ -148,6 +146,7 @@ export function WidgetCard({
   editable,
   resizing = false,
   onVisualizationChange,
+  onYAxisChange,
   onResize,
   onRemove,
   children,
@@ -157,6 +156,7 @@ export function WidgetCard({
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
+  onYAxisChange?: (axis: YAxisValues) => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
   children: ReactNode;
@@ -248,37 +248,6 @@ export function WidgetCard({
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <CardTitle className="min-w-0 flex-1 truncate text-base">{definition.label}</CardTitle>
-            <div data-dashboard-no-drag className="shrink-0" onPointerDown={(event) => event.stopPropagation()}>
-              <Popover>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      className="size-11"
-                      aria-label={`Vis formel og datakilder for ${definition.label}`}
-                    />
-                  }
-                >
-                  <CircleQuestionMarkIcon />
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-80">
-                  <PopoverHeader>
-                    <PopoverTitle>{definition.label}</PopoverTitle>
-                    <PopoverDescription>{definition.description}</PopoverDescription>
-                  </PopoverHeader>
-                  <div className="flex flex-col gap-1">
-                    <p className="font-medium">Formel</p>
-                    <p className="text-muted-foreground">{definition.formula}</p>
-                    <p className="mt-2 font-medium">Datakilder</p>
-                    <ul className="list-disc pl-5 text-muted-foreground">
-                      {definition.sourceTables.map((table) => <li key={table}>{table}</li>)}
-                    </ul>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
             {change !== null || result?.truncated || hasFreshness ? (
               <CardDescription className="flex shrink-0 items-center gap-1">
                 {change !== null ? (
@@ -335,12 +304,26 @@ export function WidgetCard({
                             <CardTitle>{visualizationLabels[visualization]}</CardTitle>
                           </CardHeader>
                           <CardContent className="h-52 min-h-0 overflow-hidden">
-                            {result ? <Visualization result={result} /> : <Skeleton className="size-full" />}
+                            {result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
                           </CardContent>
                         </Card>
                       );
                     })}
                   </div>
+                  {visualizationHasYAxis(widget.visualization) && onYAxisChange ? (
+                    <div className="mt-4 flex flex-col gap-3 border-t pt-4">
+                      <div>
+                        <h3 className="text-sm font-medium">Y-akse</h3>
+                        <p className="text-sm text-muted-foreground">Angiv grænser eller brug automatisk skala.</p>
+                      </div>
+                      <YAxisSettings
+                        idPrefix={`widget-${widget.key}-y-axis`}
+                        min={widget.options?.yAxisMin}
+                        max={widget.options?.yAxisMax}
+                        onChange={onYAxisChange}
+                      />
+                    </div>
+                  ) : null}
                 </DialogContent>
               </Dialog>
               <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${definition.label}`} onClick={onRemove}>

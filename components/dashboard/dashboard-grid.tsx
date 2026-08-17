@@ -32,6 +32,7 @@ import {
 } from "@/lib/dashboard/layout";
 import type { DashboardRange, DashboardScope, MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
+import type { YAxisValues } from "./y-axis-settings";
 
 const sizeClasses: Record<WidgetSize, string> = {
   "1x1": "col-span-1 row-span-1",
@@ -232,6 +233,14 @@ function DraggableWidget({
         editable={editable}
         resizing={widget.size !== sourceSize}
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
+        onYAxisChange={(axis: YAxisValues) => {
+          const options = { ...widget.options };
+          if (axis.min === undefined) delete options.yAxisMin;
+          else options.yAxisMin = axis.min;
+          if (axis.max === undefined) delete options.yAxisMax;
+          else options.yAxisMax = axis.max;
+          onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
+        }}
         onResize={onResize}
         onRemove={onRemove}
       />

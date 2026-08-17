@@ -79,24 +79,63 @@ export function chartModel(result: MetricResult) {
   };
 }
 
-export function chartValueDomain(model: ReturnType<typeof chartModel>) {
+function valueDomain(values: number[], yAxisMin?: number, yAxisMax?: number) {
+  if (!values.length) {
+    const lower = yAxisMin ?? 0;
+    const upper = yAxisMax ?? 1;
+    return lower < upper ? ([lower, upper] as const) : ([0, 1] as const);
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const automatic = min === max
+    ? [min - Math.max(Math.abs(min) * 0.1, 1), max + Math.max(Math.abs(max) * 0.1, 1)] as const
+    : [min >= 0 ? Math.max(0, min - (max - min) * 0.1) : min - (max - min) * 0.1, max + (max - min) * 0.1] as const;
+  const lower = yAxisMin ?? automatic[0];
+  const upper = yAxisMax ?? automatic[1];
+  return lower < upper ? ([lower, upper] as const) : automatic;
+}
+
+export function chartValueDomain(
+  model: ReturnType<typeof chartModel>,
+  yAxisMin?: number,
+  yAxisMax?: number,
+) {
   const values = model.data.flatMap((row) =>
     model.keys.flatMap((key) => {
       const value = row[key];
       return typeof value === "number" && Number.isFinite(value) ? [value] : [];
     }),
   );
-  if (!values.length) return [0, 1] as const;
+  return valueDomain(values, yAxisMin, yAxisMax);
+}
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  if (min === max) {
-    const padding = Math.max(Math.abs(min) * 0.1, 1);
-    return [min - padding, max + padding] as const;
-  }
+export function chartValueDomainFromValues(
+  values: number[],
+  yAxisMin?: number,
+  yAxisMax?: number,
+) {
+  return valueDomain(values, yAxisMin, yAxisMax);
+}
 
-  const padding = (max - min) * 0.1;
-  return [min >= 0 ? Math.max(0, min - padding) : min - padding, max + padding] as const;
+export function chartYAxisWidth(domain: readonly [number, number], result: MetricResult) {
+  const longest = Math.max(
+    ...domain.map((value) => formatMetricValue(value, result).length),
+    1,
+  );
+  return Math.min(132, Math.max(40, longest * 7 + 8));
+}
+
+export function chartDateTicks(data: Array<Record<string, number>>) {
+  const timestamps = [...new Set(data.map((row) => row.t).filter(Number.isFinite))];
+  if (timestamps.length <= 7) return timestamps;
+
+  const indexes = new Set(
+    Array.from({ length: 7 }, (_, index) =>
+      Math.round((index * (timestamps.length - 1)) / 6),
+    ),
+  );
+  return timestamps.filter((_, index) => indexes.has(index));
 }
 
 export function shortDate(timestamp: number) {
