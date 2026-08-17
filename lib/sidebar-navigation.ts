@@ -1,12 +1,12 @@
 export const sidebarItems = [
-  { id: "dashboard", label: "Overblik" },
-  { id: "transfers", label: "Flytninger" },
-  { id: "waste", label: "Spild" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "transfers", label: "Transfer" },
+  { id: "waste", label: "Waste" },
   { id: "ownChecks", label: "Egenkontrol" },
-  { id: "staffFood", label: "Personalemad" },
-  { id: "count", label: "Optælling" },
+  { id: "staffFood", label: "Staff food" },
+  { id: "count", label: "Count" },
   { id: "employees", label: "Medarbejdere" },
-  { id: "organization", label: "Organisation" },
+  { id: "organization", label: "Settings" },
 ] as const;
 
 export type SidebarItemId = (typeof sidebarItems)[number]["id"];

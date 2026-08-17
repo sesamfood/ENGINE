@@ -23,7 +23,7 @@ import { ScopeSelector } from "./scope-selector";
 import { ShareDialog } from "./share-dialog";
 
 function message(error: unknown) {
-  return error instanceof Error ? error.message : "Overblikket kunne ikke gemmes";
+  return error instanceof Error ? error.message : "Dashboardet kunne ikke gemmes";
 }
 
 function DashboardContent() {
@@ -91,7 +91,7 @@ function DashboardContent() {
 
   if (!access) return <Skeleton className="h-96" />;
   if (!canView) {
-    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se overblikket.</AlertDescription></Alert>;
+    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
   }
   if (!local || locations === undefined) return <Skeleton className="h-96" />;
 
@@ -145,8 +145,8 @@ function DashboardContent() {
   const title = (
     <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-widest text-primary">Overblik</p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Overblik</h1>
+        <p className="text-sm font-semibold uppercase tracking-widest text-primary">Dashboard</p>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h1>
       </div>
       <ScopeSelector scope={local.scope} locations={locations} onChange={scope} />
     </div>
@@ -176,7 +176,7 @@ function DashboardContent() {
           <EmptyHeader>
             <EmptyMedia variant="icon"><LayoutDashboardIcon /></EmptyMedia>
             <EmptyTitle>Dashboardet er tomt</EmptyTitle>
-            <EmptyDescription>Tilføj den første widget for at bygge dit overblik.</EmptyDescription>
+            <EmptyDescription>Tilføj den første widget for at bygge dit dashboard.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent><AddWidgetDialog canViewSensitive={canViewSales} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets([widget])} /></EmptyContent>
         </Empty>

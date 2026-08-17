@@ -16,7 +16,7 @@ import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { DashboardGrid } from "./dashboard-grid";
 
 function message(error: unknown) {
-  return error instanceof Error ? error.message : "Overblikket kunne ikke åbnes";
+  return error instanceof Error ? error.message : "Dashboardet kunne ikke åbnes";
 }
 
 export function SharedDashboard({ token }: { token: string }) {
@@ -88,7 +88,7 @@ function SharedDashboardContent({ token }: { token: string }) {
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon"><LockKeyholeIcon /></EmptyMedia>
-            <EmptyTitle>Overblikket er ikke tilgængeligt</EmptyTitle>
+            <EmptyTitle>Dashboardet er ikke tilgængeligt</EmptyTitle>
             <EmptyDescription>Linket er udløbet, tilbagekaldt eller ugyldigt.</EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -101,7 +101,7 @@ function SharedDashboardContent({ token }: { token: string }) {
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>{meta.name}</CardTitle>
-            <CardDescription>{meta.requiresPassword ? "Indtast adgangskoden for at åbne overblikket." : "Overblikket åbnes…"}</CardDescription>
+            <CardDescription>{meta.requiresPassword ? "Indtast adgangskoden for at åbne dashboardet." : "Dashboardet åbnes…"}</CardDescription>
           </CardHeader>
           <CardContent>
             {meta.requiresPassword ? (
@@ -112,13 +112,13 @@ function SharedDashboardContent({ token }: { token: string }) {
                     <Input id="shared-dashboard-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} aria-invalid={Boolean(error)} autoFocus />
                   </Field>
                 </FieldGroup>
-                {error ? <Alert variant="destructive"><AlertTitle>Overblikket kunne ikke åbnes</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
+                {error ? <Alert variant="destructive"><AlertTitle>Dashboardet kunne ikke åbnes</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
                 <Button type="submit" disabled={pending || !password}>
                   {pending ? <Spinner data-icon="inline-start" /> : <LockKeyholeIcon data-icon="inline-start" />}
-                  Åbn overblik
+                  Åbn dashboard
                 </Button>
               </form>
-            ) : <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Åbner overblik…</div>}
+            ) : <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Åbner dashboard…</div>}
           </CardContent>
         </Card>
       </main>
@@ -130,7 +130,7 @@ function SharedDashboardContent({ token }: { token: string }) {
     <main className="min-h-screen bg-muted/25 px-4 py-8 sm:px-6 lg:px-10">
       <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
         <header className="flex flex-col gap-2">
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary">Delt overblik</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-primary">Delt dashboard</p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{meta.name}</h1>
           <p className="text-sm text-muted-foreground">Tilgængeligt til {new Intl.DateTimeFormat("da-DK", { dateStyle: "long", timeStyle: "short" }).format(meta.expiresAt)}</p>
         </header>
