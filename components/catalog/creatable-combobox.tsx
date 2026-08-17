@@ -6,9 +6,12 @@ import {
   Combobox,
   ComboboxContent,
   ComboboxEmpty,
+  ComboboxGroup,
   ComboboxInput,
   ComboboxItem,
+  ComboboxLabel,
   ComboboxList,
+  ComboboxSeparator,
 } from "@/components/ui/combobox";
 
 export type ComboboxOption = {
@@ -23,6 +26,8 @@ export function CreatableCombobox({
   onValueChange,
   onInputValueChange,
   placeholder,
+  suggestionLabel = "Forslag",
+  suggestionOptions = [],
   allowCreate = false,
   disabled = false,
   ariaLabel,
@@ -32,6 +37,8 @@ export function CreatableCombobox({
   onValueChange: (value: string | null) => void;
   onInputValueChange?: (value: string) => void;
   placeholder: string;
+  suggestionLabel?: string;
+  suggestionOptions?: ComboboxOption[];
   allowCreate?: boolean;
   disabled?: boolean;
   ariaLabel: string;
@@ -68,7 +75,14 @@ export function CreatableCombobox({
     return matches;
   }, [allowCreate, inputValue, options]);
 
-  const itemValues = visibleOptions.map((option) => option.value);
+  const suggestionValues = new Set(
+    suggestionOptions.map((option) => option.value),
+  );
+  const regularOptions = visibleOptions.filter(
+    (option) => !suggestionValues.has(option.value),
+  );
+  const displayedOptions = [...suggestionOptions, ...regularOptions];
+  const itemValues = displayedOptions.map((option) => option.value);
 
   function commitInput() {
     const label = inputValue.trim();
@@ -121,7 +135,7 @@ export function CreatableCombobox({
         onValueChange(nextValue);
         setHighlightedValue(undefined);
         setOpen(false);
-        const label = visibleOptions.find(
+        const label = displayedOptions.find(
           (option) => option.value === nextValue,
         )?.label;
         if (label) {
@@ -133,7 +147,8 @@ export function CreatableCombobox({
       }}
       disabled={disabled}
       itemToStringLabel={(itemValue) =>
-        visibleOptions.find((option) => option.value === itemValue)?.label ?? ""
+        displayedOptions.find((option) => option.value === itemValue)?.label ??
+        ""
       }
     >
       <ComboboxInput
@@ -157,21 +172,41 @@ export function CreatableCombobox({
       <ComboboxContent>
         <ComboboxEmpty>Ingen resultater fundet.</ComboboxEmpty>
         <ComboboxList>
-          {visibleOptions.map((option) => (
-            <ComboboxItem
-              key={option.value}
-              value={option.value}
-              disabled={option.disabled}
-              className="min-h-10"
-            >
-              {option.value.startsWith("new:") ? (
-                <PlusIcon aria-hidden="true" />
-              ) : null}
-              {option.value.startsWith("new:")
-                ? `Opret “${option.label}”`
-                : option.label}
-            </ComboboxItem>
-          ))}
+          {suggestionOptions.length ? (
+            <ComboboxGroup>
+              <ComboboxLabel>{suggestionLabel}</ComboboxLabel>
+              {suggestionOptions.map((option) => (
+                <ComboboxItem
+                  key={option.value}
+                  value={option.value}
+                  disabled={option.disabled}
+                  className="min-h-10"
+                >
+                  {option.label}
+                </ComboboxItem>
+              ))}
+            </ComboboxGroup>
+          ) : null}
+          {suggestionOptions.length && regularOptions.length ? (
+            <ComboboxSeparator />
+          ) : null}
+          <ComboboxGroup>
+            {regularOptions.map((option) => (
+              <ComboboxItem
+                key={option.value}
+                value={option.value}
+                disabled={option.disabled}
+                className="min-h-10"
+              >
+                {option.value.startsWith("new:") ? (
+                  <PlusIcon aria-hidden="true" />
+                ) : null}
+                {option.value.startsWith("new:")
+                  ? `Opret “${option.label}”`
+                  : option.label}
+              </ComboboxItem>
+            ))}
+          </ComboboxGroup>
         </ComboboxList>
       </ComboboxContent>
     </Combobox>

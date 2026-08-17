@@ -100,10 +100,10 @@ export default function TransfersPage() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
       <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-        Lagerstyring
+        Transfer
       </p>
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-        Flytninger
+        Transfer
       </h1>
     </div>
   );

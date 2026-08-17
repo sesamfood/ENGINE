@@ -1,8 +1,7 @@
 "use client";
 
-import { GitCompareArrowsIcon, MapPinIcon } from "lucide-react";
+import { MapPinIcon } from "lucide-react";
 import { useQuery } from "convex/react";
-import { LocationField } from "@/components/location-field";
 import { useLocationAccess } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,17 +10,9 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { DashboardScope } from "@/lib/dashboard/types";
@@ -53,18 +44,13 @@ export function ScopeSelector({
     ? optionLocations.filter((location) => location.id === access.lockedId)
     : optionLocations;
   const availableLocations = singleLocation.length ? singleLocation : optionLocations;
-  const lockedToSingle = availableLocations.length === 1;
-  const currentLevel: ScopeLevel = scope.level ?? (
+  const lockedToSingle = access.isLocked || availableLocations.length === 1;
+  const currentLevel: ScopeLevel = lockedToSingle ? "location" : scope.level ?? (
     scope.locationIds?.length === 1 ? "location" : "organization"
   );
-  const marketOptions = (scopeOptions?.markets ?? []).filter((market) =>
-    optionLocations.some((location) => location.marketId === market.id),
-  );
-  const operatorOptions = (scopeOptions?.operators ?? []).filter((operator) =>
-    optionLocations.some((location) => location.operatorId === operator.id),
-  );
-
-  const currentParentId = scope.parentId ?? (
+  const currentParentId = lockedToSingle
+    ? availableLocations[0]?.id
+    : scope.parentId ?? (
     currentLevel === "location" && scope.locationIds?.length === 1
       ? scope.locationIds[0]
       : undefined
@@ -72,28 +58,12 @@ export function ScopeSelector({
   const selectedLocations = optionLocations.filter((location) => {
     if (currentLevel === "market") return location.marketId === currentParentId;
     if (currentLevel === "operator") return location.operatorId === currentParentId;
-    if (currentLevel === "location") {
-      return currentParentId ? location.id === currentParentId : true;
-    }
+    if (currentLevel === "location") return true;
     return true;
   });
   const selectedIds = (scope.locationIds ?? selectedLocations.map((location) => location.id)).filter(
     (id) => selectedLocations.some((location) => location.id === id),
   );
-  const currentMode = lockedToSingle ? "aggregate" : scope.mode;
-  const aggregateValue = lockedToSingle
-    ? availableLocations[0]?.id ?? "all"
-    : currentLevel === "organization"
-      ? "organization"
-      : currentParentId ?? "";
-  const levelValue = currentLevel === "organization"
-    ? "organization"
-    : currentLevel === "market"
-      ? `market:${currentParentId ?? ""}`
-      : currentLevel === "operator"
-        ? `operator:${currentParentId ?? ""}`
-        : "location";
-
   function scopeFor(level: ScopeLevel, parentId?: string): DashboardScope {
     if (level === "organization") {
       return { mode: "aggregate", locationIds: null, level };
@@ -110,161 +80,86 @@ export function ScopeSelector({
     return { mode: "aggregate", locationIds: null, level, parentId };
   }
 
-  function setMode(value: string[]) {
-    const mode = value[0];
-    if (lockedToSingle) {
-      if (availableLocations[0]) {
-        onChange({
-          mode: "aggregate",
-          locationIds: [availableLocations[0].id],
-          level: "location",
-          parentId: availableLocations[0].id,
-        });
-      }
+  function toggleLocation(id: Id<"locations">, checked: boolean) {
+    if (currentLevel === "location") {
+      if (checked) onChange(scopeFor("location", id));
       return;
     }
-    if (mode === "aggregate") {
-      onChange({
-        ...scope,
-        mode: "aggregate",
-        locationIds: null,
-      });
-    } else if (mode === "compare") {
-      const ids = selectedIds.length >= 2
-        ? selectedIds
-        : selectedLocations.slice(0, 2).map((location) => location.id);
-      if (ids.length >= 2) {
-        onChange({ ...scope, mode: "compare", locationIds: ids });
-      }
-    }
-  }
-
-  function toggleLocation(id: Id<"locations">, checked: boolean) {
     const next = checked
       ? [...selectedIds, id]
       : selectedIds.filter((item) => item !== id);
-    if (next.length >= 2) {
-      onChange({ ...scope, mode: "compare", locationIds: next });
-    }
+    if (next.length === 0) return;
+    const allSelected = next.length === selectedLocations.length;
+    onChange({
+      ...scope,
+      level: currentLevel,
+      parentId: currentLevel === "organization" ? undefined : currentParentId,
+      mode: allSelected || next.length === 1 ? "aggregate" : "compare",
+      locationIds: allSelected ? null : next,
+    });
   }
 
-  function selectLevel(value: string) {
-    const level = value as ScopeLevel;
-    if (level === "organization") {
-      onChange(scopeFor(level));
-      return;
-    }
-    const first = level === "market"
-      ? marketOptions[0]?.id
-      : level === "operator"
-        ? operatorOptions[0]?.id
-        : optionLocations[0]?.id;
-    if (first) onChange(scopeFor(level, first));
+  function selectAllLocations() {
+    onChange({
+      ...scope,
+      level: currentLevel,
+      parentId: currentLevel === "organization" ? undefined : currentParentId,
+      mode: "aggregate",
+      locationIds: null,
+    });
   }
 
-  function selectParent(value: string | null) {
-    if (currentLevel === "organization" || !value) return;
-    onChange(scopeFor(currentLevel, value));
-  }
+  const currentParentName = currentLevel === "market"
+    ? scopeOptions?.markets?.find((market) => market.id === currentParentId)?.name
+    : currentLevel === "operator"
+      ? scopeOptions?.operators?.find((operator) => operator.id === currentParentId)?.name
+      : currentLevel === "location"
+        ? optionLocations.find((location) => location.id === currentParentId)?.name
+        : undefined;
+  const allSelected = currentLevel !== "location" && selectedIds.length > 0 && selectedIds.length === selectedLocations.length;
+  const triggerLabel = allSelected
+    ? "Alle lokationer"
+    : selectedIds.length === 1
+      ? selectedLocations.find((location) => location.id === selectedIds[0])?.name ?? "1 lokation"
+      : `${selectedIds.length} lokationer`;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ToggleGroup value={[currentMode]} onValueChange={setMode} variant="outline" size="lg" spacing={0}>
-        <ToggleGroupItem value="aggregate" className="min-h-11">
-          <MapPinIcon data-icon="inline-start" />
-          Lokation
-        </ToggleGroupItem>
-        {!lockedToSingle ? <ToggleGroupItem value="compare" className="min-h-11" disabled={selectedLocations.length < 2}>
-          <GitCompareArrowsIcon data-icon="inline-start" />
-          Sammenlign
-        </ToggleGroupItem> : null}
-      </ToggleGroup>
       {lockedToSingle ? (
-        <LocationField
-          locations={availableLocations}
-          value={aggregateValue}
-          locked
-          lockedName={availableLocations[0]?.name}
-          className="h-11! w-56 min-w-48"
-        />
+        <Button type="button" variant="outline" size="lg" className="min-h-11 max-w-full min-w-48" disabled aria-label="Valgt lokation">
+          <MapPinIcon data-icon="inline-start" />
+          <span className="min-w-0 truncate">{triggerLabel}</span>
+        </Button>
       ) : (
-        <>
-          <Select
-            items={[
-              { value: "organization", label: "Organisation" },
-              ...marketOptions.map((market) => ({ value: `market:${market.id}`, label: `Marked · ${market.name}` })),
-              ...operatorOptions.map((operator) => ({ value: `operator:${operator.id}`, label: `Operatør · ${operator.name}` })),
-              { value: "location", label: "Lokation" },
-            ]}
-            value={levelValue}
-            onValueChange={(value) => {
-              if (!value) return;
-              if (value.startsWith("market:")) {
-                onChange(scopeFor("market", value.slice("market:".length)));
-              } else if (value.startsWith("operator:")) {
-                onChange(scopeFor("operator", value.slice("operator:".length)));
-              } else {
-                selectLevel(value);
-              }
-            }}
-          >
-            <SelectTrigger aria-label="Scope-niveau" className="h-11! w-56 min-w-48"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="organization">Organisation</SelectItem>
-                {marketOptions.map((market) => <SelectItem key={market.id} value={`market:${market.id}`}>Marked · {market.name}</SelectItem>)}
-                {operatorOptions.map((operator) => <SelectItem key={operator.id} value={`operator:${operator.id}`}>Operatør · {operator.name}</SelectItem>)}
-                <SelectItem value="location">Lokation</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {currentLevel !== "organization" && currentMode === "aggregate" ? (
-            <Select
-              items={
-                currentLevel === "market"
-                  ? marketOptions.map((market) => ({ value: market.id, label: market.name }))
-                  : currentLevel === "operator"
-                    ? operatorOptions.map((operator) => ({ value: operator.id, label: operator.name }))
-                    : optionLocations.map((location) => ({ value: location.id, label: location.name }))
-              }
-              value={aggregateValue}
-              onValueChange={selectParent}
-            >
-              <SelectTrigger aria-label="Scope" className="h-11! w-56 min-w-48"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {currentLevel === "market"
-                    ? marketOptions.map((market) => <SelectItem key={market.id} value={market.id}>{market.name}</SelectItem>)
-                    : currentLevel === "operator"
-                      ? operatorOptions.map((operator) => <SelectItem key={operator.id} value={operator.id}>{operator.name}</SelectItem>)
-                      : optionLocations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          ) : null}
-          {currentMode === "compare" ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="lg" className="min-h-11" />}>
-                {selectedIds.length} lokationer
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>Vælg lokationer</DropdownMenuLabel>
-                  {selectedLocations.map((location) => (
-                    <DropdownMenuCheckboxItem
-                      key={location.id}
-                      checked={selectedIds.includes(location.id)}
-                      disabled={selectedIds.includes(location.id) && selectedIds.length <= 2}
-                      onCheckedChange={(checked) => toggleLocation(location.id, checked)}
-                    >
-                      {location.name}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="lg" className="min-h-11 max-w-full min-w-56" aria-label="Vælg dashboardets lokationer" />}>
+            <MapPinIcon data-icon="inline-start" />
+            <span className="min-w-0 truncate">{triggerLabel}</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-80">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Lokationer</DropdownMenuLabel>
+              {currentLevel !== "location" ? (
+                <DropdownMenuCheckboxItem checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
+                  {currentLevel === "organization" ? "Alle lokationer" : `Alle i ${currentParentName ?? "gruppen"}`}
+                </DropdownMenuCheckboxItem>
+              ) : null}
+            </DropdownMenuGroup>
+            {currentLevel !== "location" ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuGroup className="max-h-64 overflow-y-auto">
+              {selectedLocations.map((location) => (
+                <DropdownMenuCheckboxItem
+                  key={location.id}
+                  checked={selectedIds.includes(location.id)}
+                  disabled={selectedIds.includes(location.id) && selectedIds.length <= 1}
+                  onCheckedChange={(checked) => toggleLocation(location.id, checked)}
+                >
+                  <span className="min-w-0 truncate">{location.name}</span>
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );

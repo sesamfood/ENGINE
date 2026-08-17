@@ -7,6 +7,8 @@ import {
   useQuery,
 } from "convex/react";
 import {
+  ChevronDownIcon,
+  ChevronUpIcon,
   CircleAlertIcon,
   PlugIcon,
   RefreshCwIcon,
@@ -15,7 +17,11 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
+import {
+  CreatableCombobox,
+  type ComboboxOption,
+} from "@/components/catalog/creatable-combobox";
+import { getOnlinePosProductSuggestions } from "@/components/catalog/online-pos-product-suggestions";
 import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -40,7 +46,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Empty,
   EmptyDescription,
@@ -220,6 +230,7 @@ function ConnectionCard({
   const disconnect = useMutation(api.onlinePos.disconnect);
   const [companyIdDraft, setCompanyIdDraft] = useState<string | null>(null);
   const [token, setToken] = useState("");
+  const [editingConnection, setEditingConnection] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const companyId = companyIdDraft ?? String(settings.companyId ?? "");
@@ -240,6 +251,7 @@ function ConnectionCard({
       const result = await connect({ companyId: parsedCompanyId, token });
       setToken("");
       setCompanyIdDraft(null);
+      setEditingConnection(false);
       toast.success(
         `Masterforbindelsen er oprettet. ${result.productCount} produkter blev fundet.`,
       );
@@ -256,6 +268,7 @@ function ConnectionCard({
       await disconnect({});
       setCompanyIdDraft("");
       setToken("");
+      setEditingConnection(false);
       onDisconnected();
       toast.success("OnlinePOS-integrationen er fjernet");
     } catch (error) {
@@ -286,53 +299,57 @@ function ConnectionCard({
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        <FieldGroup>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="online-pos-company-id">
-                Master Firma-id
-              </FieldLabel>
-              <HelpTooltip
-                label="OnlinePOS master firma-id"
-                content="Brug firma-id'et for den OnlinePOS-konto, som indeholder masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt for at få firma-id og API-adgang."
+        {!settings.connected || editingConnection ? (
+          <FieldGroup>
+            {!settings.connected ? (
+              <Field>
+                <div className="flex items-center gap-1">
+                  <FieldLabel htmlFor="online-pos-company-id">
+                    Master Firma-id
+                  </FieldLabel>
+                  <HelpTooltip
+                    label="OnlinePOS master firma-id"
+                    content="Brug firma-id'et for den OnlinePOS-konto, som indeholder masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt for at få firma-id og API-adgang."
+                  />
+                </div>
+                <Input
+                  id="online-pos-company-id"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={companyId}
+                  onChange={(event) => setCompanyIdDraft(event.target.value)}
+                  placeholder="Firma-id fra OnlinePOS"
+                  className="h-11"
+                />
+              </Field>
+            ) : null}
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="online-pos-token">
+                  {settings.connected ? "Nyt mastertoken" : "Mastertoken"}
+                </FieldLabel>
+                <HelpTooltip
+                  label="OnlinePOS mastertoken"
+                  content="Brug API-tokenet til OnlinePOS-kontoen med masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
+                />
+              </div>
+              <Input
+                id="online-pos-token"
+                type="password"
+                autoComplete="off"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                placeholder={
+                  settings.connected
+                    ? "Indtast nyt token"
+                    : "Token fra OnlinePOS"
+                }
+                className="h-11"
               />
-            </div>
-            <Input
-              id="online-pos-company-id"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              value={companyId}
-              onChange={(event) => setCompanyIdDraft(event.target.value)}
-              placeholder="Firma-id fra OnlinePOS"
-              className="h-11"
-            />
-          </Field>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="online-pos-token">
-                {settings.connected ? "Nyt mastertoken" : "Mastertoken"}
-              </FieldLabel>
-              <HelpTooltip
-                label="OnlinePOS mastertoken"
-                content="Brug API-tokenet til OnlinePOS-kontoen med masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
-              />
-            </div>
-            <Input
-              id="online-pos-token"
-              type="password"
-              autoComplete="off"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder={
-                settings.connected
-                  ? "Indtast kun ved opdatering"
-                  : "Token fra OnlinePOS"
-              }
-              className="h-11"
-            />
-          </Field>
-        </FieldGroup>
+            </Field>
+          </FieldGroup>
+        ) : null}
 
         {settings.connectedAt ? (
           <p className="text-sm text-muted-foreground">
@@ -375,14 +392,36 @@ function ConnectionCard({
             </AlertDialogContent>
           </AlertDialog>
         ) : null}
-        <Button disabled={connecting} onClick={() => void saveConnection()}>
-          {connecting ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <PlugIcon data-icon="inline-start" />
-          )}
-          {settings.connected ? "Opdater master" : "Forbind master"}
-        </Button>
+        {settings.connected && !editingConnection ? (
+          <Button onClick={() => setEditingConnection(true)}>
+            <RefreshCwIcon data-icon="inline-start" />
+            Skift token
+          </Button>
+        ) : (
+          <>
+            {settings.connected ? (
+              <Button
+                variant="outline"
+                disabled={connecting}
+                onClick={() => {
+                  setCompanyIdDraft(null);
+                  setToken("");
+                  setEditingConnection(false);
+                }}
+              >
+                Annuller
+              </Button>
+            ) : null}
+            <Button disabled={connecting} onClick={() => void saveConnection()}>
+              {connecting ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <PlugIcon data-icon="inline-start" />
+              )}
+              {settings.connected ? "Gem nyt token" : "Forbind master"}
+            </Button>
+          </>
+        )}
       </CardFooter>
     </Card>
   );
@@ -410,6 +449,32 @@ function ProductMappings({
       })),
     [onlinePosProducts],
   );
+  const suggestionsByProductId = useMemo(() => {
+    const suggestions = new Map<
+      Id<"products">,
+      { exactMatch: boolean; options: ComboboxOption[] }
+    >();
+
+    for (const product of mappingOptions?.products ?? []) {
+      if (product.onlinePosProductId !== null) continue;
+      const { exactMatch, suggestions: matchingProducts } =
+        getOnlinePosProductSuggestions(onlinePosProducts ?? [], product.name);
+      const suggestionProducts = exactMatch
+        ? [exactMatch]
+        : matchingProducts;
+      suggestions.set(product.id, {
+        exactMatch: Boolean(exactMatch),
+        options: suggestionProducts.map((suggestion) => ({
+          value: String(suggestion.id),
+          label: suggestion.groupName
+            ? `${suggestion.name} — ${suggestion.groupName}`
+            : suggestion.name,
+        })),
+      });
+    }
+
+    return suggestions;
+  }, [mappingOptions?.products, onlinePosProducts]);
 
   async function changeMapping(
     productId: Id<"products">,
@@ -494,28 +559,39 @@ function ProductMappings({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mappingOptions.products.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>
-                    <CreatableCombobox
-                      options={comboboxOptions}
-                      value={
-                        product.onlinePosProductId === null
-                          ? null
-                          : String(product.onlinePosProductId)
-                      }
-                      onValueChange={(value) =>
-                        void changeMapping(product.id, value)
-                      }
-                      placeholder="Søg efter OnlinePOS-produkt"
-                      ariaLabel={`OnlinePOS-produkt for ${product.name}`}
-                      allowCreate={false}
-                      disabled={savingProductId === product.id}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {mappingOptions.products.map((product) => {
+                const suggestions = suggestionsByProductId.get(product.id);
+                return (
+                  <TableRow key={product.id}>
+                    <TableCell className="font-medium">
+                      {product.name}
+                    </TableCell>
+                    <TableCell>
+                      <CreatableCombobox
+                        options={comboboxOptions}
+                        suggestionLabel={
+                          suggestions?.exactMatch
+                            ? "Forslag med samme navn"
+                            : "Forslag ud fra produktnavnet"
+                        }
+                        suggestionOptions={suggestions?.options}
+                        value={
+                          product.onlinePosProductId === null
+                            ? null
+                            : String(product.onlinePosProductId)
+                        }
+                        onValueChange={(value) =>
+                          void changeMapping(product.id, value)
+                        }
+                        placeholder="Søg efter OnlinePOS-produkt"
+                        ariaLabel={`OnlinePOS-produkt for ${product.name}`}
+                        allowCreate={false}
+                        disabled={savingProductId === product.id}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         ) : (
@@ -893,6 +969,7 @@ export function OnlinePosIntegration() {
   const listOnlinePosProducts = useAction(api.onlinePos.listProducts);
   const setEnabled = useAction(api.onlinePos.setEnabled);
   const [tab, setTab] = useState("connection");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [changingEnabled, setChangingEnabled] = useState(false);
   const [onlinePosProducts, setOnlinePosProducts] = useState<
@@ -913,8 +990,8 @@ export function OnlinePosIntegration() {
   }
 
   async function changeIntegrationEnabled(enabled: boolean) {
-    setSetupOpen(enabled);
     if (!settings?.connected) {
+      setSetupOpen(enabled);
       if (!enabled) setTab("connection");
       return;
     }
@@ -922,6 +999,7 @@ export function OnlinePosIntegration() {
     setChangingEnabled(true);
     try {
       await setEnabled({ enabled });
+      setDetailsOpen(false);
       if (!enabled) setTab("connection");
       toast.success(
         enabled
@@ -929,7 +1007,6 @@ export function OnlinePosIntegration() {
           : "OnlinePOS-integrationen er deaktiveret",
       );
     } catch (error) {
-      setSetupOpen(settings.enabled);
       toast.error(messageFrom(error));
     } finally {
       setChangingEnabled(false);
@@ -955,10 +1032,16 @@ export function OnlinePosIntegration() {
     return <Skeleton className="h-96 w-full max-w-3xl" />;
   }
 
-  const integrationOpen = settings.enabled || setupOpen;
+  const integrationOpen = detailsOpen || setupOpen;
 
   return (
-    <Collapsible open={integrationOpen}>
+    <Collapsible
+      open={integrationOpen}
+      onOpenChange={(open) => {
+        setDetailsOpen(open);
+        if (!open && !settings.connected) setSetupOpen(false);
+      }}
+    >
       <Card className="max-w-6xl has-data-[slot=card-footer]:pb-(--card-spacing)">
         <CardHeader>
           <CardTitle>OnlinePOS</CardTitle>
@@ -966,20 +1049,42 @@ export function OnlinePosIntegration() {
             Hent produkter fra en masterkonto, og hent salg med separate
             forbindelser for hver lokation.
           </CardDescription>
-          <CardAction>
+          <CardAction className="flex items-center gap-3">
             <Field orientation="horizontal" className="w-auto">
               <Switch
                 id="online-pos-integration-enabled"
-                aria-controls="online-pos-integration-settings"
-                aria-expanded={integrationOpen}
+                aria-controls={
+                  settings.connected
+                    ? undefined
+                    : "online-pos-integration-settings"
+                }
+                aria-expanded={
+                  settings.connected ? undefined : integrationOpen
+                }
                 aria-label="Aktivér OnlinePOS-integration"
-                checked={integrationOpen}
+                checked={settings.connected ? settings.enabled : setupOpen}
                 disabled={changingEnabled}
                 onCheckedChange={(enabled) =>
                   void changeIntegrationEnabled(enabled)
                 }
               />
             </Field>
+            <CollapsibleTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={`${integrationOpen ? "Skjul" : "Vis"} OnlinePOS-indstillinger`}
+                />
+              }
+            >
+              {integrationOpen ? "Skjul" : "Vis"}
+              {integrationOpen ? (
+                <ChevronUpIcon data-icon="inline-end" />
+              ) : (
+                <ChevronDownIcon data-icon="inline-end" />
+              )}
+            </CollapsibleTrigger>
           </CardAction>
         </CardHeader>
         <CollapsibleContent id="online-pos-integration-settings">

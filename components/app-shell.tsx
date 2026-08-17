@@ -89,12 +89,12 @@ import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
 import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
 
 const primaryNavigation = [
-  { id: "dashboard", label: "Overblik", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
-  { id: "transfers", label: "Flytninger", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
-  { id: "waste", label: "Spild", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
+  { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
+  { id: "transfers", label: "Transfer", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
+  { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
   { id: "ownChecks", label: "Egenkontrol", href: "/own-checks", icon: ClipboardCheckIcon, pages: ["ownChecks.today", "ownChecks.overview", "ownChecks.documentation"] },
-  { id: "staffFood", label: "Personalemad", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
-  { id: "count", label: "Optælling", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
+  { id: "staffFood", label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
+  { id: "count", label: "Count", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
 ];
 
 const employeesNavigation = {
@@ -107,9 +107,9 @@ const employeesNavigation = {
 
 const organizationNavigation = {
   id: "organization",
-  label: "Organisation",
+  label: "Settings",
   href: "/organization",
-  icon: Building2Icon,
+  icon: SettingsIcon,
   pages: [] as string[],
 };
 

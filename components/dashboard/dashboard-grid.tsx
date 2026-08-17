@@ -32,6 +32,7 @@ import {
 } from "@/lib/dashboard/layout";
 import type { DashboardRange, DashboardScope, MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
+import type { YAxisValues } from "./y-axis-settings";
 
 const sizeClasses: Record<WidgetSize, string> = {
   "1x1": "col-span-1 row-span-1",
@@ -189,6 +190,7 @@ function DraggableWidget({
   widget,
   sourceSize,
   result,
+  range,
   editable,
   onChange,
   onResize,
@@ -197,6 +199,7 @@ function DraggableWidget({
   widget: WidgetInstance;
   sourceSize: WidgetSize;
   result?: MetricResult;
+  range: DashboardRange;
   editable: boolean;
   onChange: (widget: WidgetInstance) => void;
   onResize: (size: WidgetSize, complete: boolean) => void;
@@ -229,9 +232,18 @@ function DraggableWidget({
       <DashboardWidget
         widget={widget}
         result={result}
+        range={range}
         editable={editable}
         resizing={widget.size !== sourceSize}
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
+        onYAxisChange={(axis: YAxisValues) => {
+          const options = { ...widget.options };
+          if (axis.min === undefined) delete options.yAxisMin;
+          else options.yAxisMin = axis.min;
+          if (axis.max === undefined) delete options.yAxisMax;
+          else options.yAxisMax = axis.max;
+          onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
+        }}
         onResize={onResize}
         onRemove={onRemove}
       />
@@ -370,6 +382,7 @@ export function DashboardGrid({
               widget={widget}
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
+              range={range}
               editable={editable}
               onChange={(next) => onChange?.(layout.map((item) => item.key === widget.key ? next : item))}
               onResize={(size, complete) => {

@@ -44,9 +44,9 @@ function Controls({
     <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Lagerstyring
+          Waste
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Spild</h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Waste</h1>
       </div>
       <Field>
         <FieldLabel htmlFor="waste-location">Lokation</FieldLabel>

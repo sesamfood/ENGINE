@@ -54,7 +54,7 @@ export function ShareDialog({
   onBeforeCreate?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("Overblik");
+  const [name, setName] = useState("Dashboard");
   const [password, setPassword] = useState("");
   const [days, setDays] = useState("7");
   const [pending, setPending] = useState(false);
@@ -98,7 +98,7 @@ export function ShareDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Del overblik</DialogTitle>
+          <DialogTitle>Del dashboard</DialogTitle>
           <DialogDescription>
             Linket viser et øjebliksbillede af layout, scope og periode. Data forbliver opdateret.
           </DialogDescription>
@@ -131,7 +131,7 @@ export function ShareDialog({
             <FieldLabel htmlFor="share-password">Adgangskode</FieldLabel>
             <Input id="share-password" type="password" value={password} maxLength={128} onChange={(event) => setPassword(event.target.value)} />
             <FieldDescription>
-              Påkrævet når overblikket indeholder admin-målinger som omsætning. Mindst 4 tegn.
+              Påkrævet når dashboardet indeholder admin-målinger som omsætning. Mindst 4 tegn.
             </FieldDescription>
           </Field>
         </FieldGroup>

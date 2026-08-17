@@ -14,7 +14,7 @@ export function TableVisualization({ result, compact = false }: { result: Metric
   const rows = result.breakdown ?? result.series.map((series) => ({ key: series.key, label: series.label, value: series.total }));
   return (
     <div className="h-full min-h-0 overflow-auto">
-      <Table className={cn(compact && "text-xs")}>
+      <Table className={cn("w-full table-fixed", compact && "text-xs")}>
         <TableHeader className={cn(compact && "sr-only")}>
           <TableRow>
             <TableHead>Navn</TableHead>
@@ -24,7 +24,7 @@ export function TableVisualization({ result, compact = false }: { result: Metric
         <TableBody>
           {rows.slice(0, 20).map((row) => (
             <TableRow key={row.key}>
-              <TableCell className={cn("font-medium", compact && "py-1.5")}>{row.label}</TableCell>
+              <TableCell className={cn("max-w-0 truncate font-medium", compact && "py-1.5")}>{row.label}</TableCell>
               <TableCell className={cn("text-right tabular-nums", compact && "py-1.5")}>{formatMetricValue(row.value, result)}</TableCell>
             </TableRow>
           ))}

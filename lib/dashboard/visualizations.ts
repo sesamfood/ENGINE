@@ -10,6 +10,8 @@ import type { MetricResult, VisualizationId } from "./types";
 export type VisualizationProps = {
   result: MetricResult;
   compact?: boolean;
+  yAxisMin?: number;
+  yAxisMax?: number;
 };
 
 const visualizationLoading = () =>

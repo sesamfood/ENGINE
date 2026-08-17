@@ -104,7 +104,7 @@ function requireToken(token: string) {
   return trimmed;
 }
 
-async function requireEnabledSettings(ctx: ActionCtx): Promise<{
+async function requireConnectedSettings(ctx: ActionCtx): Promise<{
   organizationId: string;
   settings: { token: string; companyId: number; enabled: boolean };
 }> {
@@ -116,8 +116,8 @@ async function requireEnabledSettings(ctx: ActionCtx): Promise<{
   } | null = await ctx.runQuery(internal.onlinePos.getPrivateSettings, {
     organizationId,
   });
-  if (!settings?.enabled) {
-    throw new ConvexError("OnlinePOS-integrationen er ikke aktiv");
+  if (!settings) {
+    throw new ConvexError("OnlinePOS er ikke forbundet");
   }
   return { organizationId, settings };
 }
@@ -595,8 +595,39 @@ export const listProducts = action({
   args: {},
   returns: v.array(onlinePosProductValidator),
   handler: async (ctx): Promise<OnlinePosProduct[]> => {
-    const { settings } = await requireEnabledSettings(ctx);
+    const { settings } = await requireConnectedSettings(ctx);
     return requestProducts(settings);
+  },
+});
+
+export const getProductMapping = query({
+  args: { productId: v.id("products") },
+  returns: v.union(
+    v.object({ onlinePosProductId: v.union(v.number(), v.null()) }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireIntegrationManager(ctx);
+    const [settings, product, mapping] = await Promise.all([
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+      ctx.db.get("products", args.productId),
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("productId", args.productId),
+        )
+        .unique(),
+    ]);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (!settings) return null;
+    return { onlinePosProductId: mapping?.onlinePosProductId ?? null };
   },
 });
 
@@ -623,7 +654,7 @@ export const listMappingOptions = query({
         q.eq("organizationId", organizationId),
       )
       .unique();
-    if (!settings?.enabled) return null;
+    if (!settings) return null;
 
     const [products, mappings] = await Promise.all([
       ctx.db
@@ -682,8 +713,8 @@ export const saveProductMapping = internalMutation({
         )
         .unique(),
     ]);
-    if (!settings?.enabled) {
-      throw new ConvexError("OnlinePOS-integrationen er ikke aktiv");
+    if (!settings) {
+      throw new ConvexError("OnlinePOS er ikke forbundet");
     }
     if (!product || product.organizationId !== args.organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
@@ -720,7 +751,7 @@ export const setProductMapping = action({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, settings } = await requireEnabledSettings(ctx);
+    const { organizationId, settings } = await requireConnectedSettings(ctx);
 
     if (args.onlinePosProductId !== null) {
       const products = await requestProducts(settings);

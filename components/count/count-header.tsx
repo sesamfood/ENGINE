@@ -53,11 +53,11 @@ function CountHeaderControls({
     <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-          Lagerstyring
+          Count
         </p>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Optælling
+            Count
           </h1>
           {periodKey ? (
             <p className="text-lg capitalize text-muted-foreground">
