@@ -553,23 +553,26 @@ export function WorkfeedIntegration() {
   const canManage = usePermission("integrations.manage");
   const settings = useQuery(api.workfeed.getSettings, canManage ? {} : "skip");
   const setEnabled = useAction(api.workfeed.setEnabled);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [changingEnabled, setChangingEnabled] = useState(false);
 
   async function changeIntegrationEnabled(enabled: boolean) {
-    setSetupOpen(enabled);
-    if (!settings?.connected) return;
+    if (!settings?.connected) {
+      setSetupOpen(enabled);
+      return;
+    }
 
     setChangingEnabled(true);
     try {
       await setEnabled({ enabled });
+      setDetailsOpen(false);
       toast.success(
         enabled
           ? "Workfeed-integrationen er aktiveret"
           : "Workfeed-integrationen er deaktiveret",
       );
     } catch (error) {
-      setSetupOpen(settings.enabled);
       toast.error(messageFrom(error));
     } finally {
       setChangingEnabled(false);
@@ -593,10 +596,16 @@ export function WorkfeedIntegration() {
 
   if (!settings) return <Skeleton className="h-72 w-full max-w-6xl" />;
 
-  const integrationOpen = settings.enabled || setupOpen;
+  const integrationOpen = detailsOpen || setupOpen;
 
   return (
-    <Collapsible open={integrationOpen}>
+    <Collapsible
+      open={integrationOpen}
+      onOpenChange={(open) => {
+        setDetailsOpen(open);
+        if (!open && !settings.connected) setSetupOpen(false);
+      }}
+    >
       <Card className="max-w-6xl">
         <CardHeader>
           <CardTitle>Workfeed</CardTitle>
@@ -604,20 +613,42 @@ export function WorkfeedIntegration() {
             Se dagens planlagte medarbejdere og antal medarbejdere på arbejde
             for hver lokation.
           </CardDescription>
-          <CardAction>
+          <CardAction className="flex items-center gap-3">
             <Field orientation="horizontal" className="w-auto">
               <Switch
                 id="workfeed-integration-enabled"
-                aria-controls="workfeed-integration-settings"
-                aria-expanded={integrationOpen}
+                aria-controls={
+                  settings.connected
+                    ? undefined
+                    : "workfeed-integration-settings"
+                }
+                aria-expanded={
+                  settings.connected ? undefined : integrationOpen
+                }
                 aria-label="Aktivér Workfeed-integration"
-                checked={integrationOpen}
+                checked={settings.connected ? settings.enabled : setupOpen}
                 disabled={changingEnabled}
                 onCheckedChange={(enabled) =>
                   void changeIntegrationEnabled(enabled)
                 }
               />
             </Field>
+            <CollapsibleTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={`${integrationOpen ? "Skjul" : "Vis"} Workfeed-indstillinger`}
+                />
+              }
+            >
+              {integrationOpen ? "Skjul" : "Vis"}
+              {integrationOpen ? (
+                <ChevronUpIcon data-icon="inline-end" />
+              ) : (
+                <ChevronDownIcon data-icon="inline-end" />
+              )}
+            </CollapsibleTrigger>
           </CardAction>
         </CardHeader>
         <CollapsibleContent id="workfeed-integration-settings">

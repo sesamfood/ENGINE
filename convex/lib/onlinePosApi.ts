@@ -162,11 +162,12 @@ export async function requestOnlinePos(
 }
 
 export function parseProducts(payload: unknown): OnlinePosProduct[] {
-  if (!Array.isArray(payload)) {
+  const products = Array.isArray(payload) ? payload : object(payload)?.products;
+  if (!Array.isArray(products)) {
     throw new ConvexError("OnlinePOS returnerede en ugyldig produktliste");
   }
 
-  return payload.flatMap((value) => {
+  return products.flatMap((value) => {
     const product = object(value);
     const id = number(product?.ID);
     const name = string(product?.name).trim();

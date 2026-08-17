@@ -2,11 +2,13 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowLeftIcon,
   ImageIcon,
+  Link2Icon,
   PlusIcon,
+  RefreshCwIcon,
   SaveIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/compress-image";
+import { usePermission } from "@/components/app-shell";
 import {
   CreatableCombobox,
   type ComboboxOption,
@@ -71,6 +74,12 @@ type ProductOption = {
   units: Array<{ id: Id<"units">; name: string }>;
 };
 
+type OnlinePosProduct = {
+  id: number;
+  name: string;
+  groupName: string;
+};
+
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
@@ -91,6 +100,137 @@ function parseReference(value: string) {
 
 function formatFactor(value: number) {
   return Number(value.toPrecision(10)).toString();
+}
+
+function normalizedProductName(value: string) {
+  return value.trim().toLocaleLowerCase("da");
+}
+
+function OnlinePosProductMappingField({
+  productId,
+  productName,
+}: {
+  productId: Id<"products">;
+  productName: string;
+}) {
+  const canManageIntegrations = usePermission("integrations.manage");
+  const mapping = useQuery(
+    api.onlinePos.getProductMapping,
+    canManageIntegrations ? { productId } : "skip",
+  );
+  const listProducts = useAction(api.onlinePos.listProducts);
+  const setProductMapping = useAction(api.onlinePos.setProductMapping);
+  const [onlinePosProducts, setOnlinePosProducts] = useState<
+    OnlinePosProduct[] | null
+  >();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!mapping || onlinePosProducts !== undefined) return;
+    let active = true;
+    void listProducts({})
+      .then((products) => {
+        if (active) setOnlinePosProducts(products);
+      })
+      .catch(() => {
+        if (active) setOnlinePosProducts(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [listProducts, mapping, onlinePosProducts]);
+
+  const currentMapping = mapping?.onlinePosProductId;
+  const comboboxOptions = useMemo(
+    () =>
+      (onlinePosProducts ?? []).map((product) => ({
+        value: String(product.id),
+        label: product.groupName
+          ? `${product.name} — ${product.groupName}`
+          : product.name,
+      })),
+    [onlinePosProducts],
+  );
+  const suggestion =
+    currentMapping == null
+      ? (onlinePosProducts ?? []).find(
+          (product) =>
+            normalizedProductName(product.name) ===
+            normalizedProductName(productName),
+        )
+      : undefined;
+
+  async function changeMapping(value: string | null) {
+    setSaving(true);
+    try {
+      await setProductMapping({
+        productId,
+        onlinePosProductId: value === null ? null : Number(value),
+      });
+      toast.success(
+        value === null
+          ? "OnlinePOS-koblingen er fjernet"
+          : "OnlinePOS-koblingen er gemt",
+      );
+    } catch (error) {
+      toast.error(messageFrom(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canManageIntegrations || !mapping) return null;
+
+  return (
+    <Field>
+      <FieldLabel>OnlinePOS-produkt</FieldLabel>
+      {onlinePosProducts === undefined ? (
+        <Skeleton className="h-11 w-full" />
+      ) : onlinePosProducts === null ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11"
+          onClick={() => setOnlinePosProducts(undefined)}
+        >
+          <RefreshCwIcon data-icon="inline-start" />
+          Prøv at hente OnlinePOS-produkter igen
+        </Button>
+      ) : (
+        <CreatableCombobox
+          options={comboboxOptions}
+          value={
+            currentMapping === null || currentMapping === undefined
+              ? null
+              : String(currentMapping)
+          }
+          onValueChange={(value) => void changeMapping(value)}
+          placeholder="Søg efter OnlinePOS-produkt"
+          ariaLabel={`OnlinePOS-produkt for ${productName}`}
+          disabled={saving}
+        />
+      )}
+      {suggestion ? (
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <FieldDescription>
+            Forslag med samme navn: {suggestion.name}
+          </FieldDescription>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={saving}
+            onClick={() => void changeMapping(String(suggestion.id))}
+          >
+            <Link2Icon data-icon="inline-start" />
+            Brug forslag
+          </Button>
+        </div>
+      ) : onlinePosProducts ? (
+        <FieldDescription>Koblingen gemmes med det samme.</FieldDescription>
+      ) : null}
+    </Field>
+  );
 }
 
 function FormLoading() {
@@ -513,6 +653,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 />
                 <FieldError>{errors.category}</FieldError>
               </Field>
+
+              {productId ? (
+                <OnlinePosProductMappingField
+                  productId={productId}
+                  productName={name}
+                />
+              ) : null}
 
               <Field
                 className="max-w-xl"

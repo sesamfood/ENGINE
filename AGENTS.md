@@ -73,7 +73,7 @@ Scores are 1–10, higher is better. Cost is value for money (higher = cheaper),
 | ---------------------- | ---- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `gpt-5.6-sol` (high)   | 1    | 9            | Last resort. Hard debugging, subtle correctness or security problems, and tasks the other models have already failed at.                             |
 | Claude Opus 5 (high)   | 2    | 8            | Orchestration, task breakdown, planning, and architecture. Reviews the finished work and owns changes touching auth, permissions, or the data model. |
-| `gpt-5.6-terra` (high) | 4    | 7            | First escalation. Reviewing and debugging luna's output, and bug fixes luna could not land.                                                          |
+| `gpt-5.6-sol` (medium) | 4    | 7            | First escalation. Reviewing and debugging luna's output, and bug fixes luna could not land.                                                          |
 | `gpt-5.6-luna` (max)   | 7    | 5            | **Default workhorse.** All delegated implementation: features, refactors, tests, boilerplate, Danish text, docs.                                     |
 
 Rules:
