@@ -10,8 +10,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -50,13 +48,6 @@ export function ScopeSelector({
   const currentLevel: ScopeLevel = lockedToSingle ? "location" : scope.level ?? (
     scope.locationIds?.length === 1 ? "location" : "organization"
   );
-  const marketOptions = (scopeOptions?.markets ?? []).filter((market) =>
-    optionLocations.some((location) => location.marketId === market.id),
-  );
-  const operatorOptions = (scopeOptions?.operators ?? []).filter((operator) =>
-    optionLocations.some((location) => location.operatorId === operator.id),
-  );
-
   const currentParentId = lockedToSingle
     ? availableLocations[0]?.id
     : scope.parentId ?? (
@@ -73,14 +64,6 @@ export function ScopeSelector({
   const selectedIds = (scope.locationIds ?? selectedLocations.map((location) => location.id)).filter(
     (id) => selectedLocations.some((location) => location.id === id),
   );
-  const levelValue = currentLevel === "organization"
-    ? "organization"
-    : currentLevel === "market"
-      ? `market:${currentParentId ?? ""}`
-      : currentLevel === "operator"
-        ? `operator:${currentParentId ?? ""}`
-        : "location";
-
   function scopeFor(level: ScopeLevel, parentId?: string): DashboardScope {
     if (level === "organization") {
       return { mode: "aggregate", locationIds: null, level };
@@ -126,38 +109,10 @@ export function ScopeSelector({
     });
   }
 
-  function selectLevel(value: string) {
-    const level = value as ScopeLevel;
-    if (level === "organization") {
-      onChange(scopeFor(level));
-      return;
-    }
-    const first = level === "market"
-      ? marketOptions[0]?.id
-      : level === "operator"
-        ? operatorOptions[0]?.id
-        : optionLocations[0]?.id;
-    if (first) onChange(scopeFor(level, first));
-  }
-
-  function selectScopeValue(value: string) {
-    if (value === "organization") {
-      selectLevel(value);
-      return;
-    }
-    if (value.startsWith("market:")) {
-      onChange(scopeFor("market", value.slice("market:".length)));
-    } else if (value.startsWith("operator:")) {
-      onChange(scopeFor("operator", value.slice("operator:".length)));
-    } else {
-      selectLevel(value);
-    }
-  }
-
   const currentParentName = currentLevel === "market"
-    ? marketOptions.find((market) => market.id === currentParentId)?.name
+    ? scopeOptions?.markets?.find((market) => market.id === currentParentId)?.name
     : currentLevel === "operator"
-      ? operatorOptions.find((operator) => operator.id === currentParentId)?.name
+      ? scopeOptions?.operators?.find((operator) => operator.id === currentParentId)?.name
       : currentLevel === "location"
         ? optionLocations.find((location) => location.id === currentParentId)?.name
         : undefined;
@@ -191,22 +146,15 @@ export function ScopeSelector({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-80">
             <DropdownMenuGroup>
-              <DropdownMenuLabel>Omfang</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={levelValue} onValueChange={selectScopeValue}>
-                <DropdownMenuRadioItem value="organization">Organisation</DropdownMenuRadioItem>
-                {marketOptions.map((market) => <DropdownMenuRadioItem key={market.id} value={`market:${market.id}`} className="min-w-0"><span className="min-w-0 truncate">Marked · {market.name}</span></DropdownMenuRadioItem>)}
-                {operatorOptions.map((operator) => <DropdownMenuRadioItem key={operator.id} value={`operator:${operator.id}`} className="min-w-0"><span className="min-w-0 truncate">Operatør · {operator.name}</span></DropdownMenuRadioItem>)}
-                <DropdownMenuRadioItem value="location">Lokation</DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup className="max-h-64 overflow-y-auto">
-              <DropdownMenuLabel>{allSelected ? (currentLevel === "organization" ? "Alle lokationer" : `Alle i ${currentParentName ?? "gruppen"}`) : `${selectedIds.length} valgte lokationer`}</DropdownMenuLabel>
+              <DropdownMenuLabel>Lokationer</DropdownMenuLabel>
               {currentLevel !== "location" ? (
                 <DropdownMenuCheckboxItem checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
                   {currentLevel === "organization" ? "Alle lokationer" : `Alle i ${currentParentName ?? "gruppen"}`}
                 </DropdownMenuCheckboxItem>
               ) : null}
+            </DropdownMenuGroup>
+            {currentLevel !== "location" ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuGroup className="max-h-64 overflow-y-auto">
               {selectedLocations.map((location) => (
                 <DropdownMenuCheckboxItem
                   key={location.id}
