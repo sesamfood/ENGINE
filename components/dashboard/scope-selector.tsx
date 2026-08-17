@@ -117,19 +117,11 @@ export function ScopeSelector({
         ? optionLocations.find((location) => location.id === currentParentId)?.name
         : undefined;
   const allSelected = currentLevel !== "location" && selectedIds.length > 0 && selectedIds.length === selectedLocations.length;
-  const selectedSummary = selectedIds.length === 1
-    ? selectedLocations.find((location) => location.id === selectedIds[0])?.name ?? "1 lokation"
-    : allSelected
-      ? currentLevel === "organization" ? "Alle lokationer" : `Alle i ${currentParentName ?? "gruppen"}`
+  const triggerLabel = allSelected
+    ? "Alle lokationer"
+    : selectedIds.length === 1
+      ? selectedLocations.find((location) => location.id === selectedIds[0])?.name ?? "1 lokation"
       : `${selectedIds.length} lokationer`;
-  const scopeSummary = currentLevel === "organization"
-    ? "Organisation"
-    : currentLevel === "market"
-      ? `Marked · ${currentParentName ?? "Vælg marked"}`
-      : currentLevel === "operator"
-        ? `Operatør · ${currentParentName ?? "Vælg operatør"}`
-        : "Lokation";
-  const triggerLabel = `${scopeSummary} · ${selectedSummary}`;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
