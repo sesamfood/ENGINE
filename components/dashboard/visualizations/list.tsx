@@ -9,7 +9,7 @@ export function ListVisualization({ result, compact = false }: { result: MetricR
         <li key={row.key} className="flex items-center gap-3 text-sm">
           <span className="w-5 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
           <span className="min-w-0 flex-1 truncate">{row.label}</span>
-          <span className="font-medium tabular-nums">{formatMetricValue(row.value, result)}</span>
+          <span className="shrink-0 font-medium tabular-nums">{formatMetricValue(row.value, result)}</span>
         </li>
       ))}
     </ol>

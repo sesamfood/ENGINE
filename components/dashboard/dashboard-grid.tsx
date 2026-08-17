@@ -190,6 +190,7 @@ function DraggableWidget({
   widget,
   sourceSize,
   result,
+  range,
   editable,
   onChange,
   onResize,
@@ -198,6 +199,7 @@ function DraggableWidget({
   widget: WidgetInstance;
   sourceSize: WidgetSize;
   result?: MetricResult;
+  range: DashboardRange;
   editable: boolean;
   onChange: (widget: WidgetInstance) => void;
   onResize: (size: WidgetSize, complete: boolean) => void;
@@ -230,6 +232,7 @@ function DraggableWidget({
       <DashboardWidget
         widget={widget}
         result={result}
+        range={range}
         editable={editable}
         resizing={widget.size !== sourceSize}
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
@@ -379,6 +382,7 @@ export function DashboardGrid({
               widget={widget}
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
+              range={range}
               editable={editable}
               onChange={(next) => onChange?.(layout.map((item) => item.key === widget.key ? next : item))}
               onResize={(size, complete) => {

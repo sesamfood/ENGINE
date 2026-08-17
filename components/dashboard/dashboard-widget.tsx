@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import type { MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { DashboardRange, MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { WidgetCard } from "./widget-card";
@@ -9,6 +9,7 @@ import { WidgetCard } from "./widget-card";
 export function DashboardWidget({
   widget,
   result,
+  range,
   editable,
   resizing,
   onVisualizationChange,
@@ -18,6 +19,7 @@ export function DashboardWidget({
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
+  range?: DashboardRange;
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
@@ -32,6 +34,7 @@ export function DashboardWidget({
     <WidgetCard
       widget={widget}
       result={result ?? undefined}
+      range={range}
       editable={editable}
       resizing={resizing}
       onVisualizationChange={onVisualizationChange}

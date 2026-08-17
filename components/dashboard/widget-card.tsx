@@ -35,10 +35,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { metricRegistry, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
-import { widgetSizes, type MetricResult, type WidgetInstance, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
+import { widgetSizes, type DashboardRange, type MetricResult, type WidgetInstance, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { previousTotal, total } from "./visualizations/utils";
@@ -98,21 +99,19 @@ function FreshnessNotice({
         <PopoverHeader>
           <PopoverTitle>{label}</PopoverTitle>
           <PopoverDescription>
-            {isStale
-              ? `${freshness.staleLocationCount} ${freshness.staleLocationCount === 1 ? "lokation har" : "lokationer har"} data, der kan være forældede.`
-              : hasError
-                ? "Seneste synkronisering har en fejl."
-                : "Integrationsdata er synkroniseret inden for det forventede interval."}
+            Senest gennemført: {freshness.lastSuccessAt === null ? "Aldrig" : formatter.format(freshness.lastSuccessAt)}
           </PopoverDescription>
         </PopoverHeader>
+        {isStale ? (
+          <p className="text-sm text-muted-foreground">
+            {freshness.staleLocationCount} {freshness.staleLocationCount === 1 ? "lokation har" : "lokationer har"} data, der kan være forældede.
+          </p>
+        ) : null}
         {freshness.errorLocationCount > 0 ? (
           <p className="text-sm text-destructive">
             {freshness.errorLocationCount} {freshness.errorLocationCount === 1 ? "lokation" : "lokationer"} har synkroniseringsfejl.
           </p>
         ) : null}
-        <p className="text-sm text-muted-foreground">
-          Senest gennemført: {freshness.lastSuccessAt === null ? "Aldrig" : formatter.format(freshness.lastSuccessAt)}
-        </p>
         {affected.length > 0 ? (
           <div className="text-sm">
             <p className="font-medium">Berørte lokationer</p>
@@ -143,6 +142,7 @@ function nearestSize(session: ResizeSession, clientX: number, clientY: number) {
 export function WidgetCard({
   widget,
   result,
+  range,
   editable,
   resizing = false,
   onVisualizationChange,
@@ -153,6 +153,7 @@ export function WidgetCard({
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
+  range?: DashboardRange;
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
@@ -169,6 +170,18 @@ export function WidgetCard({
   const change = current !== null && previous !== null && previous !== 0
     ? ((current - previous) / Math.abs(previous)) * 100
     : null;
+
+  const comparisonLabel = range?.preset === "today"
+    ? "i går"
+    : range?.preset === "yesterday"
+      ? "dagen før"
+      : range?.preset === "7days"
+        ? "de foregående 7 dage"
+        : range?.preset === "30days"
+          ? "de foregående 30 dage"
+          : range?.preset === "thisMonth"
+            ? "den foregående måned"
+            : "den foregående tilsvarende periode";
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [resizeActive, setResizeActive] = useState(false);
   const resizeSession = useRef<ResizeSession | null>(null);
@@ -249,21 +262,27 @@ export function WidgetCard({
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <CardTitle className="min-w-0 flex-1 truncate text-base">{definition.label}</CardTitle>
             {change !== null || result?.truncated || hasFreshness ? (
-              <CardDescription className="flex shrink-0 items-center gap-1">
+              <CardDescription className="flex min-w-0 max-w-full shrink-0 items-center gap-1 overflow-hidden">
                 {change !== null ? (
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      change >= 0
-                        ? "bg-primary/10 text-primary"
-                        : "bg-destructive/10 text-destructive",
-                    )}
-                  >
-                    {change >= 0 ? <ArrowUpRightIcon /> : <ArrowDownRightIcon />}
-                    {new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} %
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="inline-flex min-w-0" />}>
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "max-w-full",
+                          change >= 0
+                            ? "bg-primary/10 text-primary"
+                            : "bg-destructive/10 text-destructive",
+                        )}
+                      >
+                        {change >= 0 ? <ArrowUpRightIcon /> : <ArrowDownRightIcon />}
+                        <span className="truncate">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} %</span>
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>Sammenlignet med {comparisonLabel}</TooltipContent>
+                  </Tooltip>
                 ) : null}
-                {result?.truncated ? <Badge variant="outline">Begrænset data</Badge> : null}
+                {result?.truncated ? <Badge variant="outline" className="max-w-full"><span className="truncate">Begrænset data</span></Badge> : null}
                 {hasFreshness ? <FreshnessNotice freshness={freshness!} /> : null}
               </CardDescription>
             ) : null}
@@ -333,7 +352,7 @@ export function WidgetCard({
           ) : null}
         </div>
       </CardHeader>
-      <CardContent data-widget-size={widget.size} className={cn("min-h-0 flex-1 overflow-hidden pb-4", editable && "pb-8")}>{children}</CardContent>
+      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", editable && "pb-8")}>{children}</CardContent>
       {editable ? (
         <span
           data-dashboard-no-drag
