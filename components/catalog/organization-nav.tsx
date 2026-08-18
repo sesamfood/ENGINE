@@ -39,8 +39,10 @@ export function OrganizationHeader() {
     ? "Produkter"
     : pathname.startsWith("/organization/locations")
       ? "Lokationer"
-      : pathname.startsWith("/organization/integrations")
-        ? "Integrationer"
+        : pathname.startsWith("/organization/integrations")
+          ? "Integrationer"
+        : pathname.startsWith("/organization/metrics")
+          ? "Målinger"
         : pathname.startsWith("/organization/schedule")
           ? "Vagtplan"
           : pathname.startsWith("/organization/staff-food")

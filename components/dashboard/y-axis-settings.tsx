@@ -73,8 +73,7 @@ export function YAxisSettings({
           type="text"
           inputMode="decimal"
           step="any"
-          value={min}
-          placeholder="Automatisk"
+          value={min ?? 0}
           aria-invalid={invalidBounds}
           onCommit={(nextMin) => commit({ min: nextMin, max })}
         />
@@ -94,7 +93,7 @@ export function YAxisSettings({
         />
       </Field>
       <FieldDescription className="sm:col-span-2">
-        Lad felterne stå tomme for automatisk skala.
+        Minimum starter ved 0. Lad maksimumfeltet stå tomt for automatisk skala.
       </FieldDescription>
       {invalidBounds ? (
         <FieldError className="sm:col-span-2">Minimum skal være mindre end maksimum.</FieldError>

@@ -16,7 +16,9 @@ import {
 } from "./lib/auth";
 import {
   requestProducts,
+  requestRawSalesV20,
   requestSales,
+  type JsonValue,
   type OnlinePosProduct,
 } from "./lib/onlinePosApi";
 import { normalizeStock } from "./lib/stock";
@@ -102,6 +104,57 @@ function requireToken(token: string) {
     throw new ConvexError("Indtast et gyldigt OnlinePOS-token");
   }
   return trimmed;
+}
+
+function rawSalesDayBounds(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new ConvexError("Vælg en gyldig dato");
+  const normalized = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  )
+    .toISOString()
+    .slice(0, 10);
+  if (normalized !== value) throw new ConvexError("Vælg en gyldig dato");
+
+  const zonedStart = (dateValue: string) => {
+    const [year, month, day] = dateValue.split("-").map(Number);
+    const target = Date.UTC(year, month - 1, day);
+    let guess = target;
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Copenhagen",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const parts = Object.fromEntries(
+        formatter
+          .formatToParts(guess)
+          .map((part) => [part.type, part.value]),
+      );
+      const represented = Date.UTC(
+        Number(parts.year),
+        Number(parts.month) - 1,
+        Number(parts.day),
+        Number(parts.hour),
+        Number(parts.minute),
+        Number(parts.second),
+      );
+      guess += target - represented;
+    }
+    return guess;
+  };
+  const start = zonedStart(value);
+  const nextDate = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 1),
+  )
+    .toISOString()
+    .slice(0, 10);
+  return { start, end: zonedStart(nextDate) };
 }
 
 async function requireConnectedSettings(ctx: ActionCtx): Promise<{
@@ -597,6 +650,16 @@ export const listProducts = action({
   handler: async (ctx): Promise<OnlinePosProduct[]> => {
     const { settings } = await requireConnectedSettings(ctx);
     return requestProducts(settings);
+  },
+});
+
+export const inspectRawSales = action({
+  args: { date: v.string() },
+  returns: v.array(v.any()),
+  handler: async (ctx, args): Promise<JsonValue[]> => {
+    const { settings } = await requireConnectedSettings(ctx);
+    const { start, end } = rawSalesDayBounds(args.date);
+    return requestRawSalesV20(settings, start, end);
   },
 });
 

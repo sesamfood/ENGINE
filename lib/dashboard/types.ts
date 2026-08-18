@@ -49,6 +49,43 @@ export type MetricId = (typeof metricIds)[number];
 export type VisualizationId = (typeof visualizationIds)[number];
 export type WidgetSize = (typeof widgetSizes)[number];
 export type RangePreset = (typeof rangePresets)[number];
+export type WidgetRangePreset = Exclude<RangePreset, "custom">;
+export type CustomMetricDatasetId =
+  | "waste"
+  | "badDelivery"
+  | "transfers"
+  | "staffFood"
+  | "shifts"
+  | "counts"
+  | "salesDaily"
+  | "salesOrders"
+  | "salesLines";
+export type CustomMetricFilter = {
+  field: string;
+  op: "in" | "notIn";
+  values: string[];
+};
+export type CustomMetricQuerySpec = {
+  dataset: CustomMetricDatasetId;
+  measure: string;
+  filters: CustomMetricFilter[];
+};
+export type CustomMetricSpec =
+  | {
+      kind: "single";
+      query: CustomMetricQuerySpec;
+      dimension?: string;
+      bucket: "day" | "week" | "month";
+      limit?: number;
+    }
+  | {
+      kind: "ratio";
+      numerator: CustomMetricQuerySpec;
+      denominator: CustomMetricQuerySpec;
+      dimension?: string;
+      bucket: "day" | "week" | "month";
+      limit?: number;
+    };
 export type MetricUnit =
   | "count"
   | "currency"
@@ -86,10 +123,13 @@ export type MetricResult = {
 
 export type WidgetInstance = {
   key: string;
-  metricId: MetricId;
+  metric:
+    | { kind: "builtin"; id: MetricId }
+    | { kind: "custom"; id: Id<"customMetrics"> };
   visualization: VisualizationId;
   size: WidgetSize;
   position?: { column: number; row: number };
+  range?: WidgetRangePreset;
   options?: { limit?: number; yAxisMin?: number; yAxisMax?: number };
 };
 

@@ -91,7 +91,7 @@ function valueDomain(values: number[], yAxisMin?: number, yAxisMax?: number) {
   const automatic = min === max
     ? [min - Math.max(Math.abs(min) * 0.1, 1), max + Math.max(Math.abs(max) * 0.1, 1)] as const
     : [min >= 0 ? Math.max(0, min - (max - min) * 0.1) : min - (max - min) * 0.1, max + (max - min) * 0.1] as const;
-  const lower = yAxisMin ?? automatic[0];
+  const lower = yAxisMin ?? 0;
   const upper = yAxisMax ?? automatic[1];
   return lower < upper ? ([lower, upper] as const) : automatic;
 }

@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   action,
   internalMutation,
@@ -10,6 +10,7 @@ import {
   query,
 } from "./_generated/server";
 import { defaultWidgets, metricRegistry } from "../lib/dashboard/registry";
+import { dashboardDatasets } from "../lib/dashboard/datasets";
 import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
 import type {
   DashboardConfig,
@@ -17,7 +18,7 @@ import type {
   WidgetInstance,
 } from "../lib/dashboard/types";
 import {
-  dashboardConfigValidator,
+  customMetricSpecValidator,
   keyedMetricResultValidator,
   metricIdValidator,
   metricRequestValidator,
@@ -32,17 +33,28 @@ import {
   resolveMetricParams,
 } from "./lib/dashboardMetrics";
 import {
+  customMetricIsSensitive,
+  executeCustomMetric,
+  validateCustomMetricSpec,
+} from "./lib/customMetricExecutor";
+import {
   hashDashboardPassword,
   randomSecret,
 } from "./lib/dashboardShareCrypto";
 import {
   requireDashboardSharer,
+  requireDashboardManager,
   requireDashboardViewer,
 } from "./lib/auth";
-import { hasPermission } from "../lib/auth-permissions";
+import {
+  hasPermission,
+  systemRoleKeys,
+  systemRoleNames,
+} from "../lib/auth-permissions";
 import type { DataGranularity } from "../lib/auth-permissions";
 
 const MAX_WIDGETS = 24;
+const MAX_DASHBOARDS = 8;
 const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
 const CLEANUP_PAGE = 50;
@@ -53,6 +65,29 @@ type DashboardAccess = {
   permissions: ReadonlySet<string>;
   granularity: DataGranularity;
 };
+
+function customMetricAllowed(
+  auth: DashboardAccess,
+  spec: Doc<"customMetrics">["spec"],
+) {
+  try {
+    validateCustomMetricSpec(spec, auth.granularity);
+  } catch {
+    return false;
+  }
+  const queries =
+    spec.kind === "single" ? [spec.query] : [spec.numerator, spec.denominator];
+  return queries.every((querySpec) => {
+    const permission = dashboardDatasets[querySpec.dataset].permission;
+    if (!permission) return true;
+    return (
+      hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
+      hasPermission(auth.role, auth.permissions, permission) ||
+      (permission === "sales.viewAggregate" &&
+        hasPermission(auth.role, auth.permissions, "sales.viewDetail"))
+    );
+  });
+}
 
 function canViewSales(auth: DashboardAccess) {
   return (
@@ -71,6 +106,8 @@ function canViewDetailedSales(auth: DashboardAccess) {
 
 const shareSummaryValidator = v.object({
   id: v.id("dashboardShares"),
+  dashboardId: v.id("dashboards"),
+  dashboardName: v.string(),
   name: v.string(),
   token: v.string(),
   expiresAt: v.number(),
@@ -80,9 +117,29 @@ const shareSummaryValidator = v.object({
   requiresPassword: v.boolean(),
 });
 
-function validateWidgets(widgets: WidgetInstance[], canViewSales: boolean) {
+const customMetricSnapshotValidator = v.object({
+  id: v.id("customMetrics"),
+  name: v.string(),
+  spec: customMetricSpecValidator,
+});
+
+const shareSourceValidator = v.object({
+  widgets: v.array(widgetValidator),
+  scope: scopeValidator,
+  range: rangeValidator,
+  updatedAt: v.number(),
+  roleIds: v.array(v.string()),
+  customMetricSnapshots: v.array(customMetricSnapshotValidator),
+});
+
+async function validateWidgets(
+  ctx: MutationCtx,
+  organizationId: string,
+  widgets: WidgetInstance[],
+  auth: DashboardAccess,
+) {
   if (widgets.length > MAX_WIDGETS) {
-    throw new ConvexError(`Overblikket kan højst have ${MAX_WIDGETS} widgets`);
+    throw new ConvexError(`Dashboardet kan højst have ${MAX_WIDGETS} widgets`);
   }
   if (new Set(widgets.map((widget) => widget.key)).size !== widgets.length) {
     throw new ConvexError("Hver widget skal have en unik nøgle");
@@ -92,12 +149,35 @@ function validateWidgets(widgets: WidgetInstance[], canViewSales: boolean) {
     if (!widget.key.trim() || widget.key.length > 100) {
       throw new ConvexError("Widgetnøglen er ugyldig");
     }
-    const definition = metricRegistry[widget.metricId];
-    if (!definition.visualizations.includes(widget.visualization)) {
-      throw new ConvexError("Visualiseringen understøttes ikke af målingen");
-    }
-    if (definition.sensitive && !canViewSales) {
-      throw new ConvexError("Du har ikke adgang til denne måling");
+    if (widget.metric.kind === "builtin") {
+      const definition = metricRegistry[widget.metric.id];
+      if (!definition.visualizations.includes(widget.visualization)) {
+        throw new ConvexError("Visualiseringen understøttes ikke af målingen");
+      }
+      if (definition.sensitive && !canViewSales(auth)) {
+        throw new ConvexError("Du har ikke adgang til denne måling");
+      }
+    } else {
+      const metric = await ctx.db.get("customMetrics", widget.metric.id);
+      if (!metric || metric.organizationId !== organizationId) {
+        throw new ConvexError("Målingen blev ikke fundet");
+      }
+      if (!customMetricAllowed(auth, metric.spec)) {
+        throw new ConvexError("Du har ikke adgang til denne måling");
+      }
+      if (
+        widget.visualization === "donut" &&
+        (metric.spec.kind === "ratio" || !metric.spec.dimension)
+      ) {
+        throw new ConvexError("Visualiseringen understøttes ikke af målingen");
+      }
+      if (
+        (widget.visualization === "list" ||
+          widget.visualization === "table") &&
+        !metric.spec.dimension
+      ) {
+        throw new ConvexError("Visualiseringen kræver en dimension");
+      }
     }
     if (widget.position) {
       const { column, row } = widget.position;
@@ -268,46 +348,199 @@ export const listScopeOptions = query({
   },
 });
 
-function configFromDocument(
-  document: Doc<"dashboards"> | null,
-  canViewSales = true,
-  allowedLocationScope?: { all: boolean; ids: ReadonlySet<Doc<"locations">["_id"]> },
-): DashboardConfig {
-  const widgets = (document?.widgets ?? defaultWidgets).filter(
-    (widget) => canViewSales || !metricRegistry[widget.metricId].sensitive,
-  );
-  const storedScope = document?.scope ?? { mode: "aggregate" as const, locationIds: null };
-  const scope =
-    storedScope.locationIds === null || !allowedLocationScope
-      ? storedScope
-      : (() => {
-          const locationIds = allowedLocationScope.all
-            ? storedScope.locationIds
-            : storedScope.locationIds.filter((id) => allowedLocationScope.ids.has(id));
-          return locationIds.length
-            ? {
-                ...storedScope,
-                mode:
-                  storedScope.mode === "compare" && locationIds.length < 2
-                    ? ("aggregate" as const)
-                    : storedScope.mode,
-                locationIds,
-              }
-            : { mode: "aggregate" as const, locationIds: null };
-        })();
-  return document
-    ? {
-        widgets,
-        scope,
-        range: document.range,
-        updatedAt: document.updatedAt,
-      }
-    : {
-        widgets,
-        scope: { mode: "aggregate" as const, locationIds: null },
-        range: { preset: "7days" as const },
-        updatedAt: null,
+export const listRoleOptions = query({
+  args: {},
+  returns: v.array(v.object({ role: v.string(), name: v.string() })),
+  handler: async (ctx) => {
+    const auth = await requireDashboardManager(ctx);
+    const roles = await ctx.db
+      .query("roles")
+      .withIndex("by_organizationId_and_key", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(100);
+    const byKey = new Map(roles.map((role) => [role.key, role.name]));
+    return [
+      ...systemRoleKeys.map((role) => ({
+        role,
+        name: byKey.get(role) ?? systemRoleNames[role],
+      })),
+      ...roles
+        .filter((role) => !systemRoleKeys.includes(role.key as never))
+        .map((role) => ({ role: role.key, name: role.name })),
+    ];
+  },
+});
+
+const dashboardValidator = v.object({
+  id: v.id("dashboards"),
+  name: v.string(),
+  widgets: v.array(widgetValidator),
+  defaultScope: scopeValidator,
+  defaultRange: rangeValidator,
+  roleIds: v.array(v.string()),
+  defaultForRoleIds: v.array(v.string()),
+  defaultForLocationIds: v.array(v.id("locations")),
+  isOrganizationDefault: v.boolean(),
+  sortOrder: v.number(),
+  updatedAt: v.number(),
+});
+
+const dashboardListValidator = v.object({
+  dashboards: v.array(dashboardValidator),
+  role: v.string(),
+  singleLocationId: v.union(v.id("locations"), v.null()),
+});
+
+function normalizeDashboardName(value: string) {
+  const name = value.trim().replace(/\s+/g, " ");
+  if (!name || name.length > 100) {
+    throw new ConvexError("Navnet skal være mellem 1 og 100 tegn");
+  }
+  return { name, normalizedName: name.toLocaleLowerCase("da") };
+}
+
+function dashboardResult(dashboard: Doc<"dashboards">) {
+  return {
+    id: dashboard._id,
+    name: dashboard.name,
+    widgets: dashboard.widgets,
+    defaultScope: dashboard.defaultScope,
+    defaultRange: dashboard.defaultRange,
+    roleIds: dashboard.roleIds,
+    defaultForRoleIds: dashboard.defaultForRoleIds,
+    defaultForLocationIds: dashboard.defaultForLocationIds,
+    isOrganizationDefault: dashboard.isOrganizationDefault,
+    sortOrder: dashboard.sortOrder,
+    updatedAt: dashboard.updatedAt,
   };
+}
+
+function roleAllowsDashboard(dashboard: Doc<"dashboards">, role: string) {
+  return dashboard.roleIds.length === 0 || dashboard.roleIds.includes(role);
+}
+
+async function availableWidgets(
+  ctx: QueryCtx | MutationCtx,
+  auth: DashboardAccess & { organizationId: string },
+  widgets: WidgetInstance[],
+) {
+  const salesAllowed = canViewSales(auth);
+  return (
+    await Promise.all(
+      widgets.map(async (widget) => {
+        if (widget.metric.kind === "builtin") {
+          return salesAllowed || !metricRegistry[widget.metric.id].sensitive
+            ? widget
+            : null;
+        }
+        const metric = await ctx.db.get("customMetrics", widget.metric.id);
+        return metric &&
+          metric.organizationId === auth.organizationId &&
+          customMetricAllowed(auth, metric.spec)
+          ? widget
+          : null;
+      }),
+    )
+  ).filter((widget): widget is WidgetInstance => widget !== null);
+}
+
+function scopedDefault(
+  scope: DashboardScope,
+  allowedLocationScope: {
+    all: boolean;
+    ids: ReadonlySet<Doc<"locations">["_id"]>;
+  },
+) {
+  if (scope.locationIds === null || allowedLocationScope.all) return scope;
+  const locationIds = scope.locationIds.filter((id) =>
+    allowedLocationScope.ids.has(id),
+  );
+  if (!locationIds.length) {
+    return { mode: "aggregate" as const, locationIds: null };
+  }
+  return {
+    ...scope,
+    mode:
+      scope.mode === "compare" && locationIds.length < 2
+        ? ("aggregate" as const)
+        : scope.mode,
+    locationIds,
+  };
+}
+
+async function organizationDashboards(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+) {
+  return await ctx.db
+    .query("dashboards")
+    .withIndex("by_organizationId_and_sortOrder", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .take(MAX_DASHBOARDS + 1);
+}
+
+async function requireOrganizationDashboard(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  dashboardId: Id<"dashboards">,
+) {
+  const dashboard = await ctx.db.get("dashboards", dashboardId);
+  if (!dashboard || dashboard.organizationId !== organizationId) {
+    throw new ConvexError("Dashboardet blev ikke fundet");
+  }
+  return dashboard;
+}
+
+async function validateRoleKeys(
+  ctx: MutationCtx,
+  organizationId: string,
+  roleIds: string[],
+) {
+  if (roleIds.length > 100) {
+    throw new ConvexError("Vælg højst 100 roller");
+  }
+  if (new Set(roleIds).size !== roleIds.length) {
+    throw new ConvexError("En rolle må kun vælges én gang");
+  }
+  const customRoleIds = roleIds.filter(
+    (role) => !systemRoleKeys.includes(role as never),
+  );
+  const roles = await Promise.all(
+    customRoleIds.map((role) =>
+      ctx.db
+        .query("roles")
+        .withIndex("by_organizationId_and_key", (q) =>
+          q.eq("organizationId", organizationId).eq("key", role),
+        )
+        .unique(),
+    ),
+  );
+  if (roles.some((role) => !role)) {
+    throw new ConvexError("Rollen blev ikke fundet");
+  }
+}
+
+async function validateLocationIds(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationIds: Id<"locations">[],
+) {
+  if (locationIds.length > 200) {
+    throw new ConvexError("Vælg højst 200 lokationer");
+  }
+  if (new Set(locationIds).size !== locationIds.length) {
+    throw new ConvexError("En lokation må kun vælges én gang");
+  }
+  const locations = await Promise.all(
+    locationIds.map((locationId) => ctx.db.get("locations", locationId)),
+  );
+  if (
+    locations.some((location) => location?.organizationId !== organizationId)
+  ) {
+    throw new ConvexError("Lokationen blev ikke fundet");
+  }
 }
 
 function markScopeTruncated<T extends { truncated?: boolean }>(
@@ -317,99 +550,412 @@ function markScopeTruncated<T extends { truncated?: boolean }>(
   return scopeTruncated ? { ...result, truncated: true } : result;
 }
 
-export const getConfig = query({
+export const initialize = mutation({
   args: {},
-  returns: dashboardConfigValidator,
+  returns: v.id("dashboards"),
   handler: async (ctx) => {
-    const auth = await requireDashboardViewer(ctx);
-    const { organizationId, userIdentifier } = auth;
-    const dashboard = await ctx.db
-      .query("dashboards")
-      .withIndex("by_organizationId_and_userIdentifier", (q) =>
-        q.eq("organizationId", organizationId).eq("userIdentifier", userIdentifier),
-      )
-      .unique();
-    return configFromDocument(
-      dashboard,
-      canViewSales(auth),
-      auth.locationScope,
-    );
+    const auth = await requireDashboardManager(ctx);
+    const dashboards = await organizationDashboards(ctx, auth.organizationId);
+    if (dashboards[0]) {
+      const organizationDefaults = dashboards.filter(
+        (dashboard) => dashboard.isOrganizationDefault,
+      );
+      if (organizationDefaults.length !== 1) {
+        const updatedAt = Math.max(
+          Date.now(),
+          ...dashboards.map((dashboard) => dashboard.updatedAt + 1),
+        );
+        for (const [index, dashboard] of dashboards.entries()) {
+          await ctx.db.patch(dashboard._id, {
+            isOrganizationDefault: index === 0,
+            updatedBy: auth.userIdentifier,
+            updatedAt,
+          });
+        }
+      }
+      return dashboards[0]._id;
+    }
+    return await ctx.db.insert("dashboards", {
+      organizationId: auth.organizationId,
+      name: "Dashboard",
+      normalizedName: "dashboard",
+      widgets: defaultWidgets,
+      defaultScope: { mode: "aggregate", locationIds: null },
+      defaultRange: { preset: "7days" },
+      roleIds: [],
+      defaultForRoleIds: [],
+      defaultForLocationIds: [],
+      isOrganizationDefault: true,
+      sortOrder: 0,
+      createdBy: auth.userIdentifier,
+      updatedBy: auth.userIdentifier,
+      updatedAt: Date.now(),
+    });
   },
 });
 
-async function writeConfig(
-  ctx: MutationCtx,
-  args: {
-    widgets: WidgetInstance[];
-    scope: DashboardScope;
-    range: DashboardConfig["range"];
-  },
-  expectedUpdatedAt?: number | null,
-) {
-  const auth = await requireDashboardViewer(ctx);
-  const { organizationId, userIdentifier } = auth;
-  validateWidgets(
-    args.widgets,
-    canViewSales(auth),
-  );
-  await validateScope(ctx, organizationId, args.scope, auth.locationScope);
-  const current = await ctx.db
-    .query("dashboards")
-    .withIndex("by_organizationId_and_userIdentifier", (q) =>
-      q
-        .eq("organizationId", organizationId)
-        .eq("userIdentifier", userIdentifier),
-    )
-    .unique();
-  if (
-    expectedUpdatedAt !== undefined &&
-    (current?.updatedAt ?? null) !== expectedUpdatedAt
-  ) {
-    throw new ConvexError(
-      "Overblikket blev ændret i en anden fane. Dine seneste ændringer blev ikke gemt",
+export const list = query({
+  args: {},
+  returns: dashboardListValidator,
+  handler: async (ctx) => {
+    const auth = await requireDashboardViewer(ctx);
+    const dashboards = await organizationDashboards(ctx, auth.organizationId);
+    const withWidgets = await Promise.all(
+      dashboards.map(async (dashboard) => ({
+        dashboard,
+        widgets: await availableWidgets(ctx, auth, dashboard.widgets),
+      })),
     );
-  }
-  const updatedAt = Math.max(Date.now(), (current?.updatedAt ?? 0) + 1);
-  const data = {
-    widgets: args.widgets,
-    scope: args.scope,
-    range: args.range,
-    updatedAt,
-  };
-  if (current) await ctx.db.patch(current._id, data);
-  else {
-    await ctx.db.insert("dashboards", {
-      organizationId,
-      userIdentifier,
-      ...data,
-    });
-  }
-  return updatedAt;
-}
-
-export const saveConfig = mutation({
-  args: {
-    widgets: v.array(widgetValidator),
-    scope: scopeValidator,
-    range: rangeValidator,
+    const accessible = withWidgets.filter(
+      ({ dashboard, widgets }) =>
+        roleAllowsDashboard(dashboard, auth.role) &&
+        (dashboard.widgets.length === 0 || widgets.length > 0),
+    );
+    const singleLocationId = auth.kioskLocationId
+      ? auth.kioskLocationId
+      : !auth.locationScope.all && auth.locationScope.ids.size === 1
+        ? [...auth.locationScope.ids][0]
+        : null;
+    return {
+      dashboards: accessible.map(({ dashboard, widgets }) =>
+        dashboardResult({ ...dashboard, widgets }),
+      ),
+      role: auth.role,
+      singleLocationId,
+    };
   },
+});
+
+export const get = query({
+  args: { dashboardId: v.id("dashboards") },
+  returns: dashboardValidator,
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardViewer(ctx);
+    const dashboard = await requireOrganizationDashboard(
+      ctx,
+      auth.organizationId,
+      args.dashboardId,
+    );
+    if (!roleAllowsDashboard(dashboard, auth.role)) {
+      throw new ConvexError("Du har ikke adgang til dette dashboard");
+    }
+    const widgets = await availableWidgets(ctx, auth, dashboard.widgets);
+    if (dashboard.widgets.length > 0 && widgets.length === 0) {
+      throw new ConvexError(
+        "Ingen af dette dashboards widgets er tilgængelige for dig.",
+      );
+    }
+    return dashboardResult({
+      ...dashboard,
+      widgets,
+      defaultScope: scopedDefault(dashboard.defaultScope, auth.locationScope),
+    });
+  },
+});
+
+export const create = mutation({
+  args: { name: v.string() },
+  returns: v.id("dashboards"),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    const dashboards = await organizationDashboards(ctx, auth.organizationId);
+    if (dashboards.length >= MAX_DASHBOARDS) {
+      throw new ConvexError(`Organisationen kan højst have ${MAX_DASHBOARDS} dashboards`);
+    }
+    const { name, normalizedName } = normalizeDashboardName(args.name);
+    if (dashboards.some((dashboard) => dashboard.normalizedName === normalizedName)) {
+      throw new ConvexError("Et dashboard med dette navn findes allerede");
+    }
+    const now = Date.now();
+    return await ctx.db.insert("dashboards", {
+      organizationId: auth.organizationId,
+      name,
+      normalizedName,
+      widgets: [],
+      defaultScope: { mode: "aggregate", locationIds: null },
+      defaultRange: { preset: "7days" },
+      roleIds: [],
+      defaultForRoleIds: [],
+      defaultForLocationIds: [],
+      isOrganizationDefault: dashboards.length === 0,
+      sortOrder: dashboards.length,
+      createdBy: auth.userIdentifier,
+      updatedBy: auth.userIdentifier,
+      updatedAt: now,
+    });
+  },
+});
+
+export const duplicate = mutation({
+  args: { dashboardId: v.id("dashboards"), name: v.string() },
+  returns: v.id("dashboards"),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    const dashboards = await organizationDashboards(ctx, auth.organizationId);
+    if (dashboards.length >= MAX_DASHBOARDS) {
+      throw new ConvexError(`Organisationen kan højst have ${MAX_DASHBOARDS} dashboards`);
+    }
+    const source = await requireOrganizationDashboard(
+      ctx,
+      auth.organizationId,
+      args.dashboardId,
+    );
+    const { name, normalizedName } = normalizeDashboardName(args.name);
+    if (dashboards.some((dashboard) => dashboard.normalizedName === normalizedName)) {
+      throw new ConvexError("Et dashboard med dette navn findes allerede");
+    }
+    const now = Date.now();
+    return await ctx.db.insert("dashboards", {
+      organizationId: auth.organizationId,
+      name,
+      normalizedName,
+      widgets: source.widgets,
+      defaultScope: source.defaultScope,
+      defaultRange: source.defaultRange,
+      roleIds: source.roleIds,
+      defaultForRoleIds: [],
+      defaultForLocationIds: [],
+      isOrganizationDefault: false,
+      sortOrder: dashboards.length,
+      createdBy: auth.userIdentifier,
+      updatedBy: auth.userIdentifier,
+      updatedAt: now,
+    });
+  },
+});
+
+export const saveSettings = mutation({
+  args: {
+    dashboardId: v.id("dashboards"),
+    name: v.string(),
+    roleIds: v.array(v.string()),
+    defaultForRoleIds: v.array(v.string()),
+    defaultForLocationIds: v.array(v.id("locations")),
+    isOrganizationDefault: v.boolean(),
+    expectedUpdatedAt: v.number(),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    const [dashboard, dashboards] = await Promise.all([
+      requireOrganizationDashboard(ctx, auth.organizationId, args.dashboardId),
+      organizationDashboards(ctx, auth.organizationId),
+    ]);
+    if (dashboard.updatedAt !== args.expectedUpdatedAt) {
+      throw new ConvexError(
+        "Dashboardet blev ændret i en anden fane. Dine seneste ændringer blev ikke gemt",
+      );
+    }
+    const { name, normalizedName } = normalizeDashboardName(args.name);
+    if (
+      dashboards.some(
+        (candidate) =>
+          candidate._id !== dashboard._id &&
+          candidate.normalizedName === normalizedName,
+      )
+    ) {
+      throw new ConvexError("Et dashboard med dette navn findes allerede");
+    }
+    await Promise.all([
+      validateRoleKeys(ctx, auth.organizationId, args.roleIds),
+      validateRoleKeys(ctx, auth.organizationId, args.defaultForRoleIds),
+      validateLocationIds(
+        ctx,
+        auth.organizationId,
+        args.defaultForLocationIds,
+      ),
+    ]);
+    if (
+      args.roleIds.length > 0 &&
+      args.defaultForRoleIds.some((role) => !args.roleIds.includes(role))
+    ) {
+      throw new ConvexError("En standardrolle skal også have adgang til dashboardet");
+    }
+    const updatedAt = Math.max(
+      Date.now(),
+      ...dashboards.map((candidate) => candidate.updatedAt + 1),
+    );
+    for (const candidate of dashboards) {
+      if (candidate._id === dashboard._id) continue;
+      const nextRoleDefaults = candidate.defaultForRoleIds.filter(
+        (role) => !args.defaultForRoleIds.includes(role),
+      );
+      const nextLocationDefaults = candidate.defaultForLocationIds.filter(
+        (locationId) => !args.defaultForLocationIds.includes(locationId),
+      );
+      const removeOrganizationDefault =
+        args.isOrganizationDefault && candidate.isOrganizationDefault;
+      if (
+        nextRoleDefaults.length !== candidate.defaultForRoleIds.length ||
+        nextLocationDefaults.length !== candidate.defaultForLocationIds.length ||
+        removeOrganizationDefault
+      ) {
+        await ctx.db.patch(candidate._id, {
+          defaultForRoleIds: nextRoleDefaults,
+          defaultForLocationIds: nextLocationDefaults,
+          isOrganizationDefault: removeOrganizationDefault
+            ? false
+            : candidate.isOrganizationDefault,
+          updatedBy: auth.userIdentifier,
+          updatedAt,
+        });
+      }
+    }
+    if (!args.isOrganizationDefault && dashboard.isOrganizationDefault) {
+      throw new ConvexError("Organisationen skal have ét standarddashboard");
+    }
+    await ctx.db.patch(dashboard._id, {
+      name,
+      normalizedName,
+      roleIds: args.roleIds,
+      defaultForRoleIds: args.defaultForRoleIds,
+      defaultForLocationIds: args.defaultForLocationIds,
+      isOrganizationDefault: args.isOrganizationDefault,
+      updatedBy: auth.userIdentifier,
+      updatedAt,
+    });
+    return updatedAt;
+  },
+});
+
+export const reorder = mutation({
+  args: { dashboardIds: v.array(v.id("dashboards")) },
   returns: v.null(),
-  handler: async (ctx, args): Promise<null> => {
-    await writeConfig(ctx, args);
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    const dashboards = await organizationDashboards(ctx, auth.organizationId);
+    if (
+      args.dashboardIds.length !== dashboards.length ||
+      new Set(args.dashboardIds).size !== args.dashboardIds.length ||
+      args.dashboardIds.some(
+        (dashboardId) =>
+          !dashboards.some((dashboard) => dashboard._id === dashboardId),
+      )
+    ) {
+      throw new ConvexError("Dashboardrækkefølgen er ugyldig");
+    }
+    const updatedAt = Math.max(
+      Date.now(),
+      ...dashboards.map((dashboard) => dashboard.updatedAt + 1),
+    );
+    await Promise.all(
+      args.dashboardIds.map((dashboardId, sortOrder) =>
+        ctx.db.patch(dashboardId, {
+          sortOrder,
+          updatedBy: auth.userIdentifier,
+          updatedAt,
+        }),
+      ),
+    );
+    return null;
+  },
+});
+
+export const remove = mutation({
+  args: { dashboardId: v.id("dashboards") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    const dashboards = await organizationDashboards(ctx, auth.organizationId);
+    const dashboard = dashboards.find(
+      (candidate) => candidate._id === args.dashboardId,
+    );
+    if (!dashboard) throw new ConvexError("Dashboardet blev ikke fundet");
+    if (dashboards.length === 1) {
+      throw new ConvexError("Organisationen skal have mindst ét dashboard");
+    }
+    const remaining = dashboards.filter(
+      (candidate) => candidate._id !== dashboard._id,
+    );
+    const updatedAt = Math.max(
+      Date.now(),
+      ...dashboards.map((candidate) => candidate.updatedAt + 1),
+    );
+    for (const [sortOrder, candidate] of remaining.entries()) {
+      await ctx.db.patch(candidate._id, {
+        sortOrder,
+        isOrganizationDefault: dashboard.isOrganizationDefault
+          ? sortOrder === 0
+          : candidate.isOrganizationDefault,
+        updatedBy: auth.userIdentifier,
+        updatedAt,
+      });
+    }
+    await ctx.db.delete(dashboard._id);
     return null;
   },
 });
 
 export const saveConfigRevisioned = mutation({
   args: {
+    dashboardId: v.id("dashboards"),
     widgets: v.array(widgetValidator),
-    scope: scopeValidator,
-    range: rangeValidator,
-    expectedUpdatedAt: v.union(v.number(), v.null()),
+    expectedUpdatedAt: v.number(),
   },
   returns: v.number(),
-  handler: async (ctx, args) =>
-    await writeConfig(ctx, args, args.expectedUpdatedAt),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    const dashboard = await requireOrganizationDashboard(
+      ctx,
+      auth.organizationId,
+      args.dashboardId,
+    );
+    if (dashboard.updatedAt !== args.expectedUpdatedAt) {
+      throw new ConvexError(
+        "Dashboardet blev ændret i en anden fane. Dine seneste ændringer blev ikke gemt",
+      );
+    }
+    await validateWidgets(
+      ctx,
+      auth.organizationId,
+      args.widgets,
+      auth,
+    );
+    const updatedAt = Math.max(Date.now(), dashboard.updatedAt + 1);
+    await ctx.db.patch(dashboard._id, {
+      widgets: args.widgets,
+      updatedBy: auth.userIdentifier,
+      updatedAt,
+    });
+    return updatedAt;
+  },
+});
+
+export const saveDefaults = mutation({
+  args: {
+    dashboardId: v.id("dashboards"),
+    defaultScope: scopeValidator,
+    defaultRange: rangeValidator,
+    expectedUpdatedAt: v.number(),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    const dashboard = await requireOrganizationDashboard(
+      ctx,
+      auth.organizationId,
+      args.dashboardId,
+    );
+    if (dashboard.updatedAt !== args.expectedUpdatedAt) {
+      throw new ConvexError(
+        "Dashboardet blev ændret i en anden fane. Dine seneste ændringer blev ikke gemt",
+      );
+    }
+    await validateScope(
+      ctx,
+      auth.organizationId,
+      args.defaultScope,
+      auth.locationScope,
+    );
+    const updatedAt = Math.max(Date.now(), dashboard.updatedAt + 1);
+    await ctx.db.patch(dashboard._id, {
+      defaultScope: args.defaultScope,
+      defaultRange: args.defaultRange,
+      updatedBy: auth.userIdentifier,
+      updatedAt,
+    });
+    return updatedAt;
+  },
 });
 
 export const getMetric = query({
@@ -472,78 +1018,123 @@ export const getMetrics = query({
     ) {
       throw new ConvexError("Widgetgruppen er ugyldig");
     }
+    const customMetrics = new Map<Id<"customMetrics">, Doc<"customMetrics">>();
     for (const widget of args.widgets) {
-      const definition = metricRegistry[widget.metricId];
-      if (!definition.visualizations.includes(widget.visualization)) {
-        throw new ConvexError("Visualiseringen understøttes ikke af målingen");
+      if (widget.metric.kind === "builtin") {
+        const definition = metricRegistry[widget.metric.id];
+        if (!definition.visualizations.includes(widget.visualization)) {
+          throw new ConvexError("Visualiseringen understøttes ikke af målingen");
+        }
+        if (definition.sensitive && !canViewSales(auth)) {
+          throw new ConvexError("Du har ikke adgang til denne måling");
+        }
+        continue;
       }
+      const metric = await ctx.db.get("customMetrics", widget.metric.id);
       if (
-        definition.sensitive &&
-        !canViewSales(auth)
+        !metric ||
+        metric.organizationId !== organizationId ||
+        !customMetricAllowed(auth, metric.spec)
       ) {
         throw new ConvexError("Du har ikke adgang til denne måling");
       }
-    }
-    const params = await resolveMetricParams(
-      ctx,
-      organizationId,
-      args.scope,
-      args.range,
-      args.now,
-      auth.locationScope,
-      {
-        granularity: auth.granularity,
-        anonymousSeed: auth.sessionId,
-        salesDetailAllowed: canViewDetailedSales(auth),
-      },
-    );
-    const results = new Map<
-      string,
-      ReturnType<(typeof dashboardMetricComputers)[keyof typeof dashboardMetricComputers]>
-    >();
-    for (const widget of args.widgets) {
-      if (!results.has(widget.metricId)) {
-        results.set(
-          widget.metricId,
-          dashboardMetricComputers[widget.metricId](ctx, params),
-        );
+      if (
+        (widget.visualization === "donut" &&
+          (metric.spec.kind === "ratio" || !metric.spec.dimension)) ||
+        ((widget.visualization === "list" ||
+          widget.visualization === "table") &&
+          !metric.spec.dimension)
+      ) {
+        throw new ConvexError("Visualiseringen understøttes ikke af målingen");
       }
+      customMetrics.set(metric._id, metric);
     }
     return await Promise.all(
-      args.widgets.map(async (widget) => ({
-        key: widget.key,
-        result: markScopeTruncated(
-          await results.get(widget.metricId)!,
-          params.scopeTruncated,
-        ),
-      })),
+      args.widgets.map(async (widget) => {
+        const params = await resolveMetricParams(
+          ctx,
+          organizationId,
+          args.scope,
+          widget.range ? { preset: widget.range } : args.range,
+          args.now,
+          auth.locationScope,
+          {
+            granularity: auth.granularity,
+            anonymousSeed: auth.sessionId,
+            salesDetailAllowed: canViewDetailedSales(auth),
+          },
+        );
+        return {
+          key: widget.key,
+          result: markScopeTruncated(
+            widget.metric.kind === "builtin"
+              ? await dashboardMetricComputers[widget.metric.id](ctx, params)
+              : await executeCustomMetric(
+                  ctx,
+                  customMetrics.get(widget.metric.id)!.spec,
+                  params,
+                ),
+            params.scopeTruncated,
+          ),
+        };
+      }),
     );
   },
 });
 
 export const getShareSource = internalQuery({
-  args: { organizationId: v.string(), userIdentifier: v.string() },
-  returns: dashboardConfigValidator,
+  args: {
+    organizationId: v.string(),
+    dashboardId: v.id("dashboards"),
+  },
+  returns: shareSourceValidator,
   handler: async (ctx, args) => {
-    const dashboard = await ctx.db
-      .query("dashboards")
-      .withIndex("by_organizationId_and_userIdentifier", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userIdentifier", args.userIdentifier),
+    const dashboard = await requireOrganizationDashboard(
+      ctx,
+      args.organizationId,
+      args.dashboardId,
+    );
+    const customMetricIds = dashboard.widgets.flatMap((widget) =>
+      widget.metric.kind === "custom" ? [widget.metric.id] : [],
+    );
+    const customMetrics = await Promise.all(
+      [...new Set(customMetricIds)].map((metricId) =>
+        ctx.db.get("customMetrics", metricId),
+      ),
+    );
+    if (
+      customMetrics.some(
+        (metric) => !metric || metric.organizationId !== args.organizationId,
       )
-      .unique();
-    return configFromDocument(dashboard);
+    ) {
+      throw new ConvexError("En tilpasset måling blev ikke fundet");
+    }
+    return {
+      widgets: dashboard.widgets,
+      scope: dashboard.defaultScope,
+      range: dashboard.defaultRange,
+      updatedAt: dashboard.updatedAt,
+      roleIds: dashboard.roleIds,
+      customMetricSnapshots: customMetrics.map((metric) => ({
+        id: metric!._id,
+        name: metric!.name,
+        spec: metric!.spec,
+      })),
+    };
   },
 });
 
 export const insertShare = internalMutation({
   args: {
     organizationId: v.string(),
+    dashboardId: v.id("dashboards"),
     token: v.string(),
     unlockKey: v.string(),
     passwordHash: v.optional(v.string()),
     passwordSalt: v.optional(v.string()),
     name: v.string(),
     widgets: v.array(widgetValidator),
+    customMetricSnapshots: v.array(customMetricSnapshotValidator),
     scope: scopeValidator,
     range: rangeValidator,
     createdBy: v.string(),
@@ -570,6 +1161,7 @@ export const insertShare = internalMutation({
 
 export const createShare = action({
   args: {
+    dashboardId: v.id("dashboards"),
     name: v.string(),
     expiresAt: v.number(),
     password: v.optional(v.string()),
@@ -590,15 +1182,39 @@ export const createShare = action({
     if (password && (password.length < 4 || password.length > 128)) {
       throw new ConvexError("Adgangskoden skal være mellem 4 og 128 tegn");
     }
-    const source: DashboardConfig = await ctx.runQuery(internal.dashboard.getShareSource, {
+    const source: {
+      widgets: WidgetInstance[];
+      scope: DashboardScope;
+      range: DashboardConfig["range"];
+      updatedAt: number;
+      roleIds: string[];
+      customMetricSnapshots: Array<{
+        id: Id<"customMetrics">;
+        name: string;
+        spec: Doc<"customMetrics">["spec"];
+      }>;
+    } = await ctx.runQuery(internal.dashboard.getShareSource, {
       organizationId,
-      userIdentifier,
+      dashboardId: args.dashboardId,
     });
+    if (source.roleIds.length > 0 && !source.roleIds.includes(auth.role)) {
+      throw new ConvexError("Du har ikke adgang til dette dashboard");
+    }
     const salesAllowed = canViewSales(auth);
+    const customSnapshotById = new Map(
+      source.customMetricSnapshots.map((snapshot) => [snapshot.id, snapshot]),
+    );
     const widgets = source.widgets.filter(
-      (widget) =>
-        metricRegistry[widget.metricId].shareable !== false &&
-        (salesAllowed || !metricRegistry[widget.metricId].sensitive),
+      (widget) => {
+        if (widget.metric.kind === "custom") {
+          const snapshot = customSnapshotById.get(widget.metric.id);
+          return snapshot && customMetricAllowed(auth, snapshot.spec);
+        }
+        return (
+          metricRegistry[widget.metric.id].shareable !== false &&
+          (salesAllowed || !metricRegistry[widget.metric.id].sensitive)
+        );
+      },
     );
     const scope = auth.locationScope.all
       ? source.scope
@@ -608,7 +1224,7 @@ export const createShare = action({
             (locationId) => auth.locationScope.ids.has(locationId),
           );
           if (!locationIds.length) {
-            throw new ConvexError("Du har ikke adgang til overblikkets lokationer");
+            throw new ConvexError("Du har ikke adgang til dashboardets lokationer");
           }
           return {
             ...source.scope,
@@ -622,10 +1238,17 @@ export const createShare = action({
     // Sensitive metrics stay shareable but never on a passwordless link.
     if (
       !password &&
-      widgets.some((widget) => metricRegistry[widget.metricId].sensitive)
+      widgets.some(
+        (widget) =>
+          widget.metric.kind === "custom"
+            ? customMetricIsSensitive(
+                customSnapshotById.get(widget.metric.id)!.spec,
+              )
+            : metricRegistry[widget.metric.id].sensitive,
+      )
     ) {
       throw new ConvexError(
-        "Adgangskode er påkrævet, når overblikket indeholder følsomme målinger",
+        "Adgangskode er påkrævet, når dashboardet indeholder følsomme målinger",
       );
     }
     const token = randomSecret();
@@ -636,12 +1259,19 @@ export const createShare = action({
       : undefined;
     await ctx.runMutation(internal.dashboard.insertShare, {
       organizationId,
+      dashboardId: args.dashboardId,
       token,
       unlockKey,
       passwordHash,
       passwordSalt,
       name,
       widgets,
+      customMetricSnapshots: source.customMetricSnapshots.filter((snapshot) =>
+        widgets.some(
+          (widget) =>
+            widget.metric.kind === "custom" && widget.metric.id === snapshot.id,
+        ),
+      ),
       scope,
       range: source.range,
       createdBy: userIdentifier,
@@ -654,17 +1284,25 @@ export const createShare = action({
 });
 
 export const listShares = query({
-  args: {},
+  args: { dashboardId: v.optional(v.id("dashboards")) },
   returns: v.array(shareSummaryValidator),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const { organizationId } = await requireDashboardSharer(ctx);
     const shares = await ctx.db
       .query("dashboardShares")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
       .order("desc")
       .take(100);
-    return shares.map((share) => ({
+    const filtered = args.dashboardId
+      ? shares.filter((share) => share.dashboardId === args.dashboardId)
+      : shares;
+    const dashboards = await Promise.all(
+      filtered.map((share) => ctx.db.get("dashboards", share.dashboardId)),
+    );
+    return filtered.map((share, index) => ({
       id: share._id,
+      dashboardId: share.dashboardId,
+      dashboardName: dashboards[index]?.name ?? "Slettet dashboard",
       name: share.name,
       token: share.token,
       expiresAt: share.expiresAt,
@@ -674,7 +1312,14 @@ export const listShares = query({
       requiresPassword:
         Boolean(share.passwordHash) ||
         share.widgets.some(
-          (widget) => metricRegistry[widget.metricId]?.sensitive,
+          (widget) =>
+            widget.metric.kind === "custom"
+              ? customMetricIsSensitive(
+                  share.customMetricSnapshots.find(
+                    (snapshot) => snapshot.id === widget.metric.id,
+                  )!.spec,
+                )
+              : metricRegistry[widget.metric.id]?.sensitive,
         ),
     }));
   },
@@ -704,25 +1349,35 @@ export const cleanupDeletedLocationDashboards = internalMutation({
   handler: async (ctx, args) => {
     const result = await ctx.db
       .query("dashboards")
-      .withIndex("by_organizationId_and_userIdentifier", (q) =>
+      .withIndex("by_organizationId_and_sortOrder", (q) =>
         q.eq("organizationId", args.organizationId),
       )
       .paginate({ numItems: CLEANUP_PAGE, cursor: args.cursor ?? null });
     for (const dashboard of result.page) {
-      if (!dashboard.scope.locationIds?.includes(args.locationId)) continue;
-      const locationIds = dashboard.scope.locationIds.filter(
+      const locationIds = dashboard.defaultScope.locationIds?.filter(
         (locationId) => locationId !== args.locationId,
       );
+      const defaultForLocationIds = dashboard.defaultForLocationIds.filter(
+        (locationId) => locationId !== args.locationId,
+      );
+      if (
+        locationIds?.length === dashboard.defaultScope.locationIds?.length &&
+        defaultForLocationIds.length === dashboard.defaultForLocationIds.length
+      ) {
+        continue;
+      }
       await ctx.db.patch(dashboard._id, {
-        scope: locationIds.length
+        defaultScope: locationIds?.length
           ? {
               mode:
-                dashboard.scope.mode === "compare" && locationIds.length < 2
+                dashboard.defaultScope.mode === "compare" &&
+                locationIds.length < 2
                   ? "aggregate"
-                  : dashboard.scope.mode,
+                  : dashboard.defaultScope.mode,
               locationIds,
             }
           : { mode: "aggregate", locationIds: null },
+        defaultForLocationIds,
         updatedAt: Date.now(),
       });
     }

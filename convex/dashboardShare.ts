@@ -13,6 +13,11 @@ import {
   visualizationValidator,
 } from "./lib/dashboardValidators";
 import { dashboardMetricComputers, resolveMetricParams } from "./lib/dashboardMetrics";
+import {
+  customMetricIsSensitive,
+  executeCustomMetric,
+  validateCustomMetricSpec,
+} from "./lib/customMetricExecutor";
 import { equalSecrets, hashDashboardPassword } from "./lib/dashboardShareCrypto";
 import { rateLimiter } from "./lib/rateLimits";
 
@@ -92,7 +97,14 @@ export const getPublicMeta = query({
     const requiresPassword =
       Boolean(share.passwordHash) ||
       share.widgets.some(
-        (widget) => metricRegistry[widget.metricId]?.sensitive,
+        (widget) =>
+          widget.metric.kind === "custom"
+            ? customMetricIsSensitive(
+                share.customMetricSnapshots.find(
+                  (snapshot) => snapshot.id === widget.metric.id,
+                )!.spec,
+              )
+            : metricRegistry[widget.metric.id]?.sensitive,
       );
     return {
       name: share.name,
@@ -120,7 +132,14 @@ export const getShareForUnlock = internalQuery({
           revokedAt: share.revokedAt ?? null,
           requiresPassword: Boolean(share.passwordHash) ||
             share.widgets.some(
-        (widget) => metricRegistry[widget.metricId]?.sensitive,
+        (widget) =>
+          widget.metric.kind === "custom"
+            ? customMetricIsSensitive(
+                share.customMetricSnapshots.find(
+                  (snapshot) => snapshot.id === widget.metric.id,
+                )!.spec,
+              )
+            : metricRegistry[widget.metric.id]?.sensitive,
             ),
         }
       : null;
@@ -207,7 +226,8 @@ export const getSharedMetric = query({
     const share = await requireShare(ctx, args.token, args.accessKey);
     const widget = share.widgets.find(
       (candidate) =>
-        candidate.metricId === args.metricId &&
+        candidate.metric.kind === "builtin" &&
+        candidate.metric.id === args.metricId &&
         candidate.visualization === args.visualization,
     );
     const definition = metricRegistry[args.metricId];
@@ -257,48 +277,65 @@ export const getSharedMetrics = query({
       const widget = share.widgets.find(
         (candidate) =>
           candidate.key === requested.key &&
-          candidate.metricId === requested.metricId &&
+          candidate.metric.kind === requested.metric.kind &&
+          candidate.metric.id === requested.metric.id &&
           candidate.visualization === requested.visualization,
       );
-      const definition = metricRegistry[requested.metricId];
-      if (
-        !widget ||
-        definition.shareable === false ||
-        (definition.sensitive && !share.passwordHash)
-      ) {
+      if (!widget) {
         throw new ConvexError("Målingen er ikke en del af delingen");
       }
-    }
-    const params = await resolveMetricParams(
-      ctx,
-      share.organizationId,
-      share.scope,
-      share.range,
-      args.now,
-      undefined,
-      {
-        granularity: share.granularity ?? "detail",
-        anonymousSeed: share.token,
-        salesDetailAllowed: share.salesDetailAllowed ?? true,
-      },
-    );
-    const results = new Map<
-      string,
-      ReturnType<(typeof dashboardMetricComputers)[keyof typeof dashboardMetricComputers]>
-    >();
-    for (const widget of args.widgets) {
-      if (!results.has(widget.metricId)) {
-        results.set(
-          widget.metricId,
-          dashboardMetricComputers[widget.metricId](ctx, params),
+      if (requested.metric.kind === "custom") {
+        const snapshot = share.customMetricSnapshots.find(
+          (candidate) => candidate.id === requested.metric.id,
         );
+        if (
+          !snapshot ||
+          (customMetricIsSensitive(snapshot.spec) && !share.passwordHash) ||
+          (requested.visualization === "donut" &&
+            (snapshot.spec.kind === "ratio" || !snapshot.spec.dimension))
+        ) {
+          throw new ConvexError("Målingen er ikke en del af delingen");
+        }
+        validateCustomMetricSpec(snapshot.spec, share.granularity ?? "detail");
+      } else {
+        const definition = metricRegistry[requested.metric.id];
+        if (
+          definition.shareable === false ||
+          (definition.sensitive && !share.passwordHash)
+        ) {
+          throw new ConvexError("Målingen er ikke en del af delingen");
+        }
       }
     }
     return await Promise.all(
-      args.widgets.map(async (widget) => ({
-        key: widget.key,
-        result: await results.get(widget.metricId)!,
-      })),
+      args.widgets.map(async (widget) => {
+        const params = await resolveMetricParams(
+          ctx,
+          share.organizationId,
+          share.scope,
+          widget.range ? { preset: widget.range } : share.range,
+          args.now,
+          undefined,
+          {
+            granularity: share.granularity ?? "detail",
+            anonymousSeed: share.token,
+            salesDetailAllowed: share.salesDetailAllowed ?? true,
+          },
+        );
+        return {
+          key: widget.key,
+          result:
+            widget.metric.kind === "builtin"
+              ? await dashboardMetricComputers[widget.metric.id](ctx, params)
+              : await executeCustomMetric(
+                  ctx,
+                  share.customMetricSnapshots.find(
+                    (snapshot) => snapshot.id === widget.metric.id,
+                  )!.spec,
+                  params,
+                ),
+        };
+      }),
     );
   },
 });

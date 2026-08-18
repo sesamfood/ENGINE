@@ -811,7 +811,7 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
     widgets: [
       {
         key: "waste",
-        metricId: "wasteRegistrations",
+        metric: { kind: "builtin", id: "wasteRegistrations" },
         visualization: "kpi",
       },
     ],
@@ -828,7 +828,7 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
     widgets: [
       {
         key: "sales",
-        metricId: "salesRevenue",
+        metric: { kind: "builtin", id: "salesRevenue" },
         visualization: "kpi",
       },
     ],
@@ -845,7 +845,7 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
     widgets: [
       {
         key: "sales",
-        metricId: "salesRevenue",
+        metric: { kind: "builtin", id: "salesRevenue" },
         visualization: "kpi",
       },
     ],
@@ -870,12 +870,12 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
     widgets: [
       {
         key: "waste",
-        metricId: "wasteRegistrations",
+        metric: { kind: "builtin", id: "wasteRegistrations" },
         visualization: "kpi",
       },
       {
         key: "sales",
-        metricId: "salesRevenue",
+        metric: { kind: "builtin", id: "salesRevenue" },
         visualization: "kpi",
       },
     ],
@@ -916,7 +916,7 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
     widgets: [
       {
         key: "comparison",
-        metricId: "locationComparison",
+        metric: { kind: "builtin", id: "locationComparison" },
         visualization: "table",
       },
     ],
@@ -932,4 +932,201 @@ test("dashboardets datavisning håndhæves i API-svaret", async () => {
   const payload = JSON.stringify(anonymous);
   expect(payload).toContain("Nord");
   expect(payload).not.toContain("Syd");
+});
+
+test("dashboard.view uden dashboard.manage er skrivebeskyttet", async () => {
+  const t = convexTest(schema, modules);
+  const { org, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId } = await seedLocations(t, org._id);
+  const manager = await createUser(t, org._id, "manager", 11);
+  const dashboardId = await asUser.mutation(api.dashboard.initialize, {});
+  const metricId = await asUser.mutation(api.customMetrics.create, {
+    name: "Testmåling",
+    spec: {
+      kind: "single",
+      query: { dataset: "waste", measure: "registrations", filters: [] },
+      bucket: "day",
+    },
+  });
+
+  const dashboards = await manager.asUser.query(api.dashboard.list, {});
+  expect(dashboards.dashboards.map((dashboard) => dashboard.id)).toContain(
+    dashboardId,
+  );
+  await expect(
+    manager.asUser.query(api.dashboard.get, { dashboardId }),
+  ).resolves.toEqual(expect.objectContaining({ id: dashboardId }));
+  await expect(
+    manager.asUser.query(api.dashboard.getMetric, {
+      metricId: "wasteRegistrations",
+      visualization: "kpi",
+      scope: { mode: "aggregate", locationIds: [allowedLocationId] },
+      range: { preset: "7days" },
+      now: Date.now(),
+    }),
+  ).resolves.toEqual(expect.objectContaining({ unit: "count" }));
+  await expect(manager.asUser.query(api.customMetrics.list, {})).resolves.toEqual(
+    [expect.objectContaining({ id: metricId })],
+  );
+
+  await expect(
+    manager.asUser.mutation(api.dashboard.initialize, {}),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.dashboard.create, { name: "Nyt dashboard" }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.dashboard.duplicate, {
+      dashboardId,
+      name: "Kopi",
+    }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.dashboard.saveSettings, {
+      dashboardId,
+      name: "Dashboard",
+      roleIds: [],
+      defaultForRoleIds: [],
+      defaultForLocationIds: [],
+      isOrganizationDefault: true,
+      expectedUpdatedAt: 0,
+    }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.dashboard.reorder, { dashboardIds: [dashboardId] }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.dashboard.remove, { dashboardId }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.dashboard.saveConfigRevisioned, {
+      dashboardId,
+      widgets: [],
+      expectedUpdatedAt: 0,
+    }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.dashboard.saveDefaults, {
+      dashboardId,
+      defaultScope: { mode: "aggregate", locationIds: null },
+      defaultRange: { preset: "7days" },
+      expectedUpdatedAt: 0,
+    }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.customMetrics.create, {
+      name: "Måling fra manager",
+      spec: {
+        kind: "single",
+        query: { dataset: "waste", measure: "registrations", filters: [] },
+        bucket: "day",
+      },
+    }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.customMetrics.update, {
+      metricId,
+      name: "Opdateret måling",
+      spec: {
+        kind: "single",
+        query: { dataset: "waste", measure: "registrations", filters: [] },
+        bucket: "day",
+      },
+      expectedUpdatedAt: 0,
+    }),
+  ).rejects.toThrowError("Du har ikke adgang");
+  await expect(
+    manager.asUser.mutation(api.customMetrics.remove, { metricId }),
+  ).rejects.toThrowError("Du har ikke adgang");
+});
+
+test("dashboardets rolleallowlist udvider ikke medlemmets lokationsadgang", async () => {
+  const t = convexTest(schema, modules);
+  const { org, now, asUser } = await setupAuthOrg(t);
+  const { allowedLocationId, foreignLocationId, productId, unitId } =
+    await seedLocations(t, org._id);
+  await asUser.mutation(api.access.ensureRoles, {});
+  const dashboardId = await asUser.mutation(api.dashboard.initialize, {});
+  const dashboard = await asUser.query(api.dashboard.get, { dashboardId });
+  const settingsUpdatedAt = await asUser.mutation(api.dashboard.saveSettings, {
+    dashboardId,
+    name: dashboard.name,
+    roleIds: ["manager"],
+    defaultForRoleIds: [],
+    defaultForLocationIds: [],
+    isOrganizationDefault: true,
+    expectedUpdatedAt: dashboard.updatedAt,
+  });
+  await asUser.mutation(api.dashboard.saveDefaults, {
+    dashboardId,
+    defaultScope: {
+      mode: "compare",
+      locationIds: [allowedLocationId, foreignLocationId],
+    },
+    defaultRange: { preset: "7days" },
+    expectedUpdatedAt: settingsUpdatedAt,
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.insert(
+      "wasteRegistrations",
+      wasteRow(org._id, allowedLocationId, productId, unitId, now - 10),
+    );
+    await ctx.db.insert(
+      "wasteRegistrations",
+      wasteRow(org._id, foreignLocationId, productId, unitId, now - 5),
+    );
+  });
+
+  const manager = await createUser(t, org._id, "manager", 12);
+  await asUser.mutation(api.access.setMemberLocationAccess, {
+    userId: manager.user._id,
+    reason: "Manageren arbejder kun i Nord",
+    scope: "selected",
+    locationIds: [allowedLocationId],
+  });
+  const listed = await manager.asUser.query(api.dashboard.list, {});
+  expect(listed.dashboards.map((item) => item.id)).toContain(dashboardId);
+  const scopedDashboard = await manager.asUser.query(api.dashboard.get, {
+    dashboardId,
+  });
+  expect(scopedDashboard.defaultScope.locationIds).toEqual([allowedLocationId]);
+
+  const metrics = await manager.asUser.query(api.dashboard.getMetrics, {
+    widgets: [
+      {
+        key: "waste",
+        metric: { kind: "builtin", id: "wasteRegistrations" },
+        visualization: "kpi",
+      },
+    ],
+    scope: { mode: "aggregate", locationIds: null },
+    range: { preset: "7days" },
+    now,
+  });
+  expect(metrics[0]?.result.series).toHaveLength(1);
+  expect(metrics[0]?.result.series[0]?.total).toBe(1);
+});
+
+test("anonymitetsgranularitet afviser medarbejderdimensioner", async () => {
+  const t = convexTest(schema, modules);
+  const { asUser } = await setupAuthOrg(t);
+  await asUser.mutation(api.access.ensureRoles, {});
+  await asUser.mutation(api.access.saveRolePermissions, {
+    role: "admin",
+    reason: "Anonymitetskontrol",
+    permissions: [...defaultRolePermissions.admin],
+    granularity: "anonymous",
+  });
+  const employeeSpec = {
+    kind: "single" as const,
+    query: { dataset: "staffFood" as const, measure: "registrations", filters: [] },
+    dimension: "employee",
+    bucket: "day" as const,
+  };
+  await expect(
+    asUser.mutation(api.customMetrics.create, {
+      name: "Medarbejdermåling",
+      spec: employeeSpec,
+    }),
+  ).rejects.toThrowError("Dimensionen er ikke tilgængelig for denne rolle");
 });

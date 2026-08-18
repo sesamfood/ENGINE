@@ -1,54 +1,170 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboardIcon, PencilIcon } from "lucide-react";
+import { LayoutDashboardIcon, PencilIcon, SaveIcon } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery } from "convex/react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
+import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
-import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
+import type { Id } from "@/convex/_generated/dataModel";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
-import { metricRegistry } from "@/lib/dashboard/registry";
-import type { DashboardConfig, DashboardRange, DashboardScope, WidgetInstance } from "@/lib/dashboard/types";
+import { rangePresets, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
+import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { AddWidgetDialog } from "./add-widget-dialog";
 import { DashboardGrid } from "./dashboard-grid";
+import { DashboardTabs } from "./dashboard-tabs";
 import { RangeSelector } from "./range-selector";
 import { ScopeSelector } from "./scope-selector";
 import { ShareDialog } from "./share-dialog";
 
-function message(error: unknown) {
+const LAST_VIEWED_DASHBOARD_KEY = "engine.dashboard.last-viewed";
+type SearchParamsLike = { get: (name: string) => string | null; toString: () => string };
+
+function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Dashboardet kunne ikke gemmes";
 }
 
-function DashboardContent() {
+function validRangePreset(value: string | null): value is RangePreset {
+  return value !== null && (rangePresets as readonly string[]).includes(value);
+}
+
+function validScopeLevel(value: string | null): DashboardScope["level"] | undefined {
+  return value === "organization" || value === "market" || value === "operator" || value === "location"
+    ? value
+    : undefined;
+}
+
+function rangeFromUrl(params: SearchParamsLike, fallback: DashboardRange) {
+  const preset = params.get("range");
+  if (!validRangePreset(preset)) return fallback;
+  if (preset !== "custom") return { preset };
+  return {
+    preset,
+    from: params.get("from") ?? fallback.from,
+    to: params.get("to") ?? fallback.to,
+  };
+}
+
+function scopeFromUrl(params: SearchParamsLike, fallback: DashboardScope): DashboardScope {
+  const mode = params.get("mode");
+  const locations = params.get("loc");
+  const level = validScopeLevel(params.get("level"));
+  const parentId = params.get("parent") ?? undefined;
+  if (mode !== "compare" && mode !== "aggregate" && locations === null && !level && !parentId) {
+    return fallback;
+  }
+  const locationIds = locations
+    ? locations.split(",").map((value) => value.trim()).filter(Boolean) as Id<"locations">[]
+    : fallback.locationIds;
+  return {
+    mode: mode === "compare" ? "compare" : "aggregate",
+    locationIds,
+    ...(level ? { level } : {}),
+    ...(parentId ? { parentId } : {}),
+  };
+}
+
+function pushUrl(router: ReturnType<typeof useRouter>, pathname: string, params: URLSearchParams) {
+  const query = params.toString();
+  router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+}
+
+function DashboardLanding() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
+  const canManage = usePermission("dashboard.manage");
+  const router = useRouter();
+  const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
+  const initialize = useMutation(api.dashboard.initialize);
+  const initialized = useRef(false);
+  const resolved = useRef(false);
+  const [initializing, setInitializing] = useState(false);
+
+  useEffect(() => {
+    if (!dashboards || dashboards.dashboards.length > 0 || !canManage || initialized.current) return;
+    initialized.current = true;
+    setInitializing(true);
+    void initialize({})
+      .catch((error) => {
+        toast.error(errorMessage(error));
+      })
+      .finally(() => setInitializing(false));
+  }, [canManage, dashboards, initialize]);
+
+  useEffect(() => {
+    if (!dashboards || !dashboards.dashboards.length || resolved.current) return;
+    resolved.current = true;
+    const allowed = dashboards.dashboards;
+    const lastViewed = window.localStorage.getItem(LAST_VIEWED_DASHBOARD_KEY);
+    const selected = allowed.find((dashboard) => String(dashboard.id) === lastViewed)
+      ?? allowed.find((dashboard) => dashboard.defaultForRoleIds.includes(dashboards.role))
+      ?? (dashboards.singleLocationId
+        ? allowed.find((dashboard) => dashboard.defaultForLocationIds.includes(dashboards.singleLocationId!))
+        : undefined)
+      ?? allowed.find((dashboard) => dashboard.isOrganizationDefault)
+      ?? [...allowed].sort((left, right) => left.sortOrder - right.sortOrder)[0];
+    if (selected) router.replace(`/dashboard/${selected.id}`);
+  }, [dashboards, router]);
+
+  if (!access || dashboards === undefined || initializing) return <Skeleton className="h-96 w-full" />;
+  if (!canView) {
+    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
+  }
+  if (!dashboards.dashboards.length) {
+    return (
+      <Empty className="min-h-80 border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon"><LayoutDashboardIcon /></EmptyMedia>
+          <EmptyTitle>Ingen dashboards</EmptyTitle>
+          <EmptyDescription>Der er ikke oprettet et dashboard, du kan se.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+  return <Skeleton className="h-96 w-full" />;
+}
+
+function DashboardContent({ dashboardId }: { dashboardId: string }) {
+  const access = useAccess();
+  const canView = usePermission("dashboard.view");
+  const canManage = usePermission("dashboard.manage");
   const canShare = usePermission("dashboard.share");
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
   const canViewDetailedSales = usePermission("sales.viewDetail");
-  const canViewSales =
-    canViewLegacySales || canViewAggregateSales || canViewDetailedSales;
-  const config = useQuery(api.dashboard.getConfig, canView ? {} : "skip");
+  const canViewSales = canViewLegacySales || canViewAggregateSales || canViewDetailedSales;
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { locations } = useLocationAccess();
+  const dashboardsQuery = useQuery(api.dashboard.list, canView ? {} : "skip");
+  const dashboardQuery = useQuery(api.dashboard.get, canView ? { dashboardId: dashboardId as Id<"dashboards"> } : "skip");
   const organizationContext = useQuery(api.employees.getContext, canView ? {} : "skip");
   const saveConfig = useMutation(api.dashboard.saveConfigRevisioned);
-  const [local, setLocal] = useState<DashboardConfig | null>(null);
+  const saveDefaults = useMutation(api.dashboard.saveDefaults);
+  const [dashboard, setDashboard] = useState<DashboardRecord | null>(null);
   const [editing, setEditing] = useState(false);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
-  const current = useRef<DashboardConfig | null>(null);
-  const persistedRevision = useRef<number | null>(null);
-  const lastSensitivePermission = useRef<boolean | null>(null);
   const pendingSaveCount = useRef(0);
-  const [pendingSaves, setPendingSaves] = useState(0);
   const pendingConfigSave = useRef<Promise<void>>(Promise.resolve());
+  const expectedUpdatedAt = useRef<number | null>(null);
   const now = useDashboardNow();
+
+  useEffect(() => {
+    if (!dashboardQuery || pendingSaveCount.current > 0) return;
+    const next = dashboardQuery as DashboardRecord;
+    if (expectedUpdatedAt.current !== null && next.updatedAt < expectedUpdatedAt.current) return;
+    setDashboard(next);
+    expectedUpdatedAt.current = next.updatedAt;
+  }, [dashboardQuery]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setHeaderTarget(document.getElementById("dashboard-shell-header")));
@@ -56,135 +172,162 @@ function DashboardContent() {
   }, []);
 
   useEffect(() => {
-    if (!config) return;
-    if (pendingSaveCount.current > 0) return;
-    if (
-      config.updatedAt !== null &&
-      persistedRevision.current !== null &&
-      config.updatedAt < persistedRevision.current
-    ) {
-      return;
+    if (dashboardsQuery?.dashboards.some((candidate) => String(candidate.id) === dashboardId)) {
+      window.localStorage.setItem(LAST_VIEWED_DASHBOARD_KEY, dashboardId);
     }
-    const hasRestrictedWidget =
-      !canViewSales &&
-      current.current?.widgets.some(
-        (widget) => metricRegistry[widget.metricId].sensitive,
-      );
-    const permissionChanged = lastSensitivePermission.current !== canViewSales;
-    if (
-      !current.current ||
-      current.current.updatedAt !== config.updatedAt ||
-      hasRestrictedWidget ||
-      permissionChanged
-    ) {
-      const allowedWidgets = config.widgets.filter(
-        (widget) =>
-          canViewSales || !metricRegistry[widget.metricId].sensitive,
-      );
-      const normalized = { ...config, widgets: layoutDashboardWidgets(allowedWidgets) };
-      persistedRevision.current = config.updatedAt;
-      current.current = normalized;
-      setLocal(normalized);
-      lastSensitivePermission.current = canViewSales;
-    }
-  }, [canViewSales, config, pendingSaves]);
+  }, [dashboardId, dashboardsQuery]);
 
-  if (!access) return <Skeleton className="h-96" />;
-  if (!canView) {
-    return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
+  const currentScope = dashboard ? scopeFromUrl(searchParams, dashboard.defaultScope) : null;
+  const currentRange = dashboard ? rangeFromUrl(searchParams, dashboard.defaultRange) : null;
+
+  function updateRange(next: DashboardRange) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("range", next.preset);
+    if (next.preset === "custom") {
+      if (next.from) params.set("from", next.from); else params.delete("from");
+      if (next.to) params.set("to", next.to); else params.delete("to");
+    } else {
+      params.delete("from");
+      params.delete("to");
+    }
+    pushUrl(router, pathname, params);
   }
-  if (!local || locations === undefined) return <Skeleton className="h-96" />;
 
-  function commit(next: DashboardConfig) {
-    current.current = next;
-    setLocal(next);
+  function updateScope(next: DashboardScope) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next.mode === "compare") params.set("mode", "compare"); else params.delete("mode");
+    if (next.locationIds?.length) params.set("loc", next.locationIds.join(",")); else params.delete("loc");
+    if (next.level) params.set("level", next.level); else params.delete("level");
+    if (next.parentId) params.set("parent", next.parentId); else params.delete("parent");
+    pushUrl(router, pathname, params);
+  }
+
+  function commitWidgets(nextWidgets: WidgetInstance[]) {
+    if (!dashboard) return;
+    const optimistic = { ...dashboard, widgets: nextWidgets };
+    setDashboard(optimistic);
     pendingSaveCount.current += 1;
-    setPendingSaves((count) => count + 1);
-    const save = pendingConfigSave.current
+    const save: Promise<void> = pendingConfigSave.current
       .catch(() => undefined)
-      .then(async () => {
+      .then(async (): Promise<void> => {
+        const revision = expectedUpdatedAt.current ?? dashboard.updatedAt;
         const updatedAt = await saveConfig({
-          widgets: next.widgets,
-          scope: next.scope,
-          range: next.range,
-          expectedUpdatedAt: persistedRevision.current,
+          dashboardId: dashboard.id,
+          widgets: nextWidgets,
+          expectedUpdatedAt: revision,
         });
-        persistedRevision.current = updatedAt;
-        if (current.current) {
-          current.current = { ...current.current, updatedAt };
-          setLocal(current.current);
-        }
+        expectedUpdatedAt.current = updatedAt;
+        setDashboard((current) => current ? { ...current, updatedAt } : current);
+      })
+      .catch((error): void => {
+        toast.error(errorMessage(error));
       })
       .finally(() => {
         pendingSaveCount.current -= 1;
-        setPendingSaves((count) => count - 1);
       });
     pendingConfigSave.current = save;
-    void save.catch((error) => toast.error(message(error)));
   }
 
   async function flushConfigSave() {
     await pendingConfigSave.current;
   }
 
-  function widgets(next: WidgetInstance[]) {
-    if (!current.current) return;
-    commit({ ...current.current, widgets: next });
+  async function saveCurrentDefaults() {
+    if (!dashboard || !currentScope || !currentRange) return;
+    try {
+      await flushConfigSave();
+      const updatedAt = await saveDefaults({
+        dashboardId: dashboard.id,
+        defaultScope: currentScope,
+        defaultRange: currentRange,
+        expectedUpdatedAt: expectedUpdatedAt.current ?? dashboard.updatedAt,
+      });
+      expectedUpdatedAt.current = updatedAt;
+      setDashboard((current) => current ? { ...current, defaultScope: currentScope, defaultRange: currentRange, updatedAt } : current);
+      toast.success("Scope og periode er gemt som standard");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
   }
 
-  function scope(next: DashboardScope) {
-    if (!current.current) return;
-    commit({ ...current.current, scope: next });
+  function changeDashboard(nextId: string) {
+    const query = searchParams.toString();
+    router.push(query ? `/dashboard/${nextId}?${query}` : `/dashboard/${nextId}`, { scroll: false });
   }
 
-  function range(next: DashboardRange) {
-    if (!current.current) return;
-    commit({ ...current.current, range: next });
-  }
-
-  const title = (
+  const title = currentScope ? (
     <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">Dashboard</p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{dashboard?.name ?? "Dashboard"}</h1>
       </div>
-      <ScopeSelector scope={local.scope} locations={locations} onChange={scope} />
+      <ScopeSelector scope={currentScope} locations={locations} onChange={updateScope} />
     </div>
-  );
+  ) : null;
+
+  if (!access || !canView) {
+    return canView ? <Skeleton className="h-96" /> : <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
+  }
+  if (!dashboard || !currentScope || !currentRange || dashboardsQuery === undefined || locations === undefined) return <Skeleton className="h-96 w-full" />;
+  const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];
 
   return (
     <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
       <header className="md:hidden">{title}</header>
-      {headerTarget ? createPortal(title, headerTarget) : null}
+      {headerTarget && title ? createPortal(title, headerTarget) : null}
+      <DashboardTabs
+        key={dashboardList.map((candidate) => `${candidate.id}:${candidate.updatedAt}`).join("|")}
+        dashboards={dashboardList}
+        activeId={dashboardId}
+        canManage={canManage}
+        onChange={changeDashboard}
+        onReordered={() => undefined}
+        onSettingsSaved={(next) => {
+          expectedUpdatedAt.current = next.updatedAt;
+          setDashboard((current) => current?.id === next.id ? next : current);
+        }}
+        onDuplicated={(nextId) => changeDashboard(nextId)}
+        onDeleted={() => router.replace("/dashboard")}
+        onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
+      />
       <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <RangeSelector range={local.range} onChange={range} timeZone={organizationContext?.timeZone} />
+          <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
         </div>
         <div className="flex flex-wrap gap-2">
-          {canShare ? <ShareDialog onBeforeCreate={flushConfigSave} /> : null}
-          <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
-            <PencilIcon data-icon="inline-start" />
-            {editing ? "Færdig" : "Rediger"}
-          </Button>
-          {editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets(layoutDashboardWidgets([...local.widgets, widget]))} /> : null}
+          {canShare ? <ShareDialog dashboardId={dashboard.id} dashboardName={dashboard.name} onBeforeCreate={flushConfigSave} /> : null}
+          {canManage ? (
+            <>
+              {editing ? <Button type="button" size="lg" variant="outline" className="min-h-11" onClick={() => void saveCurrentDefaults()}><SaveIcon data-icon="inline-start" />Gem som standard</Button> : null}
+              <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
+                <PencilIcon data-icon="inline-start" />
+                {editing ? "Færdig" : "Rediger"}
+              </Button>
+              {editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...dashboard.widgets, widget]))} /> : null}
+            </>
+          ) : null}
         </div>
       </div>
-      {local.widgets.length ? (
-        <DashboardGrid widgets={local.widgets} scope={local.scope} range={local.range} now={now} editable={editing} onChange={widgets} />
+      {dashboard.widgets.length ? (
+        <DashboardGrid widgets={dashboard.widgets} scope={currentScope} range={currentRange} now={now} editable={canManage && editing} onChange={commitWidgets} />
       ) : (
         <Empty className="min-h-80 border">
           <EmptyHeader>
             <EmptyMedia variant="icon"><LayoutDashboardIcon /></EmptyMedia>
             <EmptyTitle>Dashboardet er tomt</EmptyTitle>
-            <EmptyDescription>Tilføj den første widget for at bygge dit dashboard.</EmptyDescription>
+            <EmptyDescription>{canManage ? "Tilføj den første widget for at bygge dit dashboard." : "Dette dashboard har ingen widgets endnu."}</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent><AddWidgetDialog canViewSensitive={canViewSales} scope={local.scope} range={local.range} now={now} onAdd={(widget) => widgets([widget])} /></EmptyContent>
+          {canManage ? <EmptyContent><AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets([widget])} /></EmptyContent> : null}
         </Empty>
       )}
     </section>
   );
 }
 
-export function DashboardPage() {
-  return <OrganizationAuthGate><DashboardContent /></OrganizationAuthGate>;
+export function DashboardPage({ dashboardId }: { dashboardId?: string } = {}) {
+  return (
+    <OrganizationAuthGate>
+      {dashboardId ? <DashboardContent key={dashboardId} dashboardId={dashboardId} /> : <DashboardLanding />}
+    </OrganizationAuthGate>
+  );
 }

@@ -3,6 +3,7 @@
 import {
   Building2Icon,
   CalendarClockIcon,
+  ChartNoAxesCombinedIcon,
   ClipboardListIcon,
   ClipboardCheckIcon,
   ListOrderedIcon,
@@ -105,6 +106,13 @@ const sections = [
     permissions: ["integrations.manage"],
   },
   {
+    title: "Målinger",
+    description: "Opret og administrer organisationens tilpassede dashboardmålinger.",
+    href: "/organization/metrics",
+    icon: ChartNoAxesCombinedIcon,
+    permissions: ["dashboard.manage"],
+  },
+  {
     title: "Udseende",
     description: "Administrer logoer og organisationens identitet.",
     href: "/organization/appearance",
@@ -125,6 +133,7 @@ export function OrganizationOverview() {
   const canOwnChecksManage = usePermission("ownChecks.manage");
   const canStaffFood = usePermission("staffFood.manage");
   const canIntegrations = usePermission("integrations.manage");
+  const canDashboardManage = usePermission("dashboard.manage");
   const allowedPermissions = {
     "catalog.manage": canCatalog,
     "locations.manage": canLocations,
@@ -136,6 +145,7 @@ export function OrganizationOverview() {
     "ownChecks.manage": canOwnChecksManage,
     "staffFood.manage": canStaffFood,
     "integrations.manage": canIntegrations,
+    "dashboard.manage": canDashboardManage,
   };
 
   if (!access) {

@@ -79,6 +79,7 @@ export const permissionCatalog = [
     group: "Dashboard",
     permissions: [
       { id: "dashboard.view", label: "Se dashboard" },
+      { id: "dashboard.manage", label: "Administrere dashboards" },
       { id: "dashboard.share", label: "Dele dashboard" },
       { id: "dashboard.viewSales", label: "Se salgstal" },
       { id: "sales.viewAggregate", label: "Se aggregerede salgstal" },
@@ -140,6 +141,7 @@ export const defaultRolePermissions: Record<
       id !== "roles.manage" &&
       id !== "staffFood.manage" &&
       id !== "dashboard.share" &&
+      id !== "dashboard.manage" &&
       id !== "dashboard.viewSales" &&
       id !== "sales.viewAggregate" &&
       id !== "sales.viewDetail",

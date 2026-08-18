@@ -1,10 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
-import { useQuery } from "convex/react";
+import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useAccess } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Card,
   CardContent,
@@ -32,10 +45,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
 import { metricRegistry, metrics, sizeLabels, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 
 type Step = 1 | 2 | 3;
@@ -50,6 +65,10 @@ const sizePreviewClasses: Record<WidgetSize, string> = {
   "4x2": "h-28 w-full",
 };
 
+function customMetricMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Målingen kunne ikke slettes";
+}
+
 export function AddWidgetDialog({
   canViewSensitive,
   scope,
@@ -63,6 +82,7 @@ export function AddWidgetDialog({
   now: number;
   onAdd: (widget: WidgetInstance) => void;
 }) {
+  const access = useAccess();
   const available = metrics.filter(
     (metric) => !metric.sensitive || canViewSensitive,
   );
@@ -71,33 +91,73 @@ export function AddWidgetDialog({
     metrics: available.filter((metric) => metric.category === category),
   }));
   const [open, setOpen] = useState(false);
+  const customMetrics = useQuery(
+    api.customMetrics.list,
+    open ? {} : "skip",
+  ) as CustomMetricDefinition[] | undefined;
   const [step, setStep] = useState<Step>(1);
   const [metricId, setMetricId] = useState<MetricId>(available[0]?.id ?? "wasteRegistrations");
+  const [customMetricId, setCustomMetricId] = useState<Id<"customMetrics"> | null>(null);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderMetric, setBuilderMetric] = useState<CustomMetricDefinition | null>(null);
+  const [deletingMetric, setDeletingMetric] = useState<CustomMetricDefinition | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const removeCustomMetric = useMutation(api.customMetrics.remove);
   const definition = metricRegistry[metricId];
+  const customMetric = customMetrics?.find((metric) => metric.id === customMetricId);
+  const customMetricPending = Boolean(customMetricId && !customMetric);
   const [visualization, setVisualization] = useState<VisualizationId>(definition.defaultVisualization);
   const [size, setSize] = useState<WidgetSize>(definition.defaultSize);
-  const [yAxisMin, setYAxisMin] = useState<number>();
+  const [yAxisMin, setYAxisMin] = useState<number | undefined>(0);
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
-  const previewResult = useQuery(
+  const builtinPreviewResult = useQuery(
     api.dashboard.getMetric,
-    !open || step !== 2
+    !open || step !== 2 || Boolean(customMetricId)
       ? "skip"
       : {
           metricId,
-          visualization: definition.defaultVisualization,
+          visualization,
           scope,
           range,
           now,
         },
   );
+  const customPreviewResult = useQuery(
+    api.customMetrics.preview,
+    !open || step !== 2 || !customMetric
+      ? "skip"
+      : {
+          spec: customMetric.spec,
+          visualization,
+          scope,
+          range,
+          now,
+        },
+  );
+  const previewResult = customMetricId ? customPreviewResult : builtinPreviewResult;
+  const customVisualizations = customMetric
+    ? (customMetric.spec.kind === "ratio" ? ratioMetricVisualizations : customMetricVisualizations)
+        .filter((value) => Boolean(customMetric.spec.dimension) || (value !== "list" && value !== "table"))
+    : [];
+  const availableVisualizations = customMetricId ? customVisualizations : definition.visualizations;
 
   function selectMetric(nextMetricId: MetricId) {
     const next = metricRegistry[nextMetricId];
+    setCustomMetricId(null);
     setMetricId(next.id);
     setVisualization(next.defaultVisualization);
     setSize(next.defaultSize);
-    setYAxisMin(undefined);
+    setYAxisMin(0);
+    setYAxisMax(undefined);
+    setYAxisValid(true);
+  }
+
+  function selectCustomMetric(nextMetricId: Id<"customMetrics">) {
+    setCustomMetricId(nextMetricId);
+    setVisualization("kpi");
+    setSize("2x2");
+    setYAxisMin(0);
     setYAxisMax(undefined);
     setYAxisValid(true);
   }
@@ -115,7 +175,9 @@ export function AddWidgetDialog({
       : undefined;
     onAdd({
       key: crypto.randomUUID(),
-      metricId,
+      metric: customMetric
+        ? { kind: "custom", id: customMetric.id }
+        : { kind: "builtin", id: metricId },
       visualization,
       size,
       options,
@@ -136,12 +198,41 @@ export function AddWidgetDialog({
     setOpen(nextOpen);
     if (nextOpen) {
       setStep(1);
+      setCustomMetricId(null);
       setYAxisValid(true);
     }
   }
 
+  function openCustomMetricBuilder() {
+    setBuilderMetric(null);
+    setOpen(false);
+    setBuilderOpen(true);
+  }
+
+  function editCustomMetric(metric: CustomMetricDefinition) {
+    setBuilderMetric(metric);
+    setOpen(false);
+    setBuilderOpen(true);
+  }
+
+  async function confirmDeleteCustomMetric() {
+    if (!deletingMetric) return;
+    setDeleting(true);
+    try {
+      await removeCustomMetric({ metricId: deletingMetric.id });
+      if (customMetricId === deletingMetric.id) selectMetric(metricId);
+      toast.success("Målingen er slettet");
+      setDeletingMetric(null);
+    } catch (error) {
+      toast.error(customMetricMessage(error));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setDialogOpen}>
+    <>
+      <Dialog open={open} onOpenChange={setDialogOpen}>
       <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" />}>
         <PlusIcon data-icon="inline-start" />
         Tilføj widget
@@ -179,7 +270,7 @@ export function AddWidgetDialog({
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div>
                 <h2 className="text-sm font-medium">Hvad vil du følge?</h2>
-                <p className="text-sm text-muted-foreground">Søg i målingerne eller vælg en kategori.</p>
+                <p className="text-sm text-muted-foreground">Søg i de indbyggede eller organisationens målinger.</p>
               </div>
               <Command className="min-h-0 flex-1 rounded-lg border" shouldFilter>
                 <CommandInput aria-label="Søg efter måling" placeholder="Søg efter måling..." />
@@ -192,7 +283,7 @@ export function AddWidgetDialog({
                       className="grid grid-cols-1 gap-2 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 [&>[cmdk-group-items]]:gap-2 sm:[&>[cmdk-group-items]]:grid-cols-2"
                     >
                       {category.metrics.map((metric) => {
-                        const selected = metric.id === metricId;
+                        const selected = !customMetricId && metric.id === metricId;
                         return (
                           <CommandItem
                             key={metric.id}
@@ -219,6 +310,75 @@ export function AddWidgetDialog({
                       })}
                     </CommandGroup>
                   ))}
+                  {customMetrics?.length ? (
+                    <CommandGroup
+                      heading="Organisationens målinger"
+                      className="grid grid-cols-1 gap-2 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 [&>[cmdk-group-items]]:gap-2 sm:[&>[cmdk-group-items]]:grid-cols-2"
+                    >
+                      {customMetrics.map((metric) => {
+                        const selected = metric.id === customMetricId;
+                        return (
+                          <div key={metric.id} className="relative">
+                            <CommandItem
+                              value={`${metric.name} ${metric.description ?? ""} tilpasset måling`}
+                              onSelect={() => selectCustomMetric(metric.id)}
+                              aria-selected={selected}
+                              className={cn(
+                                "min-h-28 items-start rounded-lg border bg-card p-3 pr-24 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
+                                selected && "border-primary bg-primary/5 ring-2 ring-primary/20",
+                              )}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium">{metric.name}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{metric.description || "Tilpasset måling fra organisationens bibliotek."}</p>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  {metric.spec.kind === "ratio" ? "Forhold" : "Enkeltmåling"} · {metric.usageCount} widget{metric.usageCount === 1 ? "" : "s"}
+                                </p>
+                              </div>
+                            </CommandItem>
+                            <div className="absolute top-2 right-2 flex gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Rediger data for ${metric.name}`}
+                                onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                                onClick={(event) => { event.stopPropagation(); editCustomMetric(metric); }}
+                              >
+                                <PencilIcon />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={metric.usageCount > 0
+                                  ? `${metric.name} kan ikke slettes, fordi målingen bruges af en widget`
+                                  : `Slet ${metric.name}`}
+                                disabled={metric.usageCount > 0}
+                                onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                                onClick={(event) => { event.stopPropagation(); setDeletingMetric(metric); }}
+                              >
+                                <Trash2Icon />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </CommandGroup>
+                  ) : null}
+                  <CommandGroup heading="Byg selv">
+                    <CommandItem
+                      value="opret tilpasset måling builder"
+                      onSelect={openCustomMetricBuilder}
+                      className="min-h-14 rounded-lg border border-dashed p-3 focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <PlusIcon />
+                      <div className="min-w-0">
+                        <p className="font-medium">Opret tilpasset måling</p>
+                        <p className="text-xs text-muted-foreground">Brug de kuraterede datasæt til en ny widget.</p>
+                      </div>
+                    </CommandItem>
+                  </CommandGroup>
                 </CommandList>
               </Command>
             </div>
@@ -227,45 +387,52 @@ export function AddWidgetDialog({
           {step === 2 ? (
             <div className="flex min-h-full flex-col gap-3">
               <div>
-                <h2 className="text-sm font-medium">Hvordan skal {definition.label.toLowerCase()} vises?</h2>
+                <h2 className="text-sm font-medium">Hvordan skal {(customMetric?.name ?? (customMetricId ? "målingen" : definition.label)).toLowerCase()} vises?</h2>
                 <p className="text-sm text-muted-foreground">Vælg en visning. Du kan ændre den senere.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {definition.visualizations.map((visualizationId) => {
-                  const Visualization = visualizationRegistry[visualizationId];
-                  const selected = visualization === visualizationId;
-                  return (
-                    <Card
-                      key={visualizationId}
-                      size="sm"
-                      role="button"
-                      tabIndex={0}
-                      aria-pressed={selected}
-                      className={cn(
-                        "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
-                        selected && "border-primary ring-2 ring-primary/25",
-                      )}
-                      onClick={() => selectVisualization(visualizationId)}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        selectVisualization(visualizationId);
-                      }}
-                    >
-                      <CardHeader>
-                        <CardTitle>{visualizationLabels[visualizationId]}</CardTitle>
-                      </CardHeader>
-                      <CardContent className="h-44 min-h-0 overflow-hidden">
-                        {previewResult ? (
-                          <Visualization result={previewResult} />
-                        ) : (
-                          <Skeleton className="size-full" />
+              {customMetricPending ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-56 w-full" />
+                  <Skeleton className="h-56 w-full" />
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {availableVisualizations.map((visualizationId) => {
+                    const Visualization = visualizationRegistry[visualizationId];
+                    const selected = visualization === visualizationId;
+                    return (
+                      <Card
+                        key={visualizationId}
+                        size="sm"
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={selected}
+                        className={cn(
+                          "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
+                          selected && "border-primary ring-2 ring-primary/25",
                         )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
+                        onClick={() => selectVisualization(visualizationId)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          selectVisualization(visualizationId);
+                        }}
+                      >
+                        <CardHeader>
+                          <CardTitle>{visualizationLabels[visualizationId]}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="h-44 min-h-0 overflow-hidden">
+                          {previewResult ? (
+                            <Visualization result={previewResult} />
+                          ) : (
+                            <Skeleton className="size-full" />
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -335,7 +502,7 @@ export function AddWidgetDialog({
             {step === 1 ? "Annuller" : <><ChevronLeftIcon data-icon="inline-start" /> Tilbage</>}
           </Button>
           {step < 3 ? (
-            <Button type="button" onClick={() => setStep((current) => (current + 1) as Step)}>
+            <Button type="button" disabled={customMetricPending} onClick={() => setStep((current) => (current + 1) as Step)}>
               Næste <ChevronRightIcon data-icon="inline-end" />
             </Button>
           ) : (
@@ -343,6 +510,47 @@ export function AddWidgetDialog({
           )}
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <CustomMetricBuilder
+        key={`${builderOpen ? "open" : "closed"}:${builderMetric?.id ?? "new"}:${builderMetric?.updatedAt ?? ""}`}
+        open={builderOpen}
+        onOpenChange={(nextOpen) => {
+          setBuilderOpen(nextOpen);
+          if (!nextOpen) {
+            setBuilderMetric(null);
+            setStep(1);
+            setOpen(true);
+          }
+        }}
+        scope={scope}
+        range={range}
+        now={now}
+        granularity={access?.granularity}
+        metric={builderMetric}
+        onSaved={(id) => {
+          setBuilderOpen(false);
+          setBuilderMetric(null);
+          selectCustomMetric(id);
+          setStep(2);
+          setOpen(true);
+        }}
+      />
+      <AlertDialog open={Boolean(deletingMetric)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleting) setDeletingMetric(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slet tilpasset måling?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingMetric ? `Målingen “${deletingMetric.name}” slettes permanent.` : "Målingen slettes permanent."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Annuller</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={deleting} onClick={(event) => { event.preventDefault(); void confirmDeleteCustomMetric(); }}>
+              {deleting ? "Sletter…" : "Slet måling"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
