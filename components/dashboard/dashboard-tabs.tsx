@@ -1,59 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
-import { arrayMove, SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { useMutation } from "convex/react";
 import { PlusIcon } from "lucide-react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
-import { cn } from "@/lib/utils";
 import { DashboardSettingsDialog } from "./dashboard-settings-dialog";
 
 const MAX_DASHBOARDS = 8;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Dashboardrækkefølgen kunne ikke gemmes";
-}
-
-function SortableDashboardTab({ dashboard, canManage }: { dashboard: DashboardRecord; canManage: boolean }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dashboard.id, disabled: !canManage });
-  const dragAttributes = {
-    "aria-describedby": attributes["aria-describedby"],
-    "aria-roledescription": attributes["aria-roledescription"],
-  };
-  return (
-    <TabsTrigger
-      ref={setNodeRef}
-      value={String(dashboard.id)}
-      className={cn("min-w-28 shrink-0 px-4", canManage && "touch-none cursor-grab active:cursor-grabbing", isDragging && "opacity-30")}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      {...dragAttributes}
-      {...listeners}
-    >
-      {dashboard.name}
-    </TabsTrigger>
-  );
-}
-
-function DashboardDragPreview({ name }: { name: string }) {
-  return (
-    <Card className="min-w-36 border-primary/50 bg-card/95 shadow-xl ring-2 ring-primary/20">
-      <CardHeader className="p-3">
-        <CardTitle className="truncate text-sm">{name}</CardTitle>
-      </CardHeader>
-    </Card>
-  );
 }
 
 function CreateDashboardDialog({
@@ -133,12 +97,7 @@ export function DashboardTabs({
   const reorder = useMutation(api.dashboard.reorder);
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [order, setOrder] = useState(dashboards);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
 
   const activeDashboard = order.find((dashboard) => String(dashboard.id) === activeId) ?? order[0];
   const canCreate = canManage && order.length < MAX_DASHBOARDS;
@@ -159,44 +118,34 @@ export function DashboardTabs({
   return (
     <>
       <div className="flex min-w-0 items-center gap-2" aria-label="Dashboardnavigation">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={({ active }) => setActiveDragId(String(active.id))}
-          onDragCancel={() => setActiveDragId(null)}
-          onDragEnd={({ active, over }) => {
-            setActiveDragId(null);
-            if (!over || active.id === over.id || !canManage) return;
-            const from = order.findIndex((dashboard) => dashboard.id === active.id);
-            const to = order.findIndex((dashboard) => dashboard.id === over.id);
-            if (from < 0 || to < 0) return;
-            void saveOrder(arrayMove(order, from, to));
-          }}
-        >
-          <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1">
-            <TabsList className="h-12 w-full justify-start overflow-x-auto" aria-label="Dashboards">
-              <SortableContext items={order.map((dashboard) => dashboard.id)} strategy={horizontalListSortingStrategy}>
-                {order.map((dashboard) => <SortableDashboardTab key={dashboard.id} dashboard={dashboard} canManage={canManage} />)}
-              </SortableContext>
-              {canCreate ? <TabsTrigger value="new" className="min-w-12 shrink-0 px-4" aria-label="Opret dashboard"><PlusIcon /></TabsTrigger> : null}
-            </TabsList>
-          </Tabs>
-          {canManage && activeDashboard && String(activeDashboard.id) === activeId ? (
-            <DashboardSettingsDialog
-              key={`${activeDashboard.id}:${activeDashboard.updatedAt}`}
-              dashboard={activeDashboard}
-              open={settingsId === String(activeDashboard.id)}
-              onOpenChange={(open) => setSettingsId(open ? String(activeDashboard.id) : null)}
-              onSaved={(changes, updatedAt) => onSettingsSaved({ ...activeDashboard, ...changes, updatedAt })}
-              onDuplicated={onDuplicated}
-              onDeleted={() => onDeleted(String(activeDashboard.id))}
-            />
-          ) : null}
-        </DndContext>
+        <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1">
+          <TabsList className="h-12 w-full justify-start overflow-x-auto" aria-label="Dashboards">
+            {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} className="min-w-28 shrink-0 px-4">{dashboard.name}</TabsTrigger>)}
+            {canCreate ? <TabsTrigger value="new" className="min-w-12 shrink-0 px-4" aria-label="Opret dashboard"><PlusIcon /></TabsTrigger> : null}
+          </TabsList>
+        </Tabs>
+        {canManage && activeDashboard && String(activeDashboard.id) === activeId ? (
+          <DashboardSettingsDialog
+            key={`${activeDashboard.id}:${activeDashboard.updatedAt}`}
+            dashboard={activeDashboard}
+            dashboards={order}
+            open={settingsId === String(activeDashboard.id)}
+            onOpenChange={(open) => setSettingsId(open ? String(activeDashboard.id) : null)}
+            onReorder={async (dashboardIds) => {
+              const byId = new Map(order.map((dashboard) => [String(dashboard.id), dashboard]));
+              const next = dashboardIds.flatMap((dashboardId) => {
+                const dashboard = byId.get(dashboardId);
+                return dashboard ? [dashboard] : [];
+              });
+              if (next.length !== order.length) return;
+              await saveOrder(next);
+            }}
+            onSaved={(changes, updatedAt) => onSettingsSaved({ ...activeDashboard, ...changes, updatedAt })}
+            onDuplicated={onDuplicated}
+            onDeleted={() => onDeleted(String(activeDashboard.id))}
+          />
+        ) : null}
       </div>
-      {activeDragId && typeof document !== "undefined"
-        ? createPortal(<DragOverlay dropAnimation={null}><DashboardDragPreview name={order.find((dashboard) => String(dashboard.id) === activeDragId)?.name ?? "Dashboard"} /></DragOverlay>, document.body)
-        : null}
       <CreateDashboardDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={onCreated} />
     </>
   );

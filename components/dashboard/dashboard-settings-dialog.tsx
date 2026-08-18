@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { CopyIcon, SaveIcon, SettingsIcon, Trash2Icon } from "lucide-react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { CopyIcon, GripVerticalIcon, SaveIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -15,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
+import { cn } from "@/lib/utils";
 
 type RoleOption = {
   role: string;
@@ -32,17 +36,37 @@ function toggleValue(values: string[], value: string, checked: boolean) {
   return values.filter((candidate) => candidate !== value);
 }
 
+function SortableDashboardOrderItem({ dashboard }: { dashboard: DashboardRecord }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dashboard.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("flex min-h-11 items-center gap-2 rounded-lg border px-3 touch-none cursor-grab active:cursor-grabbing", isDragging && "opacity-50")}
+      {...attributes}
+      {...listeners}
+    >
+      <GripVerticalIcon className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate font-medium">{dashboard.name}</span>
+    </div>
+  );
+}
+
 export function DashboardSettingsDialog({
   dashboard,
+  dashboards,
   open,
   onOpenChange,
+  onReorder,
   onSaved,
   onDuplicated,
   onDeleted,
 }: {
   dashboard: DashboardRecord;
+  dashboards: DashboardRecord[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onReorder: (dashboardIds: string[]) => Promise<void>;
   onSaved: (changes: SettingsChanges, updatedAt: number) => void;
   onDuplicated: (dashboardId: Id<"dashboards">) => void;
   onDeleted: () => void;
@@ -61,9 +85,38 @@ export function DashboardSettingsDialog({
   const [pending, setPending] = useState(false);
   const [duplicatePending, setDuplicatePending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [draftOrder, setDraftOrder] = useState(() => dashboards.map((candidate) => String(candidate.id)));
+  const reorderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const roles = (rolesQuery ?? []) as RoleOption[];
   const locations = scopeOptions?.locations ?? [];
+  const orderedDashboards = draftOrder.flatMap((dashboardId) => {
+    const candidate = dashboards.find((dashboardItem) => String(dashboardItem.id) === dashboardId);
+    return candidate ? [candidate] : [];
+  });
+
+  function handleDialogOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
+      setDraftOrder(dashboards.map((candidate) => String(candidate.id)));
+      onOpenChange(true);
+      return;
+    }
+    const currentOrder = dashboards.map((candidate) => String(candidate.id));
+    onOpenChange(false);
+    if (
+      draftOrder.length === currentOrder.length &&
+      draftOrder.some((dashboardId, index) => dashboardId !== currentOrder[index])
+    ) {
+      void onReorder(draftOrder);
+    }
+  }
+
+  function closeDialog() {
+    handleDialogOpenChange(false);
+  }
 
   async function save() {
     setPending(true);
@@ -78,7 +131,7 @@ export function DashboardSettingsDialog({
         expectedUpdatedAt: dashboard.updatedAt,
       });
       onSaved({ name: name.trim(), roleIds, defaultForRoleIds, defaultForLocationIds, isOrganizationDefault }, updatedAt);
-      onOpenChange(false);
+      closeDialog();
       toast.success("Dashboardindstillingerne er gemt");
     } catch (error) {
       toast.error(errorMessage(error));
@@ -115,9 +168,20 @@ export function DashboardSettingsDialog({
     }
   }
 
+  function reorderDashboards(event: DragEndEvent) {
+    if (!event.over || event.active.id === event.over.id) return;
+    const from = draftOrder.indexOf(String(event.active.id));
+    const to = draftOrder.indexOf(String(event.over.id));
+    if (from < 0 || to < 0) return;
+    const next = [...draftOrder];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setDraftOrder(next);
+  }
+
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${dashboard.name}`} />}>
           <SettingsIcon />
         </DialogTrigger>
@@ -132,6 +196,22 @@ export function DashboardSettingsDialog({
               <FieldLabel htmlFor={`dashboard-name-${dashboard.id}`}>Navn</FieldLabel>
               <Input id={`dashboard-name-${dashboard.id}`} value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
             </Field>
+
+            <FieldSet>
+              <FieldLegend variant="label">Dashboardrækkefølge</FieldLegend>
+              <FieldDescription>Bestem rækkefølgen på dashboards i fanerne.</FieldDescription>
+              <DndContext
+                sensors={reorderSensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => void reorderDashboards(event)}
+              >
+                <SortableContext items={draftOrder} strategy={verticalListSortingStrategy}>
+                  <FieldGroup className="gap-2" aria-label="Dashboardrækkefølge">
+                    {orderedDashboards.map((candidate) => <SortableDashboardOrderItem key={candidate.id} dashboard={candidate} />)}
+                  </FieldGroup>
+                </SortableContext>
+              </DndContext>
+            </FieldSet>
 
             <FieldSet>
               <FieldLegend variant="label">Adgang</FieldLegend>
