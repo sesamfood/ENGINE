@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { DashboardScope } from "@/lib/dashboard/types";
@@ -123,6 +124,15 @@ export function ScopeSelector({
       ? selectedLocations.find((location) => location.id === selectedIds[0])?.name ?? "1 lokation"
       : `${selectedIds.length} lokationer`;
 
+  function changeMode(mode: DashboardScope["mode"]) {
+    const locationIds = mode === "compare"
+      ? selectedIds
+      : allSelected
+        ? null
+        : selectedIds;
+    onChange({ ...scope, mode, locationIds });
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {lockedToSingle ? (
@@ -161,6 +171,22 @@ export function ScopeSelector({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+      {selectedIds.length >= 2 ? (
+        <ToggleGroup
+          value={[scope.mode]}
+          onValueChange={(value) => {
+            const mode = value[0];
+            if (mode === "aggregate" || mode === "compare") changeMode(mode);
+          }}
+          variant="outline"
+          size="lg"
+          spacing={0}
+          aria-label="Vis data som"
+        >
+          <ToggleGroupItem value="aggregate" className="min-h-11">Akkumuleret</ToggleGroupItem>
+          <ToggleGroupItem value="compare" className="min-h-11">Pr. lokation</ToggleGroupItem>
+        </ToggleGroup>
+      ) : null}
     </div>
   );
 }
