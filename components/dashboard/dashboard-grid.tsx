@@ -21,6 +21,7 @@ import { useQuery } from "convex/react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
+import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import {
   dashboardColumns,
@@ -198,6 +199,7 @@ function DraggableWidget({
   metricLabel,
   range,
   editable,
+  visualizations,
   onChange,
   onEditCustomMetric,
   onResize,
@@ -209,6 +211,7 @@ function DraggableWidget({
   metricLabel?: string;
   range: DashboardRange;
   editable: boolean;
+  visualizations?: readonly VisualizationId[];
   onChange: (widget: WidgetInstance) => void;
   onEditCustomMetric?: () => void;
   onResize: (size: WidgetSize, complete: boolean) => void;
@@ -246,6 +249,7 @@ function DraggableWidget({
         editable={editable}
         resizing={widget.size !== sourceSize}
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
+        visualizations={visualizations}
         onRangeChange={(range: WidgetRangePreset | undefined) => onChange({ ...widget, range })}
         onYAxisChange={(axis: YAxisValues) => {
           const options = { ...widget.options };
@@ -401,6 +405,13 @@ export function DashboardGrid({
       >
         {displayedWidgets.map((widget) => {
           const source = layout.find((item) => item.key === widget.key) ?? widget;
+          const customMetric = widget.metric.kind === "custom"
+            ? customMetricsById.get(String(widget.metric.id))
+            : undefined;
+          const customVisualizations = customMetric
+            ? (customMetric.spec.kind === "ratio" ? ratioMetricVisualizations : customMetricVisualizations)
+                .filter((value) => Boolean(customMetric.spec.dimension) || (value !== "list" && value !== "table"))
+            : undefined;
           return (
             <DraggableWidget
               key={widget.key}
@@ -410,6 +421,7 @@ export function DashboardGrid({
               metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
               range={range}
               editable={editable}
+              visualizations={customVisualizations}
               onEditCustomMetric={widget.metric.kind === "custom" && customMetricsById.has(String(widget.metric.id))
                 ? () => setEditingWidgetKey(widget.key)
                 : undefined}
@@ -480,18 +492,7 @@ export function DashboardGrid({
           now={now}
           metric={editingMetric}
           mode="widget"
-          selection={{
-            visualization: editingWidget.visualization,
-            size: editingWidget.size,
-          }}
-          onSaved={(_, selection) => {
-            onChange?.(layoutDashboardWidgets(layout.map((widget) =>
-              widget.key === editingWidget.key
-                ? { ...widget, ...selection }
-                : widget,
-            ), editingWidget.key));
-            setEditingWidgetKey(null);
-          }}
+          onSaved={() => setEditingWidgetKey(null)}
         />
       ) : null}
     </>

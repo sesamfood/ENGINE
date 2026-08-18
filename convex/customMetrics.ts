@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { dashboardDatasets } from "../lib/dashboard/datasets";
 import { hasPermission } from "../lib/auth-permissions";
-import type { CustomMetricSpec } from "../lib/dashboard/types";
+import type { CustomMetricSpec, VisualizationId } from "../lib/dashboard/types";
 import { mutation, query } from "./_generated/server";
 import { requireDashboardManager, requireDashboardViewer } from "./lib/auth";
 import {
@@ -26,6 +26,7 @@ const customMetricValidator = v.object({
   description: v.union(v.string(), v.null()),
   spec: customMetricSpecValidator,
   sensitive: v.boolean(),
+  usageCount: v.number(),
   updatedAt: v.number(),
 });
 
@@ -71,11 +72,38 @@ function requireDatasetPermissions(
   }
 }
 
+function visualizationAllowed(
+  spec: CustomMetricSpec,
+  visualization: VisualizationId,
+) {
+  if (visualization === "donut") {
+    return spec.kind === "single" && Boolean(spec.dimension);
+  }
+  if (visualization === "list" || visualization === "table") {
+    return Boolean(spec.dimension);
+  }
+  return true;
+}
+
 export const list = query({
   args: {},
   returns: v.array(customMetricValidator),
   handler: async (ctx) => {
     const auth = await requireDashboardViewer(ctx);
+    const dashboards = await ctx.db
+      .query("dashboards")
+      .withIndex("by_organizationId_and_sortOrder", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(8);
+    const usageCounts = new Map<string, number>();
+    for (const dashboard of dashboards) {
+      for (const widget of dashboard.widgets) {
+        if (widget.metric.kind !== "custom") continue;
+        const key = String(widget.metric.id);
+        usageCounts.set(key, (usageCounts.get(key) ?? 0) + 1);
+      }
+    }
     const rows = await ctx.db
       .query("customMetrics")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -92,6 +120,7 @@ export const list = query({
           description: metric.description ?? null,
           spec: metric.spec,
           sensitive: customMetricIsSensitive(metric.spec),
+          usageCount: usageCounts.get(String(metric._id)) ?? 0,
           updatedAt: metric.updatedAt,
         }];
       } catch {
@@ -173,6 +202,25 @@ export const update = mutation({
     if (existing && existing._id !== metric._id) {
       throw new ConvexError("En måling med dette navn findes allerede");
     }
+    const dashboards = await ctx.db
+      .query("dashboards")
+      .withIndex("by_organizationId_and_sortOrder", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(8);
+    const hasIncompatibleWidget = dashboards.some((dashboard) =>
+      dashboard.widgets.some(
+        (widget) =>
+          widget.metric.kind === "custom" &&
+          widget.metric.id === metric._id &&
+          !visualizationAllowed(args.spec, widget.visualization),
+      ),
+    );
+    if (hasIncompatibleWidget) {
+      throw new ConvexError(
+        "Skift først visualiseringen for de widgets, der bruger målingen",
+      );
+    }
     const updatedAt = Math.max(Date.now(), metric.updatedAt + 1);
     await ctx.db.patch(metric._id, {
       name,
@@ -183,41 +231,6 @@ export const update = mutation({
       updatedAt,
     });
     return updatedAt;
-  },
-});
-
-export const usages = query({
-  args: { metricId: v.id("customMetrics") },
-  returns: v.array(
-    v.object({
-      dashboardId: v.id("dashboards"),
-      dashboardName: v.string(),
-      widgetKey: v.string(),
-    }),
-  ),
-  handler: async (ctx, args) => {
-    const auth = await requireDashboardManager(ctx);
-    const metric = await ctx.db.get("customMetrics", args.metricId);
-    if (!metric || metric.organizationId !== auth.organizationId) {
-      throw new ConvexError("Målingen blev ikke fundet");
-    }
-    const dashboards = await ctx.db
-      .query("dashboards")
-      .withIndex("by_organizationId_and_sortOrder", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .take(8);
-    return dashboards.flatMap((dashboard) =>
-      dashboard.widgets.flatMap((widget) =>
-        widget.metric.kind === "custom" && widget.metric.id === metric._id
-          ? [{
-              dashboardId: dashboard._id,
-              dashboardName: dashboard.name,
-              widgetKey: widget.key,
-            }]
-          : [],
-      ),
-    );
   },
 });
 
@@ -236,25 +249,17 @@ export const remove = mutation({
         q.eq("organizationId", auth.organizationId),
       )
       .take(8);
-    let removedWidgets = 0;
-    const updatedAt = Date.now();
-    for (const dashboard of dashboards) {
-      const widgets = dashboard.widgets.filter((widget) => {
-        const remove =
-          widget.metric.kind === "custom" && widget.metric.id === metric._id;
-        if (remove) removedWidgets += 1;
-        return !remove;
-      });
-      if (widgets.length !== dashboard.widgets.length) {
-        await ctx.db.patch(dashboard._id, {
-          widgets,
-          updatedBy: auth.userIdentifier,
-          updatedAt,
-        });
-      }
+    const inUse = dashboards.some((dashboard) =>
+      dashboard.widgets.some(
+        (widget) =>
+          widget.metric.kind === "custom" && widget.metric.id === metric._id,
+      ),
+    );
+    if (inUse) {
+      throw new ConvexError("Målingen kan ikke slettes, mens den bruges af en widget");
     }
     await ctx.db.delete(metric._id);
-    return removedWidgets;
+    return 0;
   },
 });
 

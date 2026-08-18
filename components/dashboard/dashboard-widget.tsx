@@ -14,6 +14,7 @@ export function DashboardWidget({
   editable,
   resizing,
   onVisualizationChange,
+  visualizations,
   onRangeChange,
   onYAxisChange,
   onEditCustomMetric,
@@ -27,6 +28,7 @@ export function DashboardWidget({
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
+  visualizations?: readonly VisualizationId[];
   onRangeChange?: (range: WidgetRangePreset | undefined) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
   onEditCustomMetric?: () => void;
@@ -45,6 +47,7 @@ export function DashboardWidget({
       editable={editable}
       resizing={resizing}
       onVisualizationChange={onVisualizationChange}
+      visualizations={visualizations}
       onRangeChange={onRangeChange}
       onYAxisChange={onYAxisChange}
       onEditCustomMetric={onEditCustomMetric}

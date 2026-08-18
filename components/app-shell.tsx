@@ -1204,7 +1204,8 @@ export function AppShell({
   const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees" || pathname.startsWith("/employees/");
   const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
-  const showDashboardHeader = pathname === "/dashboard";
+  const showDashboardHeader =
+    pathname === "/dashboard" || pathname.startsWith("/dashboard/");
   const showOrganizationHeader =
     pathname === "/organization" || pathname.startsWith("/organization/");
   const showPageHeader =

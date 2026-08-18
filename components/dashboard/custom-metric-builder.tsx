@@ -39,10 +39,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { dashboardDatasets, customMetricVisualizations, ratioMetricVisualizations, type DashboardDataset } from "@/lib/dashboard/datasets";
-import { sizeLabels, visualizationLabels } from "@/lib/dashboard/registry";
+import { dashboardDatasets, type DashboardDataset } from "@/lib/dashboard/datasets";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
-import { widgetSizes } from "@/lib/dashboard/types";
 import type {
   CustomMetricDatasetId,
   CustomMetricFilter,
@@ -52,7 +50,6 @@ import type {
   DashboardScope,
   MetricResult,
   VisualizationId,
-  WidgetSize,
 } from "@/lib/dashboard/types";
 import type { DataGranularity } from "@/lib/auth-permissions";
 
@@ -80,12 +77,8 @@ export type CustomMetricDefinition = {
   description: string | null;
   spec: CustomMetricSpec;
   sensitive: boolean;
+  usageCount: number;
   updatedAt: number;
-};
-
-type BuilderSelection = {
-  visualization: VisualizationId;
-  size: WidgetSize;
 };
 
 type CustomMetricBuilderProps = {
@@ -97,8 +90,7 @@ type CustomMetricBuilderProps = {
   granularity?: DataGranularity;
   metric?: CustomMetricDefinition | null;
   mode?: "dashboard" | "library" | "widget";
-  selection?: BuilderSelection;
-  onSaved?: (metricId: Id<"customMetrics">, selection: BuilderSelection) => void | Promise<void>;
+  onSaved?: (metricId: Id<"customMetrics">) => void | Promise<void>;
 };
 
 function queryFromSpec(query: CustomMetricQuerySpec): QueryDraft {
@@ -122,10 +114,7 @@ function defaultQuery(dataset: CustomMetricDatasetId): QueryDraft {
   };
 }
 
-function initialDraft(
-  metric?: CustomMetricDefinition | null,
-  selection?: BuilderSelection,
-) {
+function initialDraft(metric?: CustomMetricDefinition | null) {
   if (!metric) {
     return {
       name: "",
@@ -136,8 +125,6 @@ function initialDraft(
       dimension: "",
       bucket: "day" as const,
       limit: "10",
-      visualization: selection?.visualization ?? ("kpi" as VisualizationId),
-      size: selection?.size ?? ("2x2" as WidgetSize),
     };
   }
   const spec = metric.spec;
@@ -150,8 +137,6 @@ function initialDraft(
     dimension: spec.dimension ?? "",
     bucket: spec.bucket,
     limit: String(spec.limit ?? 10),
-    visualization: selection?.visualization ?? ("kpi" as VisualizationId),
-    size: selection?.size ?? ("2x2" as WidgetSize),
   };
 }
 
@@ -271,11 +256,6 @@ function queryValidation(query: QueryDraft, label: string) {
   return null;
 }
 
-function visualizationsFor(kind: "single" | "ratio", hasDimension: boolean) {
-  const values = kind === "ratio" ? ratioMetricVisualizations : customMetricVisualizations;
-  return values.filter((value) => hasDimension || (value !== "list" && value !== "table"));
-}
-
 function metricError(error: unknown) {
   return error instanceof Error ? error.message : "Målingen kunne ikke gemmes";
 }
@@ -299,10 +279,10 @@ function Preview({
       </Alert>
     );
   }
-  if (!result) return <Skeleton className="min-h-56 w-full" />;
+  if (!result) return <Skeleton className="h-56 w-full" />;
   const Visualization = visualizationRegistry[visualization];
   return (
-    <div className="min-h-56 rounded-lg border bg-card p-4" aria-busy={loading}>
+    <div className="h-56 rounded-lg border bg-card p-4" aria-busy={loading}>
       <Visualization result={result} />
       {loading ? <span className="sr-only" role="status">Opdaterer forhåndsvisning</span> : null}
     </div>
@@ -318,7 +298,6 @@ export function CustomMetricBuilder({
   granularity,
   metric,
   mode = "dashboard",
-  selection,
   onSaved,
 }: CustomMetricBuilderProps) {
   const access = useAccess();
@@ -326,7 +305,7 @@ export function CustomMetricBuilder({
   const convex = useConvex();
   const createMetric = useMutation(api.customMetrics.create);
   const updateMetric = useMutation(api.customMetrics.update);
-  const [draft, setDraft] = useState(() => initialDraft(metric, selection));
+  const [draft, setDraft] = useState(() => initialDraft(metric));
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<MetricResult | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -340,10 +319,6 @@ export function CustomMetricBuilder({
     draft.kind,
     effectiveGranularity,
   );
-  const visualizationOptions = visualizationsFor(draft.kind, Boolean(draft.dimension));
-  const effectiveVisualization = visualizationOptions.includes(draft.visualization)
-    ? draft.visualization
-    : visualizationOptions[0] ?? "kpi";
   const spec = useMemo<CustomMetricSpec | null>(() => {
     const numeratorError = queryValidation(draft.numerator, draft.kind === "ratio" ? "Tæller" : "Måling");
     const denominatorError = draft.kind === "ratio"
@@ -382,8 +357,7 @@ export function CustomMetricBuilder({
       ? "Navnet må højst være 100 tegn"
       : queryValidation(draft.numerator, draft.kind === "ratio" ? "Tæller" : "Måling")
         ?? (draft.kind === "ratio" ? queryValidation(draft.denominator, "Nævner") : null)
-        ?? (!spec ? "Kontrollér målingens felter og grænse" : null)
-        ?? (!visualizationOptions.includes(draft.visualization) ? "Vælg en gyldig visualisering" : null);
+        ?? (!spec ? "Kontrollér målingens felter og grænse" : null);
 
   useEffect(() => {
     if (!open || !spec) return;
@@ -395,7 +369,7 @@ export function CustomMetricBuilder({
       void convex
         .query(api.customMetrics.preview, {
           spec,
-          visualization: effectiveVisualization,
+          visualization: "kpi",
           scope,
           range,
           now,
@@ -416,7 +390,7 @@ export function CustomMetricBuilder({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [convex, effectiveVisualization, now, open, range, scope, spec]);
+  }, [convex, now, open, range, scope, spec]);
 
   function updateQuery(which: "numerator" | "denominator", next: Partial<QueryDraft>) {
     setDraft((current) => ({
@@ -491,9 +465,9 @@ export function CustomMetricBuilder({
             description: draft.description || undefined,
             spec,
           });
-      await onSaved?.(id, { visualization: effectiveVisualization, size: draft.size });
       toast.success(metric ? "Målingen er opdateret" : "Målingen er oprettet");
       onOpenChange(false);
+      await onSaved?.(id);
     } catch (error) {
       toast.error(metricError(error));
     } finally {
@@ -588,7 +562,9 @@ export function CustomMetricBuilder({
         <DialogHeader>
           <DialogTitle>{metric ? "Rediger tilpasset måling" : "Opret tilpasset måling"}</DialogTitle>
           <DialogDescription>
-            Byg målingen fra organisationens kuraterede datasæt. Forhåndsvisningen bruger dashboardets aktuelle scope og periode.
+            {metric
+              ? "Rediger de delte data. Ændringerne gælder alle widgets, der bruger målingen."
+              : "Byg en genbrugelig måling fra organisationens kuraterede datasæt. Visualisering og størrelse vælges bagefter."}
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 overflow-y-auto p-1">
@@ -635,7 +611,6 @@ export function CustomMetricBuilder({
                           ...current,
                           kind: nextKind,
                           dimension: "",
-                          visualization: "kpi",
                         }));
                       }}
                       aria-label="Målingstype"
@@ -654,12 +629,12 @@ export function CustomMetricBuilder({
 
             <Card>
               <CardHeader>
-                <CardTitle>Gruppering og visning</CardTitle>
-                <CardDescription>Dimensioner og visualiseringer begrænses automatisk af datasættene.</CardDescription>
+                <CardTitle>Datagruppering</CardTitle>
+                <CardDescription>Widgettens visualisering og størrelse vælges bagefter.</CardDescription>
               </CardHeader>
               <CardContent>
                 <FieldGroup>
-                  <FieldGroup className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <FieldGroup className="grid gap-4 md:grid-cols-3">
                     <RegistrySelect
                       id="custom-metric-dimension"
                       label="Dimension"
@@ -698,34 +673,7 @@ export function CustomMetricBuilder({
                       />
                       <FieldDescription id="custom-metric-limit-description">Top 1–50 grupper.</FieldDescription>
                     </Field>
-                    <RegistrySelect
-                      id="custom-metric-size"
-                      label="Standard widgetstørrelse"
-                      value={draft.size}
-                      options={widgetSizes.map((value) => ({ value, label: sizeLabels[value] }))}
-                      help="Vælg den størrelse nye widgets med målingen får som standard."
-                      onChange={(value) => setDraft((current) => ({ ...current, size: value as WidgetSize }))}
-                    />
                   </FieldGroup>
-                  <FieldSet>
-                    <FieldLegend variant="label">Visualisering</FieldLegend>
-                    <ToggleGroup
-                      value={[draft.visualization]}
-                      onValueChange={(values) => {
-                        const next = values[0] as VisualizationId | undefined;
-                        if (next) setDraft((current) => ({ ...current, visualization: next }));
-                      }}
-                      aria-label="Visualisering"
-                      className="flex flex-wrap"
-                      variant="outline"
-                    >
-                      {visualizationOptions.map((value) => (
-                        <ToggleGroupItem key={value} value={value}>{visualizationLabels[value]}</ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                    {draft.kind === "ratio" ? <FieldDescription>Forhold kan ikke vises som donutdiagram.</FieldDescription> : null}
-                    {!draft.dimension ? <FieldDescription>Liste og tabel kræver en dimension.</FieldDescription> : null}
-                  </FieldSet>
                 </FieldGroup>
               </CardContent>
             </Card>
@@ -736,7 +684,7 @@ export function CustomMetricBuilder({
                 <CardDescription>Opdateres automatisk kort efter en ændring i målingen.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Preview result={preview} loading={previewLoading} error={previewError} visualization={effectiveVisualization} />
+                <Preview result={preview} loading={previewLoading} error={previewError} visualization="kpi" />
               </CardContent>
               {effectiveGranularity === "anonymous" ? (
                 <CardFooter>
@@ -751,7 +699,7 @@ export function CustomMetricBuilder({
           <div className="flex gap-2 sm:justify-end">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuller</Button>
             <Button type="submit" form="custom-metric-builder-form" disabled={saving || Boolean(localValidationError)}>
-              {metric || mode === "widget" ? "Gem ændringer" : mode === "dashboard" ? "Gem og tilføj widget" : "Gem måling"}
+              {metric || mode === "widget" ? "Gem ændringer" : mode === "dashboard" ? "Gem og fortsæt" : "Gem måling"}
             </Button>
           </div>
         </DialogFooter>

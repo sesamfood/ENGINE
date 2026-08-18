@@ -165,6 +165,7 @@ export function WidgetCard({
   editable,
   resizing = false,
   onVisualizationChange,
+  visualizations,
   onRangeChange,
   onYAxisChange,
   onEditCustomMetric,
@@ -179,6 +180,7 @@ export function WidgetCard({
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
+  visualizations?: readonly VisualizationId[];
   onRangeChange?: (range: WidgetRangePreset | undefined) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
   onEditCustomMetric?: () => void;
@@ -190,6 +192,7 @@ export function WidgetCard({
     ? metricRegistry[widget.metric.id]
     : undefined;
   const metricLabel = customMetricLabel ?? definition?.label ?? "Tilpasset måling";
+  const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
   const current = result ? total(result) : null;
   const previous = result ? previousTotal(result) : null;
   const freshness = result?.freshness;
@@ -316,7 +319,7 @@ export function WidgetCard({
           </div>
           {editable ? (
             <div data-dashboard-no-drag className="flex items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>
-              {definition ? (
+              {availableVisualizations.length ? (
                 <Dialog open={visualizationOpen} onOpenChange={setVisualizationOpen}>
                   <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${metricLabel}`} />}>
                     <ChartNoAxesCombinedIcon />
@@ -327,7 +330,7 @@ export function WidgetCard({
                       <DialogDescription>Samme data vist med alle kompatible visualiseringer.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-3 md:grid-cols-2">
-                      {definition.visualizations.map((visualization) => {
+                      {availableVisualizations.map((visualization) => {
                         const Visualization = visualizationRegistry[visualization];
                         return (
                           <Card
@@ -373,7 +376,8 @@ export function WidgetCard({
                     ) : null}
                   </DialogContent>
                 </Dialog>
-              ) : onEditCustomMetric ? (
+              ) : null}
+              {onEditCustomMetric ? (
                 <Button
                   type="button"
                   variant="ghost"

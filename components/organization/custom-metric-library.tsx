@@ -35,17 +35,10 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { dashboardDatasets } from "@/lib/dashboard/datasets";
 import type { CustomMetricSpec, DashboardRange, DashboardScope } from "@/lib/dashboard/types";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { CustomMetricBuilder, type CustomMetricDefinition } from "@/components/dashboard/custom-metric-builder";
-
-type Usage = {
-  dashboardId: Id<"dashboards">;
-  dashboardName: string;
-  widgetKey: string;
-};
 
 function metricMessage(error: unknown) {
   return error instanceof Error ? error.message : "Målingen kunne ikke opdateres";
@@ -73,11 +66,6 @@ export function CustomMetricLibrary() {
   const [editingMetric, setEditingMetric] = useState<CustomMetricDefinition | null>(null);
   const [deletingMetric, setDeletingMetric] = useState<CustomMetricDefinition | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const usages = useQuery(
-    api.customMetrics.usages,
-    deletingMetric ? { metricId: deletingMetric.id } : "skip",
-  ) as Usage[] | undefined;
-
   function openCreate() {
     setEditingMetric(null);
     setBuilderOpen(true);
@@ -92,12 +80,8 @@ export function CustomMetricLibrary() {
     if (!deletingMetric) return;
     setDeleting(true);
     try {
-      const removed = await removeMetric({ metricId: deletingMetric.id });
-      toast.success(
-        removed > 0
-          ? `Målingen er slettet, og ${removed} widget${removed === 1 ? "" : "s"} blev fjernet`
-          : "Målingen er slettet",
-      );
+      await removeMetric({ metricId: deletingMetric.id });
+      toast.success("Målingen er slettet");
       setDeletingMetric(null);
     } catch (error) {
       toast.error(metricMessage(error));
@@ -145,7 +129,14 @@ export function CustomMetricLibrary() {
                   <Button type="button" variant="ghost" size="icon" aria-label={`Rediger ${metric.name}`} onClick={() => openEdit(metric)}>
                     <PencilIcon />
                   </Button>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Slet ${metric.name}`} onClick={() => setDeletingMetric(metric)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Slet ${metric.name}`}
+                    disabled={metric.usageCount > 0}
+                    onClick={() => setDeletingMetric(metric)}
+                  >
                     <Trash2Icon />
                   </Button>
                 </CardAction>
@@ -155,6 +146,7 @@ export function CustomMetricLibrary() {
                 <Badge variant={metric.sensitive ? "outline" : "secondary"}>
                   {metric.sensitive ? "Følsom" : "Ikke følsom"}
                 </Badge>
+                <Badge variant="outline">{metric.usageCount} widget{metric.usageCount === 1 ? "" : "s"}</Badge>
                 <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                   <ChartNoAxesCombinedIcon aria-hidden="true" />
                   <span className="truncate">{metricSummary(metric.spec)}</span>
@@ -194,24 +186,12 @@ export function CustomMetricLibrary() {
             <AlertDialogTitle>Slet tilpasset måling?</AlertDialogTitle>
             <AlertDialogDescription>
               {deletingMetric ? `Målingen “${deletingMetric.name}” slettes permanent.` : "Målingen slettes permanent."}
-              {usages?.length ? " De viste widgets fjernes samtidig." : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {usages === undefined ? (
-            <Skeleton className="h-16 w-full" />
-          ) : usages.length ? (
-            <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
-              <p className="font-medium">Widgets, der bliver fjernet</p>
-              <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-muted-foreground">
-                {usages.map((usage) => <li key={`${usage.dashboardId}:${usage.widgetKey}`}>{usage.dashboardName} · {usage.widgetKey}</li>)}
-              </ul>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Målingen bruges ikke af nogen widget.</p>
-          )}
+          <p className="text-sm text-muted-foreground">Målingen bruges ikke af nogen widget.</p>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Annuller</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={deleting || usages === undefined} onClick={(event) => { event.preventDefault(); void confirmDelete(); }}>
+            <AlertDialogAction variant="destructive" disabled={deleting} onClick={(event) => { event.preventDefault(); void confirmDelete(); }}>
               {deleting ? "Sletter…" : "Slet måling"}
             </AlertDialogAction>
           </AlertDialogFooter>
