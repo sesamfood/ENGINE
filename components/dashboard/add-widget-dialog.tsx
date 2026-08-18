@@ -108,7 +108,7 @@ export function AddWidgetDialog({
   const customMetricPending = Boolean(customMetricId && !customMetric);
   const [visualization, setVisualization] = useState<VisualizationId>(definition.defaultVisualization);
   const [size, setSize] = useState<WidgetSize>(definition.defaultSize);
-  const [yAxisMin, setYAxisMin] = useState<number>();
+  const [yAxisMin, setYAxisMin] = useState<number | undefined>(0);
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
   const builtinPreviewResult = useQuery(
@@ -148,7 +148,7 @@ export function AddWidgetDialog({
     setMetricId(next.id);
     setVisualization(next.defaultVisualization);
     setSize(next.defaultSize);
-    setYAxisMin(undefined);
+    setYAxisMin(0);
     setYAxisMax(undefined);
     setYAxisValid(true);
   }
@@ -157,7 +157,7 @@ export function AddWidgetDialog({
     setCustomMetricId(nextMetricId);
     setVisualization("kpi");
     setSize("2x2");
-    setYAxisMin(undefined);
+    setYAxisMin(0);
     setYAxisMax(undefined);
     setYAxisValid(true);
   }
