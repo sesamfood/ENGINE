@@ -39,6 +39,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Delingen kunne ikke ændres";
@@ -49,19 +50,23 @@ function link(token: string) {
 }
 
 export function ShareDialog({
+  dashboardId,
+  dashboardName,
   onBeforeCreate,
 }: {
+  dashboardId: Id<"dashboards">;
+  dashboardName?: string;
   onBeforeCreate?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("Dashboard");
+  const [name, setName] = useState(dashboardName ?? "Dashboard");
   const [password, setPassword] = useState("");
   const [days, setDays] = useState("7");
   const [pending, setPending] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const createShare = useAction(api.dashboard.createShare);
   const revokeShare = useMutation(api.dashboard.revokeShare);
-  const shares = useQuery(api.dashboard.listShares, open ? {} : "skip");
+  const shares = useQuery(api.dashboard.listShares, open ? { dashboardId } : "skip");
 
   async function copy(token: string) {
     try {
@@ -77,6 +82,7 @@ export function ShareDialog({
     try {
       await onBeforeCreate?.();
       const share = await createShare({
+        dashboardId,
         name,
         password: password.trim() || undefined,
         expiresAt: Date.now() + Number(days) * 24 * 60 * 60 * 1_000,
@@ -91,7 +97,7 @@ export function ShareDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) setNow(Date.now()); }}>
+    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) { setNow(Date.now()); setName(dashboardName ?? "Dashboard"); } }}>
       <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" variant="outline" />}>
         <Share2Icon data-icon="inline-start" />
         Del

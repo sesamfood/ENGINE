@@ -30,7 +30,8 @@ import {
   widgetsOverlappingPosition,
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
-import type { DashboardRange, DashboardScope, MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { DashboardRange, DashboardScope, MetricResult, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { DashboardWidget } from "./dashboard-widget";
 import type { YAxisValues } from "./y-axis-settings";
 
@@ -49,11 +50,12 @@ function useMetricBatch(
   now: number,
   publicAccess?: { token: string; accessKey: string },
 ) {
-  const requests = widgets.map(({ key, metricId, visualization }) => ({
-    key,
-    metricId,
-    visualization,
-  }));
+  const requests = widgets.map(({ key, metric, visualization, range: widgetRange }) => ({
+      key,
+      metric,
+      visualization,
+      range: widgetRange,
+    }));
   const authenticated = useQuery(
     api.dashboard.getMetrics,
     publicAccess || requests.length === 0
@@ -100,11 +102,14 @@ function positionStyle(widget: WidgetInstance) {
   } as CSSProperties;
 }
 
-function DragPreview({ widget }: { widget: WidgetInstance }) {
+function DragPreview({ widget, metricLabel }: { widget: WidgetInstance; metricLabel?: string }) {
+  const label = metricLabel ?? (widget.metric.kind === "builtin"
+    ? metricRegistry[widget.metric.id]?.label ?? "Måling"
+    : "Tilpasset måling");
   return (
     <Card className="h-full border-primary/50 bg-card/95 shadow-xl ring-2 ring-primary/20">
       <CardHeader>
-        <CardTitle className="truncate text-base">{metricRegistry[widget.metricId].label}</CardTitle>
+        <CardTitle className="truncate text-base">{label}</CardTitle>
       </CardHeader>
     </Card>
   );
@@ -190,18 +195,22 @@ function DraggableWidget({
   widget,
   sourceSize,
   result,
+  metricLabel,
   range,
   editable,
   onChange,
+  onEditCustomMetric,
   onResize,
   onRemove,
 }: {
   widget: WidgetInstance;
   sourceSize: WidgetSize;
   result?: MetricResult;
+  metricLabel?: string;
   range: DashboardRange;
   editable: boolean;
   onChange: (widget: WidgetInstance) => void;
+  onEditCustomMetric?: () => void;
   onResize: (size: WidgetSize, complete: boolean) => void;
   onRemove: () => void;
 }) {
@@ -232,10 +241,12 @@ function DraggableWidget({
       <DashboardWidget
         widget={widget}
         result={result}
+        metricLabel={metricLabel}
         range={range}
         editable={editable}
         resizing={widget.size !== sourceSize}
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
+        onRangeChange={(range: WidgetRangePreset | undefined) => onChange({ ...widget, range })}
         onYAxisChange={(axis: YAxisValues) => {
           const options = { ...widget.options };
           if (axis.min === undefined) delete options.yAxisMin;
@@ -244,6 +255,7 @@ function DraggableWidget({
           else options.yAxisMax = axis.max;
           onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
         }}
+        onEditCustomMetric={onEditCustomMetric}
         onResize={onResize}
         onRemove={onRemove}
       />
@@ -275,6 +287,19 @@ export function DashboardGrid({
     targetKey?: string;
   } | null>(null);
   const [resizePreview, setResizePreview] = useState<{ key: string; size: WidgetSize } | null>(null);
+  const [editingWidgetKey, setEditingWidgetKey] = useState<string | null>(null);
+  const customMetrics = useQuery(
+    api.customMetrics.list,
+    !publicAccess && widgets.some((widget) => widget.metric.kind === "custom") ? {} : "skip",
+  );
+  const customMetricLabels = useMemo(
+    () => new Map((customMetrics ?? []).map((metric) => [String(metric.id), metric.name] as const)),
+    [customMetrics],
+  );
+  const customMetricsById = useMemo(
+    () => new Map((customMetrics ?? []).map((metric) => [String(metric.id), metric] as const)),
+    [customMetrics],
+  );
   const batch0 = useMetricBatch(widgets.slice(0, 3), scope, range, now, publicAccess);
   const batch1 = useMetricBatch(widgets.slice(3, 6), scope, range, now, publicAccess);
   const batch2 = useMetricBatch(widgets.slice(6, 9), scope, range, now, publicAccess);
@@ -382,8 +407,12 @@ export function DashboardGrid({
               widget={widget}
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
+              metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
               range={range}
               editable={editable}
+              onEditCustomMetric={widget.metric.kind === "custom" && customMetricsById.has(String(widget.metric.id))
+                ? () => setEditingWidgetKey(widget.key)
+                : undefined}
               onChange={(next) => onChange?.(layout.map((item) => item.key === widget.key ? next : item))}
               onResize={(size, complete) => {
                 if (!complete) {
@@ -404,7 +433,7 @@ export function DashboardGrid({
     </div>
   );
 
-  return editable ? (
+  const grid = editable ? (
     <DndContext
       sensors={sensors}
       collisionDetection={dashboardCollision(resizedLayout)}
@@ -423,11 +452,48 @@ export function DashboardGrid({
       {activeWidget && typeof document !== "undefined"
         ? createPortal(
             <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }}>
-              <DragPreview widget={activeWidget} />
+              <DragPreview
+                widget={activeWidget}
+                metricLabel={activeWidget.metric.kind === "custom" ? customMetricLabels.get(String(activeWidget.metric.id)) ?? "Tilpasset måling" : metricRegistry[activeWidget.metric.id].label}
+              />
             </DragOverlay>,
             document.body,
           )
         : null}
     </DndContext>
   ) : content;
+  const editingWidget = layout.find((widget) => widget.key === editingWidgetKey);
+  const editingMetric = editingWidget?.metric.kind === "custom"
+    ? customMetricsById.get(String(editingWidget.metric.id)) as CustomMetricDefinition | undefined
+    : undefined;
+
+  return (
+    <>
+      {grid}
+      {editingWidget && editingMetric ? (
+        <CustomMetricBuilder
+          key={`${editingWidget.key}:${editingMetric.updatedAt}`}
+          open
+          onOpenChange={(open) => { if (!open) setEditingWidgetKey(null); }}
+          scope={scope}
+          range={range}
+          now={now}
+          metric={editingMetric}
+          mode="widget"
+          selection={{
+            visualization: editingWidget.visualization,
+            size: editingWidget.size,
+          }}
+          onSaved={(_, selection) => {
+            onChange?.(layoutDashboardWidgets(layout.map((widget) =>
+              widget.key === editingWidget.key
+                ? { ...widget, ...selection }
+                : widget,
+            ), editingWidget.key));
+            setEditingWidgetKey(null);
+          }}
+        />
+      ) : null}
+    </>
+  );
 }

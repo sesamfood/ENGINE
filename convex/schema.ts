@@ -14,6 +14,7 @@ import {
 } from "./lib/ownCheckValidators";
 import { organizationThemeValidator } from "./lib/organizationTheme";
 import {
+  customMetricSpecValidator,
   rangeValidator,
   scopeValidator,
   widgetValidator,
@@ -181,6 +182,7 @@ export default defineSchema({
     department: v.string(),
     source: v.string(),
     externalId: v.string(),
+    externalClerkId: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_organizationId_and_locationId_and_occurredAt", [
@@ -210,6 +212,8 @@ export default defineSchema({
     revenue: v.number(),
     source: v.string(),
     externalId: v.string(),
+    externalClerkId: v.optional(v.string()),
+    clerkName: v.optional(v.string()),
   })
     .index("by_organizationId_and_orderId", ["organizationId", "orderId"])
     .index("by_organizationId_and_source_and_externalId", [
@@ -741,9 +745,19 @@ export default defineSchema({
       "organizationId",
       "fromLocationId",
     ])
+    .index("by_organizationId_and_fromLocationId_and_transferredAt", [
+      "organizationId",
+      "fromLocationId",
+      "transferredAt",
+    ])
     .index("by_organizationId_and_toLocationId", [
       "organizationId",
       "toLocationId",
+    ])
+    .index("by_organizationId_and_toLocationId_and_transferredAt", [
+      "organizationId",
+      "toLocationId",
+      "transferredAt",
     ]),
 
   transferItems: defineTable({
@@ -1210,24 +1224,59 @@ export default defineSchema({
 
   dashboards: defineTable({
     organizationId: v.string(),
-    userIdentifier: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
     widgets: v.array(widgetValidator),
-    scope: scopeValidator,
-    range: rangeValidator,
+    defaultScope: scopeValidator,
+    defaultRange: rangeValidator,
+    roleIds: v.array(v.string()),
+    defaultForRoleIds: v.array(v.string()),
+    defaultForLocationIds: v.array(v.id("locations")),
+    isOrganizationDefault: v.boolean(),
+    sortOrder: v.number(),
+    createdBy: v.string(),
+    updatedBy: v.string(),
     updatedAt: v.number(),
-  }).index("by_organizationId_and_userIdentifier", [
+  })
+    .index("by_organizationId_and_normalizedName", [
+      "organizationId",
+      "normalizedName",
+    ])
+    .index("by_organizationId_and_sortOrder", [
+      "organizationId",
+      "sortOrder",
+    ]),
+
+  customMetrics: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    description: v.optional(v.string()),
+    spec: customMetricSpecValidator,
+    createdBy: v.string(),
+    updatedBy: v.string(),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_normalizedName", [
     "organizationId",
-    "userIdentifier",
+    "normalizedName",
   ]),
 
   dashboardShares: defineTable({
     organizationId: v.string(),
+    dashboardId: v.id("dashboards"),
     token: v.string(),
     unlockKey: v.string(),
     passwordHash: v.optional(v.string()),
     passwordSalt: v.optional(v.string()),
     name: v.string(),
     widgets: v.array(widgetValidator),
+    customMetricSnapshots: v.array(
+      v.object({
+        id: v.id("customMetrics"),
+        name: v.string(),
+        spec: customMetricSpecValidator,
+      }),
+    ),
     scope: scopeValidator,
     range: rangeValidator,
     createdBy: v.string(),

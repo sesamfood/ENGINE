@@ -2,9 +2,19 @@ import { ConvexError } from "convex/values";
 
 export const ONLINE_POS_API_URL = "https://api.onlinepos.dk/api";
 const MAX_SALE_LINES = 20_000;
+const MAX_RAW_SALE_LINE_NODES = 1_000;
+const MAX_RAW_SALE_LINES_JSON_LENGTH = 500_000;
 const FALLBACK_TIME_ZONE = "Europe/Copenhagen";
 
 export type OnlinePosSettings = { token: string; companyId: number };
+
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export type OnlinePosProduct = {
   id: number;
@@ -203,6 +213,86 @@ export async function requestSales(
     throw new ConvexError("OnlinePOS returnerede en ugyldig salgsliste");
   }
   return payload.sales;
+}
+
+function truncateRawJson(
+  value: unknown,
+  state: { nodes: number },
+  depth = 0,
+): JsonValue {
+  state.nodes += 1;
+  if (state.nodes > MAX_RAW_SALE_LINE_NODES || depth > 20) {
+    throw new ConvexError("OnlinePOS returnerede en for stor rå salgsrespons");
+  }
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") return value.slice(0, 500);
+  if (Array.isArray(value)) {
+    return value.map((item) => truncateRawJson(item, state, depth + 1));
+  }
+
+  const record = object(value);
+  if (!record) {
+    throw new ConvexError("OnlinePOS returnerede en ugyldig rå salgslinje");
+  }
+  const result: { [key: string]: JsonValue } = {};
+  for (const [key, item] of Object.entries(record)) {
+    if (!key || key.startsWith("_") || key.startsWith("$")) {
+      throw new ConvexError("OnlinePOS returnerede en ugyldig rå salgslinje");
+    }
+    result[key] = truncateRawJson(item, state, depth + 1);
+  }
+  return result;
+}
+
+export async function requestRawSalesV20(
+  settings: OnlinePosSettings,
+  from: number,
+  to: number,
+): Promise<JsonValue[]> {
+  const body = new URLSearchParams({
+    from: String(Math.floor(from / 1000)),
+    to: String(Math.floor(to / 1000)),
+    map_to_koncern: "true",
+  });
+  let response: Response;
+  try {
+    response = await fetch(`${ONLINE_POS_API_URL}/exportSales/v20`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+        token: settings.token,
+        firmaid: String(settings.companyId),
+      },
+      body,
+    });
+  } catch {
+    throw new ConvexError("OnlinePOS kunne ikke kontaktes");
+  }
+  if (!response.ok) {
+    throw new ConvexError(`OnlinePOS svarede med status ${response.status}`);
+  }
+
+  let rawPayload: unknown;
+  try {
+    rawPayload = await response.json();
+  } catch {
+    throw new ConvexError("OnlinePOS returnerede et ugyldigt svar");
+  }
+  const payload = object(rawPayload);
+  if (!Array.isArray(payload?.sales)) {
+    throw new ConvexError("OnlinePOS returnerede en ugyldig rå salgsliste");
+  }
+
+  const lines = payload.sales
+    .slice(0, 5)
+    .map((line) => truncateRawJson(line, { nodes: 0 }));
+  if (JSON.stringify(lines).length > MAX_RAW_SALE_LINES_JSON_LENGTH) {
+    throw new ConvexError("OnlinePOS returnerede en for stor rå salgsrespons");
+  }
+  return lines;
 }
 
 export function parseSaleLines(

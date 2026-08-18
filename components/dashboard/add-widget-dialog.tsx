@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useAccess } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,10 +34,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
 import { metricRegistry, metrics, sizeLabels, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 
 type Step = 1 | 2 | 3;
@@ -63,6 +67,7 @@ export function AddWidgetDialog({
   now: number;
   onAdd: (widget: WidgetInstance) => void;
 }) {
+  const access = useAccess();
   const available = metrics.filter(
     (metric) => !metric.sensitive || canViewSensitive,
   );
@@ -71,32 +76,67 @@ export function AddWidgetDialog({
     metrics: available.filter((metric) => metric.category === category),
   }));
   const [open, setOpen] = useState(false);
+  const customMetrics = useQuery(
+    api.customMetrics.list,
+    open ? {} : "skip",
+  ) as CustomMetricDefinition[] | undefined;
   const [step, setStep] = useState<Step>(1);
   const [metricId, setMetricId] = useState<MetricId>(available[0]?.id ?? "wasteRegistrations");
+  const [customMetricId, setCustomMetricId] = useState<Id<"customMetrics"> | null>(null);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const definition = metricRegistry[metricId];
+  const customMetric = customMetrics?.find((metric) => metric.id === customMetricId);
   const [visualization, setVisualization] = useState<VisualizationId>(definition.defaultVisualization);
   const [size, setSize] = useState<WidgetSize>(definition.defaultSize);
   const [yAxisMin, setYAxisMin] = useState<number>();
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
-  const previewResult = useQuery(
+  const builtinPreviewResult = useQuery(
     api.dashboard.getMetric,
-    !open || step !== 2
+    !open || step !== 2 || Boolean(customMetric)
       ? "skip"
       : {
           metricId,
-          visualization: definition.defaultVisualization,
+          visualization,
           scope,
           range,
           now,
         },
   );
+  const customPreviewResult = useQuery(
+    api.customMetrics.preview,
+    !open || step !== 2 || !customMetric
+      ? "skip"
+      : {
+          spec: customMetric.spec,
+          visualization,
+          scope,
+          range,
+          now,
+        },
+  );
+  const previewResult = customMetric ? customPreviewResult : builtinPreviewResult;
+  const customVisualizations = customMetric
+    ? (customMetric.spec.kind === "ratio" ? ratioMetricVisualizations : customMetricVisualizations)
+        .filter((value) => Boolean(customMetric.spec.dimension) || (value !== "list" && value !== "table"))
+    : [];
+  const availableVisualizations = customMetric ? customVisualizations : definition.visualizations;
 
   function selectMetric(nextMetricId: MetricId) {
     const next = metricRegistry[nextMetricId];
+    setCustomMetricId(null);
     setMetricId(next.id);
     setVisualization(next.defaultVisualization);
     setSize(next.defaultSize);
+    setYAxisMin(undefined);
+    setYAxisMax(undefined);
+    setYAxisValid(true);
+  }
+
+  function selectCustomMetric(nextMetricId: Id<"customMetrics">) {
+    setCustomMetricId(nextMetricId);
+    setVisualization("kpi");
+    setSize("2x2");
     setYAxisMin(undefined);
     setYAxisMax(undefined);
     setYAxisValid(true);
@@ -115,7 +155,9 @@ export function AddWidgetDialog({
       : undefined;
     onAdd({
       key: crypto.randomUUID(),
-      metricId,
+      metric: customMetric
+        ? { kind: "custom", id: customMetric.id }
+        : { kind: "builtin", id: metricId },
       visualization,
       size,
       options,
@@ -136,12 +178,19 @@ export function AddWidgetDialog({
     setOpen(nextOpen);
     if (nextOpen) {
       setStep(1);
+      setCustomMetricId(null);
       setYAxisValid(true);
     }
   }
 
+  function openCustomMetricBuilder() {
+    setOpen(false);
+    setBuilderOpen(true);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setDialogOpen}>
+    <>
+      <Dialog open={open} onOpenChange={setDialogOpen}>
       <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" />}>
         <PlusIcon data-icon="inline-start" />
         Tilføj widget
@@ -179,7 +228,7 @@ export function AddWidgetDialog({
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div>
                 <h2 className="text-sm font-medium">Hvad vil du følge?</h2>
-                <p className="text-sm text-muted-foreground">Søg i målingerne eller vælg en kategori.</p>
+                <p className="text-sm text-muted-foreground">Søg i de indbyggede eller organisationens målinger.</p>
               </div>
               <Command className="min-h-0 flex-1 rounded-lg border" shouldFilter>
                 <CommandInput aria-label="Søg efter måling" placeholder="Søg efter måling..." />
@@ -219,6 +268,47 @@ export function AddWidgetDialog({
                       })}
                     </CommandGroup>
                   ))}
+                  {customMetrics?.length ? (
+                    <CommandGroup
+                      heading="Organisationens målinger"
+                      className="grid grid-cols-1 gap-2 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 [&>[cmdk-group-items]]:gap-2 sm:[&>[cmdk-group-items]]:grid-cols-2"
+                    >
+                      {customMetrics.map((metric) => {
+                        const selected = metric.id === customMetricId;
+                        return (
+                          <CommandItem
+                            key={metric.id}
+                            value={`${metric.name} ${metric.description ?? ""} tilpasset måling`}
+                            onSelect={() => selectCustomMetric(metric.id)}
+                            aria-selected={selected}
+                            className={cn(
+                              "min-h-28 items-start rounded-lg border bg-card p-3 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
+                              selected && "border-primary bg-primary/5 ring-2 ring-primary/20",
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium">{metric.name}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{metric.description || "Tilpasset måling fra organisationens bibliotek."}</p>
+                              <p className="mt-2 text-xs text-muted-foreground">{metric.spec.kind === "ratio" ? "Forhold" : "Enkeltmåling"}</p>
+                            </div>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  ) : null}
+                  <CommandGroup heading="Byg selv">
+                    <CommandItem
+                      value="opret tilpasset måling builder"
+                      onSelect={openCustomMetricBuilder}
+                      className="min-h-14 rounded-lg border border-dashed p-3 focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <PlusIcon />
+                      <div className="min-w-0">
+                        <p className="font-medium">Opret tilpasset måling</p>
+                        <p className="text-xs text-muted-foreground">Brug de kuraterede datasæt til en ny widget.</p>
+                      </div>
+                    </CommandItem>
+                  </CommandGroup>
                 </CommandList>
               </Command>
             </div>
@@ -227,11 +317,11 @@ export function AddWidgetDialog({
           {step === 2 ? (
             <div className="flex min-h-full flex-col gap-3">
               <div>
-                <h2 className="text-sm font-medium">Hvordan skal {definition.label.toLowerCase()} vises?</h2>
+                <h2 className="text-sm font-medium">Hvordan skal {(customMetric?.name ?? definition.label).toLowerCase()} vises?</h2>
                 <p className="text-sm text-muted-foreground">Vælg en visning. Du kan ændre den senere.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                {definition.visualizations.map((visualizationId) => {
+                {availableVisualizations.map((visualizationId) => {
                   const Visualization = visualizationRegistry[visualizationId];
                   const selected = visualization === visualizationId;
                   return (
@@ -343,6 +433,26 @@ export function AddWidgetDialog({
           )}
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <CustomMetricBuilder
+        key={`${builderOpen ? "open" : "closed"}:${customMetricId ?? "new"}`}
+        open={builderOpen}
+        onOpenChange={setBuilderOpen}
+        scope={scope}
+        range={range}
+        now={now}
+        granularity={access?.granularity}
+        onSaved={(id, selection) => {
+          onAdd({
+            key: crypto.randomUUID(),
+            metric: { kind: "custom", id },
+            visualization: selection.visualization,
+            size: selection.size,
+          });
+          setBuilderOpen(false);
+          setStep(1);
+        }}
+      />
+    </>
   );
 }

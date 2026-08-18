@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DashboardRange, MetricResult, WidgetInstance, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { DashboardRange, MetricResult, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { WidgetCard } from "./widget-card";
@@ -9,21 +9,27 @@ import { WidgetCard } from "./widget-card";
 export function DashboardWidget({
   widget,
   result,
+  metricLabel,
   range,
   editable,
   resizing,
   onVisualizationChange,
+  onRangeChange,
   onYAxisChange,
+  onEditCustomMetric,
   onResize,
   onRemove,
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
+  metricLabel?: string;
   range?: DashboardRange;
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
+  onRangeChange?: (range: WidgetRangePreset | undefined) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
+  onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
 }) {
@@ -34,11 +40,14 @@ export function DashboardWidget({
     <WidgetCard
       widget={widget}
       result={result ?? undefined}
+      metricLabel={metricLabel}
       range={range}
       editable={editable}
       resizing={resizing}
       onVisualizationChange={onVisualizationChange}
+      onRangeChange={onRangeChange}
       onYAxisChange={onYAxisChange}
+      onEditCustomMetric={onEditCustomMetric}
       onResize={onResize}
       onRemove={onRemove}
     >

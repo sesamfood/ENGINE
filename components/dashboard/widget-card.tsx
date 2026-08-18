@@ -8,6 +8,7 @@ import {
   CircleAlertIcon,
   CircleCheckIcon,
   MinusIcon,
+  PencilIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,12 +35,20 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { metricRegistry, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
-import { widgetSizes, type DashboardRange, type MetricResult, type WidgetInstance, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
+import { widgetSizes, type DashboardRange, type MetricResult, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { previousTotal, total } from "./visualizations/utils";
@@ -58,6 +67,15 @@ type ResizeSession = {
   original: WidgetSize;
   current: WidgetSize;
 };
+
+const widgetRangeOptions = [
+  { value: "board", label: "Følg dashboard" },
+  { value: "today", label: "I dag" },
+  { value: "yesterday", label: "I går" },
+  { value: "7days", label: "7 dage" },
+  { value: "30days", label: "30 dage" },
+  { value: "thisMonth", label: "Denne måned" },
+];
 
 function FreshnessNotice({
   freshness,
@@ -142,27 +160,36 @@ function nearestSize(session: ResizeSession, clientX: number, clientY: number) {
 export function WidgetCard({
   widget,
   result,
+  metricLabel: customMetricLabel,
   range,
   editable,
   resizing = false,
   onVisualizationChange,
+  onRangeChange,
   onYAxisChange,
+  onEditCustomMetric,
   onResize,
   onRemove,
   children,
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
+  metricLabel?: string;
   range?: DashboardRange;
   editable: boolean;
   resizing?: boolean;
   onVisualizationChange?: (visualization: VisualizationId) => void;
+  onRangeChange?: (range: WidgetRangePreset | undefined) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
+  onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
   children: ReactNode;
 }) {
-  const definition = metricRegistry[widget.metricId];
+  const definition = widget.metric.kind === "builtin"
+    ? metricRegistry[widget.metric.id]
+    : undefined;
+  const metricLabel = customMetricLabel ?? definition?.label ?? "Tilpasset måling";
   const current = result ? total(result) : null;
   const previous = result ? previousTotal(result) : null;
   const freshness = result?.freshness;
@@ -260,7 +287,7 @@ export function WidgetCard({
       <CardHeader className="gap-0 pb-1">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <CardTitle className="min-w-0 flex-1 truncate text-base">{definition.label}</CardTitle>
+            <CardTitle className="min-w-0 flex-1 truncate text-base">{metricLabel}</CardTitle>
             {change !== null || result?.truncated || hasFreshness ? (
               <CardDescription className="flex min-w-0 max-w-full shrink-0 items-center gap-1 overflow-hidden">
                 {change !== null ? (
@@ -289,63 +316,90 @@ export function WidgetCard({
           </div>
           {editable ? (
             <div data-dashboard-no-drag className="flex items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>
-              <Dialog open={visualizationOpen} onOpenChange={setVisualizationOpen}>
-                <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${definition.label}`} />}>
-                  <ChartNoAxesCombinedIcon />
-                </DialogTrigger>
-                <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
-                  <DialogHeader>
-                    <DialogTitle>Vælg visualisering</DialogTitle>
-                    <DialogDescription>Samme data vist med alle kompatible visualiseringer.</DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {definition.visualizations.map((visualization) => {
-                      const Visualization = visualizationRegistry[visualization];
-                      return (
-                        <Card
-                          key={visualization}
-                          size="sm"
-                          role="button"
-                          tabIndex={0}
-                          aria-pressed={widget.visualization === visualization}
-                          className={cn(
-                            "cursor-pointer outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
-                            widget.visualization === visualization && "ring-2 ring-primary/30",
-                          )}
-                          onClick={() => chooseVisualization(visualization)}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== " ") return;
-                            event.preventDefault();
-                            chooseVisualization(visualization);
-                          }}
-                        >
-                          <CardHeader>
-                            <CardTitle>{visualizationLabels[visualization]}</CardTitle>
-                          </CardHeader>
-                          <CardContent className="h-52 min-h-0 overflow-hidden">
-                            {result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                  {visualizationHasYAxis(widget.visualization) && onYAxisChange ? (
-                    <div className="mt-4 flex flex-col gap-3 border-t pt-4">
-                      <div>
-                        <h3 className="text-sm font-medium">Y-akse</h3>
-                        <p className="text-sm text-muted-foreground">Angiv grænser eller brug automatisk skala.</p>
-                      </div>
-                      <YAxisSettings
-                        idPrefix={`widget-${widget.key}-y-axis`}
-                        min={widget.options?.yAxisMin}
-                        max={widget.options?.yAxisMax}
-                        onChange={onYAxisChange}
-                      />
+              {definition ? (
+                <Dialog open={visualizationOpen} onOpenChange={setVisualizationOpen}>
+                  <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${metricLabel}`} />}>
+                    <ChartNoAxesCombinedIcon />
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
+                    <DialogHeader>
+                      <DialogTitle>Vælg visualisering</DialogTitle>
+                      <DialogDescription>Samme data vist med alle kompatible visualiseringer.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {definition.visualizations.map((visualization) => {
+                        const Visualization = visualizationRegistry[visualization];
+                        return (
+                          <Card
+                            key={visualization}
+                            size="sm"
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={widget.visualization === visualization}
+                            className={cn(
+                              "cursor-pointer outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
+                              widget.visualization === visualization && "ring-2 ring-primary/30",
+                            )}
+                            onClick={() => chooseVisualization(visualization)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.preventDefault();
+                              chooseVisualization(visualization);
+                            }}
+                          >
+                            <CardHeader>
+                              <CardTitle>{visualizationLabels[visualization]}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="h-52 min-h-0 overflow-hidden">
+                              {result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
-                  ) : null}
-                </DialogContent>
-              </Dialog>
-              <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${definition.label}`} onClick={onRemove}>
+                    {visualizationHasYAxis(widget.visualization) && onYAxisChange ? (
+                      <div className="mt-4 flex flex-col gap-3 border-t pt-4">
+                        <div>
+                          <h3 className="text-sm font-medium">Y-akse</h3>
+                          <p className="text-sm text-muted-foreground">Angiv grænser eller brug automatisk skala.</p>
+                        </div>
+                        <YAxisSettings
+                          idPrefix={`widget-${widget.key}-y-axis`}
+                          min={widget.options?.yAxisMin}
+                          max={widget.options?.yAxisMax}
+                          onChange={onYAxisChange}
+                        />
+                      </div>
+                    ) : null}
+                  </DialogContent>
+                </Dialog>
+              ) : onEditCustomMetric ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="size-11"
+                  aria-label={`Rediger ${metricLabel}`}
+                  onClick={onEditCustomMetric}
+                >
+                  <PencilIcon />
+                </Button>
+              ) : null}
+              <Select
+                items={widgetRangeOptions}
+                value={widget.range ?? "board"}
+                onValueChange={(value) => onRangeChange?.(value === "board" ? undefined : value as WidgetRangePreset)}
+              >
+                <SelectTrigger className="h-11 w-36" aria-label={`Periode for ${metricLabel}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {widgetRangeOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
                 <MinusIcon />
               </Button>
             </div>
@@ -358,7 +412,7 @@ export function WidgetCard({
           data-dashboard-no-drag
           role="slider"
           tabIndex={0}
-          aria-label={`Tilpas størrelsen på ${definition.label}`}
+          aria-label={`Tilpas størrelsen på ${metricLabel}`}
           aria-valuemin={0}
           aria-valuemax={widgetSizes.length - 1}
           aria-valuenow={widgetSizes.indexOf(widget.size)}

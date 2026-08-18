@@ -40,12 +40,74 @@ export const widgetSizeValidator = v.union(
   v.literal("4x2"),
 );
 
+export const widgetRangePresetValidator = v.union(
+  v.literal("today"),
+  v.literal("yesterday"),
+  v.literal("7days"),
+  v.literal("30days"),
+  v.literal("thisMonth"),
+);
+
+export const widgetMetricValidator = v.union(
+  v.object({ kind: v.literal("builtin"), id: metricIdValidator }),
+  v.object({ kind: v.literal("custom"), id: v.id("customMetrics") }),
+);
+
+export const datasetIdValidator = v.union(
+  v.literal("waste"),
+  v.literal("badDelivery"),
+  v.literal("transfers"),
+  v.literal("staffFood"),
+  v.literal("shifts"),
+  v.literal("counts"),
+  v.literal("salesDaily"),
+  v.literal("salesOrders"),
+  v.literal("salesLines"),
+);
+
+export const querySpecValidator = v.object({
+  dataset: datasetIdValidator,
+  measure: v.string(),
+  filters: v.array(
+    v.object({
+      field: v.string(),
+      op: v.union(v.literal("in"), v.literal("notIn")),
+      values: v.array(v.string()),
+    }),
+  ),
+});
+
+const metricBucketValidator = v.union(
+  v.literal("day"),
+  v.literal("week"),
+  v.literal("month"),
+);
+
+export const customMetricSpecValidator = v.union(
+  v.object({
+    kind: v.literal("single"),
+    query: querySpecValidator,
+    dimension: v.optional(v.string()),
+    bucket: metricBucketValidator,
+    limit: v.optional(v.number()),
+  }),
+  v.object({
+    kind: v.literal("ratio"),
+    numerator: querySpecValidator,
+    denominator: querySpecValidator,
+    dimension: v.optional(v.string()),
+    bucket: metricBucketValidator,
+    limit: v.optional(v.number()),
+  }),
+);
+
 export const widgetValidator = v.object({
   key: v.string(),
-  metricId: metricIdValidator,
+  metric: widgetMetricValidator,
   visualization: visualizationValidator,
   size: widgetSizeValidator,
   position: v.optional(v.object({ column: v.number(), row: v.number() })),
+  range: v.optional(widgetRangePresetValidator),
   options: v.optional(
     v.object({
       limit: v.optional(v.number()),
@@ -125,8 +187,9 @@ export const metricResultValidator = v.object({
 
 export const metricRequestValidator = v.object({
   key: v.string(),
-  metricId: metricIdValidator,
+  metric: widgetMetricValidator,
   visualization: visualizationValidator,
+  range: v.optional(widgetRangePresetValidator),
 });
 
 export const keyedMetricResultValidator = v.object({

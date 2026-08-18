@@ -10,6 +10,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   CircleAlertIcon,
+  CopyIcon,
   PlugIcon,
   RefreshCwIcon,
   ShoppingBasketIcon,
@@ -423,6 +424,96 @@ function ConnectionCard({
           </>
         )}
       </CardFooter>
+    </Card>
+  );
+}
+
+function RawSalesResponse() {
+  const inspectRawSales = useAction(api.onlinePos.inspectRawSales);
+  const [date, setDate] = useState(() => dateInput(1));
+  const [lines, setLines] = useState<unknown[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const prettyJson = lines === null ? null : JSON.stringify(lines, null, 2);
+
+  async function fetchLines() {
+    if (!date) {
+      toast.error("Vælg en dato");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result: unknown[] = await inspectRawSales({ date });
+      setLines(result);
+    } catch (error) {
+      setLines(null);
+      toast.error(messageFrom(error));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copyResponse() {
+    if (prettyJson === null) return;
+    try {
+      await navigator.clipboard.writeText(prettyJson);
+      toast.success("Salgsresponsen er kopieret");
+    } catch {
+      toast.error("Salgsresponsen kunne ikke kopieres");
+    }
+  }
+
+  return (
+    <Card className="max-w-5xl">
+      <CardHeader>
+        <CardTitle>Rå salgsrespons</CardTitle>
+        <CardDescription>
+          Hent de første fem rå salgslinjer fra OnlinePOS for én dag.
+        </CardDescription>
+        {prettyJson !== null ? (
+          <CardAction>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Kopiér rå salgsrespons"
+              onClick={() => void copyResponse()}
+            >
+              <CopyIcon data-icon="inline-start" />
+              Kopiér
+            </Button>
+          </CardAction>
+        ) : null}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void fetchLines();
+          }}
+        >
+          <FieldGroup>
+            <Field orientation="responsive">
+              <FieldLabel htmlFor="online-pos-raw-sales-date">Dato</FieldLabel>
+              <Input
+                id="online-pos-raw-sales-date"
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                required
+              />
+              <Button type="submit" disabled={loading}>
+                {loading ? <Spinner data-icon="inline-start" /> : null}
+                Hent
+              </Button>
+            </Field>
+          </FieldGroup>
+        </form>
+        {prettyJson !== null ? (
+          <pre className="max-h-96 overflow-auto rounded-md border bg-muted p-4 text-xs">
+            {prettyJson}
+          </pre>
+        ) : null}
+      </CardContent>
     </Card>
   );
 }
@@ -1121,6 +1212,7 @@ export function OnlinePosIntegration() {
                         setTab("connection");
                       }}
                     />
+                    <RawSalesResponse />
                     <OnlinePosLocationConnections />
                   </div>
                 </TabsContent>
@@ -1144,6 +1236,7 @@ export function OnlinePosIntegration() {
                     setTab("connection");
                   }}
                 />
+                {settings.connected ? <RawSalesResponse /> : null}
                 <OnlinePosLocationConnections />
               </div>
             )}
