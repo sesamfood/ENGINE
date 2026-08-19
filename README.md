@@ -16,9 +16,12 @@ Set the Better Auth backend variables on the relevant Convex deployment:
 ```bash
 bunx convex env set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
 bunx convex env set SITE_URL http://localhost:3000
+bunx convex env set BETTER_AUTH_TRUSTED_ORIGINS "http://localhost:3000,https://admin.example.com"
 bunx convex env set RESEND_API_KEY re_...
 bunx convex env set RESEND_FROM_EMAIL "System <noreply@example.com>"
 ```
+
+Set `BETTER_AUTH_TRUSTED_ORIGINS` to a comma-separated list when the app should accept requests from more than one frontend URL. Keep `SITE_URL` set to the canonical URL used in generated links and emails.
 
 Use a verified sender or verified domain in Resend. Set the same variables for production using `--prod` and the public `SITE_URL`.
 
