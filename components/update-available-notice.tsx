@@ -1,5 +1,6 @@
 "use client";
 
+import { InfoIcon } from "lucide-react";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
@@ -28,8 +29,8 @@ export function UpdateAvailableNotice() {
         if (!buildId || buildId === CURRENT_BUILD_ID) return;
 
         stopped = true;
-        toast.info("En ny version er klar", {
-          description: "Genindlæs siden for at bruge den nyeste version.",
+        toast("En ny version er klar", {
+          icon: <InfoIcon className="size-4" />,
           duration: Number.POSITIVE_INFINITY,
           action: {
             label: "Genindlæs",
