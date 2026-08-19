@@ -1,8 +1,8 @@
 import type { PermissionId } from "./auth-permissions";
 
 export const feedbackTypes = [
-  { id: "bug", label: "Fejl" },
-  { id: "feature", label: "Forslag" },
+  { id: "bug", label: "Fejl", englishLabel: "Bug" },
+  { id: "feature", label: "Forslag", englishLabel: "Feature request" },
 ] as const;
 
 export type FeedbackType = (typeof feedbackTypes)[number]["id"];
@@ -12,48 +12,56 @@ export type FeedbackType = (typeof feedbackTypes)[number]["id"];
 export const feedbackAreas = [
   {
     id: "dashboard",
+    englishLabel: "Dashboard",
     label: "Dashboard",
     pathPrefix: "/dashboard",
     permissions: ["dashboard.view"],
   },
   {
     id: "transfers",
+    englishLabel: "Transfers",
     label: "Transfer",
     pathPrefix: "/transfers",
     permissions: ["transfers.view", "transfers.manage"],
   },
   {
     id: "waste",
+    englishLabel: "Waste",
     label: "Waste",
     pathPrefix: "/waste",
     permissions: ["waste.register", "waste.report"],
   },
   {
     id: "ownChecks",
+    englishLabel: "Own checks",
     label: "Egenkontrol",
     pathPrefix: "/own-checks",
     permissions: ["ownChecks.perform", "ownChecks.view", "ownChecks.export"],
   },
   {
     id: "staffFood",
+    englishLabel: "Staff food",
     label: "Staff food",
     pathPrefix: "/staff-food",
     permissions: ["staffFood.register"],
   },
   {
     id: "count",
+    englishLabel: "Count",
     label: "Count",
     pathPrefix: "/count",
     permissions: ["count.register", "count.viewStock"],
   },
   {
     id: "employees",
+    englishLabel: "Employees",
     label: "Medarbejdere",
     pathPrefix: "/employees",
     permissions: ["employees.schedule", "employees.directory"],
   },
   {
     id: "organization",
+    englishLabel: "Administration",
     label: "Administration",
     pathPrefix: "/organization",
     permissions: [
@@ -70,10 +78,23 @@ export const feedbackAreas = [
       "dashboard.manage",
     ],
   },
-  { id: "account", label: "Profil og indstillinger", pathPrefix: "/profile", permissions: [] },
-  { id: "other", label: "Andet", pathPrefix: null, permissions: [] },
+  {
+    id: "account",
+    englishLabel: "Profile and settings",
+    label: "Profil og indstillinger",
+    pathPrefix: "/profile",
+    permissions: [],
+  },
+  {
+    id: "other",
+    englishLabel: "Other",
+    label: "Andet",
+    pathPrefix: null,
+    permissions: [],
+  },
 ] as const satisfies ReadonlyArray<{
   id: string;
+  englishLabel: string;
   label: string;
   pathPrefix: string | null;
   permissions: readonly PermissionId[];
@@ -91,6 +112,16 @@ export function feedbackAreaLabel(id: string) {
 
 export function feedbackTypeLabel(type: FeedbackType) {
   return feedbackTypes.find((item) => item.id === type)!.label;
+}
+
+// The English labels go to Linear and the feedback mails, which the product
+// team reads in English.
+export function feedbackAreaEnglishLabel(id: string) {
+  return feedbackAreas.find((area) => area.id === id)?.englishLabel ?? id;
+}
+
+export function feedbackTypeEnglishLabel(type: FeedbackType) {
+  return feedbackTypes.find((item) => item.id === type)!.englishLabel;
 }
 
 export function accessibleFeedbackAreas(
@@ -124,7 +155,6 @@ export function feedbackAreaForPath(
       (pathname === area.pathPrefix ||
         pathname.startsWith(`${area.pathPrefix}/`)),
   );
-  const id =
-    match?.id ?? (pathname === "/settings" ? "account" : "other");
+  const id = match?.id ?? (pathname === "/settings" ? "account" : "other");
   return available.some((area) => area.id === id) ? id : "other";
 }

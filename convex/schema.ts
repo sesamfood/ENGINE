@@ -262,7 +262,9 @@ export default defineSchema({
     userEmail: v.optional(v.string()),
     area: v.string(),
     type: v.union(v.literal("bug"), v.literal("feature")),
-    description: v.string(),
+    // Optional so submissions from before titles existed still validate.
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
     screenshotStorageId: v.optional(v.id("_storage")),
     destination: v.union(v.literal("linear"), v.literal("email")),
     status: v.union(
