@@ -10,6 +10,7 @@ import type { DataGranularity } from "../../lib/auth-permissions";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import {
+  aggregateLocationLabel,
   dateKey,
   zonedStart,
   type DashboardMetricParams,
@@ -783,7 +784,7 @@ async function singleResult(
     for (const location of params.locations) labels.set(location.id, location.name);
   } else {
     groupKeys = ["all"];
-    labels.set("all", "Alle lokationer");
+    labels.set("all", aggregateLocationLabel(params));
   }
   const topKeys = new Set(groupKeys);
   if (
@@ -892,7 +893,10 @@ function ratioResult(numerator: MetricResult, denominator: MetricResult): Metric
   };
 }
 
-function aggregateLocationSeries(result: MetricResult): MetricResult {
+function aggregateLocationSeries(
+  result: MetricResult,
+  params: DashboardMetricParams,
+): MetricResult {
   if (result.series.length <= 1) return result;
   const byTime = new Map<number, number>();
   for (const series of result.series) {
@@ -906,7 +910,7 @@ function aggregateLocationSeries(result: MetricResult): MetricResult {
     breakdown: undefined,
     series: [{
       key: "all",
-      label: "Alle lokationer",
+      label: aggregateLocationLabel(params),
       points: [...byTime.entries()]
         .sort(([left], [right]) => left - right)
         .map(([t, value]) => ({ t, value: rounded(value) })),
@@ -992,7 +996,7 @@ async function applyCustomMetricGranularity(
     dimensionId === "toLocation";
   if (!locationSeries || params.accessGranularity === "detail") return result;
   if (params.accessGranularity === "aggregate") {
-    return aggregateLocationSeries(result);
+    return aggregateLocationSeries(result, params);
   }
   return await anonymizeLocationSeries(result, params);
 }
@@ -1119,11 +1123,11 @@ export async function executeCustomMetric(
     spec.dimension === "toLocation";
   const normalizedNumerator =
     effectiveParams.accessGranularity === "aggregate" && locationSeries
-      ? aggregateLocationSeries(numerator)
+      ? aggregateLocationSeries(numerator, effectiveParams)
       : numerator;
   const normalizedDenominator =
     effectiveParams.accessGranularity === "aggregate" && locationSeries
-      ? aggregateLocationSeries(denominator)
+      ? aggregateLocationSeries(denominator, effectiveParams)
       : denominator;
   return await applyCustomMetricGranularity(
     ratioResult(normalizedNumerator, normalizedDenominator),

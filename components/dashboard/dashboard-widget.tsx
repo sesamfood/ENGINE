@@ -10,6 +10,7 @@ export function DashboardWidget({
   widget,
   result,
   metricLabel,
+  tooltipLabel,
   range,
   editable,
   resizing,
@@ -24,6 +25,7 @@ export function DashboardWidget({
   widget: WidgetInstance;
   result?: MetricResult;
   metricLabel?: string;
+  tooltipLabel?: string;
   range?: DashboardRange;
   editable: boolean;
   resizing?: boolean;
@@ -60,7 +62,7 @@ export function DashboardWidget({
           <Skeleton className="min-h-24 flex-1" />
         </div>
       ) : (
-        <Visualization result={result} compact={compact} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} />
+        <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} />
       )}
     </WidgetCard>
   );

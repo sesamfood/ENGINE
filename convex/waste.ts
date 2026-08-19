@@ -1318,6 +1318,92 @@ export const clearShortcutOverride = mutation({
   },
 });
 
+type VoidWasteOptions = {
+  registrationId: Id<"wasteRegistrations">;
+  /** Kun fortryd inden for eget undo-vindue må mangle en begrundelse. */
+  reason?: string;
+  requireUndoWindow: boolean;
+};
+
+async function voidRegistration(
+  ctx: MutationCtx,
+  { registrationId, reason, requireUndoWindow }: VoidWasteOptions,
+) {
+  const auth = await requireOrganization(ctx);
+  const kioskBypass = await requireKioskDestination(ctx, auth, [
+    "waste.register",
+    "waste.report",
+  ]);
+  const canRegister = hasPermission(
+    auth.role,
+    auth.permissions,
+    "waste.register",
+  );
+  const canReport = hasPermission(auth.role, auth.permissions, "waste.report");
+  if (!kioskBypass && !canRegister && !canReport) {
+    throw new ConvexError("Du har ikke adgang");
+  }
+  const registration = await ctx.db.get("wasteRegistrations", registrationId);
+  if (!registration || registration.organizationId !== auth.organizationId) {
+    throw new ConvexError("Registreringen blev ikke fundet");
+  }
+  requireLocationAccess(auth, registration.locationId);
+  if (registration.status === "voided") {
+    throw new ConvexError("Registreringen er allerede annulleret");
+  }
+  const now = Date.now();
+  const canUndoOwn =
+    registration.registeredBy === auth.userIdentifier &&
+    now - registration.registeredAt <= UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS;
+  if (requireUndoWindow && !canUndoOwn) {
+    throw new ConvexError("Fortrydelsesfristen er udløbet");
+  }
+  if (!canUndoOwn && !canReport) {
+    throw new ConvexError("Du har ikke adgang til at annullere registreringen");
+  }
+  const periods: PopularityPeriod[] = ["allTime"];
+  if (registration.activeIn30Days) periods.push("30Days");
+  if (registration.activeIn90Days) periods.push("90Days");
+  await ctx.db.patch("wasteRegistrations", registration._id, {
+    status: "voided",
+    activeIn30Days: false,
+    activeIn90Days: false,
+    voidedAt: now,
+    voidedBy: auth.userIdentifier,
+    voidedByName: auth.userName,
+  });
+  await addStock(
+    ctx,
+    auth.organizationId,
+    registration.locationId,
+    registration.productId,
+    registration.defaultQuantity,
+  );
+  await decrementStats(ctx, registration, periods, true);
+  await recordAudit(ctx, auth, {
+    action: "waste.void",
+    entityTable: "wasteRegistrations",
+    entityId: registration._id,
+    locationId: registration.locationId,
+    summary: `Spildregistrering for ${registration.productName} annulleret`,
+    reason,
+  });
+}
+
+/** Fortryd egen registrering inden for undo-vinduet. Ingen begrundelse. */
+export const undoWasteRegistration = mutation({
+  args: { registrationId: v.id("wasteRegistrations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await voidRegistration(ctx, {
+      registrationId: args.registrationId,
+      requireUndoWindow: true,
+    });
+    return null;
+  },
+});
+
+/** Annullér en registrering fra spildrapporten. Kræver begrundelse. */
 export const voidWasteRegistration = mutation({
   args: {
     registrationId: v.id("wasteRegistrations"),
@@ -1325,71 +1411,10 @@ export const voidWasteRegistration = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requireOrganization(ctx);
-    const reason = requireAuditReason(args.reason);
-    const kioskBypass = await requireKioskDestination(ctx, auth, [
-      "waste.register",
-      "waste.report",
-    ]);
-    const canRegister = hasPermission(
-      auth.role,
-      auth.permissions,
-      "waste.register",
-    );
-    const canReport = hasPermission(
-      auth.role,
-      auth.permissions,
-      "waste.report",
-    );
-    if (!kioskBypass && !canRegister && !canReport) {
-      throw new ConvexError("Du har ikke adgang");
-    }
-    const registration = await ctx.db.get(
-      "wasteRegistrations",
-      args.registrationId,
-    );
-    if (!registration || registration.organizationId !== auth.organizationId) {
-      throw new ConvexError("Registreringen blev ikke fundet");
-    }
-    requireLocationAccess(auth, registration.locationId);
-    if (registration.status === "voided") {
-      throw new ConvexError("Registreringen er allerede annulleret");
-    }
-    const now = Date.now();
-    const canUndoOwn =
-      registration.registeredBy === auth.userIdentifier &&
-      now - registration.registeredAt <= UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS;
-    if (!canUndoOwn && !canReport) {
-      throw new ConvexError(
-        "Du har ikke adgang til at annullere registreringen",
-      );
-    }
-    const periods: PopularityPeriod[] = ["allTime"];
-    if (registration.activeIn30Days) periods.push("30Days");
-    if (registration.activeIn90Days) periods.push("90Days");
-    await ctx.db.patch("wasteRegistrations", registration._id, {
-      status: "voided",
-      activeIn30Days: false,
-      activeIn90Days: false,
-      voidedAt: now,
-      voidedBy: auth.userIdentifier,
-      voidedByName: auth.userName,
-    });
-    await addStock(
-      ctx,
-      auth.organizationId,
-      registration.locationId,
-      registration.productId,
-      registration.defaultQuantity,
-    );
-    await decrementStats(ctx, registration, periods, true);
-    await recordAudit(ctx, auth, {
-      action: "waste.void",
-      entityTable: "wasteRegistrations",
-      entityId: registration._id,
-      locationId: registration.locationId,
-      summary: `Spildregistrering for ${registration.productName} annulleret`,
-      reason,
+    await voidRegistration(ctx, {
+      registrationId: args.registrationId,
+      reason: requireAuditReason(args.reason),
+      requireUndoWindow: false,
     });
     return null;
   },
