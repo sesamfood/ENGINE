@@ -1,12 +1,27 @@
 "use client";
 
-import { InfoIcon } from "lucide-react";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
 const CURRENT_BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "development";
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const MIN_CHECK_GAP_MS = 60 * 1000;
+
+function showUpdateToast() {
+  toast.success("En ny version er klar", {
+    duration: Number.POSITIVE_INFINITY,
+    action: {
+      label: "Genindlæs",
+      onClick: () => window.location.reload(),
+    },
+    classNames: {
+      // Sonner styler action-knappen med de neutrale tokens, så den forsvinder
+      // på den grønne flade. Vend toastens egne farver om i stedet.
+      actionButton:
+        "bg-[var(--success-text)]! text-[var(--success-bg)]! h-8! px-3! text-sm! font-semibold!",
+    },
+  });
+}
 
 /** Notifies the user when the server runs a newer build than this tab. */
 export function UpdateAvailableNotice() {
@@ -29,14 +44,7 @@ export function UpdateAvailableNotice() {
         if (!buildId || buildId === CURRENT_BUILD_ID) return;
 
         stopped = true;
-        toast("En ny version er klar", {
-          icon: <InfoIcon className="size-4" />,
-          duration: Number.POSITIVE_INFINITY,
-          action: {
-            label: "Genindlæs",
-            onClick: () => window.location.reload(),
-          },
-        });
+        showUpdateToast();
       } catch {
         // Ignorer netværksfejl, og prøv igen ved næste tjek.
       }
