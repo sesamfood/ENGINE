@@ -25,6 +25,17 @@ const siteUrl = process.env.SITE_URL!;
 const localLoopbackOrigin = siteUrl?.startsWith("http://localhost:")
   ? siteUrl.replace("localhost", "127.0.0.1")
   : null;
+const configuredTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const trustedOrigins = Array.from(
+  new Set([
+    siteUrl,
+    ...(localLoopbackOrigin ? [localLoopbackOrigin] : []),
+    ...configuredTrustedOrigins,
+  ]),
+);
 type OrganizationMember = {
   id: string;
   organizationId: string;
@@ -186,10 +197,7 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
   ({
     baseURL: siteUrl,
-    trustedOrigins: [
-      siteUrl,
-      ...(localLoopbackOrigin ? [localLoopbackOrigin] : []),
-    ],
+    trustedOrigins,
     database: authComponent.adapter(ctx),
     advanced: {
       database: {
