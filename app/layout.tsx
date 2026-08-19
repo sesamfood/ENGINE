@@ -5,6 +5,7 @@ import { AppRouteShell } from "@/components/app-route-shell";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { UpdateAvailableNotice } from "@/components/update-available-notice";
 import { getToken } from "@/lib/auth-server";
 import { cn } from "@/lib/utils";
 import "./globals.css";
@@ -55,6 +56,7 @@ export default async function RootLayout({
               {children}
             </AppRouteShell>
             <Toaster position="top-right" richColors />
+            <UpdateAvailableNotice />
           </TooltipProvider>
         </ConvexClientProvider>
       </body>
