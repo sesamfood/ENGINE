@@ -48,6 +48,7 @@ import {
 } from "@/lib/feedback";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 4_000;
 const IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -75,6 +76,7 @@ function FeedbackForm({
     feedbackAreaForPath(pathname, areas),
   );
   const [type, setType] = useState<FeedbackType>("bug");
+  const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const preview = useMemo(
@@ -135,15 +137,12 @@ function FeedbackForm({
   }
 
   async function send() {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError("Skriv en titel");
+      return;
+    }
     const trimmed = description.trim();
-    if (!trimmed) {
-      setError("Skriv en beskrivelse");
-      return;
-    }
-    if (trimmed.length > MAX_DESCRIPTION_LENGTH) {
-      setError(`Beskrivelsen må højst være ${MAX_DESCRIPTION_LENGTH} tegn`);
-      return;
-    }
     setError(undefined);
     setSubmitting(true);
     try {
@@ -153,7 +152,8 @@ function FeedbackForm({
       await submitFeedback({
         area,
         type,
-        description: trimmed,
+        title: trimmedTitle,
+        ...(trimmed ? { description: trimmed } : {}),
         ...(screenshotStorageId ? { screenshotStorageId } : {}),
       });
       toast.success("Tak. Din feedback er sendt");
@@ -177,7 +177,9 @@ function FeedbackForm({
       >
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor={`${fieldId}-area`}>Hvor i systemet?</FieldLabel>
+            <FieldLabel htmlFor={`${fieldId}-area`}>
+              Hvor i systemet?
+            </FieldLabel>
             <Select
               items={areas.map((item) => ({
                 value: item.id,
@@ -200,7 +202,9 @@ function FeedbackForm({
           </Field>
 
           <Field>
-            <FieldTitle id={`${fieldId}-type-label`}>Hvad handler det om?</FieldTitle>
+            <FieldTitle id={`${fieldId}-type-label`}>
+              Hvad handler det om?
+            </FieldTitle>
             <ToggleGroup
               value={[type]}
               variant="outline"
@@ -230,9 +234,27 @@ function FeedbackForm({
           </Field>
 
           <Field data-invalid={Boolean(error)}>
+            <FieldLabel htmlFor={`${fieldId}-title`}>Titel</FieldLabel>
+            <Input
+              id={`${fieldId}-title`}
+              className="min-h-11"
+              value={title}
+              maxLength={MAX_TITLE_LENGTH}
+              placeholder={
+                type === "bug"
+                  ? "Kort overskrift på fejlen"
+                  : "Kort overskrift på forslaget"
+              }
+              onChange={(event) => setTitle(event.target.value)}
+            />
+            <FieldError>{error}</FieldError>
+          </Field>
+
+          <Field>
             <FieldLabel htmlFor={`${fieldId}-description`}>
               Beskrivelse
             </FieldLabel>
+            <FieldDescription>Valgfrit.</FieldDescription>
             <Textarea
               id={`${fieldId}-description`}
               value={description}
@@ -245,14 +267,15 @@ function FeedbackForm({
               }
               onChange={(event) => setDescription(event.target.value)}
             />
-            <FieldError>{error}</FieldError>
           </Field>
 
           <Field>
             <FieldLabel htmlFor={`${fieldId}-screenshot`}>
               Skærmbillede
             </FieldLabel>
-            <FieldDescription>Valgfrit, men gør det nemmere at forstå.</FieldDescription>
+            <FieldDescription>
+              Valgfrit, men gør det nemmere at forstå.
+            </FieldDescription>
             {preview ? (
               <div
                 role="img"
@@ -297,7 +320,9 @@ function FeedbackForm({
 
       <DialogFooter>
         <DialogClose
-          render={<Button type="button" variant="outline" disabled={submitting} />}
+          render={
+            <Button type="button" variant="outline" disabled={submitting} />
+          }
         >
           Annuller
         </DialogClose>

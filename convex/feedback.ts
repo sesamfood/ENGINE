@@ -14,6 +14,7 @@ import { fetchLinearTeams, type LinearTeam } from "./lib/linear";
 import { rateLimiter } from "./lib/rateLimits";
 import { canReportFeedbackArea, isFeedbackType } from "../lib/feedback";
 
+const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 4_000;
 const MAX_EMAIL_LENGTH = 200;
 const MAX_API_KEY_LENGTH = 200;
@@ -43,6 +44,7 @@ const deliveryValidator = v.union(
     userEmail: v.union(v.string(), v.null()),
     area: v.string(),
     type: typeValidator,
+    title: v.string(),
     description: v.string(),
     createdAt: v.number(),
     screenshotUrl: v.union(v.string(), v.null()),
@@ -57,7 +59,11 @@ const deliveryValidator = v.union(
 
 function trimmedEmail(value: string) {
   const email = value.trim();
-  if (!email || email.length > MAX_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (
+    !email ||
+    email.length > MAX_EMAIL_LENGTH ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
     throw new ConvexError("Indtast en gyldig e-mailadresse");
   }
   return email;
@@ -177,7 +183,9 @@ export const saveSettings = mutation({
 
     if (args.enabled) {
       if (args.destination === "email" && !email) {
-        throw new ConvexError("Indtast e-mailadressen, feedback skal sendes til");
+        throw new ConvexError(
+          "Indtast e-mailadressen, feedback skal sendes til",
+        );
       }
       if (args.destination === "linear" && (!linearApiKey || !linearTeamId)) {
         throw new ConvexError("Tilføj Linear API-nøgle, og vælg et team");
@@ -256,7 +264,8 @@ export const submit = mutation({
   args: {
     area: v.string(),
     type: typeValidator,
-    description: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
     screenshotStorageId: v.optional(v.id("_storage")),
   },
   returns: v.null(),
@@ -280,8 +289,12 @@ export const submit = mutation({
     if (!isFeedbackType(args.type)) {
       throw new ConvexError("Vælg om det er en fejl eller et forslag");
     }
-    const description = args.description.trim();
-    if (!description) throw new ConvexError("Skriv en beskrivelse");
+    const title = args.title.trim();
+    if (!title) throw new ConvexError("Skriv en titel");
+    if (title.length > MAX_TITLE_LENGTH) {
+      throw new ConvexError(`Titlen må højst være ${MAX_TITLE_LENGTH} tegn`);
+    }
+    const description = args.description?.trim() ?? "";
     if (description.length > MAX_DESCRIPTION_LENGTH) {
       throw new ConvexError(
         `Beskrivelsen må højst være ${MAX_DESCRIPTION_LENGTH} tegn`,
@@ -292,7 +305,9 @@ export const submit = mutation({
       key: auth.userId,
     });
     if (!limit.ok) {
-      throw new ConvexError("Du har sendt feedback for nylig. Prøv igen senere");
+      throw new ConvexError(
+        "Du har sendt feedback for nylig. Prøv igen senere",
+      );
     }
 
     if (args.screenshotStorageId) {
@@ -313,7 +328,9 @@ export const submit = mutation({
         !IMAGE_TYPES.has(metadata.contentType) ||
         metadata.size > MAX_SCREENSHOT_SIZE
       ) {
-        throw new ConvexError("Billedet skal være et JPEG, PNG, WebP eller AVIF på højst 10 MB");
+        throw new ConvexError(
+          "Billedet skal være et JPEG, PNG, WebP eller AVIF på højst 10 MB",
+        );
       }
     }
 
@@ -333,10 +350,11 @@ export const submit = mutation({
       userName: auth.userName,
       area: args.area,
       type: args.type,
-      description,
+      title,
       destination: settings.destination,
       status: "pending",
       createdAt: Date.now(),
+      ...(description ? { description } : {}),
       ...(identity?.email ? { userEmail: identity.email } : {}),
       ...(args.screenshotStorageId
         ? { screenshotStorageId: args.screenshotStorageId }
@@ -372,7 +390,8 @@ export const getDelivery = internalQuery({
       userEmail: submission.userEmail ?? null,
       area: submission.area,
       type: submission.type,
-      description: submission.description,
+      title: submission.title ?? "",
+      description: submission.description ?? "",
       createdAt: submission.createdAt,
       screenshotUrl: submission.screenshotStorageId
         ? await ctx.storage.getUrl(submission.screenshotStorageId)
