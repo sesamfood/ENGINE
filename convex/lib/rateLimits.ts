@@ -22,4 +22,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
     period: MINUTE,
     rate: 60,
   },
+  feedbackSubmit: {
+    kind: "fixed window",
+    period: 10 * MINUTE,
+    rate: 5,
+  },
 });

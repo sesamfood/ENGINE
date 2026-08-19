@@ -7,6 +7,7 @@ import {
   ClipboardListIcon,
   ClipboardCheckIcon,
   ListOrderedIcon,
+  MessageSquarePlusIcon,
   PackageIcon,
   PlugIcon,
   MonitorCogIcon,
@@ -111,6 +112,13 @@ const sections = [
     href: "/organization/metrics",
     icon: ChartNoAxesCombinedIcon,
     permissions: ["dashboard.manage"],
+  },
+  {
+    title: "Feedback",
+    description: "Vælg om brugerne kan sende feedback, og hvor den lander.",
+    href: "/organization/feedback",
+    icon: MessageSquarePlusIcon,
+    permissions: ["organization.settings"],
   },
   {
     title: "Udseende",

@@ -79,6 +79,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { BrowserBranding } from "@/components/browser-branding";
+import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
 import { authClient } from "@/lib/auth-client";
 import type { DataGranularity, PermissionId } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
@@ -1010,11 +1011,15 @@ function KioskModeControl() {
 
 function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
   const kiosk = useKiosk();
+  const access = useAccess();
   return (
     <SidebarFooter>
       <KioskModeControl />
       {!kiosk?.kioskModeEnabled ? (
-        <SidebarMenu><SidebarMenuItem><ProfileMenu signingOut={signingOut} onSignOut={onSignOut} /></SidebarMenuItem></SidebarMenu>
+        <SidebarMenu className="gap-2">
+          <SidebarMenuItem><FeedbackDialog permissions={access?.permissions} /></SidebarMenuItem>
+          <SidebarMenuItem><ProfileMenu signingOut={signingOut} onSignOut={onSignOut} /></SidebarMenuItem>
+        </SidebarMenu>
       ) : null}
     </SidebarFooter>
   );
@@ -1022,7 +1027,14 @@ function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSign
 
 function MobileAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
   const kiosk = useKiosk();
-  return kiosk?.kioskModeEnabled ? null : <ProfileMenu compact signingOut={signingOut} onSignOut={onSignOut} />;
+  const access = useAccess();
+  if (kiosk?.kioskModeEnabled) return null;
+  return (
+    <div className="flex items-center gap-1">
+      <FeedbackDialog permissions={access?.permissions} compact />
+      <ProfileMenu compact signingOut={signingOut} onSignOut={onSignOut} />
+    </div>
+  );
 }
 
 function OrganizationBoundary({
