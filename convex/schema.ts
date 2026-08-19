@@ -243,6 +243,40 @@ export default defineSchema({
     "dayStart",
   ]),
 
+  feedbackSettings: defineTable({
+    organizationId: v.string(),
+    enabled: v.boolean(),
+    destination: v.union(v.literal("linear"), v.literal("email")),
+    email: v.optional(v.string()),
+    linearApiKey: v.optional(v.string()),
+    linearTeamId: v.optional(v.string()),
+    linearTeamName: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
+  feedbackSubmissions: defineTable({
+    organizationId: v.string(),
+    organizationName: v.string(),
+    userId: v.string(),
+    userName: v.string(),
+    userEmail: v.optional(v.string()),
+    area: v.string(),
+    type: v.union(v.literal("bug"), v.literal("feature")),
+    description: v.string(),
+    screenshotStorageId: v.optional(v.id("_storage")),
+    destination: v.union(v.literal("linear"), v.literal("email")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+    ),
+    reference: v.optional(v.string()),
+    failureMessage: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_organizationId_and_createdAt", ["organizationId", "createdAt"])
+    .index("by_screenshotStorageId", ["screenshotStorageId"]),
+
   workfeedIntegrations: defineTable({
     organizationId: v.string(),
     apiKey: v.string(),

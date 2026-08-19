@@ -57,6 +57,8 @@ export function OrganizationHeader() {
                   ? "Brugere"
                 : pathname.startsWith("/organization/sidebar")
                   ? "Sidemenu"
+                : pathname.startsWith("/organization/feedback")
+                  ? "Feedback"
                 : pathname === "/organization"
                   ? "Settings"
                   : "Organisationens oplysninger";
