@@ -10,6 +10,7 @@ import type { MetricResult, VisualizationId } from "./types";
 export type VisualizationProps = {
   result: MetricResult;
   compact?: boolean;
+  tooltipLabel?: string;
   yAxisMin?: number;
   yAxisMax?: number;
 };

@@ -103,6 +103,13 @@ function positionStyle(widget: WidgetInstance) {
   } as CSSProperties;
 }
 
+function comparisonTooltipLabel(scope: DashboardScope, result?: MetricResult) {
+  if (!result || result.series.length <= 1) return undefined;
+  return scope.locationIds === null
+    ? "Alle lokationer"
+    : `${scope.locationIds.length} lokationer`;
+}
+
 function DragPreview({ widget, metricLabel }: { widget: WidgetInstance; metricLabel?: string }) {
   const label = metricLabel ?? (widget.metric.kind === "builtin"
     ? metricRegistry[widget.metric.id]?.label ?? "Måling"
@@ -197,6 +204,7 @@ function DraggableWidget({
   sourceSize,
   result,
   metricLabel,
+  tooltipLabel,
   range,
   editable,
   visualizations,
@@ -209,6 +217,7 @@ function DraggableWidget({
   sourceSize: WidgetSize;
   result?: MetricResult;
   metricLabel?: string;
+  tooltipLabel?: string;
   range: DashboardRange;
   editable: boolean;
   visualizations?: readonly VisualizationId[];
@@ -245,6 +254,7 @@ function DraggableWidget({
         widget={widget}
         result={result}
         metricLabel={metricLabel}
+        tooltipLabel={tooltipLabel}
         range={range}
         editable={editable}
         resizing={widget.size !== sourceSize}
@@ -419,6 +429,7 @@ export function DashboardGrid({
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
               metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
+              tooltipLabel={comparisonTooltipLabel(scope, metricResults.get(widget.key))}
               range={range}
               editable={editable}
               visualizations={customVisualizations}

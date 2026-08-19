@@ -124,6 +124,7 @@ function ChartTooltipContent({
   hideLabel = false,
   hideIndicator = false,
   label,
+  tooltipTitle,
   labelFormatter,
   labelClassName,
   formatter,
@@ -137,6 +138,7 @@ function ChartTooltipContent({
     indicator?: "line" | "dot" | "dashed"
     nameKey?: string
     labelKey?: string
+    tooltipTitle?: React.ReactNode
   } & Omit<
     RechartsPrimitive.DefaultTooltipContentProps<
       TooltipValueType,
@@ -154,6 +156,9 @@ function ChartTooltipContent({
     const [item] = payload
     const key = `${labelKey ?? item?.dataKey ?? item?.name ?? "value"}`
     const itemConfig = getPayloadConfigFromPayload(config, item, key)
+    if (tooltipTitle !== undefined) {
+      return <div className={cn("font-medium", labelClassName)}>{tooltipTitle}</div>
+    }
     const value =
       !labelKey && typeof label === "string"
         ? (config[label]?.label ?? label)
@@ -174,6 +179,7 @@ function ChartTooltipContent({
     return <div className={cn("font-medium", labelClassName)}>{value}</div>
   }, [
     label,
+    tooltipTitle,
     labelFormatter,
     payload,
     hideLabel,

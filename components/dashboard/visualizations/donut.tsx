@@ -12,7 +12,7 @@ import {
 import type { MetricResult } from "@/lib/dashboard/types";
 import { isMixedCurrency } from "./utils";
 
-export function DonutVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
+export function DonutVisualization({ result, compact = false, tooltipLabel }: { result: MetricResult; compact?: boolean; tooltipLabel?: string }) {
   if (isMixedCurrency(result)) {
     return <div className="grid h-full place-items-center text-sm text-muted-foreground">Flere valutaer</div>;
   }
@@ -33,7 +33,7 @@ export function DonutVisualization({ result, compact = false }: { result: Metric
   return (
     <ChartContainer config={config} className="h-full min-h-0 w-full aspect-auto">
       <PieChart accessibilityLayer>
-        <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
+        <ChartTooltip content={<ChartTooltipContent nameKey="key" tooltipTitle={tooltipLabel} hideLabel={!tooltipLabel} />} />
         <Pie data={data} dataKey="value" nameKey="key" innerRadius={innerRadius} outerRadius={outerRadius} paddingAngle={2} isAnimationActive={false} label={renderLabel} labelLine={false}>
           {data.map((item) => <Cell key={item.key} fill={item.fill} />)}
         </Pie>

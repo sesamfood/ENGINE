@@ -36,6 +36,7 @@ export type DashboardComparisonGroup = {
 export type DashboardMetricParams = {
   organizationId: string;
   locations: DashboardLocation[];
+  scopeSelectsAllLocations: boolean;
   compare: boolean;
   comparisonGroups?: DashboardComparisonGroup[];
   anonymousLocations?: DashboardLocation[];
@@ -463,6 +464,7 @@ export async function resolveMetricParams(
   return {
     organizationId,
     locations,
+    scopeSelectsAllLocations: scope.locationIds === null,
     compare: scope.mode === "compare" && locations.length >= 2,
     comparisonGroups,
     anonymousLocations,
@@ -605,6 +607,14 @@ function dayStarts(from: number, to: number, timeZone: string) {
   return starts;
 }
 
+export function aggregateLocationLabel(params: DashboardMetricParams) {
+  if (params.locations.length === 1) return params.locations[0].name;
+  if (!params.scopeSelectsAllLocations) {
+    return `${params.locations.length} lokationer`;
+  }
+  return "Alle lokationer";
+}
+
 function seriesResult(
   unit: MetricUnit,
   rows: TimedValue[],
@@ -627,7 +637,7 @@ function seriesResult(
           label: location.name,
           locationIds: [location.id],
         }))
-      : [{ key: "all", label: "Alle lokationer" }];
+      : [{ key: "all", label: aggregateLocationLabel(params) }];
   const days = dayStarts(params.from, params.to, params.timeZone);
   const series = groups.map((group) => {
     const relevant = groupOverride?.length
@@ -881,7 +891,7 @@ const countCompliance: MetricComputer = async (ctx, params) => {
   }));
   const groups = params.compare
     ? params.locations
-    : [{ id: "all" as const, name: "Alle lokationer" }];
+    : [{ id: "all" as const, name: aggregateLocationLabel(params) }];
   const series = groups.map((group) => {
     const relevant = params.compare
       ? timed.filter((row) => row.locationId === group.id)
@@ -927,7 +937,7 @@ const openCounts: MetricComputer = async (ctx, params) => {
     ).length;
   const groups = params.compare
     ? params.locations
-    : [{ id: null, name: "Alle lokationer" }];
+    : [{ id: null, name: aggregateLocationLabel(params) }];
   return {
     unit: "count",
     series: groups.map((group) => ({
@@ -1187,7 +1197,7 @@ const headcountToday: MetricComputer = async (ctx, params) => {
   const result = await shiftRows(ctx, params, from - DAY_MS * 2, to);
   const groups = params.compare
     ? params.locations
-    : [{ id: "all" as const, name: "Alle lokationer" }];
+    : [{ id: "all" as const, name: aggregateLocationLabel(params) }];
   const employees = await Promise.all(
     [...new Set(result.rows.map((row) => row.employeeId))].map((id) =>
       ctx.db.get("employees", id),
@@ -1359,7 +1369,7 @@ const averageBasket: MetricComputer = async (ctx, params) => {
         key: location.id,
         label: location.name,
       }))
-    : [{ key: "all" as const, label: "Alle lokationer" }];
+    : [{ key: "all" as const, label: aggregateLocationLabel(params) }];
   const days = dayStarts(params.from, params.to, params.timeZone);
   let headlineRevenue = 0;
   let headlineOrders = 0;
@@ -1437,7 +1447,10 @@ function nonLocationBreakdown(result: MetricResult) {
   return result.breakdown?.filter((item) => !seriesKeys.has(item.key));
 }
 
-function aggregateResult(result: MetricResult): MetricResult {
+function aggregateResult(
+  result: MetricResult,
+  params: DashboardMetricParams,
+): MetricResult {
   if (result.series.length <= 1) {
     return { ...result, breakdown: nonLocationBreakdown(result) };
   }
@@ -1465,7 +1478,7 @@ function aggregateResult(result: MetricResult): MetricResult {
     series: [
       {
         key: "all",
-        label: "Alle lokationer",
+        label: aggregateLocationLabel(params),
         points: [...byTime.entries()]
           .sort(([left], [right]) => left - right)
           .map(([t, value]) => ({ t, value: rounded(value) })),
@@ -1525,7 +1538,9 @@ async function applyAccessGranularity(
   params: DashboardMetricParams,
 ) {
   if (params.accessGranularity === "detail") return result;
-  if (params.accessGranularity === "aggregate") return aggregateResult(result);
+  if (params.accessGranularity === "aggregate") {
+    return aggregateResult(result, params);
+  }
   const aliases = await anonymousAliases(params);
   if (!aliases.size) return result;
   return {
