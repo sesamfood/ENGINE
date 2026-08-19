@@ -1015,12 +1015,12 @@ function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSign
   return (
     <SidebarFooter>
       <KioskModeControl />
-      {!kiosk?.kioskModeEnabled ? (
-        <SidebarMenu className="gap-2">
-          <SidebarMenuItem><FeedbackDialog permissions={access?.permissions} /></SidebarMenuItem>
+      <SidebarMenu className="gap-2">
+        <SidebarMenuItem><FeedbackDialog permissions={access?.permissions} /></SidebarMenuItem>
+        {!kiosk?.kioskModeEnabled ? (
           <SidebarMenuItem><ProfileMenu signingOut={signingOut} onSignOut={onSignOut} /></SidebarMenuItem>
-        </SidebarMenu>
-      ) : null}
+        ) : null}
+      </SidebarMenu>
     </SidebarFooter>
   );
 }
@@ -1028,11 +1028,12 @@ function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSign
 function MobileAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
   const kiosk = useKiosk();
   const access = useAccess();
-  if (kiosk?.kioskModeEnabled) return null;
   return (
     <div className="flex items-center gap-1">
       <FeedbackDialog permissions={access?.permissions} compact />
-      <ProfileMenu compact signingOut={signingOut} onSignOut={onSignOut} />
+      {!kiosk?.kioskModeEnabled ? (
+        <ProfileMenu compact signingOut={signingOut} onSignOut={onSignOut} />
+      ) : null}
     </div>
   );
 }
