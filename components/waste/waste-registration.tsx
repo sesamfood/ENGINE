@@ -48,7 +48,6 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -148,7 +147,7 @@ export function WasteRegistration() {
     locationId ? { locationId } : "skip",
   );
   const registerWaste = useMutation(api.waste.registerWaste);
-  const voidWaste = useMutation(api.waste.voidWasteRegistration);
+  const undoWaste = useMutation(api.waste.undoWasteRegistration);
   const setPinned = useMutation(api.waste.setPinned);
   const setOverride = useMutation(api.waste.setShortcutOverride);
   const clearOverride = useMutation(api.waste.clearShortcutOverride);
@@ -166,7 +165,6 @@ export function WasteRegistration() {
   >([]);
   const [undoingIds, setUndoingIds] = useState<Id<"wasteRegistrations">[]>([]);
   const [undoDialogOpen, setUndoDialogOpen] = useState(false);
-  const [undoReason, setUndoReason] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
   const hasUndoRegistrations = undoRegistrations.length > 0;
@@ -271,25 +269,34 @@ export function WasteRegistration() {
         source,
       });
       const unit = product.units.find((item) => item.id === shortcut.unitId);
+      const registration: UndoRegistration = {
+        id: result.registrationId,
+        productName: result.productName,
+        quantity: result.quantity,
+        unitName: result.unitName,
+        registeredAt: result.registeredAt,
+        expiresAt: result.registeredAt + UNDO_WINDOW_MS,
+        reasonExpiresAt:
+          result.registeredAt + UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS,
+      };
       toast.success(
         `Spild registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
-        { duration: 10_000 },
+        {
+          duration: 10_000,
+          action: {
+            label: "Fortryd",
+            onClick: () => void undo([registration]),
+          },
+          classNames: {
+            actionButton:
+              "h-10! rounded-md! bg-destructive! px-4! text-sm! font-semibold! text-white!",
+          },
+        },
       );
       setNow(result.registeredAt);
       setUndoRegistrations((registrations) => [
-        ...registrations.filter(
-          (registration) => registration.expiresAt > result.registeredAt,
-        ),
-        {
-          id: result.registrationId,
-          productName: result.productName,
-          quantity: result.quantity,
-          unitName: result.unitName,
-          registeredAt: result.registeredAt,
-          expiresAt: result.registeredAt + UNDO_WINDOW_MS,
-          reasonExpiresAt:
-            result.registeredAt + UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS,
-        },
+        ...registrations.filter((item) => item.expiresAt > result.registeredAt),
+        registration,
       ]);
       setRecent(key);
       window.setTimeout(
@@ -302,23 +309,12 @@ export function WasteRegistration() {
     }
   }
 
-  async function undo(
-    items: UndoRegistration[],
-    reason: string,
-    closeDialog = false,
-  ) {
+  async function undo(items: UndoRegistration[], closeDialog = false) {
     if (!items.length) return;
-    const normalizedReason = reason.trim();
-    if (!normalizedReason) {
-      toast.error("Angiv en begrundelse");
-      return;
-    }
     const ids = items.map((item) => item.id);
     setUndoingIds((current) => [...new Set([...current, ...ids])]);
     const results = await Promise.allSettled(
-      items.map((item) =>
-        voidWaste({ registrationId: item.id, reason: normalizedReason }),
-      ),
+      items.map((item) => undoWaste({ registrationId: item.id })),
     );
     const succeeded = ids.filter(
       (_, index) => results[index].status === "fulfilled",
@@ -783,7 +779,10 @@ export function WasteRegistration() {
           className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 h-12 px-3 shadow-sm sm:right-4 sm:px-4"
           disabled={undoingIds.length > 0}
           onClick={() => {
-            setUndoReason("");
+            if (undoRegistrations.length === 1) {
+              void undo(undoRegistrations);
+              return;
+            }
             setUndoDialogOpen(true);
           }}
         >
@@ -809,21 +808,10 @@ export function WasteRegistration() {
           <DialogHeader>
             <DialogTitle>Fortryd spildregistreringer</DialogTitle>
             <DialogDescription>
-              Fortryd en enkelt registrering eller annullér dem alle. Skriv en
-              begrundelse. Registreringerne forsvinder automatisk efter 30
-              sekunder.
+              Fortryd en enkelt registrering eller annullér dem alle.
+              Registreringerne forsvinder automatisk efter 30 sekunder.
             </DialogDescription>
           </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="waste-undo-reason">Begrundelse</FieldLabel>
-            <Textarea
-              id="waste-undo-reason"
-              value={undoReason}
-              onChange={(event) => setUndoReason(event.target.value)}
-              placeholder="Skriv, hvorfor registreringen annulleres"
-              required
-            />
-          </Field>
           <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
             {[...undoRegistrations].reverse().map((registration) => (
               <Field
@@ -847,10 +835,8 @@ export function WasteRegistration() {
                   type="button"
                   variant="destructive"
                   className="h-11 shrink-0 px-4"
-                  disabled={
-                    undoingIds.includes(registration.id) || !undoReason.trim()
-                  }
-                  onClick={() => void undo([registration], undoReason)}
+                  disabled={undoingIds.includes(registration.id)}
+                  onClick={() => void undo([registration])}
                 >
                   <Undo2Icon data-icon="inline-start" />
                   Fortryd
@@ -864,8 +850,8 @@ export function WasteRegistration() {
             </Button>
             <Button
               variant="destructive"
-              disabled={undoingIds.length > 0 || !undoReason.trim()}
-              onClick={() => void undo(undoRegistrations, undoReason, true)}
+              disabled={undoingIds.length > 0}
+              onClick={() => void undo(undoRegistrations, true)}
             >
               <Undo2Icon data-icon="inline-start" />
               Fortryd alle
