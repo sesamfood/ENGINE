@@ -61,8 +61,63 @@ export const deliver = internalAction({
       payload.title ||
       `[${typeLabel}] ${areaLabel} – ${payload.organizationName}`;
 
+    let reference: string | undefined;
     try {
-      let reference: string | undefined;
+      const sendEmailNotification = async (linearUrl?: string) => {
+        if (!payload.email) throw new Error("Modtageradressen mangler");
+        const rows = [
+          ["Organization", payload.organizationName],
+          ["Area", areaLabel],
+          ["Type", typeLabel],
+          ["Reported by", reporter],
+          ["Submitted", registered],
+          ...(linearUrl ? [["Linear", linearUrl]] : []),
+        ]
+          .map(
+            ([label, value]) =>
+              `<tr><td style="padding:4px 16px 4px 0;color:#666;">${escapeHtml(label)}</td><td style="padding:4px 0;">${escapeHtml(value)}</td></tr>`,
+          )
+          .join("");
+        const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;color:#111;">
+  <h2 style="margin:0 0 16px;font-size:18px;">${escapeHtml(title)}</h2>
+  <table style="border-collapse:collapse;margin-bottom:20px;">${rows}</table>
+  ${payload.description ? `<div style="white-space:pre-wrap;">${escapeHtml(payload.description)}</div>` : ""}
+</div>`;
+        const text = [
+          `Organization: ${payload.organizationName}`,
+          `Area: ${areaLabel}`,
+          `Type: ${typeLabel}`,
+          `Reported by: ${reporter}`,
+          `Submitted: ${registered}`,
+          ...(linearUrl ? [`Linear: ${linearUrl}`] : []),
+          ...(payload.description ? ["", payload.description] : []),
+        ].join("\n");
+
+        let attachments:
+          Array<{ filename: string; content: string }> | undefined;
+        if (payload.screenshotStorageId) {
+          const blob = await ctx.storage.get(payload.screenshotStorageId);
+          if (blob) {
+            attachments = [
+              {
+                filename: `screenshot.${extension(blob.type)}`,
+                content: Buffer.from(await blob.arrayBuffer()).toString(
+                  "base64",
+                ),
+              },
+            ];
+          }
+        }
+
+        return await sendResendEmail({
+          to: payload.email,
+          subject: title,
+          html,
+          text,
+          ...(attachments ? { attachments } : {}),
+        });
+      };
+
       if (payload.destination === "linear") {
         if (!payload.linearApiKey || !payload.linearTeamId) {
           throw new Error("Linear er ikke sat op");
@@ -88,57 +143,9 @@ export const deliver = internalAction({
           description,
         });
         reference = issue.url || issue.identifier;
+        if (payload.email) await sendEmailNotification(issue.url);
       } else {
-        if (!payload.email) throw new Error("Modtageradressen mangler");
-        const rows = [
-          ["Organization", payload.organizationName],
-          ["Area", areaLabel],
-          ["Type", typeLabel],
-          ["Reported by", reporter],
-          ["Submitted", registered],
-        ]
-          .map(
-            ([label, value]) =>
-              `<tr><td style="padding:4px 16px 4px 0;color:#666;">${escapeHtml(label)}</td><td style="padding:4px 0;">${escapeHtml(value)}</td></tr>`,
-          )
-          .join("");
-        const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;color:#111;">
-  <h2 style="margin:0 0 16px;font-size:18px;">${escapeHtml(title)}</h2>
-  <table style="border-collapse:collapse;margin-bottom:20px;">${rows}</table>
-  ${payload.description ? `<div style="white-space:pre-wrap;">${escapeHtml(payload.description)}</div>` : ""}
-</div>`;
-        const text = [
-          `Organization: ${payload.organizationName}`,
-          `Area: ${areaLabel}`,
-          `Type: ${typeLabel}`,
-          `Reported by: ${reporter}`,
-          `Submitted: ${registered}`,
-          ...(payload.description ? ["", payload.description] : []),
-        ].join("\n");
-
-        let attachments:
-          Array<{ filename: string; content: string }> | undefined;
-        if (payload.screenshotStorageId) {
-          const blob = await ctx.storage.get(payload.screenshotStorageId);
-          if (blob) {
-            attachments = [
-              {
-                filename: `screenshot.${extension(blob.type)}`,
-                content: Buffer.from(await blob.arrayBuffer()).toString(
-                  "base64",
-                ),
-              },
-            ];
-          }
-        }
-
-        reference = await sendResendEmail({
-          to: payload.email,
-          subject: title,
-          html,
-          text,
-          ...(attachments ? { attachments } : {}),
-        });
+        reference = await sendEmailNotification();
       }
 
       await ctx.runMutation(internal.feedback.completeDelivery, {
@@ -148,6 +155,7 @@ export const deliver = internalAction({
     } catch (error) {
       await ctx.runMutation(internal.feedback.completeDelivery, {
         submissionId: args.submissionId,
+        ...(reference ? { reference } : {}),
         failureMessage: cleanError(error),
       });
     }

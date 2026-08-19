@@ -86,6 +86,7 @@ type Settings = NonNullable<
   ReturnType<typeof useQuery<typeof api.staffFood.getSettings>>
 >;
 type Tier = Settings["tiers"][number];
+type SettingsCategory = Settings["categories"][number];
 type AllowanceDraft = {
   categoryId: string;
   amount: string;
@@ -211,6 +212,26 @@ function formatDuration(minutes: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(
     minutes / 60,
   );
+}
+
+function categoryTreeIds(
+  categories: SettingsCategory[],
+  categoryId: SettingsCategory["id"],
+) {
+  const ids = new Set<SettingsCategory["id"]>([categoryId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const category of categories) {
+      if (category.parentCategoryId && ids.has(category.parentCategoryId)) {
+        if (!ids.has(category.id)) {
+          ids.add(category.id);
+          changed = true;
+        }
+      }
+    }
+  }
+  return ids;
 }
 
 export function StaffFoodSettings() {
@@ -673,12 +694,18 @@ export function StaffFoodSettings() {
             {allowances.map((allowance, index) => {
               const search =
                 productSearches[index]?.trim().toLocaleLowerCase("da") ?? "";
+              const selectedCategory = settings.categories.find(
+                (category) => category.id === allowance.categoryId,
+              );
+              const categoryIds = selectedCategory
+                ? categoryTreeIds(settings.categories, selectedCategory.id)
+                : new Set<SettingsCategory["id"]>();
               const amount = Number(allowance.amount);
               const amountValid =
                 Number.isInteger(amount) && amount >= 1 && amount <= 20;
               const products = settings.products.filter(
                 (product) =>
-                  product.categoryId === allowance.categoryId &&
+                  categoryIds.has(product.categoryId) &&
                   (!search ||
                     product.name.toLocaleLowerCase("da").includes(search)) &&
                   (product.status === "active" ||

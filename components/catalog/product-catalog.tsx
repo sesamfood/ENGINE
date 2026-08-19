@@ -17,7 +17,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProductImportExport } from "@/components/catalog/product-import-export";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
@@ -305,7 +305,9 @@ export function ProductCatalog() {
   const [isBulkCategoryDialogOpen, setIsBulkCategoryDialogOpen] =
     useState(false);
   const [isChangingCategory, setIsChangingCategory] = useState(false);
-  const [querySearch, setQuerySearch] = useState("");
+  const [searchValue, setSearchValue] = useState(search);
+  const [querySearch, setQuerySearch] = useState(search);
+  const pendingSearch = useRef<string | null>(null);
   const [visibleResults, setVisibleResults] = useState<CatalogProduct[]>([]);
   const archiveProduct = useMutation(api.catalog.archiveProduct);
   const restoreProduct = useMutation(api.catalog.restoreProduct);
@@ -328,9 +330,26 @@ export function ProductCatalog() {
   );
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setQuerySearch(search), 300);
-    return () => window.clearTimeout(timeout);
+    if (pendingSearch.current === search) {
+      pendingSearch.current = null;
+      return;
+    }
+    if (pendingSearch.current === null) setSearchValue(search);
   }, [search]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setQuerySearch(searchValue);
+      if (searchValue !== search) {
+        pendingSearch.current = searchValue;
+        router.replace(
+          `/organization/products${catalogQuery(searchValue, status)}`,
+          { scroll: false },
+        );
+      }
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [router, search, searchValue, status]);
 
   async function confirmStatusChange() {
     if (!pendingProduct) return;
@@ -407,12 +426,10 @@ export function ProductCatalog() {
   }
 
   function changeSearch(value: string) {
+    pendingSearch.current = value;
+    setSearchValue(value);
     setSelectedIds([]);
     setBulkCategoryId(null);
-    router.replace(
-      `/organization/products${catalogQuery(value, status)}`,
-      { scroll: false },
-    );
   }
 
   function toggleStatus() {
@@ -420,7 +437,7 @@ export function ProductCatalog() {
     setSelectedIds([]);
     setBulkCategoryId(null);
     router.replace(
-      `/organization/products${catalogQuery(search, nextStatus)}`,
+      `/organization/products${catalogQuery(searchValue, nextStatus)}`,
       { scroll: false },
     );
   }
@@ -470,7 +487,7 @@ export function ProductCatalog() {
               aria-hidden="true"
             />
             <Input
-              value={search}
+              value={searchValue}
               onChange={(event) => changeSearch(event.target.value)}
               placeholder="Søg efter produkter"
               aria-label="Søg efter produkter eller kategorier"

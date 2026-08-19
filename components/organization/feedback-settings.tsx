@@ -146,7 +146,7 @@ export function FeedbackSettings() {
       await save({
         enabled,
         destination,
-        ...(email.trim() ? { email: email.trim() } : {}),
+        email: email.trim(),
         ...(apiKey.trim() ? { linearApiKey: apiKey.trim() } : {}),
         ...(teamId ? { linearTeamId: teamId } : {}),
         ...(teamName ? { linearTeamName: teamName } : {}),
@@ -221,27 +221,36 @@ export function FeedbackSettings() {
               </FieldDescription>
             </Field>
 
-            {destination === "email" ? (
-              <Field>
-                <FieldLabel htmlFor="feedback-email">
-                  E-mailadresse
-                  <HelpTooltip
-                    label="e-mailadresse"
-                    content="Al feedback fra organisationen sendes til denne adresse."
-                  />
-                </FieldLabel>
-                <Input
-                  id="feedback-email"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="off"
-                  className="max-w-md"
-                  placeholder="feedback@eksempel.dk"
-                  value={email}
-                  onChange={(event) => setEmailDraft(event.target.value)}
+            <Field>
+              <FieldLabel htmlFor="feedback-email">
+                E-mailadresse
+                <HelpTooltip
+                  label="e-mailadresse"
+                  content={
+                    destination === "email"
+                      ? "Al feedback fra organisationen sendes til denne adresse."
+                      : "Feedback sendes også til denne adresse, når den oprettes i Linear."
+                  }
                 />
-              </Field>
-            ) : (
+              </FieldLabel>
+              <Input
+                id="feedback-email"
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                className="max-w-md"
+                placeholder="feedback@eksempel.dk"
+                value={email}
+                onChange={(event) => setEmailDraft(event.target.value)}
+              />
+              <FieldDescription>
+                {destination === "email"
+                  ? "Al feedback fra organisationen sendes til denne adresse."
+                  : "Send også feedbacken til denne adresse, når den oprettes i Linear."}
+              </FieldDescription>
+            </Field>
+
+            {destination === "linear" ? (
               <>
                 <Field>
                   <FieldLabel htmlFor="feedback-linear-key">
@@ -314,7 +323,7 @@ export function FeedbackSettings() {
                   ) : null}
                 </Field>
               </>
-            )}
+            ) : null}
           </FieldGroup>
         </CardContent>
         <CardFooter>

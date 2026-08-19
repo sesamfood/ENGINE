@@ -18,6 +18,7 @@ import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
+import { MAX_CATEGORIES_PER_ORGANIZATION } from "./lib/categoryHierarchy";
 
 const MAX_TIERS = 10;
 const MAX_ALLOWANCES = 20;
@@ -31,6 +32,25 @@ const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 const UNDO_WINDOW_MS = 30_000;
 const UNDO_REASON_GRACE_MS = 30_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function categoryIncludes(
+  categories: ReadonlyMap<
+    Id<"categories">,
+    Pick<Doc<"categories">, "_id" | "parentCategoryId">
+  >,
+  rootCategoryId: Id<"categories">,
+  categoryId: Id<"categories">,
+) {
+  const visited = new Set<Id<"categories">>();
+  let currentId: Id<"categories"> | undefined = categoryId;
+  while (currentId) {
+    if (currentId === rootCategoryId) return true;
+    if (visited.has(currentId)) return false;
+    visited.add(currentId);
+    currentId = categories.get(currentId)?.parentCategoryId;
+  }
+  return false;
+}
 
 const sessionSourceValidator = v.union(
   v.literal("scheduled"),
@@ -513,6 +533,7 @@ export const getSessionState = query({
         id: v.id("products"),
         name: v.string(),
         categoryId: v.id("categories"),
+        allowanceCategoryId: v.id("categories"),
         categoryName: v.string(),
         imageUrl: v.union(v.string(), v.null()),
         defaultUnitName: v.string(),
@@ -585,26 +606,31 @@ export const getSessionState = query({
     if (allowanceRows.length > MAX_ALLOWANCES) {
       throw new ConvexError("Reglen har for mange kategorier");
     }
-    const used = new Map<Id<"categories">, number>();
-    for (const row of activeRows) {
-      used.set(row.categoryId, (used.get(row.categoryId) ?? 0) + row.quantity);
+    const categoryRows = await ctx.db
+      .query("categories")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_CATEGORIES_PER_ORGANIZATION + 1);
+    if (categoryRows.length > MAX_CATEGORIES_PER_ORGANIZATION) {
+      throw new ConvexError("Organisationen har for mange kategorier");
     }
-    const categories = await Promise.all(
-      allowanceRows.map((allowance) =>
-        ctx.db.get("categories", allowance.categoryId),
-      ),
+    const categoriesById = new Map(
+      categoryRows.map((category) => [category._id, category]),
+    );
+    const categories = allowanceRows.map((allowance) =>
+      categoriesById.get(allowance.categoryId),
     );
     const allowances = allowanceRows.flatMap((allowance, index) => {
       const category = categories[index];
       if (!category || category.organizationId !== organizationId) return [];
-      const categoryUsed = used.get(category._id) ?? 0;
       return [
         {
           categoryId: category._id,
           categoryName: category.name,
           amount: allowance.amount,
-          used: categoryUsed,
-          remaining: Math.max(0, allowance.amount - categoryUsed),
+          used: 0,
+          remaining: allowance.amount,
         },
       ];
     });
@@ -627,32 +653,46 @@ export const getSessionState = query({
     ) {
       throw new ConvexError("Reglen har for mange produkter");
     }
-    const categoryNames = new Map(
+    const allowanceByCategory = new Map(
       allowances.map((allowance) => [
         allowance.categoryId,
-        allowance.categoryName,
+        allowance,
       ]),
     );
+    const allowanceByProductId = new Map<
+      Id<"products">,
+      (typeof allowances)[number]
+    >();
     const products = (
       await Promise.all(
-        productGroups.flatMap((group) =>
+        productGroups.flatMap((group, index) =>
           group.map(async (row) => {
+            const allowance = allowanceByCategory.get(
+              allowanceRows[index].categoryId,
+            );
             const product = await ctx.db.get("products", row.productId);
             if (
               !product ||
               product.organizationId !== organizationId ||
               product.status !== "active" ||
-              !categoryNames.has(product.categoryId)
+              !allowance ||
+              !categoryIncludes(
+                categoriesById,
+                allowance.categoryId,
+                product.categoryId,
+              )
             ) {
               return null;
             }
+            allowanceByProductId.set(product._id, allowance);
             const unit = await ctx.db.get("units", product.defaultUnitId);
             if (!unit || unit.organizationId !== organizationId) return null;
             return {
               id: product._id,
               name: product.name,
               categoryId: product.categoryId,
-              categoryName: categoryNames.get(product.categoryId)!,
+              allowanceCategoryId: allowance.categoryId,
+              categoryName: allowance.categoryName,
               imageUrl: product.imageStorageId
                 ? await ctx.storage.getUrl(product.imageStorageId)
                 : null,
@@ -662,6 +702,21 @@ export const getSessionState = query({
         ),
       )
     ).filter((product) => product !== null);
+
+    const used = new Map<Id<"categories">, number>();
+    for (const row of activeRows) {
+      const allowance =
+        allowanceByProductId.get(row.productId) ??
+        allowances.find((item) =>
+          categoryIncludes(categoriesById, item.categoryId, row.categoryId),
+        );
+      if (allowance) {
+        used.set(
+          allowance.categoryId,
+          (used.get(allowance.categoryId) ?? 0) + row.quantity,
+        );
+      }
+    }
 
     return {
       session: {
@@ -679,7 +734,14 @@ export const getSessionState = query({
         active,
       },
       tierMinimumShiftMinutes: tier.minimumShiftMinutes,
-      allowances,
+      allowances: allowances.map((allowance) => {
+        const categoryUsed = used.get(allowance.categoryId) ?? 0;
+        return {
+          ...allowance,
+          used: categoryUsed,
+          remaining: Math.max(0, allowance.amount - categoryUsed),
+        };
+      }),
       products: products.sort(
         (left, right) =>
           left.categoryName.localeCompare(right.categoryName, "da") ||
@@ -749,8 +811,20 @@ export const register = mutation({
     if (allowanceRows.length > MAX_ALLOWANCES) {
       throw new ConvexError("Reglen har for mange kategorier");
     }
-    const allowanceByCategory = new Map(
-      allowanceRows.map((allowance) => [allowance.categoryId, allowance]),
+    const allowanceById = new Map(
+      allowanceRows.map((allowance) => [allowance._id, allowance]),
+    );
+    const categoryRows = await ctx.db
+      .query("categories")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_CATEGORIES_PER_ORGANIZATION + 1);
+    if (categoryRows.length > MAX_CATEGORIES_PER_ORGANIZATION) {
+      throw new ConvexError("Organisationen har for mange kategorier");
+    }
+    const categoriesById = new Map(
+      categoryRows.map((category) => [category._id, category]),
     );
     const allowedProducts = new Map<
       Id<"products">,
@@ -775,7 +849,7 @@ export const register = mutation({
     const products = await Promise.all(
       args.items.map((item) => ctx.db.get("products", item.productId)),
     );
-    const basketByCategory = new Map<Id<"categories">, number>();
+    const basketByAllowance = new Map<Id<"staffFoodRuleAllowances">, number>();
     for (let index = 0; index < args.items.length; index += 1) {
       const item = args.items[index];
       const product = products[index];
@@ -785,34 +859,45 @@ export const register = mutation({
         product.organizationId !== organizationId ||
         product.status !== "active" ||
         !allowance ||
-        allowance.categoryId !== product.categoryId ||
-        !allowanceByCategory.has(product.categoryId)
+        !categoryIncludes(
+          categoriesById,
+          allowance.categoryId,
+          product.categoryId,
+        )
       ) {
         throw new ConvexError("Et valgt produkt er ikke tilladt");
       }
-      basketByCategory.set(
-        product.categoryId,
-        (basketByCategory.get(product.categoryId) ?? 0) + item.quantity,
+      basketByAllowance.set(
+        allowance._id,
+        (basketByAllowance.get(allowance._id) ?? 0) + item.quantity,
       );
     }
-    for (const [categoryId, basketQuantity] of basketByCategory) {
-      const allowance = allowanceByCategory.get(categoryId)!;
-      const existing = await ctx.db
-        .query("staffFoodRegistrations")
-        .withIndex(
-          "by_organizationId_and_sessionId_and_status_and_categoryId",
-          (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("sessionId", session._id)
-              .eq("status", "active")
-              .eq("categoryId", categoryId),
-        )
-        .take(MAX_SESSION_REGISTRATIONS + 1);
-      if (existing.length > MAX_SESSION_REGISTRATIONS) {
-        throw new ConvexError("Sessionen har for mange registreringer");
+    const existing = await ctx.db
+      .query("staffFoodRegistrations")
+      .withIndex("by_organizationId_and_sessionId_and_registeredAt", (q) =>
+        q.eq("organizationId", organizationId).eq("sessionId", session._id),
+      )
+      .take(MAX_SESSION_REGISTRATIONS + 1);
+    if (existing.length > MAX_SESSION_REGISTRATIONS) {
+      throw new ConvexError("Sessionen har for mange registreringer");
+    }
+    const usedByAllowance = new Map<Id<"staffFoodRuleAllowances">, number>();
+    for (const row of existing) {
+      if (row.status !== "active") continue;
+      const allowance = allowedProducts.get(row.productId);
+      if (allowance) {
+        usedByAllowance.set(
+          allowance._id,
+          (usedByAllowance.get(allowance._id) ?? 0) + row.quantity,
+        );
       }
-      const used = existing.reduce((sum, row) => sum + row.quantity, 0);
+    }
+    for (const [allowanceId, basketQuantity] of basketByAllowance) {
+      const allowance = allowanceById.get(allowanceId);
+      if (!allowance) {
+        throw new ConvexError("Et valgt produkt er ikke tilladt");
+      }
+      const used = usedByAllowance.get(allowanceId) ?? 0;
       if (used + basketQuantity > allowance.amount) {
         throw new ConvexError("Valget overstiger den resterende mængde");
       }
@@ -967,7 +1052,13 @@ export const getSettings = query({
         ),
       }),
     ),
-    categories: v.array(v.object({ id: v.id("categories"), name: v.string() })),
+    categories: v.array(
+      v.object({
+        id: v.id("categories"),
+        name: v.string(),
+        parentCategoryId: v.union(v.id("categories"), v.null()),
+      }),
+    ),
     products: v.array(
       v.object({
         id: v.id("products"),
@@ -1071,6 +1162,7 @@ export const getSettings = query({
       categories: categories.map((category) => ({
         id: category._id,
         name: category.name,
+        parentCategoryId: category.parentCategoryId ?? null,
       })),
       products: products.map((product) => ({
         id: product._id,
@@ -1108,6 +1200,18 @@ export const saveTier = mutation({
     if (productCount < 1 || productCount > MAX_PRODUCTS_PER_TIER) {
       throw new ConvexError("Vælg mellem 1 og 100 produkter pr. regel");
     }
+    const categoryRows = await ctx.db
+      .query("categories")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_CATEGORIES_PER_ORGANIZATION + 1);
+    if (categoryRows.length > MAX_CATEGORIES_PER_ORGANIZATION) {
+      throw new ConvexError("Organisationen har for mange kategorier");
+    }
+    const categoriesById = new Map(
+      categoryRows.map((category) => [category._id, category]),
+    );
     for (const allowance of args.allowances) {
       if (
         !Number.isInteger(allowance.amount) ||
@@ -1184,7 +1288,7 @@ export const saveTier = mutation({
       await ctx.db.delete(allowance._id);
     }
     for (const allowance of args.allowances) {
-      const category = await ctx.db.get("categories", allowance.categoryId);
+      const category = categoriesById.get(allowance.categoryId);
       if (!category || category.organizationId !== organizationId) {
         throw new ConvexError("En kategori blev ikke fundet");
       }
@@ -1198,10 +1302,16 @@ export const saveTier = mutation({
           (product) =>
             !product ||
             product.organizationId !== organizationId ||
-            product.categoryId !== category._id,
+            !categoryIncludes(
+              categoriesById,
+              category._id,
+              product.categoryId,
+            ),
         )
       ) {
-        throw new ConvexError("Et produkt tilhører ikke den valgte kategori");
+        throw new ConvexError(
+          "Et produkt tilhører ikke den valgte kategori eller dens underkategorier",
+        );
       }
       const allowanceId = await ctx.db.insert("staffFoodRuleAllowances", {
         organizationId,
