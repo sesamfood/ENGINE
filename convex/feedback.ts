@@ -134,7 +134,6 @@ export const isEnabled = query({
   returns: v.boolean(),
   handler: async (ctx) => {
     const auth = await requireOrganization(ctx);
-    if (auth.kioskModeEnabled) return false;
     const settings = await ctx.db
       .query("feedbackSettings")
       .withIndex("by_organizationId", (q) =>
@@ -262,8 +261,7 @@ export const generateScreenshotUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    const auth = await requireOrganization(ctx);
-    if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+    await requireOrganization(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -279,7 +277,6 @@ export const submit = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOrganization(ctx);
-    if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
     const { organizationId } = auth;
 
     const settings = await ctx.db
