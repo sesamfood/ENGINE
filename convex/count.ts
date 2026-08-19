@@ -19,6 +19,11 @@ import {
 } from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
+import {
+  buildCategoryHierarchy,
+  MAX_CATEGORIES_PER_ORGANIZATION,
+} from "./lib/categoryHierarchy";
+import { productSearchScore } from "../lib/product-search";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
@@ -463,20 +468,56 @@ export const listCountProducts = query({
       }
     }
 
-    const products = search
-      ? await ctx.db
-          .query("products")
-          .withSearchIndex("search_name", (q) => {
-            const productSearch = q
-              .search("name", search)
-              .eq("organizationId", organizationId)
-              .eq("status", "active");
-            return args.categoryId
-              ? productSearch.eq("categoryId", args.categoryId)
-              : productSearch;
-          })
-          .take(MAX_PRODUCTS + 1)
-      : await activeProducts(ctx, organizationId, args.categoryId);
+    const products =
+      !search && !args.categoryId
+        ? await activeProducts(ctx, organizationId)
+        : await (async () => {
+            const categories = await ctx.db
+              .query("categories")
+              .withIndex("by_organizationId_and_normalizedName", (q) =>
+                q.eq("organizationId", organizationId),
+              )
+              .take(MAX_CATEGORIES_PER_ORGANIZATION + 1);
+            const hierarchy = buildCategoryHierarchy(categories, organizationId);
+            const categoryIds = new Set<Id<"categories">>();
+            if (args.categoryId) {
+              categoryIds.add(args.categoryId);
+              let changed = true;
+              while (changed) {
+                changed = false;
+                for (const category of hierarchy) {
+                  if (
+                    category.parentCategoryId &&
+                    categoryIds.has(category.parentCategoryId) &&
+                    !categoryIds.has(category.id)
+                  ) {
+                    categoryIds.add(category.id);
+                    changed = true;
+                  }
+                }
+              }
+            }
+            const paths = new Map(
+              hierarchy.map((category) => [category.id, category.path]),
+            );
+            const scanned = await ctx.db
+              .query("products")
+              .withIndex(
+                "by_organizationId_and_status_and_normalizedName",
+                (q) =>
+                  q.eq("organizationId", organizationId).eq("status", "active"),
+              )
+              .take(MAX_PRODUCTS + 1);
+            return scanned.filter(
+              (product) =>
+                (!args.categoryId || categoryIds.has(product.categoryId)) &&
+                productSearchScore(
+                  product.name,
+                  paths.get(product.categoryId) ?? "",
+                  search,
+                ) !== null,
+            );
+          })();
     if (products.length > MAX_PRODUCTS) {
       throw new ConvexError(
         "Søgningen matcher mere end 500 produkter. Afgræns søgningen",

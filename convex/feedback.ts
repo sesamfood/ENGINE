@@ -165,6 +165,7 @@ export const saveSettings = mutation({
       )
       .unique();
 
+    const emailProvided = args.email !== undefined;
     const email = args.email?.trim() ? trimmedEmail(args.email) : undefined;
     const linearApiKey = args.linearApiKey?.trim()
       ? args.linearApiKey.trim()
@@ -197,15 +198,22 @@ export const saveSettings = mutation({
       enabled: args.enabled,
       destination: args.destination,
       updatedAt: Date.now(),
-      ...(email ? { email } : {}),
       ...(linearApiKey ? { linearApiKey } : {}),
       ...(linearTeamId ? { linearTeamId } : {}),
       ...(linearTeamName ? { linearTeamName } : {}),
     };
     const settingsId = current
       ? current._id
-      : await ctx.db.insert("feedbackSettings", fields);
-    if (current) await ctx.db.patch("feedbackSettings", current._id, fields);
+      : await ctx.db.insert("feedbackSettings", {
+          ...fields,
+          ...(email ? { email } : {}),
+        });
+    if (current) {
+      await ctx.db.patch("feedbackSettings", current._id, {
+        ...fields,
+        ...(emailProvided ? { email } : {}),
+      });
+    }
 
     await recordAudit(ctx, auth, {
       action: "feedback.settingsUpdated",

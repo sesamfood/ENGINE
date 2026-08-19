@@ -13,13 +13,7 @@ import {
   UploadIcon,
 } from "lucide-react";
 import Image from "next/image";
-import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
@@ -81,6 +75,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { compressImage } from "@/lib/compress-image";
+import { productSearchScore } from "@/lib/product-search";
 import { useWasteContext } from "./waste-header";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -259,10 +254,7 @@ export function BadDeliveryRegistration() {
     locationId ? { locationId } : "skip",
   );
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
-  const productResults = useQuery(api.badDeliveries.searchProducts, {
-    search: deferredSearch,
-  });
+  const catalog = useQuery(api.catalog.listActiveProducts);
   const uploadUrl = useMutation(api.badDeliveries.generatePhotoUploadUrl);
   const register = useMutation(api.badDeliveries.registerBadDelivery);
   const [lines, setLines] = useState<Line[]>([]);
@@ -312,7 +304,11 @@ export function BadDeliveryRegistration() {
       : config!.deductFromStock;
   const selectedLocation = locations.find((item) => item.id === locationId)!;
   const addedProductIds = new Set(lines.map((line) => line.productId));
-  const productOptions: ComboboxOption[] = (productResults ?? [])
+  const productOptions: ComboboxOption[] = (catalog ?? [])
+    .filter(
+      (product) =>
+        productSearchScore(product.name, product.category.path, search) !== null,
+    )
     .filter((product) => !addedProductIds.has(product.id))
     .map((product) => ({ value: product.id, label: product.name }));
   const groups = Array.from(

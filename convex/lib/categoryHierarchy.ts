@@ -18,6 +18,28 @@ export type CategoryHierarchyItem = {
   hasChildren: boolean;
 };
 
+export function categoryIdsInSubtree(
+  categories: Pick<CategoryHierarchyItem, "id" | "parentCategoryId">[],
+  rootCategoryId: Id<"categories">,
+) {
+  const ids = new Set<Id<"categories">>([rootCategoryId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const category of categories) {
+      if (
+        category.parentCategoryId &&
+        ids.has(category.parentCategoryId) &&
+        !ids.has(category.id)
+      ) {
+        ids.add(category.id);
+        changed = true;
+      }
+    }
+  }
+  return ids;
+}
+
 function categoryError(message: string): never {
   throw new ConvexError(message);
 }

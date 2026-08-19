@@ -434,12 +434,14 @@ export function StaffFoodRegistration() {
 
   function changeProduct(product: Product, delta: number) {
     const allowance = state?.allowances.find(
-      (item) => item.categoryId === product.categoryId,
+      (item) => item.categoryId === product.allowanceCategoryId,
     );
     if (!allowance) return;
     const reserved = Object.entries(basket).reduce((total, [id, quantity]) => {
       const item = state?.products.find((candidate) => candidate.id === id);
-      return item?.categoryId === product.categoryId ? total + quantity : total;
+      return item?.allowanceCategoryId === product.allowanceCategoryId
+        ? total + quantity
+        : total;
     }, 0);
     setBasket((current) => {
       const nextValue = Math.max(0, (current[product.id] ?? 0) + delta);
@@ -456,7 +458,9 @@ export function StaffFoodRegistration() {
       const next = { ...current };
       const selected = (current[product.id] ?? 0) > 0;
       for (const item of state?.products ?? []) {
-        if (item.categoryId === product.categoryId) delete next[item.id];
+        if (item.allowanceCategoryId === product.allowanceCategoryId) {
+          delete next[item.id];
+        }
       }
       if (!selected) next[product.id] = 1;
       return next;
@@ -532,7 +536,7 @@ export function StaffFoodRegistration() {
     ) ?? [];
   const hasVisibleProducts = visibleAllowances.some((allowance) =>
     state?.products.some(
-      (product) => product.categoryId === allowance.categoryId,
+      (product) => product.allowanceCategoryId === allowance.categoryId,
     ),
   );
   const canManage = usePermission("staffFood.manage");
@@ -654,7 +658,7 @@ export function StaffFoodRegistration() {
                       const reserved = basketProducts
                         .filter(
                           ({ product }) =>
-                            product.categoryId === allowance.categoryId,
+                            product.allowanceCategoryId === allowance.categoryId,
                         )
                         .reduce((total, item) => total + item.quantity, 0);
                       return (
@@ -678,13 +682,13 @@ export function StaffFoodRegistration() {
                     {visibleAllowances.map((allowance) => {
                       const products = state.products.filter(
                         (product) =>
-                          product.categoryId === allowance.categoryId,
+                          product.allowanceCategoryId === allowance.categoryId,
                       );
                       if (!products.length) return null;
                       const reserved = basketProducts
                         .filter(
                           ({ product }) =>
-                            product.categoryId === allowance.categoryId,
+                            product.allowanceCategoryId === allowance.categoryId,
                         )
                         .reduce((total, item) => total + item.quantity, 0);
                       const canAdd =

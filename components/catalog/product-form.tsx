@@ -70,6 +70,7 @@ type IngredientRow = {
 type ProductOption = {
   id: Id<"products">;
   name: string;
+  categoryPath?: string;
   archived?: boolean;
   units: Array<{ id: Id<"units">; name: string }>;
 };
@@ -250,6 +251,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const options = useQuery(api.catalog.listFormOptions, {
     excludeProductId: productId,
   });
+  const catalog = useQuery(api.catalog.listActiveProducts);
   const createProduct = useMutation(api.catalog.createProduct);
   const updateProduct = useMutation(api.catalog.updateProduct);
   const generateUploadUrl = useMutation(
@@ -319,10 +321,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   const productOptions = useMemo<ProductOption[]>(() => {
     const active: ProductOption[] =
-      options?.products.map((option) => ({
+      catalog?.map((option) => ({
         id: option.id,
         name: option.name,
-        units: option.units,
+        categoryPath: option.category.path,
+        units: option.units.map((unit) => ({ id: unit.id, name: unit.name })),
       })) ?? [];
     if (!product) return active;
 
@@ -336,12 +339,18 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       });
     }
     return active;
-  }, [options, product]);
+  }, [catalog, product]);
 
   const productComboboxOptions: ComboboxOption[] = productOptions.map(
     (option) => ({
       value: option.id,
-      label: option.archived ? `${option.name} — arkiveret` : option.name,
+      label: [
+        option.name,
+        option.categoryPath,
+        option.archived ? "arkiveret" : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
     }),
   );
 

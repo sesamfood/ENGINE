@@ -10,11 +10,16 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { requireCatalogManager, requireOrganization } from "./lib/auth";
 import {
   buildCategoryHierarchy,
+  categoryIdsInSubtree,
   MAX_CATEGORIES_PER_ORGANIZATION,
   validateCategoryParentAssignment,
 } from "./lib/categoryHierarchy";
 import { normalizeStock } from "./lib/stock";
 import { recordAudit } from "./lib/audit";
+import {
+  activeProductCatalogValidator,
+  listActiveProductCatalog,
+} from "./lib/productCatalog";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -776,6 +781,9 @@ export const listProducts = query({
     const categoryPaths = new Map(
       categoryHierarchy.map((category) => [category.id, category.path]),
     );
+    const categoryIds = args.categoryId
+      ? categoryIdsInSubtree(categoryHierarchy, args.categoryId)
+      : null;
     if (args.categoryId) {
       const category = await ctx.db.get("categories", args.categoryId);
       if (!category || category.organizationId !== organizationId) {
@@ -786,34 +794,18 @@ export const listProducts = query({
     const search = args.search.trim();
     const results = search
       ? await (async () => {
-          const scanned = await (
-            args.categoryId
-              ? ctx.db
-                  .query("products")
-                  .withIndex(
-                    "by_organizationId_and_status_and_categoryId_and_normalizedName",
-                    (q) =>
-                      q
-                        .eq("organizationId", organizationId)
-                        .eq("status", args.status)
-                        .eq("categoryId", args.categoryId!),
-                  )
-              : ctx.db
-                  .query("products")
-                  .withIndex(
-                    "by_organizationId_and_status_and_normalizedName",
-                    (q) =>
-                      q
-                        .eq("organizationId", organizationId)
-                        .eq("status", args.status),
-                  )
-          ).take(MAX_FUZZY_SEARCH_SCAN + 1);
+          const scanned = await ctx.db
+            .query("products")
+            .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+              q.eq("organizationId", organizationId).eq("status", args.status),
+            )
+            .take(MAX_FUZZY_SEARCH_SCAN + 1);
           if (scanned.length > MAX_FUZZY_SEARCH_SCAN) {
             const matchingCategoryIds = categoryHierarchy
               .filter((category) => fuzzyScore(category.path, search) !== null)
               .filter(
                 (category) =>
-                  !args.categoryId || category.id === args.categoryId,
+                  !categoryIds || categoryIds.has(category.id),
                 )
                 .map((category) => category.id);
             if (matchingCategoryIds.length > 0) {
@@ -851,9 +843,7 @@ export const listProducts = query({
                       .search("name", search)
                       .eq("organizationId", organizationId)
                       .eq("status", args.status);
-                    return args.categoryId
-                      ? productSearch.eq("categoryId", args.categoryId)
-                      : productSearch;
+                    return productSearch;
                   })
                   .take(MAX_FUZZY_SEARCH_SCAN);
 
@@ -873,7 +863,9 @@ export const listProducts = query({
                 }
 
                 const matchingNames = (await nameMatches()).filter(
-                  (product) => !matchingCategoryIdSet.has(product.categoryId),
+                  (product) =>
+                    (!categoryIds || categoryIds.has(product.categoryId)) &&
+                    !matchingCategoryIdSet.has(product.categoryId),
                 );
                 const remainingItems = Math.max(
                   args.paginationOpts.numItems - categoryResults.page.length,
@@ -897,7 +889,9 @@ export const listProducts = query({
               }
 
               const matchingNames = (await nameMatches()).filter(
-                (product) => !matchingCategoryIdSet.has(product.categoryId),
+                (product) =>
+                  (!categoryIds || categoryIds.has(product.categoryId)) &&
+                  !matchingCategoryIdSet.has(product.categoryId),
               );
               const namePage = matchingNames.slice(
                 cursor.nameOffset,
@@ -920,9 +914,7 @@ export const listProducts = query({
                   .search("name", search)
                   .eq("organizationId", organizationId)
                   .eq("status", args.status);
-                return args.categoryId
-                  ? productSearch.eq("categoryId", args.categoryId)
-                  : productSearch;
+                return productSearch;
               })
               .paginate(args.paginationOpts);
           }
@@ -951,7 +943,8 @@ export const listProducts = query({
             })
             .filter(
               (match): match is { product: Doc<"products">; score: number } =>
-                match.score !== null,
+                match.score !== null &&
+                (!categoryIds || categoryIds.has(match.product.categoryId)),
             )
             .sort((left, right) => left.score - right.score)
             .map((match) => match.product);
@@ -972,13 +965,15 @@ export const listProducts = query({
       : args.categoryId
         ? await ctx.db
             .query("products")
-            .withIndex(
-              "by_organizationId_and_status_and_categoryId_and_normalizedName",
-              (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("status", args.status)
-                  .eq("categoryId", args.categoryId!),
+            .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+              q.eq("organizationId", organizationId).eq("status", args.status),
+            )
+            .filter((q) =>
+              q.or(
+                ...[...(categoryIds ?? [])].map((categoryId) =>
+                  q.eq(q.field("categoryId"), categoryId),
+                ),
+              ),
             )
             .paginate(args.paginationOpts)
         : await ctx.db
@@ -994,6 +989,15 @@ export const listProducts = query({
         results.page.map((product) => hydrateCatalogProduct(ctx, product)),
       ),
     };
+  },
+});
+
+export const listActiveProducts = query({
+  args: {},
+  returns: v.array(activeProductCatalogValidator),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    return await listActiveProductCatalog(ctx, organizationId);
   },
 });
 
