@@ -61,6 +61,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePermission } from "@/components/app-shell";
+import { productSearchScore } from "@/lib/product-search";
 import { cn } from "@/lib/utils";
 import { useWasteContext } from "./waste-header";
 
@@ -83,25 +84,6 @@ const UNDO_WINDOW_MS = 30_000;
 const UNDO_REASON_GRACE_MS = 30_000;
 
 const collator = new Intl.Collator("da", { sensitivity: "base" });
-
-function normalize(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("da-DK")
-    .trim();
-}
-
-function fuzzyScore(name: string, search: string) {
-  if (!search) return 0;
-  if (name.startsWith(search)) return 0;
-  if (name.includes(search)) return 1;
-  let cursor = 0;
-  for (const character of name) {
-    if (character === search[cursor]) cursor += 1;
-  }
-  return cursor === search.length ? 2 : 3;
-}
 
 function formatQuantity(quantity: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 6 }).format(
@@ -201,19 +183,20 @@ export function WasteRegistration() {
     }
     return [...map].sort((a, b) => collator.compare(a[1], b[1]));
   }, [catalog]);
-  const normalizedSearch = normalize(search);
+  const hasSearch = search.trim().length > 0;
   const products = useMemo(() => {
     return [...(catalog ?? [])]
       .filter((product) =>
-        normalizedSearch
-          ? fuzzyScore(normalize(product.name), normalizedSearch) < 3
+        hasSearch
+          ? productSearchScore(product.name, product.category.path, search) !==
+            null
           : category === "all" || product.category.id === category,
       )
       .sort((a, b) => {
-        if (normalizedSearch) {
+        if (hasSearch) {
           const searchDiff =
-            fuzzyScore(normalize(a.name), normalizedSearch) -
-            fuzzyScore(normalize(b.name), normalizedSearch);
+            productSearchScore(a.name, a.category.path, search)! -
+            productSearchScore(b.name, b.category.path, search)!;
           if (searchDiff) return searchDiff;
           const popularityDiff =
             (rankMap.get(b.id)?.count ?? 0) - (rankMap.get(a.id)?.count ?? 0);
@@ -237,7 +220,7 @@ export function WasteRegistration() {
         }
         return collator.compare(a.name, b.name);
       });
-  }, [catalog, category, configMap, normalizedSearch, rankMap]);
+  }, [catalog, category, configMap, hasSearch, rankMap, search]);
   const selected =
     catalog?.find((product) => product.id === selectedId) ?? null;
   function openProduct(product: Product) {

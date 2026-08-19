@@ -29,6 +29,8 @@ import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
+import { listActiveProductCatalog } from "./lib/productCatalog";
+import { productSearchScore } from "../lib/product-search";
 
 const MAX_ITEMS = 200;
 const MAX_PRODUCT_OPTIONS = 50;
@@ -306,27 +308,14 @@ export const searchProducts = query({
     );
     const search = args.search.trim();
     if (search.length > 100) throw new ConvexError("Søgningen er for lang");
-    const products = search
-      ? await ctx.db
-          .query("products")
-          .withSearchIndex("search_name", (q) =>
-            q
-              .search("name", search)
-              .eq("organizationId", organizationId)
-              .eq("status", "active"),
-          )
-          .take(MAX_PRODUCT_OPTIONS)
-      : await ctx.db
-          .query("products")
-          .withIndex(
-            "by_organizationId_and_status_and_normalizedName",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("status", "active"),
-          )
-          .take(MAX_PRODUCT_OPTIONS);
-    return products.map((product) => ({ id: product._id, name: product.name }));
+    return (await listActiveProductCatalog(ctx, organizationId))
+      .filter(
+        (product) =>
+          productSearchScore(product.name, product.category.path, search) !==
+          null,
+      )
+      .slice(0, MAX_PRODUCT_OPTIONS)
+      .map((product) => ({ id: product.id, name: product.name }));
   },
 });
 

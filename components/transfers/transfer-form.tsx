@@ -11,7 +11,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import Image from "next/image";
-import { useDeferredValue, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   CreatableCombobox,
@@ -45,6 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useKiosk } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
+import { productSearchScore } from "@/lib/product-search";
 
 type LocationOption = {
   id: Id<"locations">;
@@ -57,11 +58,6 @@ type ProductOption = {
   imageUrl: string | null;
   defaultUnitId: Id<"units">;
   units: Array<{ id: Id<"units">; name: string }>;
-};
-
-type ProductSearchOption = {
-  id: Id<"products">;
-  name: string;
 };
 
 type MemberOption = {
@@ -136,10 +132,7 @@ export function TransferForm({
   const kiosk = useKiosk();
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const [productSearch, setProductSearch] = useState("");
-  const deferredProductSearch = useDeferredValue(productSearch);
-  const productResults = useQuery(api.transfers.searchTransferProducts, {
-    search: deferredProductSearch,
-  });
+  const catalog = useQuery(api.catalog.listActiveProducts);
   const createTransfer = useMutation(api.transfers.createTransfer);
   const updateTransfer = useMutation(api.transfers.updateTransfer);
   const [fromLocationId, setFromLocationId] = useState<string | null>(
@@ -190,7 +183,18 @@ export function TransferForm({
       ? sessionUserId
       : null);
 
-  const products = (productResults ?? []) as ProductSearchOption[];
+  const products = useMemo(
+    () =>
+      (catalog ?? []).filter(
+        (product) =>
+          productSearchScore(
+            product.name,
+            product.category.path,
+            productSearch,
+          ) !== null,
+      ),
+    [catalog, productSearch],
+  );
   const displayLines = lines;
   const lineGroups = Array.from(
     displayLines

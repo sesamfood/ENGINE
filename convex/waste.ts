@@ -29,6 +29,10 @@ import {
 } from "./lib/badDeliverySettings";
 import { addStock, normalizeStock } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
+import {
+  activeProductCatalogValidator,
+  listActiveProductCatalog,
+} from "./lib/productCatalog";
 
 const MAX_PRODUCTS = 500;
 const MAX_CHILD_ROWS = 200;
@@ -841,75 +845,13 @@ export const setSettings = mutation({
 
 export const listCatalog = query({
   args: {},
-  returns: v.array(
-    v.object({
-      id: v.id("products"),
-      name: v.string(),
-      category: v.object({ id: v.id("categories"), name: v.string() }),
-      imageUrl: v.union(v.string(), v.null()),
-      defaultUnitId: v.id("units"),
-      units: v.array(
-        v.object({
-          id: v.id("units"),
-          name: v.string(),
-          factorToDefault: v.number(),
-        }),
-      ),
-    }),
-  ),
+  returns: v.array(activeProductCatalogValidator),
   handler: async (ctx) => {
     const { organizationId } = await requireWasteRegistrar(
       ctx,
       "waste.register",
     );
-    const products = await ctx.db
-      .query("products")
-      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-        q.eq("organizationId", organizationId).eq("status", "active"),
-      )
-      .take(MAX_PRODUCTS + 1);
-    requireCompleteProductSet(products);
-    return await Promise.all(
-      products.map(async (product) => {
-        const [category, productUnits, imageUrl] = await Promise.all([
-          ctx.db.get("categories", product.categoryId),
-          ctx.db
-            .query("productUnits")
-            .withIndex("by_organizationId_and_productId", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("productId", product._id),
-            )
-            .take(MAX_CHILD_ROWS),
-          product.imageStorageId
-            ? ctx.storage.getUrl(product.imageStorageId)
-            : Promise.resolve(null),
-        ]);
-        if (!category || category.organizationId !== organizationId) {
-          throw new ConvexError("Produktets kategori blev ikke fundet");
-        }
-        const units = await Promise.all(
-          productUnits.map(async (row) => {
-            const unit = await ctx.db.get("units", row.unitId);
-            return unit?.organizationId === organizationId
-              ? {
-                  id: unit._id,
-                  name: unit.name,
-                  factorToDefault: row.factorToDefault,
-                }
-              : null;
-          }),
-        );
-        return {
-          id: product._id,
-          name: product.name,
-          category: { id: category._id, name: category.name },
-          imageUrl,
-          defaultUnitId: product.defaultUnitId,
-          units: units.filter((unit) => unit !== null),
-        };
-      }),
-    );
+    return await listActiveProductCatalog(ctx, organizationId);
   },
 });
 

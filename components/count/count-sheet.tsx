@@ -102,6 +102,7 @@ import {
   useCountOrder,
 } from "@/lib/count-prefs";
 import { downloadCsv } from "@/lib/download-csv";
+import { productSearchScore } from "@/lib/product-search";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { cn } from "@/lib/utils";
 
@@ -115,7 +116,12 @@ type CountUnit = {
 type CountCatalogProduct = {
   id: Id<"products">;
   name: string;
-  category: { id: Id<"categories">; name: string } | null;
+  category: {
+    id: Id<"categories">;
+    name: string;
+    path: string;
+    parentCategoryId: Id<"categories"> | null;
+  };
   imageUrl: string | null;
   defaultUnitId: Id<"units">;
   units: Array<Omit<CountUnit, "quantity">>;
@@ -134,6 +140,29 @@ type QuantityPayload = {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
+}
+
+function categoryTreeIds(
+  categories: Array<{
+    id: Id<"categories">;
+    parentCategoryId: Id<"categories"> | null;
+  }>,
+  rootId: string,
+) {
+  const ids = new Set<string>([rootId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const category of categories) {
+      if (category.parentCategoryId && ids.has(category.parentCategoryId)) {
+        if (!ids.has(category.id)) {
+          ids.add(category.id);
+          changed = true;
+        }
+      }
+    }
+  }
+  return ids;
 }
 
 function countdown(target: number, now: number) {
@@ -787,7 +816,6 @@ export function CountSheet() {
   const canManageCatalog = usePermission("catalog.manage");
   const canExport = usePermission("count.export");
   const [search, setSearch] = useState("");
-  const [querySearch, setQuerySearch] = useState("");
   const [categoryId, setCategoryId] = useState<string>("all");
   const [editingOrder, setEditingOrder] = useState(false);
   const [selectedUnits, setSelectedUnits] = useState<Record<string, string>>(
@@ -810,11 +838,6 @@ export function CountSheet() {
   const setDefaultOrder = useMutation(api.count.setCountProductOrder);
   const savedOrder = useCountOrder(organizationId, locationId);
 
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setQuerySearch(search), 300);
-    return () => window.clearTimeout(timeout);
-  }, [search]);
-
   const queriedQuantities = useQuery(
     api.count.getCountQuantities,
     canRegister && locationId && state?.count
@@ -834,19 +857,12 @@ export function CountSheet() {
     canRegister ? {} : "skip",
   );
   const queriedProducts = useQuery(
-    api.count.listCountProducts,
-    canRegister && locationId
-      ? {
-          locationId,
-          categoryId:
-            categoryId === "all" ? undefined : (categoryId as Id<"categories">),
-          search: querySearch,
-        }
-      : "skip",
+    api.catalog.listActiveProducts,
+    canRegister && locationId ? {} : "skip",
   ) as CountCatalogProduct[] | undefined;
   const catalogProducts = useLastDefined(
     queriedProducts,
-    locationId ? JSON.stringify([locationId, categoryId, querySearch]) : null,
+    locationId ? "catalog" : null,
   );
   const quantities = useMemo(
     () => (state?.count ? storedQuantities : state ? [] : undefined),
@@ -860,14 +876,26 @@ export function CountSheet() {
         row.quantity,
       ]),
     );
-    return catalogProducts.map((product) => ({
-      ...product,
-      units: product.units.map((unit) => ({
-        ...unit,
-        quantity: byUnit.get(`${product.id}:${unit.id}`) ?? 0,
-      })),
-    }));
-  }, [catalogProducts, quantities]);
+    const selectedCategoryIds =
+      categoryId === "all"
+        ? null
+        : categoryTreeIds(categories ?? [], categoryId);
+    return catalogProducts
+      .filter(
+        (product) =>
+          (!selectedCategoryIds ||
+            selectedCategoryIds.has(product.category.id)) &&
+          productSearchScore(product.name, product.category.path, search) !==
+            null,
+      )
+      .map((product) => ({
+        ...product,
+        units: product.units.map((unit) => ({
+          ...unit,
+          quantity: byUnit.get(`${product.id}:${unit.id}`) ?? 0,
+        })),
+      }));
+  }, [catalogProducts, categories, categoryId, quantities, search]);
 
   useEffect(() => {
     if (!products) return;

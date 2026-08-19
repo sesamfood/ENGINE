@@ -9,7 +9,7 @@ import {
   Trash2Icon,
   UtensilsIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -81,6 +81,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { LocationField } from "@/components/location-field";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { downloadCsv } from "@/lib/download-csv";
+import { productSearchScore } from "@/lib/product-search";
 
 type Settings = NonNullable<
   ReturnType<typeof useQuery<typeof api.staffFood.getSettings>>
@@ -239,6 +240,7 @@ export function StaffFoodSettings() {
   const canManage = usePermission("staffFood.manage");
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const settings = useQuery(api.staffFood.getSettings, canManage ? {} : "skip");
+  const catalog = useQuery(api.catalog.listActiveProducts, canManage ? {} : "skip");
   const saveTier = useMutation(api.staffFood.saveTier);
   const deleteTier = useMutation(api.staffFood.deleteTier);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -263,6 +265,38 @@ export function StaffFoodSettings() {
       : location === "all" || locations?.some((item) => item.id === location)
         ? location
         : "all";
+
+  const categoryPaths = useMemo(() => {
+    const paths = new Map<string, string>();
+    for (const category of settings?.categories ?? []) {
+      const names = [category.name];
+      const visited = new Set<string>([category.id]);
+      let parentId = category.parentCategoryId;
+      while (parentId && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parent = settings?.categories.find((item) => item.id === parentId);
+        if (!parent) break;
+        names.unshift(parent.name);
+        parentId = parent.parentCategoryId;
+      }
+      paths.set(category.id, names.join(" / "));
+    }
+    return paths;
+  }, [settings?.categories]);
+
+  const productCatalog = useMemo(() => {
+    if (!settings) return [];
+    if (catalog === undefined) return settings.products;
+    return [
+      ...catalog.map((product) => ({
+        id: product.id,
+        name: product.name,
+        categoryId: product.category.id,
+        status: "active" as const,
+      })),
+      ...settings.products.filter((product) => product.status === "archived"),
+    ];
+  }, [catalog, settings]);
 
   const categoryItems =
     settings?.categories.map((category) => ({
@@ -692,8 +726,6 @@ export function StaffFoodSettings() {
             </div>
 
             {allowances.map((allowance, index) => {
-              const search =
-                productSearches[index]?.trim().toLocaleLowerCase("da") ?? "";
               const selectedCategory = settings.categories.find(
                 (category) => category.id === allowance.categoryId,
               );
@@ -703,11 +735,14 @@ export function StaffFoodSettings() {
               const amount = Number(allowance.amount);
               const amountValid =
                 Number.isInteger(amount) && amount >= 1 && amount <= 20;
-              const products = settings.products.filter(
+              const products = productCatalog.filter(
                 (product) =>
                   categoryIds.has(product.categoryId) &&
-                  (!search ||
-                    product.name.toLocaleLowerCase("da").includes(search)) &&
+                  productSearchScore(
+                    product.name,
+                    categoryPaths.get(product.categoryId) ?? "",
+                    productSearches[index] ?? "",
+                  ) !== null &&
                   (product.status === "active" ||
                     allowance.productIds.includes(product.id)),
               );

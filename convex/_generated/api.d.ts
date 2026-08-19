@@ -44,6 +44,7 @@ import type * as lib_organizationTheme from "../lib/organizationTheme.js";
 import type * as lib_ownCheckSettings from "../lib/ownCheckSettings.js";
 import type * as lib_ownCheckValidators from "../lib/ownCheckValidators.js";
 import type * as lib_ownChecks from "../lib/ownChecks.js";
+import type * as lib_productCatalog from "../lib/productCatalog.js";
 import type * as lib_rateLimits from "../lib/rateLimits.js";
 import type * as lib_resend from "../lib/resend.js";
 import type * as lib_salesRollup from "../lib/salesRollup.js";
@@ -111,6 +112,7 @@ declare const fullApi: ApiFromModules<{
   "lib/ownCheckSettings": typeof lib_ownCheckSettings;
   "lib/ownCheckValidators": typeof lib_ownCheckValidators;
   "lib/ownChecks": typeof lib_ownChecks;
+  "lib/productCatalog": typeof lib_productCatalog;
   "lib/rateLimits": typeof lib_rateLimits;
   "lib/resend": typeof lib_resend;
   "lib/salesRollup": typeof lib_salesRollup;
