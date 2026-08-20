@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { cookies } from "next/headers";
 import { AppRouteShell } from "@/components/app-route-shell";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
+import { PwaRegistration } from "@/components/pwa-registration";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UpdateAvailableNotice } from "@/components/update-available-notice";
@@ -26,6 +27,21 @@ export const metadata: Metadata = {
   title: "Driftsplatform",
   applicationName: "Driftsplatform",
   description: "Administrer den daglige drift i din restaurantorganisation.",
+  appleWebApp: {
+    capable: true,
+    title: "Driftsplatform",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#252525" },
+  ],
 };
 
 export default async function RootLayout({
@@ -59,6 +75,7 @@ export default async function RootLayout({
             <UpdateAvailableNotice />
           </TooltipProvider>
         </ConvexClientProvider>
+        <PwaRegistration />
       </body>
     </html>
   );
