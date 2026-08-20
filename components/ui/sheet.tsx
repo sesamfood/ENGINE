@@ -4,6 +4,7 @@ import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
+import { isTouchDevice } from "@/lib/touch-device"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -41,15 +42,27 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  initialFocus,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  const popupRef = React.useRef<HTMLDivElement>(null)
+
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Popup
+        ref={popupRef}
+        initialFocus={(openType) => {
+          if (openType === "touch" || isTouchDevice()) {
+            return popupRef.current ?? false
+          }
+          if (typeof initialFocus === "function") return initialFocus(openType)
+          if (typeof initialFocus === "object") return initialFocus.current
+          return initialFocus ?? true
+        }}
         data-slot="sheet-content"
         data-side={side}
         className={cn(

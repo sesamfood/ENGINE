@@ -500,7 +500,6 @@ export function CategoryManager() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 aria-invalid={Boolean(error)}
-                autoFocus
               />
             </Field>
             {editor?.kind === "create" ? (

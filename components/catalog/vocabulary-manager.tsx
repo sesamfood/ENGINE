@@ -447,7 +447,6 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                   }
                 }}
                 aria-invalid={Boolean(error)}
-                autoFocus
               />
               <FieldError>{error}</FieldError>
             </Field>

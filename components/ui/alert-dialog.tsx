@@ -4,6 +4,7 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
 
 import { cn } from "@/lib/utils"
+import { isTouchDevice } from "@/lib/touch-device"
 import { Button } from "@/components/ui/button"
 
 function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
@@ -41,14 +42,26 @@ function AlertDialogOverlay({
 function AlertDialogContent({
   className,
   size = "default",
+  initialFocus,
   ...props
 }: AlertDialogPrimitive.Popup.Props & {
   size?: "default" | "sm"
 }) {
+  const popupRef = React.useRef<HTMLDivElement>(null)
+
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Popup
+        ref={popupRef}
+        initialFocus={(openType) => {
+          if (openType === "touch" || isTouchDevice()) {
+            return popupRef.current ?? false
+          }
+          if (typeof initialFocus === "function") return initialFocus(openType)
+          if (typeof initialFocus === "object") return initialFocus.current
+          return initialFocus ?? true
+        }}
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(

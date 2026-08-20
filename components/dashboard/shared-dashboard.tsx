@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
+import { isTouchDevice } from "@/lib/touch-device";
 import { DashboardGrid } from "./dashboard-grid";
 
 function message(error: unknown) {
@@ -31,6 +32,7 @@ function SharedDashboardContent({ token }: { token: string }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const automaticUnlockAttempted = useRef(false);
+  const passwordInput = useRef<HTMLInputElement>(null);
   const now = useDashboardNow();
   const config = useQuery(
     api.dashboardShare.getSharedConfig,
@@ -65,6 +67,11 @@ function SharedDashboardContent({ token }: { token: string }) {
       cancelled = true;
     };
   }, [accessKey, meta, pending, token, unlock]);
+
+  useEffect(() => {
+    if (!meta?.requiresPassword || accessKey || isTouchDevice()) return;
+    passwordInput.current?.focus();
+  }, [accessKey, meta?.requiresPassword]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -109,7 +116,7 @@ function SharedDashboardContent({ token }: { token: string }) {
                 <FieldGroup>
                   <Field data-invalid={Boolean(error)}>
                     <FieldLabel htmlFor="shared-dashboard-password">Adgangskode</FieldLabel>
-                    <Input id="shared-dashboard-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} aria-invalid={Boolean(error)} autoFocus />
+                    <Input ref={passwordInput} id="shared-dashboard-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} aria-invalid={Boolean(error)} />
                   </Field>
                 </FieldGroup>
                 {error ? <Alert variant="destructive"><AlertTitle>Dashboardet kunne ikke åbnes</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}

@@ -383,7 +383,6 @@ export function RolePermissions() {
                     void create();
                   }
                 }}
-                autoFocus
               />
               <FieldError>{createError}</FieldError>
             </Field>
