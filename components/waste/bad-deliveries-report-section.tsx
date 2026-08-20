@@ -333,7 +333,7 @@ export function BadDeliveriesReportSection({
                     <TableHead>Tidspunkt</TableHead>
                     <TableHead>Lokation</TableHead>
                     <TableHead>Registreret af</TableHead>
-                    <TableHead>Varelinjer</TableHead>
+                    <TableHead>Produktlinjer</TableHead>
                     <TableHead>Lager</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>Status</TableHead>
@@ -426,7 +426,7 @@ export function BadDeliveriesReportSection({
                     >
                       <span className="font-medium">
                         {attachment.kind === "badProducts"
-                          ? "Dårlige varer"
+                          ? "Dårlige produkter"
                           : "Følgeseddel"}
                       </span>
                       {attachment.url ? (
@@ -434,7 +434,7 @@ export function BadDeliveriesReportSection({
                           role="img"
                           aria-label={
                             attachment.kind === "badProducts"
-                              ? "Foto af dårlige varer"
+                              ? "Foto af dårlige produkter"
                               : "Foto af følgeseddel"
                           }
                           className="aspect-video w-full rounded-lg bg-contain bg-center bg-no-repeat"
@@ -482,7 +482,7 @@ export function BadDeliveriesReportSection({
                 <dt className="text-muted-foreground">Lager</dt>
                 <dd>
                   {detail.deductFromStock
-                    ? "Varerne er trukket fra lageret"
+                    ? "Produkterne er trukket fra lageret"
                     : "Lageret er ikke ændret"}
                 </dd>
                 <dt className="text-muted-foreground">Til</dt>

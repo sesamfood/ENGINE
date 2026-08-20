@@ -223,7 +223,7 @@ const exportColumns: ExportColumn[] = [
     label: "Ansvarlig",
     value: (row) => row.responsibleName,
   },
-  { key: "product", label: "Vare", value: (row) => row.productName },
+  { key: "product", label: "Produkt", value: (row) => row.productName },
   { key: "unit", label: "Enhed", value: (row) => row.unitName },
   {
     key: "quantity",
@@ -845,7 +845,7 @@ export function TransferHistory() {
   const loadedCount = transfers.length;
 
   const countLabel = useMemo(() => {
-    const noun = loadedCount === 1 ? "flytning" : "flytninger";
+    const noun = loadedCount === 1 ? "transfer" : "transfers";
     const base = `${loadedCount} ${noun} i perioden`;
     if (paginationStatus === "CanLoadMore") {
       return `${base} (flere kan indlæses)`;
@@ -893,7 +893,7 @@ export function TransferHistory() {
         isDone = result.isDone;
       }
       if (rows.length === 0) {
-        toast.error("Ingen flytninger i den valgte periode");
+        toast.error("Ingen transfers i den valgte periode");
         return;
       }
       downloadTransfersCsv(rows, fromDate, toDate, selectedColumns);
@@ -915,7 +915,7 @@ export function TransferHistory() {
     setIsDeleting(true);
     try {
       await deleteTransfer({ transferId: selectedTransferId });
-      toast.success("Flytningen er slettet");
+      toast.success("Transferen er slettet");
       setIsDeleteOpen(false);
       setSelectedTransferId(null);
       setIsEditing(false);
@@ -993,9 +993,9 @@ export function TransferHistory() {
             <EmptyMedia variant="icon">
               <ArrowLeftRightIcon />
             </EmptyMedia>
-            <EmptyTitle>Ingen flytninger i perioden</EmptyTitle>
+            <EmptyTitle>Ingen transfers i perioden</EmptyTitle>
             <EmptyDescription>
-              Prøv en anden periode, eller opret en ny flytning.
+              Prøv en anden periode, eller opret en ny transfer.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -1015,7 +1015,7 @@ export function TransferHistory() {
                     Antal enheder
                     <HelpTooltip
                       label="Antal enheder"
-                      content="Summen af de registrerede mængder i flytningen. Varerne kan være registreret med forskellige enheder."
+                      content="Summen af de registrerede mængder i transferen. Produkterne kan være registreret med forskellige enheder."
                     />
                   </span>
                 </TableHead>
@@ -1028,7 +1028,7 @@ export function TransferHistory() {
                   key={transfer.id}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Åbn flytning fra ${transfer.fromLocationName} til ${transfer.toLocationName}${transfer.hasTemperatureDeviation ? " med temperaturafvigelse" : ""}`}
+                  aria-label={`Åbn transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}${transfer.hasTemperatureDeviation ? " med temperaturafvigelse" : ""}`}
                   className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
                   onClick={() => openTransfer(transfer.id)}
                   onKeyDown={(event) => {
@@ -1056,7 +1056,7 @@ export function TransferHistory() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>
-                            Flytningen har en temperaturafvigelse
+                            Transferen har en temperaturafvigelse
                           </TooltipContent>
                         </Tooltip>
                       ) : null}
@@ -1165,7 +1165,7 @@ export function TransferHistory() {
               disabled={isExporting}
               onClick={() => setIsExportOpen(false)}
             >
-              Annuller
+              Annullér
             </Button>
             <Button
               disabled={isExporting || selectedColumns.length === 0}
@@ -1200,12 +1200,12 @@ export function TransferHistory() {
         >
           <DialogHeader>
             <DialogTitle>
-              {isEditing ? "Rediger flytning" : "Flytning"}
+              {isEditing ? "Redigér transfer" : "Transfer"}
             </DialogTitle>
             <DialogDescription>
               {transferDetail
                 ? `${dateTimeFormatter.format(transferDetail.transferredAt)} · ${transferDetail.fromLocationName} → ${transferDetail.toLocationName}`
-                : "Indlæser flyttedetaljer"}
+                : "Indlæser transferdetaljer"}
             </DialogDescription>
           </DialogHeader>
 
@@ -1219,7 +1219,7 @@ export function TransferHistory() {
 
           {!isEditing && transferDetail === null ? (
             <p className="text-sm text-muted-foreground">
-              Flytningen blev ikke fundet.
+              Transferen blev ikke fundet.
             </p>
           ) : null}
 
@@ -1252,7 +1252,7 @@ export function TransferHistory() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Vare</TableHead>
+                      <TableHead>Produkt</TableHead>
                       <TableHead>Enhed</TableHead>
                       <TableHead className="text-right">Antal</TableHead>
                     </TableRow>
@@ -1331,7 +1331,7 @@ export function TransferHistory() {
                 onClick={() => setIsDeleteOpen(true)}
               >
                 <Trash2Icon data-icon="inline-start" />
-                Slet flytning
+                Slet transfer
               </Button>
               <Button
                 size="lg"
@@ -1339,7 +1339,7 @@ export function TransferHistory() {
                 onClick={() => setIsEditing(true)}
               >
                 <PencilIcon data-icon="inline-start" />
-                Rediger flytning
+                Redigér transfer
               </Button>
             </DialogFooter>
           ) : null}
@@ -1354,15 +1354,15 @@ export function TransferHistory() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Slet flytning?</AlertDialogTitle>
+            <AlertDialogTitle>Slet transfer?</AlertDialogTitle>
             <AlertDialogDescription>
-              Flytningen og alle dens varelinjer slettes permanent. Handlingen
+              Transferen og alle dens produktlinjer slettes permanent. Handlingen
               kan ikke fortrydes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
@@ -1370,7 +1370,7 @@ export function TransferHistory() {
               onClick={() => void confirmDelete()}
             >
               {isDeleting ? <Spinner data-icon="inline-start" /> : null}
-              Slet flytning
+              Slet transfer
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -560,10 +560,10 @@ export function CustomMetricBuilder({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid max-h-[calc(100vh-2rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-6xl">
         <DialogHeader>
-          <DialogTitle>{metric ? "Rediger tilpasset måling" : "Opret tilpasset måling"}</DialogTitle>
+          <DialogTitle>{metric ? "Redigér tilpasset måling" : "Opret tilpasset måling"}</DialogTitle>
           <DialogDescription>
             {metric
-              ? "Rediger de delte data. Ændringerne gælder alle widgets, der bruger målingen."
+              ? "Redigér de delte data. Ændringerne gælder alle widgets, der bruger målingen."
               : "Byg en genbrugelig måling fra organisationens kuraterede datasæt. Visualisering og størrelse vælges bagefter."}
           </DialogDescription>
         </DialogHeader>
@@ -584,7 +584,7 @@ export function CustomMetricBuilder({
                         value={draft.name}
                         maxLength={100}
                         aria-invalid={!draft.name.trim()}
-                        placeholder="fx Spild pr. lokation"
+                        placeholder="fx Waste pr. lokation"
                         onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
                       />
                     </Field>
@@ -697,7 +697,7 @@ export function CustomMetricBuilder({
         <DialogFooter className="flex-col items-stretch sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-destructive sm:max-w-md" role="status">{localValidationError ?? ""}</p>
           <div className="flex gap-2 sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuller</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annullér</Button>
             <Button type="submit" form="custom-metric-builder-form" disabled={saving || Boolean(localValidationError)}>
               {metric || mode === "widget" ? "Gem ændringer" : mode === "dashboard" ? "Gem og fortsæt" : "Gem måling"}
             </Button>

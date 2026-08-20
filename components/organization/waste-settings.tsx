@@ -221,7 +221,7 @@ export function WasteSettings() {
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Du har ikke adgang til at ændre spildindstillinger.
+          Du har ikke adgang til at ændre Waste-indstillinger.
         </AlertDescription>
       </Alert>
     );
@@ -289,7 +289,7 @@ export function WasteSettings() {
         setCcDraft(null);
         setBccDraft(null);
       }
-      toast.success("Spildindstillingerne er gemt");
+      toast.success("Waste-indstillingerne er gemt");
     } catch (error) {
       toast.error(message(error));
     } finally {
@@ -301,7 +301,7 @@ export function WasteSettings() {
     <div className="flex max-w-3xl flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Spildindstillinger</CardTitle>
+          <CardTitle>Waste-indstillinger</CardTitle>
         </CardHeader>
         <CardContent>
           <FieldGroup>
@@ -362,7 +362,7 @@ export function WasteSettings() {
                   </FieldLabel>
                   <HelpTooltip
                     label="historik fra hele organisationen"
-                    content="Når indstillingen er slået til, bruges spild fra alle lokationer til popularitet og anbefalede genveje. Når den er slået fra, bruges kun historikken fra den valgte lokation."
+                    content="Når indstillingen er slået til, bruges Waste fra alle lokationer til popularitet og anbefalede genveje. Når den er slået fra, bruges kun historikken fra den valgte lokation."
                   />
                 </div>
               </FieldContent>

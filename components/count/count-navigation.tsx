@@ -44,7 +44,7 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
         >
           <TabsList
             variant="line"
-            aria-label="Count sections"
+            aria-label="Count-sektioner"
             className="h-12 max-w-full justify-start"
           >
             {showCount ? <TabsTrigger value="count" className="min-w-28 px-4">

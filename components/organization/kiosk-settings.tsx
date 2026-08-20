@@ -160,7 +160,7 @@ function AccountDialog({
               </Field>
             </FieldGroup>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>Annuller</Button>
+              <Button type="button" variant="outline" onClick={onClose}>Annullér</Button>
               <Button type="submit" disabled={pending}>{pending ? <Spinner data-icon="inline-start" /> : null}Gem ændringer</Button>
             </DialogFooter>
           </form>
@@ -199,7 +199,7 @@ function PasswordDialog({ account, onClose }: { account: Account | null; onClose
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <Field><FieldLabel htmlFor="kiosk-new-password">Ny adgangskode</FieldLabel><PasswordInput id="kiosk-new-password" name="password" minLength={12} maxLength={256} autoComplete="new-password" required /></Field>
-          <DialogFooter><Button type="button" variant="outline" onClick={onClose}>Annuller</Button><Button type="submit" disabled={pending}>{pending ? <Spinner data-icon="inline-start" /> : null}Skift adgangskode</Button></DialogFooter>
+          <DialogFooter><Button type="button" variant="outline" onClick={onClose}>Annullér</Button><Button type="submit" disabled={pending}>{pending ? <Spinner data-icon="inline-start" /> : null}Skift adgangskode</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
@@ -427,7 +427,7 @@ export function KioskSettings() {
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={() => setEditing(account)}><PencilIcon data-icon="inline-start" />Redigér</Button>
                 <Button type="button" variant="outline" onClick={() => setPasswordAccount(account)}><KeyRoundIcon data-icon="inline-start" />Skift adgangskode</Button>
-                <AlertDialog><AlertDialogTrigger render={<Button type="button" variant="outline" disabled={!account.activeSessionCount || pendingId === account.memberId} />}><LogOutIcon data-icon="inline-start" />Log ud på alle enheder</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Log kiosk ud på alle enheder?</AlertDialogTitle><AlertDialogDescription>Alle tablets, der bruger kontoen, skal logge ind igen. Adgangskoden ændres ikke.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuller</AlertDialogCancel><AlertDialogAction onClick={() => void revoke(account)}>Log ud på alle enheder</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                <AlertDialog><AlertDialogTrigger render={<Button type="button" variant="outline" disabled={!account.activeSessionCount || pendingId === account.memberId} />}><LogOutIcon data-icon="inline-start" />Log ud på alle enheder</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Log kiosk ud på alle enheder?</AlertDialogTitle><AlertDialogDescription>Alle tablets, der bruger kontoen, skal logge ind igen. Adgangskoden ændres ikke.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annullér</AlertDialogCancel><AlertDialogAction onClick={() => void revoke(account)}>Log ud på alle enheder</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                 <AlertDialog><AlertDialogTrigger render={<Button type="button" variant="destructive" disabled={pendingId === account.memberId} />}><Trash2Icon data-icon="inline-start" />Slet</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Slet kioskkonto?</AlertDialogTitle><AlertDialogDescription>Kontoen, dens adgangskode og alle aktive sessioner slettes permanent.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Behold konto</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void remove(account)}>Slet kioskkonto</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
               </div>
             </div>

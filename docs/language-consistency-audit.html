@@ -1,0 +1,1621 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Language consistency audit</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17201b;
+        --muted: #617066;
+        --paper: #fbfcf9;
+        --panel: #ffffff;
+        --line: #d9e0da;
+        --soft: #eef3ee;
+        --accent: #19623b;
+        --accent-soft: #e1f0e6;
+        --warn: #8a4b08;
+        --warn-soft: #fff2da;
+        --danger: #9c2f2f;
+        --danger-soft: #fff0ef;
+        --code: #f1f3ef;
+        --shadow: 0 18px 50px rgba(23, 32, 27, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        font-size: 16px;
+        line-height: 1.55;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      a:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible {
+        outline: 3px solid rgba(25, 98, 59, 0.3);
+        outline-offset: 3px;
+      }
+
+      code {
+        padding: 0.12rem 0.32rem;
+        border-radius: 0.3rem;
+        background: var(--code);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+      }
+
+      .page {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 44px 0 80px;
+      }
+
+      .masthead {
+        display: grid;
+        gap: 28px;
+        padding: clamp(26px, 5vw, 52px);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 750;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin-top: 0;
+        line-height: 1.16;
+        letter-spacing: -0.025em;
+      }
+
+      h1 {
+        max-width: 820px;
+        margin-bottom: 14px;
+        font-size: clamp(2.25rem, 6vw, 4.75rem);
+        font-weight: 760;
+      }
+
+      h2 {
+        margin-bottom: 12px;
+        font-size: clamp(1.55rem, 3vw, 2.25rem);
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 1.2rem;
+      }
+
+      p {
+        margin-top: 0;
+      }
+
+      .lede {
+        max-width: 760px;
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 1.1rem;
+      }
+
+      .facts {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin: 0;
+      }
+
+      .fact {
+        min-width: 0;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: var(--soft);
+      }
+
+      .fact dt {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .fact dd {
+        margin: 4px 0 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+
+      .outcome {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 16px;
+      }
+
+      .callout {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--paper);
+      }
+
+      .callout p:last-child,
+      .callout ul:last-child {
+        margin-bottom: 0;
+      }
+
+      .callout ul {
+        padding-left: 1.25rem;
+      }
+
+      .callout li + li {
+        margin-top: 0.35rem;
+      }
+
+      .section {
+        margin-top: 58px;
+      }
+
+      .section-intro {
+        max-width: 760px;
+        color: var(--muted);
+      }
+
+      .matrix-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--soft);
+        color: #3f4d43;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .decision-list {
+        display: grid;
+        gap: 20px;
+      }
+
+      .decision {
+        padding: clamp(20px, 4vw, 30px);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+      }
+
+      .decision-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .decision-number {
+        flex: 0 0 auto;
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--ink);
+        color: white;
+        font-size: 0.88rem;
+        font-weight: 750;
+      }
+
+      .decision-title {
+        display: flex;
+        min-width: 0;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .priority {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-size: 0.76rem;
+        font-weight: 750;
+        white-space: nowrap;
+      }
+
+      .priority.high {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+
+      .priority.medium {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+
+      .priority.low {
+        background: var(--soft);
+        color: var(--muted);
+      }
+
+      .evidence {
+        margin: 16px 0 18px;
+        padding: 12px 14px;
+        border-left: 3px solid var(--line);
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .evidence strong {
+        color: var(--ink);
+      }
+
+      fieldset {
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+
+      legend {
+        margin-bottom: 9px;
+        font-size: 0.82rem;
+        font-weight: 750;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .options {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .option {
+        position: relative;
+        min-width: 0;
+      }
+
+      .option input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+      }
+
+      .option label {
+        display: block;
+        height: 100%;
+        min-height: 118px;
+        padding: 15px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        cursor: pointer;
+        transition:
+          border-color 120ms ease,
+          background 120ms ease,
+          box-shadow 120ms ease;
+      }
+
+      .option input:checked + label {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        box-shadow: 0 0 0 2px rgba(25, 98, 59, 0.12);
+      }
+
+      .option input:focus-visible + label {
+        outline: 3px solid rgba(25, 98, 59, 0.3);
+        outline-offset: 3px;
+      }
+
+      .option-key {
+        display: inline-grid;
+        width: 25px;
+        height: 25px;
+        margin-bottom: 8px;
+        place-items: center;
+        border-radius: 6px;
+        background: var(--soft);
+        font-size: 0.78rem;
+        font-weight: 800;
+      }
+
+      .option input:checked + label .option-key {
+        background: var(--accent);
+        color: white;
+      }
+
+      .option-name {
+        display: block;
+        font-weight: 750;
+      }
+
+      .option-note {
+        display: block;
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .lean {
+        display: inline-block;
+        margin-left: 5px;
+        color: var(--accent);
+        font-size: 0.72rem;
+        font-weight: 750;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .cleanup-table td:first-child {
+        width: 25%;
+        font-weight: 700;
+      }
+
+      .cleanup-table td:last-child {
+        width: 34%;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .decision-sheet {
+        position: sticky;
+        bottom: 14px;
+        z-index: 10;
+        margin-top: 58px;
+        padding: 18px;
+        border: 1px solid #b9c7bc;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+      }
+
+      .decision-sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .decision-sheet h2 {
+        margin: 0;
+        font-size: 1.15rem;
+      }
+
+      .progress {
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      .sheet-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 13px;
+      }
+
+      .button {
+        min-height: 42px;
+        padding: 0 15px;
+        border: 1px solid var(--ink);
+        border-radius: 9px;
+        background: var(--ink);
+        color: white;
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      .button.secondary {
+        background: white;
+        color: var(--ink);
+      }
+
+      #summary {
+        width: 100%;
+        min-height: 120px;
+        margin-top: 13px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--paper);
+        color: var(--ink);
+        resize: vertical;
+      }
+
+      .status {
+        min-height: 1.5em;
+        margin: 8px 0 0;
+        color: var(--accent);
+        font-size: 0.88rem;
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .note {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+      }
+
+      .note p:last-child {
+        margin-bottom: 0;
+      }
+
+      .source-list {
+        columns: 2;
+        padding-left: 1.2rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .source-list li {
+        break-inside: avoid;
+        margin-bottom: 0.35rem;
+      }
+
+      footer {
+        margin-top: 40px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      @media (max-width: 860px) {
+        .facts,
+        .outcome,
+        .notes {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .options {
+          grid-template-columns: 1fr;
+        }
+
+        .option label {
+          min-height: 0;
+        }
+
+        .source-list {
+          columns: 1;
+        }
+      }
+
+      @media (max-width: 580px) {
+        .page {
+          width: min(100% - 20px, 1180px);
+          padding-top: 10px;
+        }
+
+        .masthead {
+          border-radius: 14px;
+        }
+
+        .facts,
+        .outcome,
+        .notes {
+          grid-template-columns: 1fr;
+        }
+
+        .decision-head,
+        .decision-sheet-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .priority {
+          margin-left: 46px;
+        }
+
+        .decision-sheet {
+          position: static;
+        }
+      }
+
+      @media print {
+        body {
+          background: white;
+        }
+
+        .page {
+          width: 100%;
+          padding: 0;
+        }
+
+        .masthead,
+        .decision,
+        .decision-sheet {
+          box-shadow: none;
+        }
+
+        .decision-sheet {
+          position: static;
+        }
+
+        .sheet-actions,
+        #summary,
+        .status {
+          display: none;
+        }
+
+        .decision,
+        .matrix-wrap,
+        .note {
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Engine copy audit</p>
+          <h1>The app speaks two vocabularies</h1>
+          <p class="lede">
+            The main navigation uses English product-area names. The work
+            screens, permissions, kiosk setup, dashboards, exports, and server
+            messages mostly use Danish. The result is not a handful of typos.
+            Five core concepts change name as a user moves through the app.
+          </p>
+        </div>
+
+        <dl class="facts">
+          <div class="fact">
+            <dt>Runtime files checked</dt>
+            <dd>288</dd>
+          </div>
+          <div class="fact">
+            <dt>Term decisions</dt>
+            <dd>13</dd>
+          </div>
+          <div class="fact">
+            <dt>Direct cleanups</dt>
+            <dd>7 groups</dd>
+          </div>
+          <div class="fact">
+            <dt>Product code changed</dt>
+            <dd>None</dd>
+          </div>
+        </dl>
+
+        <div class="outcome">
+          <aside class="callout">
+            <h2>What matters first</h2>
+            <p>
+              Decide the names for Transfer, Waste, Count, Staff food, and the
+              organization area. Those choices settle most of the visible
+              inconsistencies and determine the export filenames, feedback
+              areas, kiosk labels, and server messages.
+            </p>
+          </aside>
+          <aside class="callout">
+            <h2>My smallest coherent set</h2>
+            <p>
+              <strong>Flytninger, Spild, Optælling, Personalemad, and
+              Administration.</strong> These are already the dominant Danish
+              terms behind the primary navigation.
+            </p>
+          </aside>
+        </div>
+      </header>
+
+      <section class="section" aria-labelledby="matrix-heading">
+        <h2 id="matrix-heading">The current split</h2>
+        <p class="section-intro">
+          This table shows the same feature as it appears in different parts
+          of the product. The English route IDs and internal code names are not
+          a problem. Only user-facing copy is shown here.
+        </p>
+        <div class="matrix-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Area</th>
+                <th scope="col">Main navigation and header</th>
+                <th scope="col">Work screens</th>
+                <th scope="col">Permissions, kiosk, dashboard</th>
+                <th scope="col">Exports and errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Transfers</strong></td>
+                <td>Transfer</td>
+                <td>Ny transfer, Transferhistorik, Flytning</td>
+                <td>Flytninger, Ny flytning, Flyttehistorik</td>
+                <td>transfers, Overførsel, Flytning</td>
+              </tr>
+              <tr>
+                <td><strong>Waste</strong></td>
+                <td>Waste</td>
+                <td>Spild</td>
+                <td>Spild</td>
+                <td>waste</td>
+              </tr>
+              <tr>
+                <td><strong>Counts</strong></td>
+                <td>Count</td>
+                <td>Count, Lager</td>
+                <td>Optælling</td>
+                <td>Optælling, one English screen-reader label</td>
+              </tr>
+              <tr>
+                <td><strong>Staff food</strong></td>
+                <td>Staff food</td>
+                <td>Personalemad</td>
+                <td>Personalemad</td>
+                <td>staff-food, Staff food-regel</td>
+              </tr>
+              <tr>
+                <td><strong>Organization area</strong></td>
+                <td>Settings</td>
+                <td>Administration, Organisation</td>
+                <td>Indstillinger, organisationsindstillinger</td>
+                <td>Not applicable</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="decisions-heading">
+        <h2 id="decisions-heading">Decisions</h2>
+        <p class="section-intro">
+          Pick one option in each group. The summary at the bottom updates as
+          you choose. "My lean" marks the option that fits the existing Danish
+          copy with the fewest conceptual changes.
+        </p>
+
+        <div class="decision-list" id="decision-form">
+          <article class="decision" data-title="Transfers area">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">1</span>
+                <div>
+                  <h3>Transfers area</h3>
+                  <p>Three names describe the same record and workflow.</p>
+                </div>
+              </div>
+              <span class="priority high">High priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Transfer</code>,
+              <code>Ny transfer</code>, and <code>Transferhistorik</code> in
+              <code>app/transfers/page.tsx:70</code>. <code>Flytninger</code>
+              in <code>lib/kiosk.ts:2</code> and the permission catalog.
+              <code>Overførsler</code> in <code>app/not-found.tsx:22</code>.
+              Server validation alternates between <code>Overførslen</code>
+              and <code>Flytningen</code> in
+              <code>convex/transfers.ts:259</code> to
+              <code>convex/transfers.ts:330</code>.
+            </p>
+            <fieldset>
+              <legend>Choose the area name</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="transfer-a" type="radio" name="transfer" value="Flytninger" />
+                  <label for="transfer-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Flytninger <span class="lean">My lean</span></span>
+                    <span class="option-note">Already used by permissions, dashboards, kiosk setup, and most server messages.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="transfer-b" type="radio" name="transfer" value="Transfer" />
+                  <label for="transfer-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Transfer</span>
+                    <span class="option-note">Keeps the primary navigation term. All Danish variants would need to follow it.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="transfer-c" type="radio" name="transfer" value="Overførsler" />
+                  <label for="transfer-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Overførsler</span>
+                    <span class="option-note">Plain Danish, but it can sound like money or file transfer rather than stock movement.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Waste area">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">2</span>
+                <div>
+                  <h3>Waste area</h3>
+                  <p>The shell says Waste. Nearly everything after the click says Spild.</p>
+                </div>
+              </div>
+              <span class="priority high">High priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Waste</code> in
+              <code>components/app-shell.tsx:95</code> and
+              <code>components/waste/waste-header.tsx:47</code>.
+              <code>Spild</code> in <code>lib/kiosk.ts:4</code>, permission
+              labels, reports, settings, dashboard datasets, and all
+              registration copy. CSV files start with <code>waste-</code> in
+              <code>components/waste/waste-report.tsx:256</code>.
+            </p>
+            <fieldset>
+              <legend>Choose the area name</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="waste-a" type="radio" name="waste" value="Spild" />
+                  <label for="waste-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Spild <span class="lean">My lean</span></span>
+                    <span class="option-note">Matches the current feature copy and metric names.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="waste-b" type="radio" name="waste" value="Waste" />
+                  <label for="waste-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Waste</span>
+                    <span class="option-note">Keeps the shell term, but makes the feature an English exception.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="waste-c" type="radio" name="waste" value="Svind" />
+                  <label for="waste-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Svind</span>
+                    <span class="option-note">Broader than discarded product. Choose it only if the feature will cover unexplained loss too.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Count area">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">3</span>
+                <div>
+                  <h3>Count area</h3>
+                  <p>The area and tab say Count. The workflow and settings say Optælling.</p>
+                </div>
+              </div>
+              <span class="priority high">High priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Count</code> in
+              <code>components/count/count-header.tsx:56</code> and
+              <code>components/count/count-navigation.tsx:52</code>.
+              <code>Optælling</code> in the kiosk, permissions, status messages,
+              submission flow, and organization settings. The tab's accessible
+              name is still <code>Count sections</code> at
+              <code>components/count/count-navigation.tsx:47</code>.
+            </p>
+            <fieldset>
+              <legend>Choose the area name</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="count-a" type="radio" name="count" value="Optælling" />
+                  <label for="count-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Optælling <span class="lean">My lean</span></span>
+                    <span class="option-note">Already names the action, schedule, status, permissions, and kiosk group.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="count-b" type="radio" name="count" value="Count" />
+                  <label for="count-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Count</span>
+                    <span class="option-note">Short, but leaves one core workflow in English.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="count-c" type="radio" name="count" value="Lageroptælling" />
+                  <label for="count-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Lageroptælling</span>
+                    <span class="option-note">Most explicit. It is longer in tabs and navigation.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Staff food area">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">4</span>
+                <div>
+                  <h3>Staff food area</h3>
+                  <p>The heading says Staff food. The action, rules, permissions, and metrics say Personalemad.</p>
+                </div>
+              </div>
+              <span class="priority high">High priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Staff food</code> in
+              <code>components/staff-food/staff-food-registration.tsx:211</code>.
+              <code>Personalemad</code> throughout the same file from line 483,
+              plus <code>lib/kiosk.ts:10</code>, permissions, settings, and
+              metrics. One server error says <code>Staff food-regel</code> in
+              <code>convex/staffFood.ts:801</code>. CSV files start with
+              <code>staff-food-</code>.
+            </p>
+            <fieldset>
+              <legend>Choose the area name</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="staff-food-a" type="radio" name="staff-food" value="Personalemad" />
+                  <label for="staff-food-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Personalemad <span class="lean">My lean</span></span>
+                    <span class="option-note">The dominant term and the shortest Danish option.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="staff-food-b" type="radio" name="staff-food" value="Staff food" />
+                  <label for="staff-food-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Staff food</span>
+                    <span class="option-note">Keeps the navigation term and would require English copy deeper in the feature.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="staff-food-c" type="radio" name="staff-food" value="Mad til medarbejdere" />
+                  <label for="staff-food-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Mad til medarbejdere</span>
+                    <span class="option-note">Very clear, but too long for several compact navigation surfaces.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Organization area">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">5</span>
+                <div>
+                  <h3>Organization area</h3>
+                  <p>Settings, Administration, Organisation, and Indstillinger currently overlap.</p>
+                </div>
+              </div>
+              <span class="priority high">High priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> the sidebar says <code>Settings</code>
+              in <code>components/app-shell.tsx:111</code>. The organization
+              page uses the eyebrow <code>Administration</code> in
+              <code>components/catalog/organization-nav.tsx:96</code>. The
+              profile menu says <code>Organisation</code> and separately
+              <code>Indstillinger</code> in
+              <code>components/app-shell.tsx:894</code>. Feedback calls the
+              organization area <code>Administration</code>.
+            </p>
+            <fieldset>
+              <legend>Choose the navigation name</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="organization-a" type="radio" name="organization" value="Administration" />
+                  <label for="organization-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Administration <span class="lean">My lean</span></span>
+                    <span class="option-note">Separates organization management from personal account settings.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="organization-b" type="radio" name="organization" value="Organisation" />
+                  <label for="organization-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Organisation</span>
+                    <span class="option-note">Names the object rather than the work done there.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="organization-c" type="radio" name="organization" value="Indstillinger" />
+                  <label for="organization-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Indstillinger</span>
+                    <span class="option-note">Familiar, but conflicts with the separate personal settings menu item.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Bad deliveries">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">6</span>
+                <div>
+                  <h3>Bad deliveries</h3>
+                  <p>One dashboard dataset uses a different Danish term from the whole feature.</p>
+                </div>
+              </div>
+              <span class="priority medium">Medium priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Fejlleveringer</code> in
+              <code>lib/dashboard/datasets.ts:75</code>.
+              <code>Dårlig levering</code> or <code>Dårlige leveringer</code>
+              in the navigation, registration flow, report, settings, email
+              subject, and built-in dashboard metric.
+            </p>
+            <fieldset>
+              <legend>Choose the feature term</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="bad-delivery-a" type="radio" name="bad-delivery" value="Dårlige leveringer" />
+                  <label for="bad-delivery-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Dårlige leveringer <span class="lean">My lean</span></span>
+                    <span class="option-note">Matches nearly all current copy.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="bad-delivery-b" type="radio" name="bad-delivery" value="Fejlleveringer" />
+                  <label for="bad-delivery-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Fejlleveringer</span>
+                    <span class="option-note">Shorter and more operational, but can imply that the wrong goods arrived.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="bad-delivery-c" type="radio" name="bad-delivery" value="Leveringsafvigelser" />
+                  <label for="bad-delivery-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Leveringsafvigelser</span>
+                    <span class="option-note">Covers damage and other problems, but sounds more formal.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Product and item terms">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">7</span>
+                <div>
+                  <h3>Product and item terms</h3>
+                  <p>Produkt and vare describe the same selected catalog entity inside operational forms.</p>
+                </div>
+              </div>
+              <span class="priority medium">Medium priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> a transfer form says
+              <code>Varer</code>, <code>Tilføj vare</code>, then
+              <code>Søg efter produkter</code> in
+              <code>components/transfers/transfer-form.tsx:790</code> to
+              <code>components/transfers/transfer-form.tsx:806</code>. The bad
+              delivery form repeats the same switch at lines 548 to 563.
+            </p>
+            <fieldset>
+              <legend>Choose the terminology rule</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="product-a" type="radio" name="product" value="Produkt everywhere" />
+                  <label for="product-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Produkt everywhere</span>
+                    <span class="option-note">Matches the catalog and data model. It is the simplest global rule.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="product-b" type="radio" name="product" value="Vare everywhere" />
+                  <label for="product-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Vare everywhere</span>
+                    <span class="option-note">Natural in stock operations, but weaker for recipes and ingredients.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="product-c" type="radio" name="product" value="Produkt in catalog, vare in operational lines" />
+                  <label for="product-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Intentional split <span class="lean">My lean</span></span>
+                    <span class="option-note">Use produkt for the catalog entity and vare for a transfer or delivery line. Rewrite mixed controls to make the boundary clear.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Organization people">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">8</span>
+                <div>
+                  <h3>Organization people</h3>
+                  <p>Bruger is the dominant UI noun. Some access errors and destructive copy call the same person a medlem.</p>
+                </div>
+              </div>
+              <span class="priority medium">Medium priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Brugere</code>,
+              <code>Inviter bruger</code>, and <code>Fjern bruger</code> in
+              <code>components/organization/member-management.tsx</code>.
+              <code>medlem</code> in role deletion copy at
+              <code>components/organization/role-permissions.tsx:416</code>
+              and Convex errors such as <code>convex/access.ts:535</code>.
+              Medarbejder is a separate Workfeed record and should stay separate.
+            </p>
+            <fieldset>
+              <legend>Choose the generic person noun</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="people-a" type="radio" name="people" value="Bruger" />
+                  <label for="people-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Bruger <span class="lean">My lean</span></span>
+                    <span class="option-note">Matches the administration UI and describes a person with an account.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="people-b" type="radio" name="people" value="Medlem" />
+                  <label for="people-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Medlem</span>
+                    <span class="option-note">Matches Better Auth's organization model, but can sound like a club membership.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="people-c" type="radio" name="people" value="Organisationsbruger" />
+                  <label for="people-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Organisationsbruger</span>
+                    <span class="option-note">Precise where account and employee concepts meet, but too heavy for repeated table copy.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Built-in role names">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">9</span>
+                <div>
+                  <h3>Built-in role names</h3>
+                  <p>The default role set mixes Danish and English.</p>
+                </div>
+              </div>
+              <span class="priority medium">Medium priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Administrator</code>,
+              <code>Manager</code>, and <code>Medlem</code> in
+              <code>lib/auth-permissions.ts:26</code> and again in
+              <code>components/organization/kiosk-settings.tsx:76</code>.
+              These names appear in permission tables, member role selectors,
+              dashboard access, and kiosk setup.
+            </p>
+            <fieldset>
+              <legend>Choose the default role set</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="roles-a" type="radio" name="roles" value="Administrator, Leder, Medlem" />
+                  <label for="roles-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Administrator, Leder, Medlem <span class="lean">My lean</span></span>
+                    <span class="option-note">Translates only Manager and keeps the existing role hierarchy.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="roles-b" type="radio" name="roles" value="Administrator, Manager, Medlem" />
+                  <label for="roles-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Administrator, Manager, Medlem</span>
+                    <span class="option-note">Keeps the current names and accepts one English role.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="roles-c" type="radio" name="roles" value="Administrator, Driftsleder, Standardbruger" />
+                  <label for="roles-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Administrator, Driftsleder, Standardbruger</span>
+                    <span class="option-note">Explains responsibility best, but changes two familiar names and makes the base role longer.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Location naming">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">10</span>
+                <div>
+                  <h3>Location naming</h3>
+                  <p>Lokation is consistent until anonymized dashboard series become Restaurant A, Restaurant B, and so on.</p>
+                </div>
+              </div>
+              <span class="priority low">Low priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Lokation</code> is used throughout
+              the UI and data tools. Anonymized metrics return
+              <code>Restaurant A</code> in
+              <code>convex/lib/dashboardMetrics.ts:1500</code> and
+              <code>convex/lib/customMetricExecutor.ts:944</code>. App metadata
+              also says <code>restaurantorganisation</code>. Provider-specific
+              Workfeed departments are a separate concept and are not part of
+              this decision.
+            </p>
+            <fieldset>
+              <legend>Choose the generic site noun</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="location-a" type="radio" name="location" value="Lokation" />
+                  <label for="location-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Lokation <span class="lean">My lean</span></span>
+                    <span class="option-note">Matches the data model and keeps the white-label product broad.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="location-b" type="radio" name="location" value="Restaurant" />
+                  <label for="location-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Restaurant</span>
+                    <span class="option-note">More natural for the current market, but less flexible for non-restaurant sites.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="location-c" type="radio" name="location" value="Lokation generally, Restaurant only for anonymized comparisons" />
+                  <label for="location-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Keep the current split</span>
+                    <span class="option-note">Only makes sense if Restaurant is a deliberate privacy label rather than a leftover.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Dashboard scope">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">11</span>
+                <div>
+                  <h3>Dashboard scope</h3>
+                  <p>Scope appears in success and error messages, while the controls themselves use concrete location and hierarchy labels.</p>
+                </div>
+              </div>
+              <span class="priority medium">Medium priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> <code>Scope og periode er gemt</code> in
+              <code>components/dashboard/dashboard-page.tsx:247</code>.
+              Backend messages include <code>Scopeforælderen</code> and
+              <code>Scope indeholder...</code> in
+              <code>convex/dashboard.ts:221</code> to
+              <code>convex/dashboard.ts:280</code>, plus
+              <code>convex/lib/dashboardMetrics.ts:352</code>.
+            </p>
+            <fieldset>
+              <legend>Choose the user-facing rule</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="scope-a" type="radio" name="scope" value="Use specific copy such as lokationsvalg, marked, and operatør" />
+                  <label for="scope-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Use specific copy <span class="lean">My lean</span></span>
+                    <span class="option-note">Say lokationsvalg, marked, or operatør where each error occurs. Avoid one abstract umbrella term.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="scope-b" type="radio" name="scope" value="Datagrundlag" />
+                  <label for="scope-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Datagrundlag</span>
+                    <span class="option-note">Works as an umbrella for selected locations and hierarchy, but needs explanation once.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="scope-c" type="radio" name="scope" value="Scope" />
+                  <label for="scope-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Scope</span>
+                    <span class="option-note">Keeps the technical term. Scopeforælder should still be rewritten because it reads like internal code.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Personal account area">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">12</span>
+                <div>
+                  <h3>Personal account area</h3>
+                  <p>The profile page calls itself Konto and Profil. The menu also has a separate Indstillinger page.</p>
+                </div>
+              </div>
+              <span class="priority low">Low priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> eyebrow <code>Konto</code>, title
+              <code>Profil</code>, and description
+              <code>kontoindstillinger</code> in
+              <code>app/profile/page.tsx:8</code>. The profile menu separately
+              lists <code>Profil</code> and <code>Indstillinger</code> in
+              <code>components/app-shell.tsx:890</code>. The current settings
+              route only shows an <code>Indstillinger</code> heading.
+            </p>
+            <fieldset>
+              <legend>Choose the account naming model</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="account-a" type="radio" name="account" value="Profil and Indstillinger as separate sibling areas" />
+                  <label for="account-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Profil and Indstillinger</span>
+                    <span class="option-note">Keep them separate and remove Konto from the profile header.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="account-b" type="radio" name="account" value="Konto as the single area name" />
+                  <label for="account-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Konto</span>
+                    <span class="option-note">One plain umbrella term for identity, password, sessions, and deletion.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="account-c" type="radio" name="account" value="Min konto with Profil and Indstillinger subsections" />
+                  <label for="account-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Min konto with subsections <span class="lean">My lean</span></span>
+                    <span class="option-note">Gives Profil and Indstillinger a clear shared parent if both routes will remain.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+
+          <article class="decision" data-title="Imperative accents">
+            <div class="decision-head">
+              <div class="decision-title">
+                <span class="decision-number">13</span>
+                <div>
+                  <h3>Imperative accents</h3>
+                  <p>Buttons alternate between forms such as Annuller and Annullér, plus Rediger and Redigér.</p>
+                </div>
+              </div>
+              <span class="priority medium">Medium priority</span>
+            </div>
+            <p class="evidence">
+              <strong>Evidence:</strong> at least 60 source occurrences of
+              <code>Annuller</code> and 9 of <code>Annullér</code>. There are at
+              least 10 occurrences of <code>Rediger</code> and 14 of
+              <code>Redigér</code>. Related verbs vary too, including
+              <code>Aktiver</code>/<code>Aktivér</code>,
+              <code>Opdater</code>/<code>Opdatér</code>, and
+              <code>Accepter</code> beside accented verbs such as
+              <code>Registrér</code> and <code>Eksportér</code>.
+            </p>
+            <fieldset>
+              <legend>Choose the interface spelling rule</legend>
+              <div class="options">
+                <div class="option">
+                  <input id="accent-a" type="radio" name="accent" value="Use accents consistently in stressed imperatives" />
+                  <label for="accent-a">
+                    <span class="option-key">A</span>
+                    <span class="option-name">Use accents <span class="lean">My lean</span></span>
+                    <span class="option-note">Redigér, Annullér, Aktivér, Opdatér, Acceptér, Invitér, Kopiér.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="accent-b" type="radio" name="accent" value="Omit accents consistently" />
+                  <label for="accent-b">
+                    <span class="option-key">B</span>
+                    <span class="option-name">Omit accents</span>
+                    <span class="option-note">Rediger, Annuller, Aktiver, Opdater, Accepter, Inviter, Kopier.</span>
+                  </label>
+                </div>
+                <div class="option">
+                  <input id="accent-c" type="radio" name="accent" value="Use accents only where the unaccented form can be misread" />
+                  <label for="accent-c">
+                    <span class="option-key">C</span>
+                    <span class="option-name">Use accents only for clarity</span>
+                    <span class="option-note">A lighter editorial rule, but it requires a maintained word list to stay consistent.</span>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="cleanup-heading">
+        <h2 id="cleanup-heading">Direct cleanups</h2>
+        <p class="section-intro">
+          These are clear leaks, grammar errors, or casing problems. They can
+          follow the vocabulary decisions above without another product choice.
+        </p>
+        <div class="matrix-wrap cleanup-table">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Current copy</th>
+                <th scope="col">Suggested treatment</th>
+                <th scope="col">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>Location:</code></td>
+                <td>Use <code>Lokation:</code>, or the site noun chosen in decision 10.</td>
+                <td>Default bad-delivery email and both cancellation email formats: <code>convex/lib/badDeliverySettings.ts:13</code>, <code>convex/badDeliveryNotices.ts:137</code>, and line 140.</td>
+              </tr>
+              <tr>
+                <td><code>Count sections</code></td>
+                <td>Translate the screen-reader label based on decision 3.</td>
+                <td><code>components/count/count-navigation.tsx:47</code>. Sighted users do not see this, but assistive technology does.</td>
+              </tr>
+              <tr>
+                <td><code>InvalidCursor</code></td>
+                <td>Return a Danish, user-safe pagination error.</td>
+                <td><code>convex/catalog.ts:285</code>. Client error handlers can surface raw Convex messages.</td>
+              </tr>
+              <tr>
+                <td><code>slug</code>, <code>label</code>, <code>labels</code>, <code>underscore</code></td>
+                <td>Use concrete Danish field language or show the literal character <code>_</code>.</td>
+                <td><code>convex/ownCheckTemplates.ts:124</code>, lines 129 and 148, plus <code>convex/kiosk.ts:83</code>.</td>
+              </tr>
+              <tr>
+                <td><code>Auditloggen bevares</code></td>
+                <td>Use <code>Ændringsloggen bevares</code> if the product is Danish-first.</td>
+                <td><code>components/waste/waste-report.tsx:315</code>.</td>
+              </tr>
+              <tr>
+                <td><code>fra den valgte lokationen</code></td>
+                <td>Correct the grammar to <code>fra den valgte lokation</code>.</td>
+                <td><code>components/waste/bad-delivery-registration.tsx:788</code>.</td>
+              </tr>
+              <tr>
+                <td><code>Master Firma-id</code>, <code>OnlinePOS master firma-id</code>, <code>mastertoken</code></td>
+                <td>Pick one compound and casing pattern. <code>Masterkontoens firma-id</code> and <code>masterkontoens token</code> are the clearest current meanings.</td>
+                <td><code>components/organization/online-pos-integration.tsx:309</code> to line 335.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="follow-heading">
+        <h2 id="follow-heading">Copy that should follow the choices</h2>
+        <div class="notes">
+          <article class="note">
+            <h3>Downloaded filenames</h3>
+            <p>
+              Three Danish report flows create English filenames:
+              <code>transfers-*.csv</code>, <code>waste-*.csv</code>, and
+              <code>staff-food-*.csv</code>. The bad-delivery and own-check
+              exports already use Danish stems. Rename these after decisions 1,
+              2, and 4.
+            </p>
+          </article>
+          <article class="note">
+            <h3>Shared copy registries</h3>
+            <p>
+              Primary navigation labels are duplicated in
+              <code>components/app-shell.tsx</code>,
+              <code>lib/sidebar-navigation.ts</code>, and
+              <code>lib/feedback.ts</code>. Apply the same selected term in all
+              three. The feedback file also has deliberate English labels for
+              Linear and email. Those internal labels should stay English.
+            </p>
+          </article>
+          <article class="note">
+            <h3>Server errors</h3>
+            <p>
+              Client handlers commonly display <code>error.message</code> in a
+              toast or alert. Backend vocabulary is therefore product copy.
+              Transfer, Staff food, Scope, member, and technical validation
+              messages need the same pass as visible components.
+            </p>
+          </article>
+          <article class="note">
+            <h3>Do not collapse distinct concepts</h3>
+            <p>
+              <code>Medarbejder</code> is a Workfeed person and
+              <code>Bruger</code> is an authenticated account. Workfeed
+              <code>Afdeling</code> and OnlinePOS <code>Afdeling</code> are
+              provider fields, while <code>Lokation</code> is the local site.
+              Those differences are useful and should remain explicit.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="not-findings-heading">
+        <h2 id="not-findings-heading">Consistent loanwords</h2>
+        <p class="section-intro">
+          Dashboard, widget, feedback, kiosk, login, token, and API are used
+          consistently enough that I did not classify them as discrepancies.
+          They can stay unless you want a separate Danish-only vocabulary pass.
+          Provider names and provider-owned field names also stay as written.
+        </p>
+      </section>
+
+      <section class="section" aria-labelledby="coverage-heading">
+        <h2 id="coverage-heading">Coverage and method</h2>
+        <p class="section-intro">
+          I reviewed user-visible JSX text, labels, placeholders, accessible
+          names, toast and alert messages, shared registries, metadata, offline
+          copy, CSV and PDF names, Convex errors that clients can display,
+          generated emails, and provider integration copy. Tests, generated
+          Convex code, CSS classes, route IDs, permission IDs, and database
+          names were excluded from language findings.
+        </p>
+        <ul class="source-list">
+          <li>211 runtime TypeScript files under <code>app</code>, <code>components</code>, and <code>lib</code></li>
+          <li>75 non-generated, non-test Convex TypeScript files</li>
+          <li>2 public runtime documents: offline page and service worker</li>
+          <li>Primary navigation and organization navigation</li>
+          <li>Authentication, invitation, account, and kiosk flows</li>
+          <li>Catalog, transfer, waste, count, staff food, employee, and own-check flows</li>
+          <li>Dashboard registry, datasets, builder, sharing, and visualizations</li>
+          <li>Integration settings, exports, notices, and auth email templates</li>
+        </ul>
+      </section>
+
+      <section class="decision-sheet" aria-labelledby="sheet-heading">
+        <div class="decision-sheet-head">
+          <h2 id="sheet-heading">Decision sheet</h2>
+          <span class="progress" id="progress">0 of 13 decided</span>
+        </div>
+        <div class="sheet-actions">
+          <button class="button" type="button" id="copy-button">Copy decisions</button>
+          <button class="button secondary" type="button" id="print-button">Print</button>
+          <button class="button secondary" type="button" id="reset-button">Clear choices</button>
+        </div>
+        <textarea id="summary" aria-label="Selected terminology decisions" readonly></textarea>
+        <p class="status" id="copy-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <footer>
+        Audit prepared from the repository state on 20 August 2026. No product
+        code was changed.
+      </footer>
+    </main>
+
+    <script>
+      (() => {
+        const storageKey = "engine-language-consistency-audit-v1";
+        const form = document.querySelector("#decision-form");
+        const decisions = [...document.querySelectorAll(".decision")];
+        const progress = document.querySelector("#progress");
+        const summary = document.querySelector("#summary");
+        const status = document.querySelector("#copy-status");
+
+        function selectedValues() {
+          return decisions.map((decision) => {
+            const selected = decision.querySelector("input:checked");
+            return {
+              title: decision.dataset.title,
+              name: selected?.name,
+              value: selected?.value ?? "Not decided",
+            };
+          });
+        }
+
+        function update() {
+          const values = selectedValues();
+          const decided = values.filter((item) => item.value !== "Not decided").length;
+          progress.textContent = `${decided} of ${values.length} decided`;
+          summary.value = [
+            "Engine terminology decisions",
+            "",
+            ...values.map((item, index) => `${index + 1}. ${item.title}: ${item.value}`),
+          ].join("\n");
+          const saved = Object.fromEntries(
+            values.filter((item) => item.name && item.value !== "Not decided").map((item) => [item.name, item.value]),
+          );
+          localStorage.setItem(storageKey, JSON.stringify(saved));
+          status.textContent = "";
+        }
+
+        function restore() {
+          try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) ?? "{}");
+            for (const [name, value] of Object.entries(saved)) {
+              const inputs = [...form.querySelectorAll(`input[name="${name}"]`)];
+              const match = inputs.find((input) => input.value === value);
+              if (match) match.checked = true;
+            }
+          } catch {
+            localStorage.removeItem(storageKey);
+          }
+          update();
+        }
+
+        form.addEventListener("change", update);
+        document.querySelector("#copy-button").addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(summary.value);
+            status.textContent = "Decisions copied.";
+          } catch {
+            summary.focus();
+            summary.select();
+            status.textContent = "Clipboard access was blocked. The decision text is selected.";
+          }
+        });
+        document.querySelector("#print-button").addEventListener("click", () => window.print());
+        document.querySelector("#reset-button").addEventListener("click", () => {
+          form.querySelectorAll("input:checked").forEach((input) => {
+            input.checked = false;
+          });
+          localStorage.removeItem(storageKey);
+          update();
+        });
+
+        restore();
+      })();
+    </script>
+  </body>
+</html>

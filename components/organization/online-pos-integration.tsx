@@ -286,7 +286,7 @@ function ConnectionCard({
           Masterforbindelse
           <HelpTooltip
             label="OnlinePOS-masterforbindelsen"
-            content="Masterens firma-id og token bruges til at hente produktlisten til produktkoblinger. Salg hentes med forbindelsen for hver lokation."
+            content="Masterkontoens firma-id og token bruges til at hente produktlisten til produktkoblinger. Salg hentes med forbindelsen for hver lokation."
           />
         </CardTitle>
         <CardAction>
@@ -306,10 +306,10 @@ function ConnectionCard({
               <Field>
                 <div className="flex items-center gap-1">
                   <FieldLabel htmlFor="online-pos-company-id">
-                    Master Firma-id
+                    Masterkontoens firma-id
                   </FieldLabel>
                   <HelpTooltip
-                    label="OnlinePOS master firma-id"
+                    label="Masterkontoens firma-id"
                     content="Brug firma-id'et for den OnlinePOS-konto, som indeholder masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt for at få firma-id og API-adgang."
                   />
                 </div>
@@ -328,10 +328,10 @@ function ConnectionCard({
             <Field>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="online-pos-token">
-                  {settings.connected ? "Nyt mastertoken" : "Mastertoken"}
+                  {settings.connected ? "Nyt token til masterkontoen" : "Masterkontoens token"}
                 </FieldLabel>
                 <HelpTooltip
-                  label="OnlinePOS mastertoken"
+                  label="Masterkontoens token"
                   content="Brug API-tokenet til OnlinePOS-kontoen med masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
                 />
               </div>
@@ -373,7 +373,7 @@ function ConnectionCard({
                   Fjern forbindelsen til OnlinePOS?
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Mastertokenet, alle lokationstokens og alle produktkoblinger
+                  Masterkontoens token, alle lokationstokens og alle produktkoblinger
                   slettes. Handlingen kan ikke fortrydes.
                 </AlertDialogDescription>
               </AlertDialogHeader>
@@ -410,7 +410,7 @@ function ConnectionCard({
                   setEditingConnection(false);
                 }}
               >
-                Annuller
+                Annullér
               </Button>
             ) : null}
             <Button disabled={connecting} onClick={() => void saveConnection()}>
@@ -848,7 +848,7 @@ function SalesList() {
             <CircleAlertIcon />
             <AlertTitle>Integrationen er deaktiveret</AlertTitle>
             <AlertDescription>
-              Aktiver OnlinePOS for at synkronisere ordrer automatisk.
+              Aktivér OnlinePOS for at synkronisere ordrer automatisk.
             </AlertDescription>
           </Alert>
         ) : connectedLocationCount === 0 ? (
@@ -1012,7 +1012,7 @@ function SalesList() {
                   <TableHead>Tidspunkt</TableHead>
                   <TableHead>Lokation</TableHead>
                   <TableHead>Ordrenr.</TableHead>
-                  <TableHead>Varer</TableHead>
+                  <TableHead>Produkter</TableHead>
                   <TableHead>Omsætning</TableHead>
                   <TableHead>Afdeling</TableHead>
                   <TableHead>Betaling</TableHead>

@@ -10,11 +10,11 @@ export const DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT =
 export const DEFAULT_BAD_DELIVERY_EMAIL_BODY = `Dårlig levering
 
 Reference: {reference}
-Location: {location}
+Lokation: {location}
 Tidspunkt: {date}
 Registreret af: {registrar}
 
-Varer:
+Produkter:
 {products}
 
 Kommentar: {comment}

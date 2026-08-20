@@ -282,10 +282,10 @@ function parseCategorySearchCursor(
   try {
     value = JSON.parse(cursor);
   } catch {
-    throw new ConvexError("InvalidCursor");
+    throw new ConvexError("Sideringen er ugyldig");
   }
   if (!value || typeof value !== "object") {
-    throw new ConvexError("InvalidCursor");
+    throw new ConvexError("Sideringen er ugyldig");
   }
 
   const parsed = value as {
@@ -314,7 +314,7 @@ function parseCategorySearchCursor(
     !Number.isInteger(parsed.nameOffset) ||
     parsed.nameOffset < 0
   ) {
-    throw new ConvexError("InvalidCursor");
+    throw new ConvexError("Sideringen er ugyldig");
   }
 
   return {
@@ -940,7 +940,7 @@ export const listProducts = query({
             args.paginationOpts.cursor &&
             !/^\d+$/.test(args.paginationOpts.cursor)
           ) {
-            throw new ConvexError("InvalidCursor");
+            throw new ConvexError("Sideringen er ugyldig");
           }
           const matches = scanned
             .map((product) => {
@@ -1589,7 +1589,7 @@ export const importProduct = mutation({
       for (const { item } of openCountItems) {
         const oldFactor = oldUnits.get(item.unitId)!;
         const quantity = item.quantity * oldFactor * conversion!;
-        requirePositiveNumber(quantity, "Den omregnede optællingsmængde");
+        requirePositiveNumber(quantity, "Den omregnede Count-mængde");
         await ctx.db.patch("countItems", item._id, {
           quantity,
           unitId: defaultUnitId,
@@ -2163,7 +2163,7 @@ export const deleteCategory = mutation({
     if (child) throw new ConvexError("Kategorien har underkategorier");
     if (product) throw new ConvexError("Kategorien er stadig i brug");
     if (staffFoodAllowance) {
-      throw new ConvexError("Kategorien bruges stadig i personalemad");
+      throw new ConvexError("Kategorien bruges stadig i Staff food");
     }
     await ctx.db.delete("categories", category._id);
     await recordAudit(ctx, auth, {
@@ -2373,7 +2373,7 @@ export const mergeUnits = mutation({
           .unique();
         if (targetItem) {
           const quantity = targetItem.quantity + item.quantity;
-          requirePositiveNumber(quantity, "Den sammenlagte optællingsmængde");
+          requirePositiveNumber(quantity, "Den sammenlagte Count-mængde");
           await ctx.db.patch("countItems", targetItem._id, {
             quantity,
           });

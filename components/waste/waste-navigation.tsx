@@ -79,7 +79,7 @@ export function WasteNavigation() {
             router.push(href, { scroll: false });
           }}
         >
-          <TabsList variant="line" aria-label="Spildsektioner" className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden">
+          <TabsList variant="line" aria-label="Waste-sektioner" className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden">
             {showRegister ? <TabsTrigger value="register" className="min-w-28 px-4">
               <Trash2Icon data-icon="inline-start" />
               Registrér

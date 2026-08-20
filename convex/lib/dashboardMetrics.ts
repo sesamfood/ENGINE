@@ -349,7 +349,7 @@ export async function resolveMetricParams(
     scope.locationIds !== null &&
     scope.locationIds.some((locationId) => !candidateIds.has(locationId))
   ) {
-    throw new ConvexError("Scope indeholder en ugyldig lokation");
+    throw new ConvexError("Lokationsvalget indeholder en ugyldig lokation");
   }
   const hasAccess = (locationId: Id<"locations">) =>
     !allowedLocationScope ||
@@ -1497,7 +1497,7 @@ function restaurantLabel(index: number) {
     label = String.fromCharCode(65 + (value % 26)) + label;
     value = Math.floor(value / 26);
   }
-  return `Restaurant ${label}`;
+  return `Lokation ${label}`;
 }
 
 async function anonymousAliases(params: DashboardMetricParams) {

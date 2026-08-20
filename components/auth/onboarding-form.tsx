@@ -97,8 +97,8 @@ export function OnboardingForm() {
 
       if (result.error || !result.data) {
         setError(
-          result.error?.message?.includes("kun være medlem")
-            ? "Du er allerede medlem af en organisation."
+          result.error?.message?.includes("kun tilhøre én organisation")
+            ? "Din bruger tilhører allerede en organisation."
             : "Organisationen kunne ikke oprettes. Prøv igen.",
         );
         return;
@@ -137,8 +137,8 @@ export function OnboardingForm() {
 
       if (result.error || !result.data) {
         setError(
-          result.error?.message?.includes("kun være medlem")
-            ? "Du er allerede medlem af en organisation og kan derfor ikke acceptere invitationen."
+          result.error?.message?.includes("kun tilhøre én organisation")
+            ? "Din bruger tilhører allerede en organisation og kan derfor ikke acceptere invitationen."
             : "Koden kunne ikke bruges. Kontrollér koden, og at du er logget ind med den inviterede e-mail.",
         );
         return;

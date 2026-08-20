@@ -308,7 +308,7 @@ export function OnlinePosLocationConnections() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel disabled={disconnecting}>
-                                  Annuller
+                                  Annullér
                                 </AlertDialogCancel>
                                 <AlertDialogAction
                                   variant="destructive"
@@ -333,7 +333,7 @@ export function OnlinePosLocationConnections() {
                           ) : (
                             <PlugIcon data-icon="inline-start" />
                           )}
-                          {location.connected ? "Opdater" : "Forbind"}
+                          {location.connected ? "Opdatér" : "Forbind"}
                         </Button>
                       </CardFooter>
                     </Card>

@@ -205,7 +205,7 @@ export function createInvitationEmail(
         eyebrow: "Invitation",
         title: "Du er inviteret",
         description,
-        actionLabel: "Accepter invitation",
+        actionLabel: "Acceptér invitation",
         actionUrl: url,
         notice,
         detail: { label: "Invitationskode", value: invitationId },

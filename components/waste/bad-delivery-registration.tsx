@@ -388,10 +388,10 @@ export function BadDeliveryRegistration() {
 
   function validate() {
     const next: Record<string, string> = {};
-    if (!badProductsPhoto) next.badProductsPhoto = "Tilføj et billede af varerne";
+    if (!badProductsPhoto) next.badProductsPhoto = "Tilføj et billede af produkterne";
     if (!deliveryNotePhoto) next.deliveryNotePhoto = "Tilføj et billede af følgesedlen";
-    if (!lines.length) next.items = "Tilføj mindst én vare";
-    if (lines.length > 200) next.items = "Der kan højst tilføjes 200 varelinjer";
+    if (!lines.length) next.items = "Tilføj mindst ét produkt";
+    if (lines.length > 200) next.items = "Der kan højst tilføjes 200 produktlinjer";
     if (
       lines.some(
         (line) =>
@@ -519,8 +519,8 @@ export function BadDeliveryRegistration() {
           <FieldGroup className="grid gap-6 lg:grid-cols-2">
             <PhotoControl
               id="bad-products"
-              label="Dårlige varer"
-              description="Tag eller upload et billede af de beskadigede eller dårlige varer."
+              label="Dårlige produkter"
+              description="Tag eller upload et billede af de beskadigede eller dårlige produkter."
               file={badProductsPhoto}
               error={errors.badProductsPhoto}
               onChange={(file) => {
@@ -545,23 +545,23 @@ export function BadDeliveryRegistration() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Varer</CardTitle>
+          <CardTitle>Produkter</CardTitle>
           <CardAction>
             <p className="text-sm text-muted-foreground">
-              {lines.length} {lines.length === 1 ? "varelinje" : "varelinjer"}
+              {lines.length} {lines.length === 1 ? "produktlinje" : "produktlinjer"}
             </p>
           </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <Field data-invalid={Boolean(errors.items)}>
-            <FieldLabel>Tilføj vare</FieldLabel>
+            <FieldLabel>Tilføj produkt</FieldLabel>
             <CreatableCombobox
               options={productOptions}
               value={productToAdd}
               onValueChange={(value) => void addProduct(value)}
               onInputValueChange={setSearch}
               placeholder="Søg efter produkter"
-              ariaLabel="Tilføj vare"
+              ariaLabel="Tilføj produkt"
               disabled={loadingProductId !== undefined || lines.length >= 200}
             />
             <FieldError>{errors.items}</FieldError>
@@ -572,7 +572,7 @@ export function BadDeliveryRegistration() {
                 <EmptyMedia variant="icon">
                   <PackageOpenIcon />
                 </EmptyMedia>
-                <EmptyTitle>Ingen varer tilføjet</EmptyTitle>
+                <EmptyTitle>Ingen produkter tilføjet</EmptyTitle>
                 <EmptyDescription>
                   Søg efter det første produkt ovenfor.
                 </EmptyDescription>
@@ -672,7 +672,7 @@ export function BadDeliveryRegistration() {
                               variant="outline"
                               size="icon-lg"
                               className="size-11"
-                              aria-label={`Reducer mængde for ${line.productName}`}
+                              aria-label={`Reducér mængde for ${line.productName}`}
                               disabled={line.quantity <= 1}
                               onClick={() =>
                                 setLines((current) =>
@@ -782,7 +782,7 @@ export function BadDeliveryRegistration() {
               <Field orientation="horizontal">
                 <FieldContent>
                   <FieldLabel htmlFor="bad-delivery-stock">
-                    Træk varerne fra lageret
+                    Træk produkterne fra lageret
                   </FieldLabel>
                   <FieldDescription>
                     Trækker varernes omregnede standardmængder fra den valgte
@@ -821,14 +821,14 @@ export function BadDeliveryRegistration() {
             <dd>{selectedLocation.name}</dd>
             <dt className="text-muted-foreground">Kommentar</dt>
             <dd>{comment.trim() || "Ingen kommentar"}</dd>
-            <dt className="text-muted-foreground">Dårlige varer</dt>
+            <dt className="text-muted-foreground">Dårlige produkter</dt>
             <dd>{badProductsPhoto ? "Billede vedhæftet" : "Mangler"}</dd>
             <dt className="text-muted-foreground">Følgeseddel</dt>
             <dd>{deliveryNotePhoto ? "Billede vedhæftet" : "Mangler"}</dd>
             <dt className="text-muted-foreground">Lager</dt>
             <dd>
               {deductFromStock
-                ? "Varerne trækkes fra lageret"
+                ? "Produkterne trækkes fra lageret"
                 : "Lageret ændres ikke"}
               {!config!.showStockChoice ? " (organisationens standard)" : ""}
             </dd>

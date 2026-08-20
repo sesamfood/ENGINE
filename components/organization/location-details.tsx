@@ -359,7 +359,7 @@ export function LocationDetails({
             disabled={saving}
             onClick={() => onOpenChange(false)}
           >
-            Annuller
+            Annullér
           </Button>
           <Button disabled={loading || saving} onClick={save}>
             {saving ? <Spinner data-icon="inline-start" /> : null}

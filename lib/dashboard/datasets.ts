@@ -52,7 +52,7 @@ export const dashboardDatasets: Record<
 > = {
   waste: {
     id: "waste",
-    label: "Spild",
+    label: "Waste",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "quantity", label: "Mængde", unit: "quantity" },
@@ -72,10 +72,10 @@ export const dashboardDatasets: Record<
   },
   badDelivery: {
     id: "badDelivery",
-    label: "Fejlleveringer",
+    label: "Dårlige leveringer",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
-      { id: "itemCount", label: "Antal varer", unit: "count" },
+      { id: "itemCount", label: "Antal produkter", unit: "count" },
     ],
     dimensions: [
       { id: "location", label: "Lokation" },
@@ -88,10 +88,10 @@ export const dashboardDatasets: Record<
   },
   transfers: {
     id: "transfers",
-    label: "Flytninger",
+    label: "Transfer",
     measures: [
-      { id: "transfers", label: "Flytninger", unit: "count" },
-      { id: "itemsMoved", label: "Flyttet mængde", unit: "quantity" },
+      { id: "transfers", label: "Transfers", unit: "count" },
+      { id: "itemsMoved", label: "Transfermængde", unit: "quantity" },
     ],
     dimensions: [
       { id: "fromLocation", label: "Fra lokation" },
@@ -104,7 +104,7 @@ export const dashboardDatasets: Record<
   },
   staffFood: {
     id: "staffFood",
-    label: "Personalemad",
+    label: "Staff food",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "quantity", label: "Mængde", unit: "quantity" },
@@ -139,9 +139,9 @@ export const dashboardDatasets: Record<
   },
   counts: {
     id: "counts",
-    label: "Optællinger",
+    label: "Count",
     measures: [
-      { id: "counts", label: "Optællinger", unit: "count" },
+      { id: "counts", label: "Counts", unit: "count" },
       { id: "submitted", label: "Indsendte", unit: "count" },
     ],
     dimensions: [
@@ -158,7 +158,7 @@ export const dashboardDatasets: Record<
     measures: [
       { id: "revenue", label: "Omsætning", unit: "currency" },
       { id: "orders", label: "Ordrer", unit: "count" },
-      { id: "items", label: "Varer", unit: "count" },
+      { id: "items", label: "Produkter", unit: "count" },
     ],
     dimensions: [{ id: "location", label: "Lokation" }],
     filters: [],
@@ -170,7 +170,7 @@ export const dashboardDatasets: Record<
     measures: [
       { id: "revenue", label: "Omsætning", unit: "currency" },
       { id: "orders", label: "Ordrer", unit: "count" },
-      { id: "items", label: "Varer", unit: "count" },
+      { id: "items", label: "Produkter", unit: "count" },
     ],
     dimensions: [
       { id: "location", label: "Lokation" },

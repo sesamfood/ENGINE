@@ -24,12 +24,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Driftsplatform",
-  applicationName: "Driftsplatform",
-  description: "Administrer den daglige drift i din restaurantorganisation.",
+  title: "SESAM ENGINE",
+  applicationName: "ENGINE",
+  description: "Administrér den daglige drift i din restaurantorganisation.",
   appleWebApp: {
     capable: true,
-    title: "Driftsplatform",
+    title: "ENGINE",
     statusBarStyle: "default",
   },
   formatDetection: {

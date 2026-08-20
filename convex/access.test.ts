@@ -599,7 +599,7 @@ test("navngivne roller registreres og håndhæves af Convex", async () => {
   expect(context.locations).toEqual([]);
   await expect(
     asCustomUser.mutation(api.access.deleteRole, { role }),
-  ).rejects.toThrowError("Rollen bruges af et medlem og kan ikke slettes");
+  ).rejects.toThrowError("Rollen bruges af en bruger og kan ikke slettes");
 });
 
 test("operatørscope begrænser lokationer, spild, optællinger og flytninger", async () => {

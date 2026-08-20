@@ -237,13 +237,13 @@ function parseProduct(
   };
   if (version === 2) {
     if (!("maxTemperatureCelsius" in value)) {
-      archiveError(`produkt ${index + 1} mangler maksimal overførselstemperatur`);
+      archiveError(`produkt ${index + 1} mangler maksimal transfertemperatur`);
     }
     return {
       ...product,
       maxTemperatureCelsius: requiredTemperature(
         value.maxTemperatureCelsius,
-        `Den maksimale overførselstemperatur for produkt ${index + 1}`,
+        `Den maksimale transfertemperatur for produkt ${index + 1}`,
       ),
     };
   }

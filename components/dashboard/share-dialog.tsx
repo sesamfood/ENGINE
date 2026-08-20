@@ -106,7 +106,7 @@ export function ShareDialog({
         <DialogHeader>
           <DialogTitle>Del dashboard</DialogTitle>
           <DialogDescription>
-            Linket viser et øjebliksbillede af layout, scope og periode. Data forbliver opdateret.
+            Linket viser et øjebliksbillede af layout, lokationsvalg og periode. Data forbliver opdateret.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>

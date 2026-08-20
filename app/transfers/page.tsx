@@ -58,7 +58,7 @@ function TransfersContent() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Du har ikke adgang til at oprette eller se flytninger.
+          Du har ikke adgang til at oprette eller se transfers.
         </AlertDescription>
       </Alert>
     );

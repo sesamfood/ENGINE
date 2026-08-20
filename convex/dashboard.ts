@@ -218,10 +218,12 @@ async function validateScope(
   allowedLocationScope?: { all: boolean; ids: ReadonlySet<Doc<"locations">["_id"]> },
 ) {
   if (!scope.level && scope.parentId) {
-    throw new ConvexError("Scopeforælderen er ugyldig");
+    throw new ConvexError("Vælg marked, operatør eller lokation igen");
   }
   if (scope.level === "organization" && scope.parentId) {
-    throw new ConvexError("Organisationen har ikke en scopeforælder");
+    throw new ConvexError(
+      "Organisationen kan ikke kombineres med et marked, en operatør eller en lokation",
+    );
   }
   if (scope.level === "market") {
     if (!scope.parentId) throw new ConvexError("Vælg et marked");
@@ -249,7 +251,7 @@ async function validateScope(
       throw new ConvexError("Lokationen blev ikke fundet");
     }
     if (scope.locationIds && !scope.locationIds.includes(location._id)) {
-      throw new ConvexError("Scopeforælderen matcher ikke lokationen");
+      throw new ConvexError("Den valgte lokation matcher ikke lokationsvalget");
     }
   }
   if (scope.locationIds === null) return;
@@ -274,10 +276,10 @@ async function validateScope(
     throw new ConvexError("Lokationen blev ikke fundet");
   }
   if (scope.level === "market" && scope.parentId && locations.some((location) => location?.marketId !== scope.parentId)) {
-    throw new ConvexError("Scope indeholder en lokation uden for markedet");
+    throw new ConvexError("En valgt lokation ligger uden for markedet");
   }
   if (scope.level === "operator" && scope.parentId && locations.some((location) => location?.operatorId !== scope.parentId)) {
-    throw new ConvexError("Scope indeholder en lokation uden for operatøren");
+    throw new ConvexError("En valgt lokation ligger uden for operatøren");
   }
 }
 

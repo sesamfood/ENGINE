@@ -489,7 +489,7 @@ export function StaffFoodSettings() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan ændre personalemad og eksportere rapporter.
+          Kun brugere med rollen Administrator kan ændre Staff food og eksportere rapporter.
         </AlertDescription>
       </Alert>
     );
@@ -501,9 +501,9 @@ export function StaffFoodSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-1">
-            Regler for personalemad
+            Regler for Staff food
             <HelpTooltip
-              label="Regler for personalemad"
+              label="Regler for Staff food"
               content="Medarbejderen får den regel med den højeste vagtlængde, som vagten opfylder. Reglerne lægges ikke sammen."
             />
           </CardTitle>
@@ -574,7 +574,7 @@ export function StaffFoodSettings() {
                 </EmptyMedia>
                 <EmptyTitle>Ingen regler endnu</EmptyTitle>
                 <EmptyDescription>
-                  Opret den første regel for at aktivere personalemad.
+                  Opret den første regel for at aktivere Staff food.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>

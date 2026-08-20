@@ -341,7 +341,7 @@ export function AddWidgetDialog({
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                aria-label={`Rediger data for ${metric.name}`}
+                                aria-label={`Redigér data for ${metric.name}`}
                                 onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
                                 onClick={(event) => { event.stopPropagation(); editCustomMetric(metric); }}
                               >
@@ -499,7 +499,7 @@ export function AddWidgetDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={closeOrPrevious}>
-            {step === 1 ? "Annuller" : <><ChevronLeftIcon data-icon="inline-start" /> Tilbage</>}
+            {step === 1 ? "Annullér" : <><ChevronLeftIcon data-icon="inline-start" /> Tilbage</>}
           </Button>
           {step < 3 ? (
             <Button type="button" disabled={customMetricPending} onClick={() => setStep((current) => (current + 1) as Step)}>
@@ -544,7 +544,7 @@ export function AddWidgetDialog({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Annuller</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>Annullér</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={deleting} onClick={(event) => { event.preventDefault(); void confirmDeleteCustomMetric(); }}>
               {deleting ? "Sletter…" : "Slet måling"}
             </AlertDialogAction>

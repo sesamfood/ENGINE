@@ -393,7 +393,7 @@ export function RolePermissions() {
               disabled={creating}
               onClick={() => setCreateOpen(false)}
             >
-              Annuller
+              Annullér
             </Button>
             <Button disabled={creating || !roleName.trim()} onClick={create}>
               {creating ? <Spinner data-icon="inline-start" /> : null}
@@ -414,11 +414,11 @@ export function RolePermissions() {
             <AlertDialogTitle>Slet rolle?</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete?.name} slettes permanent. Rollen kan kun slettes,
-              når ingen medlemmer bruger den.
+              når ingen brugere bruger den.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Annuller</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>Annullér</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={deleting}

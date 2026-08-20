@@ -81,7 +81,7 @@ function validateUsername(value: string) {
   const username = value.trim().toLowerCase();
   if (!/^[a-z0-9_.]{3,30}$/.test(username)) {
     throw new ConvexError(
-      "Brugernavnet skal være 3–30 tegn og må kun indeholde bogstaver, tal, punktum og underscore",
+      "Brugernavnet skal være 3–30 tegn og må kun indeholde bogstaver, tal, punktum og understregning",
     );
   }
   return username;
@@ -264,7 +264,9 @@ export const createAccount = mutation({
     const auth = await requireMemberManager(ctx);
     const { organizationId } = auth;
     if (args.role === "admin" && !auth.permissions.has("roles.manage")) {
-      throw new ConvexError("Kun administratorer kan oprette en administratorkiosk");
+      throw new ConvexError(
+        "Kun brugere med rollen Administrator kan oprette en kiosk med rollen Administrator",
+      );
     }
     const settings = await ctx.db
       .query("kioskSettings")

@@ -393,7 +393,7 @@ export const registerBadDelivery = mutation({
     await requireOtherFeaturesUnlocked(ctx, organizationId, args.locationId);
     const location = await requireLocation(ctx, organizationId, args.locationId);
     if (args.items.length < 1 || args.items.length > MAX_ITEMS) {
-      throw new ConvexError("Tilføj mellem 1 og 200 varelinjer");
+      throw new ConvexError("Tilføj mellem 1 og 200 produktlinjer");
     }
     const comment = args.comment?.trim() || undefined;
     if (comment && comment.length > MAX_COMMENT_LENGTH) {
@@ -775,7 +775,7 @@ export const exportBadDeliveries = query({
             )
             .take(MAX_ITEMS + 1);
           if (items.length > MAX_ITEMS) {
-            throw new ConvexError("Registreringen har for mange varelinjer");
+            throw new ConvexError("Registreringen har for mange produktlinjer");
           }
           return {
             rows: items.map((item) => ({
@@ -832,7 +832,7 @@ export const voidBadDelivery = mutation({
       )
       .take(MAX_ITEMS + 1);
     if (items.length > MAX_ITEMS) {
-      throw new ConvexError("Registreringen har for mange varelinjer");
+      throw new ConvexError("Registreringen har for mange produktlinjer");
     }
     if (delivery.deductFromStock) {
       for (const item of items) {

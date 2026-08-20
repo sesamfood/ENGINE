@@ -532,7 +532,7 @@ export const deleteRole = mutation({
       limit: 1,
     });
     if (members.length) {
-      throw new ConvexError("Rollen bruges af et medlem og kan ikke slettes");
+      throw new ConvexError("Rollen bruges af en bruger og kan ikke slettes");
     }
     await assertManagementRoleRemains(ctx, auth.organizationId, {
       remove: role.key,
@@ -691,7 +691,7 @@ export const setMemberLocationAccess = mutation({
       ],
     });
     if (!member)
-      throw new ConvexError("Brugeren er ikke medlem af organisationen");
+      throw new ConvexError("Brugeren er ikke tilknyttet organisationen");
     const locationIds = [...new Set(args.locationIds)];
     if (args.scope === "selected" && locationIds.length === 0) {
       throw new ConvexError("Vælg mindst én lokation");
@@ -737,10 +737,10 @@ export const setMemberLocationAccess = mutation({
       entityId: args.userId,
       summary:
         args.scope === "all"
-          ? "Medlem har fået adgang til alle lokationer"
+          ? "Brugeren har fået adgang til alle lokationer"
           : args.scope === "operator"
-            ? `Medlem har fået adgang til operatøren ${operatorName}`
-            : `Medlem har fået adgang til ${locationIds.length} lokationer`,
+            ? `Brugeren har fået adgang til operatøren ${operatorName}`
+            : `Brugeren har fået adgang til ${locationIds.length} lokationer`,
       reason,
     });
     return null;

@@ -107,7 +107,7 @@ function initials(name: string) {
 function message(error: unknown) {
   return error instanceof Error
     ? error.message
-    : "Personalemaden kunne ikke registreres";
+    : "Staff food kunne ikke registreres";
 }
 
 function formatDuration(minutes: number) {
@@ -480,7 +480,7 @@ export function StaffFoodRegistration() {
       setConfirming(false);
       setSuccess(true);
       setBasket({});
-      toast.success("Personalemaden er registreret", {
+      toast.success("Staff food er registreret", {
         duration: 30_000,
         action: {
           label: "Fortryd",
@@ -545,7 +545,7 @@ export function StaffFoodRegistration() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
-        <AlertDescription>Du har ikke adgang til at registrere personalemad.</AlertDescription>
+        <AlertDescription>Du har ikke adgang til at registrere Staff food.</AlertDescription>
       </Alert>
     );
   }
@@ -572,7 +572,7 @@ export function StaffFoodRegistration() {
             </EmptyMedia>
             <EmptyTitle>Ingen lokationer endnu</EmptyTitle>
             <EmptyDescription>
-              Opret en lokation, før personalemad kan registreres.
+              Opret en lokation, før Staff food kan registreres.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -584,9 +584,9 @@ export function StaffFoodRegistration() {
             <EmptyMedia variant="icon">
               <UtensilsIcon />
             </EmptyMedia>
-            <EmptyTitle>Personalemad er ikke sat op endnu</EmptyTitle>
+            <EmptyTitle>Staff food er ikke sat op endnu</EmptyTitle>
             <EmptyDescription>
-              En administrator skal oprette mindst én regel for vagtlængde,
+              En bruger med rollen Administrator skal oprette mindst én regel for vagtlængde,
               kategorier og produkter.
             </EmptyDescription>
           </EmptyHeader>
@@ -608,10 +608,10 @@ export function StaffFoodRegistration() {
               <CheckCircle2Icon className="size-8" />
             </span>
             <h2 className="text-2xl font-semibold">
-              Personalemaden er registreret
+              Staff food er registreret
             </h2>
             <p className="text-muted-foreground">
-              Du sendes tilbage til spild.
+              Du sendes tilbage til Waste.
             </p>
           </div>
         </div>
@@ -637,7 +637,7 @@ export function StaffFoodRegistration() {
                 <EmptyTitle>Vagten udløser ingen regel</EmptyTitle>
                 <EmptyDescription>
                   Vagtlængden på {formatDuration(state.session.durationMinutes)}
-                  er kortere end den første personalemadsregel.
+                  er kortere end den første Staff food-regel.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
@@ -852,7 +852,7 @@ export function StaffFoodRegistration() {
                     }
                     onClick={() => setConfirming(true)}
                   >
-                    Registrér personalemad
+                    Registrér Staff food
                   </Button>
                 </div>
               </div>
@@ -866,7 +866,7 @@ export function StaffFoodRegistration() {
                   <DialogHeader>
                     <DialogTitle>Bekræft registrering</DialogTitle>
                     <DialogDescription>
-                      Kontrollér valget, før du registrerer personalemad.
+                      Kontrollér valget, før du registrerer Staff food.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1093,7 +1093,7 @@ export function StaffFoodRegistration() {
           </CardContent>
           <CardFooter>
             <p className="mr-auto text-xs text-muted-foreground">
-              Personalemad registreres på den valgte medarbejder og lokation.
+              Staff food registreres på den valgte medarbejder og lokation.
             </p>
           </CardFooter>
         </Card>
@@ -1107,7 +1107,7 @@ export function StaffFoodRegistration() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Fortryd personalemadsregistrering?</AlertDialogTitle>
+            <AlertDialogTitle>Fortryd Staff food-registrering?</AlertDialogTitle>
             <AlertDialogDescription>
               Lageret bliver ført tilbage. Skriv en begrundelse for ændringen.
             </AlertDialogDescription>

@@ -465,7 +465,7 @@ function LocationMappings() {
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel disabled={saving}>
-                                    Annuller
+                                    Annullér
                                   </AlertDialogCancel>
                                   <AlertDialogAction
                                     variant="destructive"

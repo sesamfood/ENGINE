@@ -79,10 +79,17 @@ export const feedbackAreas = [
     ],
   },
   {
-    id: "account",
-    englishLabel: "Profile and settings",
-    label: "Profil og indstillinger",
+    id: "profile",
+    englishLabel: "Profile",
+    label: "Profil",
     pathPrefix: "/profile",
+    permissions: [],
+  },
+  {
+    id: "settings",
+    englishLabel: "Settings",
+    label: "Indstillinger",
+    pathPrefix: "/settings",
     permissions: [],
   },
   {
@@ -155,6 +162,6 @@ export function feedbackAreaForPath(
       (pathname === area.pathPrefix ||
         pathname.startsWith(`${area.pathPrefix}/`)),
   );
-  const id = match?.id ?? (pathname === "/settings" ? "account" : "other");
+  const id = match?.id ?? "other";
   return available.some((area) => area.id === id) ? id : "other";
 }

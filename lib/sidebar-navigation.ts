@@ -6,7 +6,7 @@ export const sidebarItems = [
   { id: "staffFood", label: "Staff food" },
   { id: "count", label: "Count" },
   { id: "employees", label: "Medarbejdere" },
-  { id: "organization", label: "Settings" },
+  { id: "organization", label: "Administration" },
 ] as const;
 
 export type SidebarItemId = (typeof sidebarItems)[number]["id"];
