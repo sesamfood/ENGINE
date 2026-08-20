@@ -8,7 +8,8 @@ import {
 } from "fflate";
 
 const ARCHIVE_FORMAT = "product-catalog";
-const ARCHIVE_VERSION = 1;
+const ARCHIVE_VERSION = 2;
+type SupportedArchiveVersion = 1 | 2;
 export const MAX_ARCHIVE_SIZE = 250 * 1024 * 1024;
 const MAX_MANIFEST_SIZE = 5 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -36,6 +37,7 @@ export type ProductExportRow = {
   name: string;
   status: "active" | "archived";
   category: string;
+  maxTemperatureCelsius: number | null;
   units: Array<{
     name: string;
     factorToDefault: number;
@@ -49,16 +51,40 @@ export type ProductExportRow = {
   imageUrl: string | null;
 };
 
-export type ProductArchiveProduct = Omit<ProductExportRow, "imageUrl"> & {
+type ProductArchiveProductFields = Omit<
+  ProductExportRow,
+  "imageUrl" | "maxTemperatureCelsius"
+> & {
   image?: string;
 };
 
-export type ProductArchive = {
-  format: typeof ARCHIVE_FORMAT;
-  version: typeof ARCHIVE_VERSION;
-  exportedAt: string;
-  products: ProductArchiveProduct[];
+export type ProductArchiveProductV1 = ProductArchiveProductFields & {
+  maxTemperatureCelsius?: undefined;
 };
+
+export type ProductArchiveProductV2 = ProductArchiveProductFields & {
+  maxTemperatureCelsius: number | null;
+};
+
+export type ProductArchiveProduct =
+  | ProductArchiveProductV1
+  | ProductArchiveProductV2;
+
+type ProductArchiveV1 = {
+  format: typeof ARCHIVE_FORMAT;
+  version: 1;
+  exportedAt: string;
+  products: ProductArchiveProductV1[];
+};
+
+type ProductArchiveV2 = {
+  format: typeof ARCHIVE_FORMAT;
+  version: 2;
+  exportedAt: string;
+  products: ProductArchiveProductV2[];
+};
+
+export type ProductArchive = ProductArchiveV1 | ProductArchiveV2;
 
 export type ParsedProductArchive = {
   manifest: ProductArchive;
@@ -96,7 +122,38 @@ function positiveNumber(value: unknown, label: string) {
   return value;
 }
 
-function parseProduct(value: unknown, index: number): ProductArchiveProduct {
+function validTemperature(value: number) {
+  return (
+    Number.isFinite(value) &&
+    value >= -100 &&
+    value <= 100 &&
+    Number.isInteger(value * 10)
+  );
+}
+
+function requiredTemperature(value: unknown, label: string) {
+  if (value === null) return null;
+  if (typeof value !== "number" || !validTemperature(value)) {
+    archiveError(`${label} skal være et tal mellem -100,0 og 100,0 °C med højst én decimal`);
+  }
+  return value;
+}
+
+function parseProduct(
+  value: unknown,
+  index: number,
+  version: 1,
+): ProductArchiveProductV1;
+function parseProduct(
+  value: unknown,
+  index: number,
+  version: 2,
+): ProductArchiveProductV2;
+function parseProduct(
+  value: unknown,
+  index: number,
+  version: SupportedArchiveVersion,
+): ProductArchiveProduct {
   if (!isRecord(value)) archiveError(`produkt ${index + 1} er ugyldigt`);
   if (value.status !== "active" && value.status !== "archived") {
     archiveError(`status for produkt ${index + 1} er ugyldig`);
@@ -169,7 +226,7 @@ function parseProduct(value: unknown, index: number): ProductArchiveProduct {
     archiveError(`billedstien for produkt ${index + 1} er ugyldig`);
   }
 
-  return {
+  const product: ProductArchiveProductFields = {
     sourceId: requiredKey(value.sourceId, "Produktnøglen"),
     name: requiredName(value.name, "Produktnavnet"),
     status: value.status,
@@ -178,24 +235,22 @@ function parseProduct(value: unknown, index: number): ProductArchiveProduct {
     ingredients,
     ...(image ? { image } : {}),
   };
+  if (version === 2) {
+    if (!("maxTemperatureCelsius" in value)) {
+      archiveError(`produkt ${index + 1} mangler maksimal overførselstemperatur`);
+    }
+    return {
+      ...product,
+      maxTemperatureCelsius: requiredTemperature(
+        value.maxTemperatureCelsius,
+        `Den maksimale overførselstemperatur for produkt ${index + 1}`,
+      ),
+    };
+  }
+  return product;
 }
 
-function parseManifest(value: unknown, files: Unzipped): ProductArchive {
-  if (!isRecord(value)) archiveError("manifest.json er ugyldig");
-  if (value.format !== ARCHIVE_FORMAT || value.version !== ARCHIVE_VERSION) {
-    archiveError("formatet eller versionen understøttes ikke");
-  }
-  if (
-    typeof value.exportedAt !== "string" ||
-    !Number.isFinite(Date.parse(value.exportedAt))
-  ) {
-    archiveError("eksportdatoen er ugyldig");
-  }
-  if (!Array.isArray(value.products) || value.products.length > MAX_PRODUCTS) {
-    archiveError("produktlisten er ugyldig eller for stor");
-  }
-
-  const products = value.products.map(parseProduct);
+function validateProducts(products: ProductArchiveProduct[], files: Unzipped) {
   const sourceIds = new Set(products.map((product) => product.sourceId));
   if (sourceIds.size !== products.length)
     archiveError("produktnøglerne er ikke unikke");
@@ -212,7 +267,43 @@ function parseManifest(value: unknown, files: Unzipped): ProductArchive {
       }
     }
   }
+}
 
+function parseManifest(value: unknown, files: Unzipped): ProductArchive {
+  if (!isRecord(value)) archiveError("manifest.json er ugyldig");
+  if (
+    value.format !== ARCHIVE_FORMAT ||
+    (value.version !== 1 && value.version !== ARCHIVE_VERSION)
+  ) {
+    archiveError("formatet eller versionen understøttes ikke");
+  }
+  if (
+    typeof value.exportedAt !== "string" ||
+    !Number.isFinite(Date.parse(value.exportedAt))
+  ) {
+    archiveError("eksportdatoen er ugyldig");
+  }
+  if (!Array.isArray(value.products) || value.products.length > MAX_PRODUCTS) {
+    archiveError("produktlisten er ugyldig eller for stor");
+  }
+
+  if (value.version === 1) {
+    const products: ProductArchiveProductV1[] = value.products.map(
+      (product, index) => parseProduct(product, index, 1),
+    );
+    validateProducts(products, files);
+    return {
+      format: ARCHIVE_FORMAT,
+      version: 1,
+      exportedAt: value.exportedAt,
+      products,
+    };
+  }
+
+  const products: ProductArchiveProductV2[] = value.products.map(
+    (product, index) => parseProduct(product, index, 2),
+  );
+  validateProducts(products, files);
   return {
     format: ARCHIVE_FORMAT,
     version: ARCHIVE_VERSION,
@@ -273,7 +364,7 @@ export async function createProductArchive(products: ProductExportRow[]) {
     throw new Error(`Eksporten kan højst indeholde ${MAX_PRODUCTS.toLocaleString("da-DK")} produkter`);
   }
   const files: AsyncZippable = {};
-  const archivedProducts: ProductArchiveProduct[] = [];
+  const archivedProducts: ProductArchiveProductV2[] = [];
   let uncompressedSize = 0;
 
   for (const [index, product] of products.entries()) {
@@ -319,6 +410,7 @@ export async function createProductArchive(products: ProductExportRow[]) {
       name: product.name,
       status: product.status,
       category: product.category,
+      maxTemperatureCelsius: product.maxTemperatureCelsius,
       units: product.units,
       ingredients: product.ingredients,
       ...(image ? { image } : {}),

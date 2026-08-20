@@ -70,11 +70,16 @@ const ingredientInputValidator = v.object({
   unitId: v.id("units"),
 });
 
+const maxTemperatureInputValidator = v.optional(
+  v.union(v.number(), v.null()),
+);
+
 const productExportValidator = v.object({
   sourceId: v.id("products"),
   name: v.string(),
   status: statusValidator,
   category: v.string(),
+  maxTemperatureCelsius: v.union(v.number(), v.null()),
   units: v.array(
     v.object({
       name: v.string(),
@@ -326,6 +331,19 @@ function parseCategorySearchCursor(
 function requirePositiveNumber(value: number, label: string) {
   if (!Number.isFinite(value) || value <= 0) {
     throw new ConvexError(`${label} skal være større end nul`);
+  }
+}
+
+function requireTemperature(value: number, label: string) {
+  if (
+    !Number.isFinite(value) ||
+    value < -100 ||
+    value > 100 ||
+    !Number.isInteger(value * 10)
+  ) {
+    throw new ConvexError(
+      `${label} skal være mellem -100 og 100 med højst én decimal`,
+    );
   }
 }
 
@@ -1092,6 +1110,7 @@ export const exportProducts = query({
             name: product.name,
             status: product.status,
             category: category.name,
+            maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
             units,
             ingredients,
             imageUrl,
@@ -1164,6 +1183,7 @@ export const getProduct = query({
       id: product._id,
       name: product.name,
       status: product.status,
+      maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
       category: category ? { id: category._id, name: category.name } : null,
       imageUrl,
       units: units.filter((row) => row !== null),
@@ -1326,6 +1346,7 @@ export const createProduct = mutation({
     category: categoryReferenceValidator,
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
+    maxTemperatureCelsius: maxTemperatureInputValidator,
   },
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
@@ -1339,6 +1360,12 @@ export const createProduct = mutation({
     );
     const units = await resolveUnits(ctx, organizationId, args.units);
     await validateIngredients(ctx, organizationId, args.ingredients);
+    if (typeof args.maxTemperatureCelsius === "number") {
+      requireTemperature(
+        args.maxTemperatureCelsius,
+        "Maksimumtemperaturen",
+      );
+    }
 
     const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
     const productId = await ctx.db.insert("products", {
@@ -1347,6 +1374,9 @@ export const createProduct = mutation({
       normalizedName,
       categoryId,
       defaultUnitId,
+      ...(typeof args.maxTemperatureCelsius === "number"
+        ? { maxTemperatureCelsius: args.maxTemperatureCelsius }
+        : {}),
       status: "active",
       createdBy: userIdentifier,
       updatedAt: Date.now(),
@@ -1374,6 +1404,7 @@ export const importProduct = mutation({
     category: v.string(),
     units: v.array(importedProductUnitValidator),
     overwrite: v.boolean(),
+    maxTemperatureCelsius: maxTemperatureInputValidator,
   },
   returns: v.object({
     productId: v.id("products"),
@@ -1387,6 +1418,12 @@ export const importProduct = mutation({
     const auth = await requireCatalogManager(ctx);
     const { organizationId, userIdentifier } = auth;
     const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
+    if (typeof args.maxTemperatureCelsius === "number") {
+      requireTemperature(
+        args.maxTemperatureCelsius,
+        "Maksimumtemperaturen",
+      );
+    }
     const existing = await ctx.db
       .query("products")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -1582,6 +1619,14 @@ export const importProduct = mutation({
         normalizedName,
         categoryId,
         defaultUnitId,
+        ...(args.maxTemperatureCelsius !== undefined
+          ? {
+              maxTemperatureCelsius:
+                args.maxTemperatureCelsius === null
+                  ? undefined
+                  : args.maxTemperatureCelsius,
+            }
+          : {}),
         status: "active",
         archivedAt: undefined,
         updatedAt,
@@ -1601,6 +1646,9 @@ export const importProduct = mutation({
       normalizedName,
       categoryId,
       defaultUnitId,
+      ...(typeof args.maxTemperatureCelsius === "number"
+        ? { maxTemperatureCelsius: args.maxTemperatureCelsius }
+        : {}),
       status: "active",
       createdBy: userIdentifier,
       updatedAt: Date.now(),
@@ -1686,6 +1734,7 @@ export const updateProduct = mutation({
     category: categoryReferenceValidator,
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
+    maxTemperatureCelsius: maxTemperatureInputValidator,
   },
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
@@ -1693,6 +1742,12 @@ export const updateProduct = mutation({
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (typeof args.maxTemperatureCelsius === "number") {
+      requireTemperature(
+        args.maxTemperatureCelsius,
+        "Maksimumtemperaturen",
+      );
     }
 
     const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
@@ -1772,6 +1827,14 @@ export const updateProduct = mutation({
       normalizedName,
       categoryId,
       defaultUnitId,
+      ...(args.maxTemperatureCelsius !== undefined
+        ? {
+            maxTemperatureCelsius:
+              args.maxTemperatureCelsius === null
+                ? undefined
+                : args.maxTemperatureCelsius,
+          }
+        : {}),
       updatedAt: Date.now(),
     });
     await recordAudit(ctx, auth, {

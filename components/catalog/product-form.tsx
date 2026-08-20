@@ -41,6 +41,11 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -83,6 +88,9 @@ type OnlinePosProduct = {
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const MIN_MAX_TEMPERATURE_CELSIUS = -100;
+const MAX_MAX_TEMPERATURE_CELSIUS = 100;
+const MAX_TEMPERATURE_INPUT = /^-?(?:\d+(?:[.,]\d{0,1})?|[.,]\d)$/;
 
 function newKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -101,6 +109,31 @@ function parseReference(value: string) {
 
 function formatFactor(value: number) {
   return Number(value.toPrecision(10)).toString();
+}
+
+function maxTemperatureError(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  if (!MAX_TEMPERATURE_INPUT.test(normalized)) {
+    return "Angiv en temperatur med højst én decimal";
+  }
+  const temperature = Number(normalized.replace(",", "."));
+  if (
+    !Number.isFinite(temperature) ||
+    temperature < MIN_MAX_TEMPERATURE_CELSIUS ||
+    temperature > MAX_MAX_TEMPERATURE_CELSIUS
+  ) {
+    return "Temperaturen skal være mellem -100,0 og 100,0 °C";
+  }
+  if (!Number.isInteger(temperature * 10)) {
+    return "Angiv en temperatur med højst én decimal";
+  }
+  return undefined;
+}
+
+function parseMaxTemperature(value: string) {
+  const normalized = value.trim();
+  return normalized ? Number(normalized.replace(",", ".")) : null;
 }
 
 function OnlinePosProductMappingField({
@@ -261,6 +294,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const removeProductImage = useMutation(api.catalog.removeProductImage);
   const initializedProduct = useRef<string | null>(null);
   const [name, setName] = useState("");
+  const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
   const [categoryValue, setCategoryValue] = useState<string | null>(null);
   const [unitRows, setUnitRows] = useState<UnitRow[]>([
     { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
@@ -276,6 +310,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       return;
     initializedProduct.current = productId;
     setName(product.name);
+    setMaxTemperatureCelsius(
+      product.maxTemperatureCelsius?.toString() ?? "",
+    );
     setCategoryValue(
       product.category ? `existing:${product.category.id}` : null,
     );
@@ -432,6 +469,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   function validate() {
     const nextErrors: Record<string, string> = {};
     if (!name.trim()) nextErrors.name = "Indtast et produktnavn";
+    const temperatureError = maxTemperatureError(maxTemperatureCelsius);
+    if (temperatureError) {
+      nextErrors.maxTemperatureCelsius = temperatureError;
+    }
     if (!categoryValue) nextErrors.category = "Vælg eller opret en kategori";
     if (unitRows.length === 0) nextErrors.units = "Tilføj mindst én enhed";
     if (unitRows.some((row) => !row.unitValue)) {
@@ -533,6 +574,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   : row.unit,
             })),
             ingredients,
+            maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
           })
         : await createProduct({
             name,
@@ -548,6 +590,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   : row.unit,
             })),
             ingredients,
+            maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
           });
 
       try {
@@ -647,6 +690,32 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   ariaLabel="Produktkategori"
                 />
                 <FieldError>{errors.category}</FieldError>
+              </Field>
+
+              <Field
+                className="max-w-xl"
+                data-invalid={Boolean(errors.maxTemperatureCelsius)}
+              >
+                <FieldLabel htmlFor="product-max-temperature">
+                  Maksimal temperatur
+                </FieldLabel>
+                <InputGroup className="h-11 max-w-xs">
+                  <InputGroupInput
+                    id="product-max-temperature"
+                    type="number"
+                    inputMode="decimal"
+                    min={MIN_MAX_TEMPERATURE_CELSIUS}
+                    max={MAX_MAX_TEMPERATURE_CELSIUS}
+                    step="0.1"
+                    value={maxTemperatureCelsius}
+                    onChange={(event) =>
+                      setMaxTemperatureCelsius(event.target.value)
+                    }
+                    aria-invalid={Boolean(errors.maxTemperatureCelsius)}
+                  />
+                  <InputGroupAddon align="inline-end">°C</InputGroupAddon>
+                </InputGroup>
+                <FieldError>{errors.maxTemperatureCelsius}</FieldError>
               </Field>
 
               {productId ? (
