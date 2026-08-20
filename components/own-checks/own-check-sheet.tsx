@@ -123,7 +123,7 @@ export function OwnCheckSheet({ item, locationId, timeZone, open, onOpenChange }
           <SheetDescription>{ownCheckControlTypeLabels[item.controlType]} · {item.status === "notCompleted" ? (item.startsAt ? `Kl. ${formatTime(item.startsAt, timeZone)}–${formatTime(item.dueAt, timeZone)}` : `Inden kl. ${formatTime(item.dueAt, timeZone)}`) : "Registreret"}</SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-6 px-4">
-          {readOnly ? <div className="rounded-xl border bg-muted/30 p-4 text-sm">Denne egenkontrol er allerede registreret. Brug oversigten for at se hele dokumentationen.</div> : null}
+          {readOnly ? <div className="rounded-xl border bg-muted/30 p-4 text-sm">Egenkontrollen er allerede registreret. Åbn oversigten for at se dokumentationen.</div> : null}
           <FieldGroup>
             {item.fields.map((field) => {
               const value = valueFor(values, field.key);

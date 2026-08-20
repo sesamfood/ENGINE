@@ -114,9 +114,8 @@ export function ProfileSettings() {
         </CardHeader>
         <CardContent className="flex flex-col items-start gap-4">
           <p className="text-sm leading-6 text-muted-foreground">
-            Hvis du er den eneste bruger med rollen Administrator, skal du først give
-            en anden bruger rollen Administrator. Organisationens øvrige data
-            slettes ikke.
+            Er du den eneste bruger med rollen Administrator, skal du først give
+            rollen til en anden bruger. Organisationens øvrige data slettes ikke.
           </p>
           <AlertDialog
             open={dialogOpen}

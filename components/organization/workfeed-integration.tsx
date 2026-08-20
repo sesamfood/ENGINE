@@ -171,7 +171,7 @@ function ConnectionCard({
               <FieldLabel htmlFor="workfeed-company-id">CompanyID</FieldLabel>
               <HelpTooltip
                 label="Workfeed CompanyID"
-                content="CompanyID'et identificerer jeres virksomhed i Workfeed. Kontakt Workfeed, hvis I mangler CompanyID eller API-adgang."
+                content="Brug CompanyID'et for jeres virksomhed i Workfeed. Kontakt Workfeed, hvis I mangler CompanyID eller API-adgang."
               />
             </div>
             <Input

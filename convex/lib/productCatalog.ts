@@ -67,7 +67,7 @@ export async function listActiveProductCatalog(
   ]);
   if (products.length > MAX_PRODUCTS) {
     throw new ConvexError(
-      "Der er mere end 500 produkter. Ryd op i produktkataloget eller kontakt en bruger med rollen Administrator",
+      "Der er over 500 produkter. Arkivér produkter, du ikke bruger, eller kontakt en bruger med rollen Administrator",
     );
   }
   const hierarchy = buildCategoryHierarchy(categories, organizationId);

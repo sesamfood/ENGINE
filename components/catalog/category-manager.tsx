@@ -425,8 +425,8 @@ export function CategoryManager() {
         <div className="flex max-w-2xl flex-col gap-2">
           <h2 className="text-2xl font-semibold tracking-tight">Kategorier</h2>
           <p className="text-sm leading-6 text-muted-foreground">
-            Organisér produkter i kategorier og underkategorier. En kategori kan
-            både indeholde produkter og andre kategorier.
+            Gruppér produkter i kategorier og underkategorier. En kategori kan
+            indeholde både produkter og underkategorier.
           </p>
         </div>
         <Button

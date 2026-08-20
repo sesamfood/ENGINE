@@ -1122,8 +1122,8 @@ export function TransferForm({
           <AlertDialogHeader>
             <AlertDialogTitle>Bekræft temperaturafvigelse</AlertDialogTitle>
             <AlertDialogDescription>
-              Temperaturen overstiger maksimum for følgende produkter. Vil du gemme
-              transferen med afvigelserne?
+              Et eller flere produkter overstiger maksimumtemperaturen. Vil du
+              gemme transferen med afvigelserne?
             </AlertDialogDescription>
           </AlertDialogHeader>
           {temperatureConfirmation ? (

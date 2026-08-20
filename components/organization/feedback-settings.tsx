@@ -170,8 +170,8 @@ export function FeedbackSettings() {
         <CardHeader>
           <CardTitle>Feedback</CardTitle>
           <CardDescription>
-            Når feedback er slået til, kan alle brugere sende fejl og forslag fra
-            knappen i sidemenuen.
+            Slå feedback til, så alle brugere kan sende fejl og forslag via knappen
+            i sidemenuen.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -257,7 +257,7 @@ export function FeedbackSettings() {
                     Linear API-nøgle
                     <HelpTooltip
                       label="Linear API-nøgle"
-                      content="Opret en personlig API-nøgle i Linear under Settings → Security & access. Nøglen vises kun én gang."
+                      content="Opret en personlig API-nøgle under Settings → Security & access i Linear. Nøglen vises kun én gang."
                     />
                   </FieldLabel>
                   <Input

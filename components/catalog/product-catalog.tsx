@@ -656,7 +656,7 @@ export function ProductCatalog() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingProduct?.status === "active"
-                ? `${pendingProduct.name} forsvinder fra vælgerne for aktive produkter og ingredienser. Produktet slettes automatisk permanent efter 30 dage, medmindre det gendannes.`
+                ? `Arkiverer du ${pendingProduct.name}, forsvinder produktet fra produkt- og ingrediensvælgerne. Det slettes permanent efter 30 dage, medmindre du gendanner det.`
                 : `${pendingProduct?.name} vender tilbage til det aktive katalog og ingrediensvælgerne.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -719,9 +719,9 @@ export function ProductCatalog() {
           <AlertDialogHeader>
             <AlertDialogTitle>Slet produkt permanent?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingDeleteProduct?.name} og dets billede, enheder og opskrift
-              slettes permanent. Produktet fjernes også som ingrediens fra andre
-              opskrifter. Handlingen kan ikke fortrydes.
+              {pendingDeleteProduct?.name}, billedet, enhederne og opskriften
+              slettes permanent. Produktet fjernes også fra andre opskrifter,
+              hvor det bruges som ingrediens. Handlingen kan ikke fortrydes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

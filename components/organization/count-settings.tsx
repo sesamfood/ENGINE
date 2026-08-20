@@ -171,7 +171,7 @@ export function CountSettings() {
                 </FieldLabel>
                 <HelpTooltip
                   label="Lås andre funktioner under Count"
-                  content="Når Count-vinduet åbner, er kun Count, Lager og Indstillinger tilgængelige for den valgte lokation, indtil dens Count er registreret."
+                  content="Når Count-vinduet åbner, låses alle andre sider end Count, Lager og Indstillinger for den valgte lokation. Låsen ophæves, når Count er registreret."
                 />
               </div>
             </FieldContent>
@@ -190,7 +190,7 @@ export function CountSettings() {
                 </FieldLabel>
                 <HelpTooltip
                   label="Kræv Count før åbning"
-                  content="Når indstillingen er slået til, forbliver en Count åben efter lokationens åbningstid, indtil den er registreret."
+                  content="En Count, der ikke er registreret ved åbningstid, forbliver åben, indtil den registreres."
                 />
               </div>
             </FieldContent>

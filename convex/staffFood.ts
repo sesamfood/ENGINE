@@ -1096,7 +1096,7 @@ export const getSettings = query({
     }
     if (products.length > MAX_SETTINGS_PRODUCTS) {
       throw new ConvexError(
-        "Der er mere end 500 produkter. Slet arkiverede produkter, der ikke længere bruges, eller kontakt en bruger med rollen Administrator",
+        "Der er over 500 produkter. Slet arkiverede produkter, du ikke længere bruger, eller kontakt en bruger med rollen Administrator",
       );
     }
     const tierResults = await Promise.all(

@@ -255,7 +255,7 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
   cursor -= 18;
   heading("Sammenfatning", 16);
   paragraph(`${input.header.completedCount} udførte kontroller · ${input.header.deviationCount} afvigelser · ${input.header.missingCount} manglende kontroller`, 12);
-  paragraph("Dokumentet viser de registreringer og den revisionshistorik, der var tilgængelig ved genereringstidspunktet.", 9, rgb(0.35, 0.35, 0.38));
+  paragraph("Dokumentet indeholder de registreringer og revisioner, der var tilgængelige, da det blev oprettet.", 9, rgb(0.35, 0.35, 0.38));
 
   for (const [dateKey, records] of dateGroup(input.records)) {
     newPage();

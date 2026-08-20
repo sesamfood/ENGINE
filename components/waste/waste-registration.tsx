@@ -662,7 +662,7 @@ export function WasteRegistration() {
                     </Button>
                     <HelpTooltip
                       label="anbefalede mængder"
-                      content="Fjerner de manuelt valgte genveje og bruger igen de to mængder, der anbefales ud fra den Waste-historik, produktet bruger."
+                      content="Fjern de valgte genveje, og brug igen de to mængder, som anbefales ud fra produktets Waste-historik."
                     />
                   </div>
                 </FieldGroup>
@@ -790,8 +790,8 @@ export function WasteRegistration() {
           <DialogHeader>
             <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
             <DialogDescription>
-              Fortryd en enkelt registrering eller annullér dem alle.
-              Registreringerne forsvinder automatisk efter 30 sekunder.
+              Du kan fortryde én registrering eller annullere dem alle. Muligheden
+              forsvinder efter 30 sekunder.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">

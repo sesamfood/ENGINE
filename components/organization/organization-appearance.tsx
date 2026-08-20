@@ -355,7 +355,7 @@ export function OrganizationAppearance() {
         <LogoUploadCard
           name="app-icon"
           title="Appikon"
-          guidance="JPEG, PNG eller WebP. Højst 2 MB. Brug helst et billede i formatet 1:1; billedet fylder hele rammen."
+          guidance="Brug JPEG, PNG eller WebP på højst 2 MB. Vælg et kvadratisk billede. Det beskæres, så hele rammen fyldes."
           currentUrl={organization.data.logo ?? undefined}
           organizationName={organization.data.name}
           onUpload={async (storageId) => {
@@ -371,7 +371,7 @@ export function OrganizationAppearance() {
         <LogoUploadCard
           name="navigation"
           title="Navigationslogo"
-          guidance="JPEG, PNG eller WebP. Højst 2 MB. Et bredt format omkring 4:1 med gennemsigtig baggrund fungerer bedst."
+          guidance="Brug JPEG, PNG eller WebP på højst 2 MB. Et bredt billede omkring 4:1 fungerer bedst, gerne med gennemsigtig baggrund."
           currentUrl={branding.wideLogoUrl ?? undefined}
           organizationName={organization.data.name}
           wide

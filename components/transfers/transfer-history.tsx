@@ -388,7 +388,7 @@ type ExportColumnDropPreview = {
 
 const exportScreenReaderInstructions: ScreenReaderInstructions = {
   draggable:
-    "Tryk på mellemrum for at flytte kolonnen. Brug piletasterne til at vælge placering, tryk igen for at placere, eller tryk Escape for at annullere.",
+    "Tryk på mellemrum for at vælge kolonnen. Flyt den med piletasterne. Tryk på mellemrum igen for at placere den, eller Escape for at annullere.",
 };
 
 const exportAnnouncements: Announcements = {
@@ -1015,7 +1015,7 @@ export function TransferHistory() {
                     Antal enheder
                     <HelpTooltip
                       label="Antal enheder"
-                      content="Summen af de registrerede mængder i transferen. Produkterne kan være registreret med forskellige enheder."
+                      content="Summen af alle registrerede mængder i transferen. Produkterne kan bruge forskellige enheder."
                     />
                   </span>
                 </TableHead>
@@ -1121,7 +1121,7 @@ export function TransferHistory() {
                 Kolonner
                 <HelpTooltip
                   label="Kolonner"
-                  content="Træk kolonner for at ændre rækkefølgen. Flyt dem til “Ikke med i eksporten” for at udelade dem fra eksporten."
+                  content={'Træk kolonnerne for at ændre rækkefølgen. Flyt en kolonne til "Ikke med i eksporten" for at udelade den.'}
                 />
               </FieldLegend>
               <ExportColumnList
@@ -1139,7 +1139,7 @@ export function TransferHistory() {
                 Enheder
                 <HelpTooltip
                   label="Enheder"
-                  content="Alle linjer omregnes til den standardenhed, produktet er oprettet med, så antallene kan sammenlignes."
+                  content="Alle transferlinjer omregnes til produktets standardenhed, så mængderne kan sammenlignes."
                 />
               </FieldLegend>
               <Field orientation="horizontal">

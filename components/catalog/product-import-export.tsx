@@ -366,7 +366,7 @@ export function ProductImportExport({
             </ToggleGroup>
             <FieldDescription>
               {conflictMode === "overwrite"
-                ? "Produktdata og billeder erstattes. Lager og opskrifter omregnes til de importerede enheder."
+                ? "Importen erstatter produktdata og billeder. Lager og opskrifter omregnes til de importerede enheder."
                 : "Eksisterende produkter beholdes uden ændringer."}
             </FieldDescription>
           </Field>

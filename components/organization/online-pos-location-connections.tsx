@@ -159,7 +159,7 @@ export function OnlinePosLocationConnections() {
             Lokationsindstillinger
             <HelpTooltip
               label="OnlinePOS-lokationsindstillinger"
-              content="Tilføj firma-id og token for hver lokation. De bruges kun til at hente salg for den valgte lokation."
+              content="Tilføj firma-id og token til hver lokation. Forbindelsen henter kun salg for den pågældende lokation."
             />
           </CardTitle>
           <CardAction>
@@ -226,7 +226,7 @@ export function OnlinePosLocationConnections() {
                               </FieldLabel>
                               <HelpTooltip
                                 label={`OnlinePOS firma-id for ${location.name}`}
-                                content="Brug firma-id'et for denne lokations OnlinePOS-konto. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Oplysningerne bruges kun til lokationens salg."
+                                content="Brug firma-id'et fra lokationens OnlinePOS-konto. Mangler I det eller API-adgang, skal I kontakte OnlinePOS. Firma-id'et bruges kun til lokationens salg."
                               />
                             </div>
                             <Input
@@ -253,7 +253,7 @@ export function OnlinePosLocationConnections() {
                               </FieldLabel>
                               <HelpTooltip
                                 label={`OnlinePOS-token for ${location.name}`}
-                                content="Brug tokenet for denne lokations OnlinePOS-konto. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
+                                content="Brug tokenet fra lokationens OnlinePOS-konto. Mangler I det, skal I kontakte OnlinePOS. Tokenet gemmes på serveren og kan ikke vises igen."
                               />
                             </div>
                             <Input

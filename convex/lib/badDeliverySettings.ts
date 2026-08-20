@@ -7,11 +7,11 @@ const MAX_BODY_LENGTH = 5_000;
 
 export const DEFAULT_BAD_DELIVERY_EMAIL_SUBJECT =
   "Dårlig levering – {location} – {date}";
-export const DEFAULT_BAD_DELIVERY_EMAIL_BODY = `Dårlig levering
+export const DEFAULT_BAD_DELIVERY_EMAIL_BODY = `Dårlig levering registreret
 
 Reference: {reference}
 Lokation: {location}
-Tidspunkt: {date}
+Registreret: {date}
 Registreret af: {registrar}
 
 Produkter:
