@@ -129,7 +129,7 @@ export function OrganizationHeader() {
           </TabsList>
         </Tabs>
       ) : null}
-      {inUsers && visibleUserSections.length ? (
+      {inUsers && visibleUserSections.length > 1 ? (
         <Tabs
           value={pathname.startsWith("/organization/users/roles") ? "users/roles" : "users"}
           onValueChange={(value) => router.push(`/organization/${value}`, { scroll: false })}

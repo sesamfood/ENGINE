@@ -354,6 +354,7 @@ export function EmployeeScheduling() {
 
   const showSchedule = canSchedule;
   const showDirectory = canDirectory;
+  const showSectionTabs = Number(showSchedule) + Number(showDirectory) > 1;
   useEffect(() => {
     if (pathname === "/employees/directory" && !showDirectory && showSchedule) {
       router.replace("/employees");
@@ -418,7 +419,16 @@ export function EmployeeScheduling() {
         : stale ? <Alert><Clock3Icon /><AlertTitle>Data kan være forældede</AlertTitle><AlertDescription>Den automatiske synkronisering er forsinket. De senest hentede data vises stadig.</AlertDescription></Alert> : null}
 
       {!context.hasCachedEmployees ? <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><UsersRoundIcon /></EmptyMedia><EmptyTitle>Ingen medarbejderdata endnu</EmptyTitle><EmptyDescription>{context.workfeedEnabled ? "Start en synkronisering for at hente medarbejdere og offentliggjorte vagter." : "Medarbejdere vises her, når en integration har leveret den første synkronisering."}</EmptyDescription></EmptyHeader>{syncButton ? <EmptyContent>{syncButton}</EmptyContent> : null}</Empty>
-        : <Tabs value={selectedTab} onValueChange={(value) => router.push(value === "directory" ? "/employees/directory" : "/employees")}><TabsList className="w-full">{showSchedule ? <TabsTrigger value="schedule" className="px-5">Vagtplan</TabsTrigger> : null}{showDirectory ? <TabsTrigger value="directory" className="px-5">Medarbejdere</TabsTrigger> : null}</TabsList>{showSchedule ? <TabsContent value="schedule" className="pt-3"><ScheduleTab locationId={activeLocationId} hasLocations={Boolean(locations.length)} syncButton={syncButton} timeZone={context.timeZone} /></TabsContent> : null}{showDirectory ? <TabsContent value="directory" className="pt-3"><DirectoryTab locationId={activeLocationId} syncButton={syncButton} /></TabsContent> : null}</Tabs>}
+        : <Tabs value={selectedTab} onValueChange={(value) => router.push(value === "directory" ? "/employees/directory" : "/employees")}>
+            {showSectionTabs ? (
+              <TabsList className="w-full" aria-label="Medarbejdersektioner">
+                {showSchedule ? <TabsTrigger value="schedule" className="px-5">Vagtplan</TabsTrigger> : null}
+                {showDirectory ? <TabsTrigger value="directory" className="px-5">Medarbejdere</TabsTrigger> : null}
+              </TabsList>
+            ) : null}
+            {showSchedule ? <TabsContent value="schedule" className={showSectionTabs ? "pt-3" : undefined}><ScheduleTab locationId={activeLocationId} hasLocations={Boolean(locations.length)} syncButton={syncButton} timeZone={context.timeZone} /></TabsContent> : null}
+            {showDirectory ? <TabsContent value="directory" className={showSectionTabs ? "pt-3" : undefined}><DirectoryTab locationId={activeLocationId} syncButton={syncButton} /></TabsContent> : null}
+          </Tabs>}
     </main>
   );
 }
