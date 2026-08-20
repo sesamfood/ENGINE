@@ -409,7 +409,7 @@ test("valgt lokationsscope begrænser optællingslinjer", async () => {
   ).rejects.toThrowError("Du har ikke adgang til denne lokation");
 });
 
-test("valgt lokationsscope skjuler flytninger fra andre lokationer", async () => {
+test("valgt lokationsscope begrænser ikke transfers", async () => {
   const t = convexTest(schema, modules);
   const { user, org, now, asUser } = await setupAuthOrg(t);
   const { allowedLocationId, foreignLocationId, productId, unitId } =
@@ -475,19 +475,29 @@ test("valgt lokationsscope skjuler flytninger fra andre lokationer", async () =>
     endAt: now + 100,
   });
   expect(result.page.map((transfer) => transfer.id)).toEqual([
+    foreignTransferId,
     allowedTransferId,
   ]);
-  expect(result.page.map((transfer) => transfer.id)).not.toContain(
-    foreignTransferId,
-  );
+  await expect(
+    asUser.query(api.locations.listAllLocationOptions, {}),
+  ).resolves.toEqual([
+    { id: allowedLocationId, name: "Nord" },
+    { id: foreignLocationId, name: "Syd" },
+    { id: expect.any(String), name: "Vest" },
+  ]);
 });
 
-test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
+test("kioskkonto beholder sin faste lokation og kan overføre mellem alle lokationer", async () => {
   const t = convexTest(schema, modules);
   const { org, asUser } = await setupAuthOrg(t);
-  const { allowedLocationId, foreignLocationId } = await seedLocations(
-    t,
-    org._id,
+  const { allowedLocationId, foreignLocationId, productId, unitId } =
+    await seedLocations(t, org._id);
+  const thirdLocationId = await t.run((ctx) =>
+    ctx.db.insert("locations", {
+      organizationId: org._id,
+      name: "Vest",
+      normalizedName: "vest",
+    }),
   );
   await asUser.mutation(api.access.saveRolePermissions, {
     role: "member",
@@ -497,7 +507,7 @@ test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
   await t.run(async (ctx) => {
     await ctx.db.insert("kioskSettings", {
       organizationId: org._id,
-      enabledPages: ["count.register"],
+      enabledPages: ["count.register", "transfers.new"],
       homePage: "count.register",
       inactivitySeconds: null,
       updatedAt: Date.now(),
@@ -511,6 +521,22 @@ test("kioskkonto beholder sin faste lokation og kioskadgang", async () => {
   expect(runtime.locations).toEqual([
     { id: allowedLocationId, name: "Nord" },
   ]);
+  await expect(
+    kiosk.asUser.query(api.locations.listAllLocationOptions, {}),
+  ).resolves.toEqual([
+    { id: allowedLocationId, name: "Nord" },
+    { id: foreignLocationId, name: "Syd" },
+    { id: thirdLocationId, name: "Vest" },
+  ]);
+  await expect(
+    kiosk.asUser.mutation(api.transfers.createTransfer, {
+      fromLocationId: foreignLocationId,
+      toLocationId: thirdLocationId,
+      responsibleUserId: kiosk.user._id,
+      transferredAt: Date.now(),
+      items: [{ productId, unitId, quantity: 1 }],
+    }),
+  ).resolves.toEqual(expect.any(String));
   await expect(
     kiosk.asUser.query(api.count.getCountState, {
       locationId: allowedLocationId,
@@ -602,7 +628,7 @@ test("navngivne roller registreres og håndhæves af Convex", async () => {
   ).rejects.toThrowError("Rollen bruges af en bruger og kan ikke slettes");
 });
 
-test("operatørscope begrænser lokationer, spild, optællinger og flytninger", async () => {
+test("operatørscope begrænser lokationer, spild og optællinger, men ikke transfers", async () => {
   const t = convexTest(schema, modules);
   const { user, org, now, asUser } = await setupAuthOrg(t);
   const { allowedLocationId, foreignLocationId, productId, unitId } =
@@ -737,8 +763,11 @@ test("operatørscope begrænser lokationer, spild, optællinger og flytninger", 
     startAt: now - 100,
     endAt: now + 100,
   });
-  expect(transfers.page).toHaveLength(1);
-  expect(transfers.page[0]?.fromLocationName).toBe("Nord");
+  expect(transfers.page).toHaveLength(2);
+  expect(transfers.page.map((transfer) => transfer.fromLocationName)).toEqual([
+    "Syd",
+    "Nord",
+  ]);
   const onlinePos = await asUser.query(
     api.onlinePos.listLocationConnections,
     {},

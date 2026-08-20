@@ -405,7 +405,7 @@ export function WasteRegistration() {
     <div className="flex flex-col gap-5">
       <Tabs value={category} onValueChange={setCategory}>
         <TabsList
-          className="h-12 w-full justify-start overflow-x-auto"
+          className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
           aria-label="Produktkategorier"
         >
           <TabsTrigger value="all" className="min-w-20 shrink-0 px-4">

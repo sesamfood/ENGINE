@@ -686,9 +686,7 @@ export function TransferForm({
             <FieldGroup>
               <Field data-invalid={Boolean(errors.fromLocation)}>
                 <FieldLabel>Fra lokation</FieldLabel>
-                {kiosk?.isKioskAccount && fromLocationId === kiosk.locationId ? (
-                  <div className="flex h-11 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div>
-                ) : <CreatableCombobox
+                <CreatableCombobox
                   options={fromLocationOptions}
                   value={fromLocationId}
                   onValueChange={(value) => {
@@ -703,15 +701,13 @@ export function TransferForm({
                   placeholder="Søg efter lokation"
                   ariaLabel="Fra lokation"
                   disabled={locations === undefined}
-                />}
+                />
                 <FieldError>{errors.fromLocation}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.toLocation)}>
                 <FieldLabel>Til lokation</FieldLabel>
-                {kiosk?.isKioskAccount && toLocationId === kiosk.locationId ? (
-                  <div className="flex h-11 items-center rounded-md border px-3 text-sm font-medium">{kiosk.locationName}</div>
-                ) : <CreatableCombobox
+                <CreatableCombobox
                   options={toLocationOptions}
                   value={toLocationId}
                   onValueChange={(value) => {
@@ -726,7 +722,7 @@ export function TransferForm({
                   placeholder="Søg efter lokation"
                   ariaLabel="Til lokation"
                   disabled={locations === undefined}
-                />}
+                />
                 <FieldError>{errors.toLocation}</FieldError>
               </Field>
 

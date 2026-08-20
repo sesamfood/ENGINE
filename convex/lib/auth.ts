@@ -294,50 +294,6 @@ export async function requireTransferViewer(
   return await requirePermission(ctx, "transfers.view", page);
 }
 
-export function requireKioskTransfer(
-  auth: OrganizationAuth,
-  fromLocationId: Id<"locations">,
-  toLocationId: Id<"locations">,
-) {
-  if (
-    auth.isKioskAccount &&
-    auth.kioskLocationId !== fromLocationId &&
-    auth.kioskLocationId !== toLocationId
-  ) {
-    throw new ConvexError("Kioskkontoen har ikke adgang til transferen");
-  }
-  if (
-    !auth.locationScope.all &&
-    !auth.locationScope.ids.has(fromLocationId) &&
-    !auth.locationScope.ids.has(toLocationId)
-  ) {
-    throw new ConvexError("Du har ikke adgang til transferen");
-  }
-}
-
-export function requireTransferMutationAccess(
-  auth: OrganizationAuth,
-  fromLocationId: Id<"locations">,
-  toLocationId: Id<"locations">,
-) {
-  if (auth.isKioskAccount) {
-    if (
-      auth.kioskLocationId !== fromLocationId &&
-      auth.kioskLocationId !== toLocationId
-    ) {
-      throw new ConvexError("Kioskkontoen har ikke adgang til transferen");
-    }
-    return;
-  }
-  if (
-    !auth.locationScope.all &&
-    (!auth.locationScope.ids.has(fromLocationId) ||
-      !auth.locationScope.ids.has(toLocationId))
-  ) {
-    throw new ConvexError("Du har ikke adgang til transferen");
-  }
-}
-
 export async function requireCounter(
   ctx: AuthContext,
   page: KioskDestinationId | readonly KioskDestinationId[] = "count.register",
