@@ -249,7 +249,7 @@ async function activeProducts(
 
   if (products.length > MAX_PRODUCTS) {
     throw new ConvexError(
-      "Der er mere end 500 aktive produkter. Arkivér produkter, der ikke bruges, eller afgræns listen",
+      "Der er over 500 aktive produkter. Arkivér produkter, du ikke bruger, eller vælg en kategori for at afgrænse listen",
     );
   }
   return products;

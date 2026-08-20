@@ -564,7 +564,7 @@ export function CustomMetricBuilder({
           <DialogDescription>
             {metric
               ? "Redigér de delte data. Ændringerne gælder alle widgets, der bruger målingen."
-              : "Byg en genbrugelig måling fra organisationens kuraterede datasæt. Visualisering og størrelse vælges bagefter."}
+              : "Opret en måling ud fra organisationens tilgængelige datasæt. Vælg visualisering og størrelse bagefter."}
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 overflow-y-auto p-1">

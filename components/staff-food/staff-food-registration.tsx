@@ -586,8 +586,8 @@ export function StaffFoodRegistration() {
             </EmptyMedia>
             <EmptyTitle>Staff food er ikke sat op endnu</EmptyTitle>
             <EmptyDescription>
-              En bruger med rollen Administrator skal oprette mindst én regel for vagtlængde,
-              kategorier og produkter.
+              En bruger med rollen Administrator skal først oprette en Staff food-regel
+              med vagtlængde, kategorier og produkter.
             </EmptyDescription>
           </EmptyHeader>
           {canManage ? (
@@ -963,8 +963,8 @@ export function StaffFoodRegistration() {
                     {manualEmployee.displayName}
                   </CardTitle>
                   <CardDescription>
-                    Angiv den samlede vagtlængde. Samme erstatningsvagt bruges
-                    resten af dagen på denne lokation.
+                    Angiv vagtens samlede længde. Erstatningsvagten gælder resten
+                    af dagen på denne lokation.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

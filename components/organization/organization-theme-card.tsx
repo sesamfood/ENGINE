@@ -260,13 +260,13 @@ export function OrganizationThemeCard({
 
           {draft.mode === "automatic" ? (
             <p className="text-sm text-muted-foreground">
-              Flader, kanter, fokusfarver og diagramfarver bliver automatisk
-              afstemt efter de tre grundfarver.
+              Systemet tilpasser flader, kanter, fokusfarver og diagramfarver til
+              de tre grundfarver.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Primærfarven bruges fortsat til at skabe en sammenhængende skala
-              til diagrammer og datavisninger.
+              Primærfarven danner fortsat farveskalaen til diagrammer og andre
+              datavisninger.
             </p>
           )}
 

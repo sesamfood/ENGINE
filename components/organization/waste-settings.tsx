@@ -362,7 +362,7 @@ export function WasteSettings() {
                   </FieldLabel>
                   <HelpTooltip
                     label="historik fra hele organisationen"
-                    content="Når indstillingen er slået til, bruges Waste fra alle lokationer til popularitet og anbefalede genveje. Når den er slået fra, bruges kun historikken fra den valgte lokation."
+                    content="Slå til for at beregne popularitet og anbefalede genveje ud fra Waste på tværs af alle lokationer. Slå fra for kun at bruge den valgte lokations historik."
                   />
                 </div>
               </FieldContent>
@@ -441,7 +441,7 @@ export function WasteSettings() {
                 </FieldLabel>
                 <HelpTooltip
                   label="E-mailens indhold"
-                  content="Gælder den oprindelige meddelelse. Linjeskift bevares. Brug {reference}, {location}, {date}, {registrar}, {products}, {comment} og {stock} til registreringens oplysninger."
+                  content="Skabelonen bruges i den første meddelelse, og linjeskift bevares. Indsæt registreringsdata med {reference}, {location}, {date}, {registrar}, {products}, {comment} og {stock}."
                 />
               </div>
               <Textarea

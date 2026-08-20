@@ -134,7 +134,7 @@ export const sendNotice = internalAction({
         stock,
       });
       const text = isCancellation
-        ? `Registreringen af dårlig levering er annulleret.\n\nReference: ${reference}\nLokation: ${payload.locationName}\nRegistreret: ${date}\nAnnulleret: ${correction}${payload.voidedByName ? ` af ${payload.voidedByName}` : ""}\n\n${stock}`
+        ? `Registreringen er annulleret.\n\nReference: ${reference}\nLokation: ${payload.locationName}\nRegistreret: ${date}\nAnnulleret: ${correction}${payload.voidedByName ? ` af ${payload.voidedByName}` : ""}\n\n${stock}`
         : initialText;
       const html = isCancellation
         ? `<h1>Registreringen er annulleret</h1><p><strong>Reference:</strong> ${escapeHtml(reference)}</p><p><strong>Lokation:</strong> ${escapeHtml(payload.locationName)}<br><strong>Registreret:</strong> ${escapeHtml(date)}<br><strong>Annulleret:</strong> ${escapeHtml(correction)}${payload.voidedByName ? ` af ${escapeHtml(payload.voidedByName)}` : ""}</p><p>${escapeHtml(stock)}</p>`

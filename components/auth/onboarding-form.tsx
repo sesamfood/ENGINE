@@ -139,7 +139,7 @@ export function OnboardingForm() {
         setError(
           result.error?.message?.includes("kun tilhøre én organisation")
             ? "Din bruger tilhører allerede en organisation og kan derfor ikke acceptere invitationen."
-            : "Koden kunne ikke bruges. Kontrollér koden, og at du er logget ind med den inviterede e-mail.",
+            : "Kontrollér invitationskoden, og at du er logget ind med den e-mailadresse, invitationen blev sendt til.",
         );
         return;
       }

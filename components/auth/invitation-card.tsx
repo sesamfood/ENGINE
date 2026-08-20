@@ -28,7 +28,7 @@ export function InvitationCard({ invitationId }: { invitationId: string }) {
         setError(
           result.error.message?.includes("kun tilhøre én organisation")
             ? "Din bruger tilhører allerede en organisation og kan ikke acceptere invitationen."
-            : "Invitationen kunne ikke accepteres. Kontrollér, at du er logget ind med den inviterede e-mail.",
+            : "Log ind med den e-mailadresse, invitationen blev sendt til, og prøv igen.",
         );
         return;
       }

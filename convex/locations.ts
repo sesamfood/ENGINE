@@ -277,20 +277,20 @@ export const listAllLocationOptions = query({
   args: {},
   returns: v.array(locationOptionValidator),
   handler: async (ctx) => {
-    const auth = await requireTransferManager(ctx, "transfers.new");
-    const { organizationId } = auth;
+    const { organizationId } = await requireTransferManager(
+      ctx,
+      "transfers.new",
+    );
     const locations = await ctx.db
       .query("locations")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
         q.eq("organizationId", organizationId),
       )
       .take(MAX_LOCATIONS);
-    return locations
-      .filter(
-        (location) =>
-          auth.locationScope.all || auth.locationScope.ids.has(location._id),
-      )
-      .map((location) => ({ id: location._id, name: location.name }));
+    return locations.map((location) => ({
+      id: location._id,
+      name: location.name,
+    }));
   },
 });
 

@@ -100,7 +100,7 @@ export function OwnCheckSettings() {
               <FieldContent>
                 <div className="flex items-center gap-1">
                   <FieldLabel htmlFor="own-check-second-person">Godkendelse kræver en anden person</FieldLabel>
-                  <HelpTooltip label="Godkendelse kræver en anden person" content="Den, der udførte kontrollen, kan ikke godkende den. Brugere med rettigheden til at administrere egenkontroller kan godkende som undtagelse." />
+                  <HelpTooltip label="Godkendelse kræver en anden person" content="Personen, der udførte kontrollen, kan ikke godkende den. Brugere med rettigheden til at administrere egenkontroller er undtaget." />
                 </div>
               </FieldContent>
               <Switch id="own-check-second-person" checked={secondPerson} onCheckedChange={setRequireSecondPersonApproval} />
@@ -123,7 +123,7 @@ export function OwnCheckSettings() {
             </Field>
             <Field>
               <FieldLabel htmlFor="own-check-settings-reason">Begrundelse for ændringer</FieldLabel>
-              <FieldDescription>Skriv, hvorfor egenkontrolindstillingerne ændres. Begrundelsen gemmes i ændringshistorikken.</FieldDescription>
+              <FieldDescription>Begrund ændringen. Teksten gemmes i ændringshistorikken.</FieldDescription>
               <Input id="own-check-settings-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Fx ændrede krav til efterregistrering" maxLength={1_000} />
             </Field>
           </FieldGroup>

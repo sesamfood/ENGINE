@@ -77,7 +77,7 @@ export function TodayOwnChecks() {
           <CheckSection title="Udført i dag" items={done} timeZone={result.timeZone} now={now} icon={<CheckCircle2Icon />} onOpen={setSelected} />
           {result.backlog.length ? <CheckSection title="Manglende fra tidligere dage" items={result.backlog} timeZone={result.timeZone} now={now} icon={<AlertTriangleIcon />} onOpen={setSelected} /> : null}
           {!pending.length && !deviations.length && !done.length && !result.backlog.length ? <Empty className="min-h-56"><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheckIcon /></EmptyMedia><EmptyTitle>Ingen egenkontroller planlagt i dag</EmptyTitle><EmptyDescription>Der er ingen aktive kontroller for denne lokation.{canManage ? <> <Link href="/organization/own-checks" className="font-medium underline underline-offset-4">Administrér egenkontroller</Link></> : null}</EmptyDescription></EmptyHeader></Empty> : null}
-          {result.truncated ? <p className="text-sm text-muted-foreground">Listen er begrænset. Vælg en kortere periode eller kontakt en bruger med rollen Administrator.</p> : null}
+          {result.truncated ? <p className="text-sm text-muted-foreground">Listen er for lang. Vælg en kortere periode, eller kontakt en bruger med rollen Administrator.</p> : null}
         </CardContent>
       </Card>
       <OwnCheckSheet key={selected ? `${selected.templateId}-${selected.dueDateKey}` : "empty"} item={selected} locationId={locationId} timeZone={result.timeZone} open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)} />

@@ -142,7 +142,7 @@ export function createPasswordResetEmail(
   const description =
     "Vi har modtaget en anmodning om at nulstille adgangskoden til din konto.";
   const notice =
-    "Linket udløber om en time. Hvis du ikke har bedt om en ny adgangskode, kan du trygt ignorere denne e-mail.";
+    "Linket udløber om en time. Har du ikke bedt om en ny adgangskode, kan du ignorere e-mailen.";
 
   return {
     subject: "Nulstil din adgangskode",
@@ -168,7 +168,7 @@ export function createVerificationEmail(
   const description =
     "Bekræft din e-mailadresse for at aktivere din konto og komme i gang.";
   const notice =
-    "Linket udløber om en time. Hvis du ikke har oprettet en konto, kan du trygt ignorere denne e-mail.";
+    "Linket udløber om en time. Har du ikke oprettet en konto, kan du ignorere e-mailen.";
 
   return {
     subject: "Bekræft din e-mail",
@@ -196,7 +196,7 @@ export function createInvitationEmail(
 ) {
   const description = `${inviterName} har inviteret dig til at blive en del af ${organizationName}.`;
   const notice =
-    "Invitationen udløber om syv dage. Hvis du ikke forventede invitationen, kan du ignorere denne e-mail.";
+    "Invitationen udløber om syv dage. Forventer du den ikke, kan du ignorere e-mailen.";
 
   return {
     subject: `Invitation til ${organizationName}`,

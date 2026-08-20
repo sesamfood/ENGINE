@@ -8,11 +8,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 import {
-  requireKioskTransfer,
-  requireTransferMutationAccess,
   requireTransferManager,
   requireTransferViewer,
-  resolveLocationFilter,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
@@ -157,21 +154,10 @@ async function locationName(
   return location?.name ?? "Ukendt lokation";
 }
 
-async function scopedLocationName(
-  ctx: QueryCtx,
-  locationId: Id<"locations">,
-  visibleLocationIds: ReadonlySet<Id<"locations">> | null,
-) {
-  return visibleLocationIds && !visibleLocationIds.has(locationId)
-    ? "Anden lokation"
-    : await locationName(ctx, locationId);
-}
-
 async function hydrateTransferHeader(
   ctx: QueryCtx,
   transfer: Doc<"transfers">,
   existingItems?: Doc<"transferItems">[],
-  visibleLocationIds: ReadonlySet<Id<"locations">> | null = null,
 ) {
   const items =
     existingItems ??
@@ -185,8 +171,8 @@ async function hydrateTransferHeader(
       .take(MAX_TRANSFER_ITEMS));
 
   const [fromLocationName, toLocationName] = await Promise.all([
-    scopedLocationName(ctx, transfer.fromLocationId, visibleLocationIds),
-    scopedLocationName(ctx, transfer.toLocationId, visibleLocationIds),
+    locationName(ctx, transfer.fromLocationId),
+    locationName(ctx, transfer.toLocationId),
   ]);
 
   return {
@@ -523,9 +509,10 @@ export const createTransfer = mutation({
   args: transferArgsValidator.fields,
   returns: v.id("transfers"),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, "transfers.new");
-    const { organizationId, userIdentifier } = auth;
-    requireTransferMutationAccess(auth, args.fromLocationId, args.toLocationId);
+    const { organizationId, userIdentifier } = await requireTransferManager(
+      ctx,
+      "transfers.new",
+    );
     await requireLocationsUnlocked(ctx, organizationId, [
       args.fromLocationId,
       args.toLocationId,
@@ -583,18 +570,14 @@ export const updateTransfer = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, "transfers.history");
-    const { organizationId } = auth;
+    const { organizationId } = await requireTransferManager(
+      ctx,
+      "transfers.history",
+    );
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
-    requireTransferMutationAccess(
-      auth,
-      transfer.fromLocationId,
-      transfer.toLocationId,
-    );
-    requireTransferMutationAccess(auth, args.fromLocationId, args.toLocationId);
     await requireLocationsUnlocked(ctx, organizationId, [
       transfer.fromLocationId,
       transfer.toLocationId,
@@ -674,17 +657,14 @@ export const deleteTransfer = mutation({
   args: { transferId: v.id("transfers") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requireTransferManager(ctx, "transfers.history");
-    const { organizationId } = auth;
+    const { organizationId } = await requireTransferManager(
+      ctx,
+      "transfers.history",
+    );
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
     }
-    requireTransferMutationAccess(
-      auth,
-      transfer.fromLocationId,
-      transfer.toLocationId,
-    );
     await requireLocationsUnlocked(ctx, organizationId, [
       transfer.fromLocationId,
       transfer.toLocationId,
@@ -725,15 +705,10 @@ export const listTransfers = query({
   },
   returns: paginationResultValidator(transferHeaderValidator),
   handler: async (ctx, args) => {
-    const auth = await requireTransferViewer(ctx, "transfers.history");
-    const { organizationId } = auth;
-    const locationFilter = resolveLocationFilter(auth);
-    const locationIds =
-      locationFilter === "all"
-        ? null
-        : "locationId" in locationFilter
-          ? [locationFilter.locationId]
-          : locationFilter.locationIds;
+    const { organizationId } = await requireTransferViewer(
+      ctx,
+      "transfers.history",
+    );
     validateDateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
     const results = await ctx.db
@@ -744,32 +719,13 @@ export const listTransfers = query({
           .gte("transferredAt", args.startAt)
           .lte("transferredAt", args.endAt),
       )
-      .filter((q) =>
-        locationIds
-          ? locationIds.length
-            ? q.or(
-                ...locationIds.flatMap((locationId) => [
-                  q.eq(q.field("fromLocationId"), locationId),
-                  q.eq(q.field("toLocationId"), locationId),
-                ]),
-              )
-            : q.neq(q.field("organizationId"), organizationId)
-          : true,
-      )
       .order("desc")
       .paginate(args.paginationOpts);
 
     return {
       ...results,
       page: await Promise.all(
-        results.page.map((transfer) =>
-          hydrateTransferHeader(
-            ctx,
-            transfer,
-            undefined,
-            auth.locationScope.all ? null : auth.locationScope.ids,
-          ),
-        ),
+        results.page.map((transfer) => hydrateTransferHeader(ctx, transfer)),
       ),
     };
   },
@@ -779,11 +735,12 @@ export const getTransfer = query({
   args: { transferId: v.id("transfers") },
   returns: v.union(transferDetailValidator, v.null()),
   handler: async (ctx, args) => {
-    const auth = await requireTransferViewer(ctx, "transfers.history");
-    const { organizationId } = auth;
+    const { organizationId } = await requireTransferViewer(
+      ctx,
+      "transfers.history",
+    );
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) return null;
-    requireKioskTransfer(auth, transfer.fromLocationId, transfer.toLocationId);
 
     const items = await ctx.db
       .query("transferItems")
@@ -792,12 +749,7 @@ export const getTransfer = query({
       )
       .take(MAX_TRANSFER_ITEMS);
 
-    const header = await hydrateTransferHeader(
-      ctx,
-      transfer,
-      items,
-      auth.locationScope.all ? null : auth.locationScope.ids,
-    );
+    const header = await hydrateTransferHeader(ctx, transfer, items);
     return {
       ...header,
       fromLocationId: transfer.fromLocationId,
@@ -942,13 +894,6 @@ export const exportTransfers = query({
       throw new ConvexError("Du har ikke adgang");
     }
     const { organizationId } = auth;
-    const locationFilter = resolveLocationFilter(auth);
-    const locationIds =
-      locationFilter === "all"
-        ? null
-        : "locationId" in locationFilter
-          ? [locationFilter.locationId]
-          : locationFilter.locationIds;
     validateDateRange(args.startAt, args.endAt);
     requirePageSize(args.paginationOpts.numItems, EXPORT_PAGE_SIZE);
     if (
@@ -1002,18 +947,6 @@ export const exportTransfers = query({
           .gte("transferredAt", args.startAt)
           .lte("transferredAt", args.endAt),
       )
-      .filter((q) =>
-        locationIds
-          ? locationIds.length
-            ? q.or(
-                ...locationIds.flatMap((locationId) => [
-                  q.eq(q.field("fromLocationId"), locationId),
-                  q.eq(q.field("toLocationId"), locationId),
-                ]),
-              )
-            : q.neq(q.field("organizationId"), organizationId)
-          : true,
-      )
       .order("desc")
       .paginate(args.paginationOpts);
 
@@ -1022,16 +955,8 @@ export const exportTransfers = query({
       page: await Promise.all(
         transfers.page.map(async (transfer) => {
           const [fromLocationName, toLocationName, items] = await Promise.all([
-            scopedLocationName(
-              ctx,
-              transfer.fromLocationId,
-              auth.locationScope.all ? null : auth.locationScope.ids,
-            ),
-            scopedLocationName(
-              ctx,
-              transfer.toLocationId,
-              auth.locationScope.all ? null : auth.locationScope.ids,
-            ),
+            locationName(ctx, transfer.fromLocationId),
+            locationName(ctx, transfer.toLocationId),
             ctx.db
               .query("transferItems")
               .withIndex("by_organizationId_and_transferId", (q) =>

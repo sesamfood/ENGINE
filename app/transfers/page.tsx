@@ -40,6 +40,7 @@ function TransfersContent() {
       : showNew
         ? "new"
         : "history";
+  const showSectionTabs = Number(showNew) + Number(showHistory) > 1;
 
   useEffect(() => {
     if (!showNew && !showHistory) return;
@@ -66,21 +67,23 @@ function TransfersContent() {
 
   return (
     <Tabs value={selectedTab} onValueChange={(value) => router.push(value === "history" ? "/transfers/history" : "/transfers")}>
-      <TabsList
-        aria-label="Transfersektioner"
-        className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
-      >
-        {showNew ? <TabsTrigger value="new" className="min-w-36 px-6">
-          Ny transfer
-        </TabsTrigger> : null}
-        {showHistory ? <TabsTrigger value="history" className="min-w-36 px-6">
-          Transferhistorik
-        </TabsTrigger> : null}
-      </TabsList>
-      {showNew && selectedTab === "new" ? <TabsContent value="new" className="pt-6">
+      {showSectionTabs ? (
+        <TabsList
+          aria-label="Transfersektioner"
+          className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
+        >
+          {showNew ? <TabsTrigger value="new" className="min-w-36 px-6">
+            Ny transfer
+          </TabsTrigger> : null}
+          {showHistory ? <TabsTrigger value="history" className="min-w-36 px-6">
+            Transferhistorik
+          </TabsTrigger> : null}
+        </TabsList>
+      ) : null}
+      {showNew && selectedTab === "new" ? <TabsContent value="new" className={showSectionTabs ? "pt-6" : undefined}>
         <TransferForm />
       </TabsContent> : null}
-      {showHistory && selectedTab === "history" ? <TabsContent value="history" className="pt-6">
+      {showHistory && selectedTab === "history" ? <TabsContent value="history" className={showSectionTabs ? "pt-6" : undefined}>
         <TransferHistory />
       </TabsContent> : null}
     </Tabs>

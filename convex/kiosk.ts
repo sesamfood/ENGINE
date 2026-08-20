@@ -81,7 +81,7 @@ function validateUsername(value: string) {
   const username = value.trim().toLowerCase();
   if (!/^[a-z0-9_.]{3,30}$/.test(username)) {
     throw new ConvexError(
-      "Brugernavnet skal være 3–30 tegn og må kun indeholde bogstaver, tal, punktum og understregning",
+      "Brugernavnet skal have 3–30 tegn. Brug kun bogstaver, tal, punktum og understregning",
     );
   }
   return username;

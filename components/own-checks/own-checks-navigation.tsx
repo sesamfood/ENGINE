@@ -25,6 +25,8 @@ export function OwnChecksNavigation() {
   const showDocumentation = kioskMode
     ? Boolean(kiosk?.settings?.enabledPages.includes("ownChecks.documentation"))
     : canDocumentation;
+  const sectionCount =
+    Number(showToday) + Number(showOverview) + Number(showDocumentation);
   const value = pathname.startsWith("/own-checks/documentation") && showDocumentation
     ? "documentation"
     : pathname.startsWith("/own-checks/overview") && showOverview
@@ -40,6 +42,8 @@ export function OwnChecksNavigation() {
     const href = value === "today" ? "/own-checks" : value === "overview" ? "/own-checks/overview" : "/own-checks/documentation";
     router.replace(href, { scroll: false });
   }, [pathname, router, value]);
+
+  if (sectionCount <= 1) return null;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0" style={{ left: sidebar.isMobile ? 0 : sidebar.state === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)" }}>

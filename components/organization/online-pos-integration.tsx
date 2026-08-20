@@ -286,7 +286,7 @@ function ConnectionCard({
           Masterforbindelse
           <HelpTooltip
             label="OnlinePOS-masterforbindelsen"
-            content="Masterkontoens firma-id og token bruges til at hente produktlisten til produktkoblinger. Salg hentes med forbindelsen for hver lokation."
+            content="Masterkontoen henter produkter til produktkoblinger. Salg hentes separat via hver lokations forbindelse."
           />
         </CardTitle>
         <CardAction>
@@ -310,7 +310,7 @@ function ConnectionCard({
                   </FieldLabel>
                   <HelpTooltip
                     label="Masterkontoens firma-id"
-                    content="Brug firma-id'et for den OnlinePOS-konto, som indeholder masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt for at få firma-id og API-adgang."
+                    content="Brug firma-id'et fra den OnlinePOS-konto, der indeholder masterproduktlisten. Mangler I firma-id eller API-adgang, skal I kontakte OnlinePOS."
                   />
                 </div>
                 <Input
@@ -332,7 +332,7 @@ function ConnectionCard({
                 </FieldLabel>
                 <HelpTooltip
                   label="Masterkontoens token"
-                  content="Brug API-tokenet til OnlinePOS-kontoen med masterproduktlisten. Kontakt OnlinePOS eller jeres OnlinePOS-kontakt, hvis I mangler det. Tokenet gemmes kun på serveren og vises ikke igen."
+                  content="Brug API-tokenet fra den OnlinePOS-konto, der indeholder masterproduktlisten. Mangler I det, skal I kontakte OnlinePOS. Tokenet gemmes på serveren og kan ikke vises igen."
                 />
               </div>
               <Input
@@ -374,7 +374,7 @@ function ConnectionCard({
                 </AlertDialogTitle>
                 <AlertDialogDescription>
                   Masterkontoens token, alle lokationstokens og alle produktkoblinger
-                  slettes. Handlingen kan ikke fortrydes.
+                  slettes permanent. Handlingen kan ikke fortrydes.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -599,8 +599,8 @@ function ProductMappings({
       <CardHeader>
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
-          Søg i produktlisten fra OnlinePOS, og vælg hvilket produkt hvert
-          lokalt produkt svarer til.
+          Søg efter et produkt i OnlinePOS, og vælg det produkt, hvert lokalt
+          produkt svarer til.
         </CardDescription>
         <CardAction>
           <Button
@@ -857,7 +857,7 @@ function SalesList() {
             <AlertTitle>Ingen lokationer er forbundet</AlertTitle>
             <AlertDescription>
               Tilføj firma-id og token til mindst én lokation under
-              Indstillinger, før salg kan synkroniseres.
+              Indstillinger, før du synkroniserer salg.
             </AlertDescription>
           </Alert>
         ) : null}
@@ -996,9 +996,8 @@ function SalesList() {
                 <>
                   <EmptyTitle>Ingen synkroniserede data endnu</EmptyTitle>
                   <EmptyDescription>
-                    Der er ikke synkroniseret data for perioden endnu. Start en
-                    synkronisering, eller vælg en periode der allerede er
-                    dækket.
+                    Perioden er ikke synkroniseret endnu. Start en synkronisering,
+                    eller vælg en periode med synkroniserede data.
                   </EmptyDescription>
                 </>
               )}
@@ -1137,8 +1136,8 @@ export function OnlinePosIntegration() {
         <CardHeader>
           <CardTitle>OnlinePOS</CardTitle>
           <CardDescription>
-            Hent produkter fra en masterkonto, og hent salg med separate
-            forbindelser for hver lokation.
+            Masterforbindelsen henter produkter. De enkelte lokationsforbindelser
+            henter salg.
           </CardDescription>
           <CardAction className="flex items-center gap-3">
             <Field orientation="horizontal" className="w-auto">

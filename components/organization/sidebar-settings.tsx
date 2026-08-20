@@ -50,7 +50,7 @@ const labels = Object.fromEntries(
 
 const screenReaderInstructions: ScreenReaderInstructions = {
   draggable:
-    "Tryk på mellemrum for at flytte menupunktet. Brug piletasterne til at vælge placering, tryk igen for at placere, eller tryk Escape for at annullere.",
+    "Tryk på mellemrum for at vælge menupunktet. Flyt det med piletasterne. Tryk på mellemrum igen for at placere det, eller Escape for at annullere.",
 };
 
 const announcements: Announcements = {
@@ -163,7 +163,7 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
       <CardHeader>
         <CardTitle>Rækkefølge i sidemenuen</CardTitle>
         <CardDescription>
-          Træk menupunkterne til den ønskede rækkefølge. Rækkefølgen gælder for hele organisationen i både normal- og kiosktilstand. Brugere ser kun de menupunkter, de har adgang til.
+          Træk menupunkterne for at ændre rækkefølgen for hele organisationen. Ændringen gælder i både normal- og kiosktilstand. Brugere ser stadig kun de menupunkter, de har adgang til.
         </CardDescription>
       </CardHeader>
       <CardContent>

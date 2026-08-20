@@ -535,8 +535,8 @@ function OrderBuilder({
         <DialogHeader>
           <DialogTitle>Start forfra med rækkefølgen</DialogTitle>
           <DialogDescription>
-            Søg og vælg produkter i den rækkefølge, de skal vises. Ikke-valgte
-            produkter placeres bagefter.
+            Vælg produkterne i den rækkefølge, de skal vises. Produkter, du ikke
+            vælger, placeres til sidst.
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-h-0 gap-4 sm:grid-cols-2">
@@ -1370,8 +1370,8 @@ export function CountSheet() {
           <AlertDialogHeader>
             <AlertDialogTitle>Gør rækkefølgen til standard?</AlertDialogTitle>
             <AlertDialogDescription>
-              Den nuværende rækkefølge bliver standard for den valgte lokation.
-              Brugere med en personlig rækkefølge beholder deres egen.
+              Rækkefølgen bliver standard på den valgte lokation. Personlige
+              rækkefølger ændres ikke.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1446,9 +1446,9 @@ export function CountSheet() {
           <AlertDialogHeader>
             <AlertDialogTitle>Registrér Count?</AlertDialogTitle>
             <AlertDialogDescription>
-              Lageret overskrives for de produkter, der har en mængde i denne
-              Count. Produkter uden en mængde beholder deres nuværende lager.
-              Denne Count kan ikke ændres bagefter. Skriv en begrundelse for
+              Lageret overskrives for produkter med en angivet mængde. Andre
+              produkter beholder deres nuværende lager. Denne Count kan ikke
+              rettes efter registrering. Skriv en begrundelse for
               lagerafstemningen.
             </AlertDialogDescription>
           </AlertDialogHeader>

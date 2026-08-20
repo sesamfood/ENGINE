@@ -504,12 +504,12 @@ export function StaffFoodSettings() {
             Regler for Staff food
             <HelpTooltip
               label="Regler for Staff food"
-              content="Medarbejderen får den regel med den højeste vagtlængde, som vagten opfylder. Reglerne lægges ikke sammen."
+              content="Hvis flere regler passer til vagten, gælder reglen med den højeste vagtlængde. Reglerne lægges ikke sammen."
             />
           </CardTitle>
           <CardDescription>
-            Angiv hvor lang en vagt skal være, hvor meget medarbejderen må tage
-            fra hver kategori, og hvilke produkter der er tilladt.
+            Angiv vagtlængden, den tilladte mængde i hver kategori og de produkter,
+            medarbejderen må vælge.
           </CardDescription>
           <CardAction>
             <Button
@@ -967,8 +967,8 @@ export function StaffFoodSettings() {
           <AlertDialogHeader>
             <AlertDialogTitle>Slet reglen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Vagter, der kun matcher denne regel, kan miste deres tilladelse
-              med det samme. Tidligere registreringer bevares.
+              Vagter, der kun opfylder denne regel, kan miste deres tilladelse med
+              det samme. Tidligere registreringer ændres ikke.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -122,7 +122,7 @@ function validateFields(fields: Array<Doc<"ownCheckTemplateVersions">["fields"][
   for (const field of fields) {
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(field.key)) {
       throw new ConvexError(
-        "Feltets nøgle skal starte med et lille bogstav og må kun indeholde små bogstaver, tal, bindestreg og understregning",
+        "Nøglen skal starte med et lille bogstav. Brug kun små bogstaver, tal, bindestreg og understregning",
       );
     }
     if (keys.has(field.key)) throw new ConvexError("Feltets nøgler skal være unikke");
