@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Driftsplatform",
-    short_name: "Drift",
+    name: "ENGINE",
+    short_name: "ENGINE",
     description: "Administrer den daglige drift i din restaurantorganisation.",
     start_url: "/",
     scope: "/",
