@@ -170,11 +170,17 @@ export function ProductImportExport({
         setProgress(
           `Behandler produkter ${index + 1} af ${archive.manifest.products.length}`,
         );
+        const maxTemperature =
+          archive.manifest.version === 2 &&
+          "maxTemperatureCelsius" in product
+            ? { maxTemperatureCelsius: product.maxTemperatureCelsius }
+            : {};
         const result = await importProduct({
           name: product.name,
           category: product.category,
           units: product.units,
           overwrite: conflictMode === "overwrite",
+          ...maxTemperature,
         });
         productIds.set(product.sourceId, result);
         processedCount += 1;

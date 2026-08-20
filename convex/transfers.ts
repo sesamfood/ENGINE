@@ -2,7 +2,7 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, type Infer, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
@@ -49,14 +49,28 @@ const transferItemInputValidator = v.object({
   quantity: v.number(),
 });
 
-const transferFields = {
+const productTemperatureInputValidator = v.object({
+  productId: v.id("products"),
+  temperatureCelsius: v.number(),
+});
+
+const confirmedTemperatureDeviationValidator = v.object({
+  productId: v.id("products"),
+  maxTemperatureCelsius: v.number(),
+});
+
+const transferArgsValidator = v.object({
   fromLocationId: v.id("locations"),
   toLocationId: v.id("locations"),
   responsibleUserId: v.string(),
   comment: v.optional(v.string()),
   transferredAt: v.number(),
   items: v.array(transferItemInputValidator),
-};
+  productTemperatures: v.optional(v.array(productTemperatureInputValidator)),
+  confirmedTemperatureDeviations: v.optional(
+    v.array(confirmedTemperatureDeviationValidator),
+  ),
+});
 
 const transferHeaderValidator = v.object({
   id: v.id("transfers"),
@@ -67,6 +81,7 @@ const transferHeaderValidator = v.object({
   comment: v.union(v.string(), v.null()),
   itemCount: v.number(),
   totalQuantity: v.number(),
+  hasTemperatureDeviation: v.boolean(),
 });
 
 const transferDetailValidator = transferHeaderValidator.extend({
@@ -81,6 +96,8 @@ const transferDetailValidator = transferHeaderValidator.extend({
       unitId: v.id("units"),
       unitName: v.string(),
       quantity: v.number(),
+      temperatureCelsius: v.union(v.number(), v.null()),
+      maxTemperatureCelsius: v.union(v.number(), v.null()),
     }),
   ),
 });
@@ -98,6 +115,7 @@ const responsibleUserValidator = v.object({
 const productOptionValidator = productSearchOptionValidator.extend({
   imageUrl: v.union(v.string(), v.null()),
   defaultUnitId: v.id("units"),
+  maxTemperatureCelsius: v.union(v.number(), v.null()),
   units: v.array(
     v.object({
       id: v.id("units"),
@@ -114,6 +132,9 @@ const exportRowValidator = v.object({
   productName: v.string(),
   unitName: v.string(),
   quantity: v.number(),
+  temperatureCelsius: v.union(v.number(), v.null()),
+  maxTemperatureCelsius: v.union(v.number(), v.null()),
+  temperatureDeviation: v.boolean(),
   comment: v.union(v.string(), v.null()),
 });
 
@@ -121,17 +142,11 @@ const exportTransferValidator = v.object({
   rows: v.array(exportRowValidator),
 });
 
-type TransferInput = {
-  fromLocationId: Id<"locations">;
-  toLocationId: Id<"locations">;
-  responsibleUserId: string;
-  comment?: string;
-  transferredAt: number;
-  items: Array<{
-    productId: Id<"products">;
-    unitId: Id<"units">;
-    quantity: number;
-  }>;
+type TransferInput = Infer<typeof transferArgsValidator>;
+
+type TemperatureSnapshot = {
+  temperatureCelsius?: number;
+  maxTemperatureCelsius?: number;
 };
 
 async function locationName(
@@ -183,7 +198,26 @@ async function hydrateTransferHeader(
     comment: transfer.comment ?? null,
     itemCount: items.length,
     totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
+    hasTemperatureDeviation: items.some(
+      (item) =>
+        item.temperatureCelsius !== undefined &&
+        item.maxTemperatureCelsius !== undefined &&
+        item.temperatureCelsius > item.maxTemperatureCelsius,
+    ),
   };
+}
+
+function requireTemperature(value: number) {
+  if (
+    !Number.isFinite(value) ||
+    value < -100 ||
+    value > 100 ||
+    !Number.isInteger(value * 10)
+  ) {
+    throw new ConvexError(
+      "Temperaturen skal være mellem -100 og 100 med højst én decimal",
+    );
+  }
 }
 
 async function resolveResponsibleName(
@@ -234,6 +268,44 @@ async function prepareTransfer(
     throw new ConvexError("Overførslen har for mange varelinjer");
   }
 
+  const submittedProductIds = new Set(args.items.map((item) => item.productId));
+  const productTemperatures = new Map<Id<"products">, number>();
+  for (const temperature of args.productTemperatures ?? []) {
+    if (productTemperatures.has(temperature.productId)) {
+      throw new ConvexError(
+        "Et produkt må kun have én temperaturmåling",
+      );
+    }
+    if (!submittedProductIds.has(temperature.productId)) {
+      throw new ConvexError(
+        "En temperaturmåling tilhører ikke overførslen",
+      );
+    }
+    requireTemperature(temperature.temperatureCelsius);
+    productTemperatures.set(
+      temperature.productId,
+      temperature.temperatureCelsius,
+    );
+  }
+
+  const confirmedDeviations = new Map<Id<"products">, number>();
+  for (const confirmation of args.confirmedTemperatureDeviations ?? []) {
+    if (confirmedDeviations.has(confirmation.productId)) {
+      throw new ConvexError(
+        "Et produkts temperaturafvigelse må kun bekræftes én gang",
+      );
+    }
+    if (!submittedProductIds.has(confirmation.productId)) {
+      throw new ConvexError(
+        "En temperaturbekræftelse tilhører ikke overførslen",
+      );
+    }
+    confirmedDeviations.set(
+      confirmation.productId,
+      confirmation.maxTemperatureCelsius,
+    );
+  }
+
   const [fromLocation, toLocation] = await Promise.all([
     ctx.db.get("locations", args.fromLocationId),
     ctx.db.get("locations", args.toLocationId),
@@ -248,6 +320,20 @@ async function prepareTransfer(
   const existingByPair = new Map(
     existingItems.map((item) => [`${item.productId}:${item.unitId}`, item]),
   );
+  const existingMaximumByProduct = new Map<Id<"products">, number | undefined>();
+  for (const item of existingItems) {
+    const existingMaximum = existingMaximumByProduct.get(item.productId);
+    if (
+      existingMaximumByProduct.has(item.productId) &&
+      existingMaximum !== item.maxTemperatureCelsius
+    ) {
+      throw new ConvexError("Flytningens temperaturdata er ugyldige");
+    }
+    existingMaximumByProduct.set(
+      item.productId,
+      item.maxTemperatureCelsius,
+    );
+  }
   const pairKeys = new Set<string>();
   const resolvedItems: Array<{
     productId: Id<"products">;
@@ -256,6 +342,8 @@ async function prepareTransfer(
     unitName: string;
     quantity: number;
     factorToDefault?: number;
+    temperatureCelsius?: number;
+    maxTemperatureCelsius?: number;
   }> = [];
 
   for (const item of args.items) {
@@ -283,6 +371,7 @@ async function prepareTransfer(
         : null;
     const unit = productUnit ? await ctx.db.get("units", item.unitId) : null;
     const existingItem = existingByPair.get(pairKey);
+    const hasExistingProduct = existingMaximumByProduct.has(item.productId);
 
     if (
       product &&
@@ -299,6 +388,11 @@ async function prepareTransfer(
         unitName: unit.name,
         quantity: item.quantity,
         factorToDefault: productUnit.factorToDefault,
+        temperatureCelsius: productTemperatures.get(product._id),
+        maxTemperatureCelsius:
+          hasExistingProduct
+            ? existingMaximumByProduct.get(item.productId)
+            : product.maxTemperatureCelsius,
       });
     } else if (existingItem) {
       resolvedItems.push({
@@ -308,9 +402,37 @@ async function prepareTransfer(
         unitName: existingItem.unitName,
         quantity: item.quantity,
         factorToDefault: existingItem.factorToDefault,
+        temperatureCelsius: productTemperatures.get(item.productId),
+        maxTemperatureCelsius: existingMaximumByProduct.get(item.productId),
       });
     } else {
       throw new ConvexError("Produktet eller enheden blev ikke fundet");
+    }
+  }
+
+  const temperaturesByProduct = new Map<Id<"products">, TemperatureSnapshot>();
+  for (const item of resolvedItems) {
+    temperaturesByProduct.set(item.productId, {
+      temperatureCelsius: item.temperatureCelsius,
+      maxTemperatureCelsius: item.maxTemperatureCelsius,
+    });
+  }
+  const deviatingProducts = new Map<Id<"products">, number>();
+  for (const [productId, snapshot] of temperaturesByProduct) {
+    if (
+      snapshot.maxTemperatureCelsius !== undefined &&
+      snapshot.temperatureCelsius === undefined
+    ) {
+      throw new ConvexError(
+        "Temperaturen skal udfyldes for alle temperatursporede produkter",
+      );
+    }
+    if (
+      snapshot.temperatureCelsius !== undefined &&
+      snapshot.maxTemperatureCelsius !== undefined &&
+      snapshot.temperatureCelsius > snapshot.maxTemperatureCelsius
+    ) {
+      deviatingProducts.set(productId, snapshot.maxTemperatureCelsius);
     }
   }
 
@@ -323,6 +445,28 @@ async function prepareTransfer(
       );
     }
     comment = trimmed || undefined;
+  }
+
+  if (deviatingProducts.size > 0 && comment === undefined) {
+    throw new ConvexError(
+      "Tilføj en kommentar til temperaturafvigelsen",
+    );
+  }
+  for (const [productId, confirmedMaximum] of confirmedDeviations) {
+    const actualMaximum = deviatingProducts.get(productId);
+    if (actualMaximum === undefined) {
+      throw new ConvexError("Temperaturbekræftelsen er ikke længere gyldig");
+    }
+    if (confirmedMaximum !== actualMaximum) {
+      throw new ConvexError(
+        "Maksimumtemperaturen er ændret. Gennemgå afvigelsen igen",
+      );
+    }
+  }
+  for (const productId of deviatingProducts.keys()) {
+    if (!confirmedDeviations.has(productId)) {
+      throw new ConvexError("Bekræft alle temperaturafvigelser");
+    }
   }
 
   const responsibleName =
@@ -376,7 +520,7 @@ function validateDateRange(startAt: number, endAt: number) {
 }
 
 export const createTransfer = mutation({
-  args: transferFields,
+  args: transferArgsValidator.fields,
   returns: v.id("transfers"),
   handler: async (ctx, args) => {
     const auth = await requireTransferManager(ctx, "transfers.new");
@@ -414,6 +558,8 @@ export const createTransfer = mutation({
         unitName: item.unitName,
         quantity: item.quantity,
         factorToDefault: item.factorToDefault,
+        temperatureCelsius: item.temperatureCelsius,
+        maxTemperatureCelsius: item.maxTemperatureCelsius,
       });
     }
 
@@ -431,7 +577,10 @@ export const createTransfer = mutation({
 });
 
 export const updateTransfer = mutation({
-  args: { transferId: v.id("transfers"), ...transferFields },
+  args: {
+    transferId: v.id("transfers"),
+    ...transferArgsValidator.fields,
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireTransferManager(ctx, "transfers.history");
@@ -512,6 +661,8 @@ export const updateTransfer = mutation({
         unitName: item.unitName,
         quantity: item.quantity,
         factorToDefault: item.factorToDefault,
+        temperatureCelsius: item.temperatureCelsius,
+        maxTemperatureCelsius: item.maxTemperatureCelsius,
       });
     }
 
@@ -659,6 +810,8 @@ export const getTransfer = query({
         unitId: item.unitId,
         unitName: item.unitName,
         quantity: item.quantity,
+        temperatureCelsius: item.temperatureCelsius ?? null,
+        maxTemperatureCelsius: item.maxTemperatureCelsius ?? null,
       })),
     };
   },
@@ -764,6 +917,7 @@ export const getTransferProductOption = query({
       name: product.name,
       imageUrl,
       defaultUnitId: product.defaultUnitId,
+      maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
       units: productUnits.flatMap((productUnit, index) => {
         const unit = units[index];
         return unit?.organizationId === organizationId
@@ -902,6 +1056,13 @@ export const exportTransfers = query({
                   productName: item.productName,
                   unitName: measured.unitName,
                   quantity: measured.quantity,
+                  temperatureCelsius: item.temperatureCelsius ?? null,
+                  maxTemperatureCelsius:
+                    item.maxTemperatureCelsius ?? null,
+                  temperatureDeviation:
+                    item.temperatureCelsius !== undefined &&
+                    item.maxTemperatureCelsius !== undefined &&
+                    item.temperatureCelsius > item.maxTemperatureCelsius,
                   comment: transfer.comment ?? null,
                 };
               }),
