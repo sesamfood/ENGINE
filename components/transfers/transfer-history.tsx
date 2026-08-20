@@ -33,6 +33,7 @@ import {
   GripVerticalIcon,
   PencilIcon,
   Trash2Icon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -53,6 +54,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -90,6 +92,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type TransferListRow = {
@@ -101,6 +108,7 @@ type TransferListRow = {
   comment: string | null;
   itemCount: number;
   totalQuantity: number;
+  hasTemperatureDeviation: boolean;
 };
 
 type TransferDetail = EditableTransfer & {
@@ -118,10 +126,19 @@ type ExportRow = {
   unitName: string;
   quantity: number;
   comment: string | null;
+  temperatureCelsius: number | null;
+  maxTemperatureCelsius: number | null;
+  temperatureDeviation: boolean;
 };
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
+}
+
+function formatTemperature(value: number) {
+  return new Intl.NumberFormat("da-DK", {
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 function pad(value: number) {
@@ -213,6 +230,27 @@ const exportColumns: ExportColumn[] = [
     label: "Antal",
     value: (row) => String(row.quantity).replace(".", ","),
   },
+  {
+    key: "temperature",
+    label: "Temperatur (°C)",
+    value: (row) =>
+      row.temperatureCelsius === null
+        ? ""
+        : formatTemperature(row.temperatureCelsius),
+  },
+  {
+    key: "maxTemperature",
+    label: "Maks. temperatur (°C)",
+    value: (row) =>
+      row.maxTemperatureCelsius === null
+        ? ""
+        : formatTemperature(row.maxTemperatureCelsius),
+  },
+  {
+    key: "temperatureDeviation",
+    label: "Temperaturafvigelse",
+    value: (row) => (row.temperatureDeviation ? "Ja" : "Nej"),
+  },
   { key: "comment", label: "Kommentar", value: (row) => row.comment ?? "" },
 ];
 
@@ -230,32 +268,38 @@ type ExportPrefs = {
 
 function normalizeExportPrefs(value: unknown): ExportPrefs {
   const defaults: ExportPrefs = {
-    order: defaultColumnOrder,
-    enabled: defaultColumnOrder,
+    order: [...defaultColumnOrder],
+    enabled: [...defaultColumnOrder],
     inDefaultUnit: false,
   };
   if (!value || typeof value !== "object") return defaults;
-  const raw = value as Partial<ExportPrefs>;
-  const knownOrder = Array.isArray(raw.order)
-    ? raw.order.filter(
+  const rawOrder = "order" in value && Array.isArray(value.order)
+    ? value.order
+    : [];
+  const knownOrder = rawOrder.filter(
         (key): key is string =>
           typeof key === "string" && exportColumnByKey.has(key),
-      )
-    : [];
+      );
   const order = [
     ...knownOrder,
     ...defaultColumnOrder.filter((key) => !knownOrder.includes(key)),
   ];
-  const enabledRaw = Array.isArray(raw.enabled)
-    ? raw.enabled.filter(
+  const hasSavedColumns =
+    ("order" in value && Array.isArray(value.order)) ||
+    ("enabled" in value && Array.isArray(value.enabled));
+  const enabledRaw = "enabled" in value && Array.isArray(value.enabled)
+    ? value.enabled.filter(
         (key): key is string =>
           typeof key === "string" && exportColumnByKey.has(key),
       )
-    : order;
+    : hasSavedColumns
+      ? knownOrder
+      : order;
   return {
     order,
-    enabled: enabledRaw.length > 0 ? enabledRaw : order,
-    inDefaultUnit: Boolean(raw.inDefaultUnit),
+    enabled: enabledRaw,
+    inDefaultUnit:
+      "inDefaultUnit" in value ? Boolean(value.inDefaultUnit) : false,
   };
 }
 
@@ -784,6 +828,19 @@ export function TransferHistory() {
   const transfers = results as TransferListRow[];
   const loading = paginationStatus === "LoadingFirstPage";
   const showSkeleton = useDelayedLoading(loading && transfers.length === 0);
+  const detailGroups = useMemo(() => {
+    if (!transferDetail) return [];
+    return Array.from(
+      transferDetail.items
+        .reduce((groups, item) => {
+          const group = groups.get(item.productId);
+          if (group) group.push(item);
+          else groups.set(item.productId, [item]);
+          return groups;
+        }, new Map<Id<"products">, TransferDetail["items"]>())
+        .values(),
+    );
+  }, [transferDetail]);
   // ponytail: count is of loaded rows only; upgrade path is @convex-dev/aggregate for a true period total.
   const loadedCount = transfers.length;
 
@@ -971,7 +1028,7 @@ export function TransferHistory() {
                   key={transfer.id}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Åbn flytning fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
+                  aria-label={`Åbn flytning fra ${transfer.fromLocationName} til ${transfer.toLocationName}${transfer.hasTemperatureDeviation ? " med temperaturafvigelse" : ""}`}
                   className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
                   onClick={() => openTransfer(transfer.id)}
                   onKeyDown={(event) => {
@@ -982,7 +1039,29 @@ export function TransferHistory() {
                   }}
                 >
                   <TableCell>
-                    {dateTimeFormatter.format(transfer.transferredAt)}
+                    <span className="flex items-center gap-1">
+                      {transfer.hasTemperatureDeviation ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <span className="inline-flex text-warning" />
+                            }
+                          >
+                            <TriangleAlertIcon
+                              aria-hidden="true"
+                              className="size-4"
+                            />
+                            <span className="sr-only">
+                              Temperaturafvigelse
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Flytningen har en temperaturafvigelse
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                      <span>{dateTimeFormatter.format(transfer.transferredAt)}</span>
+                    </span>
                   </TableCell>
                   <TableCell>{transfer.fromLocationName}</TableCell>
                   <TableCell>{transfer.toLocationName}</TableCell>
@@ -1179,17 +1258,64 @@ export function TransferHistory() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {transferDetail.items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">
-                          {item.productName}
-                        </TableCell>
-                        <TableCell>{item.unitName}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {item.quantity}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {detailGroups.flatMap((group) => {
+                      const first = group[0];
+                      if (!first) return [];
+                      const measured = first.temperatureCelsius;
+                      const maximum = first.maxTemperatureCelsius;
+                      const hasDeviation =
+                        measured !== null &&
+                        maximum !== null &&
+                        measured > maximum;
+                      return [
+                        <TableRow key={`${first.productId}-temperature`}>
+                          <TableCell colSpan={3}>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="font-medium">
+                                {first.productName}
+                              </span>
+                              {hasDeviation ? (
+                                <Badge variant="outline" className="text-warning">
+                                  <TriangleAlertIcon
+                                    aria-hidden="true"
+                                    data-icon="inline-start"
+                                  />
+                                  <span>Temperaturafvigelse</span>
+                                  <span className="sr-only">
+                                    Temperaturen overstiger maksimum.
+                                  </span>
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <p
+                              className={cn(
+                                "text-sm text-muted-foreground",
+                                hasDeviation && "text-warning",
+                              )}
+                            >
+                              Temperatur: {measured === null ? "Ikke registreret" : `${formatTemperature(measured)} °C`} · Maks. temperatur: {maximum === null ? "Ikke angivet" : `${formatTemperature(maximum)} °C`}
+                              {hasDeviation && measured !== null && maximum !== null ? (
+                                <span className="sr-only">
+                                  Målt temperatur {formatTemperature(measured)} °C,
+                                  maksimum {formatTemperature(maximum)} °C.
+                                </span>
+                              ) : null}
+                            </p>
+                          </TableCell>
+                        </TableRow>,
+                        ...group.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">
+                              {item.productName}
+                            </TableCell>
+                            <TableCell>{item.unitName}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {item.quantity}
+                            </TableCell>
+                          </TableRow>
+                        )),
+                      ];
+                    })}
                   </TableBody>
                 </Table>
               </div>

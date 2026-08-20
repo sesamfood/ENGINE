@@ -1012,15 +1012,20 @@ function KioskModeControl() {
 function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
   const kiosk = useKiosk();
   const access = useAccess();
+  const kioskModeControl = <KioskModeControl />;
+  const accountMenu = (
+    <SidebarMenu className="gap-2">
+      <SidebarMenuItem><FeedbackDialog permissions={access?.permissions} /></SidebarMenuItem>
+      {!kiosk?.kioskModeEnabled ? (
+        <SidebarMenuItem><ProfileMenu signingOut={signingOut} onSignOut={onSignOut} /></SidebarMenuItem>
+      ) : null}
+    </SidebarMenu>
+  );
+
   return (
     <SidebarFooter>
-      <KioskModeControl />
-      <SidebarMenu className="gap-2">
-        <SidebarMenuItem><FeedbackDialog permissions={access?.permissions} /></SidebarMenuItem>
-        {!kiosk?.kioskModeEnabled ? (
-          <SidebarMenuItem><ProfileMenu signingOut={signingOut} onSignOut={onSignOut} /></SidebarMenuItem>
-        ) : null}
-      </SidebarMenu>
+      {kiosk?.kioskModeEnabled ? accountMenu : kioskModeControl}
+      {kiosk?.kioskModeEnabled ? kioskModeControl : accountMenu}
     </SidebarFooter>
   );
 }

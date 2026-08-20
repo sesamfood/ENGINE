@@ -641,6 +641,7 @@ export default defineSchema({
     categoryId: v.id("categories"),
     defaultUnitId: v.id("units"),
     imageStorageId: v.optional(v.id("_storage")),
+    maxTemperatureCelsius: v.optional(v.number()),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdBy: v.string(),
     updatedAt: v.number(),
@@ -805,6 +806,8 @@ export default defineSchema({
     unitName: v.string(),
     quantity: v.number(),
     factorToDefault: v.optional(v.number()),
+    temperatureCelsius: v.optional(v.number()),
+    maxTemperatureCelsius: v.optional(v.number()),
   }).index("by_organizationId_and_transferId", [
     "organizationId",
     "transferId",

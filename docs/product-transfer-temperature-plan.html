@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Plan: product maximum temperatures in transfers</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f5f7;
+      --paper: #ffffff;
+      --ink: #18181b;
+      --muted: #62646b;
+      --line: #d8dadd;
+      --soft: #eef1f4;
+      --accent: #175f54;
+      --accent-soft: #e1f2ee;
+      --warn: #934b0b;
+      --warn-soft: #fff1db;
+      --code: #f0f1f3;
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 30px rgb(0 0 0 / 0.05);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.58 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--accent); }
+    a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 32px auto 64px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 230px;
+      gap: 28px;
+      align-items: start;
+    }
+
+    article {
+      min-width: 0;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: clamp(24px, 5vw, 56px);
+    }
+
+    nav {
+      position: sticky;
+      top: 24px;
+      border-left: 2px solid var(--line);
+      padding-left: 18px;
+      font-size: 0.9rem;
+    }
+
+    nav strong { display: block; margin-bottom: 8px; }
+    nav a { display: block; padding: 5px 0; text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+
+    header { margin-bottom: 34px; }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 { line-height: 1.2; letter-spacing: -0.02em; }
+    h1 { margin: 0 0 14px; font-size: clamp(2rem, 5vw, 3.4rem); max-width: 16ch; }
+    h2 { margin: 48px 0 16px; font-size: 1.55rem; scroll-margin-top: 24px; }
+    h3 { margin: 28px 0 8px; font-size: 1.08rem; }
+    p { margin: 0 0 14px; }
+    ul, ol { padding-left: 1.35rem; }
+    li + li { margin-top: 7px; }
+
+    .lede { max-width: 72ch; color: var(--muted); font-size: 1.08rem; }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .callout {
+      margin: 24px 0;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 18px 20px;
+      border-radius: 0 10px 10px 0;
+    }
+
+    .callout.warning { border-color: var(--warn); background: var(--warn-soft); }
+    .callout > :last-child { margin-bottom: 0; }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .decision {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 15px 16px;
+      background: var(--paper);
+    }
+
+    .decision strong { display: block; margin-bottom: 4px; }
+    .decision p { margin: 0; color: var(--muted); font-size: 0.93rem; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 10px;
+      align-items: center;
+      margin: 22px 0;
+    }
+
+    .flow-box {
+      min-height: 112px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      background: var(--soft);
+    }
+
+    .flow-box strong { display: block; margin-bottom: 5px; }
+    .flow-box span { color: var(--muted); font-size: 0.88rem; }
+    .arrow { color: var(--accent); font-size: 1.4rem; font-weight: 800; }
+
+    .work-package {
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+      margin-top: 24px;
+    }
+
+    .work-package h3 { margin-top: 0; }
+
+    .label {
+      display: inline-block;
+      min-width: 82px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      vertical-align: top;
+    }
+
+    code {
+      padding: 0.12rem 0.34rem;
+      border-radius: 4px;
+      background: var(--code);
+      font: 0.88em/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 14px 0 20px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--code);
+      font: 0.85rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    pre code { padding: 0; background: transparent; }
+
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 680px;
+      font-size: 0.91rem;
+    }
+
+    th, td { padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--soft); font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+
+    .check { color: var(--accent); font-weight: 800; }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; margin-top: 16px; }
+      nav { position: static; order: -1; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); padding: 14px 18px; }
+      nav a { display: inline-block; margin-right: 14px; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); justify-self: center; }
+    }
+
+    @media (max-width: 620px) {
+      main { width: min(100% - 18px, 1120px); }
+      article { padding: 22px 18px; border-radius: 10px; }
+      .decision-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111315;
+        --paper: #191b1e;
+        --ink: #f2f3f4;
+        --muted: #b0b4ba;
+        --line: #34383d;
+        --soft: #22262a;
+        --accent: #76d1c1;
+        --accent-soft: #173a34;
+        --warn: #f3aa61;
+        --warn-soft: #462b15;
+        --code: #24272b;
+        --shadow: none;
+      }
+    }
+
+    @media print {
+      :root { color-scheme: light; }
+      body { background: white; }
+      main { display: block; width: 100%; margin: 0; }
+      article { border: 0; box-shadow: none; padding: 0; }
+      nav { display: none; }
+      h2 { break-after: avoid; }
+      .work-package, .decision, .callout { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <header>
+        <p class="eyebrow">Implementation plan</p>
+        <h1>Product maximum temperatures in transfers</h1>
+        <p class="lede">Add optional temperature tracking to products, require a blank-by-default measurement for tracked products during transfers, flag deviations with a yellow exclamation mark, and retain an auditable snapshot without turning deviations into a separate workflow.</p>
+        <div class="meta">
+          <span class="status">Decision complete</span>
+          <span>Prepared 20 August 2026</span>
+          <span>Target: current Next.js and Convex application</span>
+        </div>
+      </header>
+
+      <section aria-labelledby="summary-heading">
+        <h2 id="summary-heading">Summary</h2>
+        <div class="callout">
+          <p><strong>Outcome.</strong> A product may define a maximum transfer temperature in degrees Celsius. A transfer records one temperature per distinct product, even when that product has several unit lines. Tracked products require a measurement. Untracked products accept one optionally. An over-limit value requires the existing transfer comment and one explicit confirmation.</p>
+        </div>
+
+        <div class="decision-grid" aria-label="Locked product decisions">
+          <div class="decision"><strong>One measurement per product</strong><p>Cases, units, and other quantity lines share the same measured value.</p></div>
+          <div class="decision"><strong>Celsius with one decimal</strong><p>Allow values from -100.0 through 100.0 °C, including negative temperatures.</p></div>
+          <div class="decision"><strong>Historical limits stay fixed</strong><p>Each transfer keeps the maximum that applied when the product was added.</p></div>
+          <div class="decision"><strong>Deviations can be recorded</strong><p>A comment and confirmation are required. The system does not reject the real measurement.</p></div>
+          <div class="decision"><strong>Old transfers are grandfathered</strong><p>Existing products retain their captured rule. Newly added products use current settings.</p></div>
+          <div class="decision"><strong>Deviations stay visible</strong><p>A yellow exclamation marks affected products during entry and affected rows in transfer history.</p></div>
+        </div>
+      </section>
+
+      <section aria-labelledby="model-heading">
+        <h2 id="model-heading">Data model and contracts</h2>
+
+        <div class="flow" role="img" aria-label="A product maximum is applied during transfer entry, then the measurement and maximum are stored together for history and export">
+          <div class="flow-box"><strong>Product setting</strong><span>Optional maximum in °C. Empty means temperature tracking is off.</span></div>
+          <div class="arrow" aria-hidden="true">→</div>
+          <div class="flow-box"><strong>Transfer entry</strong><span>One product measurement. Server checks requirement, deviation, comment, and confirmation.</span></div>
+          <div class="arrow" aria-hidden="true">→</div>
+          <div class="flow-box"><strong>Historical snapshot</strong><span>Recorded temperature and applicable maximum feed detail view and CSV export.</span></div>
+        </div>
+
+        <h3>Stored fields</h3>
+        <p>Add optional numeric fields so existing Convex documents remain valid and no backfill is required.</p>
+        <pre><code>products.maxTemperatureCelsius?: number
+
+transferItems.temperatureCelsius?: number
+transferItems.maxTemperatureCelsius?: number</code></pre>
+        <p>The mutation accepts one measurement per distinct product. The server copies the canonical measurement and captured maximum to every <code>transferItems</code> row for that product. This matches the existing item-level snapshot and export model without adding another table. Do not store a separate deviation boolean because <code>temperatureCelsius &gt; maxTemperatureCelsius</code> derives it.</p>
+
+        <h3>History summary contract</h3>
+        <pre><code>TransferHeader.hasTemperatureDeviation: boolean</code></pre>
+        <p>Derive this value while <code>hydrateTransferHeader</code> already has the transfer items for quantity totals. It is true when any item has both snapshot values and its measured temperature exceeds its captured maximum. Do not persist the summary or add another query.</p>
+
+        <h3>Mutation input</h3>
+        <pre><code>productTemperatures?: Array&lt;{
+  productId: Id&lt;"products"&gt;
+  temperatureCelsius: number
+}&gt;
+
+confirmedTemperatureDeviations?: Array&lt;{
+  productId: Id&lt;"products"&gt;
+  maxTemperatureCelsius: number
+}&gt;</code></pre>
+        <p>Keep both arrays optional at the API boundary so old callers continue to work for untracked products. The server rejects duplicate product entries, measurements for products absent from the transfer, missing measurements for tracked products, invalid precision or range, and stale deviation confirmations.</p>
+
+        <h3>Product mutation compatibility</h3>
+        <p>Accept <code>maxTemperatureCelsius?: number | null</code> when creating, updating, or importing products. Omitted means untracked on create and preserve the current setting on update. <code>null</code> explicitly clears the setting. A number sets it after server validation.</p>
+      </section>
+
+      <section aria-labelledby="implementation-heading">
+        <h2 id="implementation-heading">Implementation sequence</h2>
+
+        <div class="work-package">
+          <h3>1. Widen the catalog and transfer schemas</h3>
+          <p><span class="label">Goal</span>Persist optional product limits and immutable transfer snapshots without migrating old rows.</p>
+          <p><span class="label">Change</span>Add the optional fields in <code>convex/schema.ts</code>. Extend catalog and transfer validators, return values, and hydration in <code>convex/catalog.ts</code> and <code>convex/transfers.ts</code>.</p>
+          <p><span class="label">Rules</span>Validate finite values, one decimal at most, and the inclusive -100.0 to 100.0 °C range on the server. Exactly the configured maximum is compliant.</p>
+          <p><span class="label">Security</span>Retain organization checks and existing permissions. Catalog changes use <code>catalog.manage</code>; capture and edits use <code>transfers.manage</code>; history and export keep their current view/export permissions.</p>
+        </div>
+
+        <div class="work-package">
+          <h3>2. Add the optional product setting</h3>
+          <p><span class="label">Goal</span>Let catalog managers enable tracking by entering one maximum value.</p>
+          <p><span class="label">Change</span>Add a blank optional number field to the product details section in <code>components/catalog/product-form.tsx</code>. Use the existing <code>Field</code>, <code>Input</code>, and question-mark help tooltip patterns. Do not add a separate switch.</p>
+          <p><span class="label">Behavior</span>Use decimal input with a °C suffix, preserve an empty string as “not tracked,” parse only on submit, and send <code>null</code> when a manager clears an existing value. Keep all new interface copy in Danish.</p>
+          <p><span class="label">Feedback</span>Show the range or precision error at the field. Keep existing save success and failure feedback.</p>
+        </div>
+
+        <div class="work-package">
+          <h3>3. Capture and validate transfer temperatures</h3>
+          <p><span class="label">Goal</span>Collect one blank-by-default temperature for each distinct product and prevent unconfirmed deviations.</p>
+          <p><span class="label">Change</span>Return the current maximum from <code>getTransferProductOption</code>. In <code>components/transfers/transfer-form.tsx</code>, place one temperature field in each product group rather than each unit row. Adding another unit preserves the product measurement; removing the last unit removes it.</p>
+          <p><span class="label">Required</span>A product with a captured maximum must have a measurement. A product without one may leave the field empty or record a value. No new product receives a temperature default.</p>
+          <p><span class="label">Deviation</span>Mark an over-limit product immediately with a yellow <code>TriangleAlertIcon</code> beside its product name and temperature field. Pair the icon with visually hidden text that says the product has a temperature deviation, and keep the numeric explanation visible at the field so color is not the only signal.</p>
+          <p><span class="label">Confirm</span>If deviations remain when saving, require the existing transfer comment, then open one shadcn <code>AlertDialog</code> listing every affected product with measured and maximum values. The confirm action resubmits the exact acknowledged product and maximum pairs.</p>
+          <p><span class="label">Server</span>Derive all requirements from organization-scoped product rows or stored snapshots. Never trust client-provided limits. Reject a confirmation when its maximum no longer matches, so the UI must refresh and show the changed rule before asking again.</p>
+        </div>
+
+        <div class="work-package">
+          <h3>4. Preserve edit semantics</h3>
+          <p><span class="label">Goal</span>A historical transfer must not change compliance because someone later edits a product setting.</p>
+          <p><span class="label">Existing</span>For product IDs already present on the transfer, use the stored maximum and load the stored measurement. Legacy rows with no captured maximum stay untracked, even if the catalog product now has a maximum.</p>
+          <p><span class="label">New</span>For a product ID newly added during an edit, use its current catalog maximum and apply the same measurement and deviation rules as creation.</p>
+          <p><span class="label">Save</span>Continue the current atomic delete-and-reinsert item update, but carry the canonical product measurement and captured maximum onto every replacement line.</p>
+        </div>
+
+        <div class="work-package">
+          <h3>5. Expose warnings, history, and export data</h3>
+          <p><span class="label">Detail</span>Extend transfer detail rows with nullable measured and maximum temperatures. Display one temperature summary per product group and a clear deviation treatment when the measured value is above the captured maximum.</p>
+          <p><span class="label">History row</span>Add <code>hasTemperatureDeviation</code> to the transfer header result. In the existing table, show a yellow <code>TriangleAlertIcon</code> immediately before the timestamp when the value is true. Keep the current columns and row layout. Add a concise tooltip, visually hidden text, and &quot;with temperature deviation&quot; to the clickable row's accessible label.</p>
+          <p><span class="label">CSV</span>Add selectable “temperature,” “maximum temperature,” and “temperature deviation” columns through the existing export column system. Return the item snapshot from <code>exportTransfers</code>. Preserve saved column preferences; fresh preferences include the new columns with the existing defaults.</p>
+          <p><span class="label">Unchanged</span>Do not add a separate status column, history filter, dashboard metric, stock calculation, or transfer total.</p>
+        </div>
+
+        <div class="work-package">
+          <h3>6. Keep product archives compatible</h3>
+          <p><span class="label">Goal</span>Move the setting with product data without letting a legacy archive erase data it could not represent.</p>
+          <p><span class="label">Format</span>Update <code>lib/product-archive.ts</code> so new exports write archive version 2 and always include <code>maxTemperatureCelsius</code> as a number or <code>null</code>. Continue accepting version 1.</p>
+          <p><span class="label">Import</span>A version 1 product creates as untracked. When it overwrites an existing product, preserve that product’s maximum. Version 2 <code>null</code> clears the maximum and a number replaces it. Thread the value through the current product import flow.</p>
+        </div>
+      </section>
+
+      <section aria-labelledby="acceptance-heading">
+        <h2 id="acceptance-heading">Acceptance and verification</h2>
+        <div class="callout warning">
+          <p><strong>Repository rule.</strong> Do not add new automated tests unless the user asks for them. Update existing fixtures only if an interface change makes that necessary. Verify with the existing checks and the manual scenarios below.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Scenario</th><th>Expected result</th></tr></thead>
+            <tbody>
+              <tr><td>Product maximum left empty</td><td><span class="check">Pass</span> Product saves as untracked; its transfer temperature stays optional and empty by default.</td></tr>
+              <tr><td>Tracked product has no measurement</td><td><span class="check">Pass</span> Client shows an inline error and the server rejects the save.</td></tr>
+              <tr><td>Measurement equals maximum</td><td><span class="check">Pass</span> Transfer saves without deviation confirmation.</td></tr>
+              <tr><td>Measurement exceeds maximum</td><td><span class="check">Pass</span> Empty comment blocks progress; a comment opens the deviation dialog; explicit confirmation saves.</td></tr>
+              <tr><td>Over-limit value is entered</td><td><span class="check">Pass</span> A yellow exclamation appears beside that product during transfer creation or editing, with a visible explanation and screen-reader text.</td></tr>
+              <tr><td>Same product uses two units</td><td><span class="check">Pass</span> UI asks once and both stored item rows carry the same snapshot.</td></tr>
+              <tr><td>Product maximum changes after transfer</td><td><span class="check">Pass</span> Existing detail and CSV keep the original maximum and deviation result.</td></tr>
+              <tr><td>Legacy transfer is edited</td><td><span class="check">Pass</span> Existing products remain grandfathered; a newly added tracked product requires a blank new measurement.</td></tr>
+              <tr><td>Stale confirmation is submitted</td><td><span class="check">Pass</span> Server rejects it and the user must review the current maximum.</td></tr>
+              <tr><td>History contains a deviation</td><td><span class="check">Pass</span> Its table row has a yellow exclamation before the timestamp; compliant and legacy rows do not.</td></tr>
+              <tr><td>Version 1 archive overwrites a tracked product</td><td><span class="check">Pass</span> Existing maximum is preserved.</td></tr>
+              <tr><td>Version 2 archive contains null or a number</td><td><span class="check">Pass</span> Import explicitly clears or sets the maximum.</td></tr>
+              <tr><td>User crosses organization boundary</td><td><span class="check">Pass</span> Existing server-side organization and permission checks reject access.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Commands</h3>
+        <pre><code>npx tsc --noEmit
+npm run lint
+npm test
+npm run build</code></pre>
+        <p>Finish with a tablet-sized and phone-sized manual pass through product creation, transfer creation, deviation confirmation, historical edit, detail view, and CSV column selection.</p>
+      </section>
+
+      <section aria-labelledby="boundaries-heading">
+        <h2 id="boundaries-heading">Explicit boundaries</h2>
+        <ul>
+          <li>No minimum temperature, arrival temperature, per-unit-line temperature, or automatic sensor integration.</li>
+          <li>No separate deviation entity, reason per product, remediation workflow, notification, dashboard metric, status column, or history filter.</li>
+          <li>No new role or permission. Existing catalog, transfer, view, and export permissions remain authoritative.</li>
+          <li>No Convex backfill. Missing optional fields mean the historical product or transfer did not use temperature tracking.</li>
+          <li>No change to stock movement, product quantities, transfer totals, or provider integrations.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="docs-heading">
+        <h2 id="docs-heading">Domain documentation</h2>
+        <p>Add the agreed terms to the root <code>CONTEXT.md</code>: Maximum transfer temperature, Transfer temperature, and Temperature deviation. No ADR is needed. The decisions are feature-local, follow the existing transfer snapshot model, and can change without replacing an architectural boundary.</p>
+      </section>
+
+      <footer>
+        This plan reflects the completed decision interview. An implementer should not need further product choices before starting.
+      </footer>
+    </article>
+
+    <nav aria-label="Document sections">
+      <strong>On this page</strong>
+      <a href="#summary-heading">Summary</a>
+      <a href="#model-heading">Data model</a>
+      <a href="#implementation-heading">Implementation</a>
+      <a href="#acceptance-heading">Acceptance</a>
+      <a href="#boundaries-heading">Boundaries</a>
+      <a href="#docs-heading">Documentation</a>
+    </nav>
+  </main>
+</body>
+</html>

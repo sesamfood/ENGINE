@@ -4,10 +4,21 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   MinusIcon,
   PackageOpenIcon,
   PlusIcon,
   SaveIcon,
+  TriangleAlertIcon,
   Trash2Icon,
 } from "lucide-react";
 import Image from "next/image";
@@ -58,6 +69,7 @@ type ProductOption = {
   imageUrl: string | null;
   defaultUnitId: Id<"units">;
   units: Array<{ id: Id<"units">; name: string }>;
+  maxTemperatureCelsius: number | null;
 };
 
 type MemberOption = {
@@ -90,7 +102,34 @@ export type EditableTransfer = {
     unitId: Id<"units">;
     unitName: string;
     quantity: number;
+    temperatureCelsius: number | null;
+    maxTemperatureCelsius: number | null;
   }>;
+};
+
+type ProductTemperatureState = {
+  value: string;
+  maxTemperatureCelsius: number | null;
+};
+
+type OriginalTemperatureSnapshot = {
+  temperatureCelsius: number | null;
+  maxTemperatureCelsius: number | null;
+};
+
+type ProductTemperatureInput = {
+  productId: Id<"products">;
+  temperatureCelsius: number;
+};
+
+type TemperatureDeviationConfirmation = {
+  productId: Id<"products">;
+  maxTemperatureCelsius: number;
+};
+
+type ValidatedTemperatures = {
+  temperatures: ProductTemperatureInput[];
+  deviations: TemperatureDeviationConfirmation[];
 };
 
 function messageFrom(error: unknown) {
@@ -109,6 +148,60 @@ function toDatetimeLocalValue(ms: number) {
 function fromDatetimeLocalValue(value: string) {
   const ms = new Date(value).getTime();
   return Number.isFinite(ms) ? ms : NaN;
+}
+
+function formatTemperature(value: number) {
+  return new Intl.NumberFormat("da-DK", {
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function parseTemperatureInput(value: string): number | null | undefined {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+  if (!/^-?\d+(?:\.\d)?$/u.test(normalized)) return undefined;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= -100 && parsed <= 100
+    ? parsed
+    : undefined;
+}
+
+function temperatureStateKey(productId: Id<"products">) {
+  return String(productId);
+}
+
+function temperatureErrorKey(productId: Id<"products">) {
+  return `temperature-${temperatureStateKey(productId)}`;
+}
+
+function inputValueForTemperature(value: number | null) {
+  return value === null ? "" : String(value).replace(".", ",");
+}
+
+function initialTemperatureStates(transfer?: EditableTransfer) {
+  const states: Record<string, ProductTemperatureState> = {};
+  for (const item of transfer?.items ?? []) {
+    const key = temperatureStateKey(item.productId);
+    if (states[key]) continue;
+    states[key] = {
+      value: inputValueForTemperature(item.temperatureCelsius),
+      maxTemperatureCelsius: item.maxTemperatureCelsius,
+    };
+  }
+  return states;
+}
+
+function originalTemperatureSnapshotMap(transfer?: EditableTransfer) {
+  const snapshots = new Map<Id<"products">, OriginalTemperatureSnapshot>();
+  for (const item of transfer?.items ?? []) {
+    if (snapshots.has(item.productId)) continue;
+    snapshots.set(item.productId, {
+      temperatureCelsius: item.temperatureCelsius,
+      maxTemperatureCelsius: item.maxTemperatureCelsius,
+    });
+  }
+  return snapshots;
 }
 
 function newLineKey() {
@@ -135,6 +228,9 @@ export function TransferForm({
   const catalog = useQuery(api.catalog.listActiveProducts);
   const createTransfer = useMutation(api.transfers.createTransfer);
   const updateTransfer = useMutation(api.transfers.updateTransfer);
+  const [originalTemperatureSnapshots] = useState(() =>
+    originalTemperatureSnapshotMap(transfer),
+  );
   const [fromLocationId, setFromLocationId] = useState<string | null>(
     transfer?.fromLocationId ?? null,
   );
@@ -164,6 +260,15 @@ export function TransferForm({
   const [loadingProductId, setLoadingProductId] = useState<string>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [temperatureStates, setTemperatureStates] = useState<
+    Record<string, ProductTemperatureState>
+  >(() => initialTemperatureStates(transfer));
+  const [temperatureConfirmation, setTemperatureConfirmation] = useState<{
+    validated: ValidatedTemperatures;
+    deviations: TemperatureDeviationConfirmation[];
+  } | null>(null);
+  const [isTemperatureDialogOpen, setIsTemperatureDialogOpen] =
+    useState(false);
   const sessionUserId = session?.user.id;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
 
@@ -238,10 +343,13 @@ export function TransferForm({
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
     setComment("");
-    setTransferredAtLocal(toDatetimeLocalValue(Date.now()));
+    setTransferredAtLocal(() => toDatetimeLocalValue(Date.now()));
     setLines([]);
     setProductToAdd(null);
     setErrors({});
+    setTemperatureStates({});
+    setTemperatureConfirmation(null);
+    setIsTemperatureDialogOpen(false);
   }
 
   function addLine(product: ProductOption, unitId: Id<"units">) {
@@ -258,6 +366,22 @@ export function TransferForm({
         quantity: 1,
       },
     ]);
+    setTemperatureStates((current) => {
+      const key = temperatureStateKey(product.id);
+      const originalSnapshot = originalTemperatureSnapshots.get(product.id);
+      return current[key]
+        ? current
+        : {
+            ...current,
+            [key]: {
+              value: "",
+              maxTemperatureCelsius:
+                originalSnapshot === undefined
+                  ? product.maxTemperatureCelsius
+                  : originalSnapshot.maxTemperatureCelsius,
+            },
+          };
+    });
     setErrors((current) => {
       const next = { ...current };
       delete next.items;
@@ -298,6 +422,39 @@ export function TransferForm({
     } finally {
       setLoadingProductId(undefined);
     }
+  }
+
+  async function refreshNewProductMaximums() {
+    const productIds = Array.from(
+      new Set(lines.map((line) => line.productId)),
+    ).filter((productId) => !originalTemperatureSnapshots.has(productId));
+    if (productIds.length === 0) return;
+
+    const results = await Promise.allSettled(
+      productIds.map(async (productId) => ({
+        productId,
+        product: await convex.query(
+          api.transfers.getTransferProductOption,
+          { productId },
+        ),
+      })),
+    );
+    setTemperatureStates((current) => {
+      let next = current;
+      for (const result of results) {
+        if (result.status !== "fulfilled" || !result.value.product) continue;
+        const key = temperatureStateKey(result.value.productId);
+        const temperature = next[key];
+        if (!temperature) continue;
+        if (next === current) next = { ...current };
+        next[key] = {
+          ...temperature,
+          maxTemperatureCelsius:
+            result.value.product.maxTemperatureCelsius,
+        };
+      }
+      return next;
+    });
   }
 
   async function addUnit(productId: Id<"products">) {
@@ -362,7 +519,21 @@ export function TransferForm({
     }
   }
 
-  function validate() {
+  function removeLine(line: TransferLine) {
+    const isLastLineForProduct = !lines.some(
+      (item) => item.key !== line.key && item.productId === line.productId,
+    );
+    setLines((current) => current.filter((item) => item.key !== line.key));
+    if (isLastLineForProduct) {
+      setTemperatureStates((current) => {
+        const next = { ...current };
+        delete next[temperatureStateKey(line.productId)];
+        return next;
+      });
+    }
+  }
+
+  function validate(): ValidatedTemperatures | null {
     const nextErrors: Record<string, string> = {};
     if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderlokation";
     if (!toLocationId) nextErrors.toLocation = "Vælg modtagerlokation";
@@ -382,12 +553,62 @@ export function TransferForm({
     if (lines.some((line) => line.quantity <= 0)) {
       nextErrors.items = "Mængden skal være større end nul";
     }
+
+    const temperatures: ProductTemperatureInput[] = [];
+    const deviations: TemperatureDeviationConfirmation[] = [];
+    for (const group of lineGroups) {
+      const product = group[0];
+      if (!product) continue;
+
+      const state =
+        temperatureStates[temperatureStateKey(product.productId)] ?? {
+          value: "",
+          maxTemperatureCelsius: null,
+        };
+      const parsedTemperature = parseTemperatureInput(state.value);
+      const errorKey = temperatureErrorKey(product.productId);
+
+      if (parsedTemperature === undefined) {
+        nextErrors[errorKey] =
+          "Angiv en temperatur mellem -100 og 100 °C med højst én decimal";
+        continue;
+      }
+      if (state.maxTemperatureCelsius !== null && parsedTemperature === null) {
+        nextErrors[errorKey] = "Angiv en temperatur for denne vare";
+        continue;
+      }
+      if (parsedTemperature === null) continue;
+
+      temperatures.push({
+        productId: product.productId,
+        temperatureCelsius: parsedTemperature,
+      });
+      if (
+        state.maxTemperatureCelsius !== null &&
+        parsedTemperature > state.maxTemperatureCelsius
+      ) {
+        deviations.push({
+          productId: product.productId,
+          maxTemperatureCelsius: state.maxTemperatureCelsius,
+        });
+      }
+    }
+
+    if (deviations.length > 0 && !comment.trim()) {
+      nextErrors.comment =
+        "Tilføj en kommentar, når temperaturen overstiger maksimum";
+    }
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    return Object.keys(nextErrors).length === 0
+      ? { temperatures, deviations }
+      : null;
   }
 
-  async function save() {
-    if (!validate() || !fromLocationId || !toLocationId || !effectiveResponsibleUserId) {
+  async function submit(
+    validated: ValidatedTemperatures,
+    confirmedTemperatureDeviations?: TemperatureDeviationConfirmation[],
+  ) {
+    if (!fromLocationId || !toLocationId || !effectiveResponsibleUserId) {
       return;
     }
     setIsSaving(true);
@@ -403,6 +624,13 @@ export function TransferForm({
           unitId: line.unitId,
           quantity: line.quantity,
         })),
+        ...(validated.temperatures.length > 0
+          ? { productTemperatures: validated.temperatures }
+          : {}),
+        ...(confirmedTemperatureDeviations &&
+        confirmedTemperatureDeviations.length > 0
+          ? { confirmedTemperatureDeviations }
+          : {}),
       };
       if (transfer) {
         await updateTransfer({ transferId: transfer.id, ...payload });
@@ -415,9 +643,36 @@ export function TransferForm({
       }
     } catch (caught) {
       toast.error(messageFrom(caught));
+      setTemperatureConfirmation(null);
+      setIsTemperatureDialogOpen(false);
+      await refreshNewProductMaximums();
     } finally {
       setIsSaving(false);
     }
+  }
+
+  async function save() {
+    const validated = validate();
+    if (!validated || !fromLocationId || !toLocationId || !effectiveResponsibleUserId) {
+      return;
+    }
+    if (validated.deviations.length > 0) {
+      setTemperatureConfirmation({
+        validated,
+        deviations: validated.deviations,
+      });
+      setIsTemperatureDialogOpen(true);
+      return;
+    }
+    await submit(validated);
+  }
+
+  async function confirmTemperatureDeviation() {
+    if (!temperatureConfirmation || isSaving) return;
+    const confirmation = temperatureConfirmation;
+    setTemperatureConfirmation(null);
+    setIsTemperatureDialogOpen(false);
+    await submit(confirmation.validated, confirmation.deviations);
   }
 
   return (
@@ -497,7 +752,7 @@ export function TransferForm({
                 </FieldError>
               </Field>
 
-              <Field>
+              <Field data-invalid={Boolean(errors.comment)}>
                 <FieldLabel htmlFor={`${inputIdPrefix}-comment`}>
                   Kommentar (valgfri)
                 </FieldLabel>
@@ -507,7 +762,9 @@ export function TransferForm({
                   onChange={(event) => setComment(event.target.value)}
                   placeholder="Kommentar"
                   rows={3}
+                  aria-invalid={Boolean(errors.comment)}
                 />
+                <FieldError>{errors.comment}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.transferredAt)}>
@@ -561,10 +818,35 @@ export function TransferForm({
               <ul className="flex flex-col gap-3">
                 {lineGroups.map((group) => {
                   const product = group[0];
+                  if (!product) return null;
                   const usedUnitIds = new Set(group.map((line) => line.unitId));
                   const canAddUnit = product.units.some(
                     (unit) => !usedUnitIds.has(unit.id),
                   ) || !product.unitsLoaded;
+                  const productTemperature =
+                    temperatureStates[temperatureStateKey(product.productId)] ?? {
+                      value: "",
+                      maxTemperatureCelsius: null,
+                    };
+                  const parsedTemperature = parseTemperatureInput(
+                    productTemperature.value,
+                  );
+                  const deviationTemperature =
+                    parsedTemperature !== undefined &&
+                    parsedTemperature !== null &&
+                    productTemperature.maxTemperatureCelsius !== null &&
+                    parsedTemperature > productTemperature.maxTemperatureCelsius
+                      ? parsedTemperature
+                      : null;
+                  const deviationMaximum =
+                    deviationTemperature !== null
+                      ? productTemperature.maxTemperatureCelsius
+                      : null;
+                  const hasTemperatureDeviation =
+                    deviationTemperature !== null && deviationMaximum !== null;
+                  const temperatureId = `${inputIdPrefix}-${temperatureStateKey(product.productId)}-temperature`;
+                  const temperatureError =
+                    errors[temperatureErrorKey(product.productId)];
 
                   return (
                     <li
@@ -591,9 +873,22 @@ export function TransferForm({
                           </div>
                         )}
 
-                        <p className="min-w-0 flex-1 truncate font-medium">
-                          {product.productName}
-                        </p>
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate font-medium">
+                            {product.productName}
+                          </p>
+                          {hasTemperatureDeviation ? (
+                            <span className="inline-flex shrink-0 text-warning">
+                              <TriangleAlertIcon
+                                aria-hidden="true"
+                                className="size-4"
+                              />
+                              <span className="sr-only">
+                                Temperaturafvigelse for {product.productName}
+                              </span>
+                            </span>
+                          ) : null}
+                        </div>
 
                         {canAddUnit ? (
                           <Button
@@ -612,6 +907,59 @@ export function TransferForm({
                           </Button>
                         ) : null}
                       </div>
+
+                      <Field data-invalid={Boolean(temperatureError)}>
+                        <FieldLabel htmlFor={temperatureId}>
+                          <span className="flex items-center gap-1">
+                            Temperatur
+                            {productTemperature.maxTemperatureCelsius !== null
+                              ? `(maks. ${formatTemperature(productTemperature.maxTemperatureCelsius)} °C)`
+                              : "(valgfri)"}
+                            {hasTemperatureDeviation ? (
+                              <TriangleAlertIcon
+                                aria-hidden="true"
+                                className="size-4 text-warning"
+                              />
+                            ) : null}
+                          </span>
+                        </FieldLabel>
+                        <Input
+                          id={temperatureId}
+                          type="text"
+                          inputMode="decimal"
+                          value={productTemperature.value}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setTemperatureStates((current) => ({
+                              ...current,
+                              [temperatureStateKey(product.productId)]: {
+                                ...productTemperature,
+                                value,
+                              },
+                            }));
+                            setErrors((current) => {
+                              const next = { ...current };
+                              delete next[temperatureErrorKey(product.productId)];
+                              delete next.comment;
+                              return next;
+                            });
+                          }}
+                          placeholder="Temperatur i °C"
+                          aria-invalid={Boolean(temperatureError)}
+                        />
+                        {hasTemperatureDeviation &&
+                        deviationTemperature !== null &&
+                        deviationMaximum !== null ? (
+                          <p className="text-sm text-warning">
+                            Målt: {formatTemperature(deviationTemperature)} °C ·
+                            maksimum: {formatTemperature(deviationMaximum)} °C.
+                            <span className="sr-only">
+                              Temperaturen overstiger maksimum.
+                            </span>
+                          </p>
+                        ) : null}
+                        <FieldError>{temperatureError}</FieldError>
+                      </Field>
 
                       <ul className="flex flex-col gap-2">
                         {group.map((line) => (
@@ -745,13 +1093,7 @@ export function TransferForm({
                               size="icon-lg"
                               className="size-11"
                               aria-label={`Fjern ${line.productName} i den valgte enhed`}
-                              onClick={() =>
-                                setLines((current) =>
-                                  current.filter(
-                                    (item) => item.key !== line.key,
-                                  ),
-                                )
-                              }
+                              onClick={() => removeLine(line)}
                             >
                               <Trash2Icon />
                             </Button>
@@ -766,6 +1108,65 @@ export function TransferForm({
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog
+        open={isTemperatureDialogOpen}
+        onOpenChange={(open) => {
+          if (!isSaving) {
+            setIsTemperatureDialogOpen(open);
+            if (!open) setTemperatureConfirmation(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bekræft temperaturafvigelse</AlertDialogTitle>
+            <AlertDialogDescription>
+              Temperaturen overstiger maksimum for følgende varer. Vil du gemme
+              flytningen med afvigelserne?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {temperatureConfirmation ? (
+            <ul className="flex flex-col gap-2 text-sm">
+              {temperatureConfirmation.deviations.map((deviation) => {
+                const product = lineGroups
+                  .map((group) => group[0])
+                  .find((line) => line?.productId === deviation.productId);
+                const measured = temperatureConfirmation.validated.temperatures.find(
+                  (temperature) => temperature.productId === deviation.productId,
+                )?.temperatureCelsius;
+                return (
+                  <li
+                    key={deviation.productId}
+                    className="rounded-md border px-3 py-2"
+                  >
+                    <span className="font-medium">
+                      {product?.productName ?? "Vare"}
+                    </span>
+                    <span className="block text-muted-foreground">
+                      Målt: {measured === undefined ? "—" : formatTemperature(measured)} °C ·
+                      maksimum: {formatTemperature(deviation.maxTemperatureCelsius)} °C
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSaving}>Annuller</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSaving}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmTemperatureDeviation();
+              }}
+            >
+              {isSaving ? <Spinner data-icon="inline-start" /> : null}
+              Gem med afvigelse
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div
         className={cn(

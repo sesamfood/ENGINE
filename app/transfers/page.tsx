@@ -67,14 +67,14 @@ function TransfersContent() {
   return (
     <Tabs value={selectedTab} onValueChange={(value) => router.push(value === "history" ? "/transfers/history" : "/transfers")}>
       <TabsList
-        aria-label="Flyttesektioner"
+        aria-label="Transfersektioner"
         className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
       >
         {showNew ? <TabsTrigger value="new" className="min-w-36 px-6">
-          Ny flytning
+          Ny transfer
         </TabsTrigger> : null}
         {showHistory ? <TabsTrigger value="history" className="min-w-36 px-6">
-          Flyttehistorik
+          Transferhistorik
         </TabsTrigger> : null}
       </TabsList>
       {showNew && selectedTab === "new" ? <TabsContent value="new" className="pt-6">
