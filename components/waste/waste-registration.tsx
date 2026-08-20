@@ -678,7 +678,6 @@ export function WasteRegistration() {
                       step="any"
                       value={quantity}
                       onChange={(event) => setQuantity(event.target.value)}
-                      autoFocus
                     />
                   </Field>
                   <Field>

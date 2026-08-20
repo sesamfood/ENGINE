@@ -58,7 +58,7 @@ function CreateDashboardDialog({
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="new-dashboard-name">Navn</FieldLabel>
-            <Input id="new-dashboard-name" value={name} maxLength={100} autoFocus onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && name.trim()) void submit(); }} />
+            <Input id="new-dashboard-name" value={name} maxLength={100} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && name.trim()) void submit(); }} />
           </Field>
         </FieldGroup>
         <DialogFooter>
