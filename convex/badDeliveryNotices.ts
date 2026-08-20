@@ -87,8 +87,8 @@ export const sendNotice = internalAction({
         )
         .join("\n");
       const stock = payload.deductFromStock
-        ? "Varerne er trukket fra lageret."
-        : "Varerne er ikke trukket fra lageret.";
+        ? "Produkterne er trukket fra lageret."
+        : "Produkterne er ikke trukket fra lageret.";
       const subjectBase = payload.emailSubject
         .replaceAll("{location}", payload.locationName)
         .replaceAll("{date}", date);
@@ -113,7 +113,7 @@ export const sendNotice = internalAction({
           payload.attachments.map(async (attachment, index) => ({
             filename: `${
               attachment.kind === "badProducts"
-                ? "daarlige-varer"
+                ? "daarlige-produkter"
                 : "foelgeseddel"
             }.${extension(attachment.contentType)}`,
             content: Buffer.from(await blobs[index]!.arrayBuffer()).toString(
@@ -134,10 +134,10 @@ export const sendNotice = internalAction({
         stock,
       });
       const text = isCancellation
-        ? `Registreringen af dårlig levering er annulleret.\n\nReference: ${reference}\nLocation: ${payload.locationName}\nRegistreret: ${date}\nAnnulleret: ${correction}${payload.voidedByName ? ` af ${payload.voidedByName}` : ""}\n\n${stock}`
+        ? `Registreringen af dårlig levering er annulleret.\n\nReference: ${reference}\nLokation: ${payload.locationName}\nRegistreret: ${date}\nAnnulleret: ${correction}${payload.voidedByName ? ` af ${payload.voidedByName}` : ""}\n\n${stock}`
         : initialText;
       const html = isCancellation
-        ? `<h1>Registreringen er annulleret</h1><p><strong>Reference:</strong> ${escapeHtml(reference)}</p><p><strong>Location:</strong> ${escapeHtml(payload.locationName)}<br><strong>Registreret:</strong> ${escapeHtml(date)}<br><strong>Annulleret:</strong> ${escapeHtml(correction)}${payload.voidedByName ? ` af ${escapeHtml(payload.voidedByName)}` : ""}</p><p>${escapeHtml(stock)}</p>`
+        ? `<h1>Registreringen er annulleret</h1><p><strong>Reference:</strong> ${escapeHtml(reference)}</p><p><strong>Lokation:</strong> ${escapeHtml(payload.locationName)}<br><strong>Registreret:</strong> ${escapeHtml(date)}<br><strong>Annulleret:</strong> ${escapeHtml(correction)}${payload.voidedByName ? ` af ${escapeHtml(payload.voidedByName)}` : ""}</p><p>${escapeHtml(stock)}</p>`
         : `<div>${escapeHtml(initialText).replace(/\r?\n/g, "<br>")}</div>`;
       const providerId = await sendResendEmail(
         {

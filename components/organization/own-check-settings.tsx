@@ -85,7 +85,7 @@ export function OwnCheckSettings() {
       <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle>Indstillinger for egenkontrol</CardTitle>
-          <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og optælling.</CardDescription>
+          <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og Count.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <FieldGroup>
@@ -107,9 +107,9 @@ export function OwnCheckSettings() {
             </Field>
             <Field orientation="horizontal" data-invalid={blockCount}>
               <FieldContent>
-                <FieldLabel htmlFor="own-check-count-lock">Bloker egenkontrol under optælling</FieldLabel>
+                <FieldLabel htmlFor="own-check-count-lock">Blokér egenkontrol under Count</FieldLabel>
                 <FieldDescription className={blockCount ? "text-destructive" : undefined}>
-                  Advarsel: egenkontroller kan ikke udføres, mens en optælling låser lokationen.
+                  Advarsel: Egenkontroller kan ikke udføres, mens en Count låser lokationen.
                 </FieldDescription>
               </FieldContent>
               <Switch
@@ -138,13 +138,13 @@ export function OwnCheckSettings() {
       <AlertDialog open={confirmBlock} onOpenChange={setConfirmBlock}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Bloker egenkontroller under optælling?</AlertDialogTitle>
+            <AlertDialogTitle>Blokér egenkontroller under Count?</AlertDialogTitle>
             <AlertDialogDescription>
-              Advarsel: egenkontroller kan ikke udføres, mens en optælling låser lokationen.
+              Advarsel: Egenkontroller kan ikke udføres, mens en Count låser lokationen.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuller</AlertDialogCancel>
+            <AlertDialogCancel>Annullér</AlertDialogCancel>
             <AlertDialogAction onClick={() => setBlockDuringCount(true)}>Jeg forstår, aktivér</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -121,12 +121,14 @@ function validateFields(fields: Array<Doc<"ownCheckTemplateVersions">["fields"][
   const keys = new Set<string>();
   for (const field of fields) {
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(field.key)) {
-      throw new ConvexError("Feltets nøgle skal være en slug");
+      throw new ConvexError(
+        "Feltets nøgle skal starte med et lille bogstav og må kun indeholde små bogstaver, tal, bindestreg og understregning",
+      );
     }
     if (keys.has(field.key)) throw new ConvexError("Feltets nøgler skal være unikke");
     keys.add(field.key);
     if (!field.label.trim() || field.label.length > 200) {
-      throw new ConvexError("Feltets label skal udfyldes og må højst være 200 tegn");
+      throw new ConvexError("Feltets navn skal udfyldes og må højst være 200 tegn");
     }
     if (field.type === "number") {
       if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
@@ -145,7 +147,7 @@ function validateFields(fields: Array<Doc<"ownCheckTemplateVersions">["fields"][
       }
       const optionValues = new Set(field.options.map((option) => option.value));
       if (optionValues.size !== field.options.length || field.options.some((option) => !option.value.trim() || !option.label.trim())) {
-        throw new ConvexError("Valgmulighederne skal have unikke værdier og labels");
+        throw new ConvexError("Valgmulighederne skal have unikke værdier og navne");
       }
     }
     if (field.type === "text" && field.maxLength !== undefined && (!Number.isInteger(field.maxLength) || field.maxLength < 1 || field.maxLength > 2_000)) {

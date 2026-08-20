@@ -549,7 +549,7 @@ export function TransferForm({
     if (!Number.isFinite(transferredAt)) {
       nextErrors.transferredAt = "Angiv et gyldigt tidspunkt";
     }
-    if (lines.length === 0) nextErrors.items = "Tilføj mindst én vare";
+    if (lines.length === 0) nextErrors.items = "Tilføj mindst ét produkt";
     if (lines.some((line) => line.quantity <= 0)) {
       nextErrors.items = "Mængden skal være større end nul";
     }
@@ -574,7 +574,7 @@ export function TransferForm({
         continue;
       }
       if (state.maxTemperatureCelsius !== null && parsedTemperature === null) {
-        nextErrors[errorKey] = "Angiv en temperatur for denne vare";
+        nextErrors[errorKey] = "Angiv en temperatur for dette produkt";
         continue;
       }
       if (parsedTemperature === null) continue;
@@ -634,11 +634,11 @@ export function TransferForm({
       };
       if (transfer) {
         await updateTransfer({ transferId: transfer.id, ...payload });
-        toast.success("Flytningen er opdateret");
+        toast.success("Transferen er opdateret");
         onSaved?.();
       } else {
         await createTransfer(payload);
-        toast.success("Flytningen er gemt");
+        toast.success("Transferen er gemt");
         resetForm();
       }
     } catch (caught) {
@@ -787,24 +787,24 @@ export function TransferForm({
 
         <Card>
           <CardHeader>
-            <CardTitle>Varer</CardTitle>
+            <CardTitle>Produkter</CardTitle>
             <CardAction>
               <p className="text-sm text-muted-foreground">
-                {lineCount} {lineCount === 1 ? "varelinje" : "varelinjer"} ·{" "}
+                {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"} ·{" "}
                 {totalQuantity} enheder i alt
               </p>
             </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Field data-invalid={Boolean(errors.items)}>
-              <FieldLabel>Tilføj vare</FieldLabel>
+              <FieldLabel>Tilføj produkt</FieldLabel>
               <CreatableCombobox
                 options={productOptions}
                 value={productToAdd}
                 onValueChange={(value) => void addProduct(value)}
                 onInputValueChange={setProductSearch}
                 placeholder="Søg efter produkter"
-                ariaLabel="Tilføj vare"
+                ariaLabel="Tilføj produkt"
                 disabled={loadingProductId !== undefined}
               />
               <FieldError>{errors.items}</FieldError>
@@ -812,7 +812,7 @@ export function TransferForm({
 
             {lines.length === 0 ? (
               <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
-                Ingen varer tilføjet endnu.
+                Ingen produkter tilføjet endnu.
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
@@ -1018,7 +1018,7 @@ export function TransferForm({
                                 variant="outline"
                                 size="icon-lg"
                                 className="size-11"
-                                aria-label={`Reducer mængde for ${line.productName}`}
+                                aria-label={`Reducér mængde for ${line.productName}`}
                                 disabled={line.quantity <= 1}
                                 onClick={() =>
                                   setLines((current) =>
@@ -1122,8 +1122,8 @@ export function TransferForm({
           <AlertDialogHeader>
             <AlertDialogTitle>Bekræft temperaturafvigelse</AlertDialogTitle>
             <AlertDialogDescription>
-              Temperaturen overstiger maksimum for følgende varer. Vil du gemme
-              flytningen med afvigelserne?
+              Temperaturen overstiger maksimum for følgende produkter. Vil du gemme
+              transferen med afvigelserne?
             </AlertDialogDescription>
           </AlertDialogHeader>
           {temperatureConfirmation ? (
@@ -1141,7 +1141,7 @@ export function TransferForm({
                     className="rounded-md border px-3 py-2"
                   >
                     <span className="font-medium">
-                      {product?.productName ?? "Vare"}
+                      {product?.productName ?? "Produkt"}
                     </span>
                     <span className="block text-muted-foreground">
                       Målt: {measured === undefined ? "—" : formatTemperature(measured)} °C ·
@@ -1153,7 +1153,7 @@ export function TransferForm({
             </ul>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSaving}>Annuller</AlertDialogCancel>
+            <AlertDialogCancel disabled={isSaving}>Annullér</AlertDialogCancel>
             <AlertDialogAction
               disabled={isSaving}
               onClick={(event) => {
@@ -1186,7 +1186,7 @@ export function TransferForm({
               disabled={isSaving}
               onClick={onCancel}
             >
-              Annuller
+              Annullér
             </Button>
           ) : null}
           <Button
@@ -1201,7 +1201,7 @@ export function TransferForm({
             ) : (
               <SaveIcon data-icon="inline-start" />
             )}
-            {transfer ? "Gem ændringer" : "Gem flytning"}
+            {transfer ? "Gem ændringer" : "Gem transfer"}
           </Button>
         </div>
       </div>

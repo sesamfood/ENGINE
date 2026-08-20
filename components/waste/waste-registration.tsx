@@ -94,7 +94,7 @@ function formatQuantity(quantity: number) {
 function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
-    : "Spild kunne ikke registreres";
+    : "Waste kunne ikke registreres";
 }
 
 function shortcutsFor(
@@ -263,7 +263,7 @@ export function WasteRegistration() {
           result.registeredAt + UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS,
       };
       toast.success(
-        `Spild registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
+        `Waste registreret: ${formatQuantity(shortcut.quantity)} ${unit?.name ?? ""} ${product.name}`,
         {
           duration: 10_000,
           action: {
@@ -309,8 +309,8 @@ export function WasteRegistration() {
       );
       toast.success(
         succeeded.length === 1
-          ? "Spildregistreringen er annulleret"
-          : `${succeeded.length} spildregistreringer er annulleret`,
+          ? "Waste-registreringen er annulleret"
+          : `${succeeded.length} Waste-registreringer er annulleret`,
       );
     }
     if (failed.length) {
@@ -318,7 +318,7 @@ export function WasteRegistration() {
       toast.error(
         failed.length === 1 && firstError?.status === "rejected"
           ? errorMessage(firstError.reason)
-          : `${failed.length} spildregistreringer kunne ikke annulleres`,
+          : `${failed.length} Waste-registreringer kunne ikke annulleres`,
       );
     }
     setUndoingIds((current) => current.filter((id) => !ids.includes(id)));
@@ -379,7 +379,7 @@ export function WasteRegistration() {
           </EmptyMedia>
           <EmptyTitle>Ingen lokationer</EmptyTitle>
           <EmptyDescription>
-            Opret en lokation, før spild kan registreres.
+            Opret en lokation, før Waste kan registreres.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -394,7 +394,7 @@ export function WasteRegistration() {
           </EmptyMedia>
           <EmptyTitle>Ingen produkter</EmptyTitle>
           <EmptyDescription>
-            Der er ingen aktive produkter at registrere spild for.
+            Der er ingen aktive produkter at registrere Waste for.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -479,7 +479,7 @@ export function WasteRegistration() {
                     type="button"
                     data-card-trigger
                     className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                    aria-label={`Registrér en anden mængde spild for ${product.name}`}
+                    aria-label={`Registrér en anden mængde Waste for ${product.name}`}
                     onClick={() => openProduct(product)}
                   />
                   <Button
@@ -662,7 +662,7 @@ export function WasteRegistration() {
                     </Button>
                     <HelpTooltip
                       label="anbefalede mængder"
-                      content="Fjerner de manuelt valgte genveje og bruger igen de to mængder, der anbefales ud fra den spildhistorik, produktet bruger."
+                      content="Fjerner de manuelt valgte genveje og bruger igen de to mængder, der anbefales ud fra den Waste-historik, produktet bruger."
                     />
                   </div>
                 </FieldGroup>
@@ -743,7 +743,7 @@ export function WasteRegistration() {
                         );
                       }}
                     >
-                      Registrér spild
+                      Registrér Waste
                     </Button>
                   </>
                 )}
@@ -788,7 +788,7 @@ export function WasteRegistration() {
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Fortryd spildregistreringer</DialogTitle>
+            <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
             <DialogDescription>
               Fortryd en enkelt registrering eller annullér dem alle.
               Registreringerne forsvinder automatisk efter 30 sekunder.

@@ -501,7 +501,7 @@ export async function requireDashboardSharer(ctx: AuthContext) {
     auth.kioskModeEnabled ||
     !hasPermission(auth.role, auth.permissions, "dashboard.share")
   ) {
-    throw new ConvexError("Kun administratorer kan dele dashboardet");
+    throw new ConvexError("Kun brugere med rollen Administrator kan dele dashboardet");
   }
   return auth;
 }

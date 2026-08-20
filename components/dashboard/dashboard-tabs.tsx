@@ -62,7 +62,7 @@ function CreateDashboardDialog({
           </Field>
         </FieldGroup>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuller</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annullér</Button>
           <Button type="button" disabled={pending || !name.trim()} onClick={() => void submit()}>
             {pending ? <Spinner data-icon="inline-start" /> : <PlusIcon data-icon="inline-start" />}
             Opret dashboard

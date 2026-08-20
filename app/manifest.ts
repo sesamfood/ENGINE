@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: "ENGINE",
     short_name: "ENGINE",
-    description: "Administrer den daglige drift i din restaurantorganisation.",
+    description: "Administrér den daglige drift i din restaurantorganisation.",
     start_url: "/",
     scope: "/",
     display: "standalone",

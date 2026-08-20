@@ -34,19 +34,19 @@ export type DataGranularity = (typeof dataGranularities)[number];
 
 export const permissionCatalog = [
   {
-    group: "Optælling",
+    group: "Count",
     permissions: [
-      { id: "count.register", label: "Registrere optællinger" },
+      { id: "count.register", label: "Registrere Counts" },
       { id: "count.viewStock", label: "Se lagerbeholdning" },
-      { id: "count.export", label: "Eksportere optællingsdata" },
+      { id: "count.export", label: "Eksportere Count-data" },
     ],
   },
   {
-    group: "Spild",
+    group: "Waste",
     permissions: [
-      { id: "waste.register", label: "Registrere spild" },
-      { id: "waste.report", label: "Se spildrapporter" },
-      { id: "waste.export", label: "Eksportere spild" },
+      { id: "waste.register", label: "Registrere Waste" },
+      { id: "waste.report", label: "Se Waste-rapporter" },
+      { id: "waste.export", label: "Eksportere Waste" },
     ],
   },
   {
@@ -61,18 +61,18 @@ export const permissionCatalog = [
     ],
   },
   {
-    group: "Flytninger",
+    group: "Transfer",
     permissions: [
-      { id: "transfers.view", label: "Se flytninger" },
-      { id: "transfers.manage", label: "Administrere flytninger" },
-      { id: "transfers.export", label: "Eksportere flytninger" },
+      { id: "transfers.view", label: "Se transfers" },
+      { id: "transfers.manage", label: "Administrere transfers" },
+      { id: "transfers.export", label: "Eksportere transfers" },
     ],
   },
   {
-    group: "Personalemad",
+    group: "Staff food",
     permissions: [
-      { id: "staffFood.register", label: "Registrere personalemad" },
-      { id: "staffFood.manage", label: "Administrere personalemad" },
+      { id: "staffFood.register", label: "Registrere Staff food" },
+      { id: "staffFood.manage", label: "Administrere Staff food" },
     ],
   },
   {
@@ -94,12 +94,12 @@ export const permissionCatalog = [
     ],
   },
   {
-    group: "Organisation",
+    group: "Administration",
     permissions: [
       { id: "catalog.manage", label: "Administrere katalog" },
       { id: "locations.manage", label: "Administrere lokationer" },
-      { id: "count.settings", label: "Administrere optællingsindstillinger" },
-      { id: "waste.settings", label: "Administrere spildindstillinger" },
+      { id: "count.settings", label: "Administrere Count-indstillinger" },
+      { id: "waste.settings", label: "Administrere Waste-indstillinger" },
       { id: "ownChecks.manage", label: "Administrere egenkontroller" },
       {
         id: "organization.settings",

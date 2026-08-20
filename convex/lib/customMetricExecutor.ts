@@ -941,7 +941,7 @@ function restaurantLabel(index: number) {
     label = String.fromCharCode(65 + (value % 26)) + label;
     value = Math.floor(value / 26);
   }
-  return `Restaurant ${label}`;
+  return `Lokation ${label}`;
 }
 
 async function anonymizeLocationSeries(

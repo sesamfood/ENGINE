@@ -56,7 +56,7 @@ export function LoginForm({
             ? "Bekræft din e-mail, før du logger ind. Vi har sendt et nyt link."
             : identifier.includes("@")
               ? "E-mail eller adgangskode er forkert."
-              : "Brugernavn eller adgangskode er forkert. Kontakt en administrator, hvis du har glemt adgangskoden.",
+              : "Brugernavn eller adgangskode er forkert. Kontakt en bruger med rollen Administrator, hvis du har glemt adgangskoden.",
         );
         return;
       }

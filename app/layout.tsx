@@ -26,7 +26,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SESAM ENGINE",
   applicationName: "ENGINE",
-  description: "Administrer den daglige drift i din restaurantorganisation.",
+  description: "Administrér den daglige drift i din restaurantorganisation.",
   appleWebApp: {
     capable: true,
     title: "ENGINE",

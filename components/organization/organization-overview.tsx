@@ -31,21 +31,21 @@ import { useAccess, usePermission } from "@/components/app-shell";
 const sections = [
   {
     title: "Produkter",
-    description: "Administrer produkter, kategorier og enheder.",
+    description: "Administrér produkter, kategorier og enheder.",
     href: "/organization/products",
     icon: PackageIcon,
     permissions: ["catalog.manage"],
   },
   {
     title: "Lokationer",
-    description: "Administrer de lokationer, der bruges i flytninger.",
+    description: "Administrér de lokationer, der bruges i Transfer.",
     href: "/organization/locations",
     icon: StoreIcon,
     permissions: ["locations.manage"],
   },
   {
     title: "Brugere",
-    description: "Inviter brugere, og administrer deres roller.",
+    description: "Invitér brugere, og administrér deres roller.",
     href: "/organization/users",
     icon: UsersIcon,
     permissions: ["members.manage", "roles.manage"],
@@ -66,14 +66,14 @@ const sections = [
   },
   {
     title: "Count",
-    description: "Indstil frekvens og regler for optællingsvinduet.",
+    description: "Indstil frekvens og regler for Count-vinduet.",
     href: "/organization/count",
     icon: ClipboardListIcon,
     permissions: ["count.settings"],
   },
   {
     title: "Waste",
-    description: "Indstil nulstilling og popularitet for spild.",
+    description: "Indstil nulstilling og popularitet for Waste.",
     href: "/organization/waste",
     icon: Trash2Icon,
     permissions: ["waste.settings"],
@@ -122,7 +122,7 @@ const sections = [
   },
   {
     title: "Udseende",
-    description: "Administrer logoer og organisationens identitet.",
+    description: "Administrér logoer og organisationens identitet.",
     href: "/organization/appearance",
     icon: Building2Icon,
     permissions: ["organization.settings"],

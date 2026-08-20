@@ -82,7 +82,7 @@ async function requireAnotherAdmin(
   });
   if (!admins.some((admin) => admin.id !== member.id)) {
     throw new APIError("BAD_REQUEST", {
-      message: "Den sidste administrator kan ikke skifte rolle",
+      message: "Den sidste bruger med rollen Administrator kan ikke skifte rolle",
     });
   }
 }
@@ -98,7 +98,7 @@ async function requireNoOrganizationMembership(
   });
   if (memberships.length) {
     throw new APIError("BAD_REQUEST", {
-      message: "Du kan kun være medlem af én organisation",
+      message: "Din bruger kan kun tilhøre én organisation",
     });
   }
 }
@@ -126,7 +126,7 @@ async function requireAccountCanBeDeleted(
     if (!otherAdmins.some((member) => member.userId !== userId)) {
       throw new APIError("BAD_REQUEST", {
         message:
-          "Gør en anden bruger til administrator, før du sletter din konto",
+          "Giv en anden bruger rollen Administrator, før du sletter din konto",
       });
     }
   }

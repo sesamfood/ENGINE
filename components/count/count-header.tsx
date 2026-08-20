@@ -101,7 +101,7 @@ export function CountHeader() {
   const statusDescription =
     state?.count?.submittedAt
       ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
-      : "Denne optælling kan ikke ændres.";
+      : "Denne Count kan ikke ændres.";
   return (
     <div className="flex flex-col gap-6">
       <header className="md:hidden">
@@ -131,7 +131,7 @@ export function CountHeader() {
       {pathname === "/count" && submitted ? (
         <Alert className="md:-mt-5">
           <CheckCircle2Icon />
-          <AlertTitle>Optællingen er registreret</AlertTitle>
+          <AlertTitle>Count er registreret</AlertTitle>
           <AlertDescription>{statusDescription}</AlertDescription>
         </Alert>
       ) : null}

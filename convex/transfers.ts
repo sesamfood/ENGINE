@@ -234,14 +234,14 @@ async function resolveResponsibleName(
     ],
   });
   if (!member) {
-    throw new ConvexError("Den ansvarlige er ikke medlem af organisationen");
+    throw new ConvexError("Den ansvarlige er ikke bruger i organisationen");
   }
   const user = await adapter.findOne<{ name?: string | null; email: string }>({
     model: "user",
     where: [{ field: "id", value: member.userId }],
   });
   if (!user)
-    throw new ConvexError("Den ansvarlige er ikke medlem af organisationen");
+    throw new ConvexError("Den ansvarlige er ikke bruger i organisationen");
   return user.name?.trim() || user.email;
 }
 
@@ -256,16 +256,16 @@ async function prepareTransfer(
     throw new ConvexError("Fra- og til-lokation skal være forskellige");
   }
   if (!Number.isFinite(args.transferredAt) || args.transferredAt <= 0) {
-    throw new ConvexError("Overførselsdatoen er ugyldig");
+    throw new ConvexError("Transferdatoen er ugyldig");
   }
   if (args.transferredAt > Date.now() + MAX_FUTURE_SKEW_MS) {
-    throw new ConvexError("Overførselsdatoen er ugyldig");
+    throw new ConvexError("Transferdatoen er ugyldig");
   }
   if (args.items.length === 0) {
-    throw new ConvexError("Tilføj mindst én varelinje");
+    throw new ConvexError("Tilføj mindst én produktlinje");
   }
   if (args.items.length > MAX_TRANSFER_ITEMS) {
-    throw new ConvexError("Overførslen har for mange varelinjer");
+    throw new ConvexError("Transferen har for mange produktlinjer");
   }
 
   const submittedProductIds = new Set(args.items.map((item) => item.productId));
@@ -278,7 +278,7 @@ async function prepareTransfer(
     }
     if (!submittedProductIds.has(temperature.productId)) {
       throw new ConvexError(
-        "En temperaturmåling tilhører ikke overførslen",
+        "En temperaturmåling tilhører ikke transferen",
       );
     }
     requireTemperature(temperature.temperatureCelsius);
@@ -297,7 +297,7 @@ async function prepareTransfer(
     }
     if (!submittedProductIds.has(confirmation.productId)) {
       throw new ConvexError(
-        "En temperaturbekræftelse tilhører ikke overførslen",
+        "En temperaturbekræftelse tilhører ikke transferen",
       );
     }
     confirmedDeviations.set(
@@ -327,7 +327,7 @@ async function prepareTransfer(
       existingMaximumByProduct.has(item.productId) &&
       existingMaximum !== item.maxTemperatureCelsius
     ) {
-      throw new ConvexError("Flytningens temperaturdata er ugyldige");
+      throw new ConvexError("Transferens temperaturdata er ugyldige");
     }
     existingMaximumByProduct.set(
       item.productId,
@@ -352,7 +352,7 @@ async function prepareTransfer(
     }
     const pairKey = `${item.productId}:${item.unitId}`;
     if (pairKeys.has(pairKey)) {
-      throw new ConvexError("Hver varelinje kan kun tilføjes én gang");
+      throw new ConvexError("Hver produktlinje kan kun tilføjes én gang");
     }
     pairKeys.add(pairKey);
 
@@ -497,7 +497,7 @@ async function applyTransferStock(
     const product = await ctx.db.get("products", item.productId);
     if (!product || product.organizationId !== organizationId) continue;
     if (item.factorToDefault === undefined) {
-      throw new ConvexError("Flytningens lageromregning mangler");
+      throw new ConvexError("Transferens lageromregning mangler");
     }
     const delta = normalizeStock(
       item.quantity * item.factorToDefault * direction,
@@ -587,7 +587,7 @@ export const updateTransfer = mutation({
     const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
-      throw new ConvexError("Flytningen blev ikke fundet");
+      throw new ConvexError("Transferen blev ikke fundet");
     }
     requireTransferMutationAccess(
       auth,
@@ -609,7 +609,7 @@ export const updateTransfer = mutation({
       )
       .take(MAX_TRANSFER_ITEMS + 1);
     if (existingItems.length > MAX_TRANSFER_ITEMS) {
-      throw new ConvexError("Flytningen har for mange varelinjer");
+      throw new ConvexError("Transferen har for mange produktlinjer");
     }
 
     const { comment, responsibleName, resolvedItems } = await prepareTransfer(
@@ -678,7 +678,7 @@ export const deleteTransfer = mutation({
     const { organizationId } = auth;
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
-      throw new ConvexError("Flytningen blev ikke fundet");
+      throw new ConvexError("Transferen blev ikke fundet");
     }
     requireTransferMutationAccess(
       auth,
@@ -697,7 +697,7 @@ export const deleteTransfer = mutation({
       )
       .take(MAX_TRANSFER_ITEMS + 1);
     if (items.length > MAX_TRANSFER_ITEMS) {
-      throw new ConvexError("Flytningen har for mange varelinjer");
+      throw new ConvexError("Transferen har for mange produktlinjer");
     }
     if (transfer.stockApplied) {
       await applyTransferStock(

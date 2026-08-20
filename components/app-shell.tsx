@@ -108,7 +108,7 @@ const employeesNavigation = {
 
 const organizationNavigation = {
   id: "organization",
-  label: "Settings",
+  label: "Administration",
   href: "/organization",
   icon: SettingsIcon,
   pages: [] as string[],
@@ -428,7 +428,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     return (
       <main
         className="grid min-h-screen place-items-center"
-        aria-label="Kontrollerer optællingsstatus"
+        aria-label="Kontrollerer Count-status"
       >
         <Spinner className="size-5" />
       </main>
@@ -439,7 +439,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     return (
       <main
         className="grid min-h-screen place-items-center"
-        aria-label="Åbner optælling"
+        aria-label="Åbner Count"
       >
         <Spinner className="size-5" />
       </main>
@@ -896,7 +896,7 @@ function ProfileMenu({
           {canManageOrganization ? (
             <DropdownMenuItem onClick={() => goTo("/organization")}>
               <Building2Icon />
-              Organisation
+              Administration
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuGroup>

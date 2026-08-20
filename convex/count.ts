@@ -147,7 +147,7 @@ function requireCountSchedule(
       schedule.day < 0 ||
       schedule.day > 31
     ) {
-      throw new ConvexError("Optællingsdagen er ugyldig");
+      throw new ConvexError("Count-dagen er ugyldig");
     }
     return;
   }
@@ -159,7 +159,7 @@ function requireCountSchedule(
     throw new ConvexError("Intervallet skal være mellem 1 og 365 dage");
   }
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(schedule.anchorDate);
-  if (!match) throw new ConvexError("Første optællingsdato er ugyldig");
+  if (!match) throw new ConvexError("Første Count-dato er ugyldig");
   const date = new Date(
     Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
   );
@@ -168,7 +168,7 @@ function requireCountSchedule(
     date.getUTCMonth() !== Number(match[2]) - 1 ||
     date.getUTCDate() !== Number(match[3])
   ) {
-    throw new ConvexError("Første optællingsdato er ugyldig");
+    throw new ConvexError("Første Count-dato er ugyldig");
   }
 }
 
@@ -218,7 +218,7 @@ async function getCountItems(
     )
     .take(MAX_COUNT_ITEMS + 1);
   if (items.length > MAX_COUNT_ITEMS) {
-    throw new ConvexError("Optællingen har for mange enhedslinjer");
+    throw new ConvexError("Count har for mange enhedslinjer");
   }
   return items;
 }
@@ -379,7 +379,7 @@ export const getCountQuantities = query({
       count.organizationId !== organizationId ||
       count.locationId !== args.locationId
     ) {
-      throw new ConvexError("Optællingen blev ikke fundet");
+      throw new ConvexError("Count blev ikke fundet");
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     return items.map((item) => ({
@@ -657,11 +657,11 @@ export const setCountQuantity = mutation({
       hasSubmitted &&
       !windowIsOpen(now, window)
     ) {
-      throw new ConvexError("Optællingsvinduet er lukket");
+      throw new ConvexError("Count-vinduet er lukket");
     }
     let count = currentCount;
     if (count?.status === "submitted") {
-      throw new ConvexError("Optællingen er allerede registreret");
+      throw new ConvexError("Count er allerede registreret");
     }
     if (!count && args.quantity === 0) return null;
     if (!count) {
@@ -740,13 +740,13 @@ export const submitCount = mutation({
       hasSubmitted &&
       !windowIsOpen(now, window)
     ) {
-      throw new ConvexError("Optællingsvinduet er lukket");
+      throw new ConvexError("Count-vinduet er lukket");
     }
     if (!count) {
       throw new ConvexError("Indtast mindst én mængde før registrering");
     }
     if (count.status === "submitted") {
-      throw new ConvexError("Optællingen er allerede registreret");
+      throw new ConvexError("Count er allerede registreret");
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     if (items.length === 0) {
@@ -764,7 +764,7 @@ export const submitCount = mutation({
       );
       if (quantity === null) {
         throw new ConvexError(
-          "En produkt-enhed er ændret. Opdatér optællingen og prøv igen",
+          "En produkt-enhed er ændret. Opdatér Count og prøv igen",
         );
       }
       totals.set(item.productId, (totals.get(item.productId) ?? 0) + quantity);
@@ -815,7 +815,7 @@ export const submitCount = mutation({
       entityTable: "counts",
       entityId: count._id,
       locationId: args.locationId,
-      summary: "Optælling registreret og lageret afstemt",
+      summary: "Count registreret og lageret afstemt",
       reason,
     });
     return null;
@@ -840,7 +840,7 @@ export const getWasteReportContext = internalQuery({
       count.status !== "submitted" ||
       !count.submittedAt
     ) {
-      throw new ConvexError("Den registrerede optælling blev ikke fundet");
+      throw new ConvexError("Den registrerede Count blev ikke fundet");
     }
     requireLocationAccess(auth, count.locationId);
     const location = await requireLocation(
@@ -855,7 +855,7 @@ export const getWasteReportContext = internalQuery({
       )
       .take(MAX_PRODUCTS + 1);
     if (rows.length > MAX_PRODUCTS) {
-      throw new ConvexError("Optællingen har for mange produkter");
+      throw new ConvexError("Count har for mange produkter");
     }
 
     return {

@@ -650,7 +650,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-2xl font-semibold tracking-tight">
-              {productId ? "Rediger produkt" : "Nyt produkt"}
+              {productId ? "Redigér produkt" : "Nyt produkt"}
             </h2>
             {product?.status === "archived" ? (
               <Badge variant="outline">Arkiveret</Badge>
@@ -1035,7 +1035,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               className="min-h-11 flex-1 px-4 sm:flex-none"
               disabled
             >
-              Annuller
+              Annullér
             </Button>
           ) : (
             <Link
@@ -1046,7 +1046,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 className: "min-h-11 flex-1 px-4 sm:flex-none",
               })}
             >
-              Annuller
+              Annullér
             </Link>
           )}
           <Button

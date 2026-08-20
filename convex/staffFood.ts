@@ -195,7 +195,7 @@ async function requireSession(
 ) {
   const session = await ctx.db.get("staffFoodSessions", sessionId);
   if (!session || session.organizationId !== organizationId) {
-    throw new ConvexError("Personalemadssessionen blev ikke fundet");
+    throw new ConvexError("Staff food-sessionen blev ikke fundet");
   }
   return session;
 }
@@ -567,7 +567,7 @@ export const getSessionState = query({
       !location ||
       location.organizationId !== organizationId
     ) {
-      throw new ConvexError("Personalemadssessionen er ugyldig");
+      throw new ConvexError("Staff food-sessionen er ugyldig");
     }
 
     const activeRows = rows
@@ -1021,7 +1021,7 @@ export const voidCheckout = mutation({
       entityTable: "staffFoodRegistrations",
       entityId: args.checkoutId,
       locationId: rows[0]!.locationId,
-      summary: "Personalemadsregistrering annulleret",
+      summary: "Staff food-registrering annulleret",
       reason,
     });
     return null;
@@ -1096,7 +1096,7 @@ export const getSettings = query({
     }
     if (products.length > MAX_SETTINGS_PRODUCTS) {
       throw new ConvexError(
-        "Der er mere end 500 produkter. Slet arkiverede produkter, der ikke længere bruges, eller kontakt en administrator",
+        "Der er mere end 500 produkter. Slet arkiverede produkter, der ikke længere bruges, eller kontakt en bruger med rollen Administrator",
       );
     }
     const tierResults = await Promise.all(

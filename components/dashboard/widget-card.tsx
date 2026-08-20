@@ -383,7 +383,7 @@ export function WidgetCard({
                   variant="ghost"
                   size="icon-lg"
                   className="size-11"
-                  aria-label={`Rediger ${metricLabel}`}
+                  aria-label={`Redigér ${metricLabel}`}
                   onClick={onEditCustomMetric}
                 >
                   <PencilIcon />

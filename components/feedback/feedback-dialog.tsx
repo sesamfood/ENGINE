@@ -324,7 +324,7 @@ function FeedbackForm({
             <Button type="button" variant="outline" disabled={submitting} />
           }
         >
-          Annuller
+          Annullér
         </DialogClose>
         <Button type="submit" form="feedback-form" disabled={submitting}>
           {submitting ? <Spinner data-icon="inline-start" /> : null}

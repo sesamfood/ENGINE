@@ -54,7 +54,7 @@ function requirePageSize(numItems: number, maximum: number) {
 function requireCompleteProductSet<T>(rows: T[]) {
   if (rows.length > MAX_PRODUCTS) {
     throw new ConvexError(
-      "Der er mere end 500 produkter. Ryd op i produktkataloget eller kontakt en administrator",
+      "Der er mere end 500 produkter. Ryd op i produktkataloget eller kontakt en bruger med rollen Administrator",
     );
   }
   return rows;
@@ -1327,7 +1327,7 @@ async function voidRegistration(
     entityTable: "wasteRegistrations",
     entityId: registration._id,
     locationId: registration.locationId,
-    summary: `Spildregistrering for ${registration.productName} annulleret`,
+    summary: `Waste-registrering for ${registration.productName} annulleret`,
     reason,
   });
 }
@@ -1345,7 +1345,7 @@ export const undoWasteRegistration = mutation({
   },
 });
 
-/** Annullér en registrering fra spildrapporten. Kræver begrundelse. */
+/** Annullér en registrering fra Waste-rapporten. Kræver begrundelse. */
 export const voidWasteRegistration = mutation({
   args: {
     registrationId: v.id("wasteRegistrations"),
@@ -1451,7 +1451,7 @@ export const rebuildOrganizationStatsForProduct = internalMutation({
       currentAmounts.length > MAX_REBUILD_ROWS
     ) {
       throw new ConvexError(
-        "Organisationens spildhistorik er for stor til at blive samlet automatisk",
+        "Organisationens Waste-historik er for stor til at blive samlet automatisk",
       );
     }
     const totals = locationProducts.reduce(

@@ -31,8 +31,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
 function deletionError(message?: string) {
-  if (message?.includes("Gør en anden bruger til administrator")) {
-    return "Gør en anden bruger til administrator, før du sletter din konto.";
+  if (message?.includes("Giv en anden bruger rollen Administrator")) {
+    return "Giv en anden bruger rollen Administrator, før du sletter din konto.";
   }
   if (message?.toLowerCase().includes("password")) {
     return "Adgangskoden er forkert.";
@@ -78,7 +78,7 @@ export function ProfileSettings() {
     return (
       <Alert variant="destructive" className="max-w-2xl">
         <AlertDescription>
-          Kontooplysningerne kunne ikke indlæses. Genindlæs siden og prøv igen.
+          Profiloplysningerne kunne ikke indlæses. Genindlæs siden og prøv igen.
         </AlertDescription>
       </Alert>
     );
@@ -88,9 +88,9 @@ export function ProfileSettings() {
     <div className="flex w-full max-w-2xl flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Kontooplysninger</CardTitle>
+          <CardTitle>Profiloplysninger</CardTitle>
           <CardDescription>
-            Oplysningerne, der bruges til din konto.
+            Dine personlige oplysninger.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -114,8 +114,8 @@ export function ProfileSettings() {
         </CardHeader>
         <CardContent className="flex flex-col items-start gap-4">
           <p className="text-sm leading-6 text-muted-foreground">
-            Hvis du er organisationens eneste administrator, skal du først gøre
-            en anden bruger til administrator. Organisationens øvrige data
+            Hvis du er den eneste bruger med rollen Administrator, skal du først give
+            en anden bruger rollen Administrator. Organisationens øvrige data
             slettes ikke.
           </p>
           <AlertDialog
@@ -172,7 +172,7 @@ export function ProfileSettings() {
               </Field>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={pending}>
-                  Annuller
+                  Annullér
                 </AlertDialogCancel>
                 <AlertDialogAction
                   type="button"

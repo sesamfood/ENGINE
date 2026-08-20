@@ -241,7 +241,7 @@ function QuantityControl({
         variant="outline"
         size="icon-lg"
         className="size-11"
-        aria-label={`Reducer ${productName} i ${unitName}`}
+        aria-label={`Reducér ${productName} i ${unitName}`}
         disabled={disabled || quantity <= 0}
         onClick={() => onChange(Math.max(0, quantity - 1))}
       >
@@ -479,7 +479,7 @@ function ProductCard({
           </FieldGroup>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={closeDialog}>
-              Annuller
+              Annullér
             </Button>
             <Button type="submit">Bekræft</Button>
           </DialogFooter>
@@ -626,7 +626,7 @@ function OrderBuilder({
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => close(false)}>
-            Annuller
+            Annullér
           </Button>
           <Button type="button" onClick={save}>
             Gem rækkefølge
@@ -781,7 +781,7 @@ function SortableProduct({
               variant="outline"
               onClick={() => setDialogOpen(false)}
             >
-              Annuller
+              Annullér
             </Button>
             <Button type="button" onClick={place}>
               Placér produkt
@@ -1054,9 +1054,9 @@ export function CountSheet() {
   const lockedReason = !state
     ? null
     : state.count?.status === "submitted"
-      ? "Optællingen er allerede registreret"
+      ? "Count er allerede registreret"
       : !state.isOpen
-        ? "Optællingsvinduet er lukket"
+        ? "Count-vinduet er lukket"
         : null;
   const isClosed = Boolean(
     state && state.count?.status !== "submitted" && !state.isOpen,
@@ -1078,11 +1078,11 @@ export function CountSheet() {
   const disabledReason = !locationId
     ? "Vælg en lokation"
     : !state
-      ? "Optælling indlæses"
+      ? "Count indlæses"
       : state.count?.status === "submitted"
-        ? "Optællingen er allerede registreret"
+        ? "Count er allerede registreret"
         : !state.isOpen
-          ? "Optællingsvinduet er lukket"
+          ? "Count-vinduet er lukket"
           : !hasQuantity
             ? "Indtast mindst én mængde"
             : null;
@@ -1098,7 +1098,7 @@ export function CountSheet() {
       await flushPending();
       await submitCount({ locationId, reason: submitReason });
       setConfirmOpen(false);
-      toast.success("Optællingen er registreret");
+      toast.success("Count er registreret");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -1114,11 +1114,11 @@ export function CountSheet() {
         countId: state.count.id,
       });
       if (!report.hasBaseline) {
-        toast.error("Spildrapporten kræver en tidligere registreret optælling");
+        toast.error("Waste-rapporten kræver en tidligere registreret Count");
         return;
       }
       if (report.rows.length === 0) {
-        toast.success("Der er ingen lagerafvigelser i denne optælling");
+        toast.success("Der er ingen lagerafvigelser i denne Count");
         return;
       }
       const registeredAt = new Intl.DateTimeFormat("da-DK", {
@@ -1129,15 +1129,15 @@ export function CountSheet() {
         timeZone: "Europe/Copenhagen",
       }).format(report.submittedAt);
       downloadCsv(
-        `spildrapport-${fileDate}.csv`,
+        `waste-rapport-${fileDate}.csv`,
         [
           "Lokation",
-          "Optælling registreret",
+          "Count registreret",
           "Produkt",
           "Forventet beholdning før salg",
           report.salesIncluded ? "Salg" : "Salg (ikke medtaget)",
           "Optalt beholdning",
-          "Spild",
+          "Waste",
           "Enhed",
         ],
         report.rows
@@ -1155,7 +1155,7 @@ export function CountSheet() {
             row.defaultUnitName,
           ]),
       );
-      toast.success("Spildrapporten er klar");
+      toast.success("Waste-rapporten er klar");
       if (!report.salesIncluded) {
         toast.warning(
           report.salesOmittedReason
@@ -1174,7 +1174,7 @@ export function CountSheet() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
-        <AlertDescription>Du har ikke adgang til at registrere optællinger.</AlertDescription>
+        <AlertDescription>Du har ikke adgang til at registrere Counts.</AlertDescription>
       </Alert>
     );
   }
@@ -1190,7 +1190,7 @@ export function CountSheet() {
           </EmptyMedia>
           <EmptyTitle>Ingen lokationer endnu</EmptyTitle>
           <EmptyDescription>
-            En administrator skal oprette en lokation, før lageret kan tælles.
+            En bruger med rollen Administrator skal oprette en lokation, før lageret kan tælles.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -1376,7 +1376,7 @@ export function CountSheet() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={savingDefaultOrder}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={savingDefaultOrder}
@@ -1399,7 +1399,7 @@ export function CountSheet() {
               >
                 <LockKeyholeIcon data-icon="inline-start" />
                 <span>
-                  <span className="hidden lg:inline">Optællingen er låst · </span>
+                  <span className="hidden lg:inline">Count er låst · </span>
                   Åbner om {countdown(state.opensAt, now)}
                 </span>
               </Badge>
@@ -1418,7 +1418,7 @@ export function CountSheet() {
                 ) : (
                   <DownloadIcon data-icon="inline-start" />
                 )}
-                Eksportér spild
+                Eksportér Waste
               </Button>
             ) : (
               <UnavailableTooltip reason={disabledReason}>
@@ -1433,7 +1433,7 @@ export function CountSheet() {
                   }}
                 >
                   {submitting ? <Spinner data-icon="inline-start" /> : null}
-                  Registrér optælling
+                  Registrér Count
                 </Button>
               </UnavailableTooltip>
             )}
@@ -1444,11 +1444,11 @@ export function CountSheet() {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Registrér optælling?</AlertDialogTitle>
+            <AlertDialogTitle>Registrér Count?</AlertDialogTitle>
             <AlertDialogDescription>
               Lageret overskrives for de produkter, der har en mængde i denne
-              optælling. Produkter uden en mængde beholder deres nuværende lager.
-              Denne optælling kan ikke ændres bagefter. Skriv en begrundelse for
+              Count. Produkter uden en mængde beholder deres nuværende lager.
+              Denne Count kan ikke ændres bagefter. Skriv en begrundelse for
               lagerafstemningen.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1458,20 +1458,20 @@ export function CountSheet() {
               id="count-submit-reason"
               value={submitReason}
               onChange={(event) => setSubmitReason(event.target.value)}
-              placeholder="Skriv, hvorfor optællingen registreres"
+              placeholder="Skriv, hvorfor Count registreres"
               required
             />
           </Field>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={submitting}>
-              Fortsæt optælling
+              Fortsæt Count
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={submitting || !submitReason.trim()}
               onClick={() => void confirmSubmit()}
             >
               {submitting ? <Spinner data-icon="inline-start" /> : null}
-              Registrér optælling
+              Registrér Count
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

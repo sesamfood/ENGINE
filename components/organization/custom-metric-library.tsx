@@ -126,7 +126,7 @@ export function CustomMetricLibrary() {
                   {metric.description || metricSummary(metric.spec)}
                 </CardDescription>
                 <CardAction className="flex items-center gap-1">
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Rediger ${metric.name}`} onClick={() => openEdit(metric)}>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Redigér ${metric.name}`} onClick={() => openEdit(metric)}>
                     <PencilIcon />
                   </Button>
                   <Button
@@ -190,7 +190,7 @@ export function CustomMetricLibrary() {
           </AlertDialogHeader>
           <p className="text-sm text-muted-foreground">Målingen bruges ikke af nogen widget.</p>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Annuller</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>Annullér</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={deleting} onClick={(event) => { event.preventDefault(); void confirmDelete(); }}>
               {deleting ? "Sletter…" : "Slet måling"}
             </AlertDialogAction>

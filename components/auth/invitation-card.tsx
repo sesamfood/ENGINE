@@ -26,8 +26,8 @@ export function InvitationCard({ invitationId }: { invitationId: string }) {
 
       if (result.error) {
         setError(
-          result.error.message?.includes("kun være medlem")
-            ? "Din konto er allerede medlem af en organisation og kan ikke acceptere invitationen."
+          result.error.message?.includes("kun tilhøre én organisation")
+            ? "Din bruger tilhører allerede en organisation og kan ikke acceptere invitationen."
             : "Invitationen kunne ikke accepteres. Kontrollér, at du er logget ind med den inviterede e-mail.",
         );
         return;
@@ -112,7 +112,7 @@ export function InvitationCard({ invitationId }: { invitationId: string }) {
         disabled={Boolean(pending)}
       >
         {pending === "accept" ? <Spinner data-icon="inline-start" /> : null}
-        Accepter invitation
+        Acceptér invitation
       </Button>
       <Button
         type="button"

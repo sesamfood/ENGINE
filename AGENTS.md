@@ -21,6 +21,30 @@ The system should support practical customization without becoming a general-pur
 - Minimize the number of taps or clicks required to complete important actions.
 - Put supplementary settings guidance in the existing question-mark help tooltip pattern when the field label is clear on its own.
 
+## App terminology
+
+Use this vocabulary in every user-facing surface, including navigation, help text, validation errors, e-mails, exports, and dashboard metadata.
+
+| Concept | Use |
+| --- | --- |
+| Transfers | `Transfer` |
+| Waste | `Waste` |
+| Counts | `Count` |
+| Staff food | `Staff food` |
+| Organization management | `Administration` |
+| Bad deliveries | `Dårlig levering` / `Dårlige leveringer` |
+| Product or item | `Produkt` |
+| Organization person | `Bruger` |
+| Built-in roles | `Administrator`, `Manager`, `Medlem` |
+| Restaurant site | `Lokation` |
+| Personal areas | `Profil` and `Indstillinger` as separate siblings |
+
+- Treat `Transfer`, `Waste`, `Count`, and `Staff food` as fixed product terms inside Danish copy. Write `Transferhistorik`, `transferdato`, and `transferlinje`. Use a hyphen after the other product terms, for example `Waste-rapport`, `Count-vindue`, and `Staff food-regel`. Use `transferen` and `transfers` when Danish grammar requires inflection.
+- Reserve `Medlem` for the built-in role name. Use `Bruger` for a person who belongs to an organization. `Medarbejder` still means a Workfeed employee.
+- Use `Lokation` for an app location. `Afdeling` still means a provider department.
+- Describe dashboard selection with the concrete term involved, such as `lokationsvalg`, `marked`, or `operatør`. Do not show the implementation term `scope` to users.
+- Add an acute accent to stressed Danish imperatives, for example `Acceptér`, `Aktivér`, `Annullér`, `Invitér`, `Opdatér`, `Reducér`, and `Redigér`.
+
 # Technology stack
 
 - Use Next.js for the application and target deployment on Vercel.

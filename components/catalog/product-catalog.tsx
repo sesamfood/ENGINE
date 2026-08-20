@@ -203,7 +203,7 @@ function ProductCard({
       <Link
         href={editHref}
         aria-label={
-          isSelectionMode ? `Vælg ${product.name}` : `Rediger ${product.name}`
+          isSelectionMode ? `Vælg ${product.name}` : `Redigér ${product.name}`
         }
         className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
         onClick={(event) => {
@@ -502,7 +502,7 @@ export function ProductCatalog() {
               aria-pressed={isSelectionMode}
               onClick={toggleSelectionMode}
             >
-              {isSelectionMode ? "Annuller valg" : "Vælg"}
+              {isSelectionMode ? "Annullér valg" : "Vælg"}
             </Button>
             {isSelectionMode ? (
               <DropdownMenu>
@@ -662,7 +662,7 @@ export function ProductCatalog() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isChangingStatus}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               variant={
@@ -696,7 +696,7 @@ export function ProductCatalog() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isChangingCategory}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={isChangingCategory}
@@ -726,7 +726,7 @@ export function ProductCatalog() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"

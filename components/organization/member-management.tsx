@@ -474,7 +474,7 @@ export function MemberManagement() {
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Kun administratorer kan administrere organisationens brugere.
+          Kun brugere med rollen Administrator kan administrere organisationens brugere.
         </AlertDescription>
       </Alert>
     );
@@ -492,10 +492,10 @@ export function MemberManagement() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-1">
-            <CardTitle>Inviter bruger</CardTitle>
+            <CardTitle>Invitér bruger</CardTitle>
             <HelpTooltip
-              label="Inviter bruger"
-              content="Brugeren modtager et link på e-mail og bliver medlem efter accept."
+              label="Invitér bruger"
+              content="Brugeren modtager et link på e-mail og får adgang efter accept."
             />
           </div>
         </CardHeader>
@@ -749,7 +749,7 @@ export function MemberManagement() {
                           type="button"
                           variant="ghost"
                           size="icon-lg"
-                          aria-label={`Annuller invitation til ${invitation.email}`}
+                          aria-label={`Annullér invitation til ${invitation.email}`}
                           disabled={pendingId === invitation.id}
                         />
                       }
@@ -759,7 +759,7 @@ export function MemberManagement() {
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>
-                          Annuller invitation?
+                          Annullér invitation?
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                           Linket sendt til {invitation.email} holder op med at
@@ -772,7 +772,7 @@ export function MemberManagement() {
                           variant="destructive"
                           onClick={() => void cancelInvitation(invitation)}
                         >
-                          Annuller invitation
+                          Annullér invitation
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>

@@ -274,7 +274,7 @@ export function CategoryManager() {
     const deleteDisabled = category.hasChildren || category.inUse;
     const deleteReason = category.hasChildren
       ? "Kategorien har underkategorier og kan derfor ikke fjernes."
-      : "Kategorien bruges af produkter eller personalemadsregler og kan derfor ikke fjernes.";
+      : "Kategorien bruges af produkter eller Staff food-regler og kan derfor ikke fjernes.";
     const row = (
       <div
         className="flex min-h-14 min-w-max items-center gap-2 border-b px-2"
@@ -425,7 +425,7 @@ export function CategoryManager() {
         <div className="flex max-w-2xl flex-col gap-2">
           <h2 className="text-2xl font-semibold tracking-tight">Kategorier</h2>
           <p className="text-sm leading-6 text-muted-foreground">
-            Organiser produkter i kategorier og underkategorier. En kategori kan
+            Organisér produkter i kategorier og underkategorier. En kategori kan
             både indeholde produkter og andre kategorier.
           </p>
         </div>
@@ -597,7 +597,7 @@ export function CategoryManager() {
               disabled={isSaving}
               onClick={() => setEditor(null)}
             >
-              Annuller
+              Annullér
             </Button>
             <Button disabled={isSaving} onClick={save}>
               {isSaving ? <Spinner data-icon="inline-start" /> : null}
@@ -624,7 +624,7 @@ export function CategoryManager() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"

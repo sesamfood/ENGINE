@@ -60,7 +60,7 @@ export function OrganizationHeader() {
                 : pathname.startsWith("/organization/feedback")
                   ? "Feedback"
                 : pathname === "/organization"
-                  ? "Settings"
+                  ? "Administration"
                   : "Organisationens oplysninger";
 
   useEffect(() => {

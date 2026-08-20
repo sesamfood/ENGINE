@@ -290,7 +290,7 @@ export function LocationOpeningHours({
         <DialogHeader>
           <DialogTitle>Åbningstider for {locationName}</DialogTitle>
           <DialogDescription>
-            Åbningstiderne bestemmer optællingsvinduet på den valgte optællingsdag.
+            Åbningstiderne bestemmer Count-vinduet på den valgte Count-dag.
           </DialogDescription>
         </DialogHeader>
 
@@ -469,7 +469,7 @@ export function LocationOpeningHours({
             disabled={saving}
             onClick={() => onOpenChange(false)}
           >
-            Annuller
+            Annullér
           </Button>
           <Button
             disabled={saving || !currentDraft}

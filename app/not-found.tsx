@@ -19,7 +19,7 @@ export default function NotFound() {
       </EmptyHeader>
       <EmptyContent>
         <Link href="/transfers" className={buttonVariants()}>
-          Gå til overførsler
+          Gå til Transfer
         </Link>
       </EmptyContent>
     </Empty>

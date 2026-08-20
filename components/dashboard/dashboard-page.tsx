@@ -244,7 +244,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       });
       expectedUpdatedAt.current = updatedAt;
       setDashboard((current) => current ? { ...current, defaultScope: currentScope, defaultRange: currentRange, updatedAt } : current);
-      toast.success("Scope og periode er gemt som standard");
+      toast.success("Lokationsvalg og periode er gemt som standard");
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -301,7 +301,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
               {editing ? <Button type="button" size="lg" variant="outline" className="min-h-11" onClick={() => void saveCurrentDefaults()}><SaveIcon data-icon="inline-start" />Gem som standard</Button> : null}
               <Button type="button" size="lg" className="min-h-11" variant={editing ? "default" : "outline"} onClick={() => setEditing((value) => !value)}>
                 <PencilIcon data-icon="inline-start" />
-                {editing ? "Færdig" : "Rediger"}
+                {editing ? "Færdig" : "Redigér"}
               </Button>
               {editing ? <AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets(layoutDashboardWidgets([...dashboard.widgets, widget]))} /> : null}
             </>

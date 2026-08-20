@@ -377,7 +377,7 @@ export function ProductImportExport({
           ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isImporting}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction disabled={isImporting} onClick={confirmImport}>
               {isImporting ? <Spinner data-icon="inline-start" /> : null}

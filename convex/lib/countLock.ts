@@ -52,7 +52,7 @@ export async function requireOtherFeaturesUnlocked(
     await otherFeaturesLocked(ctx, organizationId, locationId, Date.now())
   ) {
     throw new ConvexError(
-      "Andre funktioner er låst, indtil denne lokation har registreret optælling",
+      "Andre funktioner er låst, indtil denne lokation har registreret Count",
     );
   }
 }

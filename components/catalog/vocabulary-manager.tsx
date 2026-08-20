@@ -110,9 +110,9 @@ const vocabularyKinds = {
     definite: "Lokationen",
     deleteNoun: " lokationer",
     description:
-      "Vedligehold de lokationer, der kan bruges i flytninger og optællinger.",
+      "Vedligehold de lokationer, der kan bruges i Transfer og Count.",
     emptyDescription:
-      "Tilføj den første lokation for at kunne oprette flytninger.",
+      "Tilføj den første lokation for at kunne oprette transfers.",
     list: api.locations.listLocations,
     create: api.locations.createLocation,
     rename: api.locations.renameLocation,
@@ -385,7 +385,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            Denne lokation bruges i en flytning og kan derfor
+                            Denne lokation bruges i en transfer og kan derfor
                             ikke fjernes.
                           </TooltipContent>
                         </Tooltip>
@@ -457,7 +457,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
               disabled={isSaving}
               onClick={() => setEditing(null)}
             >
-              Annuller
+              Annullér
             </Button>
             <Button disabled={isSaving} onClick={save}>
               {isSaving ? <Spinner data-icon="inline-start" /> : null}
@@ -521,7 +521,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
               disabled={isMerging}
               onClick={() => setPendingMerge(null)}
             >
-              Annuller
+              Annullér
             </Button>
             <Button
               variant="destructive"
@@ -573,7 +573,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>
-              Annuller
+              Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
