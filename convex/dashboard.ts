@@ -29,6 +29,7 @@ import {
   widgetValidator,
 } from "./lib/dashboardValidators";
 import {
+  createMetricParamsResolver,
   dashboardMetricComputers,
   resolveMetricParams,
 } from "./lib/dashboardMetrics";
@@ -1051,20 +1052,22 @@ export const getMetrics = query({
       }
       customMetrics.set(metric._id, metric);
     }
+    const resolveParams = createMetricParamsResolver(
+      ctx,
+      organizationId,
+      args.scope,
+      args.now,
+      auth.locationScope,
+      {
+        granularity: auth.granularity,
+        anonymousSeed: auth.sessionId,
+        salesDetailAllowed: canViewDetailedSales(auth),
+      },
+    );
     return await Promise.all(
       args.widgets.map(async (widget) => {
-        const params = await resolveMetricParams(
-          ctx,
-          organizationId,
-          args.scope,
+        const params = await resolveParams(
           widget.range ? { preset: widget.range } : args.range,
-          args.now,
-          auth.locationScope,
-          {
-            granularity: auth.granularity,
-            anonymousSeed: auth.sessionId,
-            salesDetailAllowed: canViewDetailedSales(auth),
-          },
         );
         return {
           key: widget.key,

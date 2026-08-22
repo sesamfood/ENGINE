@@ -292,7 +292,7 @@ export function StaffFoodRegistration() {
     : locations?.some((location) => location.id === storedLocationId)
       ? (storedLocationId as Id<"locations">)
       : (locations?.[0]?.id ?? null);
-  const queryNow = Math.floor(now / 30_000) * 30_000;
+  const queryNow = Math.floor(now / 300_000) * 300_000;
   const queriedPicker = useQuery(
     api.staffFood.getPicker,
     canRegister && locationId ? { locationId, now: queryNow } : "skip",
@@ -315,7 +315,7 @@ export function StaffFoodRegistration() {
   const state = useLastDefined(queriedState, sessionId);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    const interval = window.setInterval(() => setNow(Date.now()), 300_000);
     return () => window.clearInterval(interval);
   }, []);
 

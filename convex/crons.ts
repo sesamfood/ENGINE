@@ -12,16 +12,23 @@ crons.interval(
 
 crons.cron(
   "daily Workfeed synchronization",
-  "0 3 * * *",
+  "17 3 * * *",
   internal.workfeedSync.dispatchEnabledIntegrations,
   { kind: "employees", cursor: null },
 );
 
-// Convex cron expressions are UTC (not org-local). 05:00 UTC is 06:00 CET /
-// 07:00 CEST — after typical Copenhagen close-of-business for the prior local day.
+crons.cron(
+  "incremental OnlinePOS sales",
+  "13 */4 * * *",
+  internal.onlinePosSync.dispatchEnabledLocations,
+  { kind: "incremental", cursor: null },
+);
+
+// Convex cron expressions are UTC (not org-local). 05:23 UTC is 06:23 CET /
+// 07:23 CEST — after typical Copenhagen close-of-business for the prior local day.
 crons.cron(
   "reconcile OnlinePOS sales",
-  "0 5 * * *",
+  "23 5 * * *",
   internal.onlinePosSync.dispatchEnabledLocations,
   { kind: "reconcile", cursor: null },
 );
@@ -38,7 +45,7 @@ crons.interval("prune audit log", { hours: 24 }, internal.audit.prune, {});
 
 crons.cron(
   "delete orphaned uploads",
-  "0 2 * * 0",
+  "11 2 * * 0",
   internal.storageCleanup.removeOrphans,
   { cursor: null },
 );

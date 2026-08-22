@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Convex efficiency audit — Engine</title>
+  <style>
+    :root {
+      --bg: #f5f5f2;
+      --surface: #ffffff;
+      --surface-2: #f0f1ed;
+      --ink: #171a17;
+      --muted: #5c655f;
+      --line: #d9ded8;
+      --accent: #12644f;
+      --accent-soft: #dff0e9;
+      --critical: #a33122;
+      --critical-soft: #f8e5e1;
+      --high: #965d0a;
+      --high-soft: #f7ecd7;
+      --medium: #345e91;
+      --medium-soft: #e3ecf7;
+      --low: #58635c;
+      --shadow: 0 12px 30px rgb(24 34 27 / 7%);
+      --radius: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111411;
+        --surface: #191d19;
+        --surface-2: #202520;
+        --ink: #f1f4f0;
+        --muted: #aeb8b0;
+        --line: #343c35;
+        --accent: #71d1ad;
+        --accent-soft: #183f32;
+        --critical: #ff9d8d;
+        --critical-soft: #48251f;
+        --high: #efbc70;
+        --high-soft: #443318;
+        --medium: #a9c9ed;
+        --medium-soft: #20364d;
+        --low: #b5bfb7;
+        --shadow: none;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    code {
+      font-family: var(--mono);
+      font-size: .9em;
+      overflow-wrap: anywhere;
+    }
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+    header {
+      padding: 64px 0 30px;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-size: .78rem;
+      font-weight: 750;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { line-height: 1.14; letter-spacing: -.025em; }
+    h1 { max-width: 830px; margin: 0; font-size: clamp(2.35rem, 6vw, 4.8rem); }
+    h2 { margin: 0 0 18px; font-size: clamp(1.65rem, 3vw, 2.45rem); }
+    h3 { margin: 0 0 8px; font-size: 1.12rem; }
+    p { margin: 0 0 14px; }
+    .lede { max-width: 840px; margin: 22px 0 0; color: var(--muted); font-size: 1.16rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 24px; color: var(--muted); font-size: .9rem; }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: color-mix(in srgb, var(--bg) 90%, transparent);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(14px);
+    }
+    nav .shell { display: flex; gap: 22px; overflow-x: auto; padding: 13px 0; }
+    nav a { flex: 0 0 auto; color: var(--muted); font-size: .88rem; font-weight: 650; text-decoration: none; }
+    nav a:hover { color: var(--ink); }
+    main { padding: 38px 0 80px; }
+    section { scroll-margin-top: 70px; margin: 0 0 68px; }
+    .outcome {
+      display: grid;
+      grid-template-columns: 1.35fr .65fr;
+      gap: 24px;
+      padding: 28px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .verdict { font-size: clamp(1.35rem, 3vw, 2rem); font-weight: 730; line-height: 1.25; letter-spacing: -.02em; }
+    .callout {
+      padding: 18px;
+      background: var(--accent-soft);
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      color: var(--ink);
+    }
+    .callout p:last-child { margin-bottom: 0; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 22px; }
+    .stat { padding: 16px; background: var(--surface-2); border-radius: 10px; }
+    .stat strong { display: block; font-size: 1.42rem; line-height: 1.1; }
+    .stat span { display: block; margin-top: 6px; color: var(--muted); font-size: .8rem; }
+    .section-intro { max-width: 820px; color: var(--muted); }
+    .bars { display: grid; gap: 18px; margin-top: 26px; }
+    .bar-row { display: grid; grid-template-columns: 220px 1fr 108px; align-items: center; gap: 14px; }
+    .bar-name { font-size: .92rem; font-weight: 700; }
+    .bar-track { height: 14px; overflow: hidden; background: var(--surface-2); border-radius: 999px; }
+    .bar-fill { height: 100%; width: var(--value); background: var(--accent); border-radius: inherit; }
+    .bar-fill.high { background: var(--high); }
+    .bar-fill.medium { background: var(--medium); }
+    .bar-value { color: var(--muted); font-family: var(--mono); font-size: .82rem; text-align: right; }
+    .ranked { display: grid; gap: 16px; }
+    .finding {
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr);
+      gap: 20px;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .priority { font-family: var(--mono); font-size: .78rem; font-weight: 800; letter-spacing: .06em; }
+    .priority.critical { color: var(--critical); }
+    .priority.high { color: var(--high); }
+    .priority.medium { color: var(--medium); }
+    .finding-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+    .finding h3 { font-size: 1.25rem; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+    .tag { padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .75rem; font-weight: 700; }
+    .evidence { margin: 14px 0; padding: 14px 16px; background: var(--surface-2); border-radius: 9px; font-size: .9rem; }
+    .evidence strong { color: var(--ink); }
+    ul, ol { margin: 10px 0 0; padding-left: 1.25rem; }
+    li { margin: 7px 0; }
+    .compact li { margin: 4px 0; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: .9rem; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+    tr:last-child td { border-bottom: 0; }
+    th { background: var(--surface-2); color: var(--muted); font-size: .76rem; letter-spacing: .045em; text-transform: uppercase; }
+    td:first-child { font-weight: 680; }
+    .roadmap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .phase { padding: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+    .phase-number { color: var(--accent); font-family: var(--mono); font-size: .78rem; font-weight: 800; text-transform: uppercase; }
+    .phase h3 { margin-top: 8px; }
+    .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .check { padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+    .check strong { display: block; margin-bottom: 6px; }
+    .muted { color: var(--muted); }
+    .note { padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: .9rem; }
+    footer { padding: 28px 0 50px; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
+    @media (max-width: 820px) {
+      header { padding-top: 42px; }
+      .outcome { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .roadmap, .checks { grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: 1fr 76px; }
+      .bar-track { grid-column: 1 / -1; grid-row: 2; }
+      .bar-value { grid-column: 2; grid-row: 1; }
+    }
+    @media (max-width: 560px) {
+      .shell { width: min(100% - 22px, 1180px); }
+      .stats { grid-template-columns: 1fr; }
+      .finding { grid-template-columns: 1fr; gap: 8px; padding: 19px; }
+      .priority { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+    }
+    @media print {
+      nav { display: none; }
+      body { background: white; color: black; }
+      .outcome, .finding, .phase, .check, .table-wrap { box-shadow: none; break-inside: avoid; }
+      section { margin-bottom: 38px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="shell">
+      <p class="eyebrow">Read-only implementation audit</p>
+      <h1>Convex efficiency audit</h1>
+      <p class="lede">The system does not need another general cache. It needs fewer clock-based query keys, less client-driven synchronization, and narrower read sets.</p>
+      <div class="meta">
+        <span>Engine</span>
+        <span>Commit <code>b3a0e294</code></span>
+        <span>22 August 2026</span>
+        <span>Convex 1.42.3</span>
+        <span>Production <code>sleek-otter-381</code></span>
+        <span>Development <code>terrific-llama-941</code></span>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="Report sections">
+    <div class="shell">
+      <a href="#verdict">Verdict</a>
+      <a href="#evidence">Cost evidence</a>
+      <a href="#findings">Ranked findings</a>
+      <a href="#freshness">Freshness policy</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#verification">Verification</a>
+      <a href="#method">Method</a>
+    </div>
+  </nav>
+
+  <main class="shell">
+    <section id="verdict">
+      <div class="outcome">
+        <div>
+          <p class="eyebrow">Outcome</p>
+          <p class="verdict">About 84% of the shown database I/O sits in three families: Workfeed synchronization, dashboard metrics, and product catalog reads.</p>
+          <p class="muted">The first implementation pass should remove hourly Workfeed runs, slow the dashboard clock from five minutes to one hour, and delete catalog payload that the UI never reads. These are direct cuts with no data-model migration.</p>
+          <div class="stats">
+            <div class="stat"><strong>1.85 GB</strong><span>Shown database I/O</span></div>
+            <div class="stat"><strong>228K</strong><span>Shown function calls</span></div>
+            <div class="stat"><strong>0.536 GBh</strong><span>Shown compute</span></div>
+            <div class="stat"><strong>0.00092 qGB</strong><span>Shown search usage</span></div>
+          </div>
+        </div>
+        <div class="callout">
+          <p><strong>Do not start with Next.js caching.</strong></p>
+          <p>Convex already caches identical query results, and cached reads consume no database bandwidth. The expensive paths keep changing arguments or touching volatile and broad read sets, so they miss or invalidate that cache.</p>
+          <p><a href="https://docs.convex.dev/realtime">Convex caching and reactivity</a></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <p class="eyebrow">Dashboard evidence</p>
+      <h2>Cost is concentrated</h2>
+      <p class="section-intro">The bars combine production and development values visible in the supplied Database I/O screenshot. The screenshot period is not shown, so these are shares of that view, not daily or monthly forecasts.</p>
+      <div class="bars" role="img" aria-label="Database I/O by code family">
+        <div class="bar-row">
+          <div class="bar-name">Workfeed shift sync</div>
+          <div class="bar-track"><div class="bar-fill" style="--value: 37.9%"></div></div>
+          <div class="bar-value">700.53 MB</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-name">Dashboard metrics</div>
+          <div class="bar-track"><div class="bar-fill high" style="--value: 34.8%"></div></div>
+          <div class="bar-value">644.11 MB</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-name">Product catalog flows</div>
+          <div class="bar-track"><div class="bar-fill medium" style="--value: 11.3%"></div></div>
+          <div class="bar-value">208.26 MB</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-name">Everything else</div>
+          <div class="bar-track"><div class="bar-fill" style="--value: 16%"></div></div>
+          <div class="bar-value">≈297 MB</div>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top: 30px">
+        <table>
+          <thead><tr><th>Signal</th><th>Measured value</th><th>Reading</th></tr></thead>
+          <tbody>
+            <tr><td><code>dashboard.getMetrics</code></td><td>619.34 MB combined; 485.6 MB production</td><td>The single largest production database reader.</td></tr>
+            <tr><td>Workfeed family</td><td>700.53 MB combined</td><td>Includes shift upserts, context reads, cleanup, unchanged-chunk handling, and request context.</td></tr>
+            <tr><td><code>workfeedSync.syncShiftChunk</code></td><td>0.2397 GB-hours combined</td><td>44.7% of all shown compute.</td></tr>
+            <tr><td><code>count.listCountProducts</code></td><td>125.89 MB combined</td><td>Current workspace has no caller, but the public function remains deployed.</td></tr>
+            <tr><td>Better Auth adapters and HTTP</td><td>≈111K of 228K calls</td><td>High call count, but not a database I/O leader. A recent production sample showed cached adapter reads with zero database I/O.</td></tr>
+            <tr><td>Search</td><td>0.00092 query-GB</td><td>Too small to justify work now.</td></tr>
+            <tr><td>Data egress</td><td>1.76 MB</td><td>Almost entirely one development notice delivery; not a cost problem.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="findings">
+      <p class="eyebrow">Ranked findings</p>
+      <h2>Fix measured waste first</h2>
+      <div class="ranked">
+        <article class="finding">
+          <div class="priority critical">P0 · 01</div>
+          <div>
+            <div class="finding-title"><h3>Every active organization can trigger a full 91-day Workfeed shift sync each hour</h3></div>
+            <div class="tags"><span class="tag">very high impact</span><span class="tag">small change</span><span class="tag">high confidence</span></div>
+            <p><code>ActiveSyncHeartbeat</code> calls <code>organization.requestActiveSync</code> hourly while the app is visible. That mutation schedules Workfeed shifts and OnlinePOS. A Workfeed run covers 30 historical days plus 60 forecast days in thirteen seven-day actions.</p>
+            <div class="evidence"><strong>Evidence:</strong> <code>components/app-shell.tsx:149-191</code>, <code>convex/organization.ts:82-135</code>, <code>convex/workfeedSync.ts:19-25</code>. The screenshots show 16.5K <code>syncShiftChunk</code> calls and 44.7% of compute. Convex Insights also reports 13 development conflict-marked calls on <code>organizationSyncActivity</code>.</div>
+            <p><strong>Recommendation:</strong> stop scheduling Workfeed from the client heartbeat. Keep the existing daily Workfeed cron and the manual refresh control. Move OnlinePOS incremental sync to a server interval, initially every four hours. Remove the per-tab heartbeat after the server schedule is live.</p>
+            <p><strong>Expected direction:</strong> a continuously active organization falls from as many as 24 full Workfeed runs per day to one, a 96% reduction in active-driven full runs. Actual savings depend on app activity.</p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority critical">P0 · 02</div>
+          <div>
+            <div class="finding-title"><h3>The dashboard creates fresh query keys every five minutes</h3></div>
+            <div class="tags"><span class="tag">very high impact</span><span class="tag">small first step</span><span class="tag">high confidence</span></div>
+            <p><code>useDashboardNow</code> changes <code>now</code> every five minutes. That value is part of every metric query. A 24-widget dashboard has eight subscriptions, so one open dashboard can create 96 time-driven query executions per hour before reactive updates from real data writes.</p>
+            <div class="evidence"><strong>Evidence:</strong> <code>lib/dashboard/use-dashboard-now.ts:5-24</code>, <code>components/dashboard/dashboard-grid.tsx:47-70,317-324</code>. <code>dashboard.getMetrics</code> accounts for 619.34 MB of shown database I/O.</div>
+            <p><strong>Recommendation:</strong> change the first release to an hourly bucket. Then split the contract into a date/range anchor, which changes at the relevant local day boundary, and a small integration-freshness query. Keep true time-sensitive metrics such as open Counts separate.</p>
+            <p><strong>Expected direction:</strong> the hourly change removes 11 of 12 timer-driven executions, a 91.7% reduction in that component. A day-bound anchor removes 287 of 288 five-minute buckets for historical metrics. Writes remain reactive.</p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority critical">P0 · 03</div>
+          <div>
+            <div class="finding-title"><h3>Two catalog endpoints do expensive product hydration that current UI code does not need</h3></div>
+            <div class="tags"><span class="tag">high impact</span><span class="tag">very small change</span><span class="tag">high confidence</span></div>
+            <p><code>catalog.listFormOptions</code> loads up to 100 products, every product's units, unit documents, and image URLs. The form only reads <code>categories</code> and <code>units</code>; it already obtains products through <code>catalog.listActiveProducts</code>. Separately, <code>count.listCountProducts</code> hydrates up to 500 products but has no caller in the current workspace.</p>
+            <div class="evidence"><strong>Evidence:</strong> <code>convex/catalog.ts:1195-1251</code> versus <code>components/catalog/product-form.tsx:284-287,348-357</code>; <code>convex/count.ts:448-535</code>. The screenshots show 12.75 MB production I/O for form options and 125.89 MB combined I/O for Count products.</div>
+            <p><strong>Recommendation:</strong> remove <code>products</code> from <code>listFormOptions</code>. Confirm no calls to <code>count.listCountProducts</code> after one deployed-client grace period, then delete it. Its presence in the current function spec means stale browser bundles can still call it.</p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority high">P1 · 04</div>
+          <div>
+            <div class="finding-title"><h3>Volatile Workfeed run state invalidates otherwise stable roles and location mappings</h3></div>
+            <div class="tags"><span class="tag">high impact</span><span class="tag">medium change</span><span class="tag">high confidence</span></div>
+            <p><code>getShiftSyncContext</code> reads the sync status together with up to 200 location mappings and 1,000 roles. Each chunk updates the status document, so the next context query cannot reuse the stable result. The same mixing exists in <code>getShiftRequestContext</code>.</p>
+            <div class="evidence"><strong>Evidence:</strong> <code>convex/workfeedSync.ts:338-430</code>. The context functions account for 167.79 MB of shown database I/O; <code>getShiftSyncContext</code> alone is 143.65 MB.</div>
+            <p><strong>Recommendation:</strong> split a stable integration context—settings, mapped locations, roles—from a small volatile run-state query—token, company, success timestamp, hashes. Stable context will remain cached until configuration or employee-role data actually changes.</p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority high">P1 · 05</div>
+          <div>
+            <div class="finding-title"><h3>Changed Workfeed chunks re-read and patch every shift mapping in the chunk</h3></div>
+            <div class="tags"><span class="tag">high impact</span><span class="tag">larger change</span><span class="tag">high confidence</span></div>
+            <p>The source hash correctly skips an unchanged seven-day chunk. If one shift changes, however, <code>upsertShiftBatch</code> performs an indexed mapping read, a shift read, and an unconditional mapping patch per shift. Cleanup then reads the chunk mappings again.</p>
+            <div class="evidence"><strong>Evidence:</strong> <code>convex/workfeedSync.ts:934-1015,1027-1089,1161-1179,1221-1248</code>. <code>upsertShiftBatch</code> accounts for 402.76 MB of shown database I/O.</div>
+            <p><strong>Recommendation:</strong> apply cadence and context fixes first. If this remains hot, replace a changed chunk through paged range reads and an in-memory external-ID diff, so existing mappings are loaded once and unchanged rows are not patched solely for a run token. Preserve deletion detection and mutation limits.</p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority high">P1 · 06</div>
+          <div>
+            <div class="finding-title"><h3>Dashboard batches repeat scope resolution and do organization-wide reads for small location scopes</h3></div>
+            <div class="tags"><span class="tag">high impact</span><span class="tag">medium change</span><span class="tag">high confidence</span></div>
+            <p>Each widget calls <code>resolveMetricParams</code>, which starts by loading all organization locations. Each resolved widget also gets its own data cache. Metrics in the same batch therefore cannot share waste, shift, sales, or freshness reads. Several loaders query the full organization and filter selected locations in JavaScript even though location indexes exist.</p>
+            <div class="evidence"><strong>Evidence:</strong> <code>convex/dashboard.ts:1054-1083</code>; <code>convex/lib/dashboardMetrics.ts:186-229,465-487,687-705,825-843,959-980,1085-1105,1153-1176</code>. The default dashboard places two Waste readers in different batches.</div>
+            <ol class="compact">
+              <li>Resolve scope once per unique effective range inside a batch.</li>
+              <li>Share a cache among metrics with the same range and scope.</li>
+              <li>Group requests by source and range instead of display position.</li>
+              <li>For one or a few selected locations, query the existing location indexes; keep organization-wide queries for broad scopes.</li>
+            </ol>
+            <p class="muted">Do not combine every widget into one giant query. That would widen the reactive read set and rerun unrelated metrics after any write.</p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority high">P1 · 07</div>
+          <div>
+            <div class="finding-title"><h3>Timer-driven queries run far more often than their state can change</h3></div>
+            <div class="tags"><span class="tag">medium-high impact</span><span class="tag">medium change</span><span class="tag">high confidence</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Surface</th><th>Current key rotation</th><th>Needed behavior</th></tr></thead>
+                <tbody>
+                  <tr><td>Count feature lock</td><td>Every minute for every authenticated shell</td><td>Refresh at the next Count window boundary or after Count/settings/location writes.</td></tr>
+                  <tr><td>Count state</td><td>Every minute on the Count page</td><td>Return <code>nextTransitionAt</code>; use one timeout. Keep the local one-second clock only for display.</td></tr>
+                  <tr><td>Staff food</td><td>Every 30 seconds for picker, search, and session</td><td>Use a five-minute bucket first, then transition timestamps. Mutations already revalidate exact eligibility.</td></tr>
+                  <tr><td>Own checks date context</td><td>Every minute</td><td>Query the time zone reactively and update the date only at local midnight.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="evidence"><strong>Evidence:</strong> <code>components/app-shell.tsx:398-420</code>, <code>components/count/count-state-provider.tsx:70-84</code>, <code>components/staff-food/staff-food-registration.tsx:295-319</code>, <code>components/own-checks/use-own-check-now.ts:5-24</code>. Count lock state is visible at 7.4K development calls and 0.0381 combined GB-hours of compute.</div>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority medium">P2 · 08</div>
+          <div>
+            <div class="finding-title"><h3>Product list and shared catalog queries use bounded but expensive N+1 hydration</h3></div>
+            <div class="tags"><span class="tag">medium impact</span><span class="tag">medium change</span><span class="tag">measured</span></div>
+            <p><code>catalog.listProducts</code> loads category, default unit, product units, ingredients, and image URL per item, even though the category hierarchy is already loaded. <code>listActiveProductCatalog</code> does per-product unit reads and per-unit document reads for several registration screens.</p>
+            <div class="evidence"><strong>Evidence:</strong> <code>convex/catalog.ts:742-782,795-800</code>, <code>convex/lib/productCatalog.ts:50-122</code>. Catalog product and Waste catalog endpoints account for at least 69.62 MB; the dead Count product endpoint adds another 125.89 MB.</div>
+            <p><strong>Recommendation:</strong> first return narrower shapes per flow and avoid image URLs where they are not rendered. Reuse category and unit maps already loaded in the query. Only if usage remains material, introduce a versioned, segmented catalog projection maintained by the existing catalog mutations.</p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority medium">P2 · 09</div>
+          <div>
+            <div class="finding-title"><h3>Multi-location reports use post-index database filters</h3></div>
+            <div class="tags"><span class="tag">latent scaling risk</span><span class="tag">defer until measured</span></div>
+            <p>Sixteen database <code>.filter(q =&gt; ...)</code> sites remain. The most relevant are multi-location Waste, bad delivery, Staff food, sales, and own-check reports. Convex still reads documents rejected by <code>.filter()</code>, so restricted-location users in a large organization may scan many irrelevant rows.</p>
+            <p><strong>Recommendation:</strong> keep this below the measured hotspots. If Insights shows it, use compound location/status/time indexes and a bounded per-location merge strategy. Do not add indexes speculatively.</p>
+            <p><a href="https://docs.convex.dev/understanding/best-practices">Convex best practices for indexes and filters</a></p>
+          </div>
+        </article>
+
+        <article class="finding">
+          <div class="priority medium">P3 · 10</div>
+          <div>
+            <div class="finding-title"><h3>Contract and scheduling hygiene should be cleaned up after the cost work</h3></div>
+            <div class="tags"><span class="tag">low immediate cost</span><span class="tag">small changes</span></div>
+            <ul>
+              <li>Current production and development specs expose 16 public functions without return validators: 15 catalog functions and <code>auth.getAuthUser</code>. Return validators bound accidental payload growth and make contracts explicit.</li>
+              <li>Three cron expressions run exactly at minute zero. Convex recommends avoiding the top of the hour; move them to non-zero minutes or use intervals where exact wall time is unimportant.</li>
+              <li><code>organization.getBranding</code> is subscribed twice in the app shell. The client may deduplicate identical watches, so verify before changing it.</li>
+            </ul>
+            <p><a href="https://docs.convex.dev/scheduling/cron-jobs">Convex cron guidance</a></p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="freshness">
+      <p class="eyebrow">Recommended freshness policy</p>
+      <h2>Spend freshness where correctness needs it</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Target freshness</th><th>Mechanism</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr><td>Auth, membership, permissions</td><td>Immediate</td><td>Keep server-side Convex checks reactive</td><td>Security boundary; never cache across users or organizations.</td></tr>
+            <tr><td>Destructive or transactional mutations</td><td>Immediate validation</td><td>Use current server state and <code>Date.now()</code> in mutations</td><td>Waste, Transfer, Count, Staff food, and notices must reject stale actions.</td></tr>
+            <tr><td>Count lock and Count window</td><td>Exact at transitions</td><td>Reactive writes plus <code>nextTransitionAt</code></td><td>No need to poll between schedule boundaries.</td></tr>
+            <tr><td>Dashboard historical metrics</td><td>Up to 1 hour</td><td>Hourly anchor first; later day-bound anchor plus reactive writes</td><td>Underlying writes already invalidate queries.</td></tr>
+            <tr><td>Dashboard integration freshness</td><td>30–60 minutes</td><td>Small status query, separate from metric data</td><td>A clock change should not reread historical facts.</td></tr>
+            <tr><td>Products, categories, units, locations, branding, navigation</td><td>Change-driven; 24-hour fallback acceptable</td><td>Reactive version or narrow projection</td><td>Rare changes; optimize initial read shape, not polling.</td></tr>
+            <tr><td>Workfeed employees and shifts</td><td>Daily plus manual refresh</td><td>Existing daily server cron</td><td>User explicitly accepts staleness; current hourly full-window sync dominates cost.</td></tr>
+            <tr><td>OnlinePOS intraday sales</td><td>Every 4 hours</td><td>Server interval</td><td>Enough for directional intraday dashboards without per-client heartbeats.</td></tr>
+            <tr><td>OnlinePOS completed days</td><td>Daily</td><td>Existing nightly hash reconciliation</td><td>Historical sales change slowly.</td></tr>
+            <tr><td>Staff food picker and search</td><td>Up to 5 minutes in UI</td><td>Five-minute key or next shift boundary</td><td>Mutations perform exact final validation.</td></tr>
+            <tr><td>Own-check date context</td><td>At local midnight</td><td>Time-zone query plus midnight timer</td><td>The value changes once a day, not once a minute.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <p class="eyebrow">Implementation sequence</p>
+      <h2>Take the small cuts before structural work</h2>
+      <div class="roadmap">
+        <article class="phase">
+          <div class="phase-number">Phase 1 · direct cuts</div>
+          <h3>One small release</h3>
+          <ol>
+            <li>Stop Workfeed from the hourly heartbeat; schedule OnlinePOS every four hours on the server.</li>
+            <li>Change dashboard time bucketing from five minutes to one hour.</li>
+            <li>Remove products from <code>listFormOptions</code>.</li>
+            <li>Confirm and remove <code>listCountProducts</code> after stale-client grace.</li>
+            <li>Use a five-minute Staff food read bucket and midnight Own-check refresh.</li>
+          </ol>
+        </article>
+        <article class="phase">
+          <div class="phase-number">Phase 2 · reuse reads</div>
+          <h3>Measured structural fixes</h3>
+          <ol>
+            <li>Split stable Workfeed context from volatile run state.</li>
+            <li>Return Count transition timestamps and stop minute polling.</li>
+            <li>Resolve dashboard scope once per range and share source caches.</li>
+            <li>Branch dashboard readers between location and organization indexes.</li>
+          </ol>
+        </article>
+        <article class="phase">
+          <div class="phase-number">Phase 3 · only if still hot</div>
+          <h3>Higher-ceremony changes</h3>
+          <ol>
+            <li>Diff changed Workfeed chunks from one range read.</li>
+            <li>Add a segmented catalog projection/version.</li>
+            <li>Replace multi-location post-filters with indexed merges.</li>
+            <li>Add explicit return validators and stagger cron minutes.</li>
+          </ol>
+        </article>
+      </div>
+    </section>
+
+    <section id="verification">
+      <p class="eyebrow">Verification plan</p>
+      <h2>Compare equivalent traffic, not raw totals</h2>
+      <p class="section-intro">Capture a seven-day baseline before Phase 1 and compare the following seven days with similar active organizations and dashboard traffic. Do not infer savings from development deploy churn.</p>
+      <div class="checks">
+        <div class="check"><strong>Workfeed calls and compute</strong><span class="muted"><code>syncShiftChunk</code> should approach 13 calls per enabled organization per daily run, plus manual runs. <code>requestActiveSync</code> conflicts should disappear.</span></div>
+        <div class="check"><strong>Workfeed context I/O</strong><span class="muted">After Phase 2, unchanged stable context reads should be cache hits with close to zero database I/O.</span></div>
+        <div class="check"><strong>Dashboard I/O</strong><span class="muted">Track <code>getMetrics</code> calls per active dashboard-hour and database bytes per call. The first target is at least 90% fewer timer-created calls.</span></div>
+        <div class="check"><strong>Catalog cleanup</strong><span class="muted"><code>listFormOptions</code> should no longer read product, product-unit, or storage data. <code>listCountProducts</code> should reach zero calls before deletion.</span></div>
+        <div class="check"><strong>Count and Staff food</strong><span class="muted">Count state executions should follow page entries, writes, and schedule transitions—not minutes elapsed. Staff food query calls should fall at least tenfold with a five-minute key.</span></div>
+        <div class="check"><strong>Correctness guardrails</strong><span class="muted">Verify Count redirects at open/close boundaries, Staff food rejects ended sessions, manual sync still works, and dashboard dates roll over in the organization time zone.</span></div>
+      </div>
+    </section>
+
+    <section id="method">
+      <p class="eyebrow">Method and limits</p>
+      <h2>What was inspected</h2>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td>Repository surface</td><td>74 hand-written Convex TypeScript files, 33,832 lines including tests, the 1,494-line schema, client query call sites, timer hooks, cron definitions, and project-pinned Next.js caching guidance.</td></tr>
+            <tr><td>Deployed surface</td><td>302 functions in both current production and development specs: 222 public and 77 internal, plus HTTP routing. The specs match for the findings checked.</td></tr>
+            <tr><td>Static checks</td><td>All 12 non-test <code>.collect()</code> sites, 16 database filter sites, nested function calls, scheduler calls, query <code>now</code> arguments, and missing return validators.</td></tr>
+            <tr><td>Runtime checks</td><td>Five supplied usage screenshots, current Convex Insights for production and development, current function specs, and a small production log sample.</td></tr>
+            <tr><td>Verification</td><td><code>npm run lint -- --quiet</code> and <code>npx tsc --noEmit</code> both pass.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-top: 18px">
+        <p><strong>Limitations.</strong> The screenshots do not show their date range. One screenshot names <code>dashboardShare.expireShares</code>, while the current deployed spec contains only <code>expireShare</code>; the view therefore spans at least one older deployment. All percentages are calculated from the shown aggregate, and all projected reductions are stated as timer/run reductions rather than guaranteed billing reductions.</p>
+        <p>No application code, schema, deployment, or production data was changed during this audit.</p>
+      </div>
+      <h3 style="margin-top: 28px">Primary references</h3>
+      <ul class="compact">
+        <li><a href="https://docs.convex.dev/realtime">Convex reactivity and automatic query caching</a></li>
+        <li><a href="https://docs.convex.dev/understanding/best-practices">Convex best practices</a></li>
+        <li><a href="https://docs.convex.dev/functions/actions">Convex actions and nested function calls</a></li>
+        <li><a href="https://docs.convex.dev/scheduling/cron-jobs">Convex cron jobs</a></li>
+        <li><a href="https://docs.convex.dev/production/state/limits">Convex limits and function-call accounting</a></li>
+        <li><code>node_modules/next/dist/docs/01-app/01-getting-started/08-caching.md</code> and <code>.../use-cache.md</code> for the project-pinned Next.js 16 behavior.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">Convex efficiency audit · Engine · read-only · 22 August 2026</div>
+  </footer>
+</body>
+</html>

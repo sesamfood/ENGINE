@@ -12,7 +12,11 @@ import {
   metricResultValidator,
   visualizationValidator,
 } from "./lib/dashboardValidators";
-import { dashboardMetricComputers, resolveMetricParams } from "./lib/dashboardMetrics";
+import {
+  createMetricParamsResolver,
+  dashboardMetricComputers,
+  resolveMetricParams,
+} from "./lib/dashboardMetrics";
 import {
   customMetricIsSensitive,
   executeCustomMetric,
@@ -307,20 +311,22 @@ export const getSharedMetrics = query({
         }
       }
     }
+    const resolveParams = createMetricParamsResolver(
+      ctx,
+      share.organizationId,
+      share.scope,
+      args.now,
+      undefined,
+      {
+        granularity: share.granularity ?? "detail",
+        anonymousSeed: share.token,
+        salesDetailAllowed: share.salesDetailAllowed ?? true,
+      },
+    );
     return await Promise.all(
       args.widgets.map(async (widget) => {
-        const params = await resolveMetricParams(
-          ctx,
-          share.organizationId,
-          share.scope,
+        const params = await resolveParams(
           widget.range ? { preset: widget.range } : share.range,
-          args.now,
-          undefined,
-          {
-            granularity: share.granularity ?? "detail",
-            anonymousSeed: share.token,
-            salesDetailAllowed: share.salesDetailAllowed ?? true,
-          },
         );
         return {
           key: widget.key,

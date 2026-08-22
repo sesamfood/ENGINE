@@ -75,48 +75,71 @@ export async function listActiveProductCatalog(
     hierarchy.map((category) => [category.id, category]),
   );
 
-  return await Promise.all(
-    products.map(async (product) => {
-      const category = categoriesById.get(product.categoryId);
-      if (!category) throw new ConvexError("Produktets kategori blev ikke fundet");
-      const productUnits = await ctx.db
+  const productUnits = await Promise.all(
+    products.map((product) =>
+      ctx.db
         .query("productUnits")
         .withIndex("by_organizationId_and_productId", (q) =>
           q
             .eq("organizationId", organizationId)
             .eq("productId", product._id),
         )
-        .take(MAX_PRODUCT_UNITS + 1);
-      if (productUnits.length > MAX_PRODUCT_UNITS) {
-        throw new ConvexError("Produktet har for mange enheder");
-      }
-      const units = await Promise.all(
-        productUnits.map(async (row) => {
-          const unit = await ctx.db.get("units", row.unitId);
-          return unit?.organizationId === organizationId
-            ? {
+        .take(MAX_PRODUCT_UNITS + 1),
+    ),
+  );
+  if (productUnits.some((rows) => rows.length > MAX_PRODUCT_UNITS)) {
+    throw new ConvexError("Produktet har for mange enheder");
+  }
+
+  const unitIds = [
+    ...new Set(productUnits.flatMap((rows) => rows.map((row) => row.unitId))),
+  ];
+  const [units, imageUrls] = await Promise.all([
+    Promise.all(unitIds.map((unitId) => ctx.db.get("units", unitId))),
+    Promise.all(
+      products.map((product) =>
+        product.imageStorageId
+          ? ctx.storage.getUrl(product.imageStorageId)
+          : null,
+      ),
+    ),
+  ]);
+  const unitsById = new Map(
+    units.flatMap((unit) =>
+      unit?.organizationId === organizationId
+        ? [[unit._id, unit] as const]
+        : [],
+    ),
+  );
+
+  return products.map((product, index) => {
+    const category = categoriesById.get(product.categoryId);
+    if (!category) {
+      throw new ConvexError("Produktets kategori blev ikke fundet");
+    }
+    return {
+      id: product._id,
+      name: product.name,
+      category: {
+        id: category.id,
+        name: category.name,
+        path: category.path,
+        parentCategoryId: category.parentCategoryId,
+      },
+      imageUrl: imageUrls[index],
+      defaultUnitId: product.defaultUnitId,
+      units: productUnits[index].flatMap((row) => {
+        const unit = unitsById.get(row.unitId);
+        return unit
+          ? [
+              {
                 id: unit._id,
                 name: unit.name,
                 factorToDefault: row.factorToDefault,
-              }
-            : null;
-        }),
-      );
-      return {
-        id: product._id,
-        name: product.name,
-        category: {
-          id: category.id,
-          name: category.name,
-          path: category.path,
-          parentCategoryId: category.parentCategoryId,
-        },
-        imageUrl: product.imageStorageId
-          ? await ctx.storage.getUrl(product.imageStorageId)
-          : null,
-        defaultUnitId: product.defaultUnitId,
-        units: units.filter((unit) => unit !== null),
-      };
-    }),
-  );
+              },
+            ]
+          : [];
+      }),
+    };
+  });
 }
