@@ -5,7 +5,7 @@ import { getLocationCountWindow } from "./countWindow";
 
 type CountLockContext = QueryCtx | MutationCtx;
 
-export async function otherFeaturesLocked(
+export async function otherFeaturesLockState(
   ctx: CountLockContext,
   organizationId: string,
   locationId: Id<"locations">,
@@ -22,13 +22,21 @@ export async function otherFeaturesLocked(
     location,
     now,
   );
-  if (!window.lockOtherFeaturesDuringCount) return false;
+  if (!window.lockOtherFeaturesDuringCount) {
+    return { isLocked: false, nextTransitionAt: null };
+  }
+  const nextTransitionAt =
+    now < window.opensAt
+      ? window.opensAt
+      : now < window.closesAt
+        ? window.closesAt
+        : null;
   const periodKey = window.periodKey;
   if (
     now < window.opensAt ||
     (!window.requireCountBeforeOpening && now >= window.closesAt)
   ) {
-    return false;
+    return { isLocked: false, nextTransitionAt };
   }
 
   const count = await ctx.db
@@ -40,7 +48,21 @@ export async function otherFeaturesLocked(
         .eq("periodKey", periodKey),
     )
     .unique();
-  return count?.status !== "submitted";
+  return {
+    isLocked: count?.status !== "submitted",
+    nextTransitionAt,
+  };
+}
+
+export async function otherFeaturesLocked(
+  ctx: CountLockContext,
+  organizationId: string,
+  locationId: Id<"locations">,
+  now: number,
+) {
+  return (
+    await otherFeaturesLockState(ctx, organizationId, locationId, now)
+  ).isLocked;
 }
 
 export async function requireOtherFeaturesUnlocked(

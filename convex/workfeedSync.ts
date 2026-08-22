@@ -51,8 +51,6 @@ const employeeSyncContextValidator = v.union(
 const shiftSyncContextValidator = v.union(
   v.object({
     settings: settingsValidator,
-    runToken: v.union(v.string(), v.null()),
-    lastEmployeeCompanyId: v.union(v.string(), v.null()),
     locations: v.array(locationMappingValidator),
     roles: v.array(
       v.object({
@@ -66,9 +64,8 @@ const shiftSyncContextValidator = v.union(
   v.null(),
 );
 
-const shiftRequestContextValidator = v.union(
+const shiftRunStateValidator = v.union(
   v.object({
-    settings: settingsValidator,
     runToken: v.union(v.string(), v.null()),
     lastEmployeeCompanyId: v.union(v.string(), v.null()),
     lastEmployeeSuccessAt: v.union(v.number(), v.null()),
@@ -86,8 +83,6 @@ type EmployeeSyncContext = {
 };
 
 type ShiftSyncContext = EmployeeSyncContext & {
-  runToken: string | null;
-  lastEmployeeCompanyId: string | null;
   roles: Array<{
     externalRoleId: string;
     externalDepartmentId: string;
@@ -96,8 +91,7 @@ type ShiftSyncContext = EmployeeSyncContext & {
   }>;
 };
 
-type ShiftRequestContext = {
-  settings: WorkfeedSettings;
+type ShiftRunState = {
   runToken: string | null;
   lastEmployeeCompanyId: string | null;
   lastEmployeeSuccessAt: number | null;
@@ -339,15 +333,9 @@ export const getShiftSyncContext = internalQuery({
   args: { organizationId: v.string(), companyId: v.string() },
   returns: shiftSyncContextValidator,
   handler: async (ctx, args): Promise<ShiftSyncContext | null> => {
-    const [settings, status, locations, roles] = await Promise.all([
+    const [settings, locations, roles] = await Promise.all([
       ctx.db
         .query("workfeedIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .unique(),
-      ctx.db
-        .query("workfeedSyncStatus")
         .withIndex("by_organizationId", (q) =>
           q.eq("organizationId", args.organizationId),
         )
@@ -382,8 +370,6 @@ export const getShiftSyncContext = internalQuery({
         companyId: settings.companyId,
         enabled: settings.enabled,
       },
-      runToken: status?.runToken ?? null,
-      lastEmployeeCompanyId: status?.lastEmployeeCompanyId ?? null,
       locations: locations.map((mapping) => ({
         locationId: mapping.locationId,
         departmentId: mapping.departmentId,
@@ -398,35 +384,41 @@ export const getShiftSyncContext = internalQuery({
   },
 });
 
-export const getShiftRequestContext = internalQuery({
+export const getShiftRequestSettings = internalQuery({
   args: { organizationId: v.string() },
-  returns: shiftRequestContextValidator,
-  handler: async (ctx, args): Promise<ShiftRequestContext | null> => {
-    const [settings, status] = await Promise.all([
-      ctx.db
-        .query("workfeedIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .unique(),
-      ctx.db
-        .query("workfeedSyncStatus")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .unique(),
-    ]);
+  returns: v.union(settingsValidator, v.null()),
+  handler: async (ctx, args): Promise<WorkfeedSettings | null> => {
+    const settings = await ctx.db
+      .query("workfeedIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .unique();
     if (!settings?.enabled) return null;
     return {
-      settings: {
-        apiKey: settings.apiKey,
-        companyId: settings.companyId,
-        enabled: settings.enabled,
-      },
-      runToken: status?.runToken ?? null,
-      lastEmployeeCompanyId: status?.lastEmployeeCompanyId ?? null,
-      lastEmployeeSuccessAt: status?.lastEmployeeSuccessAt ?? null,
-      shiftChunkHashes: status?.shiftChunkHashes ?? [],
+      apiKey: settings.apiKey,
+      companyId: settings.companyId,
+      enabled: settings.enabled,
+    };
+  },
+});
+
+export const getShiftRunState = internalQuery({
+  args: { organizationId: v.string() },
+  returns: shiftRunStateValidator,
+  handler: async (ctx, args): Promise<ShiftRunState | null> => {
+    const status = await ctx.db
+      .query("workfeedSyncStatus")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .unique();
+    if (!status) return null;
+    return {
+      runToken: status.runToken ?? null,
+      lastEmployeeCompanyId: status.lastEmployeeCompanyId ?? null,
+      lastEmployeeSuccessAt: status.lastEmployeeSuccessAt ?? null,
+      shiftChunkHashes: status.shiftChunkHashes ?? [],
     };
   },
 });
@@ -1042,19 +1034,26 @@ export const syncShiftChunk = internalAction({
       });
     }
     try {
-      const requestContext: ShiftRequestContext | null = await ctx.runQuery(
-        internal.workfeedSync.getShiftRequestContext,
-        { organizationId: args.organizationId },
-      );
+      const [settings, runState]: [
+        WorkfeedSettings | null,
+        ShiftRunState | null,
+      ] = await Promise.all([
+          ctx.runQuery(internal.workfeedSync.getShiftRequestSettings, {
+            organizationId: args.organizationId,
+          }),
+          ctx.runQuery(internal.workfeedSync.getShiftRunState, {
+            organizationId: args.organizationId,
+          }),
+        ]);
       if (
-        !requestContext ||
-        requestContext.runToken !== args.runToken ||
-        requestContext.lastEmployeeCompanyId !==
-          requestContext.settings.companyId
+        !settings ||
+        !runState ||
+        runState.runToken !== args.runToken ||
+        runState.lastEmployeeCompanyId !== settings.companyId
       ) {
         throw new Error("Medarbejderdata skal synkroniseres først");
       }
-      const payload = await requestWorkfeed("/shifts", requestContext.settings, {
+      const payload = await requestWorkfeed("/shifts", settings, {
         startFrom: new Date(args.from).toISOString(),
         startTo: new Date(args.to).toISOString(),
         released: "true",
@@ -1062,8 +1061,8 @@ export const syncShiftChunk = internalAction({
       const sourceShifts = parseShifts(payload);
       const sourceHash = await shiftSourceHash(
         sourceShifts,
-        requestContext.settings.companyId,
-        requestContext.lastEmployeeSuccessAt,
+        settings.companyId,
+        runState.lastEmployeeSuccessAt,
       );
       const chunkIndex = Math.round((args.from - args.windowStart) / CHUNK_MS);
       if (
@@ -1073,29 +1072,35 @@ export const syncShiftChunk = internalAction({
       ) {
         throw new Error("Ugyldigt interval i vagtsynkroniseringen");
       }
-      if (requestContext.shiftChunkHashes[chunkIndex] === sourceHash) {
+      if (runState.shiftChunkHashes[chunkIndex] === sourceHash) {
         await ctx.runMutation(
           internal.workfeedSync.skipUnchangedShiftChunk,
           {
             ...args,
-            companyId: requestContext.settings.companyId,
+            companyId: settings.companyId,
             sourceHash,
             chunkIndex,
           },
         );
         return null;
       }
-      const context: ShiftSyncContext | null = await ctx.runQuery(
-        internal.workfeedSync.getShiftSyncContext,
-        {
+      const [context, currentRunState]: [
+        ShiftSyncContext | null,
+        ShiftRunState | null,
+      ] = await Promise.all([
+        ctx.runQuery(internal.workfeedSync.getShiftSyncContext, {
           organizationId: args.organizationId,
-          companyId: requestContext.settings.companyId,
-        },
-      );
+          companyId: settings.companyId,
+        }),
+        ctx.runQuery(internal.workfeedSync.getShiftRunState, {
+          organizationId: args.organizationId,
+        }),
+      ]);
       if (
         !context ||
-        context.runToken !== args.runToken ||
-        context.lastEmployeeCompanyId !== context.settings.companyId
+        !currentRunState ||
+        currentRunState.runToken !== args.runToken ||
+        currentRunState.lastEmployeeCompanyId !== context.settings.companyId
       ) {
         throw new Error("Medarbejderdata skal synkroniseres først");
       }

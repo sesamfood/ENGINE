@@ -281,9 +281,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     api.catalog.getProduct,
     productId ? { productId } : "skip",
   );
-  const options = useQuery(api.catalog.listFormOptions, {
-    excludeProductId: productId,
-  });
+  const options = useQuery(api.catalog.listFormOptions);
   const catalog = useQuery(api.catalog.listActiveProducts);
   const createProduct = useMutation(api.catalog.createProduct);
   const updateProduct = useMutation(api.catalog.updateProduct);

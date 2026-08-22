@@ -53,6 +53,71 @@ const managedCategoryValidator = categoryOptionValidator.extend({
   hasChildren: v.boolean(),
 });
 
+const catalogProductValidator = v.object({
+  id: v.id("products"),
+  name: v.string(),
+  status: statusValidator,
+  category: v.union(
+    v.object({ id: v.id("categories"), name: v.string() }),
+    v.null(),
+  ),
+  defaultUnit: v.union(
+    v.object({ id: v.id("units"), name: v.string() }),
+    v.null(),
+  ),
+  unitCount: v.number(),
+  ingredientCount: v.number(),
+  imageUrl: v.union(v.string(), v.null()),
+  deletesAt: v.union(v.number(), v.null()),
+});
+
+const productDetailValidator = v.object({
+  id: v.id("products"),
+  name: v.string(),
+  status: statusValidator,
+  maxTemperatureCelsius: v.union(v.number(), v.null()),
+  category: v.union(
+    v.object({ id: v.id("categories"), name: v.string() }),
+    v.null(),
+  ),
+  imageUrl: v.union(v.string(), v.null()),
+  units: v.array(
+    v.object({
+      id: v.id("units"),
+      name: v.string(),
+      factorToDefault: v.number(),
+      isDefault: v.boolean(),
+    }),
+  ),
+  ingredients: v.array(
+    v.object({
+      productId: v.id("products"),
+      productName: v.string(),
+      productStatus: statusValidator,
+      quantity: v.number(),
+      unitId: v.id("units"),
+      unitName: v.string(),
+    }),
+  ),
+});
+
+const productFormOptionsValidator = v.object({
+  categories: v.array(
+    v.object({
+      id: v.id("categories"),
+      name: v.string(),
+      path: v.string(),
+    }),
+  ),
+  units: v.array(v.object({ id: v.id("units"), name: v.string() })),
+});
+
+const managedUnitValidator = v.object({
+  id: v.id("units"),
+  name: v.string(),
+  inUse: v.boolean(),
+});
+
 const unitReferenceValidator = v.union(
   v.object({ kind: v.literal("existing"), id: v.id("units") }),
   v.object({ kind: v.literal("new"), name: v.string() }),
@@ -739,37 +804,46 @@ async function permanentlyDeleteProduct(
   await ctx.db.delete("products", product._id);
 }
 
-async function hydrateCatalogProduct(ctx: QueryCtx, product: Doc<"products">) {
-  const [category, defaultUnit, units, ingredients, imageUrl] =
-    await Promise.all([
-      ctx.db.get("categories", product.categoryId),
-      ctx.db.get("units", product.defaultUnitId),
-      ctx.db
-        .query("productUnits")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_CHILD_ROWS),
-      ctx.db
-        .query("productIngredients")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", product.organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_CHILD_ROWS),
-      product.imageStorageId
-        ? ctx.storage.getUrl(product.imageStorageId)
-        : Promise.resolve(null),
-    ]);
+async function hydrateCatalogProduct(
+  ctx: QueryCtx,
+  product: Doc<"products">,
+  lookups: {
+    categoriesById: ReadonlyMap<
+      Id<"categories">,
+      { id: Id<"categories">; name: string }
+    >;
+    defaultUnitsById: ReadonlyMap<Id<"units">, Doc<"units">>;
+  },
+) {
+  const [units, ingredients, imageUrl] = await Promise.all([
+    ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS),
+    ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS),
+    product.imageStorageId
+      ? ctx.storage.getUrl(product.imageStorageId)
+      : Promise.resolve(null),
+  ]);
+  const category = lookups.categoriesById.get(product.categoryId);
+  const defaultUnit = lookups.defaultUnitsById.get(product.defaultUnitId);
 
   return {
     id: product._id,
     name: product.name,
     status: product.status,
-    category: category ? { id: category._id, name: category.name } : null,
+    category: category ? { id: category.id, name: category.name } : null,
     defaultUnit: defaultUnit
       ? { id: defaultUnit._id, name: defaultUnit.name }
       : null,
@@ -789,6 +863,7 @@ export const listProducts = query({
     categoryId: v.optional(v.id("categories")),
     search: v.string(),
   },
+  returns: paginationResultValidator(catalogProductValidator),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganization(ctx);
     requirePageSize(args.paginationOpts.numItems, MAX_PUBLIC_PAGE_SIZE);
@@ -799,14 +874,17 @@ export const listProducts = query({
     const categoryPaths = new Map(
       categoryHierarchy.map((category) => [category.id, category.path]),
     );
+    const categoriesById = new Map(
+      categoryHierarchy.map((category) => [
+        category.id,
+        { id: category.id, name: category.name },
+      ]),
+    );
     const categoryIds = args.categoryId
       ? categoryIdsInSubtree(categoryHierarchy, args.categoryId)
       : null;
-    if (args.categoryId) {
-      const category = await ctx.db.get("categories", args.categoryId);
-      if (!category || category.organizationId !== organizationId) {
-        throw new ConvexError("Kategorien blev ikke fundet");
-      }
+    if (args.categoryId && !categoriesById.has(args.categoryId)) {
+      throw new ConvexError("Kategorien blev ikke fundet");
     }
 
     const search = args.search.trim();
@@ -1001,10 +1079,27 @@ export const listProducts = query({
             )
             .paginate(args.paginationOpts);
 
+    const defaultUnitIds = [
+      ...new Set(results.page.map((product) => product.defaultUnitId)),
+    ];
+    const defaultUnits = await Promise.all(
+      defaultUnitIds.map((unitId) => ctx.db.get("units", unitId)),
+    );
+    const defaultUnitsById = new Map(
+      defaultUnits.flatMap((unit) =>
+        unit?.organizationId === organizationId
+          ? [[unit._id, unit] as const]
+          : [],
+      ),
+    );
+    const lookups = { categoriesById, defaultUnitsById };
+
     return {
       ...results,
       page: await Promise.all(
-        results.page.map((product) => hydrateCatalogProduct(ctx, product)),
+        results.page.map((product) =>
+          hydrateCatalogProduct(ctx, product, lookups),
+        ),
       ),
     };
   },
@@ -1123,6 +1218,7 @@ export const exportProducts = query({
 
 export const getProduct = query({
   args: { productId: v.id("products") },
+  returns: v.union(productDetailValidator, v.null()),
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganization(ctx);
     const product = await ctx.db.get("products", args.productId);
@@ -1193,10 +1289,11 @@ export const getProduct = query({
 });
 
 export const listFormOptions = query({
-  args: { excludeProductId: v.optional(v.id("products")) },
-  handler: async (ctx, args) => {
+  args: {},
+  returns: productFormOptionsValidator,
+  handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
-    const [{ hierarchy: categories }, units, products] = await Promise.all([
+    const [{ hierarchy: categories }, units] = await Promise.all([
       loadCategoryHierarchy(ctx, organizationId),
       ctx.db
         .query("units")
@@ -1204,12 +1301,6 @@ export const listFormOptions = query({
           q.eq("organizationId", organizationId),
         )
         .take(MAX_CHILD_ROWS),
-      ctx.db
-        .query("products")
-        .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-          q.eq("organizationId", organizationId).eq("status", "active"),
-        )
-        .take(100),
     ]);
 
     return {
@@ -1219,35 +1310,6 @@ export const listFormOptions = query({
         path: category.path,
       })),
       units: units.map((unit) => ({ id: unit._id, name: unit.name })),
-      products: await Promise.all(
-        products
-          .filter((product) => product._id !== args.excludeProductId)
-          .map(async (product) => {
-            const productUnits = await ctx.db
-              .query("productUnits")
-              .withIndex("by_organizationId_and_productId", (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("productId", product._id),
-              )
-              .take(MAX_CHILD_ROWS);
-            const hydratedUnits = await Promise.all(
-              productUnits.map(async (row) => {
-                const unit = await ctx.db.get("units", row.unitId);
-                return unit ? { id: unit._id, name: unit.name } : null;
-              }),
-            );
-            return {
-              id: product._id,
-              name: product.name,
-              defaultUnitId: product.defaultUnitId,
-              imageUrl: product.imageStorageId
-                ? await ctx.storage.getUrl(product.imageStorageId)
-                : null,
-              units: hydratedUnits.filter((unit) => unit !== null),
-            };
-          }),
-      ),
     };
   },
 });
@@ -1314,6 +1376,7 @@ export const listCategories = query({
 
 export const listUnits = query({
   args: {},
+  returns: v.array(managedUnitValidator),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
     const units = await ctx.db
@@ -1348,6 +1411,7 @@ export const createProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
     maxTemperatureCelsius: maxTemperatureInputValidator,
   },
+  returns: v.id("products"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId, userIdentifier } = auth;
@@ -1736,6 +1800,7 @@ export const updateProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
     maxTemperatureCelsius: maxTemperatureInputValidator,
   },
+  returns: v.id("products"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -1898,6 +1963,7 @@ export const bulkUpdateProductCategory = mutation({
 
 export const archiveProduct = mutation({
   args: { productId: v.id("products") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -1928,6 +1994,7 @@ export const archiveProduct = mutation({
 
 export const restoreProduct = mutation({
   args: { productId: v.id("products") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -1952,6 +2019,7 @@ export const restoreProduct = mutation({
 
 export const deleteProduct = mutation({
   args: { productId: v.id("products") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -1975,6 +2043,7 @@ export const deleteProduct = mutation({
 
 export const deleteExpiredProduct = internalMutation({
   args: { productId: v.id("products"), archivedAt: v.number() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const product = await ctx.db.get("products", args.productId);
     if (
@@ -1991,6 +2060,7 @@ export const deleteExpiredProduct = internalMutation({
 
 export const deleteExpiredProducts = internalMutation({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const product = await ctx.db
       .query("products")
@@ -2178,6 +2248,7 @@ export const deleteCategory = mutation({
 
 export const createUnit = mutation({
   args: { name: v.string() },
+  returns: v.id("units"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -2208,6 +2279,7 @@ export const createUnit = mutation({
 
 export const renameUnit = mutation({
   args: { unitId: v.id("units"), name: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -2435,6 +2507,7 @@ export const mergeUnits = mutation({
 
 export const deleteUnit = mutation({
   args: { unitId: v.id("units") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -2462,6 +2535,7 @@ export const deleteUnit = mutation({
 
 export const generateProductImageUploadUrl = mutation({
   args: {},
+  returns: v.string(),
   handler: async (ctx) => {
     await requireCatalogManager(ctx);
     return await ctx.storage.generateUploadUrl();
@@ -2473,6 +2547,7 @@ export const setProductImage = mutation({
     productId: v.id("products"),
     storageId: v.id("_storage"),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;
@@ -2520,6 +2595,7 @@ export const setProductImage = mutation({
 
 export const removeProductImage = mutation({
   args: { productId: v.id("products") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     const { organizationId } = auth;

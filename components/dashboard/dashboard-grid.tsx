@@ -44,6 +44,60 @@ const sizeClasses: Record<WidgetSize, string> = {
   "4x2": "col-span-1 row-span-2 sm:col-span-2 xl:col-span-4",
 };
 
+const METRIC_BATCH_SIZE = 3;
+const METRIC_BATCH_COUNT = 8;
+
+function metricBatchKey(
+  widget: WidgetInstance,
+  defaultRange: DashboardRange,
+) {
+  const range = widget.range
+    ? `${widget.range}::`
+    : `${defaultRange.preset}:${defaultRange.from ?? ""}:${defaultRange.to ?? ""}`;
+  if (widget.metric.kind === "custom") {
+    return `${range}:custom:${widget.metric.id}`;
+  }
+  return `${range}:${metricRegistry[widget.metric.id].sourceTables[0]}`;
+}
+
+function groupMetricBatches(
+  widgets: WidgetInstance[],
+  defaultRange: DashboardRange,
+) {
+  const groups = new Map<string, WidgetInstance[]>();
+  for (const widget of widgets) {
+    const key = metricBatchKey(widget, defaultRange);
+    groups.set(key, [...(groups.get(key) ?? []), widget]);
+  }
+  const grouped = [...groups.values()];
+  const groupedBatches = grouped.flatMap((group) =>
+    Array.from(
+      { length: Math.ceil(group.length / METRIC_BATCH_SIZE) },
+      (_, index) =>
+        group.slice(
+          index * METRIC_BATCH_SIZE,
+          (index + 1) * METRIC_BATCH_SIZE,
+        ),
+    ),
+  );
+  const ordered = grouped.flat();
+  const batches =
+    groupedBatches.length <= METRIC_BATCH_COUNT
+      ? groupedBatches
+      : Array.from(
+          { length: METRIC_BATCH_COUNT },
+          (_, index) =>
+            ordered.slice(
+              index * METRIC_BATCH_SIZE,
+              (index + 1) * METRIC_BATCH_SIZE,
+            ),
+        );
+  return Array.from(
+    { length: METRIC_BATCH_COUNT },
+    (_, index) => batches[index] ?? [],
+  );
+}
+
 function useMetricBatch(
   widgets: WidgetInstance[],
   scope: DashboardScope,
@@ -314,14 +368,18 @@ export function DashboardGrid({
     () => new Map((customMetrics ?? []).map((metric) => [String(metric.id), metric] as const)),
     [customMetrics],
   );
-  const batch0 = useMetricBatch(widgets.slice(0, 3), scope, range, now, publicAccess);
-  const batch1 = useMetricBatch(widgets.slice(3, 6), scope, range, now, publicAccess);
-  const batch2 = useMetricBatch(widgets.slice(6, 9), scope, range, now, publicAccess);
-  const batch3 = useMetricBatch(widgets.slice(9, 12), scope, range, now, publicAccess);
-  const batch4 = useMetricBatch(widgets.slice(12, 15), scope, range, now, publicAccess);
-  const batch5 = useMetricBatch(widgets.slice(15, 18), scope, range, now, publicAccess);
-  const batch6 = useMetricBatch(widgets.slice(18, 21), scope, range, now, publicAccess);
-  const batch7 = useMetricBatch(widgets.slice(21, 24), scope, range, now, publicAccess);
+  const metricBatches = useMemo(
+    () => groupMetricBatches(widgets, range),
+    [range, widgets],
+  );
+  const batch0 = useMetricBatch(metricBatches[0], scope, range, now, publicAccess);
+  const batch1 = useMetricBatch(metricBatches[1], scope, range, now, publicAccess);
+  const batch2 = useMetricBatch(metricBatches[2], scope, range, now, publicAccess);
+  const batch3 = useMetricBatch(metricBatches[3], scope, range, now, publicAccess);
+  const batch4 = useMetricBatch(metricBatches[4], scope, range, now, publicAccess);
+  const batch5 = useMetricBatch(metricBatches[5], scope, range, now, publicAccess);
+  const batch6 = useMetricBatch(metricBatches[6], scope, range, now, publicAccess);
+  const batch7 = useMetricBatch(metricBatches[7], scope, range, now, publicAccess);
   const metricResults = useMemo(
     () =>
       new Map(

@@ -38,6 +38,10 @@ type CountStateContextValue = {
 
 const CountStateContext = createContext<CountStateContextValue | null>(null);
 
+function minuteTimestamp() {
+  return Math.floor(Date.now() / 60_000) * 60_000;
+}
+
 export function CountStateProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const organization = authClient.useActiveOrganization();
@@ -68,6 +72,7 @@ export function CountStateProvider({ children }: { children: ReactNode }) {
   }, [isLocked, locations, organizationId, storedLocationId]);
 
   const [now, setNow] = useState(() => Date.now());
+  const [queryNow, setQueryNow] = useState(minuteTimestamp);
   useEffect(() => {
     if (pathname !== "/count") return;
     const update = () => setNow(Date.now());
@@ -75,13 +80,47 @@ export function CountStateProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(interval);
   }, [pathname]);
 
+  useEffect(() => {
+    if (pathname !== "/count") return;
+    const timeout = window.setTimeout(
+      () => setQueryNow(minuteTimestamp()),
+      0,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [locationId, pathname]);
+
   const queriedState = useQuery(
     api.count.getCountState,
     canRegister && pathname === "/count" && locationId
-      ? { locationId, now: Math.floor(now / 60_000) * 60_000 }
+      ? { locationId, now: queryNow }
       : "skip",
   );
   const state = useLastDefined(queriedState, locationId);
+
+  useEffect(() => {
+    const nextTransitionAt = state?.nextTransitionAt;
+    if (pathname !== "/count" || nextTransitionAt === null || nextTransitionAt === undefined) {
+      return;
+    }
+    const refresh = () => setQueryNow(minuteTimestamp());
+    const timeout = window.setTimeout(
+      refresh,
+      Math.max(0, nextTransitionAt - Date.now()) + 100,
+    );
+    const onVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() >= nextTransitionAt
+      ) {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [pathname, state?.nextTransitionAt]);
 
   return (
     <CountStateContext.Provider

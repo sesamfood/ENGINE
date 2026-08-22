@@ -2,23 +2,31 @@
 
 import { useEffect, useState } from "react";
 
-function minuteTimestamp() {
-  return Math.floor(Date.now() / 60_000) * 60_000;
+const HOUR_MS = 60 * 60 * 1_000;
+
+function hourTimestamp() {
+  return Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
 }
 
 export function useOwnCheckNow(refreshKey?: string) {
-  const [now, setNow] = useState(minuteTimestamp);
+  const [now, setNow] = useState(hourTimestamp);
 
   useEffect(() => {
-    const refresh = () => setNow(minuteTimestamp());
-    const interval = window.setInterval(refresh, 60_000);
+    const refresh = () => setNow(hourTimestamp());
+    const delay = HOUR_MS - (Date.now() % HOUR_MS);
+    let interval: number | undefined;
+    const timeout = window.setTimeout(() => {
+      refresh();
+      interval = window.setInterval(refresh, HOUR_MS);
+    }, delay);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") refresh();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     refresh();
     return () => {
-      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+      if (interval !== undefined) window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [refreshKey]);

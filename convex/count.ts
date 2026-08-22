@@ -11,7 +11,7 @@ import {
   requirePermission,
   requireStockViewer,
 } from "./lib/auth";
-import { otherFeaturesLocked } from "./lib/countLock";
+import { otherFeaturesLockState } from "./lib/countLock";
 import { countScheduleValidator } from "./lib/countSettings";
 import {
   getCountConfiguration,
@@ -19,16 +19,10 @@ import {
 } from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
-import {
-  buildCategoryHierarchy,
-  MAX_CATEGORIES_PER_ORGANIZATION,
-} from "./lib/categoryHierarchy";
-import { productSearchScore } from "../lib/product-search";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
 const MAX_COUNT_ITEMS = 5000;
-const MAX_SEARCH_LENGTH = 100;
 
 const settingsValidator = v.object({
   allowOutsideWindow: v.boolean(),
@@ -48,27 +42,10 @@ const countStateValidator = v.object({
   periodKey: v.string(),
   opensAt: v.number(),
   closesAt: v.number(),
+  nextTransitionAt: v.union(v.number(), v.null()),
   isOpen: v.boolean(),
   outsideWindowAllowed: v.boolean(),
   count: v.union(countSummaryValidator, v.null()),
-});
-
-const countProductValidator = v.object({
-  id: v.id("products"),
-  name: v.string(),
-  category: v.union(
-    v.object({ id: v.id("categories"), name: v.string() }),
-    v.null(),
-  ),
-  imageUrl: v.union(v.string(), v.null()),
-  defaultUnitId: v.id("units"),
-  units: v.array(
-    v.object({
-      id: v.id("units"),
-      name: v.string(),
-      factorToDefault: v.number(),
-    }),
-  ),
 });
 
 const countQuantityValidator = v.object({
@@ -300,20 +277,21 @@ export const setCountSettings = mutation({
 
 export const getOtherFeaturesLockState = query({
   args: { locationId: v.id("locations"), now: v.number() },
-  returns: v.object({ isLocked: v.boolean() }),
+  returns: v.object({
+    isLocked: v.boolean(),
+    nextTransitionAt: v.union(v.number(), v.null()),
+  }),
   handler: async (ctx, args) => {
     const auth = await requireOrganization(ctx);
     const { organizationId } = auth;
     requireLocationAccess(auth, args.locationId);
     requireNow(args.now);
-    return {
-      isLocked: await otherFeaturesLocked(
-        ctx,
-        organizationId,
-        args.locationId,
-        args.now,
-      ),
-    };
+    return await otherFeaturesLockState(
+      ctx,
+      organizationId,
+      args.locationId,
+      args.now,
+    );
   },
 });
 
@@ -346,6 +324,12 @@ export const getCountState = query({
       periodKey,
       opensAt: window.opensAt,
       closesAt: window.closesAt,
+      nextTransitionAt:
+        args.now < window.opensAt
+          ? window.opensAt
+          : args.now < window.closesAt
+            ? window.closesAt
+            : null,
       isOpen:
         window.allowOutsideWindow ||
         !hasSubmitted ||
@@ -442,160 +426,6 @@ export const setCountProductOrder = mutation({
       countProductOrder: args.productIds,
     });
     return null;
-  },
-});
-
-export const listCountProducts = query({
-  args: {
-    locationId: v.id("locations"),
-    categoryId: v.optional(v.id("categories")),
-    search: v.string(),
-  },
-  returns: v.array(countProductValidator),
-  handler: async (ctx, args) => {
-    const auth = await requireCounter(ctx, "count.register");
-    const { organizationId } = auth;
-    requireLocationAccess(auth, args.locationId);
-    await requireLocation(ctx, organizationId, args.locationId);
-    const search = args.search.trim();
-    if (search.length > MAX_SEARCH_LENGTH) {
-      throw new ConvexError("Søgningen er for lang");
-    }
-    if (args.categoryId) {
-      const category = await ctx.db.get("categories", args.categoryId);
-      if (!category || category.organizationId !== organizationId) {
-        throw new ConvexError("Kategorien blev ikke fundet");
-      }
-    }
-
-    const products =
-      !search && !args.categoryId
-        ? await activeProducts(ctx, organizationId)
-        : await (async () => {
-            const categories = await ctx.db
-              .query("categories")
-              .withIndex("by_organizationId_and_normalizedName", (q) =>
-                q.eq("organizationId", organizationId),
-              )
-              .take(MAX_CATEGORIES_PER_ORGANIZATION + 1);
-            const hierarchy = buildCategoryHierarchy(categories, organizationId);
-            const categoryIds = new Set<Id<"categories">>();
-            if (args.categoryId) {
-              categoryIds.add(args.categoryId);
-              let changed = true;
-              while (changed) {
-                changed = false;
-                for (const category of hierarchy) {
-                  if (
-                    category.parentCategoryId &&
-                    categoryIds.has(category.parentCategoryId) &&
-                    !categoryIds.has(category.id)
-                  ) {
-                    categoryIds.add(category.id);
-                    changed = true;
-                  }
-                }
-              }
-            }
-            const paths = new Map(
-              hierarchy.map((category) => [category.id, category.path]),
-            );
-            const scanned = await ctx.db
-              .query("products")
-              .withIndex(
-                "by_organizationId_and_status_and_normalizedName",
-                (q) =>
-                  q.eq("organizationId", organizationId).eq("status", "active"),
-              )
-              .take(MAX_PRODUCTS + 1);
-            return scanned.filter(
-              (product) =>
-                (!args.categoryId || categoryIds.has(product.categoryId)) &&
-                productSearchScore(
-                  product.name,
-                  paths.get(product.categoryId) ?? "",
-                  search,
-                ) !== null,
-            );
-          })();
-    if (products.length > MAX_PRODUCTS) {
-      throw new ConvexError(
-        "Søgningen matcher mere end 500 produkter. Afgræns søgningen",
-      );
-    }
-
-    const productUnits = await Promise.all(
-      products.map((product) =>
-        ctx.db
-          .query("productUnits")
-          .withIndex("by_organizationId_and_productId", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("productId", product._id),
-          )
-          .take(MAX_PRODUCT_UNITS + 1),
-      ),
-    );
-    for (const rows of productUnits) {
-      if (rows.length > MAX_PRODUCT_UNITS) {
-        throw new ConvexError("Produktet har for mange enheder");
-      }
-    }
-
-    const categoryIds = [...new Set(products.map((row) => row.categoryId))];
-    const unitIds = [
-      ...new Set(productUnits.flatMap((rows) => rows.map((row) => row.unitId))),
-    ];
-    const [categories, units, imageUrls] = await Promise.all([
-      Promise.all(categoryIds.map((id) => ctx.db.get("categories", id))),
-      Promise.all(unitIds.map((id) => ctx.db.get("units", id))),
-      Promise.all(
-        products.map((product) =>
-          product.imageStorageId
-            ? ctx.storage.getUrl(product.imageStorageId)
-            : null,
-        ),
-      ),
-    ]);
-    const categoriesById = new Map(
-      categories.flatMap((category) =>
-        category?.organizationId === organizationId
-          ? [[category._id, category] as const]
-          : [],
-      ),
-    );
-    const unitsById = new Map(
-      units.flatMap((unit) =>
-        unit?.organizationId === organizationId
-          ? [[unit._id, unit] as const]
-          : [],
-      ),
-    );
-
-    return products.map((product, index) => {
-      const category = categoriesById.get(product.categoryId);
-      return {
-        id: product._id,
-        name: product.name,
-        category: category
-          ? { id: category._id, name: category.name }
-          : null,
-        imageUrl: imageUrls[index],
-        defaultUnitId: product.defaultUnitId,
-        units: productUnits[index].flatMap((row) => {
-          const unit = unitsById.get(row.unitId);
-          return unit
-            ? [
-                {
-                  id: unit._id,
-                  name: unit.name,
-                  factorToDefault: row.factorToDefault,
-                },
-              ]
-            : [];
-        }),
-      };
-    });
   },
 });
 

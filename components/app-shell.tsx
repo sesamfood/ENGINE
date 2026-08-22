@@ -146,52 +146,6 @@ type AccessContextValue = AccessRuntime & {
 const AccessContext = createContext<AccessContextValue | null>(null);
 
 const FeatureLockContext = createContext(false);
-const ACTIVE_SYNC_INTERVAL_MS = 60 * 60 * 1_000;
-
-function ActiveSyncHeartbeat() {
-  const { isAuthenticated } = useConvexAuth();
-  const organization = authClient.useActiveOrganization();
-  const requestSync = useMutation(api.organization.requestActiveSync);
-  const organizationId = organization.data?.id;
-
-  useEffect(() => {
-    if (!isAuthenticated || !organizationId) return;
-    let lastRequestedAt = 0;
-    const request = () => {
-      const now = Date.now();
-      if (
-        document.visibilityState !== "visible" ||
-        now - lastRequestedAt < ACTIVE_SYNC_INTERVAL_MS
-      ) {
-        return;
-      }
-      lastRequestedAt = now;
-      void requestSync().catch(() => {
-        lastRequestedAt = 0;
-      });
-    };
-    const events: Array<keyof WindowEventMap> = [
-      "pointerdown",
-      "keydown",
-      "scroll",
-      "touchstart",
-      "focus",
-    ];
-    request();
-    for (const event of events) {
-      window.addEventListener(event, request, { passive: true });
-    }
-    document.addEventListener("visibilitychange", request);
-    return () => {
-      for (const event of events) {
-        window.removeEventListener(event, request);
-      }
-      document.removeEventListener("visibilitychange", request);
-    };
-  }, [isAuthenticated, organizationId, requestSync]);
-
-  return null;
-}
 
 const KIOSK_WAKE_LOCK_KEY = "engine.kiosk.keep-screen-on";
 
@@ -375,6 +329,10 @@ function featureLockExempt(pathname: string) {
   );
 }
 
+function minuteTimestamp() {
+  return Math.floor(Date.now() / 60_000) * 60_000;
+}
+
 function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -382,7 +340,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const kiosk = useKiosk();
   const organization = authClient.useActiveOrganization();
   const exempt = featureLockExempt(pathname);
-  const [now, setNow] = useState(() => Date.now());
+  const [queryNow, setQueryNow] = useState(minuteTimestamp);
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
   const { locations } = useLocationAccess();
@@ -400,7 +358,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     organizationId && isAuthenticated && lockEnabled && locationId
       ? {
           locationId,
-          now: Math.floor(now / 60_000) * 60_000,
+          now: queryNow,
         }
       : "skip",
   );
@@ -416,9 +374,37 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!lockEnabled) return;
-    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(interval);
-  }, [lockEnabled]);
+    const timeout = window.setTimeout(
+      () => setQueryNow(minuteTimestamp()),
+      0,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [locationId, lockEnabled, organizationId]);
+
+  useEffect(() => {
+    const nextTransitionAt = currentLockState?.nextTransitionAt;
+    if (!lockEnabled || nextTransitionAt === null || nextTransitionAt === undefined) {
+      return;
+    }
+    const refresh = () => setQueryNow(minuteTimestamp());
+    const timeout = window.setTimeout(
+      refresh,
+      Math.max(0, nextTransitionAt - Date.now()) + 100,
+    );
+    const onVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() >= nextTransitionAt
+      ) {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [currentLockState?.nextTransitionAt, lockEnabled]);
 
   useEffect(() => {
     if (isLocked && !exempt) router.replace("/count");
@@ -1250,7 +1236,6 @@ export function AppShell({
     <>
       <BrowserBranding />
       <OrganizationBoundary required={organizationRequired}>
-      <ActiveSyncHeartbeat />
       <OrganizationTheme>
         <AccessBoundary>
           <FeatureLockBoundary>

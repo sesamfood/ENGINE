@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import {
   DEFAULT_CURRENCY,
   type DashboardRange,
+  type DashboardScope,
   type MetricId,
   type MetricResult,
   type MetricUnit,
@@ -186,12 +187,7 @@ export function resolveDashboardRange(
 export async function resolveMetricParams(
   ctx: QueryCtx,
   organizationId: string,
-  scope: {
-    mode: "aggregate" | "compare";
-    locationIds: Id<"locations">[] | null;
-    level?: "organization" | "market" | "operator" | "location";
-    parentId?: string;
-  },
+  scope: DashboardScope,
   range: DashboardRange,
   now: number,
   allowedLocationScope?: { all: boolean; ids: ReadonlySet<Id<"locations">> },
@@ -205,13 +201,14 @@ export async function resolveMetricParams(
   const anonymousAccess = access?.granularity === "anonymous";
   const widenAnonymousScope =
     anonymousAccess && scope.locationIds === null && scope.level !== "location";
-  const [allLocations, scheduleSettings] = await Promise.all([
-    ctx.db
-      .query("locations")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .take(201),
+  const [requestedLocations, scheduleSettings] = await Promise.all([
+    scope.locationIds === null
+      ? null
+      : Promise.all(
+          [...new Set(scope.locationIds)].map((locationId) =>
+            ctx.db.get("locations", locationId),
+          ),
+        ),
     ctx.db
       .query("organizationScheduleSettings")
       .withIndex("by_organizationId", (q) =>
@@ -219,14 +216,6 @@ export async function resolveMetricParams(
       )
       .unique(),
   ]);
-  const requestedLocations =
-    scope.locationIds === null
-      ? null
-      : await Promise.all(
-          [...new Set(scope.locationIds)].map((locationId) =>
-            ctx.db.get("locations", locationId),
-          ),
-        );
   if (
     requestedLocations?.some(
       (location) => !location || location.organizationId !== organizationId,
@@ -293,11 +282,16 @@ export async function resolveMetricParams(
         Boolean(location && location.organizationId === organizationId),
     );
   } else {
-    candidateLocations = allLocations;
+    candidateLocations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_SCOPE_LOCATIONS + 1);
   }
   const lookupLocations = [
     ...new Map(
-      [...allLocations, ...candidateLocations, ...(requestedRows ?? [])].map(
+      [...candidateLocations, ...(requestedRows ?? [])].map(
         (location) => [location._id, location],
       ),
     ).values(),
@@ -485,6 +479,40 @@ export async function resolveMetricParams(
     now,
     cache: new Map<string, Promise<unknown>>(),
     ...resolveDashboardRange(range, scheduleSettings?.timeZone, now),
+  };
+}
+
+export function createMetricParamsResolver(
+  ctx: QueryCtx,
+  organizationId: string,
+  scope: DashboardScope,
+  now: number,
+  allowedLocationScope: {
+    all: boolean;
+    ids: ReadonlySet<Id<"locations">>;
+  } | undefined,
+  access: {
+    granularity: DataGranularity;
+    anonymousSeed: string;
+    salesDetailAllowed?: boolean;
+  },
+) {
+  const paramsByRange = new Map<string, Promise<DashboardMetricParams>>();
+  return (range: DashboardRange) => {
+    const key = `${range.preset}:${range.from ?? ""}:${range.to ?? ""}`;
+    const existing = paramsByRange.get(key);
+    if (existing) return existing;
+    const params = resolveMetricParams(
+      ctx,
+      organizationId,
+      scope,
+      range,
+      now,
+      allowedLocationScope,
+      access,
+    );
+    paramsByRange.set(key, params);
+    return params;
   };
 }
 
@@ -687,16 +715,29 @@ function currencyOptions(
 async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "waste", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const rows = await ctx.db
-      .query("wasteRegistrations")
-      .withIndex("by_org_status_time", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("status", "active")
-          .gte("registeredAt", params.previousFrom)
-          .lt("registeredAt", params.to),
-      )
-      .take(MAX_ROWS + 1);
+    const location = params.locations.length === 1 ? params.locations[0] : null;
+    const rows = location
+      ? await ctx.db
+          .query("wasteRegistrations")
+          .withIndex("by_org_location_status_time", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .eq("locationId", location.id)
+              .eq("status", "active")
+              .gte("registeredAt", params.previousFrom)
+              .lt("registeredAt", params.to),
+          )
+          .take(MAX_ROWS + 1)
+      : await ctx.db
+          .query("wasteRegistrations")
+          .withIndex("by_org_status_time", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .eq("status", "active")
+              .gte("registeredAt", params.previousFrom)
+              .lt("registeredAt", params.to),
+          )
+          .take(MAX_ROWS + 1);
     return {
       rows: rows
         .filter((row) => selected.has(row.locationId))
@@ -825,16 +866,31 @@ const wasteByCategory: MetricComputer = async (ctx, params) => {
 async function badDeliveryRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "bad-deliveries", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const rows = await ctx.db
-      .query("badDeliveries")
-      .withIndex("by_organizationId_and_status_and_registeredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("status", "active")
-          .gte("registeredAt", params.previousFrom)
-          .lt("registeredAt", params.to),
-      )
-      .take(MAX_ROWS + 1);
+    const location = params.locations.length === 1 ? params.locations[0] : null;
+    const rows = location
+      ? await ctx.db
+          .query("badDeliveries")
+          .withIndex(
+            "by_organizationId_and_locationId_and_registeredAt",
+            (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("locationId", location.id)
+                .gte("registeredAt", params.previousFrom)
+                .lt("registeredAt", params.to),
+          )
+          .filter((q) => q.eq(q.field("status"), "active"))
+          .take(MAX_ROWS + 1)
+      : await ctx.db
+          .query("badDeliveries")
+          .withIndex("by_organizationId_and_status_and_registeredAt", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .eq("status", "active")
+              .gte("registeredAt", params.previousFrom)
+              .lt("registeredAt", params.to),
+          )
+          .take(MAX_ROWS + 1);
     return {
       rows: rows
         .filter((row) => selected.has(row.locationId))
@@ -959,15 +1015,50 @@ const openCounts: MetricComputer = async (ctx, params) => {
 async function transferRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "transfers", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const rows = await ctx.db
-      .query("transfers")
-      .withIndex("by_organizationId_and_transferredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .gte("transferredAt", params.previousFrom)
-          .lt("transferredAt", params.to),
-      )
-      .take(MAX_ROWS + 1);
+    const location = params.locations.length === 1 ? params.locations[0] : null;
+    const rows = location
+      ? await Promise.all([
+          ctx.db
+            .query("transfers")
+            .withIndex(
+              "by_organizationId_and_fromLocationId_and_transferredAt",
+              (q) =>
+                q
+                  .eq("organizationId", params.organizationId)
+                  .eq("fromLocationId", location.id)
+                  .gte("transferredAt", params.previousFrom)
+                  .lt("transferredAt", params.to),
+            )
+            .take(MAX_ROWS + 1),
+          ctx.db
+            .query("transfers")
+            .withIndex(
+              "by_organizationId_and_toLocationId_and_transferredAt",
+              (q) =>
+                q
+                  .eq("organizationId", params.organizationId)
+                  .eq("toLocationId", location.id)
+                  .gte("transferredAt", params.previousFrom)
+                  .lt("transferredAt", params.to),
+            )
+            .take(MAX_ROWS + 1),
+        ]).then(([sent, received]) =>
+          [...new Map([...sent, ...received].map((row) => [row._id, row])).values()]
+            .sort(
+              (left, right) =>
+                left.transferredAt - right.transferredAt ||
+                left._creationTime - right._creationTime,
+            ),
+        )
+      : await ctx.db
+          .query("transfers")
+          .withIndex("by_organizationId_and_transferredAt", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .gte("transferredAt", params.previousFrom)
+              .lt("transferredAt", params.to),
+          )
+          .take(MAX_ROWS + 1);
     return {
       rows: rows
         .filter(
@@ -1085,15 +1176,30 @@ const topTransferredProducts: MetricComputer = async (ctx, params) => {
 async function staffFoodRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "staff-food", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const rows = await ctx.db
-      .query("staffFoodRegistrations")
-      .withIndex("by_organizationId_and_registeredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .gte("registeredAt", params.previousFrom)
-          .lt("registeredAt", params.to),
-      )
-      .take(MAX_ROWS + 1);
+    const location = params.locations.length === 1 ? params.locations[0] : null;
+    const rows = location
+      ? await ctx.db
+          .query("staffFoodRegistrations")
+          .withIndex(
+            "by_organizationId_and_locationId_and_registeredAt",
+            (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("locationId", location.id)
+                .gte("registeredAt", params.previousFrom)
+                .lt("registeredAt", params.to),
+          )
+          .filter((q) => q.eq(q.field("status"), "active"))
+          .take(MAX_ROWS + 1)
+      : await ctx.db
+          .query("staffFoodRegistrations")
+          .withIndex("by_organizationId_and_registeredAt", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .gte("registeredAt", params.previousFrom)
+              .lt("registeredAt", params.to),
+          )
+          .take(MAX_ROWS + 1);
     return {
       rows: rows
         .filter(
@@ -1158,15 +1264,29 @@ async function shiftRows(
 ) {
   return await cached(params, `shifts:${from}:${to}`, async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const rows = await ctx.db
-      .query("scheduledShifts")
-      .withIndex("by_organizationId_and_startsAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .gte("startsAt", from)
-          .lt("startsAt", to),
-      )
-      .take(MAX_ROWS + 1);
+    const location = params.locations.length === 1 ? params.locations[0] : null;
+    const rows = location
+      ? await ctx.db
+          .query("scheduledShifts")
+          .withIndex(
+            "by_organizationId_and_locationId_and_startsAt",
+            (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("locationId", location.id)
+                .gte("startsAt", from)
+                .lt("startsAt", to),
+          )
+          .take(MAX_ROWS + 1)
+      : await ctx.db
+          .query("scheduledShifts")
+          .withIndex("by_organizationId_and_startsAt", (q) =>
+            q
+              .eq("organizationId", params.organizationId)
+              .gte("startsAt", from)
+              .lt("startsAt", to),
+          )
+          .take(MAX_ROWS + 1);
     return {
       rows: rows
         .filter((row) => selected.has(row.locationId))
