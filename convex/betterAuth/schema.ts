@@ -11,6 +11,10 @@ const schema = defineSchema({
   member: tables.member
     .index("organizationId_userId", ["organizationId", "userId"])
     .index("organizationId_role", ["organizationId", "role"]),
+  apikey: tables.apikey
+    .index("configId", ["configId"])
+    .index("referenceId", ["referenceId"])
+    .index("key", ["key"]),
 });
 
 export default schema;

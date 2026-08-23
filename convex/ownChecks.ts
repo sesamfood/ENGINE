@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
+  requireHumanPrincipal,
   requireLocationAccess,
   requireOwnCheckAttachmentUploader,
   requireOwnCheckApprover,
@@ -359,10 +360,11 @@ export const submitOwnCheck = mutation({
   returns: submitOutput,
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckPerformer(ctx);
+    const human = requireHumanPrincipal(auth);
     requireLocationAccess(auth, args.locationId);
     const configuration = await getOwnCheckConfiguration(ctx, auth.organizationId);
     if (configuration.blockDuringCount) await requireOtherFeaturesUnlocked(ctx, auth.organizationId, args.locationId);
-    const limit = await rateLimiter.limit(ctx, "ownCheckSubmit", { key: auth.userId });
+    const limit = await rateLimiter.limit(ctx, "ownCheckSubmit", { key: human.userId });
     if (!limit.ok) throw new ConvexError("For mange registreringer. Vent et øjeblik og prøv igen");
     const clientRequestId = args.clientRequestId?.trim() || undefined;
     if (clientRequestId) {
@@ -403,10 +405,10 @@ export const submitOwnCheck = mutation({
     const note = optionalText(args.note, "Noten");
     const hasDeviation = !compliance.compliant || Boolean(deviationDescription);
     const deviation = hasDeviation
-      ? { description: deviationDescription ?? "Afvigelse registreret", recordedAt: now, recordedBy: auth.userId, recordedByName: auth.userName }
+      ? { description: deviationDescription ?? "Afvigelse registreret", recordedAt: now, recordedBy: human.userId, recordedByName: human.userName }
       : undefined;
     const corrective = correctiveAction
-      ? { description: correctiveAction, recordedAt: now, recordedBy: auth.userId, recordedByName: auth.userName }
+      ? { description: correctiveAction, recordedAt: now, recordedBy: human.userId, recordedByName: human.userName }
       : undefined;
     const status: "deviation" | "completed" = hasDeviation ? "deviation" : "completed";
     const followUp = hasDeviation ? (corrective ? "resolved" : "open") : "none";
@@ -430,8 +432,8 @@ export const submitOwnCheck = mutation({
       ...(deviation ? { deviation } : {}),
       ...(corrective ? { correctiveAction: corrective } : {}),
       performedAt: now,
-      performedBy: auth.userId,
-      performedByName: auth.userName,
+      performedBy: human.userId,
+      performedByName: human.userName,
       revision: 1,
       updatedAt: now,
       ...(clientRequestId ? { clientRequestId } : {}),
@@ -451,7 +453,7 @@ export const submitOwnCheck = mutation({
           fileSize: file.size,
           addedAtRevision: 1,
           uploadedAt: now,
-          uploadedBy: auth.userId,
+          uploadedBy: human.userId,
         });
       }
     }
@@ -470,8 +472,8 @@ export const submitOwnCheck = mutation({
       ...(corrective ? { correctiveAction: corrective } : {}),
       changes: [],
       at: now,
-      actorUserId: auth.userId,
-      actorName: auth.userName,
+      actorUserId: human.userId,
+      actorName: human.userName,
     });
     await recordAudit(ctx, auth, {
       action: "ownChecks.submitted",
@@ -496,6 +498,7 @@ export const editOwnCheck = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckEditor(ctx);
+    const human = requireHumanPrincipal(auth);
     const entry = await ctx.db.get("ownCheckEntries", args.entryId);
     if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
@@ -511,10 +514,10 @@ export const editOwnCheck = mutation({
       ? requestedDeviation === undefined || requestedDeviation === entry.deviation?.description
         ? entry.deviation
         : requestedDeviation
-          ? { description: requestedDeviation, recordedAt: amendmentAt, recordedBy: auth.userId, recordedByName: auth.userName }
+          ? { description: requestedDeviation, recordedAt: amendmentAt, recordedBy: human.userId, recordedByName: human.userName }
           : undefined
       : requestedDeviation
-        ? { description: requestedDeviation, recordedAt: amendmentAt, recordedBy: auth.userId, recordedByName: auth.userName }
+        ? { description: requestedDeviation, recordedAt: amendmentAt, recordedBy: human.userId, recordedByName: human.userName }
         : undefined;
     const hasDeviation = entry.hasDeviation || !compliance.compliant || Boolean(requestedDeviation);
     if (hasDeviation && !nextDeviation) throw new ConvexError("Beskriv afvigelsen");
@@ -522,7 +525,7 @@ export const editOwnCheck = mutation({
     const nextCorrective = requestedCorrectiveAction === undefined || requestedCorrectiveAction === entry.correctiveAction?.description
       ? entry.correctiveAction
       : requestedCorrectiveAction
-        ? { description: requestedCorrectiveAction, recordedAt: amendmentAt, recordedBy: auth.userId, recordedByName: auth.userName }
+        ? { description: requestedCorrectiveAction, recordedAt: amendmentAt, recordedBy: human.userId, recordedByName: human.userName }
         : undefined;
     const nextStatus = hasDeviation ? "deviation" : "completed";
     const nextFollowUp = hasDeviation ? (nextCorrective ? "resolved" : "open") : "none";
@@ -541,10 +544,10 @@ export const editOwnCheck = mutation({
         await ensureAttachmentCanBeInserted(ctx, auth.organizationId, entry._id, storageId);
         const file = await ctx.db.system.get("_storage", storageId);
         if (!file?.contentType) throw new ConvexError("Filen blev ikke fundet");
-        await ctx.db.insert("ownCheckAttachments", { organizationId: auth.organizationId, entryId: entry._id, fieldKey: value.key, storageId, contentType: file.contentType, fileSize: file.size, addedAtRevision: entry.revision + 1, uploadedAt: Date.now(), uploadedBy: auth.userId });
+        await ctx.db.insert("ownCheckAttachments", { organizationId: auth.organizationId, entryId: entry._id, fieldKey: value.key, storageId, contentType: file.contentType, fileSize: file.size, addedAtRevision: entry.revision + 1, uploadedAt: Date.now(), uploadedBy: human.userId });
       }
     }
-    await appendRevision(ctx, auth, entry, {
+    await appendRevision(ctx, human, entry, {
       values: args.values,
       status: nextStatus,
       hasDeviation,
@@ -566,6 +569,7 @@ export const recordCorrectiveAction = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckCorrector(ctx);
+    const human = requireHumanPrincipal(auth);
     const entry = await ctx.db.get("ownCheckEntries", args.entryId);
     if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
@@ -574,7 +578,7 @@ export const recordCorrectiveAction = mutation({
     const description = optionalText(args.description, "Den korrigerende handling");
     if (!description) throw new ConvexError("Beskriv den korrigerende handling");
     if (entry.correctiveAction && !args.reason) throw new ConvexError("Angiv en begrundelse");
-    await appendRevision(ctx, auth, {
+    await appendRevision(ctx, human, {
       ...entry,
     }, {
       values: entry.values,
@@ -584,7 +588,7 @@ export const recordCorrectiveAction = mutation({
       compliant: entry.compliant,
       ...(entry.note === undefined ? {} : { note: entry.note }),
       ...(entry.deviation === undefined ? {} : { deviation: entry.deviation }),
-      correctiveAction: { description, recordedAt: Date.now(), recordedBy: auth.userId, recordedByName: auth.userName },
+      correctiveAction: { description, recordedAt: Date.now(), recordedBy: human.userId, recordedByName: human.userName },
     }, "correctiveActionRecorded", args.reason);
     return null;
   },
@@ -595,16 +599,17 @@ export const approveOwnCheck = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckApprover(ctx);
+    const human = requireHumanPrincipal(auth);
     const entry = await ctx.db.get("ownCheckEntries", args.entryId);
     if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
     requireLocationAccess(auth, entry.locationId);
     if (entry.status === "approved") throw new ConvexError("Egenkontrollen er allerede godkendt");
     if (entry.followUp === "open") throw new ConvexError("Afvigelsen skal følges op, før kontrollen kan godkendes");
     const configuration = await getOwnCheckConfiguration(ctx, auth.organizationId);
-    if (configuration.requireSecondPersonApproval && entry.performedBy === auth.userId && !hasPermission(auth.role, auth.permissions, "ownChecks.manage")) {
+    if (configuration.requireSecondPersonApproval && entry.performedBy === human.userId && !hasPermission(auth.role, auth.permissions, "ownChecks.manage")) {
       throw new ConvexError("En anden person skal godkende egenkontrollen");
     }
-    await appendRevision(ctx, auth, entry, {
+    await appendRevision(ctx, human, entry, {
       values: entry.values,
       status: "approved",
       hasDeviation: entry.hasDeviation,
@@ -614,8 +619,8 @@ export const approveOwnCheck = mutation({
       ...(entry.deviation === undefined ? {} : { deviation: entry.deviation }),
       ...(entry.correctiveAction === undefined ? {} : { correctiveAction: entry.correctiveAction }),
       approvedAt: Date.now(),
-      approvedBy: auth.userId,
-      approvedByName: auth.userName,
+      approvedBy: human.userId,
+      approvedByName: human.userName,
     }, "approved");
     return null;
   },

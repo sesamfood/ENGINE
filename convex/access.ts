@@ -72,13 +72,16 @@ const roleContextValidator = v.object({
   granularity: granularityValidator,
   permissions: v.array(v.string()),
   locationScope: locationScopeValidator,
-  userId: v.string(),
-  sessionId: v.string(),
+  principalKind: v.union(v.literal("user"), v.literal("apiKey")),
+  apiKeyId: v.union(v.string(), v.null()),
+  userId: v.union(v.string(), v.null()),
+  sessionId: v.union(v.string(), v.null()),
   isKioskAccount: v.boolean(),
   kioskModeEnabled: v.boolean(),
   kioskLocationId: v.union(v.id("locations"), v.null()),
   userIdentifier: v.string(),
   userName: v.string(),
+  requestId: v.union(v.string(), v.null()),
 });
 
 const memberLocationAccessValidator = v.object({
@@ -120,6 +123,7 @@ const BETTER_AUTH_ROLE_PERMISSIONS = JSON.stringify({
   invitation: ["create", "cancel"],
   team: [],
   ac: ["read"],
+  apiKey: ["create", "read", "update", "delete"],
 });
 
 async function ensureSystemRoles(ctx: MutationCtx, organizationId: string) {
@@ -243,6 +247,8 @@ async function getRoleContextForQuery(ctx: QueryCtx) {
       all: auth.locationScope.all,
       ids: [...auth.locationScope.ids],
     },
+    principalKind: auth.principalKind,
+    apiKeyId: auth.apiKeyId,
     userId: auth.userId,
     sessionId: auth.sessionId,
     isKioskAccount: auth.isKioskAccount,
@@ -250,6 +256,7 @@ async function getRoleContextForQuery(ctx: QueryCtx) {
     kioskLocationId: auth.kioskLocationId,
     userIdentifier: auth.userIdentifier,
     userName: auth.userName,
+    requestId: auth.requestId,
   };
 }
 
@@ -533,6 +540,23 @@ export const deleteRole = mutation({
     });
     if (members.length) {
       throw new ConvexError("Rollen bruges af en bruger og kan ikke slettes");
+    }
+    const apiKeyPolicy = await ctx.db
+      .query("apiKeyPolicies")
+      .withIndex("by_organizationId_and_role", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("role", role.key),
+      )
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("status"), "active"),
+          q.gt(q.field("expiresAt"), Date.now()),
+        ),
+      )
+      .first();
+    if (apiKeyPolicy) {
+      throw new ConvexError(
+        "Rollen bruges af en aktiv API-nøgle og kan ikke slettes",
+      );
     }
     await assertManagementRoleRemains(ctx, auth.organizationId, {
       remove: role.key,

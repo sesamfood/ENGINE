@@ -46,6 +46,7 @@ import {
   requireDashboardSharer,
   requireDashboardManager,
   requireDashboardViewer,
+  requireHumanPrincipal,
 } from "./lib/auth";
 import {
   hasPermission,
@@ -972,6 +973,7 @@ export const getMetric = query({
   returns: metricResultValidator,
   handler: async (ctx, args) => {
     const auth = await requireDashboardViewer(ctx);
+    const human = requireHumanPrincipal(auth);
     const { organizationId } = auth;
     const definition = metricRegistry[args.metricId];
     if (!definition.visualizations.includes(args.visualization)) {
@@ -992,7 +994,7 @@ export const getMetric = query({
       auth.locationScope,
       {
         granularity: auth.granularity,
-        anonymousSeed: auth.sessionId,
+        anonymousSeed: human.sessionId,
         salesDetailAllowed: canViewDetailedSales(auth),
       },
     );
@@ -1013,6 +1015,7 @@ export const getMetrics = query({
   returns: v.array(keyedMetricResultValidator),
   handler: async (ctx, args) => {
     const auth = await requireDashboardViewer(ctx);
+    const human = requireHumanPrincipal(auth);
     const { organizationId } = auth;
     if (
       args.widgets.length > MAX_METRIC_BATCH ||
@@ -1060,7 +1063,7 @@ export const getMetrics = query({
       auth.locationScope,
       {
         granularity: auth.granularity,
-        anonymousSeed: auth.sessionId,
+        anonymousSeed: human.sessionId,
         salesDetailAllowed: canViewDetailedSales(auth),
       },
     );

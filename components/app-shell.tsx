@@ -468,6 +468,7 @@ function OrganizationHome() {
   const canStaffFoodManage = usePermission("staffFood.manage");
   const canMembers = usePermission("members.manage");
   const canRoles = usePermission("roles.manage");
+  const canApiKeys = usePermission("apiKeys.manage");
   const canOrganization =
     canCatalog ||
     canLocations ||
@@ -478,7 +479,8 @@ function OrganizationHome() {
     canIntegrations ||
     canStaffFoodManage ||
     canMembers ||
-    canRoles;
+    canRoles ||
+    canApiKeys;
   const branding = useQuery(
     api.organization.getBranding,
     organization && isAuthenticated ? {} : "skip",

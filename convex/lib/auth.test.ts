@@ -18,6 +18,8 @@ function makeAuth(overrides: Partial<TestAuth> = {}): TestAuth {
     granularity: "detail",
     permissions: new Set(["count.register"]),
     locationScope: { all: true, ids: new Set() },
+    principalKind: "user",
+    apiKeyId: null,
     userId: "user-id",
     sessionId: "session",
     isKioskAccount: false,
@@ -25,6 +27,7 @@ function makeAuth(overrides: Partial<TestAuth> = {}): TestAuth {
     kioskLocationId: null,
     userIdentifier: "user",
     userName: "Bruger",
+    requestId: null,
     ...overrides,
   };
 }
@@ -104,6 +107,8 @@ test("requirePermission afviser et medlem uden tilladelsen", async () => {
       role: "member",
       permissions: [],
       locationScope: { all: true, ids: [] },
+      principalKind: "user",
+      apiKeyId: null,
       userId: "user-id",
       sessionId: "session",
       isKioskAccount: false,
@@ -111,6 +116,7 @@ test("requirePermission afviser et medlem uden tilladelsen", async () => {
       kioskLocationId: null,
       userIdentifier: "user",
       userName: "Bruger",
+      requestId: null,
     }),
   } as never;
 

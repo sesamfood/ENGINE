@@ -61,13 +61,18 @@ export default defineSchema({
   auditLog: defineTable({
     organizationId: v.string(),
     locationId: v.optional(v.id("locations")),
-    actorUserId: v.string(),
+    actorKind: v.optional(
+      v.union(v.literal("user"), v.literal("apiKey")),
+    ),
+    actorUserId: v.optional(v.string()),
+    actorApiKeyId: v.optional(v.string()),
     actorName: v.string(),
     action: v.string(),
     entityTable: v.string(),
     entityId: v.string(),
     summary: v.string(),
     reason: v.optional(v.string()),
+    requestId: v.optional(v.string()),
     at: v.number(),
   })
     .index("by_at", ["at"])
@@ -77,6 +82,66 @@ export default defineSchema({
       "entityTable",
       "entityId",
     ]),
+
+  apiKeyPolicies: defineTable({
+    apiKeyId: v.string(),
+    organizationId: v.string(),
+    name: v.string(),
+    prefix: v.string(),
+    start: v.string(),
+    role: v.string(),
+    permissions: v.array(v.string()),
+    locationPolicy: v.union(
+      v.object({ kind: v.literal("all") }),
+      v.object({
+        kind: v.literal("selected"),
+        locationIds: v.array(v.id("locations")),
+      }),
+      v.object({
+        kind: v.literal("operator"),
+        operatorId: v.id("operators"),
+      }),
+    ),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    createdByUserId: v.string(),
+    createdByName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    revision: v.number(),
+  })
+    .index("by_apiKeyId", ["apiKeyId"])
+    .index("by_organizationId_and_createdAt", [
+      "organizationId",
+      "createdAt",
+    ])
+    .index("by_organizationId_and_status", ["organizationId", "status"])
+    .index("by_organizationId_and_status_and_expiresAt", [
+      "organizationId",
+      "status",
+      "expiresAt",
+    ])
+    .index("by_organizationId_and_role", ["organizationId", "role"]),
+
+  apiRequestIdempotency: defineTable({
+    organizationId: v.string(),
+    apiKeyId: v.string(),
+    operationId: v.string(),
+    key: v.string(),
+    requestHash: v.string(),
+    responseStatus: v.number(),
+    responseJson: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_scope", [
+      "organizationId",
+      "apiKeyId",
+      "operationId",
+      "key",
+    ])
+    .index("by_expiresAt", ["expiresAt"]),
 
   organizationAssets: defineTable({
     organizationId: v.string(),

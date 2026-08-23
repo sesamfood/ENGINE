@@ -27,4 +27,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
     period: 10 * MINUTE,
     rate: 5,
   },
+  restApiMutation: {
+    kind: "fixed window",
+    period: MINUTE,
+    rate: 30,
+  },
 });

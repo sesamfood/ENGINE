@@ -7,7 +7,11 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { requireCatalogManager, requireOrganization } from "./lib/auth";
+import {
+  requireCatalogManager,
+  requireOrganization,
+  type OrganizationAuth,
+} from "./lib/auth";
 import {
   buildCategoryHierarchy,
   categoryIdsInSubtree,
@@ -198,6 +202,11 @@ type IngredientInput = {
   quantity: number;
   unitId: Id<"units">;
 };
+
+type CategoryPlacement =
+  | { kind: "root" }
+  | { kind: "child"; parentCategoryId: Id<"categories"> }
+  | { kind: "parent"; childCategoryId: Id<"categories"> };
 
 const MAX_NAME_LENGTH = 100;
 const MAX_CHILD_ROWS = 200;
@@ -1403,6 +1412,244 @@ export const listUnits = query({
   },
 });
 
+export async function createProductWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  args: {
+    name: string;
+    category: CategoryReference;
+    units: ProductUnitInput[];
+    ingredients: IngredientInput[];
+    maxTemperatureCelsius?: number | null;
+  },
+): Promise<Id<"products">> {
+  const { organizationId, userIdentifier } = auth;
+  const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
+  await assertProductNameAvailable(ctx, organizationId, normalizedName);
+  const categoryId = await resolveCategory(ctx, organizationId, args.category);
+  const units = await resolveUnits(ctx, organizationId, args.units);
+  await validateIngredients(ctx, organizationId, args.ingredients);
+  if (typeof args.maxTemperatureCelsius === "number") {
+    requireTemperature(args.maxTemperatureCelsius, "Maksimumtemperaturen");
+  }
+
+  const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
+  const productId = await ctx.db.insert("products", {
+    organizationId,
+    name,
+    normalizedName,
+    categoryId,
+    defaultUnitId,
+    ...(typeof args.maxTemperatureCelsius === "number"
+      ? { maxTemperatureCelsius: args.maxTemperatureCelsius }
+      : {}),
+    status: "active",
+    createdBy: userIdentifier,
+    updatedAt: Date.now(),
+  });
+  await replaceProductChildren(
+    ctx,
+    organizationId,
+    productId,
+    units,
+    args.ingredients,
+  );
+  await recordAudit(ctx, auth, {
+    action: "catalog.productCreated",
+    entityTable: "products",
+    entityId: productId,
+    summary: `Produktet ${name} blev oprettet`,
+  });
+  return productId;
+}
+
+export async function updateProductWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  args: {
+    productId: Id<"products">;
+    name: string;
+    category: CategoryReference;
+    units: ProductUnitInput[];
+    ingredients: IngredientInput[];
+    maxTemperatureCelsius?: number | null;
+  },
+): Promise<Id<"products">> {
+  const { organizationId } = auth;
+  const product = await ctx.db.get("products", args.productId);
+  if (!product || product.organizationId !== organizationId) {
+    throw new ConvexError("Produktet blev ikke fundet");
+  }
+  if (typeof args.maxTemperatureCelsius === "number") {
+    requireTemperature(args.maxTemperatureCelsius, "Maksimumtemperaturen");
+  }
+
+  const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
+  await assertProductNameAvailable(
+    ctx,
+    organizationId,
+    normalizedName,
+    product._id,
+  );
+  const categoryId = await resolveCategory(ctx, organizationId, args.category);
+  const units = await resolveUnits(ctx, organizationId, args.units);
+  const existingIngredients = await ctx.db
+    .query("productIngredients")
+    .withIndex("by_organizationId_and_productId", (q) =>
+      q.eq("organizationId", organizationId).eq("productId", product._id),
+    )
+    .take(MAX_CHILD_ROWS);
+  const allowedArchivedProductIds = new Set(
+    existingIngredients.map((row) => row.ingredientProductId),
+  );
+  await validateIngredients(
+    ctx,
+    organizationId,
+    args.ingredients,
+    product._id,
+    allowedArchivedProductIds,
+  );
+  await assertNoRecipeCycle(ctx, organizationId, product._id, args.ingredients);
+
+  const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
+  if (defaultUnitId !== product.defaultUnitId) {
+    const stockRows = await ctx.db
+      .query("locationStock")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1);
+    if (stockRows.length > MAX_CHILD_ROWS) {
+      throw new ConvexError("Produktet har for mange lagerrelationer");
+    }
+    const oldDefaultUnit = units.find(
+      (unit) => unit.unitId === product.defaultUnitId,
+    );
+    if (stockRows.length > 0 && !oldDefaultUnit) {
+      throw new ConvexError(
+        "Den tidligere standardenhed skal beholdes for at omregne lageret",
+      );
+    }
+    const updatedAt = Date.now();
+    for (const stock of stockRows) {
+      await ctx.db.patch("locationStock", stock._id, {
+        quantity: normalizeStock(
+          stock.quantity * oldDefaultUnit!.factorToDefault,
+        ),
+        updatedAt,
+      });
+    }
+  }
+  await replaceProductChildren(
+    ctx,
+    organizationId,
+    product._id,
+    units,
+    args.ingredients,
+  );
+  const updatedAt = Math.max(Date.now(), product.updatedAt + 1);
+  await ctx.db.patch("products", product._id, {
+    name,
+    normalizedName,
+    categoryId,
+    defaultUnitId,
+    ...(args.maxTemperatureCelsius !== undefined
+      ? {
+          maxTemperatureCelsius:
+            args.maxTemperatureCelsius === null
+              ? undefined
+              : args.maxTemperatureCelsius,
+        }
+      : {}),
+    updatedAt,
+  });
+  await recordAudit(ctx, auth, {
+    action: "catalog.productUpdated",
+    entityTable: "products",
+    entityId: product._id,
+    summary: `Produktet ${name} blev ændret`,
+  });
+  return product._id;
+}
+
+export async function archiveProductWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  productId: Id<"products">,
+): Promise<null> {
+  const { organizationId } = auth;
+  const product = await ctx.db.get("products", productId);
+  if (!product || product.organizationId !== organizationId) {
+    throw new ConvexError("Produktet blev ikke fundet");
+  }
+  const archivedAt = Math.max(Date.now(), product.updatedAt + 1);
+  await ctx.db.patch("products", product._id, {
+    status: "archived",
+    archivedAt,
+    updatedAt: archivedAt,
+  });
+  await ctx.scheduler.runAfter(
+    ARCHIVE_RETENTION_MS,
+    internal.catalog.deleteExpiredProduct,
+    { productId: product._id, archivedAt },
+  );
+  await recordAudit(ctx, auth, {
+    action: "catalog.productArchived",
+    entityTable: "products",
+    entityId: product._id,
+    summary: `Produktet ${product.name} blev arkiveret`,
+  });
+  return null;
+}
+
+export async function restoreProductWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  productId: Id<"products">,
+): Promise<null> {
+  const { organizationId } = auth;
+  const product = await ctx.db.get("products", productId);
+  if (!product || product.organizationId !== organizationId) {
+    throw new ConvexError("Produktet blev ikke fundet");
+  }
+  const updatedAt = Math.max(Date.now(), product.updatedAt + 1);
+  await ctx.db.patch("products", product._id, {
+    status: "active",
+    archivedAt: undefined,
+    updatedAt,
+  });
+  await recordAudit(ctx, auth, {
+    action: "catalog.productRestored",
+    entityTable: "products",
+    entityId: product._id,
+    summary: `Produktet ${product.name} blev gendannet`,
+  });
+  return null;
+}
+
+export async function deleteProductWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  productId: Id<"products">,
+): Promise<null> {
+  const { organizationId } = auth;
+  const product = await ctx.db.get("products", productId);
+  if (!product || product.organizationId !== organizationId) {
+    throw new ConvexError("Produktet blev ikke fundet");
+  }
+  if (product.status !== "archived") {
+    throw new ConvexError("Produktet skal arkiveres, før det kan slettes");
+  }
+  await permanentlyDeleteProduct(ctx, product);
+  await recordAudit(ctx, auth, {
+    action: "catalog.productDeleted",
+    entityTable: "products",
+    entityId: product._id,
+    summary: `Produktet ${product.name} blev slettet`,
+  });
+  return null;
+}
+
 export const createProduct = mutation({
   args: {
     name: v.string(),
@@ -1414,51 +1661,7 @@ export const createProduct = mutation({
   returns: v.id("products"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    const { organizationId, userIdentifier } = auth;
-    const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
-    await assertProductNameAvailable(ctx, organizationId, normalizedName);
-    const categoryId = await resolveCategory(
-      ctx,
-      organizationId,
-      args.category,
-    );
-    const units = await resolveUnits(ctx, organizationId, args.units);
-    await validateIngredients(ctx, organizationId, args.ingredients);
-    if (typeof args.maxTemperatureCelsius === "number") {
-      requireTemperature(
-        args.maxTemperatureCelsius,
-        "Maksimumtemperaturen",
-      );
-    }
-
-    const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
-    const productId = await ctx.db.insert("products", {
-      organizationId,
-      name,
-      normalizedName,
-      categoryId,
-      defaultUnitId,
-      ...(typeof args.maxTemperatureCelsius === "number"
-        ? { maxTemperatureCelsius: args.maxTemperatureCelsius }
-        : {}),
-      status: "active",
-      createdBy: userIdentifier,
-      updatedAt: Date.now(),
-    });
-    await replaceProductChildren(
-      ctx,
-      organizationId,
-      productId,
-      units,
-      args.ingredients,
-    );
-    await recordAudit(ctx, auth, {
-      action: "catalog.productCreated",
-      entityTable: "products",
-      entityId: productId,
-      summary: `Produktet ${name} blev oprettet`,
-    });
-    return productId;
+    return await createProductWithAuth(ctx, auth, args);
   },
 });
 
@@ -1803,112 +2006,7 @@ export const updateProduct = mutation({
   returns: v.id("products"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const product = await ctx.db.get("products", args.productId);
-    if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Produktet blev ikke fundet");
-    }
-    if (typeof args.maxTemperatureCelsius === "number") {
-      requireTemperature(
-        args.maxTemperatureCelsius,
-        "Maksimumtemperaturen",
-      );
-    }
-
-    const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
-    await assertProductNameAvailable(
-      ctx,
-      organizationId,
-      normalizedName,
-      product._id,
-    );
-    const categoryId = await resolveCategory(
-      ctx,
-      organizationId,
-      args.category,
-    );
-    const units = await resolveUnits(ctx, organizationId, args.units);
-    const existingIngredients = await ctx.db
-      .query("productIngredients")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", product._id),
-      )
-      .take(MAX_CHILD_ROWS);
-    const allowedArchivedProductIds = new Set(
-      existingIngredients.map((row) => row.ingredientProductId),
-    );
-    await validateIngredients(
-      ctx,
-      organizationId,
-      args.ingredients,
-      product._id,
-      allowedArchivedProductIds,
-    );
-    await assertNoRecipeCycle(
-      ctx,
-      organizationId,
-      product._id,
-      args.ingredients,
-    );
-
-    const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
-    if (defaultUnitId !== product.defaultUnitId) {
-      const stockRows = await ctx.db
-        .query("locationStock")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q.eq("organizationId", organizationId).eq("productId", product._id),
-        )
-        .take(MAX_CHILD_ROWS + 1);
-      if (stockRows.length > MAX_CHILD_ROWS) {
-        throw new ConvexError("Produktet har for mange lagerrelationer");
-      }
-      const oldDefaultUnit = units.find(
-        (unit) => unit.unitId === product.defaultUnitId,
-      );
-      if (stockRows.length > 0 && !oldDefaultUnit) {
-        throw new ConvexError(
-          "Den tidligere standardenhed skal beholdes for at omregne lageret",
-        );
-      }
-      const updatedAt = Date.now();
-      for (const stock of stockRows) {
-        await ctx.db.patch("locationStock", stock._id, {
-          quantity: normalizeStock(
-            stock.quantity * oldDefaultUnit!.factorToDefault,
-          ),
-          updatedAt,
-        });
-      }
-    }
-    await replaceProductChildren(
-      ctx,
-      organizationId,
-      product._id,
-      units,
-      args.ingredients,
-    );
-    await ctx.db.patch("products", product._id, {
-      name,
-      normalizedName,
-      categoryId,
-      defaultUnitId,
-      ...(args.maxTemperatureCelsius !== undefined
-        ? {
-            maxTemperatureCelsius:
-              args.maxTemperatureCelsius === null
-                ? undefined
-                : args.maxTemperatureCelsius,
-          }
-        : {}),
-      updatedAt: Date.now(),
-    });
-    await recordAudit(ctx, auth, {
-      action: "catalog.productUpdated",
-      entityTable: "products",
-      entityId: product._id,
-      summary: `Produktet ${name} blev ændret`,
-    });
-    return product._id;
+    return await updateProductWithAuth(ctx, auth, args);
   },
 });
 
@@ -1966,29 +2064,7 @@ export const archiveProduct = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const product = await ctx.db.get("products", args.productId);
-    if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Produktet blev ikke fundet");
-    }
-    const archivedAt = Date.now();
-    await ctx.db.patch("products", product._id, {
-      status: "archived",
-      archivedAt,
-      updatedAt: archivedAt,
-    });
-    await ctx.scheduler.runAfter(
-      ARCHIVE_RETENTION_MS,
-      internal.catalog.deleteExpiredProduct,
-      { productId: product._id, archivedAt },
-    );
-    await recordAudit(ctx, auth, {
-      action: "catalog.productArchived",
-      entityTable: "products",
-      entityId: product._id,
-      summary: `Produktet ${product.name} blev arkiveret`,
-    });
-    return null;
+    return await archiveProductWithAuth(ctx, auth, args.productId);
   },
 });
 
@@ -1997,23 +2073,7 @@ export const restoreProduct = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const product = await ctx.db.get("products", args.productId);
-    if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Produktet blev ikke fundet");
-    }
-    await ctx.db.patch("products", product._id, {
-      status: "active",
-      archivedAt: undefined,
-      updatedAt: Date.now(),
-    });
-    await recordAudit(ctx, auth, {
-      action: "catalog.productRestored",
-      entityTable: "products",
-      entityId: product._id,
-      summary: `Produktet ${product.name} blev gendannet`,
-    });
-    return null;
+    return await restoreProductWithAuth(ctx, auth, args.productId);
   },
 });
 
@@ -2022,22 +2082,7 @@ export const deleteProduct = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const product = await ctx.db.get("products", args.productId);
-    if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Produktet blev ikke fundet");
-    }
-    if (product.status !== "archived") {
-      throw new ConvexError("Produktet skal arkiveres, før det kan slettes");
-    }
-    await permanentlyDeleteProduct(ctx, product);
-    await recordAudit(ctx, auth, {
-      action: "catalog.productDeleted",
-      entityTable: "products",
-      entityId: product._id,
-      summary: `Produktet ${product.name} blev slettet`,
-    });
-    return null;
+    return await deleteProductWithAuth(ctx, auth, args.productId);
   },
 });
 
@@ -2078,284 +2123,271 @@ export const deleteExpiredProducts = internalMutation({
   },
 });
 
-export const createCategory = mutation({
-  args: { name: v.string(), placement: categoryPlacementValidator },
-  returns: v.id("categories"),
-  handler: async (ctx, args) => {
-    const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
-    const [{ categories }, existing] = await Promise.all([
-      loadCategoryHierarchy(ctx, organizationId),
-      ctx.db
-        .query("categories")
-        .withIndex("by_organizationId_and_normalizedName", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("normalizedName", normalizedName),
-        )
-        .unique(),
-    ]);
-    if (existing) throw new ConvexError("Kategorien findes allerede");
-    if (categories.length >= MAX_CATEGORIES_PER_ORGANIZATION) {
-      throw new ConvexError("Der kan højst oprettes 200 kategorier");
-    }
-
-    let parentCategoryId: Id<"categories"> | undefined;
-    let childCategory: Doc<"categories"> | null = null;
-    if (args.placement.kind === "child") {
-      const parent = await ctx.db.get(
-        "categories",
-        args.placement.parentCategoryId,
-      );
-      if (!parent || parent.organizationId !== organizationId) {
-        throw new ConvexError("Overkategorien blev ikke fundet");
-      }
-      parentCategoryId = parent._id;
-    } else if (args.placement.kind === "parent") {
-      childCategory = await ctx.db.get(
-        "categories",
-        args.placement.childCategoryId,
-      );
-      if (!childCategory || childCategory.organizationId !== organizationId) {
-        throw new ConvexError("Kategorien blev ikke fundet");
-      }
-      parentCategoryId = childCategory.parentCategoryId;
-    }
-
-    const categoryId = await ctx.db.insert("categories", {
-      organizationId,
-      name,
-      normalizedName,
-      parentCategoryId,
-    });
-    if (childCategory) {
-      await ctx.db.patch("categories", childCategory._id, {
-        parentCategoryId: categoryId,
-      });
-    }
-    await recordAudit(ctx, auth, {
-      action: "catalog.categoryCreated",
-      entityTable: "categories",
-      entityId: categoryId,
-      summary: `Kategorien ${name} blev oprettet`,
-    });
-    return categoryId;
-  },
-});
-
-export const updateCategory = mutation({
-  args: {
-    categoryId: v.id("categories"),
-    name: v.string(),
-    parentCategoryId: v.union(v.id("categories"), v.null()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const category = await ctx.db.get("categories", args.categoryId);
-    if (!category || category.organizationId !== organizationId) {
-      throw new ConvexError("Kategorien blev ikke fundet");
-    }
-    const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
-    const existing = await ctx.db
+export async function createCategoryWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  args: { name: string; placement: CategoryPlacement },
+): Promise<Id<"categories">> {
+  const { organizationId } = auth;
+  const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
+  const [{ categories }, existing] = await Promise.all([
+    loadCategoryHierarchy(ctx, organizationId),
+    ctx.db
       .query("categories")
       .withIndex("by_organizationId_and_normalizedName", (q) =>
         q
           .eq("organizationId", organizationId)
           .eq("normalizedName", normalizedName),
       )
-      .unique();
-    if (existing && existing._id !== category._id) {
-      throw new ConvexError("Kategorien findes allerede");
-    }
-    const { categories } = await loadCategoryHierarchy(ctx, organizationId);
-    validateCategoryParentAssignment(
-      categories,
-      organizationId,
-      category._id,
-      args.parentCategoryId,
-    );
-    if (args.parentCategoryId) {
-      const parent = await ctx.db.get("categories", args.parentCategoryId);
-      if (!parent || parent.organizationId !== organizationId) {
-        throw new ConvexError("Overkategorien blev ikke fundet");
-      }
-    }
-    await ctx.db.patch("categories", category._id, {
-      name,
-      normalizedName,
-      parentCategoryId: args.parentCategoryId ?? undefined,
-    });
-    await recordAudit(ctx, auth, {
-      action: "catalog.categoryUpdated",
-      entityTable: "categories",
-      entityId: category._id,
-      summary: `Kategorien ${name} blev ændret`,
-    });
-    return null;
-  },
-});
+      .unique(),
+  ]);
+  if (existing) throw new ConvexError("Kategorien findes allerede");
+  if (categories.length >= MAX_CATEGORIES_PER_ORGANIZATION) {
+    throw new ConvexError("Der kan højst oprettes 200 kategorier");
+  }
 
-export const deleteCategory = mutation({
-  args: { categoryId: v.id("categories") },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const category = await ctx.db.get("categories", args.categoryId);
-    if (!category || category.organizationId !== organizationId) {
+  let parentCategoryId: Id<"categories"> | undefined;
+  let childCategory: Doc<"categories"> | null = null;
+  if (args.placement.kind === "child") {
+    const parent = await ctx.db.get(
+      "categories",
+      args.placement.parentCategoryId,
+    );
+    if (!parent || parent.organizationId !== organizationId) {
+      throw new ConvexError("Overkategorien blev ikke fundet");
+    }
+    parentCategoryId = parent._id;
+  } else if (args.placement.kind === "parent") {
+    childCategory = await ctx.db.get(
+      "categories",
+      args.placement.childCategoryId,
+    );
+    if (!childCategory || childCategory.organizationId !== organizationId) {
       throw new ConvexError("Kategorien blev ikke fundet");
     }
-    const [child, product, staffFoodAllowance] = await Promise.all([
-      ctx.db
-        .query("categories")
-        .withIndex("by_organizationId_and_parentCategoryId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("parentCategoryId", category._id),
-        )
-        .first(),
-      ctx.db
-        .query("products")
-        .withIndex("by_organizationId_and_categoryId", (q) =>
-          q.eq("organizationId", organizationId).eq("categoryId", category._id),
-        )
-        .first(),
-      ctx.db
-        .query("staffFoodRuleAllowances")
-        .withIndex("by_organizationId_and_categoryId", (q) =>
-          q.eq("organizationId", organizationId).eq("categoryId", category._id),
-        )
-        .first(),
-    ]);
-    if (child) throw new ConvexError("Kategorien har underkategorier");
-    if (product) throw new ConvexError("Kategorien er stadig i brug");
-    if (staffFoodAllowance) {
-      throw new ConvexError("Kategorien bruges stadig i Staff food");
-    }
-    await ctx.db.delete("categories", category._id);
-    await recordAudit(ctx, auth, {
-      action: "catalog.categoryDeleted",
-      entityTable: "categories",
-      entityId: category._id,
-      summary: `Kategorien ${category.name} blev slettet`,
-    });
-    return null;
-  },
-});
+    parentCategoryId = childCategory.parentCategoryId;
+  }
 
-export const createUnit = mutation({
-  args: { name: v.string() },
-  returns: v.id("units"),
-  handler: async (ctx, args) => {
-    const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
-    const existing = await ctx.db
-      .query("units")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("normalizedName", normalizedName),
-      )
-      .unique();
-    if (existing) throw new ConvexError("Enheden findes allerede");
-    const unitId = await ctx.db.insert("units", {
-      organizationId,
-      name,
-      normalizedName,
+  const categoryId = await ctx.db.insert("categories", {
+    organizationId,
+    name,
+    normalizedName,
+    parentCategoryId,
+  });
+  if (childCategory) {
+    await ctx.db.patch("categories", childCategory._id, {
+      parentCategoryId: categoryId,
     });
-    await recordAudit(ctx, auth, {
-      action: "catalog.unitCreated",
-      entityTable: "units",
-      entityId: unitId,
-      summary: `Enheden ${name} blev oprettet`,
-    });
-    return unitId;
-  },
-});
+  }
+  await recordAudit(ctx, auth, {
+    action: "catalog.categoryCreated",
+    entityTable: "categories",
+    entityId: categoryId,
+    summary: `Kategorien ${name} blev oprettet`,
+  });
+  return categoryId;
+}
 
-export const renameUnit = mutation({
-  args: { unitId: v.id("units"), name: v.string() },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const unit = await ctx.db.get("units", args.unitId);
-    if (!unit || unit.organizationId !== organizationId) {
-      throw new ConvexError("Enheden blev ikke fundet");
-    }
-    const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
-    const existing = await ctx.db
-      .query("units")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("normalizedName", normalizedName),
-      )
-      .unique();
-    if (existing && existing._id !== unit._id) {
-      throw new ConvexError("Enheden findes allerede");
-    }
-    await ctx.db.patch("units", unit._id, { name, normalizedName });
-    await recordAudit(ctx, auth, {
-      action: "catalog.unitRenamed",
-      entityTable: "units",
-      entityId: unit._id,
-      summary: `Enheden blev omdøbt til ${name}`,
-    });
-    return null;
-  },
-});
-
-export const mergeUnits = mutation({
+export async function updateCategoryWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
   args: {
-    sourceUnitId: v.id("units"),
-    targetUnitId: v.id("units"),
+    categoryId: Id<"categories">;
+    name: string;
+    parentCategoryId: Id<"categories"> | null;
   },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    if (args.sourceUnitId === args.targetUnitId) {
-      throw new ConvexError("Vælg to forskellige enheder");
+): Promise<null> {
+  const { organizationId } = auth;
+  const category = await ctx.db.get("categories", args.categoryId);
+  if (!category || category.organizationId !== organizationId) {
+    throw new ConvexError("Kategorien blev ikke fundet");
+  }
+  const { name, normalizedName } = normalizeName(args.name, "Kategorinavnet");
+  const existing = await ctx.db
+    .query("categories")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("normalizedName", normalizedName),
+    )
+    .unique();
+  if (existing && existing._id !== category._id) {
+    throw new ConvexError("Kategorien findes allerede");
+  }
+  const { categories } = await loadCategoryHierarchy(ctx, organizationId);
+  validateCategoryParentAssignment(
+    categories,
+    organizationId,
+    category._id,
+    args.parentCategoryId,
+  );
+  if (args.parentCategoryId) {
+    const parent = await ctx.db.get("categories", args.parentCategoryId);
+    if (!parent || parent.organizationId !== organizationId) {
+      throw new ConvexError("Overkategorien blev ikke fundet");
     }
+  }
+  await ctx.db.patch("categories", category._id, {
+    name,
+    normalizedName,
+    parentCategoryId: args.parentCategoryId ?? undefined,
+  });
+  await recordAudit(ctx, auth, {
+    action: "catalog.categoryUpdated",
+    entityTable: "categories",
+    entityId: category._id,
+    summary: `Kategorien ${name} blev ændret`,
+  });
+  return null;
+}
 
-    const [sourceUnit, targetUnit] = await Promise.all([
-      ctx.db.get("units", args.sourceUnitId),
-      ctx.db.get("units", args.targetUnitId),
-    ]);
-    if (
-      !sourceUnit ||
-      sourceUnit.organizationId !== organizationId ||
-      !targetUnit ||
-      targetUnit.organizationId !== organizationId
-    ) {
-      throw new ConvexError("Enheden blev ikke fundet");
-    }
-
-    const sourceProductUnits = await ctx.db
-      .query("productUnits")
-      .withIndex("by_organizationId_and_unitId", (q) =>
-        q.eq("organizationId", organizationId).eq("unitId", sourceUnit._id),
+export async function deleteCategoryWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  categoryId: Id<"categories">,
+): Promise<null> {
+  const { organizationId } = auth;
+  const category = await ctx.db.get("categories", categoryId);
+  if (!category || category.organizationId !== organizationId) {
+    throw new ConvexError("Kategorien blev ikke fundet");
+  }
+  const [child, product, staffFoodAllowance] = await Promise.all([
+    ctx.db
+      .query("categories")
+      .withIndex("by_organizationId_and_parentCategoryId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("parentCategoryId", category._id),
       )
-      .take(MAX_CHILD_ROWS + 1);
-    if (sourceProductUnits.length > MAX_CHILD_ROWS) {
-      throw new ConvexError(
-        "Enheden bruges af for mange produkter til at blive sammenlagt",
-      );
-    }
+      .first(),
+    ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_categoryId", (q) =>
+        q.eq("organizationId", organizationId).eq("categoryId", category._id),
+      )
+      .first(),
+    ctx.db
+      .query("staffFoodRuleAllowances")
+      .withIndex("by_organizationId_and_categoryId", (q) =>
+        q.eq("organizationId", organizationId).eq("categoryId", category._id),
+      )
+      .first(),
+  ]);
+  if (child) throw new ConvexError("Kategorien har underkategorier");
+  if (product) throw new ConvexError("Kategorien er stadig i brug");
+  if (staffFoodAllowance) {
+    throw new ConvexError("Kategorien bruges stadig i Staff food");
+  }
+  await ctx.db.delete("categories", category._id);
+  await recordAudit(ctx, auth, {
+    action: "catalog.categoryDeleted",
+    entityTable: "categories",
+    entityId: category._id,
+    summary: `Kategorien ${category.name} blev slettet`,
+  });
+  return null;
+}
 
-    for (const sourceProductUnit of sourceProductUnits) {
-      const [
-        product,
-        targetProductUnit,
-        recipeReferences,
-        countItems,
-        configs,
-      ] = await Promise.all([
+export async function createUnitWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  nameInput: string,
+): Promise<Id<"units">> {
+  const { organizationId } = auth;
+  const { name, normalizedName } = normalizeName(nameInput, "Enhedsnavnet");
+  const existing = await ctx.db
+    .query("units")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("normalizedName", normalizedName),
+    )
+    .unique();
+  if (existing) throw new ConvexError("Enheden findes allerede");
+  const unitId = await ctx.db.insert("units", {
+    organizationId,
+    name,
+    normalizedName,
+  });
+  await recordAudit(ctx, auth, {
+    action: "catalog.unitCreated",
+    entityTable: "units",
+    entityId: unitId,
+    summary: `Enheden ${name} blev oprettet`,
+  });
+  return unitId;
+}
+
+export async function renameUnitWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  args: { unitId: Id<"units">; name: string },
+): Promise<null> {
+  const { organizationId } = auth;
+  const unit = await ctx.db.get("units", args.unitId);
+  if (!unit || unit.organizationId !== organizationId) {
+    throw new ConvexError("Enheden blev ikke fundet");
+  }
+  const { name, normalizedName } = normalizeName(args.name, "Enhedsnavnet");
+  const existing = await ctx.db
+    .query("units")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("normalizedName", normalizedName),
+    )
+    .unique();
+  if (existing && existing._id !== unit._id) {
+    throw new ConvexError("Enheden findes allerede");
+  }
+  await ctx.db.patch("units", unit._id, { name, normalizedName });
+  await recordAudit(ctx, auth, {
+    action: "catalog.unitRenamed",
+    entityTable: "units",
+    entityId: unit._id,
+    summary: `Enheden blev omdøbt til ${name}`,
+  });
+  return null;
+}
+
+export async function mergeUnitsWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  args: { sourceUnitId: Id<"units">; targetUnitId: Id<"units"> },
+): Promise<null> {
+  const { organizationId } = auth;
+  if (args.sourceUnitId === args.targetUnitId) {
+    throw new ConvexError("Vælg to forskellige enheder");
+  }
+
+  const [sourceUnit, targetUnit] = await Promise.all([
+    ctx.db.get("units", args.sourceUnitId),
+    ctx.db.get("units", args.targetUnitId),
+  ]);
+  if (
+    !sourceUnit ||
+    sourceUnit.organizationId !== organizationId ||
+    !targetUnit ||
+    targetUnit.organizationId !== organizationId
+  ) {
+    throw new ConvexError("Enheden blev ikke fundet");
+  }
+
+  const sourceProductUnits = await ctx.db
+    .query("productUnits")
+    .withIndex("by_organizationId_and_unitId", (q) =>
+      q.eq("organizationId", organizationId).eq("unitId", sourceUnit._id),
+    )
+    .take(MAX_CHILD_ROWS + 1);
+  if (sourceProductUnits.length > MAX_CHILD_ROWS) {
+    throw new ConvexError(
+      "Enheden bruges af for mange produkter til at blive sammenlagt",
+    );
+  }
+
+  for (const sourceProductUnit of sourceProductUnits) {
+    const [product, targetProductUnit, recipeReferences, countItems, configs] =
+      await Promise.all([
         ctx.db.get("products", sourceProductUnit.productId),
         ctx.db
           .query("productUnits")
@@ -2395,113 +2427,193 @@ export const mergeUnits = mutation({
           .take(MAX_CHILD_ROWS + 1),
       ]);
 
-      if (!product || product.organizationId !== organizationId) {
-        throw new ConvexError("Et produkt til enheden blev ikke fundet");
-      }
-      if (
-        recipeReferences.length > MAX_CHILD_ROWS ||
-        countItems.length > MAX_CHILD_ROWS ||
-        configs.length > MAX_CHILD_ROWS
-      ) {
-        throw new ConvexError(
-          `Produktet ${product.name} har for mange relationer til at flytte enheden`,
-        );
-      }
-      if (
-        targetProductUnit &&
-        targetProductUnit.factorToDefault !== sourceProductUnit.factorToDefault
-      ) {
-        throw new ConvexError(
-          `${sourceUnit.name} og ${targetUnit.name} har forskellige omregninger på ${product.name}`,
-        );
-      }
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Et produkt til enheden blev ikke fundet");
+    }
+    if (
+      recipeReferences.length > MAX_CHILD_ROWS ||
+      countItems.length > MAX_CHILD_ROWS ||
+      configs.length > MAX_CHILD_ROWS
+    ) {
+      throw new ConvexError(
+        `Produktet ${product.name} har for mange relationer til at flytte enheden`,
+      );
+    }
+    if (
+      targetProductUnit &&
+      targetProductUnit.factorToDefault !== sourceProductUnit.factorToDefault
+    ) {
+      throw new ConvexError(
+        `${sourceUnit.name} og ${targetUnit.name} har forskellige omregninger på ${product.name}`,
+      );
+    }
 
-      for (const reference of recipeReferences) {
-        await ctx.db.patch("productIngredients", reference._id, {
-          unitId: targetUnit._id,
-        });
-      }
-
-      for (const item of countItems) {
-        if (item.unitId !== sourceUnit._id) continue;
-        const count = await ctx.db.get("counts", item.countId);
-        if (
-          count?.organizationId !== organizationId ||
-          count.status !== "open"
-        ) {
-          continue;
-        }
-        const targetItem = await ctx.db
-          .query("countItems")
-          .withIndex(
-            "by_organizationId_and_countId_and_productId_and_unitId",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("countId", item.countId)
-                .eq("productId", item.productId)
-                .eq("unitId", targetUnit._id),
-          )
-          .unique();
-        if (targetItem) {
-          const quantity = targetItem.quantity + item.quantity;
-          requirePositiveNumber(quantity, "Den sammenlagte Count-mængde");
-          await ctx.db.patch("countItems", targetItem._id, {
-            quantity,
-          });
-          await ctx.db.delete("countItems", item._id);
-        } else {
-          await ctx.db.patch("countItems", item._id, {
-            unitId: targetUnit._id,
-          });
-        }
-      }
-
-      for (const config of configs) {
-        if (
-          !config.shortcutOverrides?.some(
-            (row) => row.unitId === sourceUnit._id,
-          )
-        ) {
-          continue;
-        }
-        const shortcutOverrides = config.shortcutOverrides.map((row) =>
-          row.unitId === sourceUnit._id
-            ? { ...row, unitId: targetUnit._id }
-            : row,
-        );
-        const duplicates =
-          shortcutOverrides[0]?.unitId === shortcutOverrides[1]?.unitId &&
-          shortcutOverrides[0]?.quantity === shortcutOverrides[1]?.quantity;
-        await ctx.db.patch("wasteProductConfigs", config._id, {
-          shortcutOverrides: duplicates ? undefined : shortcutOverrides,
-        });
-      }
-
-      if (targetProductUnit) {
-        await ctx.db.delete("productUnits", sourceProductUnit._id);
-      } else {
-        await ctx.db.patch("productUnits", sourceProductUnit._id, {
-          unitId: targetUnit._id,
-        });
-      }
-      await ctx.db.patch("products", product._id, {
-        defaultUnitId:
-          product.defaultUnitId === sourceUnit._id
-            ? targetUnit._id
-            : product.defaultUnitId,
-        updatedAt: Date.now(),
+    for (const reference of recipeReferences) {
+      await ctx.db.patch("productIngredients", reference._id, {
+        unitId: targetUnit._id,
       });
     }
 
-    await ctx.db.delete("units", sourceUnit._id);
-    await recordAudit(ctx, auth, {
-      action: "catalog.unitMerged",
-      entityTable: "units",
-      entityId: sourceUnit._id,
-      summary: `Enheden ${sourceUnit.name} blev lagt sammen med ${targetUnit.name}`,
+    for (const item of countItems) {
+      if (item.unitId !== sourceUnit._id) continue;
+      const count = await ctx.db.get("counts", item.countId);
+      if (count?.organizationId !== organizationId || count.status !== "open") {
+        continue;
+      }
+      const targetItem = await ctx.db
+        .query("countItems")
+        .withIndex(
+          "by_organizationId_and_countId_and_productId_and_unitId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("countId", item.countId)
+              .eq("productId", item.productId)
+              .eq("unitId", targetUnit._id),
+        )
+        .unique();
+      if (targetItem) {
+        const quantity = targetItem.quantity + item.quantity;
+        requirePositiveNumber(quantity, "Den sammenlagte Count-mængde");
+        await ctx.db.patch("countItems", targetItem._id, { quantity });
+        await ctx.db.delete("countItems", item._id);
+      } else {
+        await ctx.db.patch("countItems", item._id, {
+          unitId: targetUnit._id,
+        });
+      }
+    }
+
+    for (const config of configs) {
+      if (
+        !config.shortcutOverrides?.some((row) => row.unitId === sourceUnit._id)
+      ) {
+        continue;
+      }
+      const shortcutOverrides = config.shortcutOverrides.map((row) =>
+        row.unitId === sourceUnit._id
+          ? { ...row, unitId: targetUnit._id }
+          : row,
+      );
+      const duplicates =
+        shortcutOverrides[0]?.unitId === shortcutOverrides[1]?.unitId &&
+        shortcutOverrides[0]?.quantity === shortcutOverrides[1]?.quantity;
+      await ctx.db.patch("wasteProductConfigs", config._id, {
+        shortcutOverrides: duplicates ? undefined : shortcutOverrides,
+      });
+    }
+
+    if (targetProductUnit) {
+      await ctx.db.delete("productUnits", sourceProductUnit._id);
+    } else {
+      await ctx.db.patch("productUnits", sourceProductUnit._id, {
+        unitId: targetUnit._id,
+      });
+    }
+    await ctx.db.patch("products", product._id, {
+      defaultUnitId:
+        product.defaultUnitId === sourceUnit._id
+          ? targetUnit._id
+          : product.defaultUnitId,
+      updatedAt: Math.max(Date.now(), product.updatedAt + 1),
     });
-    return null;
+  }
+
+  await ctx.db.delete("units", sourceUnit._id);
+  await recordAudit(ctx, auth, {
+    action: "catalog.unitMerged",
+    entityTable: "units",
+    entityId: sourceUnit._id,
+    summary: `Enheden ${sourceUnit.name} blev lagt sammen med ${targetUnit.name}`,
+  });
+  return null;
+}
+
+export async function deleteUnitWithAuth(
+  ctx: MutationCtx,
+  auth: OrganizationAuth,
+  unitId: Id<"units">,
+): Promise<null> {
+  const { organizationId } = auth;
+  const unit = await ctx.db.get("units", unitId);
+  if (!unit || unit.organizationId !== organizationId) {
+    throw new ConvexError("Enheden blev ikke fundet");
+  }
+  const productUnit = await ctx.db
+    .query("productUnits")
+    .withIndex("by_organizationId_and_unitId", (q) =>
+      q.eq("organizationId", organizationId).eq("unitId", unit._id),
+    )
+    .first();
+  if (productUnit) throw new ConvexError("Enheden er stadig i brug");
+  await ctx.db.delete("units", unit._id);
+  await recordAudit(ctx, auth, {
+    action: "catalog.unitDeleted",
+    entityTable: "units",
+    entityId: unit._id,
+    summary: `Enheden ${unit.name} blev slettet`,
+  });
+  return null;
+}
+
+export const createCategory = mutation({
+  args: { name: v.string(), placement: categoryPlacementValidator },
+  returns: v.id("categories"),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    return await createCategoryWithAuth(ctx, auth, args);
+  },
+});
+
+export const updateCategory = mutation({
+  args: {
+    categoryId: v.id("categories"),
+    name: v.string(),
+    parentCategoryId: v.union(v.id("categories"), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    return await updateCategoryWithAuth(ctx, auth, args);
+  },
+});
+
+export const deleteCategory = mutation({
+  args: { categoryId: v.id("categories") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    return await deleteCategoryWithAuth(ctx, auth, args.categoryId);
+  },
+});
+
+export const createUnit = mutation({
+  args: { name: v.string() },
+  returns: v.id("units"),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    return await createUnitWithAuth(ctx, auth, args.name);
+  },
+});
+
+export const renameUnit = mutation({
+  args: { unitId: v.id("units"), name: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    return await renameUnitWithAuth(ctx, auth, args);
+  },
+});
+
+export const mergeUnits = mutation({
+  args: {
+    sourceUnitId: v.id("units"),
+    targetUnitId: v.id("units"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    return await mergeUnitsWithAuth(ctx, auth, args);
   },
 });
 
@@ -2510,26 +2622,7 @@ export const deleteUnit = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const unit = await ctx.db.get("units", args.unitId);
-    if (!unit || unit.organizationId !== organizationId) {
-      throw new ConvexError("Enheden blev ikke fundet");
-    }
-    const productUnit = await ctx.db
-      .query("productUnits")
-      .withIndex("by_organizationId_and_unitId", (q) =>
-        q.eq("organizationId", organizationId).eq("unitId", unit._id),
-      )
-      .first();
-    if (productUnit) throw new ConvexError("Enheden er stadig i brug");
-    await ctx.db.delete("units", unit._id);
-    await recordAudit(ctx, auth, {
-      action: "catalog.unitDeleted",
-      entityTable: "units",
-      entityId: unit._id,
-      summary: `Enheden ${unit.name} blev slettet`,
-    });
-    return null;
+    return await deleteUnitWithAuth(ctx, auth, args.unitId);
   },
 });
 

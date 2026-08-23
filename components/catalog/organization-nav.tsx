@@ -22,6 +22,7 @@ export function OrganizationHeader() {
   const router = useRouter();
   const canManageMembers = usePermission("members.manage");
   const canManageRoles = usePermission("roles.manage");
+  const canManageApiKeys = usePermission("apiKeys.manage");
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const inCatalog = catalogSections.some((item) =>
     pathname.startsWith(`/organization/${item.value}`),
@@ -59,6 +60,8 @@ export function OrganizationHeader() {
                   ? "Sidemenu"
                 : pathname.startsWith("/organization/feedback")
                   ? "Feedback"
+                : pathname.startsWith("/organization/api")
+                  ? "API"
                 : pathname === "/organization"
                   ? "Administration"
                   : "Organisationens oplysninger";
@@ -70,7 +73,8 @@ export function OrganizationHeader() {
     for (const item of userSections) {
       router.prefetch(`/organization/${item.value}`);
     }
-  }, [router]);
+    if (canManageApiKeys) router.prefetch("/organization/api");
+  }, [canManageApiKeys, router]);
 
   useEffect(() => {
     if (!inUsers) return;

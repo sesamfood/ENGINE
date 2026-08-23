@@ -11,7 +11,11 @@ import {
   ownCheckFieldValidator,
   ownCheckScheduleValidator,
 } from "./lib/ownCheckValidators";
-import { requireLocationAccess, requireOwnCheckManager } from "./lib/auth";
+import {
+  requireHumanPrincipal,
+  requireLocationAccess,
+  requireOwnCheckManager,
+} from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { getOwnCheckConfiguration } from "./lib/ownCheckSettings";
 import { MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./lib/ownChecks";
@@ -342,6 +346,7 @@ export const createTemplate = mutation({
   returns: v.id("ownCheckTemplates"),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckManager(ctx);
+    const human = requireHumanPrincipal(auth);
     const activeCount = await ctx.db
       .query("ownCheckTemplates")
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId).eq("status", "active"))
@@ -356,7 +361,7 @@ export const createTemplate = mutation({
       normalizedName: validated.normalizedName,
       currentVersion: 1,
       status: "active",
-      createdBy: auth.userId,
+      createdBy: human.userId,
       updatedAt: now,
     });
     await ctx.db.insert("ownCheckTemplateVersions", {
@@ -375,8 +380,8 @@ export const createTemplate = mutation({
       ...(validated.responsibleRole === undefined ? {} : { responsibleRole: validated.responsibleRole }),
       validFrom: now,
       createdAt: now,
-      createdBy: auth.userId,
-      createdByName: auth.userName,
+      createdBy: human.userId,
+      createdByName: human.userName,
     });
     await recordAudit(ctx, auth, {
       action: "ownChecks.templateCreated",
@@ -393,6 +398,7 @@ export const updateTemplate = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckManager(ctx);
+    const human = requireHumanPrincipal(auth);
     const template = await ctx.db.get("ownCheckTemplates", args.templateId);
     if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Egenkontrollen blev ikke fundet");
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
@@ -431,8 +437,8 @@ export const updateTemplate = mutation({
       ...(validated.responsibleRole === undefined ? {} : { responsibleRole: validated.responsibleRole }),
       validFrom: now,
       createdAt: now,
-      createdBy: auth.userId,
-      createdByName: auth.userName,
+      createdBy: human.userId,
+      createdByName: human.userName,
     });
     await ctx.db.patch(template._id, {
       name: validated.name,
@@ -479,6 +485,7 @@ export const restoreTemplate = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckManager(ctx);
+    const human = requireHumanPrincipal(auth);
     const template = await ctx.db.get("ownCheckTemplates", args.templateId);
     if (!template || template.organizationId !== auth.organizationId || template.status !== "archived") throw new ConvexError("Egenkontrollen blev ikke fundet");
     await ensureUniqueName(ctx, auth.organizationId, template.normalizedName, template._id);
@@ -501,8 +508,8 @@ export const restoreTemplate = mutation({
       ...(current.responsibleRole === undefined ? {} : { responsibleRole: current.responsibleRole }),
       validFrom: now,
       createdAt: now,
-      createdBy: auth.userId,
-      createdByName: auth.userName,
+      createdBy: human.userId,
+      createdByName: human.userName,
     });
     await ctx.db.patch("ownCheckTemplates", template._id, { status: "active", archivedAt: undefined, currentVersion: current.version + 1, updatedAt: now });
     await recordAudit(ctx, auth, {

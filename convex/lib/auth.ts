@@ -1,7 +1,9 @@
 import { ConvexError } from "convex/values";
 import {
   hasPermission,
+  isPermissionId,
   permissionsForRole,
+  systemRoleKeys,
   type DataGranularity,
   type OrganizationRole,
   type PermissionId,
@@ -14,6 +16,10 @@ import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
 
 type AuthContext = QueryCtx | MutationCtx | ActionCtx;
+
+function apiAuthError(code: string, message: string) {
+  return new ConvexError({ code, message });
+}
 
 type AuthMember = {
   id: string;
@@ -73,6 +79,13 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
+  if (
+    process.env.SITE_URL &&
+    identity.issuer === `${process.env.SITE_URL.replace(/\/$/, "")}/api/v1`
+  ) {
+    return await getApiKeyOrganization(ctx, identity);
+  }
+
   const adapter = getDatabaseAdapter(ctx);
   const session = await adapter.findOne<AuthSession>({
     model: "session",
@@ -131,6 +144,8 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     granularity: roleConfig?.granularity ?? "detail",
     permissions: new Set<string>(permissions),
     locationScope,
+    principalKind: "user" as const,
+    apiKeyId: null,
     userId: member.userId,
     sessionId: identity.sessionId as string,
     isKioskAccount: session?.isKioskAccount === true,
@@ -138,23 +153,209 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     kioskLocationId,
     userIdentifier: identity.tokenIdentifier,
     userName: identity.name?.trim() || identity.email || "Ukendt bruger",
+    requestId: null,
   };
 }
 
-type OrganizationAuth = {
+type ServiceIdentity = {
+  issuer: string;
+  tokenIdentifier: string;
+  principalKind?: unknown;
+  apiKeyId?: unknown;
+  organizationId?: unknown;
+  requestId?: unknown;
+};
+
+async function getApiKeyOrganization(
+  ctx: QueryCtx | MutationCtx,
+  identity: ServiceIdentity,
+) {
+  if (
+    identity.principalKind !== "apiKey" ||
+    typeof identity.apiKeyId !== "string" ||
+    typeof identity.organizationId !== "string" ||
+    identity.apiKeyId.length > 200 ||
+    identity.organizationId.length > 200
+  ) {
+    throw apiAuthError("invalid_api_identity", "The API identity is invalid.");
+  }
+  const apiKeyId = identity.apiKeyId;
+  const claimedOrganizationId = identity.organizationId;
+  const policy = await ctx.db
+    .query("apiKeyPolicies")
+    .withIndex("by_apiKeyId", (q) => q.eq("apiKeyId", apiKeyId))
+    .unique();
+  if (
+    !policy ||
+    policy.status !== "active" ||
+    policy.organizationId !== claimedOrganizationId ||
+    policy.expiresAt <= Date.now()
+  ) {
+    throw apiAuthError("invalid_api_key_policy", "The API key is not authorized.");
+  }
+  if (
+    policy.permissions.some(
+      (permission) =>
+        !isPermissionId(permission) || permission === "apiKeys.manage",
+    )
+  ) {
+    throw apiAuthError(
+      "invalid_api_key_policy",
+      "The API key permissions are invalid.",
+    );
+  }
+  const [configured, roleConfig] = await Promise.all([
+    ctx.db
+      .query("rolePermissions")
+      .withIndex("by_organizationId_and_role", (q) =>
+        q
+          .eq("organizationId", policy.organizationId)
+          .eq("role", policy.role),
+      )
+      .unique(),
+    ctx.db
+      .query("roles")
+      .withIndex("by_organizationId_and_key", (q) =>
+        q.eq("organizationId", policy.organizationId).eq("key", policy.role),
+      )
+      .unique(),
+  ]);
+  if (!roleConfig && !systemRoleKeys.includes(policy.role as never)) {
+    throw apiAuthError(
+      "invalid_api_key_policy",
+      "The API key role no longer exists.",
+    );
+  }
+  const rolePermissions = new Set(
+    permissionsForRole(policy.role, configured?.permissions),
+  );
+  const permissions = new Set(
+    policy.permissions.filter((permission) => rolePermissions.has(permission)),
+  );
+  const locationScope = await resolveApiKeyLocationScope(
+    ctx,
+    policy.organizationId,
+    policy.locationPolicy,
+  );
+
+  return {
+    organizationId: policy.organizationId,
+    role: policy.role,
+    granularity: roleConfig?.granularity ?? "detail",
+    permissions,
+    locationScope,
+    principalKind: "apiKey" as const,
+    apiKeyId: policy.apiKeyId,
+    userId: null,
+    sessionId: null,
+    isKioskAccount: false,
+    kioskModeEnabled: false,
+    kioskLocationId: null,
+    userIdentifier: identity.tokenIdentifier,
+    userName: policy.name,
+    requestId:
+      typeof identity.requestId === "string" && identity.requestId.length <= 100
+        ? identity.requestId
+        : null,
+  };
+}
+
+async function resolveApiKeyLocationScope(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  policy:
+    | { kind: "all" }
+    | { kind: "selected"; locationIds: Id<"locations">[] }
+    | { kind: "operator"; operatorId: Id<"operators"> },
+) {
+  if (policy.kind === "all") {
+    return { all: true, ids: new Set<Id<"locations">>() };
+  }
+  if (policy.kind === "selected") {
+    if (
+      policy.locationIds.length < 1 ||
+      policy.locationIds.length > 200 ||
+      new Set(policy.locationIds).size !== policy.locationIds.length
+    ) {
+      throw apiAuthError(
+        "invalid_api_key_policy",
+        "The API key location policy is invalid.",
+      );
+    }
+    const locations = await Promise.all(
+      policy.locationIds.map((locationId) => ctx.db.get("locations", locationId)),
+    );
+    if (
+      locations.some(
+        (location) => !location || location.organizationId !== organizationId,
+      )
+    ) {
+      throw apiAuthError(
+        "invalid_api_key_policy",
+        "The API key location policy is invalid.",
+      );
+    }
+    return { all: false, ids: new Set(policy.locationIds) };
+  }
+  const operator = await ctx.db.get("operators", policy.operatorId);
+  if (!operator || operator.organizationId !== organizationId) {
+    throw apiAuthError(
+      "invalid_api_key_policy",
+      "The API key operator policy is invalid.",
+    );
+  }
+  const locations = await ctx.db
+    .query("locations")
+    .withIndex("by_organizationId_and_operatorId", (q) =>
+      q.eq("organizationId", organizationId).eq("operatorId", operator._id),
+    )
+    .take(201);
+  if (locations.length > 200) {
+    throw apiAuthError(
+      "invalid_api_key_policy",
+      "The API key operator policy is too broad.",
+    );
+  }
+  return {
+    all: false,
+    ids: new Set(locations.map((location) => location._id)),
+  };
+}
+
+export type OrganizationAuth = {
   organizationId: string;
   role: OrganizationRole;
   granularity: DataGranularity;
   permissions: ReadonlySet<string>;
   locationScope: { all: boolean; ids: ReadonlySet<Id<"locations">> };
-  userId: string;
-  sessionId: string;
+  principalKind: "user" | "apiKey";
+  apiKeyId: string | null;
+  userId: string | null;
+  sessionId: string | null;
   isKioskAccount: boolean;
   kioskModeEnabled: boolean;
   kioskLocationId: Id<"locations"> | null;
   userIdentifier: string;
   userName: string;
+  requestId: string | null;
 };
+
+export function requireHumanPrincipal(auth: OrganizationAuth) {
+  if (
+    auth.principalKind !== "user" ||
+    !auth.userId ||
+    !auth.sessionId
+  ) {
+    throw new ConvexError("Handlingen kræver en bruger");
+  }
+  return {
+    ...auth,
+    principalKind: "user" as const,
+    apiKeyId: null,
+    userId: auth.userId,
+    sessionId: auth.sessionId,
+  };
+}
 
 export async function requireOrganization(
   ctx: AuthContext,
@@ -218,12 +419,24 @@ export function requireLocationAccess(
     throw new ConvexError("Kioskkontoen har ikke adgang til denne lokation");
   }
   if (!auth.locationScope.all && !auth.locationScope.ids.has(locationId)) {
+    if (auth.principalKind === "apiKey") {
+      throw apiAuthError(
+        "location_forbidden",
+        "The API key does not have access to this location.",
+      );
+    }
     throw new ConvexError("Du har ikke adgang til denne lokation");
   }
 }
 
 export function requireAllLocationAccess(auth: OrganizationAuth) {
   if (!auth.locationScope.all) {
+    if (auth.principalKind === "apiKey") {
+      throw apiAuthError(
+        "location_forbidden",
+        "The API key does not have access to all locations.",
+      );
+    }
     throw new ConvexError("Du har ikke adgang til hele organisationen");
   }
 }
@@ -262,6 +475,12 @@ export async function requirePermission(
   const auth = await requireOrganization(ctx);
   if (page && (await requireKioskDestination(ctx, auth, page))) return auth;
   if (!hasPermission(auth.role, auth.permissions, permission)) {
+    if (auth.principalKind === "apiKey") {
+      throw apiAuthError(
+        "forbidden",
+        "The API key does not have permission for this operation.",
+      );
+    }
     throw new ConvexError("Du har ikke adgang");
   }
   return auth;

@@ -1,0 +1,2299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Plan: public REST API</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f5f7;
+        --paper: #ffffff;
+        --ink: #18181b;
+        --muted: #62646b;
+        --line: #d8dadd;
+        --soft: #eef1f4;
+        --accent: #175f54;
+        --accent-soft: #e1f2ee;
+        --warn: #934b0b;
+        --warn-soft: #fff1db;
+        --danger: #9f2d2d;
+        --danger-soft: #fde8e8;
+        --code: #f0f1f3;
+        --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 30px rgb(0 0 0 / 0.05);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.58 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      a {
+        color: var(--accent);
+      }
+      a:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 3px;
+      }
+
+      main {
+        width: min(1220px, calc(100% - 32px));
+        margin: 32px auto 64px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 240px;
+        gap: 28px;
+        align-items: start;
+      }
+
+      article {
+        min-width: 0;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: clamp(24px, 5vw, 56px);
+      }
+
+      nav {
+        position: sticky;
+        top: 24px;
+        border-left: 2px solid var(--line);
+        padding-left: 18px;
+        font-size: 0.9rem;
+      }
+
+      nav strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+      nav a {
+        display: block;
+        padding: 5px 0;
+        text-decoration: none;
+      }
+      nav a:hover {
+        text-decoration: underline;
+      }
+
+      header {
+        margin-bottom: 34px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+      }
+      h1 {
+        margin: 0 0 14px;
+        font-size: clamp(2rem, 5vw, 3.4rem);
+        max-width: 18ch;
+      }
+      h2 {
+        margin: 48px 0 16px;
+        font-size: 1.55rem;
+        scroll-margin-top: 24px;
+      }
+      h3 {
+        margin: 28px 0 8px;
+        font-size: 1.08rem;
+      }
+      p {
+        margin: 0 0 14px;
+      }
+      ul,
+      ol {
+        padding-left: 1.35rem;
+      }
+      li + li {
+        margin-top: 7px;
+      }
+
+      .lede {
+        max-width: 76ch;
+        color: var(--muted);
+        font-size: 1.08rem;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        margin-top: 22px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .callout {
+        margin: 24px 0;
+        border-left: 4px solid var(--accent);
+        background: var(--accent-soft);
+        padding: 18px 20px;
+        border-radius: 0 10px 10px 0;
+      }
+
+      .callout.warning {
+        border-color: var(--warn);
+        background: var(--warn-soft);
+      }
+      .callout.danger {
+        border-color: var(--danger);
+        background: var(--danger-soft);
+      }
+      .callout > :last-child {
+        margin-bottom: 0;
+      }
+
+      .decision-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .decision {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 15px 16px;
+        background: var(--paper);
+      }
+
+      .decision strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .decision p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.93rem;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+        margin: 22px 0;
+      }
+
+      .flow-box {
+        position: relative;
+        min-height: 140px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+        background: var(--soft);
+      }
+
+      .flow-box:not(:last-child)::after {
+        content: "\2192";
+        position: absolute;
+        z-index: 2;
+        top: 50%;
+        right: -13px;
+        width: 18px;
+        color: var(--accent);
+        font-size: 1.25rem;
+        font-weight: 800;
+        text-align: center;
+        transform: translateY(-50%);
+      }
+
+      .flow-box strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+      .flow-box span {
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .work-package {
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+        margin-top: 24px;
+      }
+
+      .work-package h3 {
+        margin-top: 0;
+      }
+
+      .label {
+        display: inline-block;
+        min-width: 92px;
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        vertical-align: top;
+      }
+
+      code {
+        padding: 0.12rem 0.34rem;
+        border-radius: 4px;
+        background: var(--code);
+        font:
+          0.88em/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+
+      pre {
+        overflow-x: auto;
+        margin: 14px 0 20px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--code);
+        font:
+          0.84rem/1.55 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+
+      pre code {
+        padding: 0;
+        background: transparent;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+        font-size: 0.9rem;
+      }
+
+      th,
+      td {
+        padding: 11px 13px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--soft);
+        font-size: 0.76rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .phase {
+        white-space: nowrap;
+        color: var(--accent);
+        font-weight: 750;
+      }
+
+      .pass {
+        color: var(--accent);
+        font-weight: 800;
+      }
+      .stop {
+        color: var(--danger);
+        font-weight: 800;
+      }
+
+      footer {
+        margin-top: 48px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      @media (max-width: 980px) {
+        .flow {
+          grid-template-columns: 1fr;
+        }
+        .flow-box {
+          min-height: auto;
+        }
+        .flow-box:not(:last-child)::after {
+          content: "\2193";
+          top: auto;
+          right: 50%;
+          bottom: -18px;
+          transform: translateX(50%);
+        }
+      }
+
+      @media (max-width: 860px) {
+        main {
+          grid-template-columns: 1fr;
+          margin-top: 16px;
+        }
+        nav {
+          position: static;
+          order: -1;
+          border: 1px solid var(--line);
+          border-radius: 10px;
+          background: var(--paper);
+          padding: 14px 18px;
+        }
+        nav a {
+          display: inline-block;
+          margin-right: 14px;
+        }
+      }
+
+      @media (max-width: 620px) {
+        main {
+          width: min(100% - 18px, 1220px);
+        }
+        article {
+          padding: 22px 18px;
+          border-radius: 10px;
+        }
+        .decision-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111315;
+          --paper: #191b1e;
+          --ink: #f2f3f4;
+          --muted: #b0b4ba;
+          --line: #34383d;
+          --soft: #22262a;
+          --accent: #76d1c1;
+          --accent-soft: #173a34;
+          --warn: #f3aa61;
+          --warn-soft: #462b15;
+          --danger: #ff9292;
+          --danger-soft: #461d1d;
+          --code: #24272b;
+          --shadow: none;
+        }
+      }
+
+      @media print {
+        :root {
+          color-scheme: light;
+        }
+        body {
+          background: white;
+        }
+        main {
+          display: block;
+          width: 100%;
+          margin: 0;
+        }
+        article {
+          border: 0;
+          box-shadow: none;
+          padding: 0;
+        }
+        nav {
+          display: none;
+        }
+        h2 {
+          break-after: avoid;
+        }
+        .work-package,
+        .decision,
+        .callout,
+        .flow-box {
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        <header>
+          <p class="eyebrow">Implementation plan</p>
+          <h1>Public REST API</h1>
+          <p class="lede">
+            Add a versioned, publicly supported API for external
+            server-to-server integrations. Better Auth owns organization API
+            keys. Convex remains the authority for tenant scope, permissions,
+            location access, validation, and domain rules.
+          </p>
+          <div class="meta">
+            <span class="status">Decision complete</span>
+            <span>Prepared 23 August 2026</span>
+            <span>Target: Next.js 16, Better Auth, Convex, and Vercel</span>
+          </div>
+        </header>
+
+        <section aria-labelledby="summary-heading">
+          <h2 id="summary-heading">Outcome</h2>
+          <div class="callout">
+            <p>
+              <strong>Ship <code>/api/v1</code> as a thin HTTP adapter.</strong>
+              A client sends an organization-owned API key. Better Auth verifies
+              the credential. The route exchanges that verified identity for a
+              short-lived service-principal token used only for the Convex call.
+              Convex then loads the key policy and applies the same permission
+              and location rules used by the application.
+            </p>
+          </div>
+
+          <div class="decision-grid" aria-label="Locked decisions">
+            <div class="decision">
+              <strong>Server-to-server clients</strong>
+              <p>
+                Every API key belongs to exactly one Better Auth organization.
+                The API never accepts a caller-selected organization as
+                authority.
+              </p>
+            </div>
+            <div class="decision">
+              <strong>CRUD where the domain permits it</strong>
+              <p>
+                Normal resources use standard methods. Workflow records keep
+                named commands, locks, audit reasons, archive rules, and
+                immutable history.
+              </p>
+            </div>
+            <div class="decision">
+              <strong>Public contract from day one</strong>
+              <p>
+                The URL starts at <code>/api/v1</code>. OpenAPI 3.1, hosted
+                English documentation, request examples, and a changelog ship
+                with the first endpoints.
+              </p>
+            </div>
+            <div class="decision">
+              <strong>API keys first</strong>
+              <p>
+                Use Better Auth organization API keys for v1. Add OAuth client
+                credentials only after a partner requires OAuth
+                interoperability.
+              </p>
+            </div>
+            <div class="decision">
+              <strong>Existing access rules stay authoritative</strong>
+              <p>
+                Each key receives an existing role profile, a subset of that
+                role's app permission IDs, and an optional location scope.
+                Client-side hiding never replaces a Convex check.
+              </p>
+            </div>
+            <div class="decision">
+              <strong>Staged delivery</strong>
+              <p>
+                Build one common contract, release low-risk master data first,
+                then add operational domains after retry and state-transition
+                safeguards exist.
+              </p>
+            </div>
+            <div class="decision">
+              <strong>No webhooks or SDKs in v1</strong>
+              <p>
+                Clients use cursor pagination and supported updated-time
+                filters. Usage will decide later webhook events and SDK
+                languages.
+              </p>
+            </div>
+            <div class="decision">
+              <strong>Public support without an initial SLA</strong>
+              <p>
+                Publish incidents and a support route. Track a 99.9% monthly
+                internal availability target. Use test organizations in a
+                non-production deployment instead of a separate sandbox product.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout danger">
+            <p>
+              <strong>Stop gate.</strong> The lockfile installs
+              <code>better-auth</code> 1.6.15 and
+              <code>@convex-dev/better-auth</code> 0.12.5. The adapter declares
+              a Better Auth peer range of <code>&gt;=1.6.11 &lt;1.7.0</code>,
+              while the manifest uses a caret range. The app does not contain
+              <code>@better-auth/api-key</code>, and the generated Better Auth
+              schema has no API-key table. Work package 0 must freeze and prove
+              an exact supported version set before production schema changes.
+              If organization-key verification and a non-human Convex principal
+              cannot work together, stop and choose a coordinated dependency
+              upgrade. Do not create synthetic human users as a shortcut.
+            </p>
+          </div>
+        </section>
+
+        <section aria-labelledby="current-heading">
+          <h2 id="current-heading">Current state and consequences</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Area</th>
+                  <th scope="col">Observed state</th>
+                  <th scope="col">Plan consequence</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>HTTP routes</td>
+                  <td>
+                    <code>app/api/auth/[...all]/route.ts</code> and
+                    <code>app/api/version/route.ts</code> are the only app route
+                    handlers.
+                  </td>
+                  <td>
+                    Add a separate <code>app/api/v1</code> tree. Keep Better
+                    Auth routes isolated.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Proxy</td>
+                  <td>
+                    <code>proxy.ts</code> bypasses only <code>/api/auth</code>.
+                    Other unauthenticated API requests redirect to
+                    <code>/login</code>.
+                  </td>
+                  <td>
+                    Exclude <code>/api/v1</code> and
+                    <code>/.well-known/rest-api-jwks.json</code> from login
+                    redirects. Each REST handler must return JSON
+                    <code>401</code> or <code>403</code> responses itself. The
+                    JWKS route returns public keys only.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Data access</td>
+                  <td>
+                    The application uses typed Convex functions directly.
+                    <code>convex/http.ts</code> registers only Better Auth
+                    routes.
+                  </td>
+                  <td>
+                    Map each REST operation to an explicit typed Convex
+                    function. Never add an endpoint that accepts a Convex
+                    function name.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Human auth</td>
+                  <td>
+                    <code>convex/lib/auth.ts</code> resolves a Better Auth
+                    session, active organization, member, role, permissions, and
+                    location access.
+                  </td>
+                  <td>
+                    Extend this central boundary with a discriminated
+                    service-principal path. Keep the human path unchanged.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Machine auth</td>
+                  <td>
+                    The lockfile installs <code>better-auth</code> 1.6.15 and
+                    <code>@convex-dev/better-auth</code> 0.12.5. No API-key
+                    package or schema is present.
+                  </td>
+                  <td>
+                    Freeze exact versions and prove a compatible first-party
+                    plugin and Convex identity transport before implementation
+                    proceeds.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Authorization</td>
+                  <td>
+                    <code>requirePermission</code>, specialized guards, and
+                    <code>resolveLocationFilter</code> enforce organization and
+                    location rules in Convex.
+                  </td>
+                  <td>
+                    Reuse these guards. Preserve exceptions that are already
+                    intentional, including the current Transfer location
+                    behavior.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Errors</td>
+                  <td>
+                    Exposed domain functions mostly throw Danish message-only
+                    <code>ConvexError</code> values.
+                  </td>
+                  <td>
+                    Add stable structured error codes as each operation becomes
+                    public. Preserve Danish app feedback through one client
+                    error normalizer. Never map HTTP status by comparing
+                    translated messages.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Write retries</td>
+                  <td>
+                    Own Check submission has a client request ID. Transfer,
+                    Waste, Staff food, and bad delivery creation do not.
+                  </td>
+                  <td>
+                    Add transactional idempotency before public clients can
+                    retry those commands.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Deployment</td>
+                  <td>
+                    The app targets Vercel, but the repository does not declare
+                    function duration, memory, regions, or API body limits.
+                  </td>
+                  <td>
+                    Measure and document production limits before public launch.
+                    Keep long exports and provider sync outside normal request
+                    work.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section aria-labelledby="architecture-heading">
+          <h2 id="architecture-heading">Request flow and trust boundaries</h2>
+
+          <div
+            class="flow"
+            role="img"
+            aria-label="An external client calls a Next.js route. Better Auth verifies the API key. The route creates a short-lived service-principal token. Convex resolves the stored policy and executes an organization-scoped domain function."
+          >
+            <div class="flow-box">
+              <strong>External client</strong
+              ><span
+                >Sends <code>Authorization: Bearer &lt;api-key&gt;</code>, a
+                request ID if it has one, and an idempotency key for resource
+                creation or a side-effecting command.</span
+              >
+            </div>
+            <div class="flow-box">
+              <strong>Next.js route</strong
+              ><span
+                >Checks content type, body size, method, and contract. It never
+                trusts IDs or policy claims from the body.</span
+              >
+            </div>
+            <div class="flow-box">
+              <strong>Better Auth</strong
+              ><span
+                >Hashes and verifies the key, organization reference, enabled
+                state, expiry, and credential rate limit.</span
+              >
+            </div>
+            <div class="flow-box">
+              <strong>Service-principal bridge</strong
+              ><span
+                >Creates a short-lived signed token with only the organization
+                ID, API-key ID, principal kind, and token identifier.</span
+              >
+            </div>
+            <div class="flow-box">
+              <strong>Convex domain function</strong
+              ><span
+                >Loads current policy, applies permission and location guards,
+                validates business rules, performs the transaction, and writes
+                audit context.</span
+              >
+            </div>
+          </div>
+
+          <h3>Principal model</h3>
+          <p>
+            Replace the human-shaped <code>OrganizationAuth</code> contract with
+            one normalized authorization envelope and a discriminated actor.
+            Common guards can use the common fields. Human-only code must narrow
+            the principal first.
+          </p>
+          <pre><code>type AuthorizationContext = {
+  organizationId: string;
+  role: OrganizationRole;
+  granularity: DataGranularity;
+  permissions: ReadonlySet&lt;PermissionId&gt;;
+  locationScope: {
+    all: boolean;
+    ids: ReadonlySet&lt;Id&lt;"locations"&gt;&gt;;
+  };
+  tokenIdentifier: string;
+  principal:
+    | {
+        kind: "user";
+        userId: string;
+        sessionId: string;
+        name: string;
+        isKioskAccount: boolean;
+        kioskModeEnabled: boolean;
+        kioskLocationId: Id&lt;"locations"&gt; | null;
+      }
+    | {
+        kind: "apiKey";
+        apiKeyId: string;
+        name: string;
+      };
+};</code></pre>
+          <p>
+            Choose the union branch from the allowlisted JWT issuer, then
+            validate all custom claims before constructing the context. Do not
+            branch only on a free-form <code>kind</code> claim or cast unknown
+            claims. Add a <code>requireHumanPrincipal</code> guard for code that
+            needs a user, session, kiosk state, password confirmation, or a
+            named employee. Never fill those fields with API-key placeholders.
+          </p>
+          <p>
+            Make both Convex paths return this contract. Queries and mutations
+            resolve it directly. Actions currently round-trip through
+            <code>internal.access.getRoleContext</code>, whose validator and
+            implementation assume a human session; update that path to resolve
+            and serialize either principal kind. Audit every consumer of
+            <code>userId</code>, <code>sessionId</code>,
+            <code>userIdentifier</code>, <code>userName</code>, and kiosk fields
+            before changing the type. The signed service token carries identity,
+            not authoritative permissions. Convex loads current API-key policy
+            on every call, so revocation, expiry, role changes, permission
+            changes, and location changes apply on the next public request.
+          </p>
+
+          <h3>Credential transport</h3>
+          <p>
+            Accept the raw key only as
+            <code>Authorization: Bearer &lt;api-key&gt;</code>. Reject
+            query-string credentials, duplicate authorization headers, and other
+            schemes. Better Auth's API-key plugin defaults to
+            <code>x-api-key</code>. Either configure its
+            <code>customAPIKeyGetter</code> to parse this exact Bearer contract
+            or let the route parse it and call the plugin's supported
+            server-side <code>verifyApiKey</code> API. Do not accidentally
+            publish the default header as a second contract. After verification,
+            remove the raw key from downstream headers and create a service
+            token with a maximum lifetime of 30 seconds.
+          </p>
+          <p>
+            Keep the existing Better Auth Convex provider with
+            <code>applicationID: "convex"</code>. Add a second custom JWT
+            provider with the distinct
+            <code>applicationID: "rest-api-v1"</code>, a dedicated issuer and
+            audience, RS256, and the public key URL
+            <code>/.well-known/rest-api-jwks.json</code>. The installed adapter
+            filters its own provider by the <code>convex</code> application ID
+            and rejects duplicates, so work package 0 must prove that both
+            providers coexist. Never assign the service provider that
+            application ID. Store private signing keys only in Next.js
+            deployment secrets. The JWKS route is unauthenticated, returns
+            public JWKs only, has an explicit public cache policy, and supports
+            overlapping keys during rotation. The public client never receives
+            the service token. Do not add a public Convex function that returns
+            one.
+          </p>
+          <p>
+            Use a request-local <code>ConvexHttpClient</code>, call
+            <code>setAuth</code> with the service token, and invoke generated
+            function references. Do not reuse <code>fetchAuthQuery</code>,
+            <code>fetchAuthMutation</code>, or <code>fetchAuthAction</code> for
+            API-key requests because those helpers obtain a human session token.
+            Do not add a second public <code>httpAction</code> path as a
+            fallback. If the lockfile-installed Convex deployment cannot accept
+            the custom JWT provider, stop at work package 0 and resolve the
+            dependency set.
+          </p>
+
+          <h3>Policy storage</h3>
+          <p>
+            Better Auth owns the hashed credential, owner reference, enabled
+            state, expiry, rate-limit counters, and last request time. Add an
+            organization-scoped Convex policy record keyed by the Better Auth
+            API-key ID. Store an existing organization role key, an explicit
+            subset of that role's app permission IDs, a required location
+            policy, creator, and audit timestamps. Resolve data granularity and
+            role-gated resources from the current role record. This preserves
+            dashboard role audiences and similar checks that use role as well as
+            permissions.
+          </p>
+          <pre><code>type ApiKeyLocationAccess =
+  | { scope: "all"; locationIds: [] }
+  | {
+      scope: "selected";
+      locationIds: Id&lt;"locations"&gt;[];
+    }
+  | {
+      scope: "operator";
+      operatorId: Id&lt;"operators"&gt;;
+      locationIds: [];
+    };</code></pre>
+          <p>
+            The UI may present location access as optional, but the stored
+            policy is never null or missing. An omitted selection is converted
+            server-side to an explicit <code>all</code> policy after the
+            creator's access is checked. A selected policy contains 1 to 200
+            unique organization-owned location IDs. An operator policy contains
+            one organization-owned operator ID and resolves its locations
+            through <code>resolveStoredLocationScope</code>. Detect more than
+            the supported 200 locations and reject the policy instead of
+            silently truncating it. Reject malformed or missing policies closed;
+            never interpret them as all-location access.
+          </p>
+          <p>
+            The Convex policy is the single authority for application
+            permissions. Do not mirror those permission IDs into Better Auth's
+            optional per-key permission field. Better Auth's organization
+            <code>apiKey</code> actions govern who may manage credentials, which
+            is a separate rule. Use a separate location-access table only if the
+            existing access query pattern needs indexed rows. Location access
+            follows each domain's current rule. In particular, selected and
+            operator scopes do not restrict Transfers today. Document and retain
+            that exception unless a separate product change alters it.
+          </p>
+          <p>
+            At key creation, the selected role, permissions, and locations must
+            all fit within the creator's current access. Effective key
+            permissions are the intersection of the stored key grant and the
+            role's current permissions. A later permission reduction therefore
+            takes effect on the next request. Do not delete a custom role while
+            an API key references it. A later change to the creator does not
+            silently change the organization-owned key. An authorized
+            administrator must edit or revoke it.
+          </p>
+        </section>
+
+        <section aria-labelledby="contract-heading">
+          <h2 id="contract-heading">Public HTTP contract</h2>
+
+          <h3>Resource and command conventions</h3>
+          <ul>
+            <li>
+              Use plural, English resource names below <code>/api/v1</code>.
+            </li>
+            <li>
+              Use <code>GET</code> for reads, <code>POST</code> for creation and
+              commands, <code>PATCH</code> for partial updates, and
+              <code>DELETE</code> only when the domain permits deletion or
+              deactivation.
+            </li>
+            <li>
+              Use named command paths for state transitions, such as
+              <code>POST /api/v1/products/{productId}/archive</code> and
+              <code>POST /api/v1/counts/{countId}/submit</code>.
+            </li>
+            <li>
+              Reject unknown request fields. An omitted property means
+              unchanged. <code>null</code> clears a property only when the
+              contract says that the property is nullable.
+            </li>
+            <li>
+              Represent timestamps as UTC ISO 8601 strings. Represent money as
+              integer minor units. Keep quantities and units in explicit fields.
+            </li>
+            <li>
+              Map a Convex document ID to the public <code>id</code> string and
+              treat that value as stable for the resource's lifetime. Do not add
+              a second global ID system. Every lookup validates the expected
+              table, organization ownership, and permission before returning
+              data. A foreign object ID returns <code>404</code>.
+            </li>
+            <li>
+              Return English field names, enum values, documentation, and error
+              text. Return stored Danish names and business content without
+              translation.
+            </li>
+          </ul>
+
+          <pre><code>GET    /api/v1/locations?limit=50&amp;cursor=opaque
+POST   /api/v1/products
+GET    /api/v1/products/{productId}
+PATCH  /api/v1/products/{productId}
+POST   /api/v1/products/{productId}/archive
+POST   /api/v1/products/{productId}/restore
+DELETE /api/v1/products/{productId}
+
+POST   /api/v1/transfers
+POST   /api/v1/waste/{wasteId}/void
+POST   /api/v1/counts/{countId}/submit</code></pre>
+
+          <h3>Response shapes</h3>
+          <p>
+            Wrap successful data so collection metadata can grow without
+            changing the resource schema. Return
+            <code>204 No Content</code> only when no response representation
+            helps the caller.
+          </p>
+          <pre><code>{
+  "data": {
+    "id": "product_opaque",
+    "name": "Stored Danish product name",
+    "updatedAt": "2026-08-23T10:15:00.000Z",
+    "version": "opaque-version"
+  }
+}</code></pre>
+          <pre><code>{
+  "data": [
+    { "id": "loc_opaque", "name": "Stored Danish location name" }
+  ],
+  "page": {
+    "nextCursor": "opaque-or-null",
+    "hasMore": false
+  }
+}</code></pre>
+
+          <h3>Pagination, filters, and concurrency</h3>
+          <p>
+            Use opaque Convex-compatible cursors and bounded page sizes. Start
+            with a default of 50 and a maximum of 100. Pass pagination options
+            unchanged to Convex pagination. Each endpoint declares an allowlist
+            of filters and sort fields. Support <code>updatedAfter</code> only
+            after the resource has a reliable indexed update timestamp. Do not
+            imply that this filter reports hard deletions. Without a durable
+            change log, clients must periodically reconcile a complete paginated
+            snapshot.
+          </p>
+          <p>
+            Expose an opaque <code>version</code> for resources that support
+            concurrent edits. Require <code>If-Match</code> on risky updates and
+            deletes. Return <code>412 Precondition Failed</code> when the
+            version is stale. Map existing revision contracts, such as dashboard
+            <code>expectedUpdatedAt</code>, into this rule.
+          </p>
+          <p>
+            Return <code>Cache-Control: private, no-store</code> on
+            authenticated organization data by default. Cache only public
+            OpenAPI and documentation assets with an explicit policy. Do not let
+            a CDN cache a response keyed only by URL when authorization changes
+            its contents.
+          </p>
+
+          <h3>Errors</h3>
+          <p>
+            Return <code>application/problem+json</code> using RFC 9457. Keep
+            <code>code</code> stable and machine-readable. Keep
+            <code>detail</code> safe for support logs. Add field pointers for
+            validation errors and a request ID for every failure.
+          </p>
+          <pre><code>HTTP/1.1 422 Unprocessable Content
+Content-Type: application/problem+json
+X-Request-Id: req_opaque
+
+{
+  "type": "https://api.example.com/problems/validation-error",
+  "title": "Request validation failed",
+  "status": 422,
+  "detail": "One or more fields are invalid.",
+  "instance": "/api/v1/products",
+  "code": "validation_error",
+  "requestId": "req_opaque",
+  "errors": [
+    { "pointer": "/unitId", "code": "invalid_reference" }
+  ]
+}</code></pre>
+          <p>
+            Use <code>401</code> for a missing or invalid key,
+            <code>403</code> for a known principal without the required
+            operation permission, <code>404</code> for a missing or foreign
+            object, <code>409</code> for a state or idempotency conflict,
+            <code>412</code> for stale concurrency state, <code>422</code> for
+            valid JSON that fails request validation, and <code>429</code> for a
+            rate limit. Map a structured Convex domain code to each public
+            problem type. Do not compare Danish error messages to choose an HTTP
+            status. Treat an unrecognized domain error as a generic
+            <code>500</code> with a request ID. Never return stack traces, raw
+            Convex errors, provider payloads, or Better Auth records.
+          </p>
+
+          <h3>Idempotency</h3>
+          <p>
+            Require <code>Idempotency-Key</code> for every
+            <code>POST</code> that creates a resource or runs a side-effecting
+            command. Scope a record by organization ID, API-key ID, operation
+            ID, and idempotency key. Store a canonical request hash, completion
+            state, HTTP status, and response for 24 hours. The first mutation
+            must claim the key in the same transaction as the business effect.
+          </p>
+          <ul>
+            <li>The same key and request hash return the stored response.</li>
+            <li>
+              The same key with a different request hash returns
+              <code>409 Conflict</code>.
+            </li>
+            <li>
+              A concurrent request for an operation still in progress returns a
+              documented conflict response with <code>Retry-After</code>.
+            </li>
+            <li>
+              Transfer, Waste, Staff food, and bad delivery creation remain
+              private until this behavior covers their stock and scheduled side
+              effects.
+            </li>
+          </ul>
+          <p>
+            The IETF <code>Idempotency-Key</code> document is still a work in
+            progress. Document the app's exact behavior in OpenAPI instead of
+            claiming standards compliance.
+          </p>
+
+          <h3>Limits and browser access</h3>
+          <p>
+            Reject JSON bodies above 1 MB before parsing. Keep files on
+            domain-specific upload flows. Start with configurable limits of 120
+            requests per minute for normal operations, 30 mutations per minute,
+            and 5 expensive export or sync requests per minute. Confirm these
+            values with load checks before launch. Use Better Auth's persistent
+            per-key limit during credential verification and the existing Convex
+            rate-limiter component for limits scoped by organization, API-key
+            ID, and operation. Do not use process memory on Vercel. Return the
+            documented limit, remaining count, reset time, and
+            <code>Retry-After</code> on <code>429</code>.
+          </p>
+          <p>
+            Do not enable permissive CORS. Server-to-server clients do not need
+            it. If the hosted documentation gains a request console, allow only
+            that known origin and the required methods and headers.
+          </p>
+        </section>
+
+        <section aria-labelledby="credentials-heading">
+          <h2 id="credentials-heading">
+            Credential lifecycle and administration
+          </h2>
+
+          <h3>Management permission</h3>
+          <p>
+            Add <code>apiKeys.manage</code> to
+            <code>lib/auth-permissions.ts</code>. Grant it to
+            <code>Administrator</code> by default. Custom roles may receive it.
+            <code>Manager</code> and <code>Medlem</code> do not receive it by
+            default. Stored <code>rolePermissions</code> override role defaults
+            today. Do not silently insert this new permission into an
+            organization's explicit override. Report affected organizations
+            before rollout and require an authorized role manager to grant it.
+          </p>
+          <p>
+            Enable the Better Auth plugin's <code>apiKey</code> actions so its
+            endpoints can run, then guard create, list, read, update, disable,
+            and delete paths with a Better Auth hook that loads the current
+            human session's Convex permission context and requires
+            <code>apiKeys.manage</code>. Follow the existing member-management
+            middleware pattern in <code>convex/auth.ts</code>. Better Auth's
+            static access control only opens the transport action; the Convex
+            permission check is authoritative for built-in and custom roles. Key
+            administration remains a human-session feature in v1, and
+            <code>apiKeys.manage</code> is not a grantable API-key permission.
+          </p>
+
+          <h3>Self-service flow</h3>
+          <ol>
+            <li>
+              Add an API-key page under the existing
+              <strong>Administration</strong> area. Use shadcn components and
+              Danish interface text.
+            </li>
+            <li>
+              Ask for a name, an expiry no later than one year, an existing role
+              profile, a subset of its app permissions, and optional location
+              access.
+            </li>
+            <li>
+              Check that every grant is within the administrator's effective
+              access.
+            </li>
+            <li>
+              Create the Better Auth organization key and its Convex policy as
+              one coordinated operation. If the second write fails, revoke the
+              first result.
+            </li>
+            <li>
+              Show the raw key once. Never return it from list or detail
+              operations.
+            </li>
+            <li>
+              List the key ID, prefix, name, creator, created time, expiry, last
+              use, permissions, locations, and status.
+            </li>
+            <li>
+              Rotate by creating a replacement before revoking the old key. Do
+              not change a secret in place.
+            </li>
+          </ol>
+
+          <h3>Audit and telemetry</h3>
+          <p>
+            Write durable audit records for key creation, policy changes,
+            rotation, disablement, and revocation. Treat each API request as key
+            use. Update Better Auth's last-request value and emit structured
+            request telemetry. Do not write every read request into the durable
+            organization audit table unless retention and volume have been
+            designed for it.
+          </p>
+          <pre><code>type AuditActor =
+  | {
+      kind: "user";
+      organizationId: string;
+      userId: string;
+      name: string;
+    }
+  | {
+      kind: "apiKey";
+      organizationId: string;
+      apiKeyId: string;
+      name: string;
+    };</code></pre>
+          <p>
+            Widen <code>auditLog</code> before machine writes: add
+            <code>actorKind</code> and <code>actorApiKeyId</code>, make
+            <code>actorUserId</code> temporarily optional, and keep
+            <code>actorName</code>. Interpret legacy rows with an
+            <code>actorUserId</code> and no kind as users, backfill
+            <code>actorKind: "user"</code>, then narrow the schema so every new
+            row has exactly the ID required by its actor kind. Update
+            <code>recordAudit</code> to accept only the union above. Do not
+            place an API-key ID in <code>actorUserId</code>.
+          </p>
+          <p>
+            Each request log contains the request ID, API-key ID, organization
+            ID, operation ID, outcome, status, latency, response size, and
+            rate-limit result. Redact the raw key, authorization header, request
+            bodies, signed upload URLs, and provider secrets.
+          </p>
+
+          <h3>Human-bound rules</h3>
+          <p>
+            An API key is not a Bruger. It cannot satisfy a rule that requires
+            the same human, a different human, a password confirmation, or a
+            personal session. Map each such operation deliberately. For example,
+            expose manager voiding with an audit reason instead of "undo my
+            Waste," and do not let a service principal satisfy second-person Own
+            Check approval. Keep an operation private until the domain has a
+            machine-safe rule.
+          </p>
+          <p>
+            Inventory domain fields such as <code>createdBy</code>,
+            <code>performedBy</code>, <code>responsibleUserId</code>, and
+            <code>actorUserId</code> before exposing each write. If the field
+            means a human, reject a machine principal. If it records a generic
+            creator, widen it to an explicit principal kind and ID before
+            launch. Do not overload a user field with an API-key ID.
+          </p>
+        </section>
+
+        <section aria-labelledby="coverage-heading">
+          <h2 id="coverage-heading">Resource coverage and release order</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Domain</th>
+                  <th scope="col">Public shape</th>
+                  <th scope="col">Phase</th>
+                  <th scope="col">Rule that must survive</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Locations</td>
+                  <td>CRUD plus opening-hours update</td>
+                  <td class="phase">Phase 1</td>
+                  <td>
+                    Deletion remains blocked by operational history, stock,
+                    employees, kiosk accounts, and integrations.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Products</td>
+                  <td>
+                    CRUD plus archive, restore, images, and separate import
+                  </td>
+                  <td class="phase">Phase 1</td>
+                  <td>
+                    Delete only archived products that pass reference checks.
+                    Preserve stock and Count and Waste effects.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Categories, units, markets, legal entities, and operators
+                  </td>
+                  <td>CRUD plus the existing unit-merge command</td>
+                  <td class="phase">Phase 1</td>
+                  <td>
+                    Reject deletion while in use. Treat unit merge as a
+                    cross-resource transaction.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Transfers</td>
+                  <td>CRUD and export</td>
+                  <td class="phase">Phase 2</td>
+                  <td>
+                    Both locations must belong to the organization. Keep
+                    permission checks, locks, stock effects, and idempotent
+                    creation. Selected and operator location scopes do not
+                    restrict Transfers under the current rule.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Dashboards and custom metrics</td>
+                  <td>
+                    CRUD, duplicate, reorder, preview, and read-only metric
+                    results
+                  </td>
+                  <td class="phase">Phase 2</td>
+                  <td>
+                    Keep scope, sales sensitivity, optimistic concurrency,
+                    default-dashboard, and in-use metric rules.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Sales</td>
+                  <td>Read-only stored orders, lines, and daily aggregates</td>
+                  <td class="phase">Phase 2</td>
+                  <td>
+                    Keep provider-agnostic tables, location scope, date limits,
+                    and sensitive-data permissions. No provider API reads.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Waste</td>
+                  <td>Create, list, export, and manager void with reason</td>
+                  <td class="phase">Phase 3</td>
+                  <td>
+                    No hard delete. Preserve stock, statistics, undo windows,
+                    actor rules, and idempotency.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Count and stock</td>
+                  <td>
+                    Read state, set quantity, submit Count, and read-only stock
+                  </td>
+                  <td class="phase">Phase 3</td>
+                  <td>
+                    Keep Count windows, locks, one-way submission,
+                    reconciliation, and location scope.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Staff food</td>
+                  <td>
+                    Session, checkout, void, rule management, and export
+                    commands
+                  </td>
+                  <td class="phase">Phase 3</td>
+                  <td>
+                    Define a machine-safe employee and actor rule before writes.
+                    Preserve stock and undo constraints.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Bad deliveries</td>
+                  <td>
+                    Create, list, get, export, void, and retry-notice commands
+                  </td>
+                  <td class="phase">Phase 3</td>
+                  <td>
+                    Preserve attachment ownership, optional stock reversal,
+                    email scheduling, audit reasons, and idempotency.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Own Check entries and templates</td>
+                  <td>
+                    Submit, revise, correct, approve, export, version, archive,
+                    and restore
+                  </td>
+                  <td class="phase">Phase 3</td>
+                  <td>
+                    Keep append-only revisions, immutable approvals,
+                    second-person rules, rate limits, and existing client
+                    request IDs.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Employees and schedules</td>
+                  <td>
+                    Read-only cached resources plus an authorized sync command
+                  </td>
+                  <td class="phase">Phase 3</td>
+                  <td>
+                    Workfeed owns these records. Do not present local create,
+                    update, or delete operations.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Custom roles and API access policies</td>
+                  <td>
+                    Custom-role CRUD, permission update, and location-access
+                    update through explicit Convex operations
+                  </td>
+                  <td class="phase">Phase 4</td>
+                  <td>
+                    Keep registered roles, audit reasons, creator grant limits,
+                    and separation between Better Auth and app permissions.
+                    Block custom-role deletion while an API key references it.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Members, invitations, user accounts, passwords, and sessions
+                  </td>
+                  <td>Human administration only; no public REST operations</td>
+                  <td class="phase">Excluded from v1</td>
+                  <td>
+                    An organization API key cannot call Better Auth endpoints
+                    that require a user session. A later release needs a
+                    separate machine-safe command design and last-administrator
+                    analysis.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Settings, branding, sidebar, and kiosk configuration</td>
+                  <td>Read and update machine-safe configuration</td>
+                  <td class="phase">Phase 4</td>
+                  <td>
+                    Keep organization permission checks, asset ownership,
+                    defined customization options, and domain-specific
+                    validation.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Kiosk accounts, passwords, and session commands</td>
+                  <td>Human administration only; no public REST operations</td>
+                  <td class="phase">Excluded from v1</td>
+                  <td>
+                    Password confirmation, session state, and storage cleanup
+                    never sit behind generic PATCH or an organization API key.
+                  </td>
+                </tr>
+                <tr>
+                  <td>OnlinePOS and Workfeed integration settings</td>
+                  <td>
+                    Connect, disconnect, enable, mapping, and sync commands
+                  </td>
+                  <td class="phase">Phase 4</td>
+                  <td>
+                    Never return credentials or raw provider data. Preserve
+                    all-location checks and destructive disconnect confirmation.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Feedback</td>
+                  <td>
+                    Create-only submission and restricted settings reads and
+                    updates
+                  </td>
+                  <td class="phase">Phase 4</td>
+                  <td>
+                    Keep area permission, user rate limit, and internal
+                    asynchronous delivery.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Files</td>
+                  <td>Domain-specific upload and attach commands only</td>
+                  <td class="phase">With owner</td>
+                  <td>
+                    A storage ID is never authority. Validate organization, MIME
+                    type, size, and owning record.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Dashboard shares</td>
+                  <td>Authenticated create, list, and revoke commands</td>
+                  <td class="phase">Separate design</td>
+                  <td>
+                    Do not mix public share-token reads into organization
+                    API-key routes without a separate threat review.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Audit log, raw provider payloads, Better Auth tables,
+                    arbitrary Convex calls, and internal sync functions
+                  </td>
+                  <td>Excluded</td>
+                  <td class="phase">Not in v1</td>
+                  <td>
+                    Add a dedicated paginated audit query before any future
+                    audit read API. Keep all other internals private.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section aria-labelledby="implementation-heading">
+          <h2 id="implementation-heading">Implementation sequence</h2>
+
+          <div class="work-package">
+            <h3>0. Prove Better Auth and Convex compatibility</h3>
+            <p>
+              <span class="label">Goal</span>Prove organization-key lifecycle
+              and a non-human Convex identity without production migration.
+            </p>
+            <p>
+              <span class="label">Inspect</span><code>package.json</code>,
+              <code>convex/auth.ts</code>, <code>convex/auth.config.ts</code>,
+              <code>convex/betterAuth/generatedSchema.ts</code>,
+              <code>lib/auth-server.ts</code>, and the installed adapter peer
+              ranges.
+            </p>
+            <p>
+              <span class="label">Work</span>Freeze a supported exact version of
+              <code>@better-auth/api-key</code> with the lockfile-installed
+              Better Auth 1.6.15, or prove the smallest coordinated Better Auth
+              and Convex adapter upgrade. Generate the plugin schema in a
+              disposable branch. Prove that the Next.js server can call the
+              plugin's verification API without a human session and without
+              exposing a token-mint endpoint. Issue, verify, disable, expire,
+              and revoke an organization key. Keep the existing
+              <code>applicationID: "convex"</code> provider and add a disposable
+              RS256 provider with <code>applicationID: "rest-api-v1"</code>.
+              Publish only its public JWKS and prove that a token signed only in
+              Next.js with the required issuer, audience, subject, and 30-second
+              expiry reaches <code>ctx.auth.getUserIdentity()</code> with a
+              distinct principal kind. If the bridge imports <code>jose</code>,
+              add it as a direct dependency instead of relying on the adapter's
+              transitive copy.
+            </p>
+            <p>
+              <span class="label">Evidence</span>A small executable proof shows
+              valid access, immediate disabled-key rejection on the next public
+              request, no new machine user or session row, and unchanged human
+              login and Convex calls.
+            </p>
+            <p>
+              <span class="label">Stop</span>If the supported versions cannot
+              provide organization keys plus the Convex principal bridge, stop.
+              Record the exact incompatibility and request a dependency
+              decision. Do not proceed with fake users or a custom credential
+              database.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>1. Add the shared API contract</h3>
+            <p>
+              <span class="label">Goal</span>Make every endpoint use one public
+              contract for parsing, success responses, errors, pagination,
+              request IDs, and limits.
+            </p>
+            <p>
+              <span class="label">Change</span>Create focused modules under
+              <code>lib/api/v1</code> for request parsing, authentication,
+              principals, a request-local authenticated Convex HTTP client,
+              problem responses, pagination, idempotency, and telemetry. Add
+              <code>app/api/v1</code> route handlers only as each resource
+              ships. Add <code>/.well-known/rest-api-jwks.json</code> for public
+              signing keys. Change <code>proxy.ts</code> so both paths bypass
+              login redirects but <code>/api/v1</code> still performs
+              route-level authorization.
+            </p>
+            <p>
+              <span class="label">Schema</span>Add Zod 4 as a direct dependency
+              only if the compatibility spike confirms that its shared runtime
+              schemas can generate OpenAPI 3.1 JSON cleanly. Otherwise choose
+              one equivalent boundary-schema tool. Do not maintain separate
+              handwritten request validators and OpenAPI schemas.
+            </p>
+            <p>
+              <span class="label">Behavior</span>Enforce JSON content type, 1 MB
+              bodies, unknown-field rejection, stable DTOs, request IDs, cursor
+              limits, English problem details, safe caching headers, and
+              restrictive CORS. Add one mapper from structured domain codes to
+              HTTP problems. Unknown errors become a generic <code>500</code>.
+            </p>
+            <p>
+              <span class="label">Evidence</span>A minimal authenticated
+              <code>GET /api/v1/me</code> or capability endpoint returns the key
+              ID, organization metadata, effective permissions, and location
+              scope without exposing Better Auth or Convex records. Missing
+              credentials return JSON <code>401</code>, never an HTML redirect.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>2. Add service-principal authorization</h3>
+            <p>
+              <span class="label">Goal</span>Make Convex enforce the same
+              organization, permission, and location rules for both principal
+              kinds.
+            </p>
+            <p>
+              <span class="label">Change</span>Add API-key policy tables in
+              <code>convex/schema.ts</code>, policy functions in a focused
+              Convex module, the distinct service issuer in
+              <code>convex/auth.config.ts</code>, and normalized principal
+              resolution in <code>convex/lib/auth.ts</code>. Update
+              <code>internal.access.getRoleContext</code> and its validator so
+              actions resolve both principal types. Add private-key rotation
+              instructions and stable structured auth codes. Widen, backfill,
+              and narrow <code>auditLog</code> so
+              <code>convex/lib/audit.ts</code> records a discriminated user or
+              API-key actor.
+            </p>
+            <p>
+              <span class="label">Rules</span>Load policy from the authenticated
+              API-key ID. Resolve the current role and intersect its permissions
+              with the key's stored grant. Validate the required location-policy
+              union and all referenced IDs against the organization. Missing or
+              malformed policy fails closed. Never authorize with organization
+              ID, permissions, role, or locations from request JSON. Use
+              <code>requirePermission</code>, specialized guards, dashboard role
+              checks, and <code>resolveLocationFilter</code> after principal
+              resolution.
+            </p>
+            <p>
+              <span class="label">Safety</span>Review every guard and domain
+              record that assumes <code>userId</code>, <code>sessionId</code>,
+              kiosk state, <code>createdBy</code>, <code>performedBy</code>,
+              <code>responsibleUserId</code>, or a human actor. Reject API
+              principals from human-only operations. Widen principal-neutral
+              creator fields explicitly before machine writes.
+            </p>
+            <p>
+              <span class="label">Evidence</span>A key cannot read a known
+              object from another organization, expand its own locations, use a
+              revoked policy, or call an operation outside its permissions.
+              Human sessions still pass the existing access checks.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>3. Add API-key administration</h3>
+            <p>
+              <span class="label">Goal</span>Let authorized organization
+              administrators create, inspect, rotate, and revoke keys without
+              support intervention.
+            </p>
+            <p>
+              <span class="label">Change</span>Add
+              <code>apiKeys.manage</code> in
+              <code>lib/auth-permissions.ts</code>. Enable Better Auth's
+              organization <code>apiKey</code> actions, then add a hook that
+              requires the current human session's Convex permission for each
+              create, read, update, disable, and delete path. Add a page under
+              <code>app/organization</code> and reuse the existing
+              Administration navigation. Use shadcn components when
+              implementation starts.
+            </p>
+            <p>
+              <span class="label">Behavior</span>Use Danish UI copy. Show a new
+              secret once. Require an expiry within one year. Let the
+              administrator select a current organization role, then reduce its
+              permissions and locations. Exclude human-only permissions such as
+              <code>apiKeys.manage</code> from the key grant. Support
+              overlapping replacement keys. List metadata and last use. Require
+              confirmation for revocation.
+            </p>
+            <p>
+              <span class="label">Security</span>Grant only a role, permission
+              subset, and location scope that fit within the creator's access.
+              Keep organization ownership on the server. Audit every lifecycle
+              and policy change with the human administrator as actor. Inventory
+              explicit role overrides before rollout rather than silently
+              broadening them.
+            </p>
+            <p>
+              <span class="label">Evidence</span>An Administrator can complete
+              rotation without downtime. A user without
+              <code>apiKeys.manage</code> cannot list key metadata or call
+              Better Auth key-management endpoints.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>4. Publish OpenAPI and developer documentation</h3>
+            <p>
+              <span class="label">Goal</span>Publish the exact contract before
+              the first resource endpoint is announced.
+            </p>
+            <p>
+              <span class="label">Change</span>Generate an OpenAPI 3.1 JSON
+              document from the shared boundary schemas. Serve it
+              unauthenticated from <code>/api/v1/openapi.json</code> and render
+              dependency-light documentation at <code>/api/v1/docs</code>. Mark
+              both routes public inside the handler while all resource routes
+              require a key. Add authentication, pagination, idempotency,
+              errors, rate limits, changelog, deprecation, test-organization
+              setup, and support pages.
+            </p>
+            <p>
+              <span class="label">Policy</span>Keep field names, enums,
+              examples, and error explanations in English. Mark required
+              permissions, location behavior, idempotency requirements, and
+              domain side effects on every operation.
+            </p>
+            <p>
+              <span class="label">Compatibility</span>Add only optional fields
+              and endpoints within v1. Put breaking changes in v2. Announce a
+              deprecation at least 12 months before removal with
+              <code>Deprecation</code>, <code>Sunset</code>, and a documentation
+              <code>Link</code> response header.
+            </p>
+            <p>
+              <span class="label">Evidence</span>Every public route and status
+              response appears in the generated document. Every documented
+              operation resolves in the deployed non-production app.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>5. Make public writes retry-safe</h3>
+            <p>
+              <span class="label">Goal</span>Prevent network retries from
+              duplicating created resources, stock movements, notifications,
+              scheduled jobs, or records.
+            </p>
+            <p>
+              <span class="label">Change</span>Add an organization-scoped
+              idempotency table and one Convex helper that claims and completes
+              keys within the business mutation. Apply it to Phase 1 creation
+              first, then to Transfer, Waste, Staff food, and bad delivery
+              creation before those operations become public. Reuse the proven
+              Own Check client-request behavior where its contract fits.
+            </p>
+            <p>
+              <span class="label">Rules</span>Hash normalized validated input,
+              not raw JSON. Do not cache unredacted secrets or signed URLs.
+              Expire records after 24 hours through scheduled cleanup. Return
+              the original status and safe response on a replay.
+            </p>
+            <p>
+              <span class="label">Evidence</span>Concurrent and sequential
+              retries produce one domain effect. Reusing a key with different
+              input returns <code>409</code>. Failed operations can be retried
+              according to a documented state table.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>6. Ship Phase 1 master-data endpoints</h3>
+            <p>
+              <span class="label">Goal</span>Release a useful, lower-risk API
+              group before operational writes.
+            </p>
+            <p>
+              <span class="label">Change</span>Add explicit adapters for
+              locations, products, categories, units, markets, legal entities,
+              and operators. Reuse the typed operations in
+              <code>convex/locations.ts</code>, <code>convex/catalog.ts</code>,
+              and <code>convex/masterData.ts</code>. Add public DTO mappers next
+              to the API contracts.
+            </p>
+            <p>
+              <span class="label">Rules</span>Preserve archive, restore, in-use
+              checks, unit merge, opening hours, stock side effects, idempotent
+              creation, and organization scope. Add stable structured codes for
+              every exposed failure branch. Update one shared client error
+              normalizer so the existing app still shows the Danish message. Map
+              <code>_id</code> to the stable public <code>id</code>. Do not
+              return <code>_creationTime</code>, storage IDs, search helpers, or
+              fields that are not part of the public contract.
+            </p>
+            <p>
+              <span class="label">Sync</span>Add <code>updatedAfter</code> only
+              after each resource has a reliable update timestamp and index.
+              Until then, clients use complete cursor pagination.
+            </p>
+            <p>
+              <span class="label">Evidence</span>A test organization can
+              complete a master-data sync and guarded CRUD cycle. Foreign
+              references, in-use deletes, stale updates, replayed creation,
+              overlarge pages, and unknown fields return stable responses.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>7. Add Phases 2 through 4 by domain</h3>
+            <p>
+              <span class="label">Phase 2</span>Add Transfers, dashboards,
+              custom metrics, and stored sales reads. Keep provider reads out of
+              request paths. Require idempotency for Transfer creation and
+              concurrency checks for dashboard edits.
+            </p>
+            <p>
+              <span class="label">Phase 3</span>Add Waste, Count, Staff food,
+              bad deliveries, Own Checks, employees, and schedules. Model
+              commands rather than table updates. Finish the machine-actor
+              review for each write before exposing it.
+            </p>
+            <p>
+              <span class="label">Phase 4</span>Add custom roles, access
+              policies, machine-safe settings, branding, sidebar and kiosk
+              configuration, feedback, and provider integration commands. Keep
+              Better Auth member, invitation, account, password, and session
+              operations, plus kiosk-account security actions, human-only in v1.
+              A future machine interface for those areas requires separate
+              commands instead of forwarding a key to session-bound Better Auth
+              endpoints.
+            </p>
+            <p>
+              <span class="label">Method</span>For each domain, inventory
+              existing query and mutation rules, define stable DTOs, identify
+              side effects, add the API adapter, update OpenAPI, exercise the
+              acceptance matrix, and announce only that finished operation.
+            </p>
+            <p>
+              <span class="label">Evidence</span>Each published endpoint
+              preserves the app's permission, location, audit, state,
+              pagination, and side-effect rules. No phase expands a previous
+              key's access by default.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>8. Add production controls and public support</h3>
+            <p>
+              <span class="label">Goal</span>Operate the public API without
+              leaking credentials or learning about failures from customers.
+            </p>
+            <p>
+              <span class="label">Change</span>Add structured request telemetry,
+              latency and error metrics by operation, rate-limit metrics,
+              key-revocation audit, dashboards, and alerts. Track 99.9% monthly
+              availability for valid API requests and a p95 latency target of
+              1.5 seconds for normal operations. Exclude documented asynchronous
+              export and sync commands from the latency target. Add an incident
+              publication process and a support channel that accepts request
+              IDs.
+            </p>
+            <p>
+              <span class="label">Vercel</span>Verify request and response size,
+              runtime, duration, memory, concurrency, and regional behavior
+              against the actual production plan. Move long exports and sync
+              work to scheduled Convex operations with polling status.
+            </p>
+            <p>
+              <span class="label">Security</span>Review the published inventory
+              against all OWASP API Security Top 10 categories. Check object
+              authorization, property allowlists, expensive operations,
+              sensitive business flows, caller-supplied URLs, configuration,
+              forgotten endpoints, and provider response validation.
+            </p>
+            <p>
+              <span class="label">Evidence</span>An operator can trace a failed
+              request by ID without seeing a raw key or sensitive body. Alerts
+              detect elevated <code>5xx</code>, latency, auth failures, and
+              rate-limit pressure.
+            </p>
+          </div>
+
+          <div class="work-package">
+            <h3>9. Roll out without a flag day</h3>
+            <p>
+              <span class="label">Goal</span>Keep the application stable while
+              public coverage grows.
+            </p>
+            <p>
+              <span class="label">Sequence</span>Deploy the principal bridge
+              with no public keys. Enable key administration for one test
+              organization. Exercise Phase 1 in a non-production deployment.
+              Enable one production pilot organization. Publish the Phase 1
+              contract. Add later operations only after their gates pass.
+            </p>
+            <p>
+              <span class="label">Rollback</span>Disable public key verification
+              or revoke pilot keys without changing human sessions. Keep route
+              code deployable before navigation and documentation announce an
+              endpoint. Never roll back a published response field or enum value
+              inside v1.
+            </p>
+            <p>
+              <span class="label">Support</span>Publish incidents and contract
+              changes. Do not promise a contractual uptime SLA until operations
+              data supports one.
+            </p>
+            <p>
+              <span class="label">Evidence</span>The pilot can rotate and revoke
+              credentials, complete a full sync, retry safely, and obtain
+              support using request IDs. Human application traffic remains
+              unchanged.
+            </p>
+          </div>
+        </section>
+
+        <section aria-labelledby="acceptance-heading">
+          <h2 id="acceptance-heading">Acceptance and verification</h2>
+
+          <div class="callout warning">
+            <p>
+              <strong>Test authorization gate.</strong> Repository instructions
+              prohibit adding tests unless the user asks for them. A publicly
+              supported contract should have automated contract and
+              authorization checks. Before implementation adds those checks,
+              obtain explicit approval. Until then, use the existing test suite
+              and the manual scenarios below. Do not publicly launch without a
+              repeatable contract check.
+            </p>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Scenario</th>
+                  <th scope="col">Expected result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>No API key or a malformed key</td>
+                  <td>
+                    <span class="pass">Pass</span> The endpoint returns an
+                    English RFC 9457 <code>401</code> response with a request
+                    ID. It never redirects to login or returns HTML.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Expired, disabled, or revoked key</td>
+                  <td>
+                    <span class="pass">Pass</span> The next request fails.
+                    Cached service tokens cannot outlive the documented
+                    few-second internal window.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Known object ID from another organization</td>
+                  <td>
+                    <span class="pass">Pass</span> The endpoint returns
+                    <code>404</code> and does not reveal whether the object
+                    exists.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Key lacks the operation permission</td>
+                  <td>
+                    <span class="pass">Pass</span> Convex rejects the operation
+                    with <code>403</code>. Hiding an endpoint in documentation
+                    or UI is not the control.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Key requests a location outside its scope</td>
+                  <td>
+                    <span class="pass">Pass</span> Existing location rules
+                    reject or filter the request. Transfers remain
+                    organization-wide for a key with
+                    <code>transfers.view</code> or
+                    <code>transfers.manage</code>, matching the current explicit
+                    exception.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Administrator creates a broader key than their own access
+                  </td>
+                  <td>
+                    <span class="pass">Pass</span> The server rejects the role,
+                    permission, or location grant. Request fields cannot
+                    override organization, role, permissions, or location
+                    access.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    A stored key policy has no location branch, malformed IDs,
+                    or too many selected locations
+                  </td>
+                  <td>
+                    <span class="pass">Pass</span> Convex rejects the request
+                    closed. It never defaults the key to all locations or
+                    truncates an operator result.
+                  </td>
+                </tr>
+                <tr>
+                  <td>A referenced role loses permission or is deleted</td>
+                  <td>
+                    <span class="pass">Pass</span> A permission reduction
+                    shrinks the key on its next request. Role deletion is
+                    blocked until all referencing keys change role or are
+                    revoked.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    An API key calls a member, invitation, account, password,
+                    session, or key-management action
+                  </td>
+                  <td>
+                    <span class="pass">Pass</span> No public REST operation
+                    forwards the call. Better Auth's route still requires an
+                    authorized human session.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Key secret is created and later listed</td>
+                  <td>
+                    <span class="pass">Pass</span> The secret appears only in
+                    the creation response. Later reads show safe metadata and
+                    prefix only.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Two identical retry-sensitive requests use one idempotency
+                    key
+                  </td>
+                  <td>
+                    <span class="pass">Pass</span> The API returns the original
+                    response and creates one domain effect.
+                  </td>
+                </tr>
+                <tr>
+                  <td>An idempotency key is reused with different input</td>
+                  <td>
+                    <span class="pass">Pass</span> The endpoint returns a stable
+                    <code>409</code> problem and performs no second effect.
+                  </td>
+                </tr>
+                <tr>
+                  <td>A stale resource version is patched</td>
+                  <td>
+                    <span class="pass">Pass</span> The endpoint returns
+                    <code>412</code> with the current recovery guidance.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Page size exceeds 100 or cursor is invalid</td>
+                  <td>
+                    <span class="pass">Pass</span> The endpoint rejects the
+                    request without an unbounded Convex read.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Request contains an unknown writable field</td>
+                  <td>
+                    <span class="pass">Pass</span> The endpoint returns
+                    <code>422</code>. It does not pass the field to Convex or
+                    Better Auth.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Rate limit is exhausted</td>
+                  <td>
+                    <span class="pass">Pass</span> The endpoint returns
+                    <code>429</code>, documented rate metadata,
+                    <code>Retry-After</code>, and no domain effect.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Count submit or Own Check approve is repeated</td>
+                  <td>
+                    <span class="pass">Pass</span> The domain state machine,
+                    lock, actor rule, and idempotency behavior prevent an
+                    invalid second transition.
+                  </td>
+                </tr>
+                <tr>
+                  <td>API response contains stored Danish business content</td>
+                  <td>
+                    <span class="pass">Pass</span> Field names, enum values, and
+                    error copy are English. Stored names and content are
+                    returned unchanged.
+                  </td>
+                </tr>
+                <tr>
+                  <td>An error reaches logs and the client</td>
+                  <td>
+                    <span class="pass">Pass</span> Both carry the same request
+                    ID. Neither contains a raw key, auth header, stack trace,
+                    sensitive body, storage URL, or provider payload.
+                  </td>
+                </tr>
+                <tr>
+                  <td>A machine-safe write creates an audit entry</td>
+                  <td>
+                    <span class="pass">Pass</span> The row names
+                    <code>actorKind: "apiKey"</code> and its API-key ID. No user
+                    ID is fabricated or overloaded.
+                  </td>
+                </tr>
+                <tr>
+                  <td>OpenAPI and deployed routes are compared</td>
+                  <td>
+                    <span class="pass">Pass</span> Every public operation,
+                    request schema, response schema, status, permission, and
+                    idempotency rule agrees.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Human application login and Convex calls run after principal
+                    changes
+                  </td>
+                  <td>
+                    <span class="pass">Pass</span> Existing Better Auth sessions
+                    and current access tests retain their behavior.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Production limits are exercised</td>
+                  <td>
+                    <span class="pass">Pass</span> Body, page, response,
+                    duration, memory, and concurrency limits fail safely before
+                    the public launch.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Existing checks</h3>
+          <pre><code>npx tsc --noEmit
+npm run lint
+npm test
+npm run build</code></pre>
+          <p>
+            Also exercise the acceptance matrix against a non-production
+            deployment and a test organization. Capture the request and
+            response, request ID, Convex outcome, audit entry, and telemetry
+            record for each scenario.
+          </p>
+        </section>
+
+        <section aria-labelledby="compatibility-heading">
+          <h2 id="compatibility-heading">Compatibility and change policy</h2>
+          <ul>
+            <li>
+              Keep additive endpoints and optional response fields within v1
+              when clients are required to ignore unknown optional data. Mark
+              each enum as closed or extensible in OpenAPI. A new value in a
+              closed enum is a breaking change and belongs in v2.
+            </li>
+            <li>
+              Do not remove or rename a field, change its type or meaning,
+              tighten a previously valid input, or change pagination semantics
+              inside v1.
+            </li>
+            <li>
+              Put a breaking contract in <code>/api/v2</code>. Run v1 and v2
+              together for at least 12 months after the deprecation notice.
+            </li>
+            <li>
+              Send the RFC 9745 <code>Deprecation</code> header, RFC 8594
+              <code>Sunset</code> header, and a <code>Link</code> to migration
+              documentation on affected responses.
+            </li>
+            <li>
+              Keep the changelog factual. Name the first affected date, the last
+              supported date, the replacement operation, and any required client
+              action.
+            </li>
+            <li>
+              Do not publish an SDK until client usage identifies a language
+              worth maintaining. The OpenAPI document remains the
+              language-neutral contract.
+            </li>
+          </ul>
+        </section>
+
+        <section aria-labelledby="boundaries-heading">
+          <h2 id="boundaries-heading">
+            Explicit boundaries and remaining gates
+          </h2>
+          <ul>
+            <li>
+              No raw Convex table access, dynamic function dispatch, GraphQL
+              layer, or duplicate database.
+            </li>
+            <li>
+              No synthetic Better Auth users or long-lived sessions for
+              machines.
+            </li>
+            <li>
+              No public forwarding of organization keys to Better Auth member,
+              invitation, account, password, session, or API-key administration
+              endpoints. Those remain human-session operations in v1.
+            </li>
+            <li>
+              No caller-selected organization, role, permission, actor, or
+              unrestricted location claim.
+            </li>
+            <li>
+              No generic hard delete for records that the app archives, voids,
+              reverses, versions, locks, or retains for audit.
+            </li>
+            <li>
+              No create, update, or delete API for provider-owned sales,
+              employees, or schedules.
+            </li>
+            <li>
+              No raw OnlinePOS or Workfeed responses, provider secrets, Better
+              Auth tables, internal sync functions, or arbitrary storage IDs.
+            </li>
+            <li>
+              No server-side fetch to a caller-supplied URL. Provider endpoints
+              remain fixed by trusted integration configuration.
+            </li>
+            <li>
+              No generic file API. Each owning domain controls upload,
+              validation, attachment, access, and cleanup.
+            </li>
+            <li>
+              No public audit-log read until a bounded, indexed,
+              organization-scoped admin query exists.
+            </li>
+            <li>
+              No public dashboard-share reader in the organization API-key
+              contract without a separate share-token design.
+            </li>
+            <li>
+              No webhooks, OAuth client credentials, generated SDKs, dedicated
+              sandbox service, or contractual uptime SLA in v1.
+            </li>
+          </ul>
+
+          <div class="callout warning">
+            <p>
+              <strong
+                >Engineering gates remain, product decisions do not.</strong
+              >
+              Work package 0 must prove the dependency set and service-principal
+              transport. Production Vercel limits must be measured. Automated
+              contract and security checks need explicit user authorization
+              under the repository rules. These gates may stop a release, but
+              they do not reopen the API audience, scope, credential, language,
+              support, or compatibility decisions.
+            </p>
+          </div>
+        </section>
+
+        <section aria-labelledby="sources-heading">
+          <h2 id="sources-heading">Sources</h2>
+          <ul>
+            <li>
+              Repository: <code>package.json</code>, <code>proxy.ts</code>,
+              <code>app/api</code>, <code>lib/auth-server.ts</code>,
+              <code>lib/auth-permissions.ts</code>, <code>convex/auth.ts</code>,
+              <code>convex/auth.config.ts</code>, <code>convex/http.ts</code>,
+              <code>convex/lib/auth.ts</code>, <code>convex/lib/audit.ts</code>,
+              <code>convex/lib/rateLimits.ts</code>, domain modules, and
+              <code>convex/_generated/ai/guidelines.md</code>.
+            </li>
+            <li>
+              <a
+                href="https://nextjs.org/docs/app/getting-started/route-handlers"
+                >Next.js route handlers</a
+              >
+              and the installed Next.js 16 documentation under
+              <code>node_modules/next/dist/docs</code>.
+            </li>
+            <li>
+              <a href="https://better-auth.com/docs/plugins/api-key"
+                >Better Auth API-key plugin</a
+              >, including
+              <a href="https://better-auth.com/docs/plugins/api-key/advanced"
+                >organization ownership and the session-mocking limitation</a
+              >.
+            </li>
+            <li>
+              <a
+                href="https://labs.convex.dev/better-auth/features/local-install"
+                >Convex Better Auth local installation</a
+              >,
+              <a href="https://docs.convex.dev/auth/advanced/custom-jwt"
+                >Convex custom JWT authentication</a
+              >, and the pinned adapter source.
+            </li>
+            <li>
+              <a href="https://spec.openapis.org/oas/">OpenAPI Specification</a
+              >.
+            </li>
+            <li>
+              <a href="https://www.rfc-editor.org/rfc/rfc9110.html"
+                >RFC 9110, HTTP Semantics</a
+              >
+              and
+              <a href="https://www.rfc-editor.org/rfc/rfc9457.html"
+                >RFC 9457, Problem Details for HTTP APIs</a
+              >.
+            </li>
+            <li>
+              <a href="https://www.rfc-editor.org/rfc/rfc9745.html"
+                >RFC 9745, Deprecation header</a
+              >
+              and
+              <a href="https://www.rfc-editor.org/rfc/rfc8594.html"
+                >RFC 8594, Sunset header</a
+              >.
+            </li>
+            <li>
+              <a
+                href="https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/"
+                >IETF Idempotency-Key draft</a
+              >. The draft is cited only as work in progress.
+            </li>
+            <li>
+              <a
+                href="https://owasp.org/API-Security/editions/2023/en/0x03-introduction/"
+                >OWASP API Security Top 10 2023</a
+              >.
+            </li>
+          </ul>
+        </section>
+
+        <footer>
+          This plan reflects the completed decision interview. Start with the
+          compatibility spike. Do not publish a resource until its
+          authorization, retry, domain-state, documentation, and operational
+          gates pass.
+        </footer>
+      </article>
+
+      <nav aria-label="Document sections">
+        <strong>On this page</strong>
+        <a href="#summary-heading">Outcome</a>
+        <a href="#current-heading">Current state</a>
+        <a href="#architecture-heading">Request flow</a>
+        <a href="#contract-heading">HTTP contract</a>
+        <a href="#credentials-heading">Credentials</a>
+        <a href="#coverage-heading">Coverage</a>
+        <a href="#implementation-heading">Implementation</a>
+        <a href="#acceptance-heading">Acceptance</a>
+        <a href="#compatibility-heading">Compatibility</a>
+        <a href="#boundaries-heading">Boundaries</a>
+        <a href="#sources-heading">Sources</a>
+      </nav>
+    </main>
+  </body>
+</html>

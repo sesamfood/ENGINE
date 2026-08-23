@@ -10,6 +10,7 @@ import {
 } from "./_generated/server";
 import {
   requireAllLocationAccess,
+  requireHumanPrincipal,
   requireIntegrationManager,
   requireLocationAccess,
   requireOrganization,
@@ -350,7 +351,8 @@ export const connect = action({
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     requireAllLocationAccess(auth);
-    const { organizationId, userId, userName } = auth;
+    const human = requireHumanPrincipal(auth);
+    const { organizationId, userName } = auth;
     const apiKey = requireCredential(args.apiKey, "Workfeed API-nøgle", 500);
     const companyId = requireCredential(
       args.companyId,
@@ -362,7 +364,7 @@ export const connect = action({
       organizationId,
       apiKey,
       companyId,
-      actorUserId: userId,
+      actorUserId: human.userId,
       actorName: userName,
     });
     return { departmentCount: departments.length };
