@@ -14,8 +14,8 @@ Idempotency-Key: import-location-2026-08-23-001
 ```
 
 Authenticated responses use English fields and errors, include a request ID,
-and set `Cache-Control: private, no-store`. Public OpenAPI 3.1 and HTML docs
-live at `/api/v1/openapi.json` and `/api/v1/docs`.
+and set `Cache-Control: private, no-store`. Public OpenAPI 3.1 lives at
+`/api/v1/openapi.json`; `/api/v1/docs` renders it with Scalar.
 
 ## Runtime boundary
 
@@ -72,7 +72,7 @@ app/api/v1/**/route.ts
 
 lib/api/v1/
   executor, request parsing, key verification, JWT signing, problems,
-  pagination, descriptors, public schemas, DTO mapping, OpenAPI, and docs
+  pagination, descriptors, public schemas, DTO mapping, and OpenAPI
 
 convex/rest/
   named REST-safe queries and mutations with explicit validators

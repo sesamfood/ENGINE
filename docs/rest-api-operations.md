@@ -56,8 +56,9 @@ support correlation. Never ask a client to send its key secret.
 ## Release policy
 
 The deployed OpenAPI document at `/api/v1/openapi.json` is the public source of
-truth. `/api/v1/docs` explains authentication, pagination, idempotency, errors,
-limits, compatibility, and support.
+truth. `/api/v1/docs` renders that document as an interactive Scalar reference.
+General authentication, pagination, idempotency, error, limit, compatibility,
+and support guidance belongs in the OpenAPI document.
 
 Changes within `/api/v1` are additive. Breaking changes use a new major URL.
 Before removing a published operation, give at least 12 months' notice and add

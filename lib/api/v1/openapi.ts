@@ -205,8 +205,24 @@ export function createOpenApiDocument() {
       title: "Organization REST API",
       version: "1.0.0",
       summary: "Public organization API for supported restaurant-chain operations.",
-      description:
+      description: [
         "A versioned, organization-scoped API. Version 1 is additive: breaking changes are published under a new major URL.",
+        "",
+        "## Authentication",
+        "Create an API key in **Administration → API**, then send it as `Authorization: Bearer eng_…`. Keys belong to one organization and carry a role, a reduced permission set, a location policy, and an expiry. Keep keys in server-side secret storage; never embed them in browser or mobile application code.",
+        "",
+        "## Requests and synchronization",
+        "Send JSON request bodies with `Content-Type: application/json`. Bodies are limited to 1 MB and unknown fields are rejected. Collections use opaque cursors, default to 50 records, and accept at most 100. Follow `page.nextCursor` until `page.hasMore` is false. Full cursor reconciliation is the supported synchronization contract; `updatedAfter` is not supported.",
+        "",
+        "## Safe writes",
+        "Creating and side-effecting POST operations require `Idempotency-Key`. Identical retries replay the first response for 24 hours; reusing the key with changed input returns 409. Product updates, archive, restore, and deletion require `If-Match` with the current quoted `version`. A stale version returns 412 and a missing header returns 428.",
+        "",
+        "## Errors and limits",
+        "Failures use `application/problem+json` with a stable `code` and `requestId`. Use `code` for program logic and include the request ID in support reports. Organization keys allow 120 requests per 60-second key window and 30 mutations per minute. A 429 response includes `Retry-After`.",
+        "",
+        "## Compatibility",
+        "Version 1 receives additive endpoints and optional fields. Breaking request or response changes move to a new major URL. Published operations receive at least 12 months' notice before removal.",
+      ].join("\n"),
       contact: {
         name: "API support",
         ...(process.env.REST_API_SUPPORT_EMAIL
@@ -236,6 +252,5 @@ export function createOpenApiDocument() {
         },
       },
     },
-    externalDocs: { description: "Developer guide", url: "/api/v1/docs" },
   };
 }
