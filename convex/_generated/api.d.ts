@@ -9,6 +9,8 @@
  */
 
 import type * as access from "../access.js";
+import type * as apiIdempotency from "../apiIdempotency.js";
+import type * as apiKeys from "../apiKeys.js";
 import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as badDeliveries from "../badDeliveries.js";
@@ -36,6 +38,7 @@ import type * as lib_customMetricExecutor from "../lib/customMetricExecutor.js";
 import type * as lib_dashboardMetrics from "../lib/dashboardMetrics.js";
 import type * as lib_dashboardShareCrypto from "../lib/dashboardShareCrypto.js";
 import type * as lib_dashboardValidators from "../lib/dashboardValidators.js";
+import type * as lib_idempotency from "../lib/idempotency.js";
 import type * as lib_linear from "../lib/linear.js";
 import type * as lib_masterData from "../lib/masterData.js";
 import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
@@ -51,6 +54,7 @@ import type * as lib_salesRollup from "../lib/salesRollup.js";
 import type * as lib_stock from "../lib/stock.js";
 import type * as lib_timeZone from "../lib/timeZone.js";
 import type * as lib_workfeedApi from "../lib/workfeedApi.js";
+import type * as lib_workfeedSyncRequest from "../lib/workfeedSyncRequest.js";
 import type * as locations from "../locations.js";
 import type * as masterData from "../masterData.js";
 import type * as navigation from "../navigation.js";
@@ -61,6 +65,13 @@ import type * as ownCheckDocumentation from "../ownCheckDocumentation.js";
 import type * as ownCheckOverview from "../ownCheckOverview.js";
 import type * as ownCheckTemplates from "../ownCheckTemplates.js";
 import type * as ownChecks from "../ownChecks.js";
+import type * as rest_catalog from "../rest/catalog.js";
+import type * as rest_employees from "../rest/employees.js";
+import type * as rest_lib from "../rest/lib.js";
+import type * as rest_locations from "../rest/locations.js";
+import type * as rest_masterData from "../rest/masterData.js";
+import type * as rest_me from "../rest/me.js";
+import type * as rest_sales from "../rest/sales.js";
 import type * as sales from "../sales.js";
 import type * as staffFood from "../staffFood.js";
 import type * as storageCleanup from "../storageCleanup.js";
@@ -77,6 +88,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  apiIdempotency: typeof apiIdempotency;
+  apiKeys: typeof apiKeys;
   audit: typeof audit;
   auth: typeof auth;
   badDeliveries: typeof badDeliveries;
@@ -104,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dashboardMetrics": typeof lib_dashboardMetrics;
   "lib/dashboardShareCrypto": typeof lib_dashboardShareCrypto;
   "lib/dashboardValidators": typeof lib_dashboardValidators;
+  "lib/idempotency": typeof lib_idempotency;
   "lib/linear": typeof lib_linear;
   "lib/masterData": typeof lib_masterData;
   "lib/onlinePosApi": typeof lib_onlinePosApi;
@@ -119,6 +133,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stock": typeof lib_stock;
   "lib/timeZone": typeof lib_timeZone;
   "lib/workfeedApi": typeof lib_workfeedApi;
+  "lib/workfeedSyncRequest": typeof lib_workfeedSyncRequest;
   locations: typeof locations;
   masterData: typeof masterData;
   navigation: typeof navigation;
@@ -129,6 +144,13 @@ declare const fullApi: ApiFromModules<{
   ownCheckOverview: typeof ownCheckOverview;
   ownCheckTemplates: typeof ownCheckTemplates;
   ownChecks: typeof ownChecks;
+  "rest/catalog": typeof rest_catalog;
+  "rest/employees": typeof rest_employees;
+  "rest/lib": typeof rest_lib;
+  "rest/locations": typeof rest_locations;
+  "rest/masterData": typeof rest_masterData;
+  "rest/me": typeof rest_me;
+  "rest/sales": typeof rest_sales;
   sales: typeof sales;
   staffFood: typeof staffFood;
   storageCleanup: typeof storageCleanup;

@@ -262,7 +262,7 @@ function followUpLabel(value: Doc<"ownCheckEntries">["followUp"]) {
 
 export async function appendRevision(
   ctx: MutationCtx,
-  actor: AuditActor,
+  actor: AuditActor & { userId: string },
   entry: Doc<"ownCheckEntries">,
   next: OwnCheckEntryState,
   kind: RevisionKind,

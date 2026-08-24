@@ -3,7 +3,11 @@ import { dashboardDatasets } from "../lib/dashboard/datasets";
 import { hasPermission } from "../lib/auth-permissions";
 import type { CustomMetricSpec, VisualizationId } from "../lib/dashboard/types";
 import { mutation, query } from "./_generated/server";
-import { requireDashboardManager, requireDashboardViewer } from "./lib/auth";
+import {
+  requireDashboardManager,
+  requireDashboardViewer,
+  requireHumanPrincipal,
+} from "./lib/auth";
 import {
   customMetricSpecValidator,
   metricResultValidator,
@@ -274,6 +278,7 @@ export const preview = query({
   returns: metricResultValidator,
   handler: async (ctx, args) => {
     const auth = await requireDashboardManager(ctx);
+    const human = requireHumanPrincipal(auth);
     validateCustomMetricSpec(args.spec, auth.granularity);
     requireDatasetPermissions(auth, args.spec);
     if (
@@ -297,7 +302,7 @@ export const preview = query({
       auth.locationScope,
       {
         granularity: auth.granularity,
-        anonymousSeed: auth.sessionId,
+        anonymousSeed: human.sessionId,
         salesDetailAllowed:
           hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
           hasPermission(auth.role, auth.permissions, "sales.viewDetail"),

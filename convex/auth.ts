@@ -3,6 +3,7 @@ import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
+import { apiKey } from "@better-auth/api-key";
 import { organization } from "better-auth/plugins/organization";
 import { username } from "better-auth/plugins/username";
 import {
@@ -308,7 +309,20 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
           "/organization/remove-member",
           "/organization/cancel-invitation",
         ]);
-        if (!authCtx.path || !memberApiPaths.has(authCtx.path)) return;
+        const apiKeyManagementPaths = new Set([
+          "/api-key/create",
+          "/api-key/get",
+          "/api-key/update",
+          "/api-key/delete",
+          "/api-key/list",
+        ]);
+        if (
+          !authCtx.path ||
+          (!memberApiPaths.has(authCtx.path) &&
+            !apiKeyManagementPaths.has(authCtx.path))
+        ) {
+          return;
+        }
         const session = await getSessionFromCtx(authCtx).catch(() => null);
         if (!session) return;
         if (session.session.kioskModeEnabled) {
@@ -330,9 +344,14 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
           internal.access.getMemberPermissionContext,
           { organizationId, userId: session.user.id },
         );
-        if (!roleContext.permissions.includes("members.manage")) {
+        const permission = apiKeyManagementPaths.has(authCtx.path)
+          ? "apiKeys.manage"
+          : "members.manage";
+        if (!roleContext.permissions.includes(permission)) {
           throw new APIError("FORBIDDEN", {
-            message: "Du har ikke adgang til at administrere brugere",
+            message: apiKeyManagementPaths.has(authCtx.path)
+              ? "Du har ikke adgang til at administrere API-nøgler"
+              : "Du har ikke adgang til at administrere brugere",
           });
         }
       }),
@@ -408,6 +427,31 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             to: data.email,
             ...email,
           });
+        },
+      }),
+      apiKey({
+        configId: "rest-api-v1",
+        references: "organization",
+        defaultPrefix: "eng_",
+        defaultKeyLength: 64,
+        requireName: true,
+        minimumNameLength: 1,
+        maximumNameLength: 100,
+        enableMetadata: false,
+        enableSessionForAPIKeys: false,
+        startingCharactersConfig: {
+          shouldStore: true,
+          charactersLength: 12,
+        },
+        keyExpiration: {
+          defaultExpiresIn: 90 * 24 * 60 * 60,
+          minExpiresIn: 1,
+          maxExpiresIn: 365,
+        },
+        rateLimit: {
+          enabled: true,
+          timeWindow: 60_000,
+          maxRequests: 120,
         },
       }),
       convex({ authConfig }),

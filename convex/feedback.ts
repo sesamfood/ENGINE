@@ -8,7 +8,11 @@ import {
   query,
 } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
-import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  requireHumanPrincipal,
+  requireOrganization,
+  requireOrganizationAdmin,
+} from "./lib/auth";
 import { recordAudit } from "./lib/audit";
 import { fetchLinearTeams, type LinearTeam } from "./lib/linear";
 import { rateLimiter } from "./lib/rateLimits";
@@ -277,6 +281,7 @@ export const submit = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOrganization(ctx);
+    const human = requireHumanPrincipal(auth);
     const { organizationId } = auth;
 
     const settings = await ctx.db
@@ -307,7 +312,7 @@ export const submit = mutation({
     }
 
     const limit = await rateLimiter.limit(ctx, "feedbackSubmit", {
-      key: auth.userId,
+      key: human.userId,
     });
     if (!limit.ok) {
       throw new ConvexError(
@@ -351,7 +356,7 @@ export const submit = mutation({
     const submissionId = await ctx.db.insert("feedbackSubmissions", {
       organizationId,
       organizationName: organization?.name ?? organizationId,
-      userId: auth.userId,
+      userId: human.userId,
       userName: auth.userName,
       area: args.area,
       type: args.type,

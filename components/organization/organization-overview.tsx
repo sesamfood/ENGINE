@@ -10,6 +10,7 @@ import {
   MessageSquarePlusIcon,
   PackageIcon,
   PlugIcon,
+  KeyRoundIcon,
   MonitorCogIcon,
   StoreIcon,
   Trash2Icon,
@@ -49,6 +50,13 @@ const sections = [
     href: "/organization/users",
     icon: UsersIcon,
     permissions: ["members.manage", "roles.manage"],
+  },
+  {
+    title: "API",
+    description: "Administrér API-nøgler til organisationens REST API.",
+    href: "/organization/api",
+    icon: KeyRoundIcon,
+    permissions: ["apiKeys.manage"],
   },
   {
     title: "Kiosk",
@@ -135,6 +143,7 @@ export function OrganizationOverview() {
   const canLocations = usePermission("locations.manage");
   const canMembers = usePermission("members.manage");
   const canRoles = usePermission("roles.manage");
+  const canApiKeys = usePermission("apiKeys.manage");
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
@@ -147,6 +156,7 @@ export function OrganizationOverview() {
     "locations.manage": canLocations,
     "members.manage": canMembers,
     "roles.manage": canRoles,
+    "apiKeys.manage": canApiKeys,
     "organization.settings": canOrganizationSettings,
     "count.settings": canCountSettings,
     "waste.settings": canWasteSettings,

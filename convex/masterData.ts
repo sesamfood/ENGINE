@@ -459,6 +459,26 @@ export const deleteOperator = mutation({
         "Operatøren bruges af en lokation og kan ikke slettes",
       );
     }
+    const apiKeyPolicies = await ctx.db
+      .query("apiKeyPolicies")
+      .withIndex("by_organizationId_and_status_and_expiresAt", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("status", "active")
+          .gt("expiresAt", Date.now()),
+      )
+      .collect();
+    if (
+      apiKeyPolicies.some(
+        (policy) =>
+          policy.locationPolicy.kind === "operator" &&
+          policy.locationPolicy.operatorId === operator._id,
+      )
+    ) {
+      throw new ConvexError(
+        "Operatøren bruges af en aktiv API-nøgle og kan ikke slettes",
+      );
+    }
     const accessRows = await ctx.db
       .query("memberLocationAccess")
       .withIndex("by_organizationId", (q) =>

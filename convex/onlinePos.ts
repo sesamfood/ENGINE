@@ -11,6 +11,7 @@ import {
 } from "./_generated/server";
 import {
   requireAllLocationAccess,
+  requireHumanPrincipal,
   requireIntegrationManager,
   requireLocationAccess,
 } from "./lib/auth";
@@ -478,7 +479,8 @@ export const connect = action({
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     requireAllLocationAccess(auth);
-    const { organizationId, userId, userName } = auth;
+    const human = requireHumanPrincipal(auth);
+    const { organizationId, userName } = auth;
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
     const products = await requestProducts({
@@ -489,7 +491,7 @@ export const connect = action({
       organizationId,
       token,
       companyId: args.companyId,
-      actorUserId: userId,
+      actorUserId: human.userId,
       actorName: userName,
     });
     return { productCount: products.length };
@@ -505,7 +507,8 @@ export const connectLocation = action({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
-    const { organizationId, userId, userName } = auth;
+    const human = requireHumanPrincipal(auth);
+    const { organizationId, userName } = auth;
     requireLocationAccess(auth, args.locationId);
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
@@ -526,7 +529,7 @@ export const connectLocation = action({
       locationId: args.locationId,
       token,
       companyId: args.companyId,
-      actorUserId: userId,
+      actorUserId: human.userId,
       actorName: userName,
     });
     return null;

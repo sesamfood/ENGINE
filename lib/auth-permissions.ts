@@ -1,17 +1,32 @@
-import { adminAc, defaultAc } from "better-auth/plugins/organization/access";
-import type { AccessControl } from "better-auth/plugins/access";
+import { defaultStatements } from "better-auth/plugins/organization/access";
+import { createAccessControl } from "better-auth/plugins/access";
 
-export const organizationAccessControl = defaultAc as AccessControl;
+const apiKeyActions = ["create", "read", "update", "delete"] as const;
+
+export const organizationAccessControl = createAccessControl({
+  ...defaultStatements,
+  apiKey: apiKeyActions,
+});
 
 // Better Auth still needs to know which built-in roles may call its member
 // endpoints. The Convex permission checks are the source of truth for whether
 // the current member may actually use those endpoints.
-const managerAc = defaultAc.newRole({
+const adminAc = organizationAccessControl.newRole({
+  organization: ["update"],
+  member: ["create", "update", "delete"],
+  invitation: ["create", "cancel"],
+  team: ["create", "update", "delete"],
+  ac: ["create", "read", "update", "delete"],
+  apiKey: apiKeyActions,
+});
+
+const managerAc = organizationAccessControl.newRole({
   organization: [],
   member: ["create", "update", "delete"],
   invitation: ["create", "cancel"],
   team: [],
   ac: ["read"],
+  apiKey: apiKeyActions,
 });
 
 export const organizationRoles = {
@@ -106,6 +121,7 @@ export const permissionCatalog = [
         label: "Administrere organisationsindstillinger",
       },
       { id: "integrations.manage", label: "Administrere integrationer" },
+      { id: "apiKeys.manage", label: "Administrere API-nøgler" },
     ],
   },
   {
@@ -135,6 +151,7 @@ export const defaultRolePermissions: Record<
     (id) =>
       !id.endsWith(".settings") &&
       id !== "integrations.manage" &&
+      id !== "apiKeys.manage" &&
       id !== "locations.manage" &&
       id !== "ownChecks.manage" &&
       id !== "members.manage" &&

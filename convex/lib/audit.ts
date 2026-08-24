@@ -4,8 +4,11 @@ import type { MutationCtx } from "../_generated/server";
 
 export type AuditActor = {
   organizationId: string;
-  userId: string;
+  principalKind?: "user" | "apiKey";
+  userId?: string | null;
+  apiKeyId?: string | null;
   userName: string;
+  requestId?: string | null;
 };
 
 type AuditData = {
@@ -33,9 +36,18 @@ export async function recordAudit(
 ) {
   const summary = data.summary.trim();
   if (!summary) throw new ConvexError("Auditbeskrivelsen skal udfyldes");
+  const actorId = actor.principalKind === "apiKey"
+    ? actor.apiKeyId
+      ? { actorApiKeyId: actor.apiKeyId }
+      : null
+    : actor.userId
+      ? { actorUserId: actor.userId }
+      : null;
+  if (!actorId) throw new ConvexError("Auditaktøren er ugyldig");
   await ctx.db.insert("auditLog", {
     organizationId: actor.organizationId,
-    actorUserId: actor.userId,
+    actorKind: actor.principalKind === "apiKey" ? "apiKey" : "user",
+    ...actorId,
     actorName: actor.userName,
     action: data.action,
     entityTable: data.entityTable,
@@ -43,6 +55,7 @@ export async function recordAudit(
     summary,
     at: Date.now(),
     ...(data.locationId ? { locationId: data.locationId } : {}),
+    ...(actor.requestId ? { requestId: actor.requestId } : {}),
     ...(data.reason === undefined
       ? {}
       : { reason: requireAuditReason(data.reason) }),

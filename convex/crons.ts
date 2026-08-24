@@ -43,6 +43,13 @@ crons.interval(
 // Audit history follows the existing 400-day sales retention window.
 crons.interval("prune audit log", { hours: 24 }, internal.audit.prune, {});
 
+crons.interval(
+  "prune REST API idempotency records",
+  { hours: 1 },
+  internal.apiIdempotency.prune,
+  {},
+);
+
 crons.cron(
   "delete orphaned uploads",
   "11 2 * * 0",
