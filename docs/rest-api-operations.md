@@ -42,6 +42,18 @@ non-production deployment or a trusted tunnel for an end-to-end local test.
 Never place a private key in Convex, the browser bundle, logs, documentation,
 or a support ticket.
 
+## Provider-owned data
+
+Sales, employees, and scheduled shifts are read-only API resources. Their GET
+operations read the organization-scoped Convex tables and never call OnlinePOS,
+Workfeed, or another provider. Sales ranges accept at most 31 days and return
+money in integer minor units. Date ranges include `from` and exclude `to`.
+
+`POST /api/v1/employees/sync` requires `integrations.manage`, all-location
+access, and an `Idempotency-Key`. It queues a Workfeed employee refresh; a
+successful employee snapshot also queues the scheduled-shift refresh. The
+command does not return or persist a raw provider payload.
+
 ## API-key incidents
 
 Revoke a compromised organization key in **Administration → API**. Convex

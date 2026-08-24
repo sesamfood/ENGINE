@@ -213,6 +213,7 @@ export function createOpenApiDocument() {
         "",
         "## Requests and synchronization",
         "Send JSON request bodies with `Content-Type: application/json`. Bodies are limited to 1 MB and unknown fields are rejected. Collections use opaque cursors, default to 50 records, and accept at most 100. Follow `page.nextCursor` until `page.hasMore` is false. Full cursor reconciliation is the supported synchronization contract; `updatedAfter` is not supported.",
+        "Sales, employees, and scheduled shifts are provider-owned resources. Reads use the stored organization data and never call a provider. These resources are read-only; the employee sync command only requests a refresh of the stored cache.",
         "",
         "## Safe writes",
         "Creating and side-effecting POST operations require `Idempotency-Key`. Identical retries replay the first response for 24 hours; reusing the key with changed input returns 409. Product updates, archive, restore, and deletion require `If-Match` with the current quoted `version`. A stale version returns 412 and a missing header returns 428.",
@@ -240,6 +241,11 @@ export function createOpenApiDocument() {
       { name: "Categories", description: "Catalog category hierarchy" },
       { name: "Units", description: "Catalog units and unit merge" },
       { name: "Products", description: "Products, units, recipes, and lifecycle" },
+      { name: "Sales", description: "Read-only stored sales data" },
+      {
+        name: "Employees",
+        description: "Read-only cached employees and scheduled shifts",
+      },
     ],
     paths,
     components: {

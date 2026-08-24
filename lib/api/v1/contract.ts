@@ -264,6 +264,102 @@ export const productPaginationQuerySchema = paginationQuerySchema.extend({
   status: productStatusSchema.optional(),
 });
 
+const MAX_DATA_RANGE_MS = 31 * 24 * 60 * 60 * 1_000;
+const dateTimeSchema = z.iso.datetime({ offset: true });
+
+function validDataRange(value: { from: string; to: string }) {
+  const from = Date.parse(value.from);
+  const to = Date.parse(value.to);
+  return from < to && to - from <= MAX_DATA_RANGE_MS;
+}
+
+export const locationDateRangeQuerySchema = paginationQuerySchema
+  .extend({
+    locationId: publicIdSchema,
+    from: dateTimeSchema,
+    to: dateTimeSchema,
+  })
+  .refine(validDataRange, {
+    message: "The range must be positive and no longer than 31 days.",
+    path: ["to"],
+  });
+
+export const employeePaginationQuerySchema = paginationQuerySchema.extend({
+  locationId: publicIdSchema,
+});
+
+export const salesOrderSchema = z.strictObject({
+  id: publicIdSchema,
+  locationId: publicIdSchema,
+  occurredAt: dateTimeSchema,
+  dayStart: dateTimeSchema,
+  orderNumber: z.number(),
+  revenueMinor: z.number(),
+  itemCount: z.number(),
+  paymentType: z.string(),
+  department: z.string(),
+  source: z.string(),
+  currency: z.string(),
+  updatedAt: dateTimeSchema,
+});
+
+export const salesLineSchema = z.strictObject({
+  id: publicIdSchema,
+  orderId: publicIdSchema,
+  locationId: publicIdSchema,
+  occurredAt: dateTimeSchema,
+  sourceProductId: z.string(),
+  productName: z.string(),
+  quantity: z.number(),
+  unitPriceMinor: z.number(),
+  revenueMinor: z.number(),
+  source: z.string(),
+  clerkName: z.string().nullable(),
+  currency: z.string(),
+});
+
+export const salesDailySchema = z.strictObject({
+  id: publicIdSchema,
+  locationId: publicIdSchema,
+  dayStart: dateTimeSchema,
+  date: z.iso.date(),
+  revenueMinor: z.number(),
+  orderCount: z.number(),
+  itemCount: z.number(),
+  currency: z.string(),
+  updatedAt: dateTimeSchema,
+});
+
+export const employeeSummarySchema = z.strictObject({
+  id: publicIdSchema,
+  firstName: z.string(),
+  lastName: z.string(),
+  displayName: z.string(),
+  imageUrl: z.string().nullable(),
+  active: z.boolean(),
+  updatedAt: dateTimeSchema,
+});
+
+export const employeeSchema = employeeSummarySchema.extend({
+  locationIds: z.array(publicIdSchema).max(200),
+});
+
+export const scheduledShiftSchema = z.strictObject({
+  id: publicIdSchema,
+  employeeId: publicIdSchema,
+  locationId: publicIdSchema,
+  startsAt: dateTimeSchema,
+  endsAt: dateTimeSchema,
+  roleName: z.string().nullable(),
+  updatedAt: dateTimeSchema,
+});
+
+export const employeeSyncSchema = z.strictObject({
+  accepted: z.boolean(),
+  state: z.enum(["queued", "alreadyQueued"]),
+  retryAt: dateTimeSchema.nullable(),
+});
+
 export const problemSchema = z.strictObject({
   type: z.string(),
   title: z.string(),
@@ -342,6 +438,17 @@ const unitCollectionSchema = collectionResponseSchema(unitSchema);
 const unitMergeResponseSchema = dataResponseSchema(unitMergeResultSchema);
 const productResponseSchema = dataResponseSchema(productSchema);
 const productCollectionSchema = collectionResponseSchema(productSchema);
+const salesOrderResponseSchema = dataResponseSchema(salesOrderSchema);
+const salesOrderCollectionSchema = collectionResponseSchema(salesOrderSchema);
+const salesLineResponseSchema = dataResponseSchema(salesLineSchema);
+const salesLineCollectionSchema = collectionResponseSchema(salesLineSchema);
+const salesDailyResponseSchema = dataResponseSchema(salesDailySchema);
+const salesDailyCollectionSchema = collectionResponseSchema(salesDailySchema);
+const employeeResponseSchema = dataResponseSchema(employeeSchema);
+const employeeCollectionSchema = collectionResponseSchema(employeeSummarySchema);
+const scheduledShiftResponseSchema = dataResponseSchema(scheduledShiftSchema);
+const scheduledShiftCollectionSchema = collectionResponseSchema(scheduledShiftSchema);
+const employeeSyncResponseSchema = dataResponseSchema(employeeSyncSchema);
 
 export const operations = {
   me: defineOperation({
@@ -1044,6 +1151,193 @@ export const operations = {
     querySchema: noInputSchema,
     bodySchema: noInputSchema,
     responseSchema: z.null(),
+  }),
+  salesDailyList: defineOperation({
+    id: "listDailySales",
+    method: "GET",
+    path: "/api/v1/sales/daily",
+    summary: "List daily sales",
+    description: "Returns stored daily sales aggregates for one location and a range of at most 31 days. The range includes `from` and excludes `to`. Revenue uses integer minor units. Anonymous-granularity roles cannot use this resource.",
+    tags: ["Sales"],
+    permission: "sales.viewAggregate",
+    locationBehavior: "The requested location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: noInputSchema,
+    querySchema: locationDateRangeQuerySchema,
+    bodySchema: noInputSchema,
+    responseSchema: salesDailyCollectionSchema,
+  }),
+  salesDailyGet: defineOperation({
+    id: "getDailySales",
+    method: "GET",
+    path: "/api/v1/sales/daily/{id}",
+    summary: "Get daily sales",
+    description: "Returns one stored daily sales aggregate. Revenue uses integer minor units. Anonymous-granularity roles cannot use this resource.",
+    tags: ["Sales"],
+    permission: "sales.viewAggregate",
+    locationBehavior: "The aggregate's location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: pathIdSchema,
+    querySchema: noInputSchema,
+    bodySchema: noInputSchema,
+    responseSchema: salesDailyResponseSchema,
+  }),
+  salesOrdersList: defineOperation({
+    id: "listSalesOrders",
+    method: "GET",
+    path: "/api/v1/sales/orders",
+    summary: "List sales orders",
+    description: "Returns stored orders starting within the requested range of at most 31 days. The range includes `from` and excludes `to`. Money uses integer minor units. Detailed role granularity is required.",
+    tags: ["Sales"],
+    permission: "sales.viewDetail",
+    locationBehavior: "The requested location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: noInputSchema,
+    querySchema: locationDateRangeQuerySchema,
+    bodySchema: noInputSchema,
+    responseSchema: salesOrderCollectionSchema,
+  }),
+  salesOrdersGet: defineOperation({
+    id: "getSalesOrder",
+    method: "GET",
+    path: "/api/v1/sales/orders/{id}",
+    summary: "Get a sales order",
+    description: "Returns one stored sales order. Money uses integer minor units. Detailed role granularity is required.",
+    tags: ["Sales"],
+    permission: "sales.viewDetail",
+    locationBehavior: "The order's location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: pathIdSchema,
+    querySchema: noInputSchema,
+    bodySchema: noInputSchema,
+    responseSchema: salesOrderResponseSchema,
+  }),
+  salesLinesList: defineOperation({
+    id: "listSalesLines",
+    method: "GET",
+    path: "/api/v1/sales/lines",
+    summary: "List sales lines",
+    description: "Returns stored sales lines starting within the requested range of at most 31 days. The range includes `from` and excludes `to`. Money uses integer minor units. Detailed role granularity is required.",
+    tags: ["Sales"],
+    permission: "sales.viewDetail",
+    locationBehavior: "The requested location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: noInputSchema,
+    querySchema: locationDateRangeQuerySchema,
+    bodySchema: noInputSchema,
+    responseSchema: salesLineCollectionSchema,
+  }),
+  salesLinesGet: defineOperation({
+    id: "getSalesLine",
+    method: "GET",
+    path: "/api/v1/sales/lines/{id}",
+    summary: "Get a sales line",
+    description: "Returns one stored sales line. Money uses integer minor units. Detailed role granularity is required.",
+    tags: ["Sales"],
+    permission: "sales.viewDetail",
+    locationBehavior: "The line's location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: pathIdSchema,
+    querySchema: noInputSchema,
+    bodySchema: noInputSchema,
+    responseSchema: salesLineResponseSchema,
+  }),
+  employeesList: defineOperation({
+    id: "listEmployees",
+    method: "GET",
+    path: "/api/v1/employees",
+    summary: "List employees",
+    description: "Returns cached Workfeed-owned employees assigned to one location. Detailed role granularity is required.",
+    tags: ["Employees"],
+    permission: "employees.directory",
+    locationBehavior: "The requested location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: noInputSchema,
+    querySchema: employeePaginationQuerySchema,
+    bodySchema: noInputSchema,
+    responseSchema: employeeCollectionSchema,
+  }),
+  employeesGet: defineOperation({
+    id: "getEmployee",
+    method: "GET",
+    path: "/api/v1/employees/{id}",
+    summary: "Get an employee",
+    description: "Returns one cached Workfeed-owned employee and the locations visible to the current key. Detailed role granularity is required.",
+    tags: ["Employees"],
+    permission: "employees.directory",
+    locationBehavior: "Restricted keys can read an employee assigned to at least one accessible location.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: pathIdSchema,
+    querySchema: noInputSchema,
+    bodySchema: noInputSchema,
+    responseSchema: employeeResponseSchema,
+  }),
+  employeesSync: defineOperation({
+    id: "syncEmployees",
+    method: "POST",
+    path: "/api/v1/employees/sync",
+    summary: "Request an employee sync",
+    description: "Queues an idempotent Workfeed employee sync. A successful employee sync queues the cached shift refresh. This command never returns provider payloads.",
+    tags: ["Employees"],
+    permission: "integrations.manage",
+    locationBehavior: "Requires all-location access because the sync refreshes the organization.",
+    authenticated: true,
+    idempotencyRequired: true,
+    successStatus: 202,
+    paramsSchema: noInputSchema,
+    querySchema: noInputSchema,
+    bodySchema: noInputSchema,
+    responseSchema: employeeSyncResponseSchema,
+  }),
+  scheduledShiftsList: defineOperation({
+    id: "listScheduledShifts",
+    method: "GET",
+    path: "/api/v1/scheduled-shifts",
+    summary: "List scheduled shifts",
+    description: "Returns cached Workfeed-owned shifts starting within the requested range of at most 31 days. The range includes `from` and excludes `to`. Detailed role granularity is required.",
+    tags: ["Employees"],
+    permission: "employees.schedule",
+    locationBehavior: "The requested location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: noInputSchema,
+    querySchema: locationDateRangeQuerySchema,
+    bodySchema: noInputSchema,
+    responseSchema: scheduledShiftCollectionSchema,
+  }),
+  scheduledShiftsGet: defineOperation({
+    id: "getScheduledShift",
+    method: "GET",
+    path: "/api/v1/scheduled-shifts/{id}",
+    summary: "Get a scheduled shift",
+    description: "Returns one cached Workfeed-owned shift. Detailed role granularity is required.",
+    tags: ["Employees"],
+    permission: "employees.schedule",
+    locationBehavior: "The shift's location must be inside the current key policy.",
+    authenticated: true,
+    idempotencyRequired: false,
+    successStatus: 200,
+    paramsSchema: pathIdSchema,
+    querySchema: noInputSchema,
+    bodySchema: noInputSchema,
+    responseSchema: scheduledShiftResponseSchema,
   }),
 } as const;
 

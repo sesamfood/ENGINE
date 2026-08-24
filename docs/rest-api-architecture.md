@@ -119,15 +119,19 @@ partial failures remain safe and visible for repair.
 
 ## Phase boundaries
 
-Phase 1 publishes locations and opening hours, products, categories, units,
-markets, legal entities, and operators. Product image upload stays private
-until uploads are bound to an organization and API key. Complete cursor pages
-are the first synchronization contract; `updatedAfter` is not supported until
-the affected tables have reliable timestamps and indexes.
+The public API publishes locations and opening hours, products, categories,
+units, markets, legal entities, operators, stored sales, cached employees, and
+cached scheduled shifts. Sales, employee, and shift records are read-only
+because their configured providers remain the source of truth. An idempotent
+employee sync command requests a cache refresh without exposing provider
+payloads. Product image upload stays private until uploads are bound to an
+organization and API key. Complete cursor pages are the first synchronization
+contract; `updatedAfter` is not supported until the affected tables have
+reliable timestamps and indexes.
 
-Later phases add Transfers, dashboards, sales, and machine-safe workflow
-operations. Better Auth members, invitations, accounts, passwords, sessions,
-and API-key administration remain human-only in v1.
+Later phases add Transfers, dashboards, and machine-safe workflow operations.
+Better Auth members, invitations, accounts, passwords, sessions, and API-key
+administration remain human-only in v1.
 
 ## Rationale
 

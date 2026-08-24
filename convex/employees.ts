@@ -3,7 +3,6 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
@@ -21,6 +20,7 @@ import {
   resolveTimeZone,
   scheduleLocationDayStartReroll,
 } from "./lib/timeZone";
+import { requestWorkfeedEmployeeSync } from "./lib/workfeedSyncRequest";
 
 const MAX_WEEK_SHIFTS = 2_000;
 const MAX_LOCATION_EMPLOYEES = 500;
@@ -468,65 +468,6 @@ export const requestWorkfeedSync = mutation({
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireNormalOrganization(ctx);
-    const [integration, status] = await Promise.all([
-      ctx.db
-        .query("workfeedIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
-      ctx.db
-        .query("workfeedSyncStatus")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
-    ]);
-    if (!integration?.enabled) {
-      return { accepted: false, state: "unavailable" as const, retryAt: null };
-    }
-    if (status?.state === "queued" || status?.state === "running") {
-      return {
-        accepted: false,
-        state: "alreadyQueued" as const,
-        retryAt: null,
-      };
-    }
-    const limit = await rateLimiter.limit(ctx, "manualWorkfeedSync", {
-      key: organizationId,
-    });
-    if (!limit.ok) {
-      return {
-        accepted: false,
-        state: "rateLimited" as const,
-        retryAt: Date.now() + (limit.retryAfter ?? 0),
-      };
-    }
-    const now = Date.now();
-    const token = `employees:${now}`;
-    if (status) {
-      await ctx.db.patch(status._id, {
-        state: "queued",
-        runKind: "employees",
-        runToken: token,
-        lastEmployeeAttemptAt: now,
-        lastError: undefined,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("workfeedSyncStatus", {
-        organizationId,
-        state: "queued",
-        runKind: "employees",
-        runToken: token,
-        lastEmployeeAttemptAt: now,
-        updatedAt: now,
-      });
-    }
-    await ctx.scheduler.runAfter(0, internal.workfeedSync.syncEmployees, {
-      organizationId,
-      runToken: token,
-    });
-    return { accepted: true, state: "queued" as const, retryAt: null };
+    return await requestWorkfeedEmployeeSync(ctx, organizationId);
   },
 });
