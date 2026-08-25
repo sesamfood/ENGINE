@@ -840,6 +840,9 @@ export default defineSchema({
     transferredAt: v.number(),
     createdBy: v.string(),
     stockApplied: v.optional(v.boolean()),
+    itemCount: v.optional(v.number()),
+    totalQuantity: v.optional(v.number()),
+    hasTemperatureDeviation: v.optional(v.boolean()),
     dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_organizationId_and_transferredAt", [
@@ -922,6 +925,7 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("voided")),
     activeIn30Days: v.boolean(),
     activeIn90Days: v.boolean(),
+    reportSummaryApplied: v.optional(v.boolean()),
     voidedAt: v.optional(v.number()),
     voidedBy: v.optional(v.string()),
     voidedByName: v.optional(v.string()),
@@ -970,6 +974,46 @@ export default defineSchema({
       "status",
       "registeredAt",
     ]),
+
+  wasteReportDailySummaries: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    productId: v.id("products"),
+    productName: v.string(),
+    defaultUnitId: v.id("units"),
+    defaultUnitName: v.string(),
+    dayStartAt: v.number(),
+    count: v.number(),
+    quantity: v.number(),
+    latestRegisteredAt: v.number(),
+  })
+    .index("by_organizationId_and_dayStartAt", [
+      "organizationId",
+      "dayStartAt",
+    ])
+    .index("by_organizationId_and_locationId_and_dayStartAt", [
+      "organizationId",
+      "locationId",
+      "dayStartAt",
+    ])
+    .index(
+      "by_org_location_product_defaultUnit_dayStartAt",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "defaultUnitId",
+        "dayStartAt",
+      ],
+    ),
+
+  wasteReportSummaryStatuses: defineTable({
+    organizationId: v.string(),
+    state: v.union(v.literal("building"), v.literal("ready")),
+    runToken: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
 
   badDeliveries: defineTable({
     organizationId: v.string(),

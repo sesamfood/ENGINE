@@ -90,6 +90,8 @@ async function hydrateEmployee(
   ctx: QueryCtx,
   organizationId: string,
   employee: Doc<"employees">,
+  loadLocation: (locationId: Id<"locations">) =>
+    Promise<Doc<"locations"> | null>,
 ) {
   const assignments = await ctx.db
     .query("employeeLocationAssignments")
@@ -98,9 +100,7 @@ async function hydrateEmployee(
     )
     .take(MAX_ASSIGNMENTS);
   const locations = await Promise.all(
-    assignments.map((assignment) =>
-      ctx.db.get("locations", assignment.locationId),
-    ),
+    assignments.map((assignment) => loadLocation(assignment.locationId)),
   );
   return {
     id: employee._id,
@@ -370,6 +370,18 @@ export const listDirectory = query({
             )
             .paginate(args.paginationOpts);
     }
+    const locationCache = new Map<
+      Id<"locations">,
+      Promise<Doc<"locations"> | null>
+    >();
+    locationCache.set(args.locationId, Promise.resolve(location));
+    const loadLocation = (locationId: Id<"locations">) => {
+      const cached = locationCache.get(locationId);
+      if (cached) return cached;
+      const pending = ctx.db.get("locations", locationId);
+      locationCache.set(locationId, pending);
+      return pending;
+    };
     const page = await Promise.all(
       result.page.map(async (employee) => {
         const assignment = await ctx.db
@@ -382,7 +394,12 @@ export const listDirectory = query({
           )
           .unique();
         if (!assignment) return null;
-        const hydrated = await hydrateEmployee(ctx, organizationId, employee);
+        const hydrated = await hydrateEmployee(
+          ctx,
+          organizationId,
+          employee,
+          loadLocation,
+        );
         const visibleLocations = auth.isKioskAccount
           ? hydrated.locations.filter((item) => item.id === args.locationId)
           : auth.locationScope.all

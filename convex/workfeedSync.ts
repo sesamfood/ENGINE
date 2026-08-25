@@ -987,11 +987,16 @@ export const upsertShiftBatch = internalMutation({
         updatedAt: now,
       };
       let shiftId: Id<"scheduledShifts">;
+      let nextShift: Pick<
+        Doc<"scheduledShifts">,
+        "organizationId" | "locationId" | "startsAt" | "endsAt"
+      >;
       const currentShift = mapping
         ? await ctx.db.get("scheduledShifts", mapping.shiftId)
         : null;
       if (currentShift?.organizationId === args.organizationId) {
         shiftId = currentShift._id;
+        nextShift = { ...currentShift, ...value };
         if (currentShift.dashboardSummaryTimeZone) {
           previousSummaryContributions.push(
             ...scheduledShiftSummaryContribution(
@@ -1016,13 +1021,14 @@ export const upsertShiftBatch = internalMutation({
           organizationId: args.organizationId,
           ...value,
         });
+        nextShift = {
+          organizationId: args.organizationId,
+          ...value,
+        };
       }
-      const nextShift = await ctx.db.get("scheduledShifts", shiftId);
-      if (nextShift) {
-        nextSummaryContributions.push(
-          ...scheduledShiftSummaryContribution(nextShift, summaryTimeZone),
-        );
-      }
+      nextSummaryContributions.push(
+        ...scheduledShiftSummaryContribution(nextShift, summaryTimeZone),
+      );
       if (mapping) {
         await ctx.db.patch(mapping._id, {
           shiftId,

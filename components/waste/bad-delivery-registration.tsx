@@ -254,7 +254,10 @@ export function BadDeliveryRegistration() {
     locationId ? { locationId } : "skip",
   );
   const [search, setSearch] = useState("");
-  const catalog = useQuery(api.catalog.listActiveProducts);
+  const productSearchOptions = useQuery(
+    api.catalog.listActiveProductSearchOptions,
+    locationId ? {} : "skip",
+  );
   const uploadUrl = useMutation(api.badDeliveries.generatePhotoUploadUrl);
   const register = useMutation(api.badDeliveries.registerBadDelivery);
   const [lines, setLines] = useState<Line[]>([]);
@@ -304,10 +307,10 @@ export function BadDeliveryRegistration() {
       : config!.deductFromStock;
   const selectedLocation = locations.find((item) => item.id === locationId)!;
   const addedProductIds = new Set(lines.map((line) => line.productId));
-  const productOptions: ComboboxOption[] = (catalog ?? [])
+  const productOptions: ComboboxOption[] = (productSearchOptions ?? [])
     .filter(
       (product) =>
-        productSearchScore(product.name, product.category.path, search) !== null,
+        productSearchScore(product.name, product.categoryPath, search) !== null,
     )
     .filter((product) => !addedProductIds.has(product.id))
     .map((product) => ({ value: product.id, label: product.name }));

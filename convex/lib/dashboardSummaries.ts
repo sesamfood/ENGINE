@@ -226,7 +226,10 @@ export function transferSummaryContribution(
 }
 
 export function scheduledShiftSummaryContribution(
-  row: Doc<"scheduledShifts">,
+  row: Pick<
+    Doc<"scheduledShifts">,
+    "organizationId" | "locationId" | "startsAt" | "endsAt"
+  >,
   timeZone: string,
 ) {
   return [
@@ -300,7 +303,7 @@ export function summaryContributionsFor(
         ? wasteSummaryContribution(row, timeZone)
         : [];
     case "badDeliveries":
-      return "itemCount" in row
+      return "initialNoticeStatus" in row
         ? badDeliverySummaryContribution(row, timeZone)
         : [];
     case "staffFood":

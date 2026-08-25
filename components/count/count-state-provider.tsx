@@ -32,7 +32,6 @@ type CountStateContextValue = {
   lockedName: string | null | undefined;
   locationId: Id<"locations"> | null;
   canRegister: boolean;
-  now: number;
   state: CountState | undefined;
 };
 
@@ -71,14 +70,7 @@ export function CountStateProvider({ children }: { children: ReactNode }) {
     }
   }, [isLocked, locations, organizationId, storedLocationId]);
 
-  const [now, setNow] = useState(() => Date.now());
   const [queryNow, setQueryNow] = useState(minuteTimestamp);
-  useEffect(() => {
-    if (pathname !== "/count") return;
-    const update = () => setNow(Date.now());
-    const interval = window.setInterval(update, 1000);
-    return () => window.clearInterval(interval);
-  }, [pathname]);
 
   useEffect(() => {
     if (pathname !== "/count") return;
@@ -132,7 +124,6 @@ export function CountStateProvider({ children }: { children: ReactNode }) {
         lockedName,
         locationId,
         canRegister,
-        now,
         state,
       }}
     >

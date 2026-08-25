@@ -162,7 +162,13 @@ export function WasteReport() {
   const [confirming, setConfirming] = useState(false);
   const [voidReason, setVoidReason] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [reportSummaryFallbackKey, setReportSummaryFallbackKey] = useState<
+    string | null
+  >(null);
   const voidWaste = useMutation(api.waste.voidWasteRegistration);
+  const requestReportSummaryRebuild = useMutation(
+    api.waste.requestReportSummaryRebuild,
+  );
   const kioskCanReport = Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("waste.report"));
   const canReport = usePermission("waste.report") || kioskCanReport;
   const canExport = usePermission("waste.export") || kioskCanReport;
@@ -192,20 +198,64 @@ export function WasteReport() {
     ? { startAt, endAt, ...(effectiveLocation === "all" ? {} : { locationId: effectiveLocation as Id<"locations"> }) }
     : "skip";
   const { results, status, loadMore } = usePaginatedQuery(api.waste.listRegistrations, args, { initialNumItems: 25 });
+  const reportSummaryKey =
+    args === "skip"
+      ? null
+      : `${args.startAt}:${args.endAt}:${args.locationId ?? "all"}`;
+  const reportSummary = useQuery(
+    api.waste.getReportSummary,
+    args === "skip" ||
+      !canExport ||
+      reportSummaryFallbackKey === reportSummaryKey
+      ? "skip"
+      : args,
+  );
+  const useLegacySummary =
+    canExport &&
+    (reportSummaryFallbackKey === reportSummaryKey ||
+      reportSummary?.state === "building" ||
+      reportSummary?.state === "fallback");
   const {
     results: activeResults,
     status: activeStatus,
     loadMore: loadMoreActive,
   } = usePaginatedQuery(
     api.waste.exportRegistrations,
-    args === "skip" || !canExport ? "skip" : { ...args, activeOnly: true },
+    args === "skip" || !useLegacySummary
+      ? "skip"
+      : { ...args, activeOnly: true },
     { initialNumItems: 100 },
   );
 
   useEffect(() => {
-    if (activeStatus === "CanLoadMore") loadMoreActive(100);
-  }, [activeStatus, loadMoreActive]);
+    if (reportSummary?.state !== "building") return;
+    void requestReportSummaryRebuild({}).catch(() => undefined);
+  }, [reportSummary?.state, requestReportSummaryRebuild]);
+
+  useEffect(() => {
+    if (reportSummary?.state !== "fallback" || !reportSummaryKey) return;
+    const timeout = window.setTimeout(
+      () => setReportSummaryFallbackKey(reportSummaryKey),
+      0,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [reportSummary?.state, reportSummaryKey]);
+
+  useEffect(() => {
+    if (useLegacySummary && activeStatus === "CanLoadMore") {
+      loadMoreActive(100);
+    }
+  }, [activeStatus, loadMoreActive, useLegacySummary]);
   const summary = useMemo(() => {
+    if (reportSummary?.state === "ready") {
+      return reportSummary.rows.map((row) => ({
+        location: row.locationName,
+        product: row.productName,
+        quantity: row.quantity,
+        unit: row.defaultUnitName,
+        count: row.count,
+      }));
+    }
     const groups = new Map<string, { location: string; product: string; quantity: number; unit: string; count: number }>();
     for (const row of activeResults as Row[]) {
       const key = `${row.locationId}:${row.productId}:${row.defaultUnitId}`;
@@ -215,7 +265,9 @@ export function WasteReport() {
       groups.set(key, group);
     }
     return [...groups.values()].sort((a, b) => a.location.localeCompare(b.location, "da") || a.product.localeCompare(b.product, "da"));
-  }, [activeResults]);
+  }, [activeResults, reportSummary]);
+  const summaryLoading =
+    reportSummary?.state !== "ready" && activeStatus !== "Exhausted";
 
   if (!locations) return <Skeleton className="h-96" />;
   if (!canReport) {
@@ -289,7 +341,7 @@ export function WasteReport() {
       <Card>
         <CardHeader className="sm:grid-cols-[1fr_auto]"><CardTitle>Oversigt</CardTitle>{canExport ? <Button variant="outline" disabled={exporting || !rangeValid} onClick={exportSummary}><DownloadIcon data-icon="inline-start" />Eksportér oversigt</Button> : null}</CardHeader>
         <CardContent>
-          {!canExport ? <Empty><EmptyHeader><EmptyTitle>Ingen eksportadgang</EmptyTitle><EmptyDescription>Du kan se registreringerne, men har ikke adgang til eksportoversigten.</EmptyDescription></EmptyHeader></Empty> : activeStatus !== "Exhausted" ? <Skeleton className="h-40" /> : summary.length ? <Table><TableHeader><TableRow><TableHead>Lokation</TableHead><TableHead>Produkt</TableHead><TableHead className="text-right">Mængde</TableHead><TableHead>Enhed</TableHead><TableHead className="text-right">Registreringer</TableHead></TableRow></TableHeader><TableBody>{summary.map((row) => <TableRow key={`${row.location}:${row.product}:${row.unit}`}><TableCell>{row.location}</TableCell><TableCell>{row.product}</TableCell><TableCell className="text-right">{formatNumber(row.quantity)}</TableCell><TableCell>{row.unit}</TableCell><TableCell className="text-right">{row.count}</TableCell></TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyTitle>Ingen Waste i perioden</EmptyTitle></EmptyHeader></Empty>}
+          {!canExport ? <Empty><EmptyHeader><EmptyTitle>Ingen eksportadgang</EmptyTitle><EmptyDescription>Du kan se registreringerne, men har ikke adgang til eksportoversigten.</EmptyDescription></EmptyHeader></Empty> : summaryLoading ? <Skeleton className="h-40" /> : summary.length ? <Table><TableHeader><TableRow><TableHead>Lokation</TableHead><TableHead>Produkt</TableHead><TableHead className="text-right">Mængde</TableHead><TableHead>Enhed</TableHead><TableHead className="text-right">Registreringer</TableHead></TableRow></TableHeader><TableBody>{summary.map((row) => <TableRow key={`${row.location}:${row.product}:${row.unit}`}><TableCell>{row.location}</TableCell><TableCell>{row.product}</TableCell><TableCell className="text-right">{formatNumber(row.quantity)}</TableCell><TableCell>{row.unit}</TableCell><TableCell className="text-right">{row.count}</TableCell></TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyTitle>Ingen Waste i perioden</EmptyTitle></EmptyHeader></Empty>}
         </CardContent>
       </Card>
 

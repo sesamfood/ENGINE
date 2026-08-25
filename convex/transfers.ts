@@ -13,16 +13,13 @@ import {
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
-import { listActiveProductCatalog } from "./lib/productCatalog";
+import { searchActiveProductOptions } from "./lib/productCatalog";
 import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummary,
 } from "./lib/dashboardSummaries";
-import { productSearchScore } from "../lib/product-search";
-
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_COMMENT_LENGTH = 500;
-const MAX_PRODUCT_OPTIONS = 50;
 const MAX_PRODUCT_UNITS = 200;
 const EXPORT_PAGE_SIZE = 5;
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
@@ -158,25 +155,56 @@ async function locationName(
   return location?.name ?? "Ukendt lokation";
 }
 
+function transferAggregates(
+  items: readonly Pick<
+    Doc<"transferItems">,
+    "quantity" | "temperatureCelsius" | "maxTemperatureCelsius"
+  >[],
+) {
+  return {
+    itemCount: items.length,
+    totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
+    hasTemperatureDeviation: items.some(
+      (item) =>
+        item.temperatureCelsius !== undefined &&
+        item.maxTemperatureCelsius !== undefined &&
+        item.temperatureCelsius > item.maxTemperatureCelsius,
+    ),
+  };
+}
+
 async function hydrateTransferHeader(
   ctx: QueryCtx,
   transfer: Doc<"transfers">,
   existingItems?: Doc<"transferItems">[],
+  locationNames?: ReadonlyMap<Id<"locations">, string>,
 ) {
-  const items =
-    existingItems ??
-    (await ctx.db
-      .query("transferItems")
-      .withIndex("by_organizationId_and_transferId", (q) =>
-        q
-          .eq("organizationId", transfer.organizationId)
-          .eq("transferId", transfer._id),
-      )
-      .take(MAX_TRANSFER_ITEMS));
+  const aggregates =
+    transfer.itemCount !== undefined &&
+    transfer.totalQuantity !== undefined &&
+    transfer.hasTemperatureDeviation !== undefined
+      ? {
+          itemCount: transfer.itemCount,
+          totalQuantity: transfer.totalQuantity,
+          hasTemperatureDeviation: transfer.hasTemperatureDeviation,
+        }
+      : transferAggregates(
+          existingItems ??
+            (await ctx.db
+              .query("transferItems")
+              .withIndex("by_organizationId_and_transferId", (q) =>
+                q
+                  .eq("organizationId", transfer.organizationId)
+                  .eq("transferId", transfer._id),
+              )
+              .take(MAX_TRANSFER_ITEMS)),
+        );
 
   const [fromLocationName, toLocationName] = await Promise.all([
-    locationName(ctx, transfer.fromLocationId),
-    locationName(ctx, transfer.toLocationId),
+    locationNames?.get(transfer.fromLocationId) ??
+      locationName(ctx, transfer.fromLocationId),
+    locationNames?.get(transfer.toLocationId) ??
+      locationName(ctx, transfer.toLocationId),
   ]);
 
   return {
@@ -186,14 +214,7 @@ async function hydrateTransferHeader(
     toLocationName,
     responsibleName: transfer.responsibleName,
     comment: transfer.comment ?? null,
-    itemCount: items.length,
-    totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
-    hasTemperatureDeviation: items.some(
-      (item) =>
-        item.temperatureCelsius !== undefined &&
-        item.maxTemperatureCelsius !== undefined &&
-        item.temperatureCelsius > item.maxTemperatureCelsius,
-    ),
+    ...aggregates,
   };
 }
 
@@ -527,6 +548,7 @@ export const createTransfer = mutation({
       args,
     );
     const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const aggregates = transferAggregates(resolvedItems);
 
     const transferId = await ctx.db.insert("transfers", {
       organizationId,
@@ -538,6 +560,7 @@ export const createTransfer = mutation({
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
       stockApplied: true,
+      ...aggregates,
       dashboardSummaryTimeZone: summaryTimeZone,
     });
 
@@ -622,6 +645,7 @@ export const updateTransfer = mutation({
       existingItems,
     );
     const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const aggregates = transferAggregates(resolvedItems);
 
     // ponytail: pre-ledger transfers stay neutral; the next submitted count establishes their baseline.
     if (transfer.stockApplied) {
@@ -650,6 +674,7 @@ export const updateTransfer = mutation({
       responsibleName,
       comment,
       transferredAt: args.transferredAt,
+      ...aggregates,
       dashboardSummaryTimeZone: summaryTimeZone,
     });
     for (const item of existingItems) {
@@ -682,6 +707,7 @@ export const updateTransfer = mutation({
         responsibleName,
         comment,
         transferredAt: args.transferredAt,
+        ...aggregates,
         dashboardSummaryTimeZone: summaryTimeZone,
       },
       summaryTimeZone,
@@ -769,11 +795,30 @@ export const listTransfers = query({
       )
       .order("desc")
       .paginate(args.paginationOpts);
+    const locationIds = [
+      ...new Set(
+        results.page.flatMap((transfer) => [
+          transfer.fromLocationId,
+          transfer.toLocationId,
+        ]),
+      ),
+    ];
+    const locations = await Promise.all(
+      locationIds.map((locationId) => ctx.db.get("locations", locationId)),
+    );
+    const locationNames = new Map(
+      locationIds.map((locationId, index) => [
+        locationId,
+        locations[index]?.name ?? "Ukendt lokation",
+      ] as const),
+    );
 
     return {
       ...results,
       page: await Promise.all(
-        results.page.map((transfer) => hydrateTransferHeader(ctx, transfer)),
+        results.page.map((transfer) =>
+          hydrateTransferHeader(ctx, transfer, undefined, locationNames),
+        ),
       ),
     };
   },
@@ -830,18 +875,7 @@ export const searchTransferProducts = query({
       throw new ConvexError("Søgningen er for lang");
     }
 
-    const products = (await listActiveProductCatalog(ctx, organizationId))
-      .filter(
-        (product) =>
-          productSearchScore(product.name, product.category.path, search) !==
-          null,
-      )
-      .slice(0, MAX_PRODUCT_OPTIONS);
-
-    return products.map((product) => ({
-      id: product.id,
-      name: product.name,
-    }));
+    return await searchActiveProductOptions(ctx, organizationId, search);
   },
 });
 

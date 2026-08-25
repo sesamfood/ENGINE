@@ -29,15 +29,13 @@ import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
-import { listActiveProductCatalog } from "./lib/productCatalog";
-import { productSearchScore } from "../lib/product-search";
+import { searchActiveProductOptions } from "./lib/productCatalog";
 import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummary,
 } from "./lib/dashboardSummaries";
 
 const MAX_ITEMS = 200;
-const MAX_PRODUCT_OPTIONS = 50;
 const MAX_PRODUCT_UNITS = 200;
 const MAX_COMMENT_LENGTH = 500;
 const MAX_QUANTITY = 1_000_000;
@@ -312,14 +310,7 @@ export const searchProducts = query({
     );
     const search = args.search.trim();
     if (search.length > 100) throw new ConvexError("Søgningen er for lang");
-    return (await listActiveProductCatalog(ctx, organizationId))
-      .filter(
-        (product) =>
-          productSearchScore(product.name, product.category.path, search) !==
-          null,
-      )
-      .slice(0, MAX_PRODUCT_OPTIONS)
-      .map((product) => ({ id: product.id, name: product.name }));
+    return await searchActiveProductOptions(ctx, organizationId, search);
   },
 });
 
