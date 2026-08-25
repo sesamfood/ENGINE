@@ -14,13 +14,28 @@ import {
 } from "../../lib/dashboard/registry";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import type { SummarySource } from "./dashboardSummaries";
 
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_ROWS = 5_000;
+const MAX_SUMMARY_ROWS_PER_SOURCE = 1_500;
 const MAX_SCOPE_LOCATIONS = 200;
 const MAX_TRANSFER_DETAILS = 500;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const INTEGRATION_FRESHNESS_INTERVAL_MS = 26 * 60 * 60 * 1_000;
+
+type SummaryTimedRow = {
+  timestamp: number;
+  locationId: Id<"locations">;
+  counterpartLocationId: Id<"locations"> | null;
+  count: number;
+  value: number;
+};
+
+type SummaryRowsResult = {
+  rows: SummaryTimedRow[];
+  truncated: boolean;
+};
 
 export type DashboardLocation = {
   id: Id<"locations">;
@@ -528,6 +543,176 @@ function cached<T>(
   return result;
 }
 
+async function dashboardSummaryReady(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+  source: SummarySource,
+) {
+  return await cached(params, `summary-status:${source}`, async () => {
+    const status = await ctx.db
+      .query("dashboardSummaryStatuses")
+      .withIndex("by_organizationId_and_source", (q) =>
+        q.eq("organizationId", params.organizationId).eq("source", source),
+      )
+      .unique();
+    return status?.state === "ready" && status.timeZone === params.timeZone;
+  });
+}
+
+function mapSummaryRows(
+  rows: Doc<"dashboardDailySummaries">[],
+): SummaryTimedRow[] {
+  return rows.map((row) => ({
+    timestamp: row.dayStart,
+    locationId: row.locationId,
+    counterpartLocationId: row.counterpartLocationId,
+    count: row.count,
+    value: row.value,
+  }));
+}
+
+async function dashboardSummaryRows(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+  source: SummarySource,
+): Promise<SummaryRowsResult | null> {
+  if (!(await dashboardSummaryReady(ctx, params, source))) return null;
+  return await cached(params, `summary-rows:${source}`, async () => {
+    if (
+      params.scopeSelectsAllLocations &&
+      params.ownLocationIds === null &&
+      !params.scopeTruncated &&
+      !params.comparisonGroups?.length
+    ) {
+      const allRows = await ctx.db
+        .query("dashboardDailySummaries")
+        .withIndex("by_org_source_timeZone_dayStart", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("source", source)
+            .eq("timeZone", params.timeZone)
+            .gte("dayStart", params.previousFrom)
+            .lt("dayStart", params.to),
+        )
+        .take(MAX_SUMMARY_ROWS_PER_SOURCE + 1);
+      return {
+        rows: mapSummaryRows(
+          allRows.slice(0, MAX_SUMMARY_ROWS_PER_SOURCE),
+        ),
+        truncated: allRows.length > MAX_SUMMARY_ROWS_PER_SOURCE,
+      };
+    }
+    const rows: Doc<"dashboardDailySummaries">[] = [];
+    const seen = new Set<Id<"dashboardDailySummaries">>();
+    let truncated = false;
+    let documentsRead = 0;
+    for (const location of params.locations) {
+      if (
+        rows.length >= MAX_SUMMARY_ROWS_PER_SOURCE ||
+        documentsRead >= MAX_SUMMARY_ROWS_PER_SOURCE + 1
+      ) {
+        truncated = true;
+        break;
+      }
+      const remaining = MAX_SUMMARY_ROWS_PER_SOURCE - rows.length;
+      const nextReadLimit = () =>
+        Math.min(
+          remaining + 1,
+          MAX_SUMMARY_ROWS_PER_SOURCE + 1 - documentsRead,
+        );
+      const append = (part: Doc<"dashboardDailySummaries">[]) => {
+        documentsRead += part.length;
+        for (const row of part) {
+          if (seen.has(row._id)) continue;
+          seen.add(row._id);
+          rows.push(row);
+          if (rows.length >= MAX_SUMMARY_ROWS_PER_SOURCE) break;
+        }
+      };
+      if (source === "transfers") {
+        const sentLimit = nextReadLimit();
+        const sent = await ctx.db
+          .query("dashboardDailySummaries")
+          .withIndex(
+            "by_org_source_timeZone_locationId_dayStart",
+            (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("source", source)
+                .eq("timeZone", params.timeZone)
+                .eq("locationId", location.id)
+                .gte("dayStart", params.previousFrom)
+                .lt("dayStart", params.to),
+          )
+          .take(sentLimit);
+        append(sent);
+        if (
+          sent.length > remaining ||
+          (sentLimit < remaining + 1 && sent.length === sentLimit)
+        ) {
+          truncated = true;
+        }
+        const receivedRemaining =
+          MAX_SUMMARY_ROWS_PER_SOURCE - rows.length;
+        const receivedLimit = Math.min(
+          receivedRemaining + 1,
+          MAX_SUMMARY_ROWS_PER_SOURCE + 1 - documentsRead,
+        );
+        if (receivedLimit <= 0) {
+          truncated = true;
+          break;
+        }
+        const received = await ctx.db
+          .query("dashboardDailySummaries")
+          .withIndex(
+            "by_org_source_timeZone_counterpartLocationId_dayStart",
+            (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("source", source)
+                .eq("timeZone", params.timeZone)
+                .eq("counterpartLocationId", location.id)
+                .gte("dayStart", params.previousFrom)
+                .lt("dayStart", params.to),
+          )
+          .take(receivedLimit);
+        append(received);
+        if (
+          received.length > receivedRemaining ||
+          (receivedLimit < receivedRemaining + 1 &&
+            received.length === receivedLimit)
+        ) {
+          truncated = true;
+        }
+      } else {
+        const partLimit = nextReadLimit();
+        const part = await ctx.db
+          .query("dashboardDailySummaries")
+          .withIndex(
+            "by_org_source_timeZone_locationId_dayStart",
+            (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("source", source)
+                .eq("timeZone", params.timeZone)
+                .eq("locationId", location.id)
+                .gte("dayStart", params.previousFrom)
+                .lt("dayStart", params.to),
+          )
+          .take(partLimit);
+        append(part);
+        if (
+          part.length > remaining ||
+          (partLimit < remaining + 1 && part.length === partLimit)
+        ) {
+          truncated = true;
+        }
+      }
+    }
+    return { rows: mapSummaryRows(rows), truncated };
+  });
+}
+
 type Freshness = NonNullable<MetricResult["freshness"]>;
 
 function withAffectedNames(
@@ -748,6 +933,19 @@ async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
 }
 
 const wasteQuantity: MetricComputer = async (ctx, params) => {
+  const summary = await dashboardSummaryRows(ctx, params, "waste");
+  if (summary) {
+    return seriesResult(
+      "quantity",
+      summary.rows.map((row) => ({
+        timestamp: row.timestamp,
+        locationId: row.locationId,
+        value: row.value,
+      })),
+      params,
+      { truncated: summary.truncated || undefined },
+    );
+  }
   const result = await wasteRows(ctx, params);
   return seriesResult(
     "quantity",
@@ -762,6 +960,19 @@ const wasteQuantity: MetricComputer = async (ctx, params) => {
 };
 
 const wasteRegistrations: MetricComputer = async (ctx, params) => {
+  const summary = await dashboardSummaryRows(ctx, params, "waste");
+  if (summary) {
+    return seriesResult(
+      "count",
+      summary.rows.map((row) => ({
+        timestamp: row.timestamp,
+        locationId: row.locationId,
+        value: row.count,
+      })),
+      params,
+      { truncated: summary.truncated || undefined },
+    );
+  }
   const result = await wasteRows(ctx, params);
   return seriesResult(
     "count",
@@ -901,6 +1112,19 @@ async function badDeliveryRows(ctx: QueryCtx, params: DashboardMetricParams) {
 }
 
 const badDeliveries: MetricComputer = async (ctx, params) => {
+  const summary = await dashboardSummaryRows(ctx, params, "badDeliveries");
+  if (summary) {
+    return seriesResult(
+      "count",
+      summary.rows.map((row) => ({
+        timestamp: row.timestamp,
+        locationId: row.locationId,
+        value: row.count,
+      })),
+      params,
+      { truncated: summary.truncated || undefined },
+    );
+  }
   const result = await badDeliveryRows(ctx, params);
   return seriesResult(
     "count",
@@ -1072,6 +1296,19 @@ async function transferRows(ctx: QueryCtx, params: DashboardMetricParams) {
 }
 
 const transfers: MetricComputer = async (ctx, params) => {
+  const summary = await dashboardSummaryRows(ctx, params, "transfers");
+  if (summary) {
+    return seriesResult(
+      "count",
+      summary.rows.map((row) => ({
+        timestamp: row.timestamp,
+        locationId: row.locationId,
+        value: row.count,
+      })),
+      params,
+      { truncated: summary.truncated || undefined },
+    );
+  }
   const result = await transferRows(ctx, params);
   return seriesResult(
     "count",
@@ -1116,6 +1353,19 @@ async function transferItems(
 }
 
 const itemsMoved: MetricComputer = async (ctx, params) => {
+  const summary = await dashboardSummaryRows(ctx, params, "transfers");
+  if (summary) {
+    return seriesResult(
+      "quantity",
+      summary.rows.map((row) => ({
+        timestamp: row.timestamp,
+        locationId: row.locationId,
+        value: row.value,
+      })),
+      params,
+      { truncated: summary.truncated || undefined },
+    );
+  }
   const transferResult = await transferRows(ctx, params);
   const itemResult = await transferItems(ctx, params, transferResult.rows);
   const byTransfer = new Map(transferResult.rows.map((row) => [row._id, row]));
@@ -1212,6 +1462,19 @@ async function staffFoodRows(ctx: QueryCtx, params: DashboardMetricParams) {
 }
 
 const staffFoodRegistrations: MetricComputer = async (ctx, params) => {
+  const summary = await dashboardSummaryRows(ctx, params, "staffFood");
+  if (summary) {
+    return seriesResult(
+      "count",
+      summary.rows.map((row) => ({
+        timestamp: row.timestamp,
+        locationId: row.locationId,
+        value: row.count,
+      })),
+      params,
+      { truncated: summary.truncated || undefined },
+    );
+  }
   const result = await staffFoodRows(ctx, params);
   return seriesResult(
     "count",
@@ -1297,6 +1560,19 @@ async function shiftRows(
 }
 
 const scheduledHours: MetricComputer = async (ctx, params) => {
+  const summary = await dashboardSummaryRows(ctx, params, "scheduledShifts");
+  if (summary) {
+    return seriesResult(
+      "hours",
+      summary.rows.map((row) => ({
+        timestamp: row.timestamp,
+        locationId: row.locationId,
+        value: row.value,
+      })),
+      params,
+      { truncated: summary.truncated || undefined },
+    );
+  }
   const result = await shiftRows(ctx, params);
   return seriesResult(
     "hours",
@@ -1368,33 +1644,72 @@ const locationComparison: MetricComputer = async (ctx, params) => {
           cache: new Map<string, Promise<unknown>>(),
         }
       : { ...params, compare: true };
+  const [wasteSummary, deliveriesSummary, transfersSummary, staffFoodSummary] =
+    await Promise.all([
+      dashboardSummaryRows(ctx, comparisonParams, "waste"),
+      dashboardSummaryRows(ctx, comparisonParams, "badDeliveries"),
+      dashboardSummaryRows(ctx, comparisonParams, "transfers"),
+      dashboardSummaryRows(ctx, comparisonParams, "staffFood"),
+    ]);
   const [waste, deliveries, transferResult, staffFood] = await Promise.all([
-    wasteRows(ctx, comparisonParams),
-    badDeliveryRows(ctx, comparisonParams),
-    transferRows(ctx, comparisonParams),
-    staffFoodRows(ctx, comparisonParams),
+    wasteSummary
+      ? Promise.resolve(null)
+      : wasteRows(ctx, comparisonParams),
+    deliveriesSummary
+      ? Promise.resolve(null)
+      : badDeliveryRows(ctx, comparisonParams),
+    transfersSummary
+      ? Promise.resolve(null)
+      : transferRows(ctx, comparisonParams),
+    staffFoodSummary
+      ? Promise.resolve(null)
+      : staffFoodRows(ctx, comparisonParams),
   ]);
   const rows: TimedValue[] = [
-    ...waste.rows.map((row) => ({
-      timestamp: row.registeredAt,
+    ...(wasteSummary?.rows.map((row) => ({
+      timestamp: row.timestamp,
       locationId: row.locationId,
-      value: 1,
-    })),
-    ...deliveries.rows.map((row) => ({
-      timestamp: row.registeredAt,
+      value: row.count,
+    })) ??
+      waste?.rows.map((row) => ({
+        timestamp: row.registeredAt,
+        locationId: row.locationId,
+        value: 1,
+      })) ??
+      []),
+    ...(deliveriesSummary?.rows.map((row) => ({
+      timestamp: row.timestamp,
       locationId: row.locationId,
-      value: 1,
-    })),
-    ...transferResult.rows.map((row) => ({
-      timestamp: row.transferredAt,
-      locationId: row.fromLocationId,
-      value: 1,
-    })),
-    ...staffFood.rows.map((row) => ({
-      timestamp: row.registeredAt,
+      value: row.count,
+    })) ??
+      deliveries?.rows.map((row) => ({
+        timestamp: row.registeredAt,
+        locationId: row.locationId,
+        value: 1,
+      })) ??
+      []),
+    ...(transfersSummary?.rows.map((row) => ({
+      timestamp: row.timestamp,
       locationId: row.locationId,
-      value: 1,
-    })),
+      value: row.count,
+    })) ??
+      transferResult?.rows.map((row) => ({
+        timestamp: row.transferredAt,
+        locationId: row.fromLocationId,
+        value: 1,
+      })) ??
+      []),
+    ...(staffFoodSummary?.rows.map((row) => ({
+      timestamp: row.timestamp,
+      locationId: row.locationId,
+      value: row.count,
+    })) ??
+      staffFood?.rows.map((row) => ({
+        timestamp: row.registeredAt,
+        locationId: row.locationId,
+        value: 1,
+      })) ??
+      []),
   ];
   const compared = seriesResult(
     "count",
@@ -1402,10 +1717,14 @@ const locationComparison: MetricComputer = async (ctx, params) => {
     comparisonParams,
     {
       truncated:
-        waste.truncated ||
-        deliveries.truncated ||
-        transferResult.truncated ||
-        staffFood.truncated ||
+        wasteSummary?.truncated ||
+        deliveriesSummary?.truncated ||
+        transfersSummary?.truncated ||
+        staffFoodSummary?.truncated ||
+        waste?.truncated ||
+        deliveries?.truncated ||
+        transferResult?.truncated ||
+        staffFood?.truncated ||
         comparisonParams.anonymousScopeTruncated ||
         undefined,
     },

@@ -31,6 +31,10 @@ import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { listActiveProductCatalog } from "./lib/productCatalog";
 import { productSearchScore } from "../lib/product-search";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummary,
+} from "./lib/dashboardSummaries";
 
 const MAX_ITEMS = 200;
 const MAX_PRODUCT_OPTIONS = 50;
@@ -512,6 +516,7 @@ export const registerBadDelivery = mutation({
       ? ("pending" as const)
       : ("notConfigured" as const);
     const now = Date.now();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const badDeliveryId = await ctx.db.insert("badDeliveries", {
       organizationId,
       locationId: location._id,
@@ -530,7 +535,18 @@ export const registerBadDelivery = mutation({
       emailBody: settings.emailBody,
       initialNoticeStatus,
       cancellationNoticeStatus: "skipped",
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
+    const badDelivery = await ctx.db.get("badDeliveries", badDeliveryId);
+    if (badDelivery) {
+      await reconcileDashboardSummary(
+        ctx,
+        "badDeliveries",
+        null,
+        badDelivery,
+        summaryTimeZone,
+      );
+    }
     for (const item of resolvedItems) {
       await ctx.db.insert("badDeliveryItems", {
         organizationId,
@@ -847,6 +863,7 @@ export const voidBadDelivery = mutation({
     }
     const now = Date.now();
     const shouldCancel = delivery.initialNoticeStatus === "sent";
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     await ctx.db.patch("badDeliveries", delivery._id, {
       status: "voided",
       voidedAt: now,
@@ -854,7 +871,19 @@ export const voidBadDelivery = mutation({
       voidedByName: userName,
       cancellationNoticeStatus: shouldCancel ? "pending" : "skipped",
       cancellationNoticeInFlight: false,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
+    await reconcileDashboardSummary(
+      ctx,
+      "badDeliveries",
+      delivery,
+      {
+        ...delivery,
+        status: "voided",
+        dashboardSummaryTimeZone: summaryTimeZone,
+      },
+      summaryTimeZone,
+    );
     if (shouldCancel) {
       await ctx.scheduler.runAfter(0, internal.badDeliveryNotices.sendNotice, {
         badDeliveryId: delivery._id,

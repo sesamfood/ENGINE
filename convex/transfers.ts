@@ -14,6 +14,10 @@ import {
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
 import { listActiveProductCatalog } from "./lib/productCatalog";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummary,
+} from "./lib/dashboardSummaries";
 import { productSearchScore } from "../lib/product-search";
 
 const MAX_TRANSFER_ITEMS = 200;
@@ -522,6 +526,7 @@ export const createTransfer = mutation({
       organizationId,
       args,
     );
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
 
     const transferId = await ctx.db.insert("transfers", {
       organizationId,
@@ -533,6 +538,7 @@ export const createTransfer = mutation({
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
       stockApplied: true,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
 
     for (const item of resolvedItems) {
@@ -548,6 +554,19 @@ export const createTransfer = mutation({
         temperatureCelsius: item.temperatureCelsius,
         maxTemperatureCelsius: item.maxTemperatureCelsius,
       });
+    }
+
+    const transfer = await ctx.db.get("transfers", transferId);
+    if (transfer) {
+      await reconcileDashboardSummary(
+        ctx,
+        "transfers",
+        null,
+        transfer,
+        summaryTimeZone,
+        undefined,
+        resolvedItems,
+      );
     }
 
     await applyTransferStock(
@@ -602,6 +621,7 @@ export const updateTransfer = mutation({
       transfer,
       existingItems,
     );
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
 
     // ponytail: pre-ledger transfers stay neutral; the next submitted count establishes their baseline.
     if (transfer.stockApplied) {
@@ -630,6 +650,7 @@ export const updateTransfer = mutation({
       responsibleName,
       comment,
       transferredAt: args.transferredAt,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
     for (const item of existingItems) {
       await ctx.db.delete("transferItems", item._id);
@@ -648,6 +669,25 @@ export const updateTransfer = mutation({
         maxTemperatureCelsius: item.maxTemperatureCelsius,
       });
     }
+
+    await reconcileDashboardSummary(
+      ctx,
+      "transfers",
+      transfer,
+      {
+        ...transfer,
+        fromLocationId: args.fromLocationId,
+        toLocationId: args.toLocationId,
+        responsibleUserId: args.responsibleUserId,
+        responsibleName,
+        comment,
+        transferredAt: args.transferredAt,
+        dashboardSummaryTimeZone: summaryTimeZone,
+      },
+      summaryTimeZone,
+      existingItems,
+      resolvedItems,
+    );
 
     return null;
   },
@@ -679,6 +719,14 @@ export const deleteTransfer = mutation({
     if (items.length > MAX_TRANSFER_ITEMS) {
       throw new ConvexError("Transferen har for mange produktlinjer");
     }
+    await reconcileDashboardSummary(
+      ctx,
+      "transfers",
+      transfer,
+      null,
+      transfer.dashboardSummaryTimeZone ?? "Europe/Copenhagen",
+      items,
+    );
     if (transfer.stockApplied) {
       await applyTransferStock(
         ctx,

@@ -19,6 +19,11 @@ import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { MAX_CATEGORIES_PER_ORGANIZATION } from "./lib/categoryHierarchy";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummaryContributions,
+  staffFoodSummaryContribution,
+} from "./lib/dashboardSummaries";
 
 const MAX_TIERS = 10;
 const MAX_ALLOWANCES = 20;
@@ -904,6 +909,10 @@ export const register = mutation({
     }
 
     const checkoutId = crypto.randomUUID();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const summaryContributions = [] as ReturnType<
+      typeof staffFoodSummaryContribution
+    >;
     for (let index = 0; index < args.items.length; index += 1) {
       const item = args.items[index];
       const product = products[index]!;
@@ -921,7 +930,7 @@ export const register = mutation({
         throw new ConvexError("Produktets kategori eller enhed mangler");
       }
       const defaultQuantity = normalizeStock(item.quantity);
-      await ctx.db.insert("staffFoodRegistrations", {
+      const registrationId = await ctx.db.insert("staffFoodRegistrations", {
         organizationId,
         checkoutId,
         sessionId: session._id,
@@ -946,7 +955,17 @@ export const register = mutation({
         registeredBy: userIdentifier,
         registeredByName: userName,
         status: "active",
+        dashboardSummaryTimeZone: summaryTimeZone,
       });
+      const registration = await ctx.db.get(
+        "staffFoodRegistrations",
+        registrationId,
+      );
+      if (registration) {
+        summaryContributions.push(
+          ...staffFoodSummaryContribution(registration, summaryTimeZone),
+        );
+      }
       await addStock(
         ctx,
         organizationId,
@@ -955,6 +974,7 @@ export const register = mutation({
         -defaultQuantity,
       );
     }
+    await reconcileDashboardSummaryContributions(ctx, [], summaryContributions);
     return {
       checkoutId,
       registeredAt: now,
@@ -991,6 +1011,12 @@ export const voidCheckout = mutation({
       rows[0]!.locationId,
     );
     const now = Date.now();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const previousSummaryContributions = rows.flatMap((row) =>
+      row.dashboardSummaryTimeZone
+        ? staffFoodSummaryContribution(row, row.dashboardSummaryTimeZone)
+        : [],
+    );
     if (
       rows.some(
         (row) =>
@@ -1007,6 +1033,7 @@ export const voidCheckout = mutation({
         voidedAt: now,
         voidedBy: userIdentifier,
         voidedByName: userName,
+        dashboardSummaryTimeZone: summaryTimeZone,
       });
       await addStock(
         ctx,
@@ -1016,6 +1043,11 @@ export const voidCheckout = mutation({
         row.defaultQuantity,
       );
     }
+    await reconcileDashboardSummaryContributions(
+      ctx,
+      previousSummaryContributions,
+      [],
+    );
     await recordAudit(ctx, auth, {
       action: "staffFood.void",
       entityTable: "staffFoodRegistrations",

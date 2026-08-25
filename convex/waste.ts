@@ -33,6 +33,10 @@ import {
   activeProductCatalogValidator,
   listActiveProductCatalog,
 } from "./lib/productCatalog";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummary,
+} from "./lib/dashboardSummaries";
 
 const MAX_PRODUCTS = 500;
 const MAX_CHILD_ROWS = 200;
@@ -1053,6 +1057,7 @@ export const registerWaste = mutation({
       throw new ConvexError("Produktets standardenhed blev ikke fundet");
     }
     const now = Date.now();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const defaultQuantity = normalizeStock(
       quantity * productUnit.factorToDefault,
     );
@@ -1077,11 +1082,19 @@ export const registerWaste = mutation({
       status: "active",
       activeIn30Days: true,
       activeIn90Days: true,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
     const registration = (await ctx.db.get(
       "wasteRegistrations",
       registrationId,
     ))!;
+    await reconcileDashboardSummary(
+      ctx,
+      "waste",
+      null,
+      registration,
+      summaryTimeZone,
+    );
     await addStock(
       ctx,
       organizationId,
@@ -1294,6 +1307,15 @@ async function voidRegistration(
     throw new ConvexError("Registreringen er allerede annulleret");
   }
   const now = Date.now();
+  const summaryTimeZone = await dashboardSummaryTimeZone(
+    ctx,
+    auth.organizationId,
+  );
+  const nextRegistration = {
+    ...registration,
+    status: "voided" as const,
+    dashboardSummaryTimeZone: summaryTimeZone,
+  };
   const canUndoOwn =
     registration.registeredBy === auth.userIdentifier &&
     now - registration.registeredAt <= UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS;
@@ -1313,7 +1335,15 @@ async function voidRegistration(
     voidedAt: now,
     voidedBy: auth.userIdentifier,
     voidedByName: auth.userName,
+    dashboardSummaryTimeZone: summaryTimeZone,
   });
+  await reconcileDashboardSummary(
+    ctx,
+    "waste",
+    registration,
+    nextRegistration,
+    summaryTimeZone,
+  );
   await addStock(
     ctx,
     auth.organizationId,

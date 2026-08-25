@@ -16,8 +16,8 @@ import {
   type DragOverEvent,
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
-import { useMemo, useState, type CSSProperties } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,7 @@ const sizeClasses: Record<WidgetSize, string> = {
 
 const METRIC_BATCH_SIZE = 3;
 const METRIC_BATCH_COUNT = 8;
+const SUMMARY_REBUILD_RETRY_MS = 60_000;
 
 function metricBatchKey(
   widget: WidgetInstance,
@@ -360,6 +361,32 @@ export function DashboardGrid({
     api.customMetrics.list,
     !publicAccess && widgets.some((widget) => widget.metric.kind === "custom") ? {} : "skip",
   );
+  const requestSummaryRebuild = useMutation(
+    api.dashboardSummaries.requestRebuild,
+  );
+  const summaryMetricIds = useMemo(
+    () => [
+      ...new Set(
+        widgets.flatMap((widget) =>
+          widget.metric.kind === "builtin"
+            ? [widget.metric.id]
+            : [],
+        ),
+      ),
+    ],
+    [widgets],
+  );
+  useEffect(() => {
+    if (publicAccess || summaryMetricIds.length === 0) return;
+    const request = () => {
+      void requestSummaryRebuild({ metricIds: summaryMetricIds }).catch(() => {
+        // Summary preparation is intentionally best effort. Metrics fall back to raw data.
+      });
+    };
+    request();
+    const interval = window.setInterval(request, SUMMARY_REBUILD_RETRY_MS);
+    return () => window.clearInterval(interval);
+  }, [publicAccess, requestSummaryRebuild, summaryMetricIds]);
   const customMetricLabels = useMemo(
     () => new Map((customMetrics ?? []).map((metric) => [String(metric.id), metric.name] as const)),
     [customMetrics],

@@ -426,6 +426,8 @@ export const setTimeZone = mutation({
         q.eq("organizationId", organizationId),
       )
       .unique();
+    const previousOrganizationTimeZone =
+      current?.timeZone ?? "Europe/Copenhagen";
     if (current) {
       await ctx.db.patch(current._id, { timeZone, updatedAt: Date.now() });
     } else {
@@ -434,6 +436,21 @@ export const setTimeZone = mutation({
         timeZone,
         updatedAt: Date.now(),
       });
+    }
+    const summaryStatuses = await ctx.db
+      .query("dashboardSummaryStatuses")
+      .withIndex("by_organizationId_and_source", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(10);
+    if (previousOrganizationTimeZone !== timeZone) {
+      for (const status of summaryStatuses) {
+        await ctx.db.patch(status._id, {
+          state: "stale",
+          runToken: undefined,
+          updatedAt: Date.now(),
+        });
+      }
     }
     for (const [index, location] of inheritedLocations.entries()) {
       const nextTimeZone = await resolveTimeZone(
