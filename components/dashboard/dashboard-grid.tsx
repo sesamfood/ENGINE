@@ -23,6 +23,7 @@ import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
 import { metricRegistry } from "@/lib/dashboard/registry";
+import { dashboardMetricUsesSummary } from "@/lib/dashboard/summary-sources";
 import {
   dashboardColumns,
   dashboardRowCount,
@@ -46,7 +47,6 @@ const sizeClasses: Record<WidgetSize, string> = {
 
 const METRIC_BATCH_SIZE = 3;
 const METRIC_BATCH_COUNT = 8;
-const SUMMARY_REBUILD_RETRY_MS = 60_000;
 
 function metricBatchKey(
   widget: WidgetInstance,
@@ -364,11 +364,17 @@ export function DashboardGrid({
   const requestSummaryRebuild = useMutation(
     api.dashboardSummaries.requestRebuild,
   );
+  const requestSharedSummaryRebuild = useMutation(
+    api.dashboardShare.requestSummaryRebuild,
+  );
+  const publicToken = publicAccess?.token;
+  const publicAccessKey = publicAccess?.accessKey;
   const summaryMetricIds = useMemo(
     () => [
       ...new Set(
         widgets.flatMap((widget) =>
-          widget.metric.kind === "builtin"
+          widget.metric.kind === "builtin" &&
+          dashboardMetricUsesSummary(widget.metric.id)
             ? [widget.metric.id]
             : [],
         ),
@@ -377,16 +383,24 @@ export function DashboardGrid({
     [widgets],
   );
   useEffect(() => {
-    if (publicAccess || summaryMetricIds.length === 0) return;
-    const request = () => {
-      void requestSummaryRebuild({ metricIds: summaryMetricIds }).catch(() => {
-        // Summary preparation is intentionally best effort. Metrics fall back to raw data.
-      });
-    };
-    request();
-    const interval = window.setInterval(request, SUMMARY_REBUILD_RETRY_MS);
-    return () => window.clearInterval(interval);
-  }, [publicAccess, requestSummaryRebuild, summaryMetricIds]);
+    if (summaryMetricIds.length === 0) return;
+    const request = publicToken !== undefined && publicAccessKey !== undefined
+      ? requestSharedSummaryRebuild({
+          token: publicToken,
+          accessKey: publicAccessKey,
+          metricIds: summaryMetricIds,
+        })
+      : requestSummaryRebuild({ metricIds: summaryMetricIds });
+    void request.catch(() => {
+      // Summary preparation is intentionally best effort. Metrics fall back to raw data.
+    });
+  }, [
+    publicAccessKey,
+    publicToken,
+    requestSharedSummaryRebuild,
+    requestSummaryRebuild,
+    summaryMetricIds,
+  ]);
   const customMetricLabels = useMemo(
     () => new Map((customMetrics ?? []).map((metric) => [String(metric.id), metric.name] as const)),
     [customMetrics],

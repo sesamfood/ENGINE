@@ -1,14 +1,15 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { DashboardSummarySource } from "../../lib/dashboard/summary-sources";
 
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
+export const DASHBOARD_SUMMARY_VERSION = 2;
 const NUMERIC_TOLERANCE = 1e-9;
 const validTimeZones = new Map<string, string>();
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
-export type SummarySource =
-  "waste" | "badDeliveries" | "staffFood" | "transfers" | "scheduledShifts";
+export type SummarySource = DashboardSummarySource;
 
 export type SummaryDocumentBySource = {
   waste: Doc<"wasteRegistrations">;
@@ -336,6 +337,7 @@ export async function reconcileDashboardSummaryContributions(
   ctx: MutationCtx,
   previous: readonly DashboardSummaryContribution[],
   next: readonly DashboardSummaryContribution[],
+  options?: { immediate?: boolean },
 ) {
   const deltas = new Map<string, DashboardSummaryContribution>();
   for (const row of previous) {
@@ -352,7 +354,36 @@ export async function reconcileDashboardSummaryContributions(
     delta.value += row.value;
     deltas.set(key, delta);
   }
-  for (const delta of deltas.values()) {
+  const effectiveDeltas = [...deltas.values()].filter(
+    (delta) =>
+      Math.abs(delta.count) > NUMERIC_TOLERANCE ||
+      Math.abs(delta.value) > NUMERIC_TOLERANCE,
+  );
+  if (!options?.immediate) {
+    if (effectiveDeltas.length) {
+      await ctx.db.insert("dashboardSummaryDeltas", {
+        deltas: effectiveDeltas,
+      });
+    }
+    return;
+  }
+  await applyDashboardSummaryDeltas(ctx, effectiveDeltas);
+}
+
+export async function applyDashboardSummaryDeltas(
+  ctx: MutationCtx,
+  deltas: readonly DashboardSummaryContribution[],
+) {
+  const combined = new Map<string, DashboardSummaryContribution>();
+  for (const row of deltas) {
+    const key = contributionKey(row);
+    const delta = combined.get(key) ?? { ...row, count: 0, value: 0 };
+    delta.count += row.count;
+    delta.value += row.value;
+    combined.set(key, delta);
+  }
+  const updatedAt = Date.now();
+  for (const delta of combined.values()) {
     if (
       Math.abs(delta.count) <= NUMERIC_TOLERANCE &&
       Math.abs(delta.value) <= NUMERIC_TOLERANCE
@@ -385,7 +416,7 @@ export async function reconcileDashboardSummaryContributions(
     const patch = {
       count,
       value,
-      updatedAt: Date.now(),
+      updatedAt,
     };
     if (existing) {
       await ctx.db.patch(existing._id, patch);
@@ -417,6 +448,7 @@ export async function reconcileDashboardSummary<S extends SummarySource>(
     Doc<"transferItems">,
     "quantity" | "factorToDefault"
   >[],
+  options?: { immediate?: boolean },
 ) {
   const previousTimeZone = previous?.dashboardSummaryTimeZone;
   const previousContribution =
@@ -435,6 +467,7 @@ export async function reconcileDashboardSummary<S extends SummarySource>(
     ctx,
     previousContribution,
     nextContribution,
+    options,
   );
 }
 

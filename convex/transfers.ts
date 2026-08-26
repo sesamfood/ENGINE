@@ -18,6 +18,9 @@ import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummary,
 } from "./lib/dashboardSummaries";
+import { transferAggregates } from "./lib/transferAggregates";
+import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
+
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_COMMENT_LENGTH = 500;
 const MAX_PRODUCT_UNITS = 200;
@@ -153,24 +156,6 @@ async function locationName(
 ): Promise<string> {
   const location = await ctx.db.get("locations", locationId);
   return location?.name ?? "Ukendt lokation";
-}
-
-function transferAggregates(
-  items: readonly Pick<
-    Doc<"transferItems">,
-    "quantity" | "temperatureCelsius" | "maxTemperatureCelsius"
-  >[],
-) {
-  return {
-    itemCount: items.length,
-    totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
-    hasTemperatureDeviation: items.some(
-      (item) =>
-        item.temperatureCelsius !== undefined &&
-        item.maxTemperatureCelsius !== undefined &&
-        item.temperatureCelsius > item.maxTemperatureCelsius,
-    ),
-  };
 }
 
 async function hydrateTransferHeader(
@@ -767,6 +752,19 @@ export const deleteTransfer = mutation({
       await ctx.db.delete("transferItems", item._id);
     }
     await ctx.db.delete("transfers", transfer._id);
+    return null;
+  },
+});
+
+export const requestAggregateBackfill = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const { organizationId } = await requireTransferViewer(
+      ctx,
+      "transfers.history",
+    );
+    await requestDashboardSummaryRebuild(ctx, organizationId, ["transfers"]);
     return null;
   },
 });

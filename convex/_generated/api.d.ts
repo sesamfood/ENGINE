@@ -55,6 +55,7 @@ import type * as lib_resend from "../lib/resend.js";
 import type * as lib_salesRollup from "../lib/salesRollup.js";
 import type * as lib_stock from "../lib/stock.js";
 import type * as lib_timeZone from "../lib/timeZone.js";
+import type * as lib_transferAggregates from "../lib/transferAggregates.js";
 import type * as lib_workfeedApi from "../lib/workfeedApi.js";
 import type * as lib_workfeedSyncRequest from "../lib/workfeedSyncRequest.js";
 import type * as locations from "../locations.js";
@@ -136,6 +137,7 @@ declare const fullApi: ApiFromModules<{
   "lib/salesRollup": typeof lib_salesRollup;
   "lib/stock": typeof lib_stock;
   "lib/timeZone": typeof lib_timeZone;
+  "lib/transferAggregates": typeof lib_transferAggregates;
   "lib/workfeedApi": typeof lib_workfeedApi;
   "lib/workfeedSyncRequest": typeof lib_workfeedSyncRequest;
   locations: typeof locations;

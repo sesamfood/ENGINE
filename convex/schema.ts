@@ -15,6 +15,7 @@ import {
 import { organizationThemeValidator } from "./lib/organizationTheme";
 import {
   customMetricSpecValidator,
+  dashboardSummarySourceValidator,
   rangeValidator,
   scopeValidator,
   widgetValidator,
@@ -984,6 +985,7 @@ export default defineSchema({
     defaultUnitId: v.id("units"),
     defaultUnitName: v.string(),
     dayStartAt: v.number(),
+    shard: v.optional(v.number()),
     count: v.number(),
     quantity: v.number(),
     latestRegisteredAt: v.number(),
@@ -998,13 +1000,14 @@ export default defineSchema({
       "dayStartAt",
     ])
     .index(
-      "by_org_location_product_defaultUnit_dayStartAt",
+      "by_org_location_product_defaultUnit_dayStartAt_shard",
       [
         "organizationId",
         "locationId",
         "productId",
         "defaultUnitId",
         "dayStartAt",
+        "shard",
       ],
     ),
 
@@ -1418,6 +1421,21 @@ export default defineSchema({
       "dayStart",
     ]),
 
+  dashboardSummaryDeltas: defineTable({
+    deltas: v.array(
+      v.object({
+        organizationId: v.string(),
+        source: dashboardSummarySourceValidator,
+        timeZone: v.string(),
+        locationId: v.id("locations"),
+        counterpartLocationId: v.union(v.id("locations"), v.null()),
+        dayStart: v.number(),
+        count: v.number(),
+        value: v.number(),
+      }),
+    ),
+  }),
+
   dashboardSummaryStatuses: defineTable({
     organizationId: v.string(),
     source: v.union(
@@ -1428,6 +1446,7 @@ export default defineSchema({
       v.literal("scheduledShifts"),
     ),
     timeZone: v.string(),
+    version: v.optional(v.number()),
     state: v.union(
       v.literal("building"),
       v.literal("ready"),

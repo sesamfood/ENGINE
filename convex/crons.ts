@@ -4,6 +4,13 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 crons.interval(
+  "flush dashboard summary updates",
+  { minutes: 1 },
+  internal.dashboardSummaries.flushSummaryDeltas,
+  {},
+);
+
+crons.interval(
   "delete expired archived products",
   { hours: 24 },
   internal.catalog.deleteExpiredProducts,

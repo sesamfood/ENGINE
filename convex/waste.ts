@@ -51,8 +51,12 @@ const MAX_PUBLIC_PAGE_SIZE = 100;
 const REPORT_SUMMARY_BUILD_PAGE_SIZE = 50;
 const REPORT_SUMMARY_BUILD_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_REPORT_SUMMARY_ROWS = 8_000;
+const REPORT_SUMMARY_SHARD_COUNT = 2;
+const MAX_REPORT_SUMMARY_DOCUMENTS =
+  MAX_REPORT_SUMMARY_ROWS * (REPORT_SUMMARY_SHARD_COUNT + 1);
 const MAX_REPORT_BOUNDARY_ROWS = 5_000;
 const MAX_REPORT_GROUPS = 5_000;
+const REPORT_READ_HEADROOM_BYTES = 1024 * 1024;
 const UTC_DAY_MS = 24 * 60 * 60 * 1_000;
 
 function requirePageSize(numItems: number, maximum: number) {
@@ -803,28 +807,38 @@ function reportSummaryDayStart(registeredAt: number) {
   return Math.floor(registeredAt / UTC_DAY_MS) * UTC_DAY_MS;
 }
 
+function reportSummaryShard(id: Id<"wasteRegistrations">) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0) % REPORT_SUMMARY_SHARD_COUNT;
+}
+
 async function adjustReportSummary(
   ctx: MutationCtx,
   registration: Doc<"wasteRegistrations">,
   direction: 1 | -1,
 ) {
   const dayStartAt = reportSummaryDayStart(registration.registeredAt);
+  const shard = reportSummaryShard(registration._id);
   const current = await ctx.db
     .query("wasteReportDailySummaries")
     .withIndex(
-      "by_org_location_product_defaultUnit_dayStartAt",
+      "by_org_location_product_defaultUnit_dayStartAt_shard",
       (q) =>
         q
           .eq("organizationId", registration.organizationId)
           .eq("locationId", registration.locationId)
           .eq("productId", registration.productId)
           .eq("defaultUnitId", registration.defaultUnitId)
-          .eq("dayStartAt", dayStartAt),
+          .eq("dayStartAt", dayStartAt)
+          .eq("shard", shard),
     )
     .unique();
 
   if (!current) {
-    if (direction < 0) return;
     await ctx.db.insert("wasteReportDailySummaries", {
       organizationId: registration.organizationId,
       locationId: registration.locationId,
@@ -834,39 +848,31 @@ async function adjustReportSummary(
       defaultUnitId: registration.defaultUnitId,
       defaultUnitName: registration.defaultUnitName,
       dayStartAt,
-      count: 1,
-      quantity: registration.defaultQuantity,
-      latestRegisteredAt: registration.registeredAt,
+      shard,
+      count: direction,
+      quantity: normalizeQuantity(direction * registration.defaultQuantity),
+      latestRegisteredAt: direction > 0 ? registration.registeredAt : 0,
     });
     return;
   }
 
   const count = current.count + direction;
-  if (count <= 0) {
+  if (count === 0) {
     await ctx.db.delete("wasteReportDailySummaries", current._id);
     return;
   }
 
   const useRegistrationNames =
     direction > 0 && registration.registeredAt >= current.latestRegisteredAt;
-  const latestRemaining =
-    direction < 0 && registration.registeredAt >= current.latestRegisteredAt
-      ? await ctx.db
-          .query("wasteRegistrations")
-          .withIndex("by_org_location_product_status_time", (q) =>
-            q
-              .eq("organizationId", registration.organizationId)
-              .eq("locationId", registration.locationId)
-              .eq("productId", registration.productId)
-              .eq("status", "active")
-              .gte("registeredAt", dayStartAt)
-              .lt("registeredAt", dayStartAt + UTC_DAY_MS),
-          )
-          .filter((q) =>
-            q.eq(q.field("defaultUnitId"), registration.defaultUnitId),
-          )
-          .order("desc")
-          .first()
+  const currentNames =
+    direction < 0 &&
+    count > 0 &&
+    registration.registeredAt >= current.latestRegisteredAt
+      ? await Promise.all([
+          ctx.db.get("locations", registration.locationId),
+          ctx.db.get("products", registration.productId),
+          ctx.db.get("units", registration.defaultUnitId),
+        ])
       : null;
   await ctx.db.patch("wasteReportDailySummaries", current._id, {
     count,
@@ -880,12 +886,21 @@ async function adjustReportSummary(
           defaultUnitName: registration.defaultUnitName,
           latestRegisteredAt: registration.registeredAt,
         }
-      : latestRemaining
+      : currentNames
         ? {
-            locationName: latestRemaining.locationName,
-            productName: latestRemaining.productName,
-            defaultUnitName: latestRemaining.defaultUnitName,
-            latestRegisteredAt: latestRemaining.registeredAt,
+            locationName:
+              currentNames[0]?.organizationId === registration.organizationId
+                ? currentNames[0].name
+                : current.locationName,
+            productName:
+              currentNames[1]?.organizationId === registration.organizationId
+                ? currentNames[1].name
+                : current.productName,
+            defaultUnitName:
+              currentNames[2]?.organizationId === registration.organizationId
+                ? currentNames[2].name
+                : current.defaultUnitName,
+            latestRegisteredAt: 0,
           }
       : {}),
   });
@@ -1929,7 +1944,8 @@ function addReportSummaryContribution(
   }
   groups.set(key, {
     ...current,
-    ...(contribution.latestRegisteredAt >= current.latestRegisteredAt
+    ...(contribution.count > 0 &&
+      contribution.latestRegisteredAt >= current.latestRegisteredAt
       ? {
           locationName: contribution.locationName,
           productName: contribution.productName,
@@ -1942,18 +1958,42 @@ function addReportSummaryContribution(
   });
 }
 
+type ReportReadResult<T> = {
+  rows: T[];
+  complete: boolean;
+};
+
+async function reportPaginationOptions(ctx: QueryCtx, maximumRowsRead: number) {
+  const metrics = await ctx.meta.getTransactionMetrics();
+  const maximumBytesRead =
+    metrics.bytesRead.remaining - REPORT_READ_HEADROOM_BYTES;
+  return maximumRowsRead > 0 && maximumBytesRead > 0
+    ? {
+        numItems: maximumRowsRead,
+        cursor: null,
+        maximumRowsRead,
+        maximumBytesRead,
+      }
+    : null;
+}
+
 async function reportDailySummariesInRange(
   ctx: QueryCtx,
   organizationId: string,
   locationFilter: WasteReportLocationFilter,
   startAt: number,
   endAtExclusive: number,
-): Promise<Doc<"wasteReportDailySummaries">[]> {
+): Promise<ReportReadResult<Doc<"wasteReportDailySummaries">>> {
   if (isMultiLocationFilter(locationFilter) && !locationFilter.locationIds.length) {
-    return [];
+    return { rows: [], complete: true };
   }
   if (isSingleLocationFilter(locationFilter)) {
-    return await ctx.db
+    const options = await reportPaginationOptions(
+      ctx,
+      MAX_REPORT_SUMMARY_DOCUMENTS + 1,
+    );
+    if (!options) return { rows: [], complete: false };
+    const result = await ctx.db
       .query("wasteReportDailySummaries")
       .withIndex(
         "by_organizationId_and_locationId_and_dayStartAt",
@@ -1964,13 +2004,20 @@ async function reportDailySummariesInRange(
             .gte("dayStartAt", startAt)
             .lt("dayStartAt", endAtExclusive),
       )
-      .take(MAX_REPORT_SUMMARY_ROWS + 1);
+      .paginate(options);
+    return {
+      rows: result.page,
+      complete:
+        result.isDone && result.page.length <= MAX_REPORT_SUMMARY_DOCUMENTS,
+    };
   }
   if (isMultiLocationFilter(locationFilter)) {
     const rows: Doc<"wasteReportDailySummaries">[] = [];
     for (const locationId of locationFilter.locationIds) {
-      const remaining = MAX_REPORT_SUMMARY_ROWS - rows.length;
-      const locationRows = await ctx.db
+      const remaining = MAX_REPORT_SUMMARY_DOCUMENTS - rows.length;
+      const options = await reportPaginationOptions(ctx, remaining + 1);
+      if (!options) return { rows, complete: false };
+      const result = await ctx.db
         .query("wasteReportDailySummaries")
         .withIndex(
           "by_organizationId_and_locationId_and_dayStartAt",
@@ -1981,13 +2028,20 @@ async function reportDailySummariesInRange(
               .gte("dayStartAt", startAt)
               .lt("dayStartAt", endAtExclusive),
         )
-        .take(remaining + 1);
-      rows.push(...locationRows);
-      if (rows.length > MAX_REPORT_SUMMARY_ROWS) return rows;
+        .paginate(options);
+      rows.push(...result.page);
+      if (!result.isDone || rows.length > MAX_REPORT_SUMMARY_DOCUMENTS) {
+        return { rows, complete: false };
+      }
     }
-    return rows;
+    return { rows, complete: true };
   }
-  return await ctx.db
+  const options = await reportPaginationOptions(
+    ctx,
+    MAX_REPORT_SUMMARY_DOCUMENTS + 1,
+  );
+  if (!options) return { rows: [], complete: false };
+  const result = await ctx.db
     .query("wasteReportDailySummaries")
     .withIndex("by_organizationId_and_dayStartAt", (q) =>
       q
@@ -1995,7 +2049,12 @@ async function reportDailySummariesInRange(
         .gte("dayStartAt", startAt)
         .lt("dayStartAt", endAtExclusive),
     )
-    .take(MAX_REPORT_SUMMARY_ROWS + 1);
+    .paginate(options);
+  return {
+    rows: result.page,
+    complete:
+      result.isDone && result.page.length <= MAX_REPORT_SUMMARY_DOCUMENTS,
+  };
 }
 
 async function activeReportRegistrationsInRange(
@@ -2005,12 +2064,14 @@ async function activeReportRegistrationsInRange(
   startAt: number,
   endAt: number,
   limit: number,
-): Promise<Doc<"wasteRegistrations">[]> {
+): Promise<ReportReadResult<Doc<"wasteRegistrations">>> {
   if (isMultiLocationFilter(locationFilter) && !locationFilter.locationIds.length) {
-    return [];
+    return { rows: [], complete: true };
   }
   if (isSingleLocationFilter(locationFilter)) {
-    return await ctx.db
+    const options = await reportPaginationOptions(ctx, limit + 1);
+    if (!options) return { rows: [], complete: false };
+    const result = await ctx.db
       .query("wasteRegistrations")
       .withIndex("by_org_location_status_time", (q) =>
         q
@@ -2021,13 +2082,19 @@ async function activeReportRegistrationsInRange(
           .lte("registeredAt", endAt),
       )
       .order("desc")
-      .take(limit + 1);
+      .paginate(options);
+    return {
+      rows: result.page,
+      complete: result.isDone && result.page.length <= limit,
+    };
   }
   if (isMultiLocationFilter(locationFilter)) {
     const rows: Doc<"wasteRegistrations">[] = [];
     for (const locationId of locationFilter.locationIds) {
       const remaining = limit - rows.length;
-      const locationRows = await ctx.db
+      const options = await reportPaginationOptions(ctx, remaining + 1);
+      if (!options) return { rows, complete: false };
+      const result = await ctx.db
         .query("wasteRegistrations")
         .withIndex("by_org_location_status_time", (q) =>
           q
@@ -2038,13 +2105,17 @@ async function activeReportRegistrationsInRange(
             .lte("registeredAt", endAt),
         )
         .order("desc")
-        .take(remaining + 1);
-      rows.push(...locationRows);
-      if (rows.length > limit) return rows;
+        .paginate(options);
+      rows.push(...result.page);
+      if (!result.isDone || rows.length > limit) {
+        return { rows, complete: false };
+      }
     }
-    return rows;
+    return { rows, complete: true };
   }
-  return await ctx.db
+  const options = await reportPaginationOptions(ctx, limit + 1);
+  if (!options) return { rows: [], complete: false };
+  const result = await ctx.db
     .query("wasteRegistrations")
     .withIndex("by_org_status_time", (q) =>
       q
@@ -2054,7 +2125,11 @@ async function activeReportRegistrationsInRange(
         .lte("registeredAt", endAt),
     )
     .order("desc")
-    .take(limit + 1);
+    .paginate(options);
+  return {
+    rows: result.page,
+    complete: result.isDone && result.page.length <= limit,
+  };
 }
 
 export const getReportSummary = query({
@@ -2094,17 +2169,24 @@ export const getReportSummary = query({
     const rawRanges: Array<{ startAt: number; endAt: number }> = [];
 
     if (firstFullDayStart < fullDaysEndExclusive) {
-      const dailyRows = await reportDailySummariesInRange(
+      const dailyRead = await reportDailySummariesInRange(
         ctx,
         organizationId,
         locationFilter,
         firstFullDayStart,
         fullDaysEndExclusive,
       );
-      if (dailyRows.length > MAX_REPORT_SUMMARY_ROWS) {
+      if (!dailyRead.complete) {
         return { state: "fallback" as const, rows: [] };
       }
-      for (const row of dailyRows) {
+      const dailySummaryKeys = new Set<string>();
+      for (const row of dailyRead.rows) {
+        dailySummaryKeys.add(
+          `${row.locationId}:${row.productId}:${row.defaultUnitId}:${row.dayStartAt}`,
+        );
+        if (dailySummaryKeys.size > MAX_REPORT_SUMMARY_ROWS) {
+          return { state: "fallback" as const, rows: [] };
+        }
         addReportSummaryContribution(groups, row);
       }
       if (args.startAt < firstFullDayStart) {
@@ -2126,7 +2208,7 @@ export const getReportSummary = query({
     let boundaryRowsRead = 0;
     for (const range of rawRanges) {
       const remaining = MAX_REPORT_BOUNDARY_ROWS - boundaryRowsRead;
-      const rows = await activeReportRegistrationsInRange(
+      const boundaryRead = await activeReportRegistrationsInRange(
         ctx,
         organizationId,
         locationFilter,
@@ -2134,11 +2216,11 @@ export const getReportSummary = query({
         range.endAt,
         remaining,
       );
-      if (rows.length > remaining) {
+      if (!boundaryRead.complete) {
         return { state: "fallback" as const, rows: [] };
       }
-      boundaryRowsRead += rows.length;
-      for (const row of rows) {
+      boundaryRowsRead += boundaryRead.rows.length;
+      for (const row of boundaryRead.rows) {
         addReportSummaryContribution(groups, {
           locationId: row.locationId,
           locationName: row.locationName,
@@ -2153,10 +2235,11 @@ export const getReportSummary = query({
       }
     }
 
-    if (groups.size > MAX_REPORT_GROUPS) {
+    const activeGroups = [...groups.values()].filter((row) => row.count > 0);
+    if (activeGroups.length > MAX_REPORT_GROUPS) {
       return { state: "fallback" as const, rows: [] };
     }
-    const rows = [...groups.values()]
+    const rows = activeGroups
       .sort(
         (left, right) =>
           left.locationName.localeCompare(right.locationName, "da") ||

@@ -14,12 +14,16 @@ import {
 } from "../../lib/dashboard/registry";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import type { SummarySource } from "./dashboardSummaries";
+import {
+  DASHBOARD_SUMMARY_VERSION,
+  type SummarySource,
+} from "./dashboardSummaries";
 
 const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_ROWS = 5_000;
-const MAX_SUMMARY_ROWS_PER_SOURCE = 1_500;
+const MAX_SUMMARY_ROWS_PER_SOURCE = MAX_ROWS;
 const MAX_SCOPE_LOCATIONS = 200;
+const MAX_LOCATION_QUERIES_PER_SOURCE = 8;
 const MAX_TRANSFER_DETAILS = 500;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const INTEGRATION_FRESHNESS_INTERVAL_MS = 26 * 60 * 60 * 1_000;
@@ -53,6 +57,7 @@ export type DashboardMetricParams = {
   organizationId: string;
   locations: DashboardLocation[];
   scopeSelectsAllLocations: boolean;
+  canUseOrganizationSummaryRange: boolean;
   compare: boolean;
   comparisonGroups?: DashboardComparisonGroup[];
   anonymousLocations?: DashboardLocation[];
@@ -474,6 +479,8 @@ export async function resolveMetricParams(
     organizationId,
     locations,
     scopeSelectsAllLocations: scope.locationIds === null,
+    canUseOrganizationSummaryRange:
+      !allowedLocationScope || allowedLocationScope.all,
     compare: scope.mode === "compare" && locations.length >= 2,
     comparisonGroups,
     anonymousLocations,
@@ -555,7 +562,11 @@ async function dashboardSummaryReady(
         q.eq("organizationId", params.organizationId).eq("source", source),
       )
       .unique();
-    return status?.state === "ready" && status.timeZone === params.timeZone;
+    return (
+      status?.state === "ready" &&
+      status.timeZone === params.timeZone &&
+      status.version === DASHBOARD_SUMMARY_VERSION
+    );
   });
 }
 
@@ -578,12 +589,14 @@ async function dashboardSummaryRows(
 ): Promise<SummaryRowsResult | null> {
   if (!(await dashboardSummaryReady(ctx, params, source))) return null;
   return await cached(params, `summary-rows:${source}`, async () => {
-    if (
-      params.scopeSelectsAllLocations &&
-      params.ownLocationIds === null &&
-      !params.scopeTruncated &&
-      !params.comparisonGroups?.length
-    ) {
+    if (!params.locations.length) {
+      return { rows: [], truncated: false };
+    }
+    const useOrganizationRange =
+      params.canUseOrganizationSummaryRange &&
+      (params.locations.length > MAX_LOCATION_QUERIES_PER_SOURCE ||
+        (params.scopeSelectsAllLocations && !params.scopeTruncated));
+    if (useOrganizationRange) {
       const allRows = await ctx.db
         .query("dashboardDailySummaries")
         .withIndex("by_org_source_timeZone_dayStart", (q) =>
@@ -595,10 +608,20 @@ async function dashboardSummaryRows(
             .lt("dayStart", params.to),
         )
         .take(MAX_SUMMARY_ROWS_PER_SOURCE + 1);
+      const selectedLocationIds = new Set(
+        params.locations.map((location) => location.id),
+      );
+      const selectedRows = allRows
+        .slice(0, MAX_SUMMARY_ROWS_PER_SOURCE)
+        .filter(
+          (row) =>
+            selectedLocationIds.has(row.locationId) ||
+            (source === "transfers" &&
+              row.counterpartLocationId !== null &&
+              selectedLocationIds.has(row.counterpartLocationId)),
+        );
       return {
-        rows: mapSummaryRows(
-          allRows.slice(0, MAX_SUMMARY_ROWS_PER_SOURCE),
-        ),
+        rows: mapSummaryRows(selectedRows),
         truncated: allRows.length > MAX_SUMMARY_ROWS_PER_SOURCE,
       };
     }
