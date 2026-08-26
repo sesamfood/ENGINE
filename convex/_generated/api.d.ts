@@ -42,6 +42,8 @@ import type * as lib_dashboardSummaries from "../lib/dashboardSummaries.js";
 import type * as lib_dashboardValidators from "../lib/dashboardValidators.js";
 import type * as lib_idempotency from "../lib/idempotency.js";
 import type * as lib_linear from "../lib/linear.js";
+import type * as lib_locationDeletion from "../lib/locationDeletion.js";
+import type * as lib_locationMutations from "../lib/locationMutations.js";
 import type * as lib_masterData from "../lib/masterData.js";
 import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
 import type * as lib_openingHours from "../lib/openingHours.js";
@@ -124,6 +126,8 @@ declare const fullApi: ApiFromModules<{
   "lib/dashboardValidators": typeof lib_dashboardValidators;
   "lib/idempotency": typeof lib_idempotency;
   "lib/linear": typeof lib_linear;
+  "lib/locationDeletion": typeof lib_locationDeletion;
+  "lib/locationMutations": typeof lib_locationMutations;
   "lib/masterData": typeof lib_masterData;
   "lib/onlinePosApi": typeof lib_onlinePosApi;
   "lib/openingHours": typeof lib_openingHours;

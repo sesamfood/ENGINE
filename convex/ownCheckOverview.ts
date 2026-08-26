@@ -398,8 +398,9 @@ export const listOwnCheckPlan = query({
     const locations = await resolveOverviewLocations(ctx, auth.organizationId, filter);
     if (!locations.length) return { rows: [], truncated: false };
     const timeZones = await resolveLocationTimeZones(ctx, auth.organizationId, locations);
+    const earliestStartInclusive = Math.min(...locations.map((location) => zonedTimestamp(args.fromDateKey, 0, timeZones.get(location._id)!)));
     const latestEndExclusive = Math.max(...locations.map((location) => zonedTimestamp(addDateKey(args.toDateKey, 1), 0, timeZones.get(location._id)!)));
-    const versions = await loadTemplateVersionsUntil(ctx, auth.organizationId, latestEndExclusive);
+    const versions = await loadTemplateVersionsUntil(ctx, auth.organizationId, earliestStartInclusive, latestEndExclusive);
     const performedRole = args.performedBy
       ? (await getDatabaseAdapter(ctx).findOne<{ role?: string }>({
           model: "member",
@@ -442,8 +443,9 @@ export const listOwnCheckEntries = query({
     const locations = await resolveOverviewLocations(ctx, auth.organizationId, filter);
     if (!locations.length) return { page: [], isDone: true, continueCursor: "", truncated: false };
     const timeZones = await resolveLocationTimeZones(ctx, auth.organizationId, locations);
+    const earliestStartInclusive = Math.min(...locations.map((location) => zonedTimestamp(args.fromDateKey, 0, timeZones.get(location._id)!)));
     const latestEndExclusive = Math.max(...locations.map((location) => zonedTimestamp(addDateKey(args.toDateKey, 1), 0, timeZones.get(location._id)!)));
-    const versions = await loadTemplateVersionsUntil(ctx, auth.organizationId, latestEndExclusive);
+    const versions = await loadTemplateVersionsUntil(ctx, auth.organizationId, earliestStartInclusive, latestEndExclusive);
     return await entryRows(ctx, auth.organizationId, filter, locations, timeZones, versions, args.fromDateKey, args.toDateKey, args.controlType, args.status, args.performedBy, args.paginationOpts);
   },
 });

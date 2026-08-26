@@ -138,6 +138,20 @@ async function removeDeletedUserMemberships(
   user: { id: string; email: string },
 ) {
   const adapter = getDatabaseAdapter(ctx);
+  const memberships = await adapter.findMany<OrganizationMember>({
+    model: "member",
+    where: [{ field: "userId", value: user.id }],
+    limit: 100,
+  });
+  const actionCtx = requireActionCtx(ctx);
+  await Promise.all(
+    memberships.map((membership) =>
+      actionCtx.runMutation(internal.access.removeMemberLocationAccess, {
+        organizationId: membership.organizationId,
+        userId: membership.userId,
+      }),
+    ),
+  );
   await adapter.deleteMany({
     model: "member",
     where: [{ field: "userId", value: user.id }],
@@ -300,6 +314,11 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
     },
     hooks: {
       before: createAuthMiddleware(async (authCtx) => {
+        const roleManagementPaths = new Set([
+          "/organization/invite-member",
+          "/organization/add-member",
+          "/organization/update-member-role",
+        ]);
         const memberApiPaths = new Set([
           "/organization/list-members",
           "/organization/list-invitations",
@@ -344,16 +363,44 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
           internal.access.getMemberPermissionContext,
           { organizationId, userId: session.user.id },
         );
-        const permission = apiKeyManagementPaths.has(authCtx.path)
-          ? "apiKeys.manage"
-          : "members.manage";
-        if (!roleContext.permissions.includes(permission)) {
+        const needsRoleManagement = roleManagementPaths.has(authCtx.path);
+        const requiredPermissions = apiKeyManagementPaths.has(authCtx.path)
+          ? ["apiKeys.manage"]
+          : needsRoleManagement
+            ? ["members.manage", "roles.manage"]
+            : ["members.manage"];
+        if (
+          requiredPermissions.some(
+            (permission) => !roleContext.permissions.includes(permission),
+          )
+        ) {
           throw new APIError("FORBIDDEN", {
             message: apiKeyManagementPaths.has(authCtx.path)
               ? "Du har ikke adgang til at administrere API-nøgler"
+              : needsRoleManagement
+                ? "Du har ikke adgang til at administrere roller"
               : "Du har ikke adgang til at administrere brugere",
           });
         }
+      }),
+      after: createAuthMiddleware(async (authCtx) => {
+        if (authCtx.path !== "/organization/leave") return;
+        const member = authCtx.context.returned as
+          | { organizationId?: unknown; userId?: unknown }
+          | undefined;
+        if (
+          typeof member?.organizationId !== "string" ||
+          typeof member.userId !== "string"
+        ) {
+          return;
+        }
+        await requireActionCtx(ctx).runMutation(
+          internal.access.removeMemberLocationAccess,
+          {
+            organizationId: member.organizationId,
+            userId: member.userId,
+          },
+        );
       }),
     },
     plugins: [
@@ -408,6 +455,15 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
           },
           beforeAcceptInvitation: async ({ user }) => {
             await requireNoOrganizationMembership(ctx, user.id);
+          },
+          afterRemoveMember: async ({ member }) => {
+            await requireActionCtx(ctx).runMutation(
+              internal.access.removeMemberLocationAccess,
+              {
+                organizationId: member.organizationId,
+                userId: member.userId,
+              },
+            );
           },
         },
         sendInvitationEmail: async (data) => {

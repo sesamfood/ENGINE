@@ -284,6 +284,7 @@ function initials(name: string) {
 
 export function MemberManagement() {
   const allowed = usePermission("members.manage");
+  const canManageRoles = usePermission("roles.manage");
   const { data: session } = authClient.useSession();
   const { data: organization, isPending: organizationPending } =
     authClient.useActiveOrganization();
@@ -489,64 +490,66 @@ export function MemberManagement() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-1">
-            <CardTitle>Invitér bruger</CardTitle>
-            <HelpTooltip
-              label="Invitér bruger"
-              content="Brugeren modtager et link på e-mail og får adgang efter accept."
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={invite}>
-            <FieldGroup className="md:flex-row md:items-end">
-              <Field>
-                <FieldLabel htmlFor="invite-email">E-mail</FieldLabel>
-                <Input
-                  id="invite-email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                />
-              </Field>
-              <Field className="md:max-w-52">
-                <FieldLabel htmlFor="invite-role">Rolle</FieldLabel>
-                <Select
-                  items={roleItems}
-                  value={inviteRole}
-                  onValueChange={(role) => {
-                    if (role) setInviteRole(role);
-                  }}
-                >
-                  <SelectTrigger id="invite-role" className="h-10 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {roles.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {roleLabels[role] ?? role}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Button type="submit" size="lg" disabled={inviting}>
-                {inviting ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <MailPlusIcon data-icon="inline-start" />
-                )}
-                Send invitation
-              </Button>
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
+      {canManageRoles ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-1">
+              <CardTitle>Invitér bruger</CardTitle>
+              <HelpTooltip
+                label="Invitér bruger"
+                content="Brugeren modtager et link på e-mail og får adgang efter accept."
+              />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={invite}>
+              <FieldGroup className="md:flex-row md:items-end">
+                <Field>
+                  <FieldLabel htmlFor="invite-email">E-mail</FieldLabel>
+                  <Input
+                    id="invite-email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                  />
+                </Field>
+                <Field className="md:max-w-52">
+                  <FieldLabel htmlFor="invite-role">Rolle</FieldLabel>
+                  <Select
+                    items={roleItems}
+                    value={inviteRole}
+                    onValueChange={(role) => {
+                      if (role) setInviteRole(role);
+                    }}
+                  >
+                    <SelectTrigger id="invite-role" className="h-10 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {roles.map((role) => (
+                          <SelectItem key={role} value={role}>
+                            {roleLabels[role] ?? role}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Button type="submit" size="lg" disabled={inviting}>
+                  {inviting ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : (
+                    <MailPlusIcon data-icon="inline-start" />
+                  )}
+                  Send invitation
+                </Button>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {error ? (
         <Alert variant="destructive">
@@ -629,7 +632,7 @@ export function MemberManagement() {
                           onValueChange={(role) =>
                             role && void changeRole(member, role)
                           }
-                          disabled={disabled}
+                          disabled={disabled || !canManageRoles}
                         >
                           <SelectTrigger
                             aria-label={`Rolle for ${member.user.name}`}

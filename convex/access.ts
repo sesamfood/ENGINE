@@ -7,6 +7,7 @@ import {
   systemRoleNames,
 } from "../lib/auth-permissions";
 import {
+  internalMutation,
   internalQuery,
   mutation,
   query,
@@ -14,8 +15,11 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
+import { internal } from "./_generated/api";
 import { listScopedLocationOptions } from "./locations";
 import {
+  requireAllLocationAccess,
+  requireMemberManager,
   requireOrganization,
   requirePermission,
 } from "./lib/auth";
@@ -404,7 +408,7 @@ export const listRoles = query({
   args: {},
   returns: v.array(v.object({ key: v.string(), name: v.string() })),
   handler: async (ctx) => {
-    const auth = await requirePermission(ctx, "members.manage");
+    const auth = await requireMemberManager(ctx);
     const roles = await ctx.db
       .query("roles")
       .withIndex("by_organizationId_and_key", (q) =>
@@ -447,6 +451,60 @@ export const isRoleRegistered = internalQuery({
         )
         .unique(),
     );
+  },
+});
+
+async function deleteMemberLocationAccess(
+  ctx: MutationCtx,
+  organizationId: string,
+  userId: string,
+) {
+  const access = await ctx.db
+    .query("memberLocationAccess")
+    .withIndex("by_organizationId_and_userId", (q) =>
+      q.eq("organizationId", organizationId).eq("userId", userId),
+    )
+    .unique();
+  if (access) await ctx.db.delete("memberLocationAccess", access._id);
+}
+
+export const removeMemberLocationAccess = internalMutation({
+  args: { organizationId: v.string(), userId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await deleteMemberLocationAccess(ctx, args.organizationId, args.userId);
+    return null;
+  },
+});
+
+export const purgeOrphanedMemberLocationAccess = internalMutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const page = await ctx.db
+      .query("memberLocationAccess")
+      .paginate({ cursor: args.cursor, numItems: 50 });
+    const adapter = getDatabaseAdapter(ctx);
+    for (const access of page.page) {
+      const member = await adapter.findOne<AuthMember>({
+        model: "member",
+        where: [
+          { field: "organizationId", value: access.organizationId },
+          { field: "userId", value: access.userId },
+        ],
+      });
+      if (!member) {
+        await ctx.db.delete("memberLocationAccess", access._id);
+      }
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.access.purgeOrphanedMemberLocationAccess,
+        { cursor: page.continueCursor },
+      );
+    }
+    return null;
   },
 });
 
@@ -657,7 +715,7 @@ export const listMemberLocationAccess = query({
     operators: v.array(v.object({ id: v.id("operators"), name: v.string() })),
   }),
   handler: async (ctx) => {
-    const auth = await requirePermission(ctx, "members.manage");
+    const auth = await requireMemberManager(ctx);
     const [rows, locations, operators] = await Promise.all([
       ctx.db
         .query("memberLocationAccess")
@@ -705,7 +763,9 @@ export const setMemberLocationAccess = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requirePermission(ctx, "members.manage");
+    const auth = await requireMemberManager(ctx);
+    const changingOwnAccess = auth.userId === args.userId;
+    if (!changingOwnAccess) requireAllLocationAccess(auth);
     const reason = requireAuditReason(args.reason);
     const member = await getDatabaseAdapter(ctx).findOne<AuthMember>({
       model: "member",
@@ -721,13 +781,40 @@ export const setMemberLocationAccess = mutation({
       throw new ConvexError("Vælg mindst én lokation");
     }
     let operatorName: string | undefined;
+    let effectiveLocationIds = locationIds;
     if (args.scope === "operator") {
       if (!args.operatorId) throw new ConvexError("Vælg en operatør");
-      const operator = await ctx.db.get("operators", args.operatorId);
+      const [operator, operatorLocations] = await Promise.all([
+        ctx.db.get("operators", args.operatorId),
+        ctx.db
+          .query("locations")
+          .withIndex("by_organizationId_and_operatorId", (q) =>
+            q
+              .eq("organizationId", auth.organizationId)
+              .eq("operatorId", args.operatorId),
+          )
+          .take(201),
+      ]);
       if (!operator || operator.organizationId !== auth.organizationId) {
         throw new ConvexError("Operatøren blev ikke fundet");
       }
+      if (operatorLocations.length > 200) {
+        throw new ConvexError("Operatøren har for mange lokationer");
+      }
       operatorName = operator.name;
+      effectiveLocationIds = operatorLocations.map((location) => location._id);
+    }
+    if (
+      changingOwnAccess &&
+      !auth.locationScope.all &&
+      (args.scope === "all" ||
+        effectiveLocationIds.some(
+          (locationId) => !auth.locationScope.ids.has(locationId),
+        ))
+    ) {
+      throw new ConvexError(
+        "Du kan kun give adgang til lokationer, du selv har adgang til",
+      );
     }
     for (const locationId of locationIds) {
       const location = await ctx.db.get("locations", locationId);

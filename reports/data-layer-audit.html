@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Data layer audit | Engine</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --paper: #fffdf8;
+      --ink: #1d2623;
+      --muted: #5d6964;
+      --line: #d9ddd7;
+      --line-strong: #aab5af;
+      --green: #176b4d;
+      --green-soft: #e1f2e9;
+      --blue: #245c87;
+      --blue-soft: #e4eff8;
+      --amber: #8a5a0a;
+      --amber-soft: #fff0c9;
+      --red: #9b302d;
+      --red-soft: #fae4e1;
+      --purple: #66508f;
+      --purple-soft: #eee8f8;
+      --shadow: 0 12px 40px rgb(29 38 35 / 8%);
+      --radius: 14px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgb(36 92 135 / 8%), transparent 30rem),
+        var(--bg);
+      font-size: 16px;
+      line-height: 1.58;
+    }
+    a { color: var(--blue); text-underline-offset: 0.18em; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+      outline: 3px solid #1d72aa;
+      outline-offset: 3px;
+    }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.88em;
+      color: #33413c;
+      background: #eef0ec;
+      border: 1px solid #dfe3dd;
+      border-radius: 5px;
+      padding: 0.08em 0.32em;
+      overflow-wrap: anywhere;
+    }
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: -5rem;
+      z-index: 20;
+      padding: 0.7rem 1rem;
+      background: var(--ink);
+      color: white;
+      border-radius: 8px;
+    }
+    .skip-link:focus { top: 1rem; }
+    .page {
+      width: min(1380px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 5rem;
+    }
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 2rem;
+      align-items: end;
+      padding: clamp(1.5rem, 4vw, 3rem);
+      border: 1px solid var(--line);
+      border-top: 5px solid var(--ink);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+    .eyebrow {
+      margin: 0 0 0.7rem;
+      color: var(--green);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 {
+      line-height: 1.16;
+      letter-spacing: -0.025em;
+      text-wrap: balance;
+    }
+    h1 {
+      margin: 0;
+      max-width: 15ch;
+      font-size: clamp(2.4rem, 7vw, 5.6rem);
+      font-weight: 850;
+    }
+    .dek {
+      max-width: 72ch;
+      margin: 1.15rem 0 0;
+      color: var(--muted);
+      font-size: clamp(1.05rem, 2vw, 1.3rem);
+    }
+    .audit-meta {
+      min-width: 14rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    .audit-meta li {
+      display: flex;
+      justify-content: space-between;
+      gap: 1.4rem;
+      padding: 0.42rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .audit-meta strong { color: var(--ink); font-weight: 700; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: clamp(1.2rem, 3vw, 2.4rem);
+      align-items: start;
+      margin-top: 2rem;
+    }
+    .toc {
+      position: sticky;
+      top: 1rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgb(255 253 248 / 88%);
+      backdrop-filter: blur(8px);
+    }
+    .toc p {
+      margin: 0 0 0.55rem;
+      color: var(--muted);
+      font-size: 0.73rem;
+      font-weight: 800;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+    .toc ol { margin: 0; padding-left: 1.2rem; }
+    .toc li { margin: 0.28rem 0; }
+    .toc a { color: var(--ink); font-size: 0.88rem; text-decoration: none; }
+    .toc a:hover { color: var(--blue); text-decoration: underline; }
+    main { min-width: 0; }
+    section {
+      scroll-margin-top: 1.2rem;
+      margin-bottom: 1.4rem;
+      padding: clamp(1.2rem, 3.5vw, 2.2rem);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: 0 6px 24px rgb(29 38 35 / 4%);
+    }
+    section > h2 {
+      margin: 0 0 0.55rem;
+      font-size: clamp(1.65rem, 3vw, 2.35rem);
+    }
+    section > .section-intro {
+      max-width: 78ch;
+      margin: 0 0 1.45rem;
+      color: var(--muted);
+    }
+    h3 { margin: 1.8rem 0 0.65rem; font-size: 1.25rem; }
+    p { max-width: 82ch; }
+    ul, ol { padding-left: 1.25rem; }
+    li + li { margin-top: 0.35rem; }
+    .lede {
+      margin: 0;
+      max-width: 80ch;
+      font-size: clamp(1.1rem, 2vw, 1.36rem);
+      line-height: 1.48;
+    }
+    .verdict {
+      border-left: 6px solid var(--red);
+      padding: 1rem 1.1rem;
+      background: linear-gradient(90deg, var(--red-soft), transparent 78%);
+      border-radius: 8px;
+    }
+    .verdict strong { color: var(--red); }
+    .small { color: var(--muted); font-size: 0.88rem; }
+    .callout {
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--blue);
+      border-radius: 9px;
+      background: var(--blue-soft);
+    }
+    .callout p { margin: 0; }
+    .callout.good { border-left-color: var(--green); background: var(--green-soft); }
+    .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0.8rem;
+      margin-top: 1.35rem;
+    }
+    .status-card {
+      min-height: 9.5rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #fffefa;
+    }
+    .status-card .state {
+      display: inline-block;
+      margin-bottom: 0.65rem;
+      padding: 0.22rem 0.52rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .state.strong { color: var(--green); background: var(--green-soft); }
+    .state.mixed { color: var(--amber); background: var(--amber-soft); }
+    .state.urgent { color: var(--red); background: var(--red-soft); }
+    .status-card h3 { margin: 0; font-size: 1rem; letter-spacing: -0.01em; }
+    .status-card p { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.86rem; }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin: 1.3rem 0;
+    }
+    .metric {
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfaf5;
+    }
+    .metric b { display: block; font-size: 1.85rem; line-height: 1; }
+    .metric span { display: block; margin-top: 0.42rem; color: var(--muted); font-size: 0.82rem; }
+
+    figure {
+      margin: 1.5rem 0;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfaf5;
+      overflow: hidden;
+    }
+    figcaption {
+      margin-top: 0.8rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .diagram-title {
+      margin: 0 0 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 34px 1.15fr 34px 1.15fr 34px 1.15fr;
+      gap: 0.25rem;
+      align-items: stretch;
+      min-width: 880px;
+    }
+    .flow-wrap { overflow-x: auto; padding-bottom: 0.35rem; }
+    .lane {
+      display: grid;
+      gap: 0.55rem;
+      align-content: center;
+    }
+    .node {
+      min-height: 4.3rem;
+      padding: 0.72rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background: white;
+    }
+    .node b { display: block; font-size: 0.88rem; }
+    .node span { display: block; margin-top: 0.25rem; color: var(--muted); font-size: 0.74rem; line-height: 1.35; }
+    .node.human { border-color: #8cb1cf; background: var(--blue-soft); }
+    .node.auth { border-color: #a796c8; background: var(--purple-soft); }
+    .node.data { border-color: #81b69d; background: var(--green-soft); }
+    .node.risk { border-color: #d59a98; background: var(--red-soft); }
+    .arrow {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 1.45rem;
+      font-weight: 700;
+    }
+    .flow-note {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.7rem;
+      margin-top: 0.8rem;
+    }
+    .flow-note div {
+      padding: 0.65rem;
+      border-radius: 8px;
+      background: #f0f1ed;
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    .function-bar {
+      display: flex;
+      width: 100%;
+      height: 2.1rem;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: white;
+    }
+    .function-bar span { min-width: 5px; }
+    .q { width: 33.8%; background: #3b82a8; }
+    .m { width: 37.7%; background: #176b4d; }
+    .a { width: 5%; background: #7b63a3; }
+    .iq { width: 5.8%; background: #8cbad0; }
+    .im { width: 15.8%; background: #74aa90; }
+    .ia { width: 1.9%; background: #a996c7; }
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.45rem 1rem;
+      margin-top: 0.8rem;
+      font-size: 0.78rem;
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 0.72rem;
+      height: 0.72rem;
+      margin-right: 0.4rem;
+      border-radius: 2px;
+      background: var(--swatch);
+      vertical-align: -0.05rem;
+    }
+
+    .domain-map {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.7rem;
+    }
+    .domain {
+      padding: 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: white;
+    }
+    .domain b { display: block; font-size: 0.9rem; }
+    .domain p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.4; }
+    .domain.control { border-top: 4px solid var(--purple); }
+    .domain.master { border-top: 4px solid var(--blue); }
+    .domain.ops { border-top: 4px solid var(--green); }
+    .domain.derived { border-top: 4px solid var(--amber); }
+
+    .boundary {
+      display: grid;
+      grid-template-columns: 1fr 44px 1fr 44px 1fr;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .shield {
+      padding: 1rem;
+      border: 2px solid var(--green);
+      border-radius: 12px;
+      background: var(--green-soft);
+      text-align: center;
+    }
+    .shield b { display: block; }
+    .shield span { display: block; margin-top: 0.25rem; color: var(--muted); font-size: 0.78rem; }
+    .boundary .step {
+      padding: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: white;
+      text-align: center;
+      font-size: 0.82rem;
+    }
+
+    .finding-list {
+      display: grid;
+      gap: 0.8rem;
+      margin-top: 1.2rem;
+    }
+    .finding {
+      display: grid;
+      grid-template-columns: 4.4rem minmax(0, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      overflow: hidden;
+      background: #fffefa;
+    }
+    .finding-id {
+      display: grid;
+      place-items: center;
+      align-content: center;
+      padding: 0.8rem 0.45rem;
+      color: white;
+      background: var(--red);
+      font-size: 0.73rem;
+      font-weight: 850;
+      letter-spacing: 0.05em;
+      text-align: center;
+    }
+    .finding-id.p1 { background: var(--amber); }
+    .finding-id.p2 { background: var(--blue); }
+    .finding-body { padding: 1rem 1.1rem; }
+    .finding-body h3 { margin: 0; font-size: 1.08rem; }
+    .finding-body p { margin: 0.5rem 0 0; }
+    .finding-body .impact { color: var(--ink); }
+    .finding-body .fix { color: var(--green); }
+    .evidence {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.65rem;
+    }
+    .evidence code { font-size: 0.73rem; }
+
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .risk-cell {
+      min-height: 6.2rem;
+      padding: 0.65rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      font-size: 0.73rem;
+    }
+    .risk-cell b { display: block; margin-bottom: 0.3rem; font-size: 0.8rem; }
+    .risk-cell.high { background: var(--red-soft); border-color: #ddb0ad; }
+    .risk-cell.medium { background: var(--amber-soft); border-color: #dfc789; }
+    .risk-cell.low { background: var(--blue-soft); border-color: #acc8dc; }
+    .risk-cell.decision { background: var(--purple-soft); border-color: #c3b4df; }
+
+    .sync-rail {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.45rem;
+      align-items: stretch;
+    }
+    .sync-step {
+      position: relative;
+      padding: 0.8rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: white;
+      font-size: 0.78rem;
+    }
+    .sync-step:not(:last-child)::after {
+      content: "›";
+      position: absolute;
+      top: 50%;
+      right: -0.48rem;
+      z-index: 2;
+      width: 0.8rem;
+      transform: translateY(-50%);
+      color: var(--muted);
+      background: #fbfaf5;
+      font-size: 1.1rem;
+      text-align: center;
+    }
+    .sync-step b { display: block; margin-bottom: 0.25rem; }
+    .sync-step.risky { background: var(--red-soft); border-color: #d9a6a3; }
+
+    .retention {
+      display: grid;
+      grid-template-columns: 11rem minmax(0, 1fr) 7rem;
+      gap: 0.5rem 0.9rem;
+      align-items: center;
+    }
+    .retention .label { font-size: 0.8rem; font-weight: 700; }
+    .track {
+      height: 1rem;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e6e7e2;
+    }
+    .track i { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+    .track i.good { background: var(--green); }
+    .track i.warn { background: var(--amber); }
+    .track i.risk { background: repeating-linear-gradient(135deg, var(--red), var(--red) 6px, #c25c57 6px, #c25c57 12px); }
+    .retention .term { color: var(--muted); font-size: 0.76rem; text-align: right; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.86rem;
+    }
+    caption {
+      margin-bottom: 0.55rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-align: left;
+    }
+    th, td {
+      padding: 0.72rem 0.65rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    tbody tr:hover { background: #f5f4ef; }
+    .priority {
+      display: inline-block;
+      min-width: 2.2rem;
+      padding: 0.18rem 0.4rem;
+      border-radius: 999px;
+      color: white;
+      background: var(--blue);
+      font-size: 0.68rem;
+      font-weight: 850;
+      text-align: center;
+    }
+    .priority.p0 { background: var(--red); }
+    .priority.p1 { background: var(--amber); }
+    .priority.p2 { background: var(--blue); }
+    .priority.note { background: var(--purple); }
+
+    .plan {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.7rem;
+      counter-reset: step;
+    }
+    .plan article {
+      position: relative;
+      padding: 3rem 1rem 1rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfaf5;
+    }
+    .plan article::before {
+      counter-increment: step;
+      content: counter(step, decimal-leading-zero);
+      position: absolute;
+      top: 0.85rem;
+      left: 1rem;
+      color: var(--red);
+      font-size: 0.75rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+    .plan h3 { margin: 0; font-size: 1rem; }
+    .plan p { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.8rem; }
+
+    .check-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.7rem;
+    }
+    .check {
+      padding: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: white;
+    }
+    .check b { display: block; }
+    .check span { display: block; margin-top: 0.25rem; color: var(--muted); font-size: 0.8rem; }
+    .check.pass { border-left: 5px solid var(--green); }
+    .check.warn { border-left: 5px solid var(--amber); }
+
+    details {
+      margin-top: 0.8rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fbfaf5;
+    }
+    summary {
+      padding: 0.8rem 1rem;
+      cursor: pointer;
+      font-weight: 750;
+    }
+    details > div { padding: 0 1rem 1rem; }
+    footer {
+      margin-top: 1.4rem;
+      padding: 1rem 0;
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-align: center;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1050px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc { position: static; }
+      .toc ol { columns: 2; }
+      .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metric-grid, .domain-map, .plan { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .risk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .page { width: min(100% - 1rem, 1380px); padding-top: 0.5rem; }
+      .masthead { grid-template-columns: 1fr; gap: 1.2rem; }
+      .audit-meta { min-width: 0; }
+      .toc ol { columns: 1; }
+      .status-grid, .metric-grid, .domain-map, .risk-grid, .plan, .check-grid { grid-template-columns: 1fr; }
+      .finding { grid-template-columns: 3.5rem minmax(0, 1fr); }
+      .flow-note { grid-template-columns: 1fr; }
+      .boundary { grid-template-columns: 1fr; }
+      .boundary .arrow { transform: rotate(90deg); }
+      .sync-rail { grid-template-columns: 1fr; }
+      .sync-step:not(:last-child)::after { top: auto; right: 50%; bottom: -0.75rem; transform: translateX(50%) rotate(90deg); }
+      .retention { grid-template-columns: 1fr; gap: 0.25rem; }
+      .retention .term { text-align: left; margin-bottom: 0.6rem; }
+      .legend { grid-template-columns: 1fr 1fr; }
+      .table-scroll { overflow-x: auto; }
+      table { min-width: 760px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+    @media print {
+      :root { --bg: white; --paper: white; --shadow: none; }
+      body { background: white; font-size: 11pt; }
+      .page { width: 100%; padding: 0; }
+      .layout { display: block; }
+      .toc { display: none; }
+      section, .masthead { break-inside: avoid; box-shadow: none; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the report</a>
+  <div class="page">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Read-only engineering audit</p>
+        <h1>Data layer audit</h1>
+        <p class="dek">How Engine stores, secures, syncs, derives, retains, and exposes restaurant-chain data. The report covers Convex, Better Auth, file storage, provider sync, and the REST gateway.</p>
+      </div>
+      <ul class="audit-meta" aria-label="Audit metadata">
+        <li><span>Date</span><strong>26 August 2026</strong></li>
+        <li><span>Commit</span><strong><code>260066b</code></strong></li>
+        <li><span>Mode</span><strong>Static code audit</strong></li>
+        <li><span>Repository</span><strong>engine</strong></li>
+      </ul>
+    </header>
+
+    <div class="layout">
+      <nav class="toc" aria-label="Report contents">
+        <p>Contents</p>
+        <ol>
+          <li><a href="#verdict">Verdict</a></li>
+          <li><a href="#architecture">Architecture</a></li>
+          <li><a href="#trust">Tenant boundary</a></li>
+          <li><a href="#model">Data model</a></li>
+          <li><a href="#sync">Sync and derived data</a></li>
+          <li><a href="#findings">Priority findings</a></li>
+          <li><a href="#catalog">Full finding catalog</a></li>
+          <li><a href="#retention">Retention and privacy</a></li>
+          <li><a href="#strengths">What is built well</a></li>
+          <li><a href="#actions">Recommended order</a></li>
+          <li><a href="#verification">Verification</a></li>
+        </ol>
+      </nav>
+
+      <main id="main">
+        <section id="verdict">
+          <p class="eyebrow">Executive verdict</p>
+          <h2>Strong core, unsafe edges</h2>
+          <p class="lede verdict"><strong>The tenant model is sound.</strong> I found no direct cross-organization read or write bypass in the audited public functions. The urgent problems sit in delegated administration, provider snapshot cleanup, migration, and hard deletion. Those paths can expand a user's access or silently damage data inside one organization.</p>
+
+          <div class="status-grid" aria-label="Audit status by area">
+            <article class="status-card">
+              <span class="state strong">Strong</span>
+              <h3>Tenant isolation</h3>
+              <p>Server auth derives the organization. Domain indexes usually start with that ID.</p>
+            </article>
+            <article class="status-card">
+              <span class="state urgent">Urgent</span>
+              <h3>Delegated administration</h3>
+              <p>A member manager can broaden their own role and location access.</p>
+            </article>
+            <article class="status-card">
+              <span class="state urgent">Urgent</span>
+              <h3>Sync safety</h3>
+              <p>Workfeed treats dropped rows as deletions. One OnlinePOS migration flag flips too early.</p>
+            </article>
+            <article class="status-card">
+              <span class="state mixed">Mixed</span>
+              <h3>Historical integrity</h3>
+              <p>Snapshots are common, but location and product deletion leave important gaps.</p>
+            </article>
+            <article class="status-card">
+              <span class="state mixed">Mixed</span>
+              <h3>Lifecycle</h3>
+              <p>Sales and audit retention are explicit. People, files, shares, and feedback are less clear.</p>
+            </article>
+          </div>
+
+          <div class="callout warn">
+            <p><strong>Release posture.</strong> Fix the two authorization paths before granting <code>members.manage</code> to a non-administrator. Validate and repair the OnlinePOS migration before trusting historical rollups. Make Workfeed cleanup fail closed before unattended sync is treated as authoritative.</p>
+          </div>
+        </section>
+
+        <section id="architecture">
+          <p class="eyebrow">System map</p>
+          <h2>Convex is both database and server boundary</h2>
+          <p class="section-intro">The browser calls reactive Convex functions. REST clients enter through Next.js, then receive a 30-second service identity for the same Convex authorization layer. Provider reads happen only in actions. Product reads use local tables.</p>
+
+          <div class="metric-grid" aria-label="Data layer inventory">
+            <div class="metric"><b>71</b><span>domain tables in <code>schema.ts</code></span></div>
+            <div class="metric"><b>182</b><span>ordinary indexes, plus 2 search indexes</span></div>
+            <div class="metric"><b>361</b><span>validated Convex functions</span></div>
+            <div class="metric"><b>32</b><span>Next.js REST route files</span></div>
+            <div class="metric"><b>11</b><span>isolated Better Auth tables</span></div>
+            <div class="metric"><b>276</b><span>public queries, mutations, and actions</span></div>
+            <div class="metric"><b>85</b><span>internal queries, mutations, and actions</span></div>
+            <div class="metric"><b>62</b><span>automated tests in the current suite</span></div>
+          </div>
+
+          <figure aria-labelledby="architecture-caption">
+            <p class="diagram-title">Request and data flow</p>
+            <div class="flow-wrap">
+              <div class="flow" role="img" aria-label="Browser, REST, public share, and provider calls flowing through authentication and Convex into canonical tables and derived reads">
+                <div class="lane">
+                  <div class="node human"><b>Human browser</b><span>Convex React hooks and Better Auth session</span></div>
+                  <div class="node human"><b>REST client</b><span>Bearer API key, Zod input, 1 MB body cap</span></div>
+                  <div class="node human"><b>Provider cron or action</b><span>OnlinePOS and Workfeed HTTPS calls</span></div>
+                  <div class="node human"><b>Public dashboard viewer</b><span>Opaque token and optional unlock key</span></div>
+                </div>
+                <div class="arrow" aria-hidden="true">›</div>
+                <div class="lane">
+                  <div class="node auth"><b>Better Auth component</b><span>Session, organization, member, account, API key</span></div>
+                  <div class="node auth"><b>Next REST gateway</b><span>API key verification, request ID, 30-second RS256 JWT</span></div>
+                  <div class="node auth"><b>Bounded provider parser</b><span>Normalizes rows before batched writes</span></div>
+                  <div class="node auth"><b>Share verifier</b><span>Expiry, revocation, rate limit, password hash</span></div>
+                </div>
+                <div class="arrow" aria-hidden="true">›</div>
+                <div class="lane">
+                  <div class="node data"><b><code>convex/lib/auth.ts</code></b><span>Membership, current role, permissions, location scope, kiosk state</span></div>
+                  <div class="node data"><b>Public Convex functions</b><span>Arguments, return values, and organization ownership checked on the server</span></div>
+                  <div class="node data"><b>Internal mutations</b><span>Run tokens, batches, rollups, cleanup, idempotency</span></div>
+                </div>
+                <div class="arrow" aria-hidden="true">›</div>
+                <div class="lane">
+                  <div class="node data"><b>Canonical domain tables</b><span>Master data, operations, history, sales, people, configuration</span></div>
+                  <div class="node data"><b>Derived tables</b><span><code>salesDaily</code>, stock, Waste statistics, sync status</span></div>
+                  <div class="node data"><b>Convex file storage</b><span>Logos, product images, evidence, feedback screenshots</span></div>
+                  <div class="node data"><b>Reactive reads</b><span>App screens, REST pages, dashboard metrics, exports</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="flow-note" aria-hidden="true">
+              <div>Browser and REST converge on the same stored role and location policy.</div>
+              <div>Provider APIs never sit on a normal read path.</div>
+              <div>Public shares use a stored permission and scope snapshot.</div>
+            </div>
+            <figcaption id="architecture-caption">The split is sensible. The main risk is duplicated mutation logic outside the central authorization helper, not the overall architecture.</figcaption>
+          </figure>
+
+          <figure aria-labelledby="function-caption">
+            <p class="diagram-title">361 Convex functions by kind</p>
+            <div class="function-bar" role="img" aria-label="122 public queries, 136 public mutations, 18 public actions, 21 internal queries, 57 internal mutations, and 7 internal actions">
+              <span class="q" title="122 public queries"></span>
+              <span class="m" title="136 public mutations"></span>
+              <span class="a" title="18 public actions"></span>
+              <span class="iq" title="21 internal queries"></span>
+              <span class="im" title="57 internal mutations"></span>
+              <span class="ia" title="7 internal actions"></span>
+            </div>
+            <div class="legend">
+              <span style="--swatch:#3b82a8">122 public queries</span>
+              <span style="--swatch:#176b4d">136 public mutations</span>
+              <span style="--swatch:#7b63a3">18 public actions</span>
+              <span style="--swatch:#8cbad0">21 internal queries</span>
+              <span style="--swatch:#74aa90">57 internal mutations</span>
+              <span style="--swatch:#a996c7">7 internal actions</span>
+            </div>
+            <figcaption id="function-caption">Static AST inspection found both <code>args</code> and <code>returns</code> validators on every function declaration.</figcaption>
+          </figure>
+        </section>
+
+        <section id="trust">
+          <p class="eyebrow">Security model</p>
+          <h2>The tenant boundary has four checks</h2>
+          <p class="section-intro">Better Auth organizations are the tenant key. The domain schema stores that organization ID as a string because Better Auth lives in an isolated Convex component. Runtime checks provide the cross-component relationship.</p>
+
+          <figure aria-labelledby="boundary-caption">
+            <p class="diagram-title">Human request authorization</p>
+            <div class="boundary" role="img" aria-label="Verified identity passes through session and membership, role permission, and location scope before organization indexed data">
+              <div class="shield"><b>Identity and live session</b><span>Session expiry and active organization</span></div>
+              <div class="arrow" aria-hidden="true">›</div>
+              <div class="shield"><b>Membership and role</b><span>Built-in or custom role, current permission row</span></div>
+              <div class="arrow" aria-hidden="true">›</div>
+              <div class="shield"><b>Organization and location</b><span>Owned record, selected locations, operator, or kiosk location</span></div>
+            </div>
+            <figcaption id="boundary-caption">The API key path adds policy expiry, current role intersection, and a short-lived gateway identity before it reaches the same location checks.</figcaption>
+          </figure>
+
+          <div class="callout good">
+            <p><strong>What held up.</strong> Public functions generally derive <code>organizationId</code> from verified auth. They do not trust a client organization argument. REST policies are reloaded on each call, so revoking a role permission immediately reduces an API key.</p>
+          </div>
+
+          <h3>Location access is a second boundary</h3>
+          <p>Each member can have all locations, a selected list, or an operator. Kiosk accounts get one fixed location. Most domain queries call <code>resolveLocationFilter</code> or <code>requireLocationAccess</code>. Transfers are an explicit exception. Tests confirm that selected and operator scopes do not limit transfers.</p>
+          <p class="small">Evidence: <code>convex/lib/auth.ts:78-322</code>, <code>convex/access.test.ts:412-445</code>, <code>convex/access.test.ts:631-674</code>.</p>
+        </section>
+
+        <section id="model">
+          <p class="eyebrow">Schema and ownership</p>
+          <h2>The schema favors explicit domain tables</h2>
+          <p class="section-intro">There is no generic record system. Tables map to restaurant operations and keep the tenant ID close to each row. Historical records often snapshot names, units, and conversion factors so later catalog changes do not rewrite the past.</p>
+
+          <figure aria-labelledby="domain-caption">
+            <p class="diagram-title">Four data groups</p>
+            <div class="domain-map">
+              <div class="domain control"><b>Control plane</b><p>Roles, permissions, location access, API policies, audit, idempotency, kiosk, organization assets.</p></div>
+              <div class="domain master"><b>Master and catalog</b><p>Markets, legal entities, operators, locations, opening hours, categories, units, products, recipes.</p></div>
+              <div class="domain ops"><b>Operations and history</b><p>Transfer, Waste, Count, Staff food, bad deliveries, own checks, employees, shifts, sales.</p></div>
+              <div class="domain derived"><b>Derived and presentation</b><p>Stock, Waste statistics, daily sales, dashboards, custom metrics, shares, sync state.</p></div>
+            </div>
+            <figcaption id="domain-caption">The groups are separate in code, but every organization-owned row stays in the same Convex deployment.</figcaption>
+          </figure>
+
+          <h3>Consistency model</h3>
+          <ul>
+            <li>Convex mutations are atomic. Indexed read-before-write checks rely on optimistic concurrency to enforce logical uniqueness.</li>
+            <li>Event rows snapshot display data. This keeps Transfer, Waste, Staff food, and bad-delivery history readable after catalog edits.</li>
+            <li><code>locationStock</code>, Waste statistics, and <code>salesDaily</code> are materialized views. Mutations update them or schedule bounded rebuild work.</li>
+            <li>Own-check templates are immutable versions. Each edit closes the old version and inserts a new one.</li>
+            <li>Files live in Convex storage. Domain tables own references and a weekly job removes unreferenced uploads after a grace period.</li>
+          </ul>
+
+          <div class="callout warn">
+            <p><strong>Weak point.</strong> Convex document IDs do not create foreign keys. Every hard-delete path must find every reference itself. Location and product deletion do not yet do that.</p>
+          </div>
+        </section>
+
+        <section id="sync">
+          <p class="eyebrow">Integrations and derived data</p>
+          <h2>Provider data is cached before it is read</h2>
+          <p class="section-intro">This is the right base. Online screens do not wait for Workfeed or OnlinePOS. Sync actions fetch and parse provider data, then internal mutations write local records in batches.</p>
+
+          <figure aria-labelledby="onlinepos-caption">
+            <p class="diagram-title">OnlinePOS path</p>
+            <div class="sync-rail" role="img" aria-label="OnlinePOS export is parsed, ingested in batches, rolled into daily sales, reconciled, and read locally">
+              <div class="sync-step"><b>Fetch</b>Current window every four hours. Backfill in seven-day chunks.</div>
+              <div class="sync-step"><b>Parse</b>Strict row validation. Money becomes integer minor units.</div>
+              <div class="sync-step"><b>Ingest</b>Upsert location-scoped lines, orders, and daily deltas.</div>
+              <div class="sync-step risky"><b>Reconcile</b>Only one trailing day. Legacy migration flag flips before backfill ends.</div>
+              <div class="sync-step"><b>Read</b>Sales screens, REST, Count reports, and dashboards use Convex tables.</div>
+            </div>
+            <figcaption id="onlinepos-caption">Run tokens stop stale jobs. Reconciliation hashes a day before rebuild and stores pending work so it can resume.</figcaption>
+          </figure>
+
+          <figure aria-labelledby="workfeed-caption">
+            <p class="diagram-title">Workfeed path</p>
+            <div class="sync-rail" role="img" aria-label="Workfeed employees and roles are parsed, staged, committed, followed by shift chunks and cleanup">
+              <div class="sync-step"><b>Fetch people</b>Employees, roles, and department mappings.</div>
+              <div class="sync-step risky"><b>Parse</b>Malformed rows are dropped instead of failing the snapshot.</div>
+              <div class="sync-step"><b>Commit people</b>Upsert employees and assignments with a run token.</div>
+              <div class="sync-step"><b>Fetch shifts</b>Seven-day chunks over 30 days back and 60 days ahead.</div>
+              <div class="sync-step risky"><b>Cleanup</b>Anything unseen is deactivated or deleted.</div>
+            </div>
+            <figcaption id="workfeed-caption">The cleanup step assumes every successful provider response is complete and every dropped row means deletion. The code does not verify that assumption.</figcaption>
+          </figure>
+
+          <h3>Schedules and retention</h3>
+          <ul>
+            <li>Workfeed sync runs daily at 03:17 UTC. A failed run waits for the next cron or manual retry.</li>
+            <li>OnlinePOS incremental sync runs every four hours. Daily reconciliation runs at 05:23 UTC.</li>
+            <li>Sales older than 400 days are pruned. The forward sync backfills 90 days for a newly connected location.</li>
+            <li>Dashboard metrics cap reads at 5,000 rows and return <code>truncated</code>. The UI tells users when data is limited.</li>
+          </ul>
+        </section>
+
+        <section id="findings">
+          <p class="eyebrow">Priority findings</p>
+          <h2>Fix these first</h2>
+          <p class="section-intro">P0 means the current server boundary permits privilege expansion. P1 means code can hide, duplicate, delete, or stop serving valid data.</p>
+
+          <div class="finding-list">
+            <article class="finding">
+              <div class="finding-id">P0<br>01</div>
+              <div class="finding-body">
+                <h3><code>members.manage</code> can assign broader roles</h3>
+                <p class="impact">The Better Auth middleware requires <code>members.manage</code> for <code>update-member-role</code>. A delegated member manager can change their own role to <code>Manager</code> or any registered non-Administrator role. Better Auth blocks the special Administrator role, but it does not stop a jump to a broader custom role.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Require <code>roles.manage</code> for every endpoint that selects a role. Block self-role changes unless the caller has explicit role authority.</p>
+                <div class="evidence"><code>convex/auth.ts:303-356</code><code>convex/access.ts:120-127</code><code>convex/auth.ts:386-400</code><code>lib/auth-permissions.ts:128-132</code></div>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div class="finding-id">P0<br>02</div>
+              <div class="finding-body">
+                <h3>A restricted member manager can grant themselves all locations</h3>
+                <p class="impact"><code>setMemberLocationAccess</code> checks the target member and organization, but never intersects the requested scope with the caller's scope. A user with <code>members.manage</code> can submit their own user ID and store <code>scope: all</code>. The next request trusts that row.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Require all-location access before changing another member's scope. Reject any self-change that broadens access. A dedicated permission would make the rule easier to reason about.</p>
+                <div class="evidence"><code>convex/access.ts:694-756</code><code>convex/lib/auth.ts:125-146</code><code>convex/lib/auth.ts:414-441</code></div>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div class="finding-id p1">P1<br>03</div>
+              <div class="finding-body">
+                <h3>Workfeed can turn malformed or partial snapshots into deletions</h3>
+                <p class="impact">The parser drops malformed employees, roles, and shifts. Completion then treats unseen rows as absent. A provider schema change, partial <code>200</code> response, or bad row can deactivate people, remove assignments, and delete shifts from the cache.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Fail the sync if any row is malformed. Record source and accepted counts. Commit cleanup only after the snapshot passes completeness checks. Add a sharp-drop guard for empty or unexpectedly small responses.</p>
+                <div class="evidence"><code>convex/lib/workfeedApi.ts:123-214</code><code>convex/workfeedSync.ts:717-781</code><code>convex/workfeedSync.ts:1146-1164</code><code>convex/workfeedSync.ts:1248-1265</code></div>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div class="finding-id p1">P1<br>04</div>
+              <div class="finding-body">
+                <h3>The OnlinePOS legacy-ID migration can duplicate old sales</h3>
+                <p class="impact">Legacy unscoped line IDs are checked only while <code>lineIdsScoped</code> is false. The first current-window success sets that flag before the 90-day backfill completes. Older legacy rows are then missed and inserted again under location-scoped IDs. Orders and daily totals can rise twice.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Keep migration mode until backfill finishes, or run a one-time ID rewrite and rollup repair. Audit production for a legacy and scoped copy of the same provider line before changing code.</p>
+                <div class="evidence"><code>convex/onlinePosSync.ts:849-891</code><code>convex/onlinePosSync.ts:986-1010</code><code>convex/onlinePosSync.ts:1375-1498</code></div>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div class="finding-id p1">P1<br>05</div>
+              <div class="finding-body">
+                <h3>Location deletion misses live references</h3>
+                <p class="impact">Both delete paths check many domains, then omit own-check entries, own-check template location arrays, selected API-key policies, and pending Workfeed location arrays. The result can hide own-check history, break a whole API key, and leave active configuration pointing at a deleted ID.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Use one shared deletion helper. Archive any location with history. For an unused location, scrub every configuration array and revoke a policy that would become empty. Stop or invalidate in-flight sync first.</p>
+                <div class="evidence"><code>convex/locations.ts:590-785</code><code>convex/rest/locations.ts:764-974</code><code>convex/ownCheckOverview.ts:371-379</code><code>convex/lib/auth.ts:263-298</code></div>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div class="finding-id p1">P1<br>06</div>
+              <div class="finding-body">
+                <h3>Own-check history has a lifetime 2,000-version failure point</h3>
+                <p class="impact"><code>loadTemplateVersions</code> accepts a start date but ignores it. It loads every version before the end date and fails above 2,000 rows. Old template edits can therefore break today's plan, overview, and documentation for the organization.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Fetch versions that overlap the requested period, plus the predecessor needed for each template. Keep a bounded current-version read separate from historical export reads.</p>
+                <div class="evidence"><code>convex/lib/ownChecks.ts:53-78</code><code>convex/ownCheckTemplates.ts:396-442</code><code>convex/ownCheckOverview.ts:385-405</code><code>convex/ownCheckDocumentation.ts:238-252</code></div>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div class="finding-id p1">P1<br>07</div>
+              <div class="finding-body">
+                <h3>Human and REST mutations have separate policy owners</h3>
+                <p class="impact"><code>masterData.ts</code> and <code>locations.ts</code> reimplement logic that also exists under <code>rest</code>. The REST path requires all-location access for global writes and records audit events. The human path does neither for the same master-data actions, and location audit coverage also differs.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Extract shared <code>WithAuth</code> mutations as the catalog already does. Put authorization, validation, side effects, and audit in that shared function.</p>
+                <div class="evidence"><code>convex/masterData.ts:55-460</code><code>convex/rest/masterData.ts:315-946</code><code>convex/locations.ts:440-785</code><code>convex/rest/locations.ts:535-974</code></div>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div class="finding-id p1">P1<br>08</div>
+              <div class="finding-body">
+                <h3>Duplicate OnlinePOS product mappings can misstate Count waste</h3>
+                <p class="impact">Several local products can map to the same provider product ID. The Count waste report builds a map by provider ID, so the last local mapping wins. Sales can be assigned to the wrong product without an error.</p>
+                <p class="fix"><strong>Smallest fix.</strong> Add an organization and provider-product index. Reject an existing owner inside the mapping mutation. Use the indexed read for an OCC-safe logical uniqueness check.</p>
+                <div class="evidence"><code>convex/schema.ts:192-200</code><code>convex/onlinePos.ts:757-810</code><code>convex/onlinePos.ts:945-980</code></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="catalog">
+          <p class="eyebrow">Finding catalog</p>
+          <h2>Other material risks and decisions</h2>
+          <p class="section-intro">These should not block the first security patch. They still need an explicit owner because they affect data accuracy, privacy, or scale.</p>
+
+          <div class="risk-grid" aria-label="Secondary finding summary">
+            <div class="risk-cell high"><b>Historical sales corrections</b>Reconciliation checks one trailing day. Older voids or refunds stay wrong unless OnlinePOS guarantees immutability.</div>
+            <div class="risk-cell high"><b>Product hard deletion</b>After 30 days it deletes Count lines and leaves product IDs in location ordering arrays.</div>
+            <div class="risk-cell medium"><b>Kiosk own checks</b>Approval and edit wrappers omit the kiosk page check used by other own-check paths.</div>
+            <div class="risk-cell medium"><b>Member removal</b>The Better Auth removal lifecycle leaves <code>memberLocationAccess</code>. It applies again if the user rejoins.</div>
+            <div class="risk-cell medium"><b>Unbounded own-check detail</b>Revisions and attachments are collected without pagination or a per-entry limit.</div>
+            <div class="risk-cell medium"><b>Reroll transaction size</b>A 250-order page can trigger a 10,001-order rebuild for each distinct day in the page.</div>
+            <div class="risk-cell medium"><b>Provider retries</b>Fetch helpers have no explicit timeout. Workfeed waits about a day after failure. OnlinePOS waits up to four hours.</div>
+            <div class="risk-cell medium"><b>Bearer file URLs</b>Sensitive attachment URLs can be reused without another app authorization check.</div>
+            <div class="risk-cell decision"><b>Global integration reads</b>Raw OnlinePOS sales and Workfeed departments do not require all-location access. Decide if integration roles are always global.</div>
+            <div class="risk-cell decision"><b>Snapshot completeness</b>An empty OnlinePOS export advances the watermark. That is safe only if an empty successful response is authoritative.</div>
+            <div class="risk-cell decision"><b>Credential storage</b>Provider secrets are directly readable application fields. No app-level envelope encryption was found.</div>
+            <div class="risk-cell low"><b>Index and list cleanup</b>A static scan found indexes with no literal caller. Three human master-data lists silently stop at 200 rows.</div>
+          </div>
+
+          <div class="table-scroll">
+            <table>
+              <caption>Secondary findings with evidence and a concrete next step</caption>
+              <thead>
+                <tr><th scope="col">Priority</th><th scope="col">Finding</th><th scope="col">Evidence</th><th scope="col">Action</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><span class="priority p1">P1</span></td><td>Only one trailing sales day is reconciled. The two-hour overlap cannot catch older changes.</td><td><code>onlinePosSync.ts:37,132-143</code></td><td>Encode the provider's correction window. Reconcile that range or record the immutability guarantee.</td></tr>
+                <tr><td><span class="priority p1">P1</span></td><td>Product hard deletion removes <code>countItems</code> and does not scrub <code>countProductOrder</code>.</td><td><code>catalog.ts:719-813</code><br><code>count.ts:377-390</code></td><td>Snapshot Count lines before deletion, or block deletion while any Count references the product. Scrub ordering arrays.</td></tr>
+                <tr><td><span class="priority p1">P1</span></td><td>Own-check edit and approval wrappers do not pass a kiosk destination.</td><td><code>lib/auth.ts:470-487,599-605</code><br><code>ownChecks.ts:489-605</code></td><td>Pass <code>ownChecks.overview</code> or reject kiosk accounts for these actions.</td></tr>
+                <tr><td><span class="priority p1">P1</span></td><td>Member removal and account deletion do not remove separate location-access rows.</td><td><code>auth.ts:136-153,382-412</code><br><code>access.ts:694-756</code></td><td>Add an after-remove hook and a one-time orphan purge.</td></tr>
+                <tr><td><span class="priority p2">P2</span></td><td>Workfeed disconnect removes credentials and mappings but retains employees, assignments, and shifts.</td><td><code>workfeed.ts:456-490</code><br><code>workfeedSync.ts:1344-1470</code></td><td>Choose retention. Purge, anonymize, or mark the cache as retained history with a defined term.</td></tr>
+                <tr><td><span class="priority p2">P2</span></td><td>Own-check revisions and attachments are returned with unbounded <code>collect</code>.</td><td><code>ownCheckOverview.ts:462-476</code><br><code>ownCheckDocumentation.ts:122-177</code></td><td>Paginate history and cap the normal record view.</td></tr>
+                <tr><td><span class="priority p2">P2</span></td><td>Sales day-start reroll has no transaction-wide read budget.</td><td><code>onlinePosSync.ts:522-605</code></td><td>Process one day per mutation and reschedule the next day.</td></tr>
+                <tr><td><span class="priority p2">P2</span></td><td>Provider requests lack an explicit timeout and ordinary failure retries.</td><td><code>onlinePosApi.ts:140-158</code><br><code>workfeedApi.ts:62-98</code></td><td>Add an abort timeout and bounded retry with jitter.</td></tr>
+                <tr><td><span class="priority p2">P2</span></td><td>Convex file URLs authorize once and remain reusable until the file is deleted.</td><td><code>ownCheckDocumentation.ts:154</code><br><code>badDeliveries.ts:685</code></td><td>Decide if bearer access is acceptable. For private evidence, serve through an authenticated HTTP action.</td></tr>
+                <tr><td><span class="priority note">DEC</span></td><td>Organization-wide integration reads and mappings can run under a location-restricted integration manager.</td><td><code>onlinePos.ts:650-836</code><br><code>workfeed.ts:391-398</code></td><td>Declare integration management global and require all locations, or make these calls location-aware.</td></tr>
+                <tr><td><span class="priority note">DEC</span></td><td>OnlinePOS accepts an empty export and advances <code>syncedThroughAt</code>.</td><td><code>onlinePosApi.ts:195-216</code><br><code>onlinePosSync.ts:849-891</code></td><td>Use provider completeness metadata, or require a confirming fetch for suspicious empty windows.</td></tr>
+                <tr><td><span class="priority note">DEC</span></td><td>OnlinePOS tokens, Workfeed keys, and Linear keys are stored as plain application fields.</td><td><code>schema.ts:161-182,311-356</code></td><td>Document the database-admin threat model. Use envelope encryption if backups or console access are in scope.</td></tr>
+                <tr><td><span class="priority p2">P2</span></td><td>Changing a kiosk password does not revoke sessions that can last seven days.</td><td><code>kiosk.ts:366-407</code><br><code>auth.ts:235-249</code></td><td>Revoke kiosk sessions inside the password-change operation.</td></tr>
+                <tr><td><span class="priority p2">P2</span></td><td>REST issuer config uses <code>NEXT_PUBLIC_SITE_URL</code>, while Convex verification uses <code>SITE_URL</code>.</td><td><code>service-token.ts:32-38</code><br><code>auth.config.ts:4-14</code></td><td>Use one server-only canonical value and assert equality at startup.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="retention">
+          <p class="eyebrow">Lifecycle</p>
+          <h2>Retention is precise for machine data, vague for people and files</h2>
+          <p class="section-intro">The bars show declared duration. Striped bars mean no purge term was found. Bar length is illustrative, not a common time scale.</p>
+
+          <figure aria-labelledby="retention-caption">
+            <p class="diagram-title">Declared and undeclared retention</p>
+            <div class="retention">
+              <span class="label">REST idempotency</span><span class="track"><i class="good" style="width:12%"></i></span><span class="term">24 hours</span>
+              <span class="label">Orphan uploads</span><span class="track"><i class="good" style="width:12%"></i></span><span class="term">24-hour grace</span>
+              <span class="label">Archived products</span><span class="track"><i class="warn" style="width:34%"></i></span><span class="term">30 days</span>
+              <span class="label">Workfeed shifts</span><span class="track"><i class="warn" style="width:56%"></i></span><span class="term">30 back, 60 ahead</span>
+              <span class="label">Sales and audit</span><span class="track"><i class="good" style="width:100%"></i></span><span class="term">400 days</span>
+              <span class="label">Member access rows</span><span class="track"><i class="risk" style="width:100%"></i></span><span class="term">No removal cleanup</span>
+              <span class="label">Feedback screenshots</span><span class="track"><i class="risk" style="width:100%"></i></span><span class="term">No term found</span>
+              <span class="label">Own-check revisions</span><span class="track"><i class="risk" style="width:100%"></i></span><span class="term">No term found</span>
+              <span class="label">Revoked shares</span><span class="track"><i class="risk" style="width:100%"></i></span><span class="term">Revoked, not purged</span>
+              <span class="label">Disconnected Workfeed</span><span class="track"><i class="risk" style="width:100%"></i></span><span class="term">Cache retained</span>
+            </div>
+            <figcaption id="retention-caption">Products are deleted after 30 days, which is aggressive beside indefinite people and evidence records. The mismatch deserves a product and compliance decision.</figcaption>
+          </figure>
+
+          <div class="callout">
+            <p><strong>File access matters here.</strong> Convex documents that anyone with a generated file URL can reuse it without app authentication. Revocation requires deleting the file. See <a href="https://docs.convex.dev/file-storage/serve-files">Convex file serving guidance</a>.</p>
+          </div>
+        </section>
+
+        <section id="strengths">
+          <p class="eyebrow">Verified strengths</p>
+          <h2>Keep these patterns</h2>
+          <div class="check-grid">
+            <div class="check pass"><b>Server-owned tenant identity</b><span>Public functions derive the organization from session membership or a revalidated API-key policy.</span></div>
+            <div class="check pass"><b>Complete function validators</b><span>All 361 function declarations have argument and return validators.</span></div>
+            <div class="check pass"><b>Provider-independent reads</b><span>Sales screens and dashboards read <code>salesOrders</code>, <code>salesLines</code>, and <code>salesDaily</code>.</span></div>
+            <div class="check pass"><b>Integer money</b><span>OnlinePOS parsing rounds prices and revenue into integer minor units before persistence.</span></div>
+            <div class="check pass"><b>Current API-key permissions</b><span>Each REST request intersects stored key permissions with the role's current permissions and location policy.</span></div>
+            <div class="check pass"><b>Atomic REST idempotency</b><span>Request hash, result storage, and domain write happen in one Convex mutation.</span></div>
+            <div class="check pass"><b>Historical snapshots</b><span>Most ledger rows preserve names and units. Own-check edits append immutable revisions.</span></div>
+            <div class="check pass"><b>Share hardening</b><span>Opaque random tokens, PBKDF2 passwords, constant-time checks, rate limits, expiry, and revocation protect public dashboards.</span></div>
+            <div class="check pass"><b>Bounded maintenance</b><span>Sales, audit, idempotency, product, and storage cleanup use internal jobs and continuation work.</span></div>
+            <div class="check pass"><b>Visible truncation</b><span>Dashboard metric caps return a flag and the UI tells the user when the result is limited.</span></div>
+          </div>
+        </section>
+
+        <section id="actions">
+          <p class="eyebrow">Recommended order</p>
+          <h2>A small sequence that removes most risk</h2>
+          <div class="plan">
+            <article><h3>Close self-escalation</h3><p>Split member and role authority. Require all-location access for scope changes. Add tests for self-role and self-scope attempts.</p></article>
+            <article><h3>Stop silent sync damage</h3><p>Fail Workfeed on rejected rows. Stage cleanup behind completeness checks. Add provider timeouts and retries.</p></article>
+            <article><h3>Audit sales migration</h3><p>Detect legacy and scoped duplicate line IDs in live data. Repair lines, orders, and daily rollups. Move the flag to the end of backfill.</p></article>
+            <article><h3>Make deletion single-owner</h3><p>Share location and master-data mutations across UI and REST. Archive locations with history. Scrub configuration arrays.</p></article>
+            <article><h3>Remove lifetime query caps</h3><p>Range-load own-check versions. Paginate revision detail. Split sales reroll by day.</p></article>
+            <article><h3>Enforce mapping identity</h3><p>Make OnlinePOS provider product mapping unique per organization and add a duplicate regression test.</p></article>
+            <article><h3>Write the lifecycle policy</h3><p>Decide terms for people, feedback, evidence, shares, and disconnected integrations. Add purge or anonymization jobs.</p></article>
+            <article><h3>Finish operational cleanup</h3><p>Unify REST issuer config, revoke kiosk sessions on password change, and review unused indexes after tracing dynamic callers.</p></article>
+          </div>
+
+          <h3>Definition of done for the first patch</h3>
+          <ul>
+            <li>A location-restricted member manager cannot broaden their own location access.</li>
+            <li>A member manager without <code>roles.manage</code> cannot assign any role, including to themselves.</li>
+            <li>An incomplete Workfeed response cannot deactivate or delete cached records.</li>
+            <li>An OnlinePOS backfill cannot create a scoped copy beside a legacy line.</li>
+            <li>UI and REST location deletion call the same domain function and leave no unresolved configuration reference.</li>
+          </ul>
+        </section>
+
+        <section id="verification">
+          <p class="eyebrow">Evidence and limits</p>
+          <h2>What was checked</h2>
+          <div class="check-grid">
+            <div class="check pass"><b>TypeScript</b><span><code>bunx tsc --noEmit</code> passed.</span></div>
+            <div class="check pass"><b>Lint</b><span><code>bun run lint</code> passed with two existing <code>img</code> warnings outside the data layer.</span></div>
+            <div class="check warn"><b>Tests</b><span>61 of 62 passed. One Transfer test expects old copy after <code>medlem</code> changed to <code>bruger</code>.</span></div>
+            <div class="check pass"><b>Sales rollup check</b><span><code>bun run check:sales</code> passed.</span></div>
+            <div class="check pass"><b>Schema and index scan</b><span>71 tables, 182 ordinary indexes, 2 search indexes, and organization ownership were inspected.</span></div>
+            <div class="check pass"><b>Public boundary review</b><span>All public Convex modules and all <code>/api/v1</code> route groups were inspected.</span></div>
+          </div>
+
+          <h3>Audit limits</h3>
+          <p>This was a read-only source audit. It did not inspect production rows, backups, deployment logs, Better Auth data, provider responses, or Vercel and Convex environment values. It did not run a load test or a live concurrency test. The OnlinePOS migration finding is conditional on legacy unscoped rows existing. Production data must confirm its current impact.</p>
+
+          <details>
+            <summary>Core evidence map</summary>
+            <div class="table-scroll">
+              <table>
+                <caption>Files that define the data layer</caption>
+                <thead><tr><th scope="col">Area</th><th scope="col">Primary files</th><th scope="col">Role</th></tr></thead>
+                <tbody>
+                  <tr><td>Schema</td><td><code>convex/schema.ts</code><br><code>convex/betterAuth/generatedSchema.ts</code></td><td>Domain tables, indexes, isolated identity tables.</td></tr>
+                  <tr><td>Authorization</td><td><code>convex/lib/auth.ts</code><br><code>convex/access.ts</code><br><code>convex/auth.ts</code></td><td>Session, tenant, role, permission, location, kiosk, Better Auth hooks.</td></tr>
+                  <tr><td>REST</td><td><code>lib/api/v1/executor.ts</code><br><code>lib/api/v1/service-token.ts</code><br><code>convex/rest/*</code></td><td>Input validation, API-key gateway, service identity, idempotent writes.</td></tr>
+                  <tr><td>OnlinePOS</td><td><code>convex/onlinePos.ts</code><br><code>convex/onlinePosSync.ts</code><br><code>convex/lib/onlinePosApi.ts</code></td><td>Connection, provider parsing, ingest, backfill, reconciliation, retention.</td></tr>
+                  <tr><td>Workfeed</td><td><code>convex/workfeed.ts</code><br><code>convex/workfeedSync.ts</code><br><code>convex/lib/workfeedApi.ts</code></td><td>Connection, people snapshot, shift window, cleanup, cached reads.</td></tr>
+                  <tr><td>Derived metrics</td><td><code>convex/lib/dashboardMetrics.ts</code><br><code>convex/customMetricExecutor.ts</code></td><td>Bounded aggregations, location scope, truncation.</td></tr>
+                  <tr><td>Files and cleanup</td><td><code>convex/storageCleanup.ts</code><br><code>convex/crons.ts</code></td><td>Reference scan, orphan deletion, scheduled retention jobs.</td></tr>
+                  <tr><td>History</td><td><code>convex/ownChecks.ts</code><br><code>convex/lib/ownChecks.ts</code><br><code>convex/catalog.ts</code></td><td>Immutable revisions, snapshots, archive and hard-delete behavior.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <details>
+            <summary>Test baseline failure</summary>
+            <div>
+              <p><code>convex/transfers.test.ts:164</code> expects <code>Den ansvarlige er ikke medlem af organisationen</code>. Runtime code now returns <code>Den ansvarlige er ikke bruger i organisationen</code>. The behavior still rejects the invalid user. The failed assertion is stale text, not a data-layer failure.</p>
+            </div>
+          </details>
+        </section>
+      </main>
+    </div>
+
+    <footer>Engine data layer audit. Source state at commit <code>260066b</code>. No application files were changed.</footer>
+  </div>
+</body>
+</html>

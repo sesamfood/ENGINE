@@ -597,11 +597,15 @@ export async function requireOwnCheckCorrector(ctx: AuthContext) {
 }
 
 export async function requireOwnCheckApprover(ctx: AuthContext) {
-  return await requirePermission(ctx, "ownChecks.approve");
+  return await requirePermission(
+    ctx,
+    "ownChecks.approve",
+    "ownChecks.overview",
+  );
 }
 
 export async function requireOwnCheckEditor(ctx: AuthContext) {
-  return await requirePermission(ctx, "ownChecks.edit");
+  return await requirePermission(ctx, "ownChecks.edit", "ownChecks.overview");
 }
 
 export async function requireOwnCheckAttachmentUploader(ctx: AuthContext) {

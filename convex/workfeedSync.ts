@@ -31,6 +31,7 @@ const SHIFT_CHUNK_COUNT = Math.ceil(
 const STUCK_MS = 30 * 60 * 1_000;
 const MAX_LOCATIONS = 200;
 const MAX_ROLES = 1_000;
+const MAX_SHIFTS_PER_CHUNK = 5_000;
 const EMPLOYEE_BATCH_SIZE = 25;
 const SHIFT_BATCH_SIZE = 100;
 
@@ -331,6 +332,55 @@ export const getEmployeeSyncContext = internalQuery({
         departmentId: mapping.departmentId,
       })),
     };
+  },
+});
+
+export const getEmployeeSnapshotPresence = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.object({ employees: v.boolean(), roles: v.boolean() }),
+  handler: async (ctx, args) => {
+    const [employees, roles] = await Promise.all([
+      ctx.db
+        .query("workfeedEmployeeMappings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .take(1),
+      ctx.db
+        .query("workfeedRoles")
+        .withIndex(
+          "by_organizationId_and_companyId_and_externalRoleId",
+          (q) => q.eq("organizationId", args.organizationId),
+        )
+        .take(1),
+    ]);
+    return { employees: employees.length > 0, roles: roles.length > 0 };
+  },
+});
+
+export const getShiftMappingCount = internalQuery({
+  args: {
+    organizationId: v.string(),
+    companyId: v.string(),
+    from: v.number(),
+    to: v.number(),
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const mappings = await ctx.db
+      .query("workfeedShiftMappings")
+      .withIndex("by_organizationId_and_companyId_and_startsAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("companyId", args.companyId)
+          .gte("startsAt", args.from)
+          .lt("startsAt", args.to),
+      )
+      .take(MAX_SHIFTS_PER_CHUNK + 1);
+    if (mappings.length > MAX_SHIFTS_PER_CHUNK) {
+      throw new Error("Der er for mange Workfeed-vagter i perioden");
+    }
+    return mappings.length;
   },
 });
 
@@ -733,15 +783,20 @@ export const completeEmployeeSnapshot = internalMutation({
       const now = Date.now();
       for (const mapping of result.page) {
         const seen = mapping.syncToken === args.runToken;
+        if (!seen) {
+          if (
+            mapping.pendingLocationIds !== undefined ||
+            mapping.pendingActive !== undefined
+          ) {
+            await ctx.db.patch(mapping._id, {
+              pendingLocationIds: undefined,
+              pendingActive: undefined,
+            });
+          }
+          continue;
+        }
         const employee = await ctx.db.get("employees", mapping.employeeId);
         if (
-          !seen &&
-          employee?.organizationId === args.organizationId &&
-          employee.active
-        ) {
-          await ctx.db.patch(employee._id, { active: false, updatedAt: now });
-        } else if (
-          seen &&
           employee?.organizationId === args.organizationId &&
           mapping.pendingActive !== undefined &&
           employee.active !== mapping.pendingActive
@@ -759,7 +814,7 @@ export const completeEmployeeSnapshot = internalMutation({
               .eq("employeeId", mapping.employeeId),
           )
           .take(MAX_LOCATIONS + 1);
-        const desired = new Set(seen ? (mapping.pendingLocationIds ?? []) : []);
+        const desired = new Set(mapping.pendingLocationIds ?? []);
         for (const assignment of assignments) {
           if (!desired.has(assignment.locationId)) {
             await ctx.db.delete(assignment._id);
@@ -796,30 +851,6 @@ export const completeEmployeeSnapshot = internalMutation({
           cursor: result.isDone ? null : result.continueCursor,
           previousCompanyRetired: args.previousCompanyRetired,
         },
-      );
-      return null;
-    }
-
-    const roles = await ctx.db
-      .query("workfeedRoles")
-      .withIndex(
-        "by_organizationId_and_companyId_and_externalRoleId",
-        (q) =>
-          q
-            .eq("organizationId", args.organizationId)
-            .eq("companyId", args.companyId),
-      )
-      .paginate({ numItems: 100, cursor: args.cursor });
-    for (const role of roles.page) {
-      if (role.syncToken !== args.runToken && role.active) {
-        await ctx.db.patch(role._id, { active: false, updatedAt: Date.now() });
-      }
-    }
-    if (!roles.isDone) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.workfeedSync.completeEmployeeSnapshot,
-        { ...args, cursor: roles.continueCursor },
       );
       return null;
     }
@@ -871,15 +902,6 @@ export const syncEmployees = internalAction({
         requestWorkfeed("/roles", context.settings),
       ]);
       const roles = parseRoles(rolePayload);
-      for (let index = 0; index < roles.length; index += 100) {
-        await ctx.runMutation(internal.workfeedSync.upsertRoleBatch, {
-          organizationId: args.organizationId,
-          companyId: context.settings.companyId,
-          syncToken: args.runToken,
-          roles: roles.slice(index, index + 100),
-        });
-      }
-
       const locationByDepartment = new Map(
         context.locations.map((location) => [
           location.departmentId,
@@ -897,6 +919,26 @@ export const syncEmployees = internalAction({
           return locationId ? [locationId] : [];
         }),
       }));
+      const presence = await ctx.runQuery(
+        internal.workfeedSync.getEmployeeSnapshotPresence,
+        {
+          organizationId: args.organizationId,
+        },
+      );
+      if (roles.length === 0 && presence.roles) {
+        throw new Error("Workfeed returnerede et tomt rolleudsnit");
+      }
+      if (employees.length === 0 && presence.employees) {
+        throw new Error("Workfeed returnerede et tomt medarbejderudsnit");
+      }
+      for (let index = 0; index < roles.length; index += 100) {
+        await ctx.runMutation(internal.workfeedSync.upsertRoleBatch, {
+          organizationId: args.organizationId,
+          companyId: context.settings.companyId,
+          syncToken: args.runToken,
+          roles: roles.slice(index, index + 100),
+        });
+      }
       for (
         let index = 0;
         index < employees.length;
@@ -1102,11 +1144,38 @@ export const syncShiftChunk = internalAction({
         released: "true",
       });
       const sourceShifts = parseShifts(payload);
+      const existingMappingCount = await ctx.runQuery(
+        internal.workfeedSync.getShiftMappingCount,
+        {
+          organizationId: args.organizationId,
+          companyId: settings.companyId,
+          from: args.from,
+          to: args.to,
+        },
+      );
+      if (sourceShifts.length === 0 && existingMappingCount > 0) {
+        throw new Error("Workfeed returnerede et tomt vagtudsnit");
+      }
       const sourceHash = await shiftSourceHash(
         sourceShifts,
         settings.companyId,
         runState.lastEmployeeSuccessAt,
       );
+      if (sourceShifts.length < existingMappingCount) {
+        const confirmationPayload = await requestWorkfeed("/shifts", settings, {
+          startFrom: new Date(args.from).toISOString(),
+          startTo: new Date(args.to).toISOString(),
+          released: "true",
+        });
+        const confirmationHash = await shiftSourceHash(
+          parseShifts(confirmationPayload),
+          settings.companyId,
+          runState.lastEmployeeSuccessAt,
+        );
+        if (confirmationHash !== sourceHash) {
+          throw new Error("Workfeed-vagtudsnittet ændrede sig mellem to kald");
+        }
+      }
       const chunkIndex = Math.round((args.from - args.windowStart) / CHUNK_MS);
       if (
         chunkIndex < 0 ||
@@ -1186,25 +1255,25 @@ export const syncShiftChunk = internalAction({
             role.name,
           ]),
       );
-      const shifts = sourceShifts.flatMap((shift) => {
+      const shifts = sourceShifts.map((shift) => {
         const employeeId = employeeByExternalId.get(shift.employeeId);
         const locationId = locationByDepartment.get(shift.departmentId);
-        if (!employeeId || !locationId) return [];
-        return [
-          {
-            id: shift.id,
-            employeeId,
-            locationId,
-            externalDepartmentId: shift.departmentId,
-            startsAt: shift.start,
-            endsAt: shift.end,
-            roleName: shift.roleId
-              ? (roleByExternalId.get(
-                  `${shift.departmentId}:${shift.roleId}`,
-                ) ?? null)
-              : null,
-          },
-        ];
+        if (!employeeId || !locationId) {
+          throw new Error("Workfeed-vagt kan ikke knyttes til lokale data");
+        }
+        return {
+          id: shift.id,
+          employeeId,
+          locationId,
+          externalDepartmentId: shift.departmentId,
+          startsAt: shift.start,
+          endsAt: shift.end,
+          roleName: shift.roleId
+            ? (roleByExternalId.get(
+                `${shift.departmentId}:${shift.roleId}`,
+              ) ?? null)
+            : null,
+        };
       });
       for (let index = 0; index < shifts.length; index += SHIFT_BATCH_SIZE) {
         await ctx.runMutation(internal.workfeedSync.upsertShiftBatch, {

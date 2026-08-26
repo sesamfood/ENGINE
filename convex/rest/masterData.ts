@@ -6,28 +6,24 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { mutation, query } from "../_generated/server";
-import {
-  requireAllLocationAccess,
-  requireLocationManager,
-  type OrganizationAuth,
-} from "../lib/auth";
-import { recordAudit } from "../lib/audit";
+import { requireLocationManager, type OrganizationAuth } from "../lib/auth";
 import { runIdempotent } from "../lib/idempotency";
 import { requireRestApiMutation } from "./lib";
 import {
-  normalizeMasterDataName,
-  optionalText,
-  requireCurrency,
-} from "../lib/masterData";
-import {
-  requireTimeZone,
-  resolveTimeZone,
-  scheduleLocationDayStartReroll,
-} from "../lib/timeZone";
+  createLegalEntityWithAuth,
+  createMarketWithAuth,
+  createOperatorWithAuth,
+  deleteLegalEntityWithAuth,
+  deleteMarketWithAuth,
+  deleteOperatorWithAuth,
+  MasterDataError,
+  requireMasterDataWriteAccess,
+  updateLegalEntityWithAuth,
+  updateMarketWithAuth,
+  updateOperatorWithAuth,
+} from "../masterData";
 
 const MAX_PAGE_SIZE = 100;
-const MAX_LOCATION_ROWS = 200;
-const MAX_MEMBER_ACCESS_ROWS = 1_000;
 
 const operatorStatusValidator = v.union(
   v.literal("active"),
@@ -118,10 +114,94 @@ type OperatorDto = {
   status: "active" | "inactive";
 };
 
-type ResourceName = "market" | "legal_entity" | "operator";
-
 function restError(code: string, message: string): never {
   throw new ConvexError({ code, message });
+}
+
+function restMasterDataError(error: MasterDataError): never {
+  const prefix = {
+    market: "market",
+    legalEntity: "legal_entity",
+    operator: "operator",
+  }[error.resource];
+  const label = {
+    market: "market",
+    legalEntity: "legal entity",
+    operator: "operator",
+  }[error.resource];
+  switch (error.kind) {
+    case "invalidName":
+      restError(
+        `${prefix}_name_invalid`,
+        "Name is required and must be at most 100 characters.",
+      );
+    case "nameTaken":
+      restError(
+        `${prefix}_name_taken`,
+        `A ${label} with this name already exists.`,
+      );
+    case "notFound":
+      restError(
+        `${prefix}_not_found`,
+        `${label[0].toUpperCase()}${label.slice(1)} was not found.`,
+      );
+    case "invalidCurrency":
+      restError(
+        "market_currency_invalid",
+        "Currency must be a three-letter ISO 4217 code.",
+      );
+    case "invalidTimeZone":
+      restError("market_timezone_invalid", "Time zone is invalid.");
+    case "tooManyLocations":
+      restError(
+        "market_has_too_many_locations",
+        "The market has too many locations to update.",
+      );
+    case "inUse":
+      restError(
+        `${prefix}_in_use`,
+        error.resource === "market"
+          ? "The market is used by a location and cannot be deleted."
+          : error.resource === "operator"
+            ? "The operator is used by a location and cannot be deleted."
+            : "The legal entity is in use and cannot be deleted.",
+      );
+    case "invalidReference":
+      restError(
+        "legal_entity_reference_invalid",
+        "Legal entity was not found.",
+      );
+    case "invalidContactEmail":
+      restError(
+        "operator_contact_email_invalid",
+        "Contact email is invalid.",
+      );
+    case "apiKeyDependency":
+      restError(
+        "operator_api_key_dependency",
+        "The operator is used by an active API key and cannot be deleted.",
+      );
+    case "accessCleanupTooLarge":
+      restError(
+        "operator_access_cleanup_too_large",
+        "There are too many location access rules to update safely.",
+      );
+    default: {
+      const _exhaustive: never = error.kind;
+      return _exhaustive;
+    }
+  }
+}
+
+async function runMasterDataMutation<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof MasterDataError) {
+      return restMasterDataError(error);
+    }
+    throw error;
+  }
 }
 
 function requirePageSize(numItems: number) {
@@ -131,49 +211,6 @@ function requirePageSize(numItems: number) {
       "Page size must be an integer between 1 and 100.",
     );
   }
-}
-
-function normalizeName(value: string, resource: ResourceName) {
-  const labels: Record<ResourceName, string> = {
-    market: "Markedsnavnet",
-    legal_entity: "Navnet på den juridiske enhed",
-    operator: "Operatørnavnet",
-  };
-  try {
-    return normalizeMasterDataName(value, labels[resource]);
-  } catch {
-    restError(
-      `${resource}_name_invalid`,
-      "Name is required and must be at most 100 characters.",
-    );
-  }
-}
-
-function normalizeCurrency(value: string | null | undefined) {
-  try {
-    return requireCurrency(value);
-  } catch {
-    restError(
-      "market_currency_invalid",
-      "Currency must be a three-letter ISO 4217 code.",
-    );
-  }
-}
-
-function normalizeTimeZone(value: string | null | undefined) {
-  try {
-    return requireTimeZone(value);
-  } catch {
-    restError("market_timezone_invalid", "Time zone is invalid.");
-  }
-}
-
-function normalizeContactEmail(value: string | null | undefined) {
-  const email = optionalText(value);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    restError("operator_contact_email_invalid", "Contact email is invalid.");
-  }
-  return email;
 }
 
 function requireApiKeyPrincipal(auth: OrganizationAuth) {
@@ -209,21 +246,19 @@ function toOperatorDto(row: Doc<"operators">): OperatorDto {
   };
 }
 
-async function requireLegalEntity(
+function normalizeLegalEntityId(
   ctx: MutationCtx,
-  organizationId: string,
   legalEntityId: string | null | undefined,
-) {
+): Id<"legalEntities"> | undefined {
   if (!legalEntityId) return undefined;
   const id = ctx.db.normalizeId("legalEntities", legalEntityId);
-  const legalEntity = id ? await ctx.db.get("legalEntities", id) : null;
-  if (!legalEntity || legalEntity.organizationId !== organizationId) {
+  if (!id) {
     restError(
       "legal_entity_reference_invalid",
       "Legal entity was not found.",
     );
   }
-  return legalEntity._id;
+  return id;
 }
 
 async function findMarket(
@@ -312,7 +347,7 @@ export const createMarket = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -323,45 +358,12 @@ export const createMarket = mutation({
         requestHash: args.requestHash,
       },
       async () => {
-        const { name, normalizedName } = normalizeName(
-          args.input.name,
-          "market",
+        const id = await runMasterDataMutation(() =>
+          createMarketWithAuth(ctx, auth, args.input),
         );
-        const existing = await ctx.db
-          .query("markets")
-          .withIndex("by_organizationId_and_normalizedName", (q) =>
-            q
-              .eq("organizationId", auth.organizationId)
-              .eq("normalizedName", normalizedName),
-          )
-          .unique();
-        if (existing) {
-          restError(
-            "market_name_taken",
-            "A market with this name already exists.",
-          );
-        }
-        const currency = normalizeCurrency(args.input.currency);
-        const timeZone = normalizeTimeZone(args.input.timeZone);
-        const id = await ctx.db.insert("markets", {
-          organizationId: auth.organizationId,
-          name,
-          normalizedName,
-          currency,
-          timeZone,
-        });
-        await recordAudit(ctx, auth, {
-          action: "masterData.marketCreated",
-          entityTable: "markets",
-          entityId: id,
-          summary: `Markedet ${name} blev oprettet`,
-        });
-        const data: MarketDto = {
-          id,
-          name,
-          currency: currency ?? null,
-          timeZone: timeZone ?? null,
-        };
+        const market = await ctx.db.get("markets", id);
+        if (!market) restError("market_not_found", "Market was not found.");
+        const data = toMarketDto(market);
         return {
           status: 201,
           json: JSON.stringify({ data }),
@@ -380,86 +382,26 @@ export const updateMarket = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     const market = await findMarket(ctx, auth.organizationId, args.id);
-    const nextName =
-      args.input.name === undefined
-        ? { name: market.name, normalizedName: market.normalizedName }
-        : normalizeName(args.input.name, "market");
-    const existing = await ctx.db
-      .query("markets")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q
-          .eq("organizationId", auth.organizationId)
-          .eq("normalizedName", nextName.normalizedName),
-      )
-      .unique();
-    if (existing && existing._id !== market._id) {
-      restError("market_name_taken", "A market with this name already exists.");
-    }
-
-    const locations = await ctx.db
-      .query("locations")
-      .withIndex("by_organizationId_and_marketId", (q) =>
-        q.eq("organizationId", auth.organizationId).eq("marketId", market._id),
-      )
-      .take(MAX_LOCATION_ROWS + 1);
-    if (locations.length > MAX_LOCATION_ROWS) {
-      restError(
-        "market_has_too_many_locations",
-        "The market has too many locations to update.",
-      );
-    }
-    const inheritedLocations = locations.filter(
-      (location) => !location.timeZone,
+    const id = await runMasterDataMutation(() =>
+      updateMarketWithAuth(ctx, auth, {
+        marketId: market._id,
+        name: args.input.name ?? market.name,
+        currency:
+          args.input.currency === undefined
+            ? market.currency
+            : args.input.currency,
+        timeZone:
+          args.input.timeZone === undefined
+            ? market.timeZone
+            : args.input.timeZone,
+      }),
     );
-    const previousTimeZones = await Promise.all(
-      inheritedLocations.map((location) =>
-        resolveTimeZone(ctx, auth.organizationId, location._id),
-      ),
-    );
-    const timeZone =
-      args.input.timeZone === undefined
-        ? market.timeZone
-        : normalizeTimeZone(args.input.timeZone);
-    const currency =
-      args.input.currency === undefined
-        ? market.currency
-        : normalizeCurrency(args.input.currency);
-    await ctx.db.patch("markets", market._id, {
-      name: nextName.name,
-      normalizedName: nextName.normalizedName,
-      currency,
-      timeZone,
-    });
-    for (const [index, location] of inheritedLocations.entries()) {
-      const nextTimeZone = await resolveTimeZone(
-        ctx,
-        auth.organizationId,
-        location._id,
-      );
-      if (nextTimeZone !== previousTimeZones[index]) {
-        await scheduleLocationDayStartReroll(
-          ctx,
-          auth.organizationId,
-          location._id,
-          nextTimeZone,
-        );
-      }
-    }
-    await recordAudit(ctx, auth, {
-      action: "masterData.marketUpdated",
-      entityTable: "markets",
-      entityId: market._id,
-      summary: `Markedet ${nextName.name} blev ændret`,
-    });
-    return {
-      id: market._id,
-      name: nextName.name,
-      currency: currency ?? null,
-      timeZone: timeZone ?? null,
-    } satisfies MarketDto;
+    const updated = await ctx.db.get("markets", id);
+    if (!updated) restError("market_not_found", "Market was not found.");
+    return toMarketDto(updated);
   },
 });
 
@@ -469,28 +411,12 @@ export const deleteMarket = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     const market = await findMarket(ctx, auth.organizationId, args.id);
-    const location = await ctx.db
-      .query("locations")
-      .withIndex("by_organizationId_and_marketId", (q) =>
-        q.eq("organizationId", auth.organizationId).eq("marketId", market._id),
-      )
-      .first();
-    if (location) {
-      restError(
-        "market_in_use",
-        "The market is used by a location and cannot be deleted.",
-      );
-    }
-    await recordAudit(ctx, auth, {
-      action: "masterData.marketDeleted",
-      entityTable: "markets",
-      entityId: market._id,
-      summary: `Markedet ${market.name} blev slettet`,
-    });
-    await ctx.db.delete("markets", market._id);
+    await runMasterDataMutation(() =>
+      deleteMarketWithAuth(ctx, auth, market._id),
+    );
     return null;
   },
 });
@@ -539,7 +465,7 @@ export const createLegalEntity = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -550,42 +476,14 @@ export const createLegalEntity = mutation({
         requestHash: args.requestHash,
       },
       async () => {
-        const { name, normalizedName } = normalizeName(
-          args.input.name,
-          "legal_entity",
+        const id = await runMasterDataMutation(() =>
+          createLegalEntityWithAuth(ctx, auth, args.input),
         );
-        const existing = await ctx.db
-          .query("legalEntities")
-          .withIndex("by_organizationId_and_normalizedName", (q) =>
-            q
-              .eq("organizationId", auth.organizationId)
-              .eq("normalizedName", normalizedName),
-          )
-          .unique();
-        if (existing) {
-          restError(
-            "legal_entity_name_taken",
-            "A legal entity with this name already exists.",
-          );
+        const legalEntity = await ctx.db.get("legalEntities", id);
+        if (!legalEntity) {
+          restError("legal_entity_not_found", "Legal entity was not found.");
         }
-        const registrationNumber = optionalText(args.input.registrationNumber);
-        const id = await ctx.db.insert("legalEntities", {
-          organizationId: auth.organizationId,
-          name,
-          normalizedName,
-          registrationNumber,
-        });
-        await recordAudit(ctx, auth, {
-          action: "masterData.legalEntityCreated",
-          entityTable: "legalEntities",
-          entityId: id,
-          summary: `Den juridiske enhed ${name} blev oprettet`,
-        });
-        const data: LegalEntityDto = {
-          id,
-          name,
-          registrationNumber: registrationNumber ?? null,
-        };
+        const data = toLegalEntityDto(legalEntity);
         return {
           status: 201,
           json: JSON.stringify({ data }),
@@ -604,51 +502,28 @@ export const updateLegalEntity = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     const legalEntity = await findLegalEntity(
       ctx,
       auth.organizationId,
       args.id,
     );
-    const nextName =
-      args.input.name === undefined
-        ? { name: legalEntity.name, normalizedName: legalEntity.normalizedName }
-        : normalizeName(args.input.name, "legal_entity");
-    const existing = await ctx.db
-      .query("legalEntities")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q
-          .eq("organizationId", auth.organizationId)
-          .eq("normalizedName", nextName.normalizedName),
-      )
-      .unique();
-    if (existing && existing._id !== legalEntity._id) {
-      restError(
-        "legal_entity_name_taken",
-        "A legal entity with this name already exists.",
-      );
+    const id = await runMasterDataMutation(() =>
+      updateLegalEntityWithAuth(ctx, auth, {
+        legalEntityId: legalEntity._id,
+        name: args.input.name ?? legalEntity.name,
+        registrationNumber:
+          args.input.registrationNumber === undefined
+            ? legalEntity.registrationNumber
+            : args.input.registrationNumber,
+      }),
+    );
+    const updated = await ctx.db.get("legalEntities", id);
+    if (!updated) {
+      restError("legal_entity_not_found", "Legal entity was not found.");
     }
-    const registrationNumber =
-      args.input.registrationNumber === undefined
-        ? legalEntity.registrationNumber
-        : optionalText(args.input.registrationNumber);
-    await ctx.db.patch("legalEntities", legalEntity._id, {
-      name: nextName.name,
-      normalizedName: nextName.normalizedName,
-      registrationNumber,
-    });
-    await recordAudit(ctx, auth, {
-      action: "masterData.legalEntityUpdated",
-      entityTable: "legalEntities",
-      entityId: legalEntity._id,
-      summary: `Den juridiske enhed ${nextName.name} blev ændret`,
-    });
-    return {
-      id: legalEntity._id,
-      name: nextName.name,
-      registrationNumber: registrationNumber ?? null,
-    } satisfies LegalEntityDto;
+    return toLegalEntityDto(updated);
   },
 });
 
@@ -658,44 +533,16 @@ export const deleteLegalEntity = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     const legalEntity = await findLegalEntity(
       ctx,
       auth.organizationId,
       args.id,
     );
-    const [location, operator] = await Promise.all([
-      ctx.db
-        .query("locations")
-        .withIndex("by_organizationId_and_legalEntityId", (q) =>
-          q
-            .eq("organizationId", auth.organizationId)
-            .eq("legalEntityId", legalEntity._id),
-        )
-        .first(),
-      ctx.db
-        .query("operators")
-        .withIndex("by_organizationId_and_legalEntityId", (q) =>
-          q
-            .eq("organizationId", auth.organizationId)
-            .eq("legalEntityId", legalEntity._id),
-        )
-        .first(),
-    ]);
-    if (location || operator) {
-      restError(
-        "legal_entity_in_use",
-        "The legal entity is in use and cannot be deleted.",
-      );
-    }
-    await recordAudit(ctx, auth, {
-      action: "masterData.legalEntityDeleted",
-      entityTable: "legalEntities",
-      entityId: legalEntity._id,
-      summary: `Den juridiske enhed ${legalEntity.name} blev slettet`,
-    });
-    await ctx.db.delete("legalEntities", legalEntity._id);
+    await runMasterDataMutation(() =>
+      deleteLegalEntityWithAuth(ctx, auth, legalEntity._id),
+    );
     return null;
   },
 });
@@ -744,7 +591,7 @@ export const createOperator = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -755,52 +602,20 @@ export const createOperator = mutation({
         requestHash: args.requestHash,
       },
       async () => {
-        const { name, normalizedName } = normalizeName(
-          args.input.name,
-          "operator",
+        const id = await runMasterDataMutation(() =>
+          createOperatorWithAuth(ctx, auth, {
+            name: args.input.name,
+            legalEntityId: normalizeLegalEntityId(
+              ctx,
+              args.input.legalEntityId,
+            ),
+            contactEmail: args.input.contactEmail,
+            status: args.input.status ?? "active",
+          }),
         );
-        const existing = await ctx.db
-          .query("operators")
-          .withIndex("by_organizationId_and_normalizedName", (q) =>
-            q
-              .eq("organizationId", auth.organizationId)
-              .eq("normalizedName", normalizedName),
-          )
-          .unique();
-        if (existing) {
-          restError(
-            "operator_name_taken",
-            "An operator with this name already exists.",
-          );
-        }
-        const legalEntityId = await requireLegalEntity(
-          ctx,
-          auth.organizationId,
-          args.input.legalEntityId,
-        );
-        const contactEmail = normalizeContactEmail(args.input.contactEmail);
-        const status = args.input.status ?? "active";
-        const id = await ctx.db.insert("operators", {
-          organizationId: auth.organizationId,
-          name,
-          normalizedName,
-          legalEntityId,
-          contactEmail,
-          status,
-        });
-        await recordAudit(ctx, auth, {
-          action: "masterData.operatorCreated",
-          entityTable: "operators",
-          entityId: id,
-          summary: `Operatøren ${name} blev oprettet`,
-        });
-        const data: OperatorDto = {
-          id,
-          name,
-          legalEntityId: legalEntityId ?? null,
-          contactEmail: contactEmail ?? null,
-          status,
-        };
+        const operator = await ctx.db.get("operators", id);
+        if (!operator) restError("operator_not_found", "Operator was not found.");
+        const data = toOperatorDto(operator);
         return {
           status: 201,
           json: JSON.stringify({ data }),
@@ -819,60 +634,27 @@ export const updateOperator = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     const operator = await findOperator(ctx, auth.organizationId, args.id);
-    const nextName =
-      args.input.name === undefined
-        ? { name: operator.name, normalizedName: operator.normalizedName }
-        : normalizeName(args.input.name, "operator");
-    const existing = await ctx.db
-      .query("operators")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q
-          .eq("organizationId", auth.organizationId)
-          .eq("normalizedName", nextName.normalizedName),
-      )
-      .unique();
-    if (existing && existing._id !== operator._id) {
-      restError(
-        "operator_name_taken",
-        "An operator with this name already exists.",
-      );
-    }
-    const legalEntityId =
-      args.input.legalEntityId === undefined
-        ? operator.legalEntityId
-        : await requireLegalEntity(
-            ctx,
-            auth.organizationId,
-            args.input.legalEntityId,
-          );
-    const contactEmail =
-      args.input.contactEmail === undefined
-        ? operator.contactEmail
-        : normalizeContactEmail(args.input.contactEmail);
-    const status = args.input.status ?? operator.status;
-    await ctx.db.patch("operators", operator._id, {
-      name: nextName.name,
-      normalizedName: nextName.normalizedName,
-      legalEntityId,
-      contactEmail,
-      status,
-    });
-    await recordAudit(ctx, auth, {
-      action: "masterData.operatorUpdated",
-      entityTable: "operators",
-      entityId: operator._id,
-      summary: `Operatøren ${nextName.name} blev ændret`,
-    });
-    return {
-      id: operator._id,
-      name: nextName.name,
-      legalEntityId: legalEntityId ?? null,
-      contactEmail: contactEmail ?? null,
-      status,
-    } satisfies OperatorDto;
+    const id = await runMasterDataMutation(() =>
+      updateOperatorWithAuth(ctx, auth, {
+        operatorId: operator._id,
+        name: args.input.name ?? operator.name,
+        legalEntityId:
+          args.input.legalEntityId === undefined
+            ? operator.legalEntityId
+            : normalizeLegalEntityId(ctx, args.input.legalEntityId),
+        contactEmail:
+          args.input.contactEmail === undefined
+            ? operator.contactEmail
+            : args.input.contactEmail,
+        status: args.input.status ?? operator.status,
+      }),
+    );
+    const updated = await ctx.db.get("operators", id);
+    if (!updated) restError("operator_not_found", "Operator was not found.");
+    return toOperatorDto(updated);
   },
 });
 
@@ -882,74 +664,12 @@ export const deleteOperator = mutation({
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireApiKeyPrincipal(auth);
-    requireAllLocationAccess(auth);
+    requireMasterDataWriteAccess(auth);
     await requireRestApiMutation(ctx, auth);
     const operator = await findOperator(ctx, auth.organizationId, args.id);
-    const location = await ctx.db
-      .query("locations")
-      .withIndex("by_organizationId_and_operatorId", (q) =>
-        q
-          .eq("organizationId", auth.organizationId)
-          .eq("operatorId", operator._id),
-      )
-      .first();
-    if (location) {
-      restError(
-        "operator_in_use",
-        "The operator is used by a location and cannot be deleted.",
-      );
-    }
-    const apiKeyPolicies = await ctx.db
-      .query("apiKeyPolicies")
-      .withIndex("by_organizationId_and_status_and_expiresAt", (q) =>
-        q
-          .eq("organizationId", auth.organizationId)
-          .eq("status", "active")
-          .gt("expiresAt", Date.now()),
-      )
-      .collect();
-    if (
-      apiKeyPolicies.some(
-        (policy) =>
-          policy.locationPolicy.kind === "operator" &&
-          policy.locationPolicy.operatorId === operator._id,
-      )
-    ) {
-      restError(
-        "operator_api_key_dependency",
-        "The operator is used by an active API key and cannot be deleted.",
-      );
-    }
-    const accessRows = await ctx.db
-      .query("memberLocationAccess")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .take(MAX_MEMBER_ACCESS_ROWS + 1);
-    if (accessRows.length > MAX_MEMBER_ACCESS_ROWS) {
-      restError(
-        "operator_access_cleanup_too_large",
-        "There are too many location access rules to update safely.",
-      );
-    }
-    for (const row of accessRows) {
-      if (row.scope !== "operator" || row.operatorId !== operator._id) {
-        continue;
-      }
-      await ctx.db.patch("memberLocationAccess", row._id, {
-        scope: "selected",
-        locationIds: [],
-        operatorId: undefined,
-        updatedAt: Date.now(),
-      });
-    }
-    await recordAudit(ctx, auth, {
-      action: "masterData.operatorDeleted",
-      entityTable: "operators",
-      entityId: operator._id,
-      summary: `Operatøren ${operator.name} blev slettet`,
-    });
-    await ctx.db.delete("operators", operator._id);
+    await runMasterDataMutation(() =>
+      deleteOperatorWithAuth(ctx, auth, operator._id),
+    );
     return null;
   },
 });

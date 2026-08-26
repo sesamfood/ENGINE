@@ -16,6 +16,8 @@ import { resolveTimeZone } from "./timeZone";
 export const MAX_TEMPLATE_VERSIONS = 2_000;
 export const MAX_BACKLOG_OCCURRENCES = 2_000;
 export const MAX_OVERVIEW_ROWS = 2_000;
+const MAX_ACTIVE_TEMPLATES = 200;
+const MAX_ARCHIVED_TEMPLATES = 2_000;
 
 type OwnCheckContext = QueryCtx | MutationCtx;
 
@@ -57,25 +59,87 @@ export async function loadTemplateVersions(
   toDateKey: string,
   timeZone: string,
 ) {
+  const startInclusive = zonedTimestamp(fromDateKey, 0, timeZone);
   const endExclusive = zonedTimestamp(addDateKey(toDateKey, 1), 0, timeZone);
-  return await loadTemplateVersionsUntil(ctx, organizationId, endExclusive);
+  return await loadTemplateVersionsUntil(
+    ctx,
+    organizationId,
+    startInclusive,
+    endExclusive,
+  );
 }
 
 export async function loadTemplateVersionsUntil(
   ctx: OwnCheckContext,
   organizationId: string,
+  startInclusive: number,
   endExclusive: number,
 ) {
-  const versions = await ctx.db
+  const rangeVersions = await ctx.db
     .query("ownCheckTemplateVersions")
     .withIndex("by_organizationId_and_validFrom", (q) =>
-      q.eq("organizationId", organizationId).lt("validFrom", endExclusive),
+      q
+        .eq("organizationId", organizationId)
+        .gte("validFrom", startInclusive)
+        .lt("validFrom", endExclusive),
     )
     .take(MAX_TEMPLATE_VERSIONS + 1);
-  if (versions.length > MAX_TEMPLATE_VERSIONS) {
+  if (rangeVersions.length > MAX_TEMPLATE_VERSIONS) {
     throw new ConvexError("Der er for mange egenkontrolversioner i perioden");
   }
-  return versions;
+
+  const templateIds = new Set<Id<"ownCheckTemplates">>(
+    rangeVersions.map((version) => version.templateId),
+  );
+  const activeTemplates = await ctx.db
+    .query("ownCheckTemplates")
+    .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId).eq("status", "active"),
+    )
+    .take(MAX_ACTIVE_TEMPLATES + 1);
+  if (activeTemplates.length > MAX_ACTIVE_TEMPLATES) {
+    throw new ConvexError("Der er for mange aktive egenkontroller");
+  }
+  for (const template of activeTemplates) templateIds.add(template._id);
+
+  const archivedTemplates = await ctx.db
+    .query("ownCheckTemplates")
+    .withIndex("by_organizationId_and_status_and_archivedAt", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("status", "archived")
+        .gt("archivedAt", startInclusive),
+    )
+    .take(MAX_ARCHIVED_TEMPLATES + 1);
+  if (archivedTemplates.length > MAX_ARCHIVED_TEMPLATES) {
+    throw new ConvexError("Der er for mange arkiverede egenkontroller");
+  }
+  for (const template of archivedTemplates) templateIds.add(template._id);
+
+  const predecessors = await Promise.all(
+    [...templateIds].map((templateId) =>
+      ctx.db
+        .query("ownCheckTemplateVersions")
+        .withIndex("by_organizationId_and_templateId_and_validFrom", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("templateId", templateId)
+            .lt("validFrom", startInclusive),
+        )
+        .order("desc")
+        .first(),
+    ),
+  );
+  const versionsById = new Map(
+    rangeVersions.map((version) => [version._id, version]),
+  );
+  for (const predecessor of predecessors) {
+    if (predecessor) versionsById.set(predecessor._id, predecessor);
+  }
+  if (versionsById.size > MAX_TEMPLATE_VERSIONS) {
+    throw new ConvexError("Der er for mange egenkontrolversioner i perioden");
+  }
+  return [...versionsById.values()];
 }
 
 export function expandOwnCheckOccurrences(input: Parameters<typeof expandOccurrences>[0]) {
