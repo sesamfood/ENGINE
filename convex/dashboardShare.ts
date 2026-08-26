@@ -1,8 +1,14 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
-import { action, internalMutation, internalQuery, query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { metricRegistry } from "../lib/dashboard/registry";
 import {
   dashboardConfigValidator,
@@ -17,6 +23,7 @@ import {
   dashboardMetricComputers,
   resolveMetricParams,
 } from "./lib/dashboardMetrics";
+import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
 import {
   customMetricIsSensitive,
   executeCustomMetric,
@@ -60,7 +67,7 @@ export const expireShare = internalMutation({
 });
 
 async function requireShare(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
   token: string,
   accessKey: string,
 ) {
@@ -214,6 +221,32 @@ export const getSharedConfig = query({
       range: share.range,
       updatedAt: share._creationTime,
     };
+  },
+});
+
+export const requestSummaryRebuild = mutation({
+  args: {
+    token: v.string(),
+    accessKey: v.string(),
+    metricIds: v.array(metricIdValidator),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const share = await requireShare(ctx, args.token, args.accessKey);
+    const sharedMetricIds = new Set(
+      share.widgets.flatMap((widget) =>
+        widget.metric.kind === "builtin" ? [widget.metric.id] : [],
+      ),
+    );
+    if (args.metricIds.some((metricId) => !sharedMetricIds.has(metricId))) {
+      throw new ConvexError("Målingen er ikke en del af delingen");
+    }
+    await requestDashboardSummaryRebuild(
+      ctx,
+      share.organizationId,
+      args.metricIds,
+    );
+    return null;
   },
 });
 

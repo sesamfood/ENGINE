@@ -90,6 +90,8 @@ async function hydrateEmployee(
   ctx: QueryCtx,
   organizationId: string,
   employee: Doc<"employees">,
+  loadLocation: (locationId: Id<"locations">) =>
+    Promise<Doc<"locations"> | null>,
 ) {
   const assignments = await ctx.db
     .query("employeeLocationAssignments")
@@ -98,9 +100,7 @@ async function hydrateEmployee(
     )
     .take(MAX_ASSIGNMENTS);
   const locations = await Promise.all(
-    assignments.map((assignment) =>
-      ctx.db.get("locations", assignment.locationId),
-    ),
+    assignments.map((assignment) => loadLocation(assignment.locationId)),
   );
   return {
     id: employee._id,
@@ -370,6 +370,18 @@ export const listDirectory = query({
             )
             .paginate(args.paginationOpts);
     }
+    const locationCache = new Map<
+      Id<"locations">,
+      Promise<Doc<"locations"> | null>
+    >();
+    locationCache.set(args.locationId, Promise.resolve(location));
+    const loadLocation = (locationId: Id<"locations">) => {
+      const cached = locationCache.get(locationId);
+      if (cached) return cached;
+      const pending = ctx.db.get("locations", locationId);
+      locationCache.set(locationId, pending);
+      return pending;
+    };
     const page = await Promise.all(
       result.page.map(async (employee) => {
         const assignment = await ctx.db
@@ -382,7 +394,12 @@ export const listDirectory = query({
           )
           .unique();
         if (!assignment) return null;
-        const hydrated = await hydrateEmployee(ctx, organizationId, employee);
+        const hydrated = await hydrateEmployee(
+          ctx,
+          organizationId,
+          employee,
+          loadLocation,
+        );
         const visibleLocations = auth.isKioskAccount
           ? hydrated.locations.filter((item) => item.id === args.locationId)
           : auth.locationScope.all
@@ -426,6 +443,8 @@ export const setTimeZone = mutation({
         q.eq("organizationId", organizationId),
       )
       .unique();
+    const previousOrganizationTimeZone =
+      current?.timeZone ?? "Europe/Copenhagen";
     if (current) {
       await ctx.db.patch(current._id, { timeZone, updatedAt: Date.now() });
     } else {
@@ -434,6 +453,21 @@ export const setTimeZone = mutation({
         timeZone,
         updatedAt: Date.now(),
       });
+    }
+    const summaryStatuses = await ctx.db
+      .query("dashboardSummaryStatuses")
+      .withIndex("by_organizationId_and_source", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(10);
+    if (previousOrganizationTimeZone !== timeZone) {
+      for (const status of summaryStatuses) {
+        await ctx.db.patch(status._id, {
+          state: "stale",
+          runToken: undefined,
+          updatedAt: Date.now(),
+        });
+      }
     }
     for (const [index, location] of inheritedLocations.entries()) {
       const nextTimeZone = await resolveTimeZone(

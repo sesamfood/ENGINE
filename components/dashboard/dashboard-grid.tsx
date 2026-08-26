@@ -16,13 +16,14 @@ import {
   type DragOverEvent,
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
-import { useMemo, useState, type CSSProperties } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
 import { metricRegistry } from "@/lib/dashboard/registry";
+import { dashboardMetricUsesSummary } from "@/lib/dashboard/summary-sources";
 import {
   dashboardColumns,
   dashboardRowCount,
@@ -360,6 +361,46 @@ export function DashboardGrid({
     api.customMetrics.list,
     !publicAccess && widgets.some((widget) => widget.metric.kind === "custom") ? {} : "skip",
   );
+  const requestSummaryRebuild = useMutation(
+    api.dashboardSummaries.requestRebuild,
+  );
+  const requestSharedSummaryRebuild = useMutation(
+    api.dashboardShare.requestSummaryRebuild,
+  );
+  const publicToken = publicAccess?.token;
+  const publicAccessKey = publicAccess?.accessKey;
+  const summaryMetricIds = useMemo(
+    () => [
+      ...new Set(
+        widgets.flatMap((widget) =>
+          widget.metric.kind === "builtin" &&
+          dashboardMetricUsesSummary(widget.metric.id)
+            ? [widget.metric.id]
+            : [],
+        ),
+      ),
+    ],
+    [widgets],
+  );
+  useEffect(() => {
+    if (summaryMetricIds.length === 0) return;
+    const request = publicToken !== undefined && publicAccessKey !== undefined
+      ? requestSharedSummaryRebuild({
+          token: publicToken,
+          accessKey: publicAccessKey,
+          metricIds: summaryMetricIds,
+        })
+      : requestSummaryRebuild({ metricIds: summaryMetricIds });
+    void request.catch(() => {
+      // Summary preparation is intentionally best effort. Metrics fall back to raw data.
+    });
+  }, [
+    publicAccessKey,
+    publicToken,
+    requestSharedSummaryRebuild,
+    requestSummaryRebuild,
+    summaryMetricIds,
+  ]);
   const customMetricLabels = useMemo(
     () => new Map((customMetrics ?? []).map((metric) => [String(metric.id), metric.name] as const)),
     [customMetrics],

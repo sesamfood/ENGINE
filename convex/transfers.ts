@@ -13,12 +13,16 @@ import {
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
-import { listActiveProductCatalog } from "./lib/productCatalog";
-import { productSearchScore } from "../lib/product-search";
+import { searchActiveProductOptions } from "./lib/productCatalog";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummary,
+} from "./lib/dashboardSummaries";
+import { transferAggregates } from "./lib/transferAggregates";
+import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
 
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_COMMENT_LENGTH = 500;
-const MAX_PRODUCT_OPTIONS = 50;
 const MAX_PRODUCT_UNITS = 200;
 const EXPORT_PAGE_SIZE = 5;
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
@@ -158,21 +162,34 @@ async function hydrateTransferHeader(
   ctx: QueryCtx,
   transfer: Doc<"transfers">,
   existingItems?: Doc<"transferItems">[],
+  locationNames?: ReadonlyMap<Id<"locations">, string>,
 ) {
-  const items =
-    existingItems ??
-    (await ctx.db
-      .query("transferItems")
-      .withIndex("by_organizationId_and_transferId", (q) =>
-        q
-          .eq("organizationId", transfer.organizationId)
-          .eq("transferId", transfer._id),
-      )
-      .take(MAX_TRANSFER_ITEMS));
+  const aggregates =
+    transfer.itemCount !== undefined &&
+    transfer.totalQuantity !== undefined &&
+    transfer.hasTemperatureDeviation !== undefined
+      ? {
+          itemCount: transfer.itemCount,
+          totalQuantity: transfer.totalQuantity,
+          hasTemperatureDeviation: transfer.hasTemperatureDeviation,
+        }
+      : transferAggregates(
+          existingItems ??
+            (await ctx.db
+              .query("transferItems")
+              .withIndex("by_organizationId_and_transferId", (q) =>
+                q
+                  .eq("organizationId", transfer.organizationId)
+                  .eq("transferId", transfer._id),
+              )
+              .take(MAX_TRANSFER_ITEMS)),
+        );
 
   const [fromLocationName, toLocationName] = await Promise.all([
-    locationName(ctx, transfer.fromLocationId),
-    locationName(ctx, transfer.toLocationId),
+    locationNames?.get(transfer.fromLocationId) ??
+      locationName(ctx, transfer.fromLocationId),
+    locationNames?.get(transfer.toLocationId) ??
+      locationName(ctx, transfer.toLocationId),
   ]);
 
   return {
@@ -182,14 +199,7 @@ async function hydrateTransferHeader(
     toLocationName,
     responsibleName: transfer.responsibleName,
     comment: transfer.comment ?? null,
-    itemCount: items.length,
-    totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
-    hasTemperatureDeviation: items.some(
-      (item) =>
-        item.temperatureCelsius !== undefined &&
-        item.maxTemperatureCelsius !== undefined &&
-        item.temperatureCelsius > item.maxTemperatureCelsius,
-    ),
+    ...aggregates,
   };
 }
 
@@ -522,6 +532,8 @@ export const createTransfer = mutation({
       organizationId,
       args,
     );
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const aggregates = transferAggregates(resolvedItems);
 
     const transferId = await ctx.db.insert("transfers", {
       organizationId,
@@ -533,6 +545,8 @@ export const createTransfer = mutation({
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
       stockApplied: true,
+      ...aggregates,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
 
     for (const item of resolvedItems) {
@@ -548,6 +562,19 @@ export const createTransfer = mutation({
         temperatureCelsius: item.temperatureCelsius,
         maxTemperatureCelsius: item.maxTemperatureCelsius,
       });
+    }
+
+    const transfer = await ctx.db.get("transfers", transferId);
+    if (transfer) {
+      await reconcileDashboardSummary(
+        ctx,
+        "transfers",
+        null,
+        transfer,
+        summaryTimeZone,
+        undefined,
+        resolvedItems,
+      );
     }
 
     await applyTransferStock(
@@ -602,6 +629,8 @@ export const updateTransfer = mutation({
       transfer,
       existingItems,
     );
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const aggregates = transferAggregates(resolvedItems);
 
     // ponytail: pre-ledger transfers stay neutral; the next submitted count establishes their baseline.
     if (transfer.stockApplied) {
@@ -630,6 +659,8 @@ export const updateTransfer = mutation({
       responsibleName,
       comment,
       transferredAt: args.transferredAt,
+      ...aggregates,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
     for (const item of existingItems) {
       await ctx.db.delete("transferItems", item._id);
@@ -648,6 +679,26 @@ export const updateTransfer = mutation({
         maxTemperatureCelsius: item.maxTemperatureCelsius,
       });
     }
+
+    await reconcileDashboardSummary(
+      ctx,
+      "transfers",
+      transfer,
+      {
+        ...transfer,
+        fromLocationId: args.fromLocationId,
+        toLocationId: args.toLocationId,
+        responsibleUserId: args.responsibleUserId,
+        responsibleName,
+        comment,
+        transferredAt: args.transferredAt,
+        ...aggregates,
+        dashboardSummaryTimeZone: summaryTimeZone,
+      },
+      summaryTimeZone,
+      existingItems,
+      resolvedItems,
+    );
 
     return null;
   },
@@ -679,6 +730,14 @@ export const deleteTransfer = mutation({
     if (items.length > MAX_TRANSFER_ITEMS) {
       throw new ConvexError("Transferen har for mange produktlinjer");
     }
+    await reconcileDashboardSummary(
+      ctx,
+      "transfers",
+      transfer,
+      null,
+      transfer.dashboardSummaryTimeZone ?? "Europe/Copenhagen",
+      items,
+    );
     if (transfer.stockApplied) {
       await applyTransferStock(
         ctx,
@@ -693,6 +752,19 @@ export const deleteTransfer = mutation({
       await ctx.db.delete("transferItems", item._id);
     }
     await ctx.db.delete("transfers", transfer._id);
+    return null;
+  },
+});
+
+export const requestAggregateBackfill = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const { organizationId } = await requireTransferViewer(
+      ctx,
+      "transfers.history",
+    );
+    await requestDashboardSummaryRebuild(ctx, organizationId, ["transfers"]);
     return null;
   },
 });
@@ -721,11 +793,30 @@ export const listTransfers = query({
       )
       .order("desc")
       .paginate(args.paginationOpts);
+    const locationIds = [
+      ...new Set(
+        results.page.flatMap((transfer) => [
+          transfer.fromLocationId,
+          transfer.toLocationId,
+        ]),
+      ),
+    ];
+    const locations = await Promise.all(
+      locationIds.map((locationId) => ctx.db.get("locations", locationId)),
+    );
+    const locationNames = new Map(
+      locationIds.map((locationId, index) => [
+        locationId,
+        locations[index]?.name ?? "Ukendt lokation",
+      ] as const),
+    );
 
     return {
       ...results,
       page: await Promise.all(
-        results.page.map((transfer) => hydrateTransferHeader(ctx, transfer)),
+        results.page.map((transfer) =>
+          hydrateTransferHeader(ctx, transfer, undefined, locationNames),
+        ),
       ),
     };
   },
@@ -782,18 +873,7 @@ export const searchTransferProducts = query({
       throw new ConvexError("Søgningen er for lang");
     }
 
-    const products = (await listActiveProductCatalog(ctx, organizationId))
-      .filter(
-        (product) =>
-          productSearchScore(product.name, product.category.path, search) !==
-          null,
-      )
-      .slice(0, MAX_PRODUCT_OPTIONS);
-
-    return products.map((product) => ({
-      id: product.id,
-      name: product.name,
-    }));
+    return await searchActiveProductOptions(ctx, organizationId, search);
   },
 });
 

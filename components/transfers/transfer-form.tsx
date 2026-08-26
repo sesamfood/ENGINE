@@ -55,8 +55,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useKiosk } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
-import { cn } from "@/lib/utils";
 import { productSearchScore } from "@/lib/product-search";
+import { cn } from "@/lib/utils";
 
 type LocationOption = {
   id: Id<"locations">;
@@ -225,7 +225,9 @@ export function TransferForm({
   const kiosk = useKiosk();
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const [productSearch, setProductSearch] = useState("");
-  const catalog = useQuery(api.catalog.listActiveProducts);
+  const productSearchOptions = useQuery(
+    api.catalog.listActiveProductSearchOptions,
+  );
   const createTransfer = useMutation(api.transfers.createTransfer);
   const updateTransfer = useMutation(api.transfers.updateTransfer);
   const [originalTemperatureSnapshots] = useState(() =>
@@ -290,15 +292,15 @@ export function TransferForm({
 
   const products = useMemo(
     () =>
-      (catalog ?? []).filter(
+      (productSearchOptions ?? []).filter(
         (product) =>
           productSearchScore(
             product.name,
-            product.category.path,
+            product.categoryPath,
             productSearch,
           ) !== null,
       ),
-    [catalog, productSearch],
+    [productSearch, productSearchOptions],
   );
   const displayLines = lines;
   const lineGroups = Array.from(

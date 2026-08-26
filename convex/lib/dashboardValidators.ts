@@ -21,6 +21,14 @@ export const metricIdValidator = v.union(
   v.literal("averageBasket"),
 );
 
+export const dashboardSummarySourceValidator = v.union(
+  v.literal("waste"),
+  v.literal("badDeliveries"),
+  v.literal("staffFood"),
+  v.literal("transfers"),
+  v.literal("scheduledShifts"),
+);
+
 export const visualizationValidator = v.union(
   v.literal("kpi"),
   v.literal("line"),

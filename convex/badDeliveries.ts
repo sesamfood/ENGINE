@@ -29,11 +29,13 @@ import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
-import { listActiveProductCatalog } from "./lib/productCatalog";
-import { productSearchScore } from "../lib/product-search";
+import { searchActiveProductOptions } from "./lib/productCatalog";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummary,
+} from "./lib/dashboardSummaries";
 
 const MAX_ITEMS = 200;
-const MAX_PRODUCT_OPTIONS = 50;
 const MAX_PRODUCT_UNITS = 200;
 const MAX_COMMENT_LENGTH = 500;
 const MAX_QUANTITY = 1_000_000;
@@ -308,14 +310,7 @@ export const searchProducts = query({
     );
     const search = args.search.trim();
     if (search.length > 100) throw new ConvexError("Søgningen er for lang");
-    return (await listActiveProductCatalog(ctx, organizationId))
-      .filter(
-        (product) =>
-          productSearchScore(product.name, product.category.path, search) !==
-          null,
-      )
-      .slice(0, MAX_PRODUCT_OPTIONS)
-      .map((product) => ({ id: product.id, name: product.name }));
+    return await searchActiveProductOptions(ctx, organizationId, search);
   },
 });
 
@@ -512,6 +507,7 @@ export const registerBadDelivery = mutation({
       ? ("pending" as const)
       : ("notConfigured" as const);
     const now = Date.now();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const badDeliveryId = await ctx.db.insert("badDeliveries", {
       organizationId,
       locationId: location._id,
@@ -530,7 +526,18 @@ export const registerBadDelivery = mutation({
       emailBody: settings.emailBody,
       initialNoticeStatus,
       cancellationNoticeStatus: "skipped",
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
+    const badDelivery = await ctx.db.get("badDeliveries", badDeliveryId);
+    if (badDelivery) {
+      await reconcileDashboardSummary(
+        ctx,
+        "badDeliveries",
+        null,
+        badDelivery,
+        summaryTimeZone,
+      );
+    }
     for (const item of resolvedItems) {
       await ctx.db.insert("badDeliveryItems", {
         organizationId,
@@ -847,6 +854,7 @@ export const voidBadDelivery = mutation({
     }
     const now = Date.now();
     const shouldCancel = delivery.initialNoticeStatus === "sent";
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     await ctx.db.patch("badDeliveries", delivery._id, {
       status: "voided",
       voidedAt: now,
@@ -854,7 +862,19 @@ export const voidBadDelivery = mutation({
       voidedByName: userName,
       cancellationNoticeStatus: shouldCancel ? "pending" : "skipped",
       cancellationNoticeInFlight: false,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
+    await reconcileDashboardSummary(
+      ctx,
+      "badDeliveries",
+      delivery,
+      {
+        ...delivery,
+        status: "voided",
+        dashboardSummaryTimeZone: summaryTimeZone,
+      },
+      summaryTimeZone,
+    );
     if (shouldCancel) {
       await ctx.scheduler.runAfter(0, internal.badDeliveryNotices.sendNotice, {
         badDeliveryId: delivery._id,

@@ -15,6 +15,7 @@ import {
 import { organizationThemeValidator } from "./lib/organizationTheme";
 import {
   customMetricSpecValidator,
+  dashboardSummarySourceValidator,
   rangeValidator,
   scopeValidator,
   widgetValidator,
@@ -419,6 +420,7 @@ export default defineSchema({
     startsAt: v.number(),
     endsAt: v.number(),
     roleName: v.union(v.string(), v.null()),
+    dashboardSummaryTimeZone: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_organizationId_and_startsAt", ["organizationId", "startsAt"])
@@ -528,6 +530,7 @@ export default defineSchema({
     voidedAt: v.optional(v.number()),
     voidedBy: v.optional(v.string()),
     voidedByName: v.optional(v.string()),
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_organizationId_and_checkoutId", ["organizationId", "checkoutId"])
     .index("by_organizationId_and_sessionId_and_registeredAt", [
@@ -838,6 +841,10 @@ export default defineSchema({
     transferredAt: v.number(),
     createdBy: v.string(),
     stockApplied: v.optional(v.boolean()),
+    itemCount: v.optional(v.number()),
+    totalQuantity: v.optional(v.number()),
+    hasTemperatureDeviation: v.optional(v.boolean()),
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_organizationId_and_transferredAt", [
       "organizationId",
@@ -919,9 +926,11 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("voided")),
     activeIn30Days: v.boolean(),
     activeIn90Days: v.boolean(),
+    reportSummaryApplied: v.optional(v.boolean()),
     voidedAt: v.optional(v.number()),
     voidedBy: v.optional(v.string()),
     voidedByName: v.optional(v.string()),
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_org_and_time", ["organizationId", "registeredAt"])
     .index("by_org_location_time", [
@@ -967,6 +976,48 @@ export default defineSchema({
       "registeredAt",
     ]),
 
+  wasteReportDailySummaries: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    productId: v.id("products"),
+    productName: v.string(),
+    defaultUnitId: v.id("units"),
+    defaultUnitName: v.string(),
+    dayStartAt: v.number(),
+    shard: v.optional(v.number()),
+    count: v.number(),
+    quantity: v.number(),
+    latestRegisteredAt: v.number(),
+  })
+    .index("by_organizationId_and_dayStartAt", [
+      "organizationId",
+      "dayStartAt",
+    ])
+    .index("by_organizationId_and_locationId_and_dayStartAt", [
+      "organizationId",
+      "locationId",
+      "dayStartAt",
+    ])
+    .index(
+      "by_org_location_product_defaultUnit_dayStartAt_shard",
+      [
+        "organizationId",
+        "locationId",
+        "productId",
+        "defaultUnitId",
+        "dayStartAt",
+        "shard",
+      ],
+    ),
+
+  wasteReportSummaryStatuses: defineTable({
+    organizationId: v.string(),
+    state: v.union(v.literal("building"), v.literal("ready")),
+    runToken: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   badDeliveries: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
@@ -1010,6 +1061,7 @@ export default defineSchema({
     cancellationNoticeProviderId: v.optional(v.string()),
     cancellationNoticeFailureMessage: v.optional(v.string()),
     cancellationNoticeInFlight: v.optional(v.boolean()),
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_organizationId_and_registeredAt", [
       "organizationId",
@@ -1319,6 +1371,90 @@ export default defineSchema({
     inactivitySeconds: v.union(v.number(), v.null()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  dashboardDailySummaries: defineTable({
+    organizationId: v.string(),
+    source: v.union(
+      v.literal("waste"),
+      v.literal("badDeliveries"),
+      v.literal("staffFood"),
+      v.literal("transfers"),
+      v.literal("scheduledShifts"),
+    ),
+    timeZone: v.string(),
+    locationId: v.id("locations"),
+    counterpartLocationId: v.union(v.id("locations"), v.null()),
+    dayStart: v.number(),
+    count: v.number(),
+    value: v.number(),
+    updatedAt: v.number(),
+  })
+    .index(
+      "by_org_source_timeZone_locationId_counterpartLocationId_dayStart",
+      [
+        "organizationId",
+        "source",
+        "timeZone",
+        "locationId",
+        "counterpartLocationId",
+        "dayStart",
+      ],
+    )
+    .index("by_org_source_timeZone_dayStart", [
+      "organizationId",
+      "source",
+      "timeZone",
+      "dayStart",
+    ])
+    .index("by_org_source_timeZone_locationId_dayStart", [
+      "organizationId",
+      "source",
+      "timeZone",
+      "locationId",
+      "dayStart",
+    ])
+    .index("by_org_source_timeZone_counterpartLocationId_dayStart", [
+      "organizationId",
+      "source",
+      "timeZone",
+      "counterpartLocationId",
+      "dayStart",
+    ]),
+
+  dashboardSummaryDeltas: defineTable({
+    deltas: v.array(
+      v.object({
+        organizationId: v.string(),
+        source: dashboardSummarySourceValidator,
+        timeZone: v.string(),
+        locationId: v.id("locations"),
+        counterpartLocationId: v.union(v.id("locations"), v.null()),
+        dayStart: v.number(),
+        count: v.number(),
+        value: v.number(),
+      }),
+    ),
+  }),
+
+  dashboardSummaryStatuses: defineTable({
+    organizationId: v.string(),
+    source: v.union(
+      v.literal("waste"),
+      v.literal("badDeliveries"),
+      v.literal("staffFood"),
+      v.literal("transfers"),
+      v.literal("scheduledShifts"),
+    ),
+    timeZone: v.string(),
+    version: v.optional(v.number()),
+    state: v.union(
+      v.literal("building"),
+      v.literal("ready"),
+      v.literal("stale"),
+    ),
+    runToken: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_source", ["organizationId", "source"]),
 
   sidebarSettings: defineTable({
     organizationId: v.string(),

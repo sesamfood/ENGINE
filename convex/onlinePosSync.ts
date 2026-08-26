@@ -262,18 +262,24 @@ async function startSync(
   locationId: Id<"locations">,
   options: {
     mode?: "incremental" | "reconcile";
+    masterEnabled?: boolean;
+    connection?: Doc<"onlinePosLocationIntegrations">;
   } = {},
 ) {
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) return false;
-  if (!(await isMasterEnabled(ctx, organizationId))) return false;
+  const masterEnabled =
+    options.masterEnabled ?? (await isMasterEnabled(ctx, organizationId));
+  if (!masterEnabled) return false;
 
-  const connection = await ctx.db
-    .query("onlinePosLocationIntegrations")
-    .withIndex("by_organizationId_and_locationId", (q) =>
-      q.eq("organizationId", organizationId).eq("locationId", locationId),
-    )
-    .unique();
+  const connection =
+    options.connection ??
+    (await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", organizationId).eq("locationId", locationId),
+      )
+      .unique());
   if (!connection) return false;
 
   const reset = await ctx.db
@@ -754,7 +760,10 @@ export const enqueueOrganizationSync = internalMutation({
       )
       .paginate({ numItems: DISPATCH_PAGE, cursor: args.cursor ?? null });
     for (const connection of result.page) {
-      await startSync(ctx, args.organizationId, connection.locationId);
+      await startSync(ctx, args.organizationId, connection.locationId, {
+        masterEnabled: true,
+        connection,
+      });
     }
     if (!result.isDone) {
       await ctx.scheduler.runAfter(
@@ -802,6 +811,8 @@ export const dispatchEnabledLocations = internalMutation({
       if (!enabled) continue;
       await startSync(ctx, connection.organizationId, connection.locationId, {
         mode: args.kind,
+        masterEnabled: enabled,
+        connection,
       });
     }
     if (!result.isDone) {

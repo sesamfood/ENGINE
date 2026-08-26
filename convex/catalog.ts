@@ -22,7 +22,9 @@ import { normalizeStock } from "./lib/stock";
 import { recordAudit } from "./lib/audit";
 import {
   activeProductCatalogValidator,
+  activeProductSearchOptionValidator,
   listActiveProductCatalog,
+  listActiveProductSearchOptions as loadActiveProductSearchOptions,
 } from "./lib/productCatalog";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
@@ -1120,6 +1122,15 @@ export const listActiveProducts = query({
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
     return await listActiveProductCatalog(ctx, organizationId);
+  },
+});
+
+export const listActiveProductSearchOptions = query({
+  args: {},
+  returns: v.array(activeProductSearchOptionValidator),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    return await loadActiveProductSearchOptions(ctx, organizationId);
   },
 });
 

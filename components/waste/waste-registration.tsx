@@ -121,6 +121,121 @@ function shortcutsFor(
   return result.slice(0, 2);
 }
 
+function WasteUndoControls({
+  registrations,
+  undoingIds,
+  dialogOpen,
+  onDialogOpenChange,
+  onUndo,
+}: {
+  registrations: UndoRegistration[];
+  undoingIds: Id<"wasteRegistrations">[];
+  dialogOpen: boolean;
+  onDialogOpenChange: (open: boolean) => void;
+  onUndo: (items: UndoRegistration[], closeDialog?: boolean) => void | Promise<void>;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!registrations.length) return;
+    const update = () => setNow(Date.now());
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, [registrations.length]);
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="destructive"
+        size="lg"
+        className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 h-12 px-3 shadow-sm sm:right-4 sm:px-4"
+        disabled={undoingIds.length > 0}
+        onClick={() => {
+          if (registrations.length === 1) {
+            void onUndo(registrations);
+            return;
+          }
+          onDialogOpenChange(true);
+        }}
+      >
+        <Undo2Icon data-icon="inline-start" />
+        <span className="sm:hidden">
+          {registrations.length === 1
+            ? "Fortryd"
+            : `Fortryd (${registrations.length})`}
+        </span>
+        <span className="hidden sm:inline">
+          {registrations.length === 1
+            ? `Fortryd · ${Math.max(0, Math.ceil((registrations[0].expiresAt - now) / 1000))} s`
+            : `Fortryd (${registrations.length}) · ${Math.max(0, Math.ceil((Math.max(...registrations.map((registration) => registration.expiresAt)) - now) / 1000))} s`}
+        </span>
+      </Button>
+
+      <Dialog
+        open={dialogOpen && registrations.length > 0}
+        onOpenChange={onDialogOpenChange}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
+            <DialogDescription>
+              Du kan fortryde én registrering eller annullere dem alle. Muligheden
+              forsvinder efter 30 sekunder.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
+            {[...registrations].reverse().map((registration) => (
+              <Field
+                key={registration.id}
+                orientation="horizontal"
+                className="min-h-16 rounded-lg border p-3"
+              >
+                <FieldContent>
+                  <FieldLabel>{registration.productName}</FieldLabel>
+                  <FieldDescription>
+                    {formatQuantity(registration.quantity)}{" "}
+                    {registration.unitName} ·{" "}
+                    {Math.max(
+                      0,
+                      Math.ceil((registration.expiresAt - now) / 1000),
+                    )}{" "}
+                    sek. tilbage
+                  </FieldDescription>
+                </FieldContent>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-11 shrink-0 px-4"
+                  disabled={undoingIds.includes(registration.id)}
+                  onClick={() => void onUndo([registration])}
+                >
+                  <Undo2Icon data-icon="inline-start" />
+                  Fortryd
+                </Button>
+              </Field>
+            ))}
+          </FieldGroup>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onDialogOpenChange(false)}>
+              OK
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={undoingIds.length > 0}
+              onClick={() => void onUndo(registrations, true)}
+            >
+              <Undo2Icon data-icon="inline-start" />
+              Fortryd alle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function WasteRegistration() {
   const { locationId, locations } = useWasteContext();
   const catalog = useQuery(api.waste.listCatalog);
@@ -147,26 +262,29 @@ export function WasteRegistration() {
   >([]);
   const [undoingIds, setUndoingIds] = useState<Id<"wasteRegistrations">[]>([]);
   const [undoDialogOpen, setUndoDialogOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
 
   const hasUndoRegistrations = undoRegistrations.length > 0;
   useEffect(() => {
     if (!hasUndoRegistrations) return;
-    const updateUndoWindow = () => {
-      const current = Date.now();
-      setNow(current);
+    const current = Date.now();
+    const nextExpiration = Math.min(
+      ...undoRegistrations.map((registration) =>
+        undoDialogOpen ? registration.reasonExpiresAt : registration.expiresAt,
+      ),
+    );
+    const timeout = window.setTimeout(() => {
+      const now = Date.now();
       setUndoRegistrations((registrations) =>
         registrations.filter(
           (registration) =>
             (undoDialogOpen
               ? registration.reasonExpiresAt
-              : registration.expiresAt) > current,
+              : registration.expiresAt) > now,
         ),
       );
-    };
-    const interval = window.setInterval(updateUndoWindow, 250);
-    return () => window.clearInterval(interval);
-  }, [hasUndoRegistrations, undoDialogOpen]);
+    }, Math.max(0, nextExpiration - current) + 1);
+    return () => window.clearTimeout(timeout);
+  }, [hasUndoRegistrations, undoDialogOpen, undoRegistrations]);
 
   const rankMap = useMemo(
     () => new Map(state?.rankings.map((rank) => [rank.productId, rank])),
@@ -276,7 +394,6 @@ export function WasteRegistration() {
           },
         },
       );
-      setNow(result.registeredAt);
       setUndoRegistrations((registrations) => [
         ...registrations.filter((item) => item.expiresAt > result.registeredAt),
         registration,
@@ -754,93 +871,14 @@ export function WasteRegistration() {
       </Dialog>
 
       {undoRegistrations.length ? (
-        <Button
-          type="button"
-          variant="destructive"
-          size="lg"
-          className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 h-12 px-3 shadow-sm sm:right-4 sm:px-4"
-          disabled={undoingIds.length > 0}
-          onClick={() => {
-            if (undoRegistrations.length === 1) {
-              void undo(undoRegistrations);
-              return;
-            }
-            setUndoDialogOpen(true);
-          }}
-        >
-          <Undo2Icon data-icon="inline-start" />
-          <span className="sm:hidden">
-            {undoRegistrations.length === 1
-              ? "Fortryd"
-              : `Fortryd (${undoRegistrations.length})`}
-          </span>
-          <span className="hidden sm:inline">
-            {undoRegistrations.length === 1
-              ? `Fortryd · ${Math.max(0, Math.ceil((undoRegistrations[0].expiresAt - now) / 1000))} s`
-              : `Fortryd (${undoRegistrations.length}) · ${Math.max(0, Math.ceil((Math.max(...undoRegistrations.map((registration) => registration.expiresAt)) - now) / 1000))} s`}
-          </span>
-        </Button>
+        <WasteUndoControls
+          registrations={undoRegistrations}
+          undoingIds={undoingIds}
+          dialogOpen={undoDialogOpen}
+          onDialogOpenChange={setUndoDialogOpen}
+          onUndo={undo}
+        />
       ) : null}
-
-      <Dialog
-        open={undoDialogOpen && undoRegistrations.length > 0}
-        onOpenChange={setUndoDialogOpen}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
-            <DialogDescription>
-              Du kan fortryde én registrering eller annullere dem alle. Muligheden
-              forsvinder efter 30 sekunder.
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
-            {[...undoRegistrations].reverse().map((registration) => (
-              <Field
-                key={registration.id}
-                orientation="horizontal"
-                className="min-h-16 rounded-lg border p-3"
-              >
-                <FieldContent>
-                  <FieldLabel>{registration.productName}</FieldLabel>
-                  <FieldDescription>
-                    {formatQuantity(registration.quantity)}{" "}
-                    {registration.unitName} ·{" "}
-                    {Math.max(
-                      0,
-                      Math.ceil((registration.expiresAt - now) / 1000),
-                    )}{" "}
-                    sek. tilbage
-                  </FieldDescription>
-                </FieldContent>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="h-11 shrink-0 px-4"
-                  disabled={undoingIds.includes(registration.id)}
-                  onClick={() => void undo([registration])}
-                >
-                  <Undo2Icon data-icon="inline-start" />
-                  Fortryd
-                </Button>
-              </Field>
-            ))}
-          </FieldGroup>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUndoDialogOpen(false)}>
-              OK
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={undoingIds.length > 0}
-              onClick={() => void undo(undoRegistrations, true)}
-            >
-              <Undo2Icon data-icon="inline-start" />
-              Fortryd alle
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
