@@ -34,14 +34,9 @@ import {
 import { Field, FieldDescription, FieldTitle } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  archiveImageBlob,
-  createProductArchive,
-  downloadProductArchive,
-  MAX_PRODUCTS,
-  readProductArchive,
-  type ParsedProductArchive,
-  type ProductExportRow,
+import type {
+  ParsedProductArchive,
+  ProductExportRow,
 } from "@/lib/product-archive";
 
 function messageFrom(error: unknown) {
@@ -81,6 +76,11 @@ export function ProductImportExport({
   async function exportProducts() {
     setIsExporting(true);
     try {
+      const {
+        createProductArchive,
+        downloadProductArchive,
+        MAX_PRODUCTS,
+      } = await import("@/lib/product-archive");
       const products: ProductExportRow[] = [];
       let cursor: string | null = null;
       let done = false;
@@ -111,6 +111,7 @@ export function ProductImportExport({
   async function selectArchive(file: File) {
     setIsReading(true);
     try {
+      const { readProductArchive } = await import("@/lib/product-archive");
       setArchive(await readProductArchive(file));
       setArchiveName(file.name);
     } catch (error) {
@@ -130,6 +131,7 @@ export function ProductImportExport({
     path: string,
     parsedArchive: ParsedProductArchive,
   ) {
+    const { archiveImageBlob } = await import("@/lib/product-archive");
     const image = archiveImageBlob(path, parsedArchive.files);
     const uploadUrl = await generateUploadUrl({});
     const response = await fetch(uploadUrl, {

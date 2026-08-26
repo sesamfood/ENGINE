@@ -1,6 +1,6 @@
 import { createOpenApiDocument } from "@/lib/api/v1/openapi";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
 export function GET() {
   return Response.json(createOpenApiDocument(), {

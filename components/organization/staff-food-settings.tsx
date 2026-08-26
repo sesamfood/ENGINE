@@ -240,7 +240,6 @@ export function StaffFoodSettings() {
   const canManage = usePermission("staffFood.manage");
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const settings = useQuery(api.staffFood.getSettings, canManage ? {} : "skip");
-  const catalog = useQuery(api.catalog.listActiveProducts, canManage ? {} : "skip");
   const saveTier = useMutation(api.staffFood.saveTier);
   const deleteTier = useMutation(api.staffFood.deleteTier);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -284,19 +283,14 @@ export function StaffFoodSettings() {
     return paths;
   }, [settings?.categories]);
 
+  const settingsProducts = settings?.products;
   const productCatalog = useMemo(() => {
-    if (!settings) return [];
-    if (catalog === undefined) return settings.products;
+    if (!settingsProducts) return [];
     return [
-      ...catalog.map((product) => ({
-        id: product.id,
-        name: product.name,
-        categoryId: product.category.id,
-        status: "active" as const,
-      })),
-      ...settings.products.filter((product) => product.status === "archived"),
+      ...settingsProducts.filter((product) => product.status === "active"),
+      ...settingsProducts.filter((product) => product.status === "archived"),
     ];
-  }, [catalog, settings]);
+  }, [settingsProducts]);
 
   const categoryItems =
     settings?.categories.map((category) => ({

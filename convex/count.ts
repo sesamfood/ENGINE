@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
 import {
@@ -714,13 +714,35 @@ export const listLocationStock = query({
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const products = await activeProducts(ctx, organizationId);
+    const categoryCache = new Map<
+      Id<"categories">,
+      Promise<Doc<"categories"> | null>
+    >();
+    const unitCache = new Map<
+      Id<"units">,
+      Promise<Doc<"units"> | null>
+    >();
+    const loadCategory = (categoryId: Id<"categories">) => {
+      const cached = categoryCache.get(categoryId);
+      if (cached) return cached;
+      const pending = ctx.db.get("categories", categoryId);
+      categoryCache.set(categoryId, pending);
+      return pending;
+    };
+    const loadUnit = (unitId: Id<"units">) => {
+      const cached = unitCache.get(unitId);
+      if (cached) return cached;
+      const pending = ctx.db.get("units", unitId);
+      unitCache.set(unitId, pending);
+      return pending;
+    };
 
     return await Promise.all(
       products.map(async (product) => {
         const [category, defaultUnit, stock, imageUrl, productUnits] =
           await Promise.all([
-            ctx.db.get("categories", product.categoryId),
-            ctx.db.get("units", product.defaultUnitId),
+            loadCategory(product.categoryId),
+            loadUnit(product.defaultUnitId),
             ctx.db
               .query("locationStock")
               .withIndex(
@@ -751,7 +773,7 @@ export const listLocationStock = query({
           throw new ConvexError("Produktet har for mange enheder");
         }
         const units = await Promise.all(
-          productUnits.map((row) => ctx.db.get("units", row.unitId)),
+          productUnits.map((row) => loadUnit(row.unitId)),
         );
         return {
           productId: product._id,

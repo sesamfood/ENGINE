@@ -12,7 +12,7 @@ import {
 import type { MetricResult } from "@/lib/dashboard/types";
 import { chartDateTicks, chartModel, chartValueDomain, chartValueDomainFromValues, chartYAxisWidth, formatMetricValue, isMixedCurrency, shortDate } from "./utils";
 
-export function BarVisualization({ result, compact = false, tooltipLabel, yAxisMin, yAxisMax }: { result: MetricResult; compact?: boolean; tooltipLabel?: string; yAxisMin?: number; yAxisMax?: number }) {
+export function BarVisualization({ result, compact = false, yAxisMin, yAxisMax }: { result: MetricResult; compact?: boolean; tooltipLabel?: string; yAxisMin?: number; yAxisMax?: number }) {
   if (isMixedCurrency(result)) {
     return <div className="grid h-full place-items-center text-sm text-muted-foreground">Flere valutaer</div>;
   }
@@ -40,7 +40,7 @@ export function BarVisualization({ result, compact = false, tooltipLabel, yAxisM
         <CartesianGrid vertical={false} />
         <XAxis hide={compact} dataKey="t" ticks={chartDateTicks(model.data)} interval="preserveStartEnd" tickFormatter={shortDate} tickLine={false} axisLine={false} minTickGap={8} />
         <YAxis hide={compact} width={chartYAxisWidth(domain, result)} domain={domain} tickFormatter={(value) => formatMetricValue(Number(value), result)} tickLine={false} axisLine={false} />
-        <ChartTooltip content={<ChartTooltipContent tooltipTitle={tooltipLabel} />} />
+        <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, payload) => payload?.[0]?.payload?.t ? shortDate(payload[0].payload.t) : ""} />} />
         {!compact && result.series.length > 1 ? <ChartLegend content={<ChartLegendContent />} /> : null}
         {model.keys.map((key) => <Bar key={key} dataKey={key} fill={`var(--color-${key})`} radius={3} />)}
       </BarChart>

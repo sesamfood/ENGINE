@@ -5,9 +5,17 @@ import {
   buildCategoryHierarchy,
   MAX_CATEGORIES_PER_ORGANIZATION,
 } from "./categoryHierarchy";
+import { productSearchScore } from "../../lib/product-search";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
+const MAX_PRODUCT_OPTIONS = 50;
+
+export const activeProductSearchOptionValidator = v.object({
+  id: v.id("products"),
+  name: v.string(),
+  categoryPath: v.string(),
+});
 
 export const activeProductCatalogValidator = v.object({
   id: v.id("products"),
@@ -46,6 +54,63 @@ export type ActiveProductCatalogItem = {
     factorToDefault: number;
   }>;
 };
+
+export async function searchActiveProductOptions(
+  ctx: QueryCtx,
+  organizationId: string,
+  search: string,
+): Promise<Array<{ id: Id<"products">; name: string }>> {
+  return (await listActiveProductSearchOptions(ctx, organizationId))
+    .filter(
+      (product) =>
+        productSearchScore(product.name, product.categoryPath, search) !== null,
+    )
+    .slice(0, MAX_PRODUCT_OPTIONS)
+    .map((product) => ({ id: product.id, name: product.name }));
+}
+
+export async function listActiveProductSearchOptions(
+  ctx: QueryCtx,
+  organizationId: string,
+): Promise<
+  Array<{ id: Id<"products">; name: string; categoryPath: string }>
+> {
+  const [products, categories] = await Promise.all([
+    ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId).eq("status", "active"),
+      )
+      .take(MAX_PRODUCTS + 1),
+    ctx.db
+      .query("categories")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_CATEGORIES_PER_ORGANIZATION + 1),
+  ]);
+  if (products.length > MAX_PRODUCTS) {
+    throw new ConvexError(
+      "Der er over 500 produkter. Arkivér produkter, du ikke bruger, eller kontakt en bruger med rollen Administrator",
+    );
+  }
+  const hierarchy = buildCategoryHierarchy(categories, organizationId);
+  const categoriesById = new Map(
+    hierarchy.map((category) => [category.id, category]),
+  );
+
+  return products.map((product) => {
+    const category = categoriesById.get(product.categoryId);
+    if (!category) {
+      throw new ConvexError("Produktets kategori blev ikke fundet");
+    }
+    return {
+      id: product._id,
+      name: product.name,
+      categoryPath: category.path,
+    };
+  });
+}
 
 export async function listActiveProductCatalog(
   ctx: QueryCtx,

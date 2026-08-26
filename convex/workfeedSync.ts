@@ -15,6 +15,11 @@ import {
   workfeedErrorMessage,
   type WorkfeedSettings,
 } from "./lib/workfeedApi";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummaryContributions,
+  scheduledShiftSummaryContribution,
+} from "./lib/dashboardSummaries";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const HISTORY_MS = 30 * DAY_MS;
@@ -992,6 +997,16 @@ export const upsertShiftBatch = internalMutation({
       .unique();
     if (status?.runToken !== args.syncToken) return null;
     const now = Date.now();
+    const summaryTimeZone = await dashboardSummaryTimeZone(
+      ctx,
+      args.organizationId,
+    );
+    const previousSummaryContributions = [] as ReturnType<
+      typeof scheduledShiftSummaryContribution
+    >;
+    const nextSummaryContributions = [] as ReturnType<
+      typeof scheduledShiftSummaryContribution
+    >;
     for (const source of args.shifts) {
       const mapping = await ctx.db
         .query("workfeedShiftMappings")
@@ -1010,20 +1025,36 @@ export const upsertShiftBatch = internalMutation({
         startsAt: source.startsAt,
         endsAt: source.endsAt,
         roleName: source.roleName,
+        dashboardSummaryTimeZone: summaryTimeZone,
         updatedAt: now,
       };
       let shiftId: Id<"scheduledShifts">;
+      let nextShift: Pick<
+        Doc<"scheduledShifts">,
+        "organizationId" | "locationId" | "startsAt" | "endsAt"
+      >;
       const currentShift = mapping
         ? await ctx.db.get("scheduledShifts", mapping.shiftId)
         : null;
       if (currentShift?.organizationId === args.organizationId) {
         shiftId = currentShift._id;
+        nextShift = { ...currentShift, ...value };
+        if (currentShift.dashboardSummaryTimeZone) {
+          previousSummaryContributions.push(
+            ...scheduledShiftSummaryContribution(
+              currentShift,
+              currentShift.dashboardSummaryTimeZone,
+            ),
+          );
+        }
         if (
           currentShift.employeeId !== value.employeeId ||
           currentShift.locationId !== value.locationId ||
           currentShift.startsAt !== value.startsAt ||
           currentShift.endsAt !== value.endsAt ||
-          currentShift.roleName !== value.roleName
+          currentShift.roleName !== value.roleName ||
+          currentShift.dashboardSummaryTimeZone !==
+            value.dashboardSummaryTimeZone
         ) {
           await ctx.db.patch(shiftId, value);
         }
@@ -1032,7 +1063,14 @@ export const upsertShiftBatch = internalMutation({
           organizationId: args.organizationId,
           ...value,
         });
+        nextShift = {
+          organizationId: args.organizationId,
+          ...value,
+        };
       }
+      nextSummaryContributions.push(
+        ...scheduledShiftSummaryContribution(nextShift, summaryTimeZone),
+      );
       if (mapping) {
         await ctx.db.patch(mapping._id, {
           shiftId,
@@ -1054,6 +1092,11 @@ export const upsertShiftBatch = internalMutation({
         });
       }
     }
+    await reconcileDashboardSummaryContributions(
+      ctx,
+      previousSummaryContributions,
+      nextSummaryContributions,
+    );
     return null;
   },
 });
@@ -1323,15 +1366,35 @@ export const cleanupShiftChunk = internalMutation({
           .gte("startsAt", args.from)
           .lt("startsAt", args.to),
       )
-      .paginate({ numItems: 200, cursor: args.cursor });
+      .paginate({
+        numItems: 200,
+        cursor: args.cursor,
+        maximumRowsRead: 200,
+      });
+    const previousSummaryContributions = [] as ReturnType<
+      typeof scheduledShiftSummaryContribution
+    >;
     for (const mapping of result.page) {
       if (mapping.syncToken === args.runToken) continue;
       const shift = await ctx.db.get("scheduledShifts", mapping.shiftId);
       if (shift?.organizationId === args.organizationId) {
+        if (shift.dashboardSummaryTimeZone) {
+          previousSummaryContributions.push(
+            ...scheduledShiftSummaryContribution(
+              shift,
+              shift.dashboardSummaryTimeZone,
+            ),
+          );
+        }
         await ctx.db.delete(shift._id);
       }
       await ctx.db.delete(mapping._id);
     }
+    await reconcileDashboardSummaryContributions(
+      ctx,
+      previousSummaryContributions,
+      [],
+    );
     if (!result.isDone) {
       await ctx.scheduler.runAfter(0, internal.workfeedSync.cleanupShiftChunk, {
         ...args,
@@ -1366,13 +1429,29 @@ export const pruneShifts = internalMutation({
           : company.gte("startsAt", args.windowEnd);
       });
     const mappings = await base.take(100);
+    const previousSummaryContributions = [] as ReturnType<
+      typeof scheduledShiftSummaryContribution
+    >;
     for (const mapping of mappings) {
       const shift = await ctx.db.get("scheduledShifts", mapping.shiftId);
       if (shift?.organizationId === args.organizationId) {
+        if (shift.dashboardSummaryTimeZone) {
+          previousSummaryContributions.push(
+            ...scheduledShiftSummaryContribution(
+              shift,
+              shift.dashboardSummaryTimeZone,
+            ),
+          );
+        }
         await ctx.db.delete(shift._id);
       }
       await ctx.db.delete(mapping._id);
     }
+    await reconcileDashboardSummaryContributions(
+      ctx,
+      previousSummaryContributions,
+      [],
+    );
     if (mappings.length === 100) {
       await ctx.scheduler.runAfter(0, internal.workfeedSync.pruneShifts, args);
     } else if (args.phase === "before") {
@@ -1451,13 +1530,29 @@ export const retireCompanyData = internalMutation({
             .eq("companyId", args.companyId),
         )
         .take(100);
+      const previousSummaryContributions = [] as ReturnType<
+        typeof scheduledShiftSummaryContribution
+      >;
       for (const mapping of mappings) {
         const shift = await ctx.db.get("scheduledShifts", mapping.shiftId);
         if (shift?.organizationId === args.organizationId) {
+          if (shift.dashboardSummaryTimeZone) {
+            previousSummaryContributions.push(
+              ...scheduledShiftSummaryContribution(
+                shift,
+                shift.dashboardSummaryTimeZone,
+              ),
+            );
+          }
           await ctx.db.delete(shift._id);
         }
         await ctx.db.delete(mapping._id);
       }
+      await reconcileDashboardSummaryContributions(
+        ctx,
+        previousSummaryContributions,
+        [],
+      );
       await ctx.scheduler.runAfter(0, internal.workfeedSync.retireCompanyData, {
         ...args,
         phase: mappings.length === 100 ? "shifts" : "employees",

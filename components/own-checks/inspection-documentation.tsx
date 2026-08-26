@@ -1,14 +1,13 @@
 "use client";
 
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { DownloadIcon, FileDownIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { downloadCsv } from "@/lib/download-csv";
-import { buildInspectionPdf } from "@/lib/own-check-pdf";
 import { MAX_EMBEDDED_ATTACHMENT_BYTES, MAX_EMBEDDED_ATTACHMENTS, isDocumentationReportReady } from "@/lib/own-check-documentation";
 import { formatValue, evaluateCompliance, ownCheckControlTypeLabels, ownCheckStatus, ownCheckStatusLabels } from "@/lib/own-checks";
 import { LocationField } from "@/components/location-field";
@@ -27,6 +26,7 @@ import { useOwnCheckNow } from "./use-own-check-now";
 const MAX_EXPORT_RECORDS = 5_000;
 const MAX_EXPORT_PAGE_SIZE = 100;
 const MAX_ATTACHMENT_FETCH_CONCURRENCY = 4;
+type DocumentationStatus = "Idle" | "LoadingFirstPage" | "LoadingMore" | "Exhausted";
 
 type ExportAttachment = {
   recordId: DocumentationRecord["id"];
@@ -130,6 +130,7 @@ function csvRows(records: DocumentationRecord[], missing: MissingRecord[], timeZ
 }
 
 export function InspectionDocumentation() {
+  const convex = useConvex();
   const organization = authClient.useActiveOrganization();
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const kiosk = useKiosk();
@@ -150,23 +151,109 @@ export function InspectionDocumentation() {
   const preparedKey = `${locationId ?? ""}:${fromDateKey}:${toDateKey}`;
   const preparedForCurrent = prepared?.key === preparedKey ? prepared.value : null;
   const prepare = useMutation(api.ownCheckDocumentation.prepareDocumentation);
-  const documentationArgs = preparedForCurrent && !preparedForCurrent.missing.truncated ? { fromDateKey, toDateKey, locationId: locationId!, generatedAt: preparedForCurrent.header.generatedAt } : "skip";
-  const { results, status, loadMore } = usePaginatedQuery(api.ownCheckDocumentation.buildDocumentation, documentationArgs, { initialNumItems: MAX_EXPORT_PAGE_SIZE });
+  const documentationArgs = useMemo(
+    () =>
+      preparedForCurrent &&
+      !preparedForCurrent.missing.truncated &&
+      locationId
+        ? {
+            fromDateKey,
+            toDateKey,
+            locationId,
+            generatedAt: preparedForCurrent.header.generatedAt,
+          }
+        : null,
+    [
+      fromDateKey,
+      locationId,
+      preparedForCurrent,
+      toDateKey,
+    ],
+  );
+  const documentationKey = documentationArgs
+    ? `${documentationArgs.locationId}:${documentationArgs.fromDateKey}:${documentationArgs.toDateKey}:${documentationArgs.generatedAt}`
+    : null;
+  const [documentationRecords, setDocumentationRecords] = useState<DocumentationRecord[]>([]);
+  const [documentationStatus, setDocumentationStatus] = useState<DocumentationStatus>("Idle");
+  const [loadedDocumentationKey, setLoadedDocumentationKey] = useState<string | null>(null);
+  const [documentationError, setDocumentationError] = useState<{ key: string; error: Error } | null>(null);
   const branding = useQuery(api.organization.getBranding, canExport && organization.data ? {} : "skip");
 
   useEffect(() => {
-    if (preparedForCurrent && status === "CanLoadMore" && results.length <= MAX_EXPORT_RECORDS) loadMore(MAX_EXPORT_PAGE_SIZE);
-  }, [loadMore, preparedForCurrent, results.length, status]);
+    if (!documentationArgs || !documentationKey) return;
 
-  const completedTooLarge = Boolean(preparedForCurrent && (results.length > MAX_EXPORT_RECORDS || (results.length === MAX_EXPORT_RECORDS && status !== "Exhausted")));
+    let cancelled = false;
+
+    void (async () => {
+      if (cancelled) return;
+      setDocumentationRecords([]);
+      setDocumentationStatus("LoadingFirstPage");
+      setLoadedDocumentationKey(documentationKey);
+      setDocumentationError(null);
+      const records: DocumentationRecord[] = [];
+      let cursor: string | null = null;
+
+      try {
+        while (true) {
+          if (cancelled) return;
+          if (records.length > 0) setDocumentationStatus("LoadingMore");
+          const page: {
+            page: DocumentationRecord[];
+            continueCursor: string;
+            isDone: boolean;
+          } = await convex.query(api.ownCheckDocumentation.buildDocumentation, {
+            ...documentationArgs,
+            paginationOpts: {
+              numItems: MAX_EXPORT_PAGE_SIZE,
+              cursor,
+            },
+          });
+          if (cancelled) return;
+          records.push(...page.page);
+          setDocumentationRecords([...records]);
+          if (records.length > MAX_EXPORT_RECORDS || page.isDone) {
+            setDocumentationStatus("Exhausted");
+            return;
+          }
+          cursor = page.continueCursor;
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDocumentationError({
+            key: documentationKey,
+            error:
+              error instanceof Error
+                ? error
+                : new Error("Dokumentationen kunne ikke hentes"),
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [convex, documentationArgs, documentationKey]);
+
+  if (documentationError?.key === documentationKey) throw documentationError.error;
+
+  const currentDocumentationRecords =
+    documentationKey && loadedDocumentationKey === documentationKey
+      ? documentationRecords
+      : [];
+  const currentDocumentationStatus =
+    documentationKey && loadedDocumentationKey === documentationKey
+      ? documentationStatus
+      : "LoadingFirstPage";
+  const completedTooLarge = Boolean(preparedForCurrent && (currentDocumentationRecords.length > MAX_EXPORT_RECORDS || (currentDocumentationRecords.length === MAX_EXPORT_RECORDS && currentDocumentationStatus !== "Exhausted")));
   const missingTooLarge = preparedForCurrent?.missing.truncated === true;
   const exportTooLarge = completedTooLarge || missingTooLarge;
-  const reportReady = isDocumentationReportReady({ entriesExhausted: status === "Exhausted", entriesTruncated: completedTooLarge, prepared: Boolean(preparedForCurrent), missingTruncated: missingTooLarge });
-  const reportRecords = results as DocumentationRecord[];
+  const reportReady = isDocumentationReportReady({ entriesExhausted: currentDocumentationStatus === "Exhausted", entriesTruncated: completedTooLarge, prepared: Boolean(preparedForCurrent), missingTruncated: missingTooLarge });
+  const reportRecords = currentDocumentationRecords;
   const missing = preparedForCurrent?.missing.items ?? [];
   const exportName = locationId && locations ? fileNamePart(locations.find((location) => location.id === locationId)?.name ?? "lokation") : "lokation";
   const organizationName = organization.data?.name ?? "Organisation";
-  const progressText = status === "LoadingFirstPage" ? "Henter dokumentation…" : status === "LoadingMore" ? `Henter flere registreringer (${results.length})…` : "Gør dokumentationen klar…";
+  const progressText = currentDocumentationStatus === "LoadingFirstPage" ? "Henter dokumentation…" : currentDocumentationStatus === "LoadingMore" ? `Henter flere registreringer (${reportRecords.length})…` : "Gør dokumentationen klar…";
 
   function invalidatePrepared() {
     setPrepared(null);
@@ -264,7 +351,10 @@ export function InspectionDocumentation() {
     }
     setGenerating(true);
     try {
-      const attachments = await fetchAttachmentBytes(reportRecords);
+      const [attachments, { buildInspectionPdf }] = await Promise.all([
+        fetchAttachmentBytes(reportRecords),
+        import("@/lib/own-check-pdf"),
+      ]);
       let logoBytes: Uint8Array | null = null;
       if (branding?.wideLogoUrl) {
         try { const response = await fetch(branding.wideLogoUrl); if (response.ok) logoBytes = new Uint8Array(await response.arrayBuffer()); } catch { logoBytes = null; }

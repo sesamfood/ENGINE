@@ -785,6 +785,12 @@ export function TransferHistory() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const deleteTransfer = useMutation(api.transfers.deleteTransfer);
+  const requestAggregateBackfill = useMutation(
+    api.transfers.requestAggregateBackfill,
+  );
+  useEffect(() => {
+    void requestAggregateBackfill({}).catch(() => undefined);
+  }, [requestAggregateBackfill]);
   const exportPrefs = useSyncExternalStore(
     subscribeExportPrefs,
     getExportPrefsSnapshot,

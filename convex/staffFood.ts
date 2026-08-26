@@ -19,6 +19,11 @@ import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { MAX_CATEGORIES_PER_ORGANIZATION } from "./lib/categoryHierarchy";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummaryContributions,
+  staffFoodSummaryContribution,
+} from "./lib/dashboardSummaries";
 
 const MAX_TIERS = 10;
 const MAX_ALLOWANCES = 20;
@@ -287,13 +292,19 @@ export const getPicker = query({
     const active = rows
       .slice(0, MAX_PICKER_SHIFTS)
       .filter((shift) => shift.endsAt > args.now);
+    const employeeIds = [...new Set(active.map((shift) => shift.employeeId))];
     const employees = await Promise.all(
-      active.map((shift) => ctx.db.get("employees", shift.employeeId)),
+      employeeIds.map((employeeId) => ctx.db.get("employees", employeeId)),
+    );
+    const employeesById = new Map(
+      employees.flatMap((employee) =>
+        employee ? [[employee._id, employee] as const] : [],
+      ),
     );
     return {
       hasRules: Boolean(tier),
-      shifts: active.flatMap((shift, index) => {
-        const employee = employees[index];
+      shifts: active.flatMap((shift) => {
+        const employee = employeesById.get(shift.employeeId);
         return employee?.organizationId === organizationId && employee.active
           ? [
               {
@@ -663,6 +674,38 @@ export const getSessionState = query({
       Id<"products">,
       (typeof allowances)[number]
     >();
+    const productIds = [
+      ...new Set(
+        productGroups.flatMap((group) =>
+          group.map((row) => row.productId),
+        ),
+      ),
+    ];
+    const productRows = await Promise.all(
+      productIds.map((productId) => ctx.db.get("products", productId)),
+    );
+    const productsById = new Map(
+      productRows.flatMap((product) =>
+        product ? [[product._id, product] as const] : [],
+      ),
+    );
+    const defaultUnitIds = [
+      ...new Set(
+        productRows.flatMap((product) =>
+          product?.organizationId === organizationId
+            ? [product.defaultUnitId]
+            : [],
+        ),
+      ),
+    ];
+    const defaultUnitRows = await Promise.all(
+      defaultUnitIds.map((unitId) => ctx.db.get("units", unitId)),
+    );
+    const defaultUnitsById = new Map(
+      defaultUnitRows.flatMap((unit) =>
+        unit ? [[unit._id, unit] as const] : [],
+      ),
+    );
     const products = (
       await Promise.all(
         productGroups.flatMap((group, index) =>
@@ -670,7 +713,7 @@ export const getSessionState = query({
             const allowance = allowanceByCategory.get(
               allowanceRows[index].categoryId,
             );
-            const product = await ctx.db.get("products", row.productId);
+            const product = productsById.get(row.productId);
             if (
               !product ||
               product.organizationId !== organizationId ||
@@ -685,7 +728,7 @@ export const getSessionState = query({
               return null;
             }
             allowanceByProductId.set(product._id, allowance);
-            const unit = await ctx.db.get("units", product.defaultUnitId);
+            const unit = defaultUnitsById.get(product.defaultUnitId);
             if (!unit || unit.organizationId !== organizationId) return null;
             return {
               id: product._id,
@@ -904,6 +947,10 @@ export const register = mutation({
     }
 
     const checkoutId = crypto.randomUUID();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const summaryContributions = [] as ReturnType<
+      typeof staffFoodSummaryContribution
+    >;
     for (let index = 0; index < args.items.length; index += 1) {
       const item = args.items[index];
       const product = products[index]!;
@@ -921,7 +968,7 @@ export const register = mutation({
         throw new ConvexError("Produktets kategori eller enhed mangler");
       }
       const defaultQuantity = normalizeStock(item.quantity);
-      await ctx.db.insert("staffFoodRegistrations", {
+      const registrationId = await ctx.db.insert("staffFoodRegistrations", {
         organizationId,
         checkoutId,
         sessionId: session._id,
@@ -946,7 +993,17 @@ export const register = mutation({
         registeredBy: userIdentifier,
         registeredByName: userName,
         status: "active",
+        dashboardSummaryTimeZone: summaryTimeZone,
       });
+      const registration = await ctx.db.get(
+        "staffFoodRegistrations",
+        registrationId,
+      );
+      if (registration) {
+        summaryContributions.push(
+          ...staffFoodSummaryContribution(registration, summaryTimeZone),
+        );
+      }
       await addStock(
         ctx,
         organizationId,
@@ -955,6 +1012,7 @@ export const register = mutation({
         -defaultQuantity,
       );
     }
+    await reconcileDashboardSummaryContributions(ctx, [], summaryContributions);
     return {
       checkoutId,
       registeredAt: now,
@@ -991,6 +1049,12 @@ export const voidCheckout = mutation({
       rows[0]!.locationId,
     );
     const now = Date.now();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+    const previousSummaryContributions = rows.flatMap((row) =>
+      row.dashboardSummaryTimeZone
+        ? staffFoodSummaryContribution(row, row.dashboardSummaryTimeZone)
+        : [],
+    );
     if (
       rows.some(
         (row) =>
@@ -1007,6 +1071,7 @@ export const voidCheckout = mutation({
         voidedAt: now,
         voidedBy: userIdentifier,
         voidedByName: userName,
+        dashboardSummaryTimeZone: summaryTimeZone,
       });
       await addStock(
         ctx,
@@ -1016,6 +1081,11 @@ export const voidCheckout = mutation({
         row.defaultQuantity,
       );
     }
+    await reconcileDashboardSummaryContributions(
+      ctx,
+      previousSummaryContributions,
+      [],
+    );
     await recordAudit(ctx, auth, {
       action: "staffFood.void",
       entityTable: "staffFoodRegistrations",
@@ -1099,6 +1169,12 @@ export const getSettings = query({
         "Der er over 500 produkter. Slet arkiverede produkter, du ikke længere bruger, eller kontakt en bruger med rollen Administrator",
       );
     }
+    const categoriesById = new Map(
+      categories.map((category) => [category._id, category]),
+    );
+    const productsById = new Map(
+      products.map((product) => [product._id, product]),
+    );
     const tierResults = await Promise.all(
       tiers.map(async (tier) => {
         const allowances = await ctx.db
@@ -1115,25 +1191,23 @@ export const getSettings = query({
           minimumShiftMinutes: tier.minimumShiftMinutes,
           allowances: await Promise.all(
             allowances.map(async (allowance) => {
-              const [category, productRows] = await Promise.all([
-                ctx.db.get("categories", allowance.categoryId),
-                ctx.db
-                  .query("staffFoodRuleProducts")
-                  .withIndex("by_organizationId_and_allowanceId", (q) =>
-                    q
-                      .eq("organizationId", organizationId)
-                      .eq("allowanceId", allowance._id),
-                  )
-                  .take(MAX_PRODUCTS_PER_TIER + 1),
-              ]);
+              const productRows = await ctx.db
+                .query("staffFoodRuleProducts")
+                .withIndex("by_organizationId_and_allowanceId", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("allowanceId", allowance._id),
+                )
+                .take(MAX_PRODUCTS_PER_TIER + 1);
+              const category = categoriesById.get(allowance.categoryId);
               if (!category || category.organizationId !== organizationId) {
                 throw new ConvexError("Reglens kategori blev ikke fundet");
               }
               if (productRows.length > MAX_PRODUCTS_PER_TIER) {
                 throw new ConvexError("Reglen har for mange produkter");
               }
-              const allowedProducts = await Promise.all(
-                productRows.map((row) => ctx.db.get("products", row.productId)),
+              const allowedProducts = productRows.map((row) =>
+                productsById.get(row.productId),
               );
               return {
                 categoryId: category._id,

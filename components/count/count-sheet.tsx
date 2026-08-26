@@ -193,6 +193,19 @@ function countdown(target: number, now: number) {
   return `${rest} sek`;
 }
 
+function CountOpenCountdown({ target }: { target: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return <>Åbner om {countdown(target, now)}</>;
+}
+
 function UnavailableTooltip({
   reason,
   children,
@@ -811,7 +824,7 @@ function CountSkeleton() {
 }
 
 export function CountSheet() {
-  const { organizationId, locations, locationId, canRegister, now, state } =
+  const { organizationId, locations, locationId, canRegister, state } =
     useCountState();
   const canManageCatalog = usePermission("catalog.manage");
   const canExport = usePermission("count.export");
@@ -1400,7 +1413,7 @@ export function CountSheet() {
                 <LockKeyholeIcon data-icon="inline-start" />
                 <span>
                   <span className="hidden lg:inline">Count er låst · </span>
-                  Åbner om {countdown(state.opensAt, now)}
+                  <CountOpenCountdown target={state.opensAt} />
                 </span>
               </Badge>
             ) : null}

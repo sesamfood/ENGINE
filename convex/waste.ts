@@ -33,6 +33,10 @@ import {
   activeProductCatalogValidator,
   listActiveProductCatalog,
 } from "./lib/productCatalog";
+import {
+  dashboardSummaryTimeZone,
+  reconcileDashboardSummary,
+} from "./lib/dashboardSummaries";
 
 const MAX_PRODUCTS = 500;
 const MAX_CHILD_ROWS = 200;
@@ -44,6 +48,16 @@ const UNDO_REASON_GRACE_MS = 30_000;
 const DAYS_30_MS = 30 * 24 * 60 * 60 * 1000;
 const DAYS_90_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_PUBLIC_PAGE_SIZE = 100;
+const REPORT_SUMMARY_BUILD_PAGE_SIZE = 50;
+const REPORT_SUMMARY_BUILD_TIMEOUT_MS = 10 * 60 * 1_000;
+const MAX_REPORT_SUMMARY_ROWS = 8_000;
+const REPORT_SUMMARY_SHARD_COUNT = 2;
+const MAX_REPORT_SUMMARY_DOCUMENTS =
+  MAX_REPORT_SUMMARY_ROWS * (REPORT_SUMMARY_SHARD_COUNT + 1);
+const MAX_REPORT_BOUNDARY_ROWS = 5_000;
+const MAX_REPORT_GROUPS = 5_000;
+const REPORT_READ_HEADROOM_BYTES = 1024 * 1024;
+const UTC_DAY_MS = 24 * 60 * 60 * 1_000;
 
 function requirePageSize(numItems: number, maximum: number) {
   if (!Number.isInteger(numItems) || numItems <= 0 || numItems > maximum) {
@@ -108,6 +122,21 @@ const reportRowValidator = v.object({
   voidedAt: v.union(v.number(), v.null()),
   voidedByName: v.union(v.string(), v.null()),
 });
+const reportSummaryRowValidator = v.object({
+  locationId: v.id("locations"),
+  locationName: v.string(),
+  productId: v.id("products"),
+  productName: v.string(),
+  defaultUnitId: v.id("units"),
+  defaultUnitName: v.string(),
+  quantity: v.number(),
+  count: v.number(),
+});
+const reportSummaryStateValidator = v.union(
+  v.literal("building"),
+  v.literal("ready"),
+  v.literal("fallback"),
+);
 
 type WasteContext = QueryCtx | MutationCtx;
 type PopularityPeriod = "allTime" | "30Days" | "90Days";
@@ -774,6 +803,109 @@ function reportRow(registration: Doc<"wasteRegistrations">) {
   };
 }
 
+function reportSummaryDayStart(registeredAt: number) {
+  return Math.floor(registeredAt / UTC_DAY_MS) * UTC_DAY_MS;
+}
+
+function reportSummaryShard(id: Id<"wasteRegistrations">) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0) % REPORT_SUMMARY_SHARD_COUNT;
+}
+
+async function adjustReportSummary(
+  ctx: MutationCtx,
+  registration: Doc<"wasteRegistrations">,
+  direction: 1 | -1,
+) {
+  const dayStartAt = reportSummaryDayStart(registration.registeredAt);
+  const shard = reportSummaryShard(registration._id);
+  const current = await ctx.db
+    .query("wasteReportDailySummaries")
+    .withIndex(
+      "by_org_location_product_defaultUnit_dayStartAt_shard",
+      (q) =>
+        q
+          .eq("organizationId", registration.organizationId)
+          .eq("locationId", registration.locationId)
+          .eq("productId", registration.productId)
+          .eq("defaultUnitId", registration.defaultUnitId)
+          .eq("dayStartAt", dayStartAt)
+          .eq("shard", shard),
+    )
+    .unique();
+
+  if (!current) {
+    await ctx.db.insert("wasteReportDailySummaries", {
+      organizationId: registration.organizationId,
+      locationId: registration.locationId,
+      locationName: registration.locationName,
+      productId: registration.productId,
+      productName: registration.productName,
+      defaultUnitId: registration.defaultUnitId,
+      defaultUnitName: registration.defaultUnitName,
+      dayStartAt,
+      shard,
+      count: direction,
+      quantity: normalizeQuantity(direction * registration.defaultQuantity),
+      latestRegisteredAt: direction > 0 ? registration.registeredAt : 0,
+    });
+    return;
+  }
+
+  const count = current.count + direction;
+  if (count === 0) {
+    await ctx.db.delete("wasteReportDailySummaries", current._id);
+    return;
+  }
+
+  const useRegistrationNames =
+    direction > 0 && registration.registeredAt >= current.latestRegisteredAt;
+  const currentNames =
+    direction < 0 &&
+    count > 0 &&
+    registration.registeredAt >= current.latestRegisteredAt
+      ? await Promise.all([
+          ctx.db.get("locations", registration.locationId),
+          ctx.db.get("products", registration.productId),
+          ctx.db.get("units", registration.defaultUnitId),
+        ])
+      : null;
+  await ctx.db.patch("wasteReportDailySummaries", current._id, {
+    count,
+    quantity: normalizeQuantity(
+      current.quantity + direction * registration.defaultQuantity,
+    ),
+    ...(useRegistrationNames
+      ? {
+          locationName: registration.locationName,
+          productName: registration.productName,
+          defaultUnitName: registration.defaultUnitName,
+          latestRegisteredAt: registration.registeredAt,
+        }
+      : currentNames
+        ? {
+            locationName:
+              currentNames[0]?.organizationId === registration.organizationId
+                ? currentNames[0].name
+                : current.locationName,
+            productName:
+              currentNames[1]?.organizationId === registration.organizationId
+                ? currentNames[1].name
+                : current.productName,
+            defaultUnitName:
+              currentNames[2]?.organizationId === registration.organizationId
+                ? currentNames[2].name
+                : current.defaultUnitName,
+            latestRegisteredAt: 0,
+          }
+      : {}),
+  });
+}
+
 export const getSettings = query({
   args: {},
   returns: settingsValidator,
@@ -1053,6 +1185,7 @@ export const registerWaste = mutation({
       throw new ConvexError("Produktets standardenhed blev ikke fundet");
     }
     const now = Date.now();
+    const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const defaultQuantity = normalizeStock(
       quantity * productUnit.factorToDefault,
     );
@@ -1077,11 +1210,21 @@ export const registerWaste = mutation({
       status: "active",
       activeIn30Days: true,
       activeIn90Days: true,
+      reportSummaryApplied: true,
+      dashboardSummaryTimeZone: summaryTimeZone,
     });
     const registration = (await ctx.db.get(
       "wasteRegistrations",
       registrationId,
     ))!;
+    await adjustReportSummary(ctx, registration, 1);
+    await reconcileDashboardSummary(
+      ctx,
+      "waste",
+      null,
+      registration,
+      summaryTimeZone,
+    );
     await addStock(
       ctx,
       organizationId,
@@ -1294,6 +1437,16 @@ async function voidRegistration(
     throw new ConvexError("Registreringen er allerede annulleret");
   }
   const now = Date.now();
+  const summaryTimeZone = await dashboardSummaryTimeZone(
+    ctx,
+    auth.organizationId,
+  );
+  const nextRegistration = {
+    ...registration,
+    status: "voided" as const,
+    reportSummaryApplied: true,
+    dashboardSummaryTimeZone: summaryTimeZone,
+  };
   const canUndoOwn =
     registration.registeredBy === auth.userIdentifier &&
     now - registration.registeredAt <= UNDO_WINDOW_MS + UNDO_REASON_GRACE_MS;
@@ -1313,7 +1466,19 @@ async function voidRegistration(
     voidedAt: now,
     voidedBy: auth.userIdentifier,
     voidedByName: auth.userName,
+    reportSummaryApplied: true,
+    dashboardSummaryTimeZone: summaryTimeZone,
   });
+  if (registration.reportSummaryApplied) {
+    await adjustReportSummary(ctx, registration, -1);
+  }
+  await reconcileDashboardSummary(
+    ctx,
+    "waste",
+    registration,
+    nextRegistration,
+    summaryTimeZone,
+  );
   await addStock(
     ctx,
     auth.organizationId,
@@ -1637,6 +1802,460 @@ export const cleanupProductData = internalMutation({
       await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, args);
     }
     return null;
+  },
+});
+
+function newReportSummaryRunToken() {
+  return `${Date.now()}-${crypto.randomUUID()}`;
+}
+
+export const requestReportSummaryRebuild = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const { organizationId } = await requireWasteExporter(ctx);
+    const status = await ctx.db
+      .query("wasteReportSummaryStatuses")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .unique();
+    const now = Date.now();
+    if (status?.state === "ready") return null;
+    if (
+      status?.state === "building" &&
+      now - status.updatedAt <= REPORT_SUMMARY_BUILD_TIMEOUT_MS
+    ) {
+      return null;
+    }
+
+    const runToken = newReportSummaryRunToken();
+    if (status) {
+      await ctx.db.patch("wasteReportSummaryStatuses", status._id, {
+        state: "building",
+        runToken,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("wasteReportSummaryStatuses", {
+        organizationId,
+        state: "building",
+        runToken,
+        updatedAt: now,
+      });
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.waste.rebuildReportSummary,
+      {
+        organizationId,
+        runToken,
+        cursor: null,
+      },
+    );
+    return null;
+  },
+});
+
+export const rebuildReportSummary = internalMutation({
+  args: {
+    organizationId: v.string(),
+    runToken: v.string(),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const status = await ctx.db
+      .query("wasteReportSummaryStatuses")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .unique();
+    if (
+      !status ||
+      status.state !== "building" ||
+      status.runToken !== args.runToken
+    ) {
+      return null;
+    }
+
+    const result = await ctx.db
+      .query("wasteRegistrations")
+      .withIndex("by_org_and_time", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .paginate({
+        numItems: REPORT_SUMMARY_BUILD_PAGE_SIZE,
+        cursor: args.cursor,
+        maximumRowsRead: REPORT_SUMMARY_BUILD_PAGE_SIZE,
+      });
+    for (const registration of result.page) {
+      if (registration.reportSummaryApplied) continue;
+      if (registration.status === "active") {
+        await adjustReportSummary(ctx, registration, 1);
+      }
+      await ctx.db.patch("wasteRegistrations", registration._id, {
+        reportSummaryApplied: true,
+      });
+    }
+
+    await ctx.db.patch("wasteReportSummaryStatuses", status._id, {
+      state: result.isDone ? "ready" : "building",
+      runToken: result.isDone ? undefined : args.runToken,
+      updatedAt: Date.now(),
+    });
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.waste.rebuildReportSummary,
+        {
+          ...args,
+          cursor: result.continueCursor,
+        },
+      );
+    }
+    return null;
+  },
+});
+
+type WasteReportLocationFilter = ReturnType<typeof resolveLocationFilter>;
+
+type ReportSummaryContribution = {
+  locationId: Id<"locations">;
+  locationName: string;
+  productId: Id<"products">;
+  productName: string;
+  defaultUnitId: Id<"units">;
+  defaultUnitName: string;
+  quantity: number;
+  count: number;
+  latestRegisteredAt: number;
+};
+
+function addReportSummaryContribution(
+  groups: Map<string, ReportSummaryContribution>,
+  contribution: ReportSummaryContribution,
+) {
+  const key = `${contribution.locationId}:${contribution.productId}:${contribution.defaultUnitId}`;
+  const current = groups.get(key);
+  if (!current) {
+    groups.set(key, contribution);
+    return;
+  }
+  groups.set(key, {
+    ...current,
+    ...(contribution.count > 0 &&
+      contribution.latestRegisteredAt >= current.latestRegisteredAt
+      ? {
+          locationName: contribution.locationName,
+          productName: contribution.productName,
+          defaultUnitName: contribution.defaultUnitName,
+          latestRegisteredAt: contribution.latestRegisteredAt,
+        }
+      : {}),
+    quantity: normalizeQuantity(current.quantity + contribution.quantity),
+    count: current.count + contribution.count,
+  });
+}
+
+type ReportReadResult<T> = {
+  rows: T[];
+  complete: boolean;
+};
+
+async function reportPaginationOptions(ctx: QueryCtx, maximumRowsRead: number) {
+  const metrics = await ctx.meta.getTransactionMetrics();
+  const maximumBytesRead =
+    metrics.bytesRead.remaining - REPORT_READ_HEADROOM_BYTES;
+  return maximumRowsRead > 0 && maximumBytesRead > 0
+    ? {
+        numItems: maximumRowsRead,
+        cursor: null,
+        maximumRowsRead,
+        maximumBytesRead,
+      }
+    : null;
+}
+
+async function reportDailySummariesInRange(
+  ctx: QueryCtx,
+  organizationId: string,
+  locationFilter: WasteReportLocationFilter,
+  startAt: number,
+  endAtExclusive: number,
+): Promise<ReportReadResult<Doc<"wasteReportDailySummaries">>> {
+  if (isMultiLocationFilter(locationFilter) && !locationFilter.locationIds.length) {
+    return { rows: [], complete: true };
+  }
+  if (isSingleLocationFilter(locationFilter)) {
+    const options = await reportPaginationOptions(
+      ctx,
+      MAX_REPORT_SUMMARY_DOCUMENTS + 1,
+    );
+    if (!options) return { rows: [], complete: false };
+    const result = await ctx.db
+      .query("wasteReportDailySummaries")
+      .withIndex(
+        "by_organizationId_and_locationId_and_dayStartAt",
+        (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", locationFilter.locationId)
+            .gte("dayStartAt", startAt)
+            .lt("dayStartAt", endAtExclusive),
+      )
+      .paginate(options);
+    return {
+      rows: result.page,
+      complete:
+        result.isDone && result.page.length <= MAX_REPORT_SUMMARY_DOCUMENTS,
+    };
+  }
+  if (isMultiLocationFilter(locationFilter)) {
+    const rows: Doc<"wasteReportDailySummaries">[] = [];
+    for (const locationId of locationFilter.locationIds) {
+      const remaining = MAX_REPORT_SUMMARY_DOCUMENTS - rows.length;
+      const options = await reportPaginationOptions(ctx, remaining + 1);
+      if (!options) return { rows, complete: false };
+      const result = await ctx.db
+        .query("wasteReportDailySummaries")
+        .withIndex(
+          "by_organizationId_and_locationId_and_dayStartAt",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", locationId)
+              .gte("dayStartAt", startAt)
+              .lt("dayStartAt", endAtExclusive),
+        )
+        .paginate(options);
+      rows.push(...result.page);
+      if (!result.isDone || rows.length > MAX_REPORT_SUMMARY_DOCUMENTS) {
+        return { rows, complete: false };
+      }
+    }
+    return { rows, complete: true };
+  }
+  const options = await reportPaginationOptions(
+    ctx,
+    MAX_REPORT_SUMMARY_DOCUMENTS + 1,
+  );
+  if (!options) return { rows: [], complete: false };
+  const result = await ctx.db
+    .query("wasteReportDailySummaries")
+    .withIndex("by_organizationId_and_dayStartAt", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .gte("dayStartAt", startAt)
+        .lt("dayStartAt", endAtExclusive),
+    )
+    .paginate(options);
+  return {
+    rows: result.page,
+    complete:
+      result.isDone && result.page.length <= MAX_REPORT_SUMMARY_DOCUMENTS,
+  };
+}
+
+async function activeReportRegistrationsInRange(
+  ctx: QueryCtx,
+  organizationId: string,
+  locationFilter: WasteReportLocationFilter,
+  startAt: number,
+  endAt: number,
+  limit: number,
+): Promise<ReportReadResult<Doc<"wasteRegistrations">>> {
+  if (isMultiLocationFilter(locationFilter) && !locationFilter.locationIds.length) {
+    return { rows: [], complete: true };
+  }
+  if (isSingleLocationFilter(locationFilter)) {
+    const options = await reportPaginationOptions(ctx, limit + 1);
+    if (!options) return { rows: [], complete: false };
+    const result = await ctx.db
+      .query("wasteRegistrations")
+      .withIndex("by_org_location_status_time", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", locationFilter.locationId)
+          .eq("status", "active")
+          .gte("registeredAt", startAt)
+          .lte("registeredAt", endAt),
+      )
+      .order("desc")
+      .paginate(options);
+    return {
+      rows: result.page,
+      complete: result.isDone && result.page.length <= limit,
+    };
+  }
+  if (isMultiLocationFilter(locationFilter)) {
+    const rows: Doc<"wasteRegistrations">[] = [];
+    for (const locationId of locationFilter.locationIds) {
+      const remaining = limit - rows.length;
+      const options = await reportPaginationOptions(ctx, remaining + 1);
+      if (!options) return { rows, complete: false };
+      const result = await ctx.db
+        .query("wasteRegistrations")
+        .withIndex("by_org_location_status_time", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", locationId)
+            .eq("status", "active")
+            .gte("registeredAt", startAt)
+            .lte("registeredAt", endAt),
+        )
+        .order("desc")
+        .paginate(options);
+      rows.push(...result.page);
+      if (!result.isDone || rows.length > limit) {
+        return { rows, complete: false };
+      }
+    }
+    return { rows, complete: true };
+  }
+  const options = await reportPaginationOptions(ctx, limit + 1);
+  if (!options) return { rows: [], complete: false };
+  const result = await ctx.db
+    .query("wasteRegistrations")
+    .withIndex("by_org_status_time", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("status", "active")
+        .gte("registeredAt", startAt)
+        .lte("registeredAt", endAt),
+    )
+    .order("desc")
+    .paginate(options);
+  return {
+    rows: result.page,
+    complete: result.isDone && result.page.length <= limit,
+  };
+}
+
+export const getReportSummary = query({
+  args: {
+    startAt: v.number(),
+    endAt: v.number(),
+    locationId: v.optional(v.id("locations")),
+  },
+  returns: v.object({
+    state: reportSummaryStateValidator,
+    rows: v.array(reportSummaryRowValidator),
+  }),
+  handler: async (ctx, args) => {
+    const auth = await requireWasteExporter(ctx);
+    const { organizationId } = auth;
+    const locationFilter = resolveLocationFilter(auth, args.locationId);
+    validateRange(args.startAt, args.endAt);
+    if (args.locationId) {
+      await requireLocation(ctx, organizationId, args.locationId);
+    }
+    const status = await ctx.db
+      .query("wasteReportSummaryStatuses")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .unique();
+    if (status?.state !== "ready") {
+      return { state: "building" as const, rows: [] };
+    }
+
+    const groups = new Map<string, ReportSummaryContribution>();
+    const endAtExclusive = Math.floor(args.endAt) + 1;
+    const firstFullDayStart =
+      Math.ceil(args.startAt / UTC_DAY_MS) * UTC_DAY_MS;
+    const fullDaysEndExclusive =
+      Math.floor(endAtExclusive / UTC_DAY_MS) * UTC_DAY_MS;
+    const rawRanges: Array<{ startAt: number; endAt: number }> = [];
+
+    if (firstFullDayStart < fullDaysEndExclusive) {
+      const dailyRead = await reportDailySummariesInRange(
+        ctx,
+        organizationId,
+        locationFilter,
+        firstFullDayStart,
+        fullDaysEndExclusive,
+      );
+      if (!dailyRead.complete) {
+        return { state: "fallback" as const, rows: [] };
+      }
+      const dailySummaryKeys = new Set<string>();
+      for (const row of dailyRead.rows) {
+        dailySummaryKeys.add(
+          `${row.locationId}:${row.productId}:${row.defaultUnitId}:${row.dayStartAt}`,
+        );
+        if (dailySummaryKeys.size > MAX_REPORT_SUMMARY_ROWS) {
+          return { state: "fallback" as const, rows: [] };
+        }
+        addReportSummaryContribution(groups, row);
+      }
+      if (args.startAt < firstFullDayStart) {
+        rawRanges.push({
+          startAt: args.startAt,
+          endAt: firstFullDayStart - 1,
+        });
+      }
+      if (fullDaysEndExclusive < endAtExclusive) {
+        rawRanges.push({
+          startAt: fullDaysEndExclusive,
+          endAt: args.endAt,
+        });
+      }
+    } else {
+      rawRanges.push({ startAt: args.startAt, endAt: args.endAt });
+    }
+
+    let boundaryRowsRead = 0;
+    for (const range of rawRanges) {
+      const remaining = MAX_REPORT_BOUNDARY_ROWS - boundaryRowsRead;
+      const boundaryRead = await activeReportRegistrationsInRange(
+        ctx,
+        organizationId,
+        locationFilter,
+        range.startAt,
+        range.endAt,
+        remaining,
+      );
+      if (!boundaryRead.complete) {
+        return { state: "fallback" as const, rows: [] };
+      }
+      boundaryRowsRead += boundaryRead.rows.length;
+      for (const row of boundaryRead.rows) {
+        addReportSummaryContribution(groups, {
+          locationId: row.locationId,
+          locationName: row.locationName,
+          productId: row.productId,
+          productName: row.productName,
+          defaultUnitId: row.defaultUnitId,
+          defaultUnitName: row.defaultUnitName,
+          quantity: row.defaultQuantity,
+          count: 1,
+          latestRegisteredAt: row.registeredAt,
+        });
+      }
+    }
+
+    const activeGroups = [...groups.values()].filter((row) => row.count > 0);
+    if (activeGroups.length > MAX_REPORT_GROUPS) {
+      return { state: "fallback" as const, rows: [] };
+    }
+    const rows = activeGroups
+      .sort(
+        (left, right) =>
+          left.locationName.localeCompare(right.locationName, "da") ||
+          left.productName.localeCompare(right.productName, "da"),
+      )
+      .map((row) => ({
+        locationId: row.locationId,
+        locationName: row.locationName,
+        productId: row.productId,
+        productName: row.productName,
+        defaultUnitId: row.defaultUnitId,
+        defaultUnitName: row.defaultUnitName,
+        quantity: row.quantity,
+        count: row.count,
+      }));
+    return { state: "ready" as const, rows };
   },
 });
 
