@@ -22,6 +22,7 @@ import {
   CreatableCombobox,
   type ComboboxOption,
 } from "@/components/catalog/creatable-combobox";
+import { ProductImageCropDialog } from "@/components/catalog/product-image-crop-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -128,6 +129,14 @@ function maxTemperatureError(value: string) {
   if (!Number.isInteger(temperature * 10)) {
     return "Angiv en temperatur med højst én decimal";
   }
+  return undefined;
+}
+
+function productImageError(file: File) {
+  if (!IMAGE_TYPES.includes(file.type)) {
+    return "Brug et billede i JPEG-, PNG-, WebP- eller AVIF-format";
+  }
+  if (file.size > MAX_IMAGE_SIZE) return "Billedet må højst være 10 MB";
   return undefined;
 }
 
@@ -299,6 +308,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   ]);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -507,12 +518,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       nextErrors.ingredients = "Hver ingrediens kan kun tilføjes én gang";
     }
     if (imageFile) {
-      if (!IMAGE_TYPES.includes(imageFile.type)) {
-        nextErrors.image =
-          "Brug et billede i JPEG-, PNG-, WebP- eller AVIF-format";
-      } else if (imageFile.size > MAX_IMAGE_SIZE) {
-        nextErrors.image = "Billedet må højst være 10 MB";
-      }
+      const imageError = productImageError(imageFile);
+      if (imageError) nextErrors.image = imageError;
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -754,8 +761,28 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       accept={IMAGE_TYPES.join(",")}
                       className="h-11 flex-1"
                       onChange={(event) => {
-                        setImageFile(event.target.files?.[0] ?? null);
-                        setRemoveExistingImage(false);
+                        const input = event.currentTarget;
+                        const file = input.files?.[0] ?? null;
+                        input.value = "";
+                        if (!file) return;
+
+                        const imageError = productImageError(file);
+                        if (imageError) {
+                          setErrors((current) => ({
+                            ...current,
+                            image: imageError,
+                          }));
+                          return;
+                        }
+
+                        setErrors((current) => {
+                          if (!current.image) return current;
+                          const next = { ...current };
+                          delete next.image;
+                          return next;
+                        });
+                        setPendingImageFile(file);
+                        setCropDialogOpen(true);
                       }}
                       aria-invalid={Boolean(errors.image)}
                     />
@@ -1062,6 +1089,23 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           </Button>
         </div>
       </div>
+
+      {cropDialogOpen ? (
+        <ProductImageCropDialog
+          open
+          file={pendingImageFile}
+          onOpenChange={(open) => {
+            setCropDialogOpen(open);
+            if (!open) setPendingImageFile(null);
+          }}
+          onConfirm={(croppedFile) => {
+            setImageFile(croppedFile);
+            setRemoveExistingImage(false);
+            setPendingImageFile(null);
+            setCropDialogOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

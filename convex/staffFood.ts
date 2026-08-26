@@ -440,9 +440,30 @@ export const startSession = mutation({
       ) {
         throw new ConvexError("Medarbejderen blev ikke fundet");
       }
-      const durationMinutes = Math.floor(
-        (shift.endsAt - shift.startsAt) / 60_000,
-      );
+      const workDate = dateInTimeZone(shift.startsAt, timeZone);
+      const sameDayShifts = await ctx.db
+        .query("scheduledShifts")
+        .withIndex("by_organizationId_and_employeeId_and_startsAt", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("employeeId", shift.employeeId)
+            .gte("startsAt", shift.startsAt - 2 * DAY_MS)
+            .lte("startsAt", shift.startsAt + 2 * DAY_MS),
+        )
+        .collect();
+      const durationMinutes = sameDayShifts
+        .filter(
+          (scheduledShift) =>
+            dateInTimeZone(scheduledShift.startsAt, timeZone) === workDate,
+        )
+        .reduce(
+          (total, scheduledShift) =>
+            total +
+            Math.floor(
+              (scheduledShift.endsAt - scheduledShift.startsAt) / 60_000,
+            ),
+          0,
+        );
       const existing = await ctx.db
         .query("staffFoodSessions")
         .withIndex("by_organizationId_and_scheduledShiftId", (q) =>
@@ -455,7 +476,7 @@ export const startSession = mutation({
         await ctx.db.patch(existing._id, {
           locationId: shift.locationId,
           employeeId: shift.employeeId,
-          workDate: dateInTimeZone(shift.startsAt, timeZone),
+          workDate,
           startsAt: shift.startsAt,
           endsAt: shift.endsAt,
           durationMinutes,
@@ -468,7 +489,7 @@ export const startSession = mutation({
         employeeId: shift.employeeId,
         source: "scheduled",
         scheduledShiftId: shift._id,
-        workDate: dateInTimeZone(shift.startsAt, timeZone),
+        workDate,
         startsAt: shift.startsAt,
         endsAt: shift.endsAt,
         durationMinutes,
