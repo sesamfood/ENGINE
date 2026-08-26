@@ -423,6 +423,8 @@ export default defineSchema({
     startsAt: v.number(),
     endsAt: v.number(),
     roleName: v.union(v.string(), v.null()),
+    // Kept optional for rows written by the retired dashboard summary backfill.
+    dashboardSummaryTimeZone: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_organizationId_and_startsAt", ["organizationId", "startsAt"])
@@ -532,6 +534,8 @@ export default defineSchema({
     voidedAt: v.optional(v.number()),
     voidedBy: v.optional(v.string()),
     voidedByName: v.optional(v.string()),
+    // Kept optional for rows written by the retired dashboard summary backfill.
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_organizationId_and_checkoutId", ["organizationId", "checkoutId"])
     .index("by_organizationId_and_sessionId_and_registeredAt", [
@@ -842,6 +846,11 @@ export default defineSchema({
     transferredAt: v.number(),
     createdBy: v.string(),
     stockApplied: v.optional(v.boolean()),
+    // Kept optional for rows written by the retired dashboard summary backfill.
+    itemCount: v.optional(v.number()),
+    totalQuantity: v.optional(v.number()),
+    hasTemperatureDeviation: v.optional(v.boolean()),
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_organizationId_and_transferredAt", [
       "organizationId",
@@ -923,9 +932,12 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("voided")),
     activeIn30Days: v.boolean(),
     activeIn90Days: v.boolean(),
+    // Kept optional for rows written by the retired dashboard summary backfill.
+    reportSummaryApplied: v.optional(v.boolean()),
     voidedAt: v.optional(v.number()),
     voidedBy: v.optional(v.string()),
     voidedByName: v.optional(v.string()),
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_org_and_time", ["organizationId", "registeredAt"])
     .index("by_org_location_time", [
@@ -1014,6 +1026,8 @@ export default defineSchema({
     cancellationNoticeProviderId: v.optional(v.string()),
     cancellationNoticeFailureMessage: v.optional(v.string()),
     cancellationNoticeInFlight: v.optional(v.boolean()),
+    // Kept optional for rows written by the retired dashboard summary backfill.
+    dashboardSummaryTimeZone: v.optional(v.string()),
   })
     .index("by_organizationId_and_registeredAt", [
       "organizationId",
