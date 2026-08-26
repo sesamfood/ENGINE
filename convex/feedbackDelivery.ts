@@ -71,16 +71,18 @@ export const deliver = internalAction({
           ["Type", typeLabel],
           ["Reported by", reporter],
           ["Submitted", registered],
-          ...(linearUrl ? [["Linear", linearUrl]] : []),
         ]
           .map(
             ([label, value]) =>
               `<tr><td style="padding:4px 16px 4px 0;color:#666;">${escapeHtml(label)}</td><td style="padding:4px 0;">${escapeHtml(value)}</td></tr>`,
           )
           .join("");
+        const linearRow = linearUrl
+          ? `<tr><td style="padding:4px 16px 4px 0;color:#666;">Linear</td><td style="padding:4px 0;"><a href="${escapeHtml(linearUrl)}">Open in Linear</a></td></tr>`
+          : "";
         const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;color:#111;">
   <h2 style="margin:0 0 16px;font-size:18px;">${escapeHtml(title)}</h2>
-  <table style="border-collapse:collapse;margin-bottom:20px;">${rows}</table>
+  <table style="border-collapse:collapse;margin-bottom:20px;">${rows}${linearRow}</table>
   ${payload.description ? `<div style="white-space:pre-wrap;">${escapeHtml(payload.description)}</div>` : ""}
 </div>`;
         const text = [
@@ -139,7 +141,7 @@ export const deliver = internalAction({
         const issue = await createLinearIssue(payload.linearApiKey, {
           teamId: payload.linearTeamId,
           type: payload.type,
-          title,
+          title: `${payload.type === "bug" ? "[BUG]" : "[REQUEST]"} ${title}`,
           description,
         });
         reference = issue.url || issue.identifier;

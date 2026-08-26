@@ -3,7 +3,6 @@
 import { useMutation, useQuery } from "convex/react";
 import {
   CheckIcon,
-  CheckCircle2Icon,
   Clock3Icon,
   ImageIcon,
   MapPinIcon,
@@ -17,8 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -255,7 +253,6 @@ function StaffFoodHeader({
 }
 
 export function StaffFoodRegistration() {
-  const router = useRouter();
   const sidebar = useSidebar();
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
@@ -281,8 +278,6 @@ export function StaffFoodRegistration() {
   const [confirming, setConfirming] = useState(false);
   const [voidCheckoutId, setVoidCheckoutId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState("");
-  const [success, setSuccess] = useState(false);
-  const redirectTimer = useRef<number | null>(null);
   const startSession = useMutation(api.staffFood.startSession);
   const register = useMutation(api.staffFood.register);
   const voidCheckout = useMutation(api.staffFood.voidCheckout);
@@ -317,15 +312,6 @@ export function StaffFoodRegistration() {
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 300_000);
     return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (redirectTimer.current !== null) {
-        window.clearTimeout(redirectTimer.current);
-        redirectTimer.current = null;
-      }
-    };
   }, []);
 
   useEffect(() => {
@@ -478,26 +464,22 @@ export function StaffFoodRegistration() {
     try {
       const result = await register({ sessionId, items });
       setConfirming(false);
-      setSuccess(true);
       setBasket({});
+      setCategoryId("all");
+      setManualEmployee(null);
+      setSearch("");
+      setSearchValue("");
+      setSessionId(null);
       toast.success("Staff food er registreret", {
         duration: 30_000,
         action: {
           label: "Fortryd",
           onClick: () => {
-            if (redirectTimer.current !== null) {
-              window.clearTimeout(redirectTimer.current);
-              redirectTimer.current = null;
-            }
             setVoidReason("");
             setVoidCheckoutId(result.checkoutId);
           },
         },
       });
-      redirectTimer.current = window.setTimeout(() => {
-        redirectTimer.current = null;
-        router.replace("/waste");
-      }, 30_000);
     } catch (error) {
       toast.error(message(error));
     } finally {
@@ -601,20 +583,6 @@ export function StaffFoodRegistration() {
             </EmptyContent>
           ) : null}
         </Empty>
-      ) : success ? (
-        <div className="grid min-h-[28rem] place-items-center">
-          <div className="flex max-w-md flex-col items-center gap-4 text-center">
-            <span className="grid size-16 place-items-center rounded-full bg-primary text-primary-foreground">
-              <CheckCircle2Icon className="size-8" />
-            </span>
-            <h2 className="text-2xl font-semibold">
-              Staff food er registreret
-            </h2>
-            <p className="text-muted-foreground">
-              Du sendes tilbage til Waste.
-            </p>
-          </div>
-        </div>
       ) : sessionId && state === undefined ? (
         <Skeleton className="h-96 w-full" />
       ) : state ? (
