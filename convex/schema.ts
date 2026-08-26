@@ -195,7 +195,11 @@ export default defineSchema({
     onlinePosProductId: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_productId", ["organizationId", "productId"]),
+    .index("by_organizationId_and_productId", ["organizationId", "productId"])
+    .index("by_organizationId_and_onlinePosProductId", [
+      "organizationId",
+      "onlinePosProductId",
+    ]),
 
   onlinePosSyncStatus: defineTable({
     organizationId: v.string(),
@@ -1413,6 +1417,9 @@ export default defineSchema({
     .index("by_organizationId_and_normalizedName", ["organizationId", "normalizedName"])
     .index("by_organizationId_and_status_and_normalizedName", [
       "organizationId", "status", "normalizedName",
+    ])
+    .index("by_organizationId_and_status_and_archivedAt", [
+      "organizationId", "status", "archivedAt",
     ]),
 
   ownCheckTemplateVersions: defineTable({

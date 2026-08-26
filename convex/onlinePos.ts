@@ -762,7 +762,7 @@ export const saveProductMapping = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const [settings, product, current] = await Promise.all([
+    const [settings, product, current, mappings] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -778,6 +778,12 @@ export const saveProductMapping = internalMutation({
             .eq("productId", args.productId),
         )
         .unique(),
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .take(MAX_PRODUCTS + 1),
     ]);
     if (!settings) {
       throw new ConvexError("OnlinePOS er ikke forbundet");
@@ -791,6 +797,30 @@ export const saveProductMapping = internalMutation({
         args.onlinePosProductId <= 0)
     ) {
       throw new ConvexError("OnlinePOS-produktet er ugyldigt");
+    }
+    if (mappings.length > MAX_PRODUCTS) {
+      throw new ConvexError("Der er for mange produktkoblinger");
+    }
+    const onlinePosProductId = args.onlinePosProductId;
+    const existingOwners =
+      onlinePosProductId === null
+        ? []
+        : await ctx.db
+            .query("onlinePosProductMappings")
+            .withIndex(
+              "by_organizationId_and_onlinePosProductId",
+              (q) =>
+                q
+                  .eq("organizationId", args.organizationId)
+                  .eq("onlinePosProductId", onlinePosProductId),
+            )
+            .take(MAX_PRODUCTS + 1);
+    if (
+      existingOwners.some((mapping) => mapping.productId !== args.productId)
+    ) {
+      throw new ConvexError(
+        "OnlinePOS-produktet er allerede knyttet til et andet produkt",
+      );
     }
 
     if (args.onlinePosProductId === null) {
@@ -926,6 +956,9 @@ export const buildCountWasteReport = query({
     // back to syncedThroughAt, same as the sync engine) is how far history reaches.
     const historyStart =
       status?.backfillThroughAt ?? status?.syncedThroughAt ?? null;
+    const duplicateMappingCount =
+      mappings.length -
+      new Set(mappings.map((mapping) => mapping.onlinePosProductId)).size;
     const connected = master?.enabled === true && Boolean(connection);
     const windowCovered =
       connected &&
@@ -941,6 +974,9 @@ export const buildCountWasteReport = query({
     } else if (mappings.length > MAX_PRODUCTS) {
       salesOmittedReason =
         "der er for mange produktkoblinger til at beregne sikkert";
+    } else if (duplicateMappingCount > 0) {
+      salesOmittedReason =
+        "et OnlinePOS-produkt er koblet til flere produkter";
     } else {
       // onlinePosProductId is a number; salesLines.externalProductId is a string.
       const productByExternalId = new Map(

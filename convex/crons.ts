@@ -57,4 +57,11 @@ crons.cron(
   { cursor: null },
 );
 
+crons.cron(
+  "delete orphaned member location access",
+  "41 2 * * 0",
+  internal.access.purgeOrphanedMemberLocationAccess,
+  { cursor: null },
+);
+
 export default crons;

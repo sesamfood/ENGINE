@@ -1,9 +1,11 @@
 import { ConvexError, v } from "convex/values";
+import { hasPermission } from "../lib/auth-permissions";
 import { kioskDestinations } from "../lib/kiosk";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { createAuth, getDatabaseAdapter } from "./auth";
 import {
+  requireAllLocationAccess,
   requireMemberManager,
   requireOrganization,
   requireOrganizationAdmin,
@@ -263,10 +265,9 @@ export const createAccount = mutation({
   handler: async (ctx, args) => {
     const auth = await requireMemberManager(ctx);
     const { organizationId } = auth;
-    if (args.role === "admin" && !auth.permissions.has("roles.manage")) {
-      throw new ConvexError(
-        "Kun brugere med rollen Administrator kan oprette en kiosk med rollen Administrator",
-      );
+    requireAllLocationAccess(auth);
+    if (!hasPermission(auth.role, auth.permissions, "roles.manage")) {
+      throw new ConvexError("Du har ikke adgang til at administrere roller");
     }
     const settings = await ctx.db
       .query("kioskSettings")
@@ -341,7 +342,9 @@ export const updateAccount = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireMemberManager(ctx);
+    const auth = await requireMemberManager(ctx);
+    const { organizationId } = auth;
+    requireAllLocationAccess(auth);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     await requireLocation(ctx, organizationId, args.locationId);
     const name = args.name.trim();
@@ -426,6 +429,15 @@ export const deleteAccount = mutation({
       model: "member",
       where: [{ field: "id", value: member.id }],
     });
+    const locationAccess = await ctx.db
+      .query("memberLocationAccess")
+      .withIndex("by_organizationId_and_userId", (q) =>
+        q.eq("organizationId", organizationId).eq("userId", member.userId),
+      )
+      .unique();
+    if (locationAccess) {
+      await ctx.db.delete("memberLocationAccess", locationAccess._id);
+    }
     await adapter.delete({
       model: "user",
       where: [{ field: "id", value: member.userId }],

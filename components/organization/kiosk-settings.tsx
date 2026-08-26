@@ -274,10 +274,8 @@ export function KioskSettings() {
 
   const availableAccounts = accounts ?? [];
   const availableLocations = locations ?? [];
-  const availableRoles =
-    canManageRoles
-      ? roles
-      : roles.filter((item) => item !== "admin");
+  const canManageKioskLocations = access.locationScope.all;
+  const availableRoles = canManageRoles ? roles : [];
   const availableRoleItems = availableRoles.map((item) => ({
     value: item,
     label: roleLabels[item],
@@ -402,7 +400,7 @@ export function KioskSettings() {
       </Card> : null}
 
       {canManageMembers ? <>
-      <Card>
+      {canManageRoles && canManageKioskLocations ? <Card>
         <CardHeader><CardTitle>Opret kioskkonto</CardTitle><CardDescription>Kontoen bindes permanent til én lokation og starter altid i kiosktilstand.</CardDescription></CardHeader>
         <CardContent>
           <form onSubmit={create}>
@@ -416,7 +414,7 @@ export function KioskSettings() {
             <Button type="submit" size="lg" className="mt-5" disabled={creating || !availableLocations.length}>{creating ? <Spinner data-icon="inline-start" /> : <PlusIcon data-icon="inline-start" />}Opret kioskkonto</Button>
           </form>
         </CardContent>
-      </Card>
+      </Card> : null}
 
       <Card>
           <CardHeader><CardTitle>Kioskkonti</CardTitle><CardDescription>{availableAccounts.length} {availableAccounts.length === 1 ? "konto" : "konti"}</CardDescription></CardHeader>
@@ -425,7 +423,7 @@ export function KioskSettings() {
             <div key={account.memberId} className="flex flex-col gap-4 rounded-xl border p-4 lg:flex-row lg:items-center">
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{account.name}</p><Badge>Kiosk</Badge><Badge variant="secondary">{roleLabels[account.role]}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{account.username} · {account.locationName} · {account.activeSessionCount} aktive sessioner</p></div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => setEditing(account)}><PencilIcon data-icon="inline-start" />Redigér</Button>
+                {canManageKioskLocations ? <Button type="button" variant="outline" onClick={() => setEditing(account)}><PencilIcon data-icon="inline-start" />Redigér</Button> : null}
                 <Button type="button" variant="outline" onClick={() => setPasswordAccount(account)}><KeyRoundIcon data-icon="inline-start" />Skift adgangskode</Button>
                 <AlertDialog><AlertDialogTrigger render={<Button type="button" variant="outline" disabled={!account.activeSessionCount || pendingId === account.memberId} />}><LogOutIcon data-icon="inline-start" />Log ud på alle enheder</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Log kiosk ud på alle enheder?</AlertDialogTitle><AlertDialogDescription>Alle tablets, der bruger kontoen, skal logge ind igen. Adgangskoden ændres ikke.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annullér</AlertDialogCancel><AlertDialogAction onClick={() => void revoke(account)}>Log ud på alle enheder</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                 <AlertDialog><AlertDialogTrigger render={<Button type="button" variant="destructive" disabled={pendingId === account.memberId} />}><Trash2Icon data-icon="inline-start" />Slet</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Slet kioskkonto?</AlertDialogTitle><AlertDialogDescription>Kontoen, dens adgangskode og alle aktive sessioner slettes permanent.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Behold konto</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void remove(account)}>Slet kioskkonto</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>

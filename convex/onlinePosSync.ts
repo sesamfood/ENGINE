@@ -102,6 +102,30 @@ function makeRunToken(now: number) {
   return `sales:${now}`;
 }
 
+function backfillCoversHistory(
+  status: Pick<
+    Doc<"onlinePosSyncStatus">,
+    "syncedThroughAt" | "backfillThroughAt"
+  >,
+  now = Date.now(),
+) {
+  return (
+    status.syncedThroughAt != null &&
+    status.backfillThroughAt != null &&
+    status.backfillThroughAt <= now - HISTORY_MS
+  );
+}
+
+function scopedLineIdsReady(
+  status: Pick<
+    Doc<"onlinePosSyncStatus">,
+    "lineIdsScoped" | "syncedThroughAt" | "backfillThroughAt"
+  >,
+) {
+  // Older rows may already say true; history coverage is the safe reset gate.
+  return status.lineIdsScoped === true && backfillCoversHistory(status);
+}
+
 function addDateKey(value: string, days: number) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day + days))
@@ -457,7 +481,7 @@ export const getLocationSyncContext = internalQuery({
       syncedThroughAt: status?.syncedThroughAt ?? null,
       backfillThroughAt: status?.backfillThroughAt ?? null,
       reconcileHashes: status?.reconcileHashes ?? [],
-      lineIdsScoped: status?.lineIdsScoped === true,
+      lineIdsScoped: status != null && scopedLineIdsReady(status),
     };
   },
 });
@@ -848,6 +872,7 @@ export const completeLocationWindow = internalMutation({
     if (status?.runToken !== args.runToken) return null;
     const now = Date.now();
     const syncedThroughAt = Math.max(status.syncedThroughAt ?? 0, args.to);
+    const updatedStatus = { ...status, syncedThroughAt };
 
     if (status.pendingReconcileDayStart != null) {
       const token = makeRunToken(now);
@@ -858,7 +883,7 @@ export const completeLocationWindow = internalMutation({
         updatedAt: now,
         state: "queued",
         runToken: token,
-        lineIdsScoped: true,
+        lineIdsScoped: scopedLineIdsReady(updatedStatus),
       });
       const timeZone = await organizationTimeZone(
         ctx,
@@ -882,13 +907,9 @@ export const completeLocationWindow = internalMutation({
       lastError: undefined,
       updatedAt: now,
       state: "running",
-      lineIdsScoped: true,
+      lineIdsScoped: scopedLineIdsReady(updatedStatus),
     });
-    const updated = {
-      ...status,
-      syncedThroughAt,
-    };
-    await scheduleBackfillIfNeeded(ctx, updated, args.runToken);
+    await scheduleBackfillIfNeeded(ctx, updatedStatus, args.runToken);
     return null;
   },
 });
@@ -905,17 +926,18 @@ export const completeBackfillChunk = internalMutation({
     const status = await getStatus(ctx, args.organizationId, args.locationId);
     if (status?.runToken !== args.runToken) return null;
     const now = Date.now();
+    const updatedStatus = {
+      ...status,
+      backfillThroughAt: args.backfillThroughAt,
+    };
     await ctx.db.patch("onlinePosSyncStatus", status._id, {
       backfillThroughAt: args.backfillThroughAt,
+      lineIdsScoped: backfillCoversHistory(updatedStatus, now),
       lastSuccessAt: now,
       lastError: undefined,
       updatedAt: now,
     });
-    const updated = {
-      ...status,
-      backfillThroughAt: args.backfillThroughAt,
-    };
-    await scheduleBackfillIfNeeded(ctx, updated, args.runToken);
+    await scheduleBackfillIfNeeded(ctx, updatedStatus, args.runToken);
     return null;
   },
 });
@@ -994,7 +1016,7 @@ export const ingestSalesBatch = internalMutation({
           )
           .unique();
         // Migrate pre-scoped provider ids written before location composition.
-        if (!current && status.lineIdsScoped !== true) {
+        if (!current && !scopedLineIdsReady(status)) {
           const providerId = line.externalId.slice(args.locationId.length + 1);
           const legacy = await ctx.db
             .query("salesLines")
@@ -1655,7 +1677,7 @@ export const completeReconcileDay = internalMutation({
         lastSuccessAt: now,
         lastError: undefined,
         reconcileFailCount: undefined,
-        lineIdsScoped: true,
+        lineIdsScoped: scopedLineIdsReady(status),
         ...(reconcileHashes !== undefined ? { reconcileHashes } : {}),
         updatedAt: now,
       });
@@ -1675,18 +1697,20 @@ export const completeReconcileDay = internalMutation({
       return null;
     }
 
+    const syncedThroughAt = Math.max(
+      status.syncedThroughAt ?? 0,
+      zonedStart(addDateKey(dateKey(args.dayStart, timeZone), 1), timeZone),
+    );
+    const updatedStatus = { ...status, syncedThroughAt };
     await ctx.db.patch("onlinePosSyncStatus", status._id, {
       pendingReconcileDayStart: undefined,
       state: "idle",
       lastSuccessAt: now,
       lastError: undefined,
       reconcileFailCount: undefined,
-      lineIdsScoped: true,
+      lineIdsScoped: scopedLineIdsReady(updatedStatus),
       ...(reconcileHashes !== undefined ? { reconcileHashes } : {}),
-      syncedThroughAt: Math.max(
-        status.syncedThroughAt ?? 0,
-        zonedStart(addDateKey(dateKey(args.dayStart, timeZone), 1), timeZone),
-      ),
+      syncedThroughAt,
       updatedAt: now,
     });
     return null;

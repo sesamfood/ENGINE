@@ -54,9 +54,19 @@ function string(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function stringArray(value: unknown) {
-  if (!Array.isArray(value) || value.length > MAX_ASSIGNMENTS) return [];
-  return value.map(string).filter(Boolean);
+function stringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > MAX_ASSIGNMENTS) return null;
+  const values = value.map(string);
+  return values.every(Boolean) ? values : null;
+}
+
+function invalidRow(
+  kind: "medarbejder" | "rolle" | "vagt",
+  index: number,
+): never {
+  throw new ConvexError(
+    `Workfeed returnerede en ugyldig ${kind} i række ${index + 1}`,
+  );
 }
 
 export async function requestWorkfeed(
@@ -128,23 +138,38 @@ export function parseEmployees(payload: unknown): WorkfeedEmployee[] {
     throw new ConvexError("Workfeed-kontoen har for mange medarbejdere");
   }
 
-  return payload.flatMap((value) => {
+  return payload.map((value, index) => {
     const employee = object(value);
     const id = string(employee?.id);
-    if (!id) return [];
+    if (
+      !id ||
+      typeof employee?.firstname !== "string" ||
+      typeof employee?.lastname !== "string"
+    ) {
+      return invalidRow("medarbejder", index);
+    }
     const firstName = string(employee?.firstname);
     const lastName = string(employee?.lastname);
     const imageUrl = string(employee?.imageURL);
-    return [
-      {
-        id,
-        firstName,
-        lastName,
-        imageUrl: imageUrl.startsWith("https://") ? imageUrl : null,
-        active: employee?.isDeleted !== true,
-        departmentIds: stringArray(employee?.departmentIDs),
-      },
-    ];
+    const departmentIds = stringArray(employee?.departmentIDs);
+    if (
+      departmentIds === null ||
+      (employee?.imageURL !== undefined &&
+        employee?.imageURL !== null &&
+        typeof employee.imageURL !== "string") ||
+      (employee?.isDeleted !== undefined &&
+        typeof employee.isDeleted !== "boolean")
+    ) {
+      return invalidRow("medarbejder", index);
+    }
+    return {
+      id,
+      firstName,
+      lastName,
+      imageUrl: imageUrl.startsWith("https://") ? imageUrl : null,
+      active: employee?.isDeleted !== true,
+      departmentIds,
+    };
   });
 }
 
@@ -156,20 +181,25 @@ export function parseRoles(payload: unknown): WorkfeedRole[] {
     throw new ConvexError("Workfeed-kontoen har for mange roller");
   }
 
-  return payload.flatMap((value) => {
+  return payload.map((value, index) => {
     const role = object(value);
     const id = string(role?.id);
     const departmentId = string(role?.departmentID);
     const name = string(role?.name);
-    if (!id || !departmentId || !name) return [];
-    return [
-      {
-        id,
-        departmentId,
-        name,
-        active: role?.isDeleted !== true,
-      },
-    ];
+    if (
+      !id ||
+      !departmentId ||
+      !name ||
+      (role?.isDeleted !== undefined && typeof role.isDeleted !== "boolean")
+    ) {
+      return invalidRow("rolle", index);
+    }
+    return {
+      id,
+      departmentId,
+      name,
+      active: role?.isDeleted !== true,
+    };
   });
 }
 
@@ -181,25 +211,36 @@ export function parseShifts(payload: unknown): WorkfeedShift[] {
     throw new ConvexError("Der er for mange Workfeed-vagter i perioden");
   }
 
-  return payload.flatMap((value) => {
+  return payload.flatMap((value, index) => {
     const shift = object(value);
+    if (!shift) return invalidRow("vagt", index);
+    const employeeValue = shift.employeeID;
+    const roleValue = shift.roleID;
+    if (shift.released !== true && shift.released !== false) {
+      return invalidRow("vagt", index);
+    }
     const id = string(shift?.id);
-    const employeeId = string(shift?.employeeID);
+    const employeeId = string(employeeValue);
     const departmentId = string(shift?.departmentID);
-    const roleId = string(shift?.roleID);
+    const roleId = string(roleValue);
     const start = Date.parse(string(shift?.start));
     const end = Date.parse(string(shift?.end));
     if (
       !id ||
-      !employeeId ||
       !departmentId ||
-      shift?.released !== true ||
+      (typeof employeeValue !== "string" && employeeValue !== null) ||
+      (typeof roleValue !== "string" && roleValue !== null) ||
+      typeof shift.start !== "string" ||
+      typeof shift.end !== "string" ||
       !Number.isFinite(start) ||
       !Number.isFinite(end) ||
       end <= start
     ) {
-      return [];
+      return invalidRow("vagt", index);
     }
+    if (shift.released === false) return [];
+    if (employeeValue === null) return [];
+    if (!employeeId) return invalidRow("vagt", index);
     return [
       {
         id,

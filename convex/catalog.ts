@@ -212,7 +212,7 @@ const MAX_NAME_LENGTH = 100;
 const MAX_CHILD_ROWS = 200;
 const MAX_BULK_PRODUCT_SELECTION = 200;
 const MAX_GRAPH_PRODUCTS = 500;
-const MAX_PRODUCT_LEDGER_ROWS = 2000;
+const MAX_LOCATIONS_PER_ORGANIZATION = 200;
 const MAX_FUZZY_SEARCH_SCAN = 500;
 const MAX_PUBLIC_PAGE_SIZE = 100;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -716,15 +716,51 @@ async function replaceProductChildren(
   }
 }
 
+async function scrubProductFromCountOrder(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+) {
+  const locations = await ctx.db
+    .query("locations")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .take(MAX_LOCATIONS_PER_ORGANIZATION + 1);
+  if (locations.length > MAX_LOCATIONS_PER_ORGANIZATION) {
+    throw new ConvexError("Organisationen har for mange lokationer");
+  }
+  for (const location of locations) {
+    if (!location.countProductOrder?.includes(productId)) continue;
+    await ctx.db.patch("locations", location._id, {
+      countProductOrder: location.countProductOrder.filter(
+        (orderedProductId) => orderedProductId !== productId,
+      ),
+    });
+  }
+}
+
 async function permanentlyDeleteProduct(
   ctx: MutationCtx,
   product: Doc<"products">,
 ) {
+  const countItem = await ctx.db
+    .query("countItems")
+    .withIndex("by_organizationId_and_productId", (q) =>
+      q
+        .eq("organizationId", product.organizationId)
+        .eq("productId", product._id),
+    )
+    .first();
+  if (countItem) {
+    throw new ConvexError(
+      "Produktet kan ikke slettes, fordi det indgår i Count-historik",
+    );
+  }
   const [
     units,
     ingredients,
     recipeReferences,
-    countItems,
     stockRows,
     staffFoodRules,
   ] = await Promise.all([
@@ -753,14 +789,6 @@ async function permanentlyDeleteProduct(
       )
       .take(MAX_GRAPH_PRODUCTS + 1),
     ctx.db
-      .query("countItems")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q
-          .eq("organizationId", product.organizationId)
-          .eq("productId", product._id),
-      )
-      .take(MAX_PRODUCT_LEDGER_ROWS + 1),
-    ctx.db
       .query("locationStock")
       .withIndex("by_organizationId_and_productId", (q) =>
         q
@@ -782,7 +810,6 @@ async function permanentlyDeleteProduct(
     units.length > MAX_CHILD_ROWS ||
     ingredients.length > MAX_CHILD_ROWS ||
     recipeReferences.length > MAX_GRAPH_PRODUCTS ||
-    countItems.length > MAX_PRODUCT_LEDGER_ROWS ||
     stockRows.length > MAX_CHILD_ROWS ||
     staffFoodRules.length > MAX_CHILD_ROWS
   ) {
@@ -798,11 +825,11 @@ async function permanentlyDeleteProduct(
   for (const row of recipeReferences) {
     await ctx.db.delete("productIngredients", row._id);
   }
-  for (const row of countItems) await ctx.db.delete("countItems", row._id);
   for (const row of stockRows) await ctx.db.delete("locationStock", row._id);
   for (const row of staffFoodRules) {
     await ctx.db.delete("staffFoodRuleProducts", row._id);
   }
+  await scrubProductFromCountOrder(ctx, product.organizationId, product._id);
   await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, {
     organizationId: product.organizationId,
     productId: product._id,
@@ -1582,17 +1609,28 @@ export async function archiveProductWithAuth(
   if (!product || product.organizationId !== organizationId) {
     throw new ConvexError("Produktet blev ikke fundet");
   }
+  const retainedForCountHistory = Boolean(
+    await ctx.db
+      .query("countItems")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .first(),
+  );
   const archivedAt = Math.max(Date.now(), product.updatedAt + 1);
   await ctx.db.patch("products", product._id, {
     status: "archived",
-    archivedAt,
+    archivedAt: retainedForCountHistory ? undefined : archivedAt,
     updatedAt: archivedAt,
   });
-  await ctx.scheduler.runAfter(
-    ARCHIVE_RETENTION_MS,
-    internal.catalog.deleteExpiredProduct,
-    { productId: product._id, archivedAt },
-  );
+  await scrubProductFromCountOrder(ctx, organizationId, product._id);
+  if (!retainedForCountHistory) {
+    await ctx.scheduler.runAfter(
+      ARCHIVE_RETENTION_MS,
+      internal.catalog.deleteExpiredProduct,
+      { productId: product._id, archivedAt },
+    );
+  }
   await recordAudit(ctx, auth, {
     action: "catalog.productArchived",
     entityTable: "products",
@@ -2098,6 +2136,18 @@ export const deleteExpiredProduct = internalMutation({
     ) {
       return null;
     }
+    const countItem = await ctx.db
+      .query("countItems")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .first();
+    if (countItem) {
+      await ctx.db.patch("products", product._id, { archivedAt: undefined });
+      return null;
+    }
     await permanentlyDeleteProduct(ctx, product);
     return null;
   },
@@ -2112,10 +2162,29 @@ export const deleteExpiredProducts = internalMutation({
       .withIndex("by_status_and_archivedAt", (q) =>
         q
           .eq("status", "archived")
+          .gte("archivedAt", 0)
           .lt("archivedAt", Date.now() - ARCHIVE_RETENTION_MS),
       )
       .first();
     if (!product) return null;
+
+    const countItem = await ctx.db
+      .query("countItems")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .first();
+    if (countItem) {
+      await ctx.db.patch("products", product._id, { archivedAt: undefined });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.catalog.deleteExpiredProducts,
+        {},
+      );
+      return null;
+    }
 
     await permanentlyDeleteProduct(ctx, product);
     await ctx.scheduler.runAfter(0, internal.catalog.deleteExpiredProducts, {});
