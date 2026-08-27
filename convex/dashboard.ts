@@ -9,7 +9,11 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { defaultWidgets, metricRegistry } from "../lib/dashboard/registry";
+import {
+  defaultWidgets,
+  metricRegistry,
+  type MetricSource,
+} from "../lib/dashboard/registry";
 import { dashboardDatasets } from "../lib/dashboard/datasets";
 import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
 import type {
@@ -47,6 +51,7 @@ import {
   requireDashboardManager,
   requireDashboardViewer,
   requireHumanPrincipal,
+  requireIntegrationManager,
 } from "./lib/auth";
 import {
   hasPermission,
@@ -54,6 +59,8 @@ import {
   systemRoleNames,
 } from "../lib/auth-permissions";
 import type { DataGranularity } from "../lib/auth-permissions";
+import { rateLimiter } from "./lib/rateLimits";
+import { requestWorkfeedEmployeeSync } from "./lib/workfeedSyncRequest";
 
 const MAX_WIDGETS = 24;
 const MAX_DASHBOARDS = 8;
@@ -61,6 +68,29 @@ const MAX_SHARE_NAME = 100;
 const MAX_SHARE_DAYS = 90;
 const CLEANUP_PAGE = 50;
 const MAX_METRIC_BATCH = 3;
+
+const dashboardSyncStateValidator = v.union(
+  v.literal("queued"),
+  v.literal("alreadyQueued"),
+  v.literal("rateLimited"),
+  v.literal("unavailable"),
+);
+
+const dashboardSyncSourceResultValidator = v.object({
+  state: dashboardSyncStateValidator,
+  retryAt: v.union(v.number(), v.null()),
+});
+
+const dashboardSyncResultValidator = v.object({
+  onlinePos: v.union(dashboardSyncSourceResultValidator, v.null()),
+  workfeed: v.union(dashboardSyncSourceResultValidator, v.null()),
+});
+
+type ExternalMetricSource = Exclude<MetricSource, "internal">;
+type DashboardSyncSourceResult = {
+  state: "queued" | "alreadyQueued" | "rateLimited" | "unavailable";
+  retryAt: number | null;
+};
 
 type DashboardAccess = {
   role: string;
@@ -449,6 +479,107 @@ async function availableWidgets(
   ).filter((widget): widget is WidgetInstance => widget !== null);
 }
 
+async function dashboardExternalSources(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  widgets: WidgetInstance[],
+) {
+  const sources = new Set<ExternalMetricSource>();
+  for (const widget of widgets) {
+    if (widget.metric.kind === "builtin") {
+      const source = metricRegistry[widget.metric.id].source;
+      if (source !== "internal") sources.add(source);
+      continue;
+    }
+
+    const metric = await ctx.db.get("customMetrics", widget.metric.id);
+    if (!metric || metric.organizationId !== organizationId) continue;
+    const querySpecs = metric.spec.kind === "single"
+      ? [metric.spec.query]
+      : [metric.spec.numerator, metric.spec.denominator];
+    for (const querySpec of querySpecs) {
+      const source = dashboardDatasets[querySpec.dataset].source;
+      if (source !== "internal") sources.add(source);
+    }
+  }
+  return sources;
+}
+
+async function requestOnlinePosDashboardSync(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationIds: readonly Id<"locations">[],
+  syncWholeOrganization: boolean,
+): Promise<DashboardSyncSourceResult> {
+  if (!syncWholeOrganization && locationIds.length === 0) {
+    return { state: "unavailable", retryAt: null };
+  }
+  const integration = await ctx.db
+    .query("onlinePosIntegrations")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .unique();
+  if (!integration?.enabled) {
+    return { state: "unavailable", retryAt: null };
+  }
+  const connectedLocationIds = syncWholeOrganization
+    ? []
+    : (
+        await Promise.all(
+          [...new Set(locationIds)].map(async (locationId) => {
+            const connection = await ctx.db
+              .query("onlinePosLocationIntegrations")
+              .withIndex("by_organizationId_and_locationId", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("locationId", locationId),
+              )
+              .unique();
+            return connection ? locationId : null;
+          }),
+        )
+      ).filter((locationId): locationId is Id<"locations"> => locationId !== null);
+  const hasConnection = syncWholeOrganization
+    ? Boolean(
+        await ctx.db
+          .query("onlinePosLocationIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .first(),
+      )
+    : connectedLocationIds.length > 0;
+  if (!hasConnection) {
+    return { state: "unavailable", retryAt: null };
+  }
+  const limit = await rateLimiter.limit(ctx, "manualSalesSync", {
+    key: organizationId,
+  });
+  if (!limit.ok) {
+    return {
+      state: "rateLimited",
+      retryAt: Date.now() + (limit.retryAfter ?? 0),
+    };
+  }
+  if (syncWholeOrganization) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.onlinePosSync.enqueueOrganizationSync,
+      { organizationId },
+    );
+  } else {
+    for (const locationId of connectedLocationIds) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.enqueueLocationSync,
+        { organizationId, locationId },
+      );
+    }
+  }
+  return { state: "queued", retryAt: null };
+}
+
 function scopedDefault(
   scope: DashboardScope,
   allowedLocationScope: {
@@ -654,6 +785,64 @@ export const get = query({
       widgets,
       defaultScope: scopedDefault(dashboard.defaultScope, auth.locationScope),
     });
+  },
+});
+
+export const requestDataSync = mutation({
+  args: {
+    dashboardId: v.id("dashboards"),
+    scope: scopeValidator,
+  },
+  returns: dashboardSyncResultValidator,
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardViewer(ctx);
+    await requireIntegrationManager(ctx);
+    const dashboard = await requireOrganizationDashboard(
+      ctx,
+      auth.organizationId,
+      args.dashboardId,
+    );
+    if (!roleAllowsDashboard(dashboard, auth.role)) {
+      throw new ConvexError("Du har ikke adgang til dette dashboard");
+    }
+    const widgets = await availableWidgets(ctx, auth, dashboard.widgets);
+    if (dashboard.widgets.length > 0 && widgets.length === 0) {
+      throw new ConvexError(
+        "Ingen af dette dashboards widgets er tilgængelige for dig.",
+      );
+    }
+    const sources = await dashboardExternalSources(
+      ctx,
+      auth.organizationId,
+      widgets,
+    );
+    const params = await resolveMetricParams(
+      ctx,
+      auth.organizationId,
+      args.scope,
+      { preset: "today" },
+      Date.now(),
+      auth.locationScope,
+    );
+    const syncWholeOrganization =
+      args.scope.locationIds === null &&
+      (!args.scope.level || args.scope.level === "organization") &&
+      auth.locationScope.all;
+    const onlinePos = sources.has("onlinepos")
+      ? await requestOnlinePosDashboardSync(
+          ctx,
+          auth.organizationId,
+          params.locations.map((location) => location.id),
+          syncWholeOrganization,
+        )
+      : null;
+    const workfeedResult = sources.has("workfeed")
+      ? await requestWorkfeedEmployeeSync(ctx, auth.organizationId)
+      : null;
+    const workfeed: DashboardSyncSourceResult | null = workfeedResult
+      ? { state: workfeedResult.state, retryAt: workfeedResult.retryAt }
+      : null;
+    return { onlinePos, workfeed };
   },
 });
 

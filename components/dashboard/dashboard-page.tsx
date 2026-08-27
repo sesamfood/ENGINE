@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboardIcon, PencilIcon, SaveIcon } from "lucide-react";
+import { LayoutDashboardIcon, PencilIcon, RefreshCwIcon, SaveIcon } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
@@ -28,8 +29,8 @@ import { ShareDialog } from "./share-dialog";
 const LAST_VIEWED_DASHBOARD_KEY = "engine.dashboard.last-viewed";
 type SearchParamsLike = { get: (name: string) => string | null; toString: () => string };
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Dashboardet kunne ikke gemmes";
+function errorMessage(error: unknown, fallback = "Dashboardet kunne ikke gemmes") {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function validRangePreset(value: string | null): value is RangePreset {
@@ -137,6 +138,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const canView = usePermission("dashboard.view");
   const canManage = usePermission("dashboard.manage");
   const canShare = usePermission("dashboard.share");
+  const canManageIntegrations = usePermission("integrations.manage");
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
   const canViewDetailedSales = usePermission("sales.viewDetail");
@@ -150,13 +152,18 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const organizationContext = useQuery(api.employees.getContext, canView ? {} : "skip");
   const saveConfig = useMutation(api.dashboard.saveConfigRevisioned);
   const saveDefaults = useMutation(api.dashboard.saveDefaults);
+  const requestDataSync = useMutation(api.dashboard.requestDataSync);
   const [dashboard, setDashboard] = useState<DashboardRecord | null>(null);
   const [editing, setEditing] = useState(false);
+  const [updatingData, setUpdatingData] = useState(false);
+  const [manualNow, setManualNow] = useState(0);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const pendingSaveCount = useRef(0);
   const pendingConfigSave = useRef<Promise<void>>(Promise.resolve());
+  const lastConfigSaveFailure = useRef<{ error: unknown } | null>(null);
   const expectedUpdatedAt = useRef<number | null>(null);
-  const now = useDashboardNow();
+  const dashboardNow = useDashboardNow();
+  const now = Math.max(dashboardNow, manualNow);
 
   useEffect(() => {
     if (!dashboardQuery || pendingSaveCount.current > 0) return;
@@ -216,10 +223,12 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           widgets: nextWidgets,
           expectedUpdatedAt: revision,
         });
+        lastConfigSaveFailure.current = null;
         expectedUpdatedAt.current = updatedAt;
         setDashboard((current) => current ? { ...current, updatedAt } : current);
       })
       .catch((error): void => {
+        lastConfigSaveFailure.current = { error };
         toast.error(errorMessage(error));
       })
       .finally(() => {
@@ -230,6 +239,9 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
 
   async function flushConfigSave() {
     await pendingConfigSave.current;
+    if (lastConfigSaveFailure.current) {
+      throw lastConfigSaveFailure.current.error;
+    }
   }
 
   async function saveCurrentDefaults() {
@@ -247,6 +259,49 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       toast.success("Lokationsvalg og periode er gemt som standard");
     } catch (error) {
       toast.error(errorMessage(error));
+    }
+  }
+
+  async function updateDashboardData() {
+    if (!dashboard || !currentScope) return;
+    setUpdatingData(true);
+    try {
+      try {
+        await flushConfigSave();
+      } catch {
+        return;
+      }
+      const result = await requestDataSync({
+        dashboardId: dashboard.id,
+        scope: currentScope,
+      });
+      setManualNow(Date.now());
+      const states = [result.onlinePos, result.workfeed].flatMap((source) =>
+        source ? [source.state] : [],
+      );
+      const updating = states.some(
+        (state) => state === "queued" || state === "alreadyQueued",
+      );
+      const blocked = states.some(
+        (state) => state === "rateLimited" || state === "unavailable",
+      );
+      if (updating && blocked) {
+        toast.warning("Dashboardet opdateres kun delvist. En integration kunne ikke startes");
+      } else if (states.includes("queued")) {
+        toast.success("Opdateringen er sat i gang");
+      } else if (states.includes("alreadyQueued")) {
+        toast.info("Dashboarddata opdateres allerede");
+      } else if (states.includes("rateLimited")) {
+        toast.info("Dashboarddata blev opdateret for nylig. Prøv igen om få minutter");
+      } else if (states.includes("unavailable")) {
+        toast.error("Dashboardets dataintegration er ikke aktiv");
+      } else {
+        toast.success("Dashboardet er opdateret");
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Dashboarddata kunne ikke opdateres"));
+    } finally {
+      setUpdatingData(false);
     }
   }
 
@@ -290,11 +345,17 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         onDeleted={() => router.replace("/dashboard")}
         onCreated={(nextId) => router.replace(`/dashboard/${nextId}`)}
       />
-      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm xl:flex-row xl:items-end xl:justify-between">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
         </div>
         <div className="flex flex-wrap gap-2">
+          {canManageIntegrations ? (
+            <Button type="button" size="lg" variant="outline" className="min-h-11" disabled={updatingData} onClick={() => void updateDashboardData()}>
+              {updatingData ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
+              {updatingData ? "Opdaterer" : "Opdatér"}
+            </Button>
+          ) : null}
           {canShare ? <ShareDialog dashboardId={dashboard.id} dashboardName={dashboard.name} onBeforeCreate={flushConfigSave} /> : null}
           {canManage ? (
             <>

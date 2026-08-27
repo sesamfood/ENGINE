@@ -3,6 +3,7 @@ import type {
   MetricUnit,
   VisualizationId,
 } from "./types";
+import type { MetricSource } from "./registry";
 
 export type DatasetMeasure = {
   id: string;
@@ -19,6 +20,7 @@ export type DatasetField = {
 export type DashboardDataset = {
   id: CustomMetricDatasetId;
   label: string;
+  source: MetricSource;
   measures: readonly DatasetMeasure[];
   dimensions: readonly DatasetField[];
   filters: readonly DatasetField[];
@@ -53,6 +55,7 @@ export const dashboardDatasets: Record<
   waste: {
     id: "waste",
     label: "Waste",
+    source: "internal",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "quantity", label: "Mængde", unit: "quantity" },
@@ -73,6 +76,7 @@ export const dashboardDatasets: Record<
   badDelivery: {
     id: "badDelivery",
     label: "Dårlige leveringer",
+    source: "internal",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "itemCount", label: "Antal produkter", unit: "count" },
@@ -89,6 +93,7 @@ export const dashboardDatasets: Record<
   transfers: {
     id: "transfers",
     label: "Transfer",
+    source: "internal",
     measures: [
       { id: "transfers", label: "Transfers", unit: "count" },
       { id: "itemsMoved", label: "Transfermængde", unit: "quantity" },
@@ -105,6 +110,7 @@ export const dashboardDatasets: Record<
   staffFood: {
     id: "staffFood",
     label: "Staff food",
+    source: "internal",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "quantity", label: "Mængde", unit: "quantity" },
@@ -125,6 +131,7 @@ export const dashboardDatasets: Record<
   shifts: {
     id: "shifts",
     label: "Vagter",
+    source: "workfeed",
     measures: [
       { id: "hours", label: "Timer", unit: "hours" },
       { id: "shifts", label: "Vagter", unit: "count" },
@@ -140,6 +147,7 @@ export const dashboardDatasets: Record<
   counts: {
     id: "counts",
     label: "Count",
+    source: "internal",
     measures: [
       { id: "counts", label: "Counts", unit: "count" },
       { id: "submitted", label: "Indsendte", unit: "count" },
@@ -154,6 +162,7 @@ export const dashboardDatasets: Record<
   salesDaily: {
     id: "salesDaily",
     label: "Dagligt salg",
+    source: "onlinepos",
     permission: "sales.viewAggregate",
     measures: [
       { id: "revenue", label: "Omsætning", unit: "currency" },
@@ -166,6 +175,7 @@ export const dashboardDatasets: Record<
   salesOrders: {
     id: "salesOrders",
     label: "Salgsordrer",
+    source: "onlinepos",
     permission: "sales.viewDetail",
     measures: [
       { id: "revenue", label: "Omsætning", unit: "currency" },
@@ -186,6 +196,7 @@ export const dashboardDatasets: Record<
   salesLines: {
     id: "salesLines",
     label: "Salgslinjer",
+    source: "onlinepos",
     permission: "sales.viewDetail",
     measures: [
       { id: "revenue", label: "Omsætning", unit: "currency" },
