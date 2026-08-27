@@ -8,6 +8,7 @@ import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
 
 const sidebarItemValidator = v.union(
   v.literal("dashboard"),
+  v.literal("woltOrders"),
   v.literal("transfers"),
   v.literal("waste"),
   v.literal("ownChecks"),

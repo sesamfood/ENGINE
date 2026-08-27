@@ -1,4 +1,7 @@
 import { v } from "convex/values";
+import { salesSourceValidator } from "./woltValidators";
+
+export { salesSourceValidator } from "./woltValidators";
 
 export const metricIdValidator = v.union(
   v.literal("wasteQuantity"),
@@ -19,6 +22,7 @@ export const metricIdValidator = v.union(
   v.literal("salesRevenue"),
   v.literal("salesOrderCount"),
   v.literal("averageBasket"),
+  v.literal("woltCancellationRate"),
 );
 
 export const dashboardSummarySourceValidator = v.union(
@@ -71,6 +75,8 @@ export const datasetIdValidator = v.union(
   v.literal("salesDaily"),
   v.literal("salesOrders"),
   v.literal("salesLines"),
+  v.literal("woltOrders"),
+  v.literal("woltOrderItems"),
 );
 
 export const querySpecValidator = v.object({
@@ -121,6 +127,7 @@ export const widgetValidator = v.object({
       limit: v.optional(v.number()),
       yAxisMin: v.optional(v.number()),
       yAxisMax: v.optional(v.number()),
+      salesSource: v.optional(salesSourceValidator),
     }),
   ),
 });
@@ -198,6 +205,7 @@ export const metricRequestValidator = v.object({
   metric: widgetMetricValidator,
   visualization: visualizationValidator,
   range: v.optional(widgetRangePresetValidator),
+  salesSource: v.optional(salesSourceValidator),
 });
 
 export const keyedMetricResultValidator = v.object({

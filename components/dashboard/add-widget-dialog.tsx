@@ -44,12 +44,20 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
-import { metricRegistry, metrics, sizeLabels, visualizationLabels } from "@/lib/dashboard/registry";
+import { metricRegistry, metrics, sizeLabels, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
-import { widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 
@@ -95,8 +103,13 @@ export function AddWidgetDialog({
     api.customMetrics.list,
     open ? {} : "skip",
   ) as CustomMetricDefinition[] | undefined;
+  const sourceAvailability = useQuery(
+    api.dashboard.salesSourceAvailability,
+    open ? { scope } : "skip",
+  );
   const [step, setStep] = useState<Step>(1);
   const [metricId, setMetricId] = useState<MetricId>(available[0]?.id ?? "wasteRegistrations");
+  const [salesSourceOverride, setSalesSourceOverride] = useState<SalesSource>();
   const [customMetricId, setCustomMetricId] = useState<Id<"customMetrics"> | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderMetric, setBuilderMetric] = useState<CustomMetricDefinition | null>(null);
@@ -111,6 +124,13 @@ export function AddWidgetDialog({
   const [yAxisMin, setYAxisMin] = useState<number | undefined>(0);
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
+  const salesSource = metricId === "woltCancellationRate"
+    ? "wolt"
+    : salesSourceOverride ?? (
+        sourceAvailability && !sourceAvailability.onlinePos && sourceAvailability.wolt
+          ? "wolt"
+          : "onlinePos"
+      );
   const builtinPreviewResult = useQuery(
     api.dashboard.getMetric,
     !open || step !== 2 || Boolean(customMetricId)
@@ -121,6 +141,7 @@ export function AddWidgetDialog({
           scope,
           range,
           now,
+          ...(supportsSalesSource(metricId) || metricId === "woltCancellationRate" ? { salesSource } : {}),
         },
   );
   const customPreviewResult = useQuery(
@@ -146,6 +167,7 @@ export function AddWidgetDialog({
     const next = metricRegistry[nextMetricId];
     setCustomMetricId(null);
     setMetricId(next.id);
+    setSalesSourceOverride(undefined);
     setVisualization(next.defaultVisualization);
     setSize(next.defaultSize);
     setYAxisMin(0);
@@ -167,12 +189,13 @@ export function AddWidgetDialog({
   }
 
   function add() {
-    const options = yAxisMin !== undefined || yAxisMax !== undefined
-      ? {
-          ...(yAxisMin !== undefined ? { yAxisMin } : {}),
-          ...(yAxisMax !== undefined ? { yAxisMax } : {}),
-        }
-      : undefined;
+    const options = {
+      ...(yAxisMin !== undefined ? { yAxisMin } : {}),
+      ...(yAxisMax !== undefined ? { yAxisMax } : {}),
+      ...(!customMetric && (supportsSalesSource(metricId) || metricId === "woltCancellationRate")
+        ? { salesSource }
+        : {}),
+    };
     onAdd({
       key: crypto.randomUUID(),
       metric: customMetric
@@ -180,7 +203,7 @@ export function AddWidgetDialog({
         : { kind: "builtin", id: metricId },
       visualization,
       size,
-      options,
+      options: Object.keys(options).length ? options : undefined,
     });
     setOpen(false);
     setStep(1);
@@ -199,6 +222,7 @@ export function AddWidgetDialog({
     if (nextOpen) {
       setStep(1);
       setCustomMetricId(null);
+      setSalesSourceOverride(undefined);
       setYAxisValid(true);
     }
   }
@@ -390,6 +414,39 @@ export function AddWidgetDialog({
                 <h2 className="text-sm font-medium">Hvordan skal {(customMetric?.name ?? (customMetricId ? "målingen" : definition.label)).toLowerCase()} vises?</h2>
                 <p className="text-sm text-muted-foreground">Vælg en visning. Du kan ændre den senere.</p>
               </div>
+              {!customMetricId && supportsSalesSource(metricId) ? (
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/25 p-3">
+                  <div className="min-w-40 flex-1">
+                    <p className="text-sm font-medium">Salgskilde</p>
+                    <p className="text-xs text-muted-foreground">Vælg hvilke ordredata widgetten skal bruge.</p>
+                  </div>
+                  <Select
+                    items={Object.entries(salesSourceLabels).map(([value, label]) => ({ value, label }))}
+                    value={salesSource}
+                    onValueChange={(value) => {
+                      if (value === "onlinePos" || value === "wolt" || value === "combined") {
+                        setSalesSourceOverride(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-11 w-48" aria-label="Salgskilde">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {Object.entries(salesSourceLabels).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {!customMetricId && metricId === "woltCancellationRate" ? (
+                <p className="rounded-lg border bg-muted/25 p-3 text-sm text-muted-foreground">
+                  Datakilde: Wolt
+                </p>
+              ) : null}
               {customMetricPending ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Skeleton className="h-56 w-full" />

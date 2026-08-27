@@ -248,6 +248,66 @@ export async function deleteLocationWithAuth(
           q.eq("organizationId", organizationId).eq("locationId", location._id),
         )
         .first(),
+      ctx.db
+        .query("woltVenueConnections")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltPartnerVenueMappings")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltOAuthStates")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltOnboardingEvents")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltWebhookEvents")
+        .withIndex("by_organizationId_and_locationId_and_receivedAt", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltOrders")
+        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltOrderItems")
+        .withIndex("by_organizationId_and_locationId_and_observedAt", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltSalesDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("woltProductMappings")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("countSalesSourceSettings")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
     ]),
     ctx.db
       .query("ownCheckEntries")

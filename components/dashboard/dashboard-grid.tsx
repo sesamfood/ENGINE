@@ -32,7 +32,7 @@ import {
   widgetsOverlappingPosition,
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
-import type { DashboardRange, DashboardScope, MetricResult, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { DashboardWidget } from "./dashboard-widget";
 import type { YAxisValues } from "./y-axis-settings";
@@ -58,7 +58,7 @@ function metricBatchKey(
   if (widget.metric.kind === "custom") {
     return `${range}:custom:${widget.metric.id}`;
   }
-  return `${range}:${metricRegistry[widget.metric.id].sourceTables[0]}`;
+  return `${range}:${metricRegistry[widget.metric.id].sourceTables[0]}:${widget.options?.salesSource ?? "onlinePos"}`;
 }
 
 function groupMetricBatches(
@@ -106,12 +106,13 @@ function useMetricBatch(
   now: number,
   publicAccess?: { token: string; accessKey: string },
 ) {
-  const requests = widgets.map(({ key, metric, visualization, range: widgetRange }) => ({
-      key,
-      metric,
-      visualization,
-      range: widgetRange,
-    }));
+  const requests = widgets.map(({ key, metric, visualization, range: widgetRange, options }) => ({
+    key,
+    metric,
+    visualization,
+    range: widgetRange,
+    ...(options?.salesSource ? { salesSource: options.salesSource } : {}),
+  }));
   const authenticated = useQuery(
     api.dashboard.getMetrics,
     publicAccess || requests.length === 0
@@ -279,6 +280,7 @@ function DraggableWidget({
   onChange: (widget: WidgetInstance) => void;
   onEditCustomMetric?: () => void;
   onResize: (size: WidgetSize, complete: boolean) => void;
+  onSalesSourceChange: (salesSource: SalesSource) => void;
   onRemove: () => void;
 }) {
   const draggable = useDraggable({ id: widget.key, disabled: !editable, data: { kind: "widget" } });
@@ -316,6 +318,10 @@ function DraggableWidget({
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
         visualizations={visualizations}
         onRangeChange={(range: WidgetRangePreset | undefined) => onChange({ ...widget, range })}
+        onSalesSourceChange={(salesSource: SalesSource) => onChange({
+          ...widget,
+          options: { ...widget.options, salesSource },
+        })}
         onYAxisChange={(axis: YAxisValues) => {
           const options = { ...widget.options };
           if (axis.min === undefined) delete options.yAxisMin;
@@ -536,6 +542,9 @@ export function DashboardGrid({
                 ? () => setEditingWidgetKey(widget.key)
                 : undefined}
               onChange={(next) => onChange?.(layout.map((item) => item.key === widget.key ? next : item))}
+              onSalesSourceChange={(salesSource) => onChange?.(layout.map((item) => item.key === widget.key
+                ? { ...item, options: { ...item.options, salesSource } }
+                : item))}
               onResize={(size, complete) => {
                 if (!complete) {
                   setResizePreview({ key: widget.key, size });

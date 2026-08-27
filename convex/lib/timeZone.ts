@@ -53,6 +53,12 @@ export async function scheduleLocationDayStartReroll(
       phase: "orders",
     },
   );
+  await ctx.scheduler.runAfter(0, internal.woltSync.rerollLocationDays, {
+    organizationId,
+    locationId,
+    timeZone,
+    cursor: null,
+  });
 }
 
 export function requireTimeZone(value: string): string;

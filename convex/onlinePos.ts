@@ -1006,6 +1006,7 @@ export const buildCountWasteReport = query({
       } else {
         salesIncluded = true;
         for (const line of lines) {
+          if (line.source !== "onlinePos") continue;
           const productId = productByExternalId.get(line.externalProductId);
           const row = productId ? rowByProduct.get(productId) : null;
           if (

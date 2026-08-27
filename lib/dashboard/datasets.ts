@@ -209,4 +209,46 @@ export const dashboardDatasets: Record<
     ],
     filters: [{ id: "product", label: "Produkt" }],
   },
+  woltOrders: {
+    id: "woltOrders",
+    label: "Wolt-ordrer",
+    source: "wolt",
+    permission: "sales.viewDetail",
+    measures: [
+      { id: "revenue", label: "Omsætning", unit: "currency" },
+      { id: "orders", label: "Leverede ordrer", unit: "count" },
+      { id: "canceled", label: "Annullerede ordrer", unit: "count" },
+      { id: "total", label: "Leverede og annullerede ordrer", unit: "count" },
+      { id: "items", label: "Leverede produkter", unit: "count" },
+    ],
+    dimensions: [
+      { id: "location", label: "Lokation" },
+      { id: "status", label: "Status" },
+      { id: "orderType", label: "Ordretype" },
+      { id: "hourOfDay", label: "Klokkeslæt" },
+    ],
+    filters: [
+      { id: "status", label: "Status" },
+      { id: "orderType", label: "Ordretype" },
+    ],
+  },
+  woltOrderItems: {
+    id: "woltOrderItems",
+    label: "Wolt-ordrelinjer",
+    source: "wolt",
+    permission: "sales.viewDetail",
+    measures: [
+      { id: "revenue", label: "Netto omsætning", unit: "currency" },
+      { id: "quantity", label: "Mængde", unit: "quantity" },
+      { id: "lines", label: "Linjer", unit: "count" },
+    ],
+    dimensions: [
+      { id: "product", label: "Produkt" },
+      { id: "item", label: "Observeret produkt" },
+      { id: "location", label: "Lokation" },
+      { id: "status", label: "Status" },
+      { id: "orderType", label: "Ordretype" },
+    ],
+    filters: [{ id: "product", label: "Produkt" }],
+  },
 };

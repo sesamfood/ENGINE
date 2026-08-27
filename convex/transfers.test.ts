@@ -161,7 +161,7 @@ test("createTransfer rejects a responsible user who is not a member", async () =
       transferredAt: Date.now(),
       items: [{ productId, unitId, quantity: 1 }],
     }),
-  ).rejects.toThrowError("Den ansvarlige er ikke medlem af organisationen");
+  ).rejects.toThrowError("Den ansvarlige er ikke bruger i organisationen");
 });
 
 test("createTransfer writes one item per line and appears in listTransfers", async () => {
