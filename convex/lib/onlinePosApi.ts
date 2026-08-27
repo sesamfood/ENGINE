@@ -35,6 +35,15 @@ export type OnlinePosSaleLine = {
   department: string;
 };
 
+export function unitPriceFromLineTotal(
+  lineTotal: number,
+  quantity: number,
+) {
+  if (quantity === 0) return 0;
+  const unitPrice = Math.round(lineTotal / quantity);
+  return Object.is(unitPrice, -0) ? 0 : unitPrice;
+}
+
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
 function dateTimeFormatter(timeZone: string) {
@@ -347,9 +356,9 @@ export function parseSaleLines(
       );
     }
     ids.add(externalId);
-    const unitPrice = Math.round(price * 100);
+    const revenue = Math.round(price * 100);
     const quantity = amount;
-    const revenue = Math.round(quantity * unitPrice);
+    const unitPrice = unitPriceFromLineTotal(revenue, quantity);
     if (!Number.isFinite(unitPrice) || !Number.isFinite(revenue)) {
       throw new ConvexError(
         `OnlinePOS returnerede en for stor salgslinje ved indeks ${index}`,

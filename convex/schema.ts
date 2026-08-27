@@ -280,6 +280,8 @@ export default defineSchema({
     quantity: v.number(),
     unitPrice: v.number(),
     revenue: v.number(),
+    // v1 stores unitPrice per unit and revenue as the full provider line total.
+    pricingVersion: v.optional(v.literal(1)),
     source: v.string(),
     externalId: v.string(),
     externalClerkId: v.optional(v.string()),

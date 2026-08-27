@@ -1294,6 +1294,7 @@ export const ingestSalesBatch = internalMutation({
           existingLine.quantity !== line.quantity ||
           existingLine.unitPrice !== line.unitPrice ||
           existingLine.revenue !== line.revenue ||
+          existingLine.pricingVersion !== 1 ||
           existingLine.externalId !== line.externalId
         ) {
           await ctx.db.patch("salesLines", existingLine._id, {
@@ -1304,6 +1305,7 @@ export const ingestSalesBatch = internalMutation({
             quantity: line.quantity,
             unitPrice: line.unitPrice,
             revenue: line.revenue,
+            pricingVersion: 1,
             externalId: line.externalId,
           });
           existingLineDocs.set(line.externalId, {
@@ -1315,6 +1317,7 @@ export const ingestSalesBatch = internalMutation({
             quantity: line.quantity,
             unitPrice: line.unitPrice,
             revenue: line.revenue,
+            pricingVersion: 1,
             externalId: line.externalId,
           });
         }
@@ -1329,6 +1332,7 @@ export const ingestSalesBatch = internalMutation({
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           revenue: line.revenue,
+          pricingVersion: 1,
           source: SOURCE,
           externalId: line.externalId,
         });
