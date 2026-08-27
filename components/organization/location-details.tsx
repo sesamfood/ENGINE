@@ -30,6 +30,22 @@ import { Spinner } from "@/components/ui/spinner";
 type OwnershipType = "owned" | "franchise" | "jointVenture" | "license";
 type LocationStatus = "planned" | "open" | "temporarilyClosed" | "closed";
 
+const ownershipItems = [
+  { value: "none", label: "Organisationens egen" },
+  { value: "owned", label: "Ejet" },
+  { value: "franchise", label: "Franchise" },
+  { value: "jointVenture", label: "Joint venture" },
+  { value: "license", label: "Licens" },
+] satisfies Array<{ value: OwnershipType | "none"; label: string }>;
+
+const statusItems = [
+  { value: "none", label: "Ikke angivet" },
+  { value: "planned", label: "Planlagt" },
+  { value: "open", label: "Åben" },
+  { value: "temporarilyClosed", label: "Midlertidigt lukket" },
+  { value: "closed", label: "Lukket" },
+] satisfies Array<{ value: LocationStatus | "none"; label: string }>;
+
 type Draft = {
   marketId: Id<"markets"> | null;
   legalEntityId: Id<"legalEntities"> | null;
@@ -109,6 +125,27 @@ export function LocationDetails({
     markets === undefined ||
     legalEntities === undefined ||
     operators === undefined;
+  const marketItems = [
+    { value: "none", label: "Intet valgt" },
+    ...(markets ?? []).map((market) => ({
+      value: market.id,
+      label: market.name,
+    })),
+  ];
+  const legalEntityItems = [
+    { value: "none", label: "Organisationens egen" },
+    ...(legalEntities ?? []).map((entity) => ({
+      value: entity.id,
+      label: entity.name,
+    })),
+  ];
+  const operatorItems = [
+    { value: "none", label: "Ingen operatør" },
+    ...(operators ?? []).map((operator) => ({
+      value: operator.id,
+      label: operator.name,
+    })),
+  ];
 
   async function save() {
     setSaving(true);
@@ -158,6 +195,7 @@ export function LocationDetails({
               <Field>
                 <FieldLabel htmlFor="location-market">Marked</FieldLabel>
                 <Select
+                  items={marketItems}
                   value={draft.marketId ?? "none"}
                   onValueChange={(value) =>
                     setDraft({
@@ -187,6 +225,7 @@ export function LocationDetails({
                   Juridisk enhed
                 </FieldLabel>
                 <Select
+                  items={legalEntityItems}
                   value={draft.legalEntityId ?? "none"}
                   onValueChange={(value) =>
                     setDraft({
@@ -216,6 +255,7 @@ export function LocationDetails({
               <Field>
                 <FieldLabel htmlFor="location-operator">Operatør</FieldLabel>
                 <Select
+                  items={operatorItems}
                   value={draft.operatorId ?? "none"}
                   onValueChange={(value) =>
                     setDraft({
@@ -243,6 +283,7 @@ export function LocationDetails({
               <Field>
                 <FieldLabel htmlFor="location-ownership">Ejerskab</FieldLabel>
                 <Select
+                  items={ownershipItems}
                   value={draft.ownershipType ?? "none"}
                   onValueChange={(value) =>
                     setDraft({
@@ -325,6 +366,7 @@ export function LocationDetails({
               <Field>
                 <FieldLabel htmlFor="location-status">Status</FieldLabel>
                 <Select
+                  items={statusItems}
                   value={draft.status ?? "none"}
                   onValueChange={(value) =>
                     setDraft({
