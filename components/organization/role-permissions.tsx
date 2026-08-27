@@ -46,6 +46,7 @@ import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -73,6 +74,12 @@ type RoleRow = {
 };
 
 type Draft = Record<string, string[]>;
+
+const granularityItems = [
+  { value: "detail", label: "Detaljer" },
+  { value: "aggregate", label: "Kun totaler" },
+  { value: "anonymous", label: "Anonymiseret" },
+] satisfies Array<{ value: DataGranularity; label: string }>;
 
 function messageFrom(error: unknown) {
   return error instanceof Error
@@ -258,6 +265,7 @@ export function RolePermissions() {
                 {rows.map((role) => (
                   <TableCell key={role.role}>
                     <Select
+                      items={granularityItems}
                       value={currentGranularity[role.role] ?? "detail"}
                       onValueChange={(value) => {
                         if (!value) return;
@@ -275,9 +283,11 @@ export function RolePermissions() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="detail">Detaljer</SelectItem>
-                        <SelectItem value="aggregate">Kun totaler</SelectItem>
-                        <SelectItem value="anonymous">Anonymiseret</SelectItem>
+                        <SelectGroup>
+                          <SelectItem value="detail">Detaljer</SelectItem>
+                          <SelectItem value="aggregate">Kun totaler</SelectItem>
+                          <SelectItem value="anonymous">Anonymiseret</SelectItem>
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </TableCell>
