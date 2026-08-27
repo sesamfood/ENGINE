@@ -1,6 +1,5 @@
 "use client";
 
-import { Fragment } from "react";
 import { MapPinIcon } from "lucide-react";
 import { useQuery } from "convex/react";
 import { useLocationAccess } from "@/components/app-shell";
@@ -26,6 +25,7 @@ type ScopeLocation = Location & {
   marketId: Id<"markets"> | null;
   operatorId: Id<"operators"> | null;
 };
+const checkboxItemClassName = "min-h-10 pr-1.5 pl-8 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:right-auto [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:left-2";
 
 export function ScopeSelector({
   scope,
@@ -166,17 +166,17 @@ export function ScopeSelector({
             <DropdownMenuGroup>
               <DropdownMenuLabel>Lokationer</DropdownMenuLabel>
               {currentLevel !== "location" ? (
-                <DropdownMenuCheckboxItem checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
+                <DropdownMenuCheckboxItem className={checkboxItemClassName} checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
                   {currentLevel === "organization" ? "Alle lokationer" : `Alle i ${currentParentName ?? "gruppen"}`}
                 </DropdownMenuCheckboxItem>
               ) : null}
             </DropdownMenuGroup>
             {currentLevel !== "location" ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuGroup className="grid max-h-64 grid-cols-[minmax(0,1fr)_auto] gap-x-1 overflow-y-auto">
+            <DropdownMenuGroup className="max-h-64 overflow-y-auto">
               {selectedLocations.map((location) => (
-                <Fragment key={location.id}>
+                <div key={location.id} role="presentation" className="group/location grid grid-cols-[minmax(0,1fr)_auto] gap-x-1">
                   <DropdownMenuCheckboxItem
-                    className="min-h-10"
+                    className={checkboxItemClassName}
                     checked={selectedIds.includes(location.id)}
                     disabled={selectedIds.includes(location.id) && selectedIds.length <= 1}
                     onCheckedChange={(checked) => toggleLocation(location.id, checked)}
@@ -184,13 +184,13 @@ export function ScopeSelector({
                     <span className="min-w-0 truncate">{location.name}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuItem
-                    className="min-h-10 justify-center"
+                    className="invisible min-h-10 justify-center group-focus-within/location:visible group-hover/location:visible"
                     aria-label={`Vælg kun ${location.name}`}
                     onClick={() => selectOnlyLocation(location.id)}
                   >
                     Kun
                   </DropdownMenuItem>
-                </Fragment>
+                </div>
               ))}
             </DropdownMenuGroup>
           </DropdownMenuContent>
