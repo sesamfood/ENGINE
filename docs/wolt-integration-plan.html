@@ -1,0 +1,1257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Wolt order integration plan</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f3f5f4;
+        --paper: #ffffff;
+        --ink: #17201e;
+        --muted: #5b6763;
+        --line: #d5dcda;
+        --soft: #edf3f1;
+        --accent: #146c5a;
+        --accent-soft: #dff2ed;
+        --warn: #8a4b08;
+        --warn-soft: #fff0d7;
+        --danger: #9a3030;
+        --danger-soft: #fbe7e7;
+        --code: #edf0ef;
+        --shadow: 0 1px 2px rgb(12 26 22 / 0.06), 0 16px 36px rgb(12 26 22 / 0.06);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101513;
+          --paper: #171d1b;
+          --ink: #edf3f1;
+          --muted: #a8b4b0;
+          --line: #35413d;
+          --soft: #202a27;
+          --accent: #79d4bd;
+          --accent-soft: #173a31;
+          --warn: #f0b765;
+          --warn-soft: #3b2b15;
+          --danger: #f08f8f;
+          --danger-soft: #402020;
+          --code: #202724;
+          --shadow: none;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.58 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      a {
+        color: var(--accent);
+        text-underline-offset: 0.16em;
+      }
+
+      a:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 3px;
+        border-radius: 2px;
+      }
+
+      code {
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        background: var(--code);
+        color: var(--ink);
+        font: 0.9em/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        overflow-wrap: anywhere;
+      }
+
+      main {
+        width: min(1260px, calc(100% - 32px));
+        margin: 32px auto 64px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 250px;
+        gap: 28px;
+        align-items: start;
+      }
+
+      article {
+        min-width: 0;
+        padding: clamp(24px, 5vw, 56px);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--paper);
+        box-shadow: var(--shadow);
+      }
+
+      nav {
+        position: sticky;
+        top: 24px;
+        padding-left: 18px;
+        border-left: 2px solid var(--line);
+        font-size: 0.9rem;
+      }
+
+      nav strong,
+      nav a {
+        display: block;
+      }
+
+      nav strong {
+        margin-bottom: 8px;
+      }
+
+      nav a {
+        padding: 4px 0;
+        text-decoration: none;
+      }
+
+      nav a:hover {
+        text-decoration: underline;
+      }
+
+      header {
+        margin-bottom: 36px;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4 {
+        line-height: 1.2;
+        letter-spacing: -0.018em;
+      }
+
+      h1 {
+        max-width: 20ch;
+        margin: 0 0 14px;
+        font-size: clamp(2rem, 5vw, 3.35rem);
+      }
+
+      h2 {
+        margin: 52px 0 16px;
+        font-size: 1.62rem;
+        scroll-margin-top: 24px;
+      }
+
+      h3 {
+        margin: 30px 0 10px;
+        font-size: 1.15rem;
+      }
+
+      h4 {
+        margin: 20px 0 8px;
+        font-size: 1rem;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      ul,
+      ol {
+        margin: 10px 0 18px;
+        padding-left: 1.35rem;
+      }
+
+      li + li {
+        margin-top: 6px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .lede {
+        max-width: 78ch;
+        color: var(--muted);
+        font-size: 1.08rem;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        margin-top: 20px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 750;
+      }
+
+      .callout {
+        margin: 22px 0;
+        padding: 17px 20px;
+        border-left: 4px solid var(--accent);
+        border-radius: 0 9px 9px 0;
+        background: var(--accent-soft);
+      }
+
+      .callout.warning {
+        border-color: var(--warn);
+        background: var(--warn-soft);
+      }
+
+      .callout.danger {
+        border-color: var(--danger);
+        background: var(--danger-soft);
+      }
+
+      .callout > :last-child {
+        margin-bottom: 0;
+      }
+
+      .label {
+        margin-bottom: 6px;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.055em;
+        text-transform: uppercase;
+      }
+
+      .table-wrap {
+        margin: 18px 0 26px;
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 720px;
+        font-size: 0.93rem;
+      }
+
+      th,
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--soft);
+        font-weight: 760;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(105px, 1fr));
+        gap: 8px;
+        margin: 24px 0;
+        align-items: stretch;
+      }
+
+      .flow-step {
+        position: relative;
+        min-height: 98px;
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--soft);
+        font-size: 0.87rem;
+      }
+
+      .flow-step:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        z-index: 1;
+        top: 36px;
+        right: -13px;
+        color: var(--accent);
+        font-size: 1.15rem;
+        font-weight: 800;
+      }
+
+      .flow-step strong {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .phase {
+        margin: 18px 0;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--paper) 88%, var(--soft));
+      }
+
+      .phase h3 {
+        margin-top: 0;
+      }
+
+      .phase-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px 24px;
+      }
+
+      .phase-grid p {
+        margin-bottom: 0;
+      }
+
+      .checklist {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      .checklist li {
+        position: relative;
+        padding-left: 1.65rem;
+      }
+
+      .checklist li::before {
+        content: "□";
+        position: absolute;
+        left: 0;
+        color: var(--accent);
+        font-weight: 800;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      footer {
+        margin-top: 48px;
+        padding-top: 22px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 1060px) {
+        main {
+          display: block;
+        }
+
+        nav {
+          position: static;
+          margin: 18px 0 0;
+          padding: 18px;
+          border: 1px solid var(--line);
+          border-radius: 10px;
+          background: var(--paper);
+          columns: 2;
+        }
+
+        nav strong {
+          column-span: all;
+        }
+
+        .flow {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .flow-step:not(:last-child)::after {
+          display: none;
+        }
+      }
+
+      @media (max-width: 680px) {
+        main {
+          width: min(100% - 18px, 1260px);
+          margin-top: 9px;
+        }
+
+        article {
+          padding: 22px 18px 36px;
+          border-radius: 10px;
+        }
+
+        nav {
+          columns: 1;
+        }
+
+        .flow,
+        .phase-grid {
+          grid-template-columns: 1fr;
+        }
+
+        h2 {
+          margin-top: 42px;
+        }
+      }
+
+      @media print {
+        body {
+          background: white;
+          color: black;
+        }
+
+        main {
+          display: block;
+          width: 100%;
+          margin: 0;
+        }
+
+        article {
+          border: 0;
+          box-shadow: none;
+        }
+
+        nav {
+          display: none;
+        }
+
+        a {
+          color: black;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        <header>
+          <p class="eyebrow">Implementation plan</p>
+          <h1>Read-only Wolt order integration</h1>
+          <p class="lede">
+            Build a forward-only Wolt Marketplace Order API integration that records order lifecycle and item facts, removes consumer PII at the boundary, and serves local Convex data to a dedicated order page, dashboards, and Count waste.
+          </p>
+          <div class="meta">
+            <span class="status">Scope confirmed</span>
+            <span>Prepared 27 August 2026</span>
+            <span>Wolt API use approved</span>
+            <span>Target: multi-tenant general availability</span>
+          </div>
+        </header>
+
+        <div class="callout">
+          <p class="label">Decision</p>
+          <p>
+            Keep Wolt orders, items, events, credentials, and daily rollups in isolated Wolt tables for v1. Do not write Wolt into <code>salesOrders</code>, <code>salesLines</code>, or <code>salesDaily</code>. Dashboard queries combine the current OnlinePOS daily branch with the Wolt daily branch only when the user explicitly selects Combined.
+          </p>
+        </div>
+
+        <div class="callout warning">
+          <p class="label">Main risk</p>
+          <p>
+            OnlinePOS reset and reconciliation currently delete all sales rows for a location or day without a safe provider boundary. Sharing those tables could erase Wolt data, merge unrelated order identities, and double-count overlapping orders. Isolated storage avoids that migration and keeps the first release small.
+          </p>
+        </div>
+
+        <section id="outcome">
+          <h2>1. Outcome and boundaries</h2>
+          <p>
+            The application will observe Wolt orders. Wolt Merchant remains the operational tool. The integration will not accept, reject, confirm, mark ready, replace, refund, or otherwise change an order.
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Area</th>
+                  <th>Confirmed behavior</th>
+                  <th>Not in v1</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Order history</td>
+                  <td>Forward-only from each location's activation time. Store lifecycle, basket, and item facts for 400 days.</td>
+                  <td>Historical import or reconstruction before activation.</td>
+                </tr>
+                <tr>
+                  <td>Operations</td>
+                  <td>Read-only order list and detail.</td>
+                  <td>Order actions, menu writes, venue management, courier controls, or Wolt Drive.</td>
+                </tr>
+                <tr>
+                  <td>Sales sources</td>
+                  <td>OnlinePOS, Wolt, or Combined. Combined is a literal sum with a duplicate warning.</td>
+                  <td>Cross-provider matching or heuristic deduplication.</td>
+                </tr>
+                <tr>
+                  <td>Revenue</td>
+                  <td>Delivered basket after discounts, excluding delivery fees and cancelled or rejected orders. Subtract auditable refunds when the read payload exposes them.</td>
+                  <td>Settlement, commission, payout, or fee accounting.</td>
+                </tr>
+                <tr>
+                  <td>Onboarding</td>
+                  <td>SSIO per venue and WIO bulk onboarding. Every venue maps to one organization location.</td>
+                  <td>Brand OAuth in v1.</td>
+                </tr>
+                <tr>
+                  <td>Privacy</td>
+                  <td>Persist only order, venue, basket, status, and item facts needed by the product.</td>
+                  <td>Consumer name, phone, comment, address, coordinates, company or tax details, loyalty data, and raw payloads.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Success measures</h3>
+          <ul>
+            <li>Every valid, routed webhook is durably recorded before the HTTP 200 response.</li>
+            <li>Duplicate and out-of-order events converge on one current order snapshot and one correct daily contribution.</li>
+            <li>OnlinePOS maintenance cannot update or delete Wolt records.</li>
+            <li>All tenant and location checks run on the Convex server.</li>
+            <li>Dashboard and order-list reads never call Wolt.</li>
+            <li>A schema and log inspection proves that excluded PII is not persisted.</li>
+          </ul>
+        </section>
+
+        <section id="contract">
+          <h2>2. Wolt contract and first checkpoint</h2>
+          <p>
+            Wolt has approved this use of its API. Phase 0 is therefore a credential and behavior check, not a commercial feasibility study. If the supplied credentials do not support the approved read-only flow, stop and resolve the mismatch with Wolt before implementing order operations.
+          </p>
+
+          <h3>Documented facts</h3>
+          <ul>
+            <li>
+              The <a href="https://developer.wolt.com/docs/api/order?server=Test">Order API</a> exposes <code>GET /v2/orders/{orderId}</code>. The documented read flow is a webhook followed by a fetch for one order. The reviewed reference does not document a list, date search, cursor, export, or history endpoint.
+            </li>
+            <li>
+              Test API base: <code>https://pos-integration-service.development.dev.woltapi.com</code>. Production API base: <code>https://pos-integration-service.wolt.com</code>.
+            </li>
+            <li>
+              <a href="https://developer.wolt.com/docs/authentication20">OAuth 2.0 access tokens</a> are valid for one hour. Refresh tokens are valid for 30 days, are single-use, and rotate on every refresh.
+            </li>
+            <li>
+              <a href="https://developer.wolt.com/docs/webhook">Webhooks</a> are signed over the raw body with HMAC-SHA256. The signature is hexadecimal in <code>WOLT-SIGNATURE</code>. Wolt requires a cryptographically random secret of at least 128 bits and an HTTP 200 acknowledgement. It documents one retry after five seconds and two more at five-second intervals.
+            </li>
+            <li>
+              Requested order events are <code>CREATED</code>, <code>PRODUCTION</code>, <code>READY</code>, <code>DELIVERED</code>, and <code>CANCELED</code>. Webhook statuses are uppercase while the order object uses lowercase values.
+            </li>
+            <li>
+              Order <code>id</code> is the durable key. <code>order_number</code> is display-only, is a string, and can repeat. Money uses integer minor units. <code>basket_price</code> covers items and modifiers and excludes fees.
+            </li>
+            <li>
+              Wolt warns that fields and enum values can be added. Parsing must tolerate unknown properties and preserve an unknown status as a bounded raw value plus a normalized <code>other</code> value.
+            </li>
+          </ul>
+
+          <h3>Phase 0 evidence to obtain</h3>
+          <ul>
+            <li>A test client ID and secret, one SSIO test venue, and a WIO test path.</li>
+            <li>Successful token exchange and <code>GET /v2/orders/{orderId}</code> for an event received at the test webhook.</li>
+            <li>Confirmation that the configured client is read-only for this product even though Wolt's <a href="https://developer.wolt.com/docs/getting-started/restaurant">restaurant guide</a> also describes operational POS actions.</li>
+            <li>Actual payloads for instant, preorder, delivered, cancelled, discounted, full-refund, and partial-refund cases.</li>
+            <li>Webhook secret topology, event selection, replay support, numeric rate limits, and whether Menu API reads are included.</li>
+          </ul>
+        </section>
+
+        <section id="repository">
+          <h2>3. Repository constraints</h2>
+          <p>
+            The existing local read boundary is correct: dashboards read Convex rather than provider APIs. The existing shared write boundary is not ready for another provider.
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Finding</th>
+                  <th>Current location</th>
+                  <th>Plan response</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Order identity omits source and uses a numeric order number.</td>
+                  <td><code>convex/schema.ts</code>, <code>convex/onlinePosSync.ts</code></td>
+                  <td>Use Wolt <code>id</code> in an isolated table. Store display order number as a string.</td>
+                </tr>
+                <tr>
+                  <td>Daily sales has one combined row per location and day with no source.</td>
+                  <td><code>convex/schema.ts</code></td>
+                  <td>Add <code>woltSalesDaily</code>. Treat current <code>salesDaily</code> as the OnlinePOS branch for v1.</td>
+                </tr>
+                <tr>
+                  <td>OnlinePOS reset and day reconciliation delete all provider rows in their target.</td>
+                  <td><code>convex/onlinePosSync.ts</code></td>
+                  <td>Do not place Wolt data in those tables. No OnlinePOS rewrite is required for v1.</td>
+                </tr>
+                <tr>
+                  <td>Sales widget freshness is OnlinePOS-specific.</td>
+                  <td><code>lib/dashboard/registry.ts</code>, <code>convex/lib/dashboardMetrics.ts</code></td>
+                  <td>Resolve freshness from the providers selected by each widget and the locations in its server-resolved scope.</td>
+                </tr>
+                <tr>
+                  <td>Count waste reads sales lines without a source boundary and applies OnlinePOS mapping.</td>
+                  <td><code>convex/onlinePos.ts</code></td>
+                  <td>Split OnlinePOS and Wolt loaders, filter explicitly, then combine only after the location setting is resolved.</td>
+                </tr>
+                <tr>
+                  <td>There is no external-provider webhook route.</td>
+                  <td><code>convex/http.ts</code></td>
+                  <td>Add a narrow Wolt HTTP boundary backed by internal mutations and scheduled actions.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout warning">
+            <p class="label">Compatibility rule</p>
+            <p>
+              Existing sales widgets, custom metrics, and REST endpoints keep their current OnlinePOS meaning unless a source is explicitly added to that contract. This prevents an integration rollout from silently changing published sales totals.
+            </p>
+          </div>
+        </section>
+
+        <section id="architecture">
+          <h2>4. Architecture</h2>
+          <div class="flow" aria-label="Wolt ingestion and read flow">
+            <div class="flow-step"><strong>1. Wolt</strong>Signed order event</div>
+            <div class="flow-step"><strong>2. HTTP boundary</strong>Verify raw-body HMAC and parse envelope</div>
+            <div class="flow-step"><strong>3. Durable inbox</strong>Resolve venue, dedupe event, schedule work</div>
+            <div class="flow-step"><strong>4. Fetch worker</strong>Refresh token if needed and GET Order V2</div>
+            <div class="flow-step"><strong>5. Minimize</strong>Validate known fields and discard PII</div>
+            <div class="flow-step"><strong>6. Local model</strong>Upsert order, items, events, and daily delta</div>
+            <div class="flow-step"><strong>7. Reads</strong>Order page, dashboards, mapping, and Count waste</div>
+          </div>
+
+          <p>
+            The HTTP path performs only work needed for safe acknowledgement. One internal mutation resolves the venue, inserts or finds the event, and schedules processing transactionally. It returns HTTP 200 after that commit, not after the Wolt order fetch. Fetch, parsing, order upsert, item replacement, and daily correction run asynchronously.
+          </p>
+
+          <h3>Order update rule</h3>
+          <ol>
+            <li>Deduplicate the webhook by Wolt venue ID plus event ID.</li>
+            <li>Fetch Order V2 using the connection for the event venue.</li>
+            <li>Reject a fetched order whose venue does not match that connection.</li>
+            <li>Parse into a PII-free internal value. Permit unknown JSON keys and unknown enum values.</li>
+            <li>Compare <code>modified_at</code> with the stored order. An older snapshot may add event history but cannot replace a newer order snapshot.</li>
+            <li>Compute the old daily contribution and the new daily contribution. Apply only the delta.</li>
+            <li>Mark the inbox event complete. Retry retryable failures; dead-letter permanent or exhausted failures.</li>
+          </ol>
+
+          <p>
+            This delta rule handles delivered, cancelled, and later refund corrections without rebuilding a day. It also makes duplicate snapshots net to zero.
+          </p>
+        </section>
+
+        <section id="data">
+          <h2>5. Data model</h2>
+          <p>
+            Every tenant-owned row includes <code>organizationId</code> and, where applicable, <code>locationId</code>. Public queries begin with organization and enforce location scope. Two global indexes are justified only for the signature-verified inbound route: venue routing and event deduplication. They are internal-only and immediately recover the tenant boundary.
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th>Purpose and key fields</th>
+                  <th>Indexes and retention</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>woltVenueConnections</code></td>
+                  <td>Organization, location, Wolt venue ID, onboarding mode, state, activation time, encrypted access and refresh tokens, access expiry, refresh version or lease, health timestamps, bounded last error.</td>
+                  <td>Unique organization/location and Wolt venue routing indexes. Keep while connected and through the detailed-data retention period after disconnect.</td>
+                </tr>
+                <tr>
+                  <td><code>woltOAuthStates</code></td>
+                  <td>Hash of random state, organization, location, initiating user, redirect target, expiry, and consumed time. Never store the browser state token in plaintext.</td>
+                  <td>Organization and state-hash indexes. Delete expired or consumed rows after 24 hours.</td>
+                </tr>
+                <tr>
+                  <td><code>woltOnboardingEvents</code></td>
+                  <td>Durable WIO authorization-code inbox with partner venue ID, encrypted code, redirect URL allowlist result, processing state, attempts, and expiry.</td>
+                  <td>Organization/location and partner-venue indexes. Purge the code immediately after exchange; remove the envelope after 30 days.</td>
+                </tr>
+                <tr>
+                  <td><code>woltWebhookEvents</code></td>
+                  <td>Organization, location, venue ID, event ID, order ID, raw event status, event time, receive time, processing state, attempt count, next retry, bounded error. This is also the order status history.</td>
+                  <td>Internal venue/event dedupe index; organization/order/time and retry indexes. Retain 400 days. Store no raw body.</td>
+                </tr>
+                <tr>
+                  <td><code>woltWebhookQuarantine</code></td>
+                  <td>System-owned, PII-free envelope for a validly signed event whose venue is not mapped. Store only bounded event, venue, order, status, and timing fields.</td>
+                  <td>Venue and received-time indexes. Alert immediately and purge after seven days.</td>
+                </tr>
+                <tr>
+                  <td><code>woltOrders</code></td>
+                  <td>Organization, location, Wolt order ID, display order number string, normalized and bounded raw status, instant or preorder type, business time, created and modified times, basket amount after discounts, refund amount if proven, net revenue, currency, item count, and contribution version.</td>
+                  <td>Unique organization/Wolt-order index plus organization/location/business-time and organization/location/status/time indexes. Retain 400 days.</td>
+                </tr>
+                <tr>
+                  <td><code>woltOrderItems</code></td>
+                  <td>Organization, location, order ID, provider row ID, name, quantity, <code>pos_id</code>, SKU, GTIN, line amount, currency, business time, and delivered contribution state. No consumer fields.</td>
+                  <td>Organization/order and organization/location/business-time indexes. Retain 400 days.</td>
+                </tr>
+                <tr>
+                  <td><code>woltProductMappings</code></td>
+                  <td>Organization, optional location override, identifier kind and normalized value, local product ID, author, and update time.</td>
+                  <td>Unique organization/location/identifier index and organization/product index. Location mapping wins over organization mapping.</td>
+                </tr>
+                <tr>
+                  <td><code>woltSalesDaily</code></td>
+                  <td>Organization, location, local day start, currency, delivered net revenue, delivered order count, cancelled terminal order count, and delivered item quantity.</td>
+                  <td>Unique organization/location/day index and organization/day index. Keep indefinitely.</td>
+                </tr>
+                <tr>
+                  <td><code>countSalesSourceSettings</code></td>
+                  <td>Organization, location, and <code>onlinePos</code>, <code>wolt</code>, or <code>combined</code>.</td>
+                  <td>Unique organization/location index. Default is derived only until a user saves a value.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Status and contribution normalization</h3>
+          <ul>
+            <li>Webhook <code>CANCELED</code> and fetched <code>rejected</code> normalize to terminal <code>cancelled</code>.</li>
+            <li>Fetched <code>delivered</code> normalizes to terminal <code>delivered</code>.</li>
+            <li>Unknown values normalize to <code>other</code> while retaining bounded raw text for diagnosis.</li>
+            <li>Delivered contribution is one order plus basket total after discounts, less a refund amount only when its source and meaning are proven.</li>
+            <li>Cancelled contribution is one terminal cancellation and zero revenue.</li>
+            <li>All other states contribute zero to delivered revenue, delivered orders, and cancellation denominator.</li>
+            <li>Business time is <code>created_at</code> for instant orders and the scheduled fulfillment time for preorders. Day bucketing uses the location timezone.</li>
+          </ul>
+        </section>
+
+        <section id="security">
+          <h2>6. Security, reliability, and privacy</h2>
+
+          <h3>Inbound boundaries</h3>
+          <ul>
+            <li>Read the request as bytes, calculate HMAC-SHA256 over the unchanged body, decode the hex header, and compare equal-length byte arrays in constant time before parsing JSON.</li>
+            <li>Reject an invalid signature without logging the body. Apply a small request-size cap before allocation.</li>
+            <li>After signature verification, validate a narrow event envelope. Never persist the raw body.</li>
+            <li>Resolve Wolt venue ID through the internal route index. A missing venue goes to the bounded quarantine and raises an alert.</li>
+            <li>Return HTTP 200 for a duplicate already committed to the inbox. Return 200 for a newly committed event. Do not wait for the Wolt fetch.</li>
+          </ul>
+
+          <h3>OAuth and token storage</h3>
+          <ul>
+            <li>Keep Wolt client secret, webhook secret, WIO endpoint API key, and an application encryption key in Convex environment variables. Separate test and production values.</li>
+            <li>Encrypt access tokens, refresh tokens, and pending WIO authorization codes before storing them. Public settings queries return status and timestamps, never credentials or ciphertext.</li>
+            <li>For SSIO, create a high-entropy one-time state bound to organization, location, user, exact redirect URI, and a short expiry. Consume it in one server mutation.</li>
+            <li>For WIO, verify the <code>X-API-Key</code>, validate <code>partner_venue_id</code> against a preconfigured location mapping, durably queue the single-use code, and return quickly. Wolt documents a one-hour authorization-code lifetime.</li>
+            <li>Serialize refresh per connection with a mutation-acquired versioned lease. Persist the new access and refresh tokens only if the lease version still matches.</li>
+            <li>A crash after Wolt rotates the refresh token but before Convex commits the new one cannot be made atomic across systems. Detect the failed token set, mark the connection <code>reauthorization_required</code>, alert, and use SSIO or WIO to reconnect.</li>
+            <li>Refresh before access expiry and rotate inactive refresh tokens well before 30 days. Never request a new token for every API call.</li>
+          </ul>
+
+          <h3>Retries and observability</h3>
+          <ul>
+            <li>Retry network errors, <code>429</code>, <code>500</code>, and <code>503</code> with bounded exponential backoff and jitter. Respect <code>Retry-After</code> when present.</li>
+            <li>Treat malformed identifiers, venue mismatch, and persistent authorization failures as non-retryable until configuration changes.</li>
+            <li>Expose per-venue last event, last successful fetch, backlog, dead-letter count, token health, and bounded last error to integration managers.</li>
+            <li>Never put tokens, raw bodies, consumer fields, or full provider responses in logs or error strings.</li>
+            <li>Provide an integration-manager action to retry a dead-letter event after the cause is corrected.</li>
+          </ul>
+
+          <h3>Authorization</h3>
+          <ul>
+            <li><code>integrations.manage</code> is required to connect, disconnect, retry, or edit Wolt mappings. SSIO also requires access to the selected location. Bulk WIO mapping requires all-location access.</li>
+            <li><code>sales.viewDetail</code> plus location scope is required for the Wolt order page, items, and detailed custom datasets.</li>
+            <li><code>sales.viewAggregate</code> or <code>sales.viewDetail</code> is required for aggregate Wolt dashboard metrics.</li>
+            <li>Every public Convex function derives the organization from Better Auth. Client-side hiding is only a usability aid.</li>
+          </ul>
+        </section>
+
+        <section id="onboarding">
+          <h2>7. Location onboarding</h2>
+
+          <h3>SSIO self-service</h3>
+          <ol>
+            <li>An integration manager selects one accessible location from Administration integrations.</li>
+            <li>The server creates the expiring OAuth state and returns the Wolt authorization URL using an exact allowlisted redirect URI.</li>
+            <li>The callback consumes the state, exchanges the authorization code, extracts and verifies the Wolt venue ID, and creates the location connection.</li>
+            <li>The activation timestamp is set when the connection becomes ready. No earlier order is claimed or imported.</li>
+            <li>Repeat for every location. One venue connection never grants another location access.</li>
+          </ol>
+          <p>
+            Follow Wolt's <a href="https://developer.wolt.com/docs/authenticationssio">SSIO flow</a>. The settings UI shows connected venue, activation time, token health, last event, and last successful fetch, but no credential values.
+          </p>
+
+          <h3>WIO bulk onboarding</h3>
+          <ol>
+            <li>An all-location integration manager exports or confirms the explicit mapping from internal location ID to the partner venue ID supplied to Wolt.</li>
+            <li>Wolt sends one request per venue to the authorization-code endpoint described in the <a href="https://developer.wolt.com/docs/authenticationwio">WIO guide</a>.</li>
+            <li>The endpoint verifies <code>X-API-Key</code>, resolves <code>partner_venue_id</code>, stores the encrypted one-hour code, schedules exchange, and returns a 2xx response.</li>
+            <li>The worker exchanges each code independently. One venue failure does not block other locations.</li>
+            <li>Unmapped partner venue IDs enter a bounded onboarding quarantine and alert an integration manager.</li>
+          </ol>
+
+          <p>
+            Brand OAuth remains out of scope because it is eligibility-gated and is not needed to support connecting all locations. See Wolt's <a href="https://developer.wolt.com/docs/authentication-brand">Brand OAuth documentation</a>.
+          </p>
+        </section>
+
+        <section id="product">
+          <h2>8. Product behavior</h2>
+
+          <h3>Dedicated Wolt orders page</h3>
+          <p>
+            Add a main-application route, proposed as <code>/wolt-orders</code>, and register it in <code>components/app-shell.tsx</code> and <code>lib/sidebar-navigation.ts</code>. Final user-facing text must follow the repository's Danish terminology; this plan does not invent that copy.
+          </p>
+          <ul>
+            <li>Server-paginated and index-backed. Default to recent orders within the user's accessible locations.</li>
+            <li>Filters: date, location, normalized status, instant or preorder, and display order number.</li>
+            <li>List fields: order number, business time, location, status, type, net basket, currency, and item count.</li>
+            <li>Detail: item names, quantities, identifiers, line amounts, mapping state, and PII-free status history.</li>
+            <li>Reactive updates from Convex. No Wolt call during page load and no operational buttons.</li>
+            <li>Empty, loading, stale, disconnected, and partial-error states. Touch targets and tables must work on tablets and remain usable on phones.</li>
+          </ul>
+
+          <h3>Product mapping</h3>
+          <p>
+            Reuse the interaction pattern in <code>components/catalog/product-form.tsx</code> and <code>components/catalog/online-pos-product-suggestions.ts</code>: the select list shows suggested local products and why they match, but the user must choose and save.
+          </p>
+          <ol>
+            <li>Build the Wolt item catalog from observed order items. If credentials grant Menu API read access, use <a href="https://developer.wolt.com/docs/menuguide">menu identifiers</a> to improve coverage, not as a hard dependency.</li>
+            <li>Rank exact GTIN, <code>pos_id</code>, or SKU matches before normalized name matches. Do not silently prefer a conflicting exact match.</li>
+            <li>Save a shared organization mapping when an identifier means the same product across locations.</li>
+            <li>Save a location override when the same identifier conflicts. Resolution order is location exact match, then organization exact match, then unmapped.</li>
+            <li>Never auto-save a suggestion. Show unmapped and conflicting items as work to resolve.</li>
+          </ol>
+
+          <p>
+            The same mapping resolver serves Wolt order detail, product dimensions in custom dashboards, and Count waste. This avoids three subtly different mapping rules.
+          </p>
+
+          <h3>Count waste</h3>
+          <ul>
+            <li>Add a per-location source setting in Administration Count: OnlinePOS, Wolt, or Combined.</li>
+            <li>Before a value is saved, default to OnlinePOS when connected; otherwise default to Wolt when connected. Never default to Combined.</li>
+            <li>The OnlinePOS loader explicitly filters <code>salesLines.source</code> to OnlinePOS before applying OnlinePOS mappings.</li>
+            <li>The Wolt loader reads only delivered Wolt item contributions in the Count business interval and applies Wolt mapping resolution.</li>
+            <li>Combined concatenates both mapped sources. It does not deduplicate. Show the duplicate warning next to the setting and in the resulting report context.</li>
+            <li>Show mapping coverage, freshness, and omitted unmapped quantities so a quiet zero cannot look complete.</li>
+          </ul>
+        </section>
+
+        <section id="dashboard">
+          <h2>9. Dashboard contract</h2>
+
+          <h3>Source-aware built-ins</h3>
+          <p>
+            Add <code>SalesSource = onlinePos | wolt | combined</code> to sales widget options. Persist it in <code>WidgetInstance.options</code>, validate it in Convex, include it in metric requests and shared-dashboard requests, and pass it to the metric computer. Existing saved widgets have no value and must continue to resolve to OnlinePOS. The add-widget dialog defaults to Wolt only when the selected scope has Wolt and no OnlinePOS connection.
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>OnlinePOS</th>
+                  <th>Wolt</th>
+                  <th>Combined</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Sales revenue</td>
+                  <td>Current <code>salesDaily.revenue</code>.</td>
+                  <td>Delivered net basket from <code>woltSalesDaily</code>.</td>
+                  <td>Literal sum by location, day, and currency.</td>
+                </tr>
+                <tr>
+                  <td>Order count</td>
+                  <td>Current <code>salesDaily.orderCount</code>.</td>
+                  <td>Delivered Wolt orders.</td>
+                  <td>Literal sum. Possible duplicates remain.</td>
+                </tr>
+                <tr>
+                  <td>Average basket</td>
+                  <td>OnlinePOS revenue divided by OnlinePOS orders.</td>
+                  <td>Wolt delivered net revenue divided by delivered Wolt orders.</td>
+                  <td>Total selected revenue divided by total selected orders, not an average of averages.</td>
+                </tr>
+                <tr>
+                  <td>Wolt cancellation rate</td>
+                  <td>Not applicable.</td>
+                  <td><code>cancelled / (delivered + cancelled)</code> for terminal Wolt orders.</td>
+                  <td>Not applicable. This metric is Wolt-only.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            Combined must be chosen explicitly and must display: totals may contain the same order from both systems. No heuristic reconciliation is attempted. Render the warning from the saved widget option in edit mode, normal dashboard mode, and shared-dashboard mode. A result-contract change is not required for that static warning.
+          </p>
+
+          <h3>Freshness</h3>
+          <ul>
+            <li>OnlinePOS reads current sync status. Wolt reads each selected venue connection's last successful order fetch and error state.</li>
+            <li>Combined evaluates both providers only where they are configured. A missing OnlinePOS connection cannot make a Wolt-only location stale.</li>
+            <li>Result freshness uses the oldest relevant successful time and counts only selected provider/location errors.</li>
+            <li>A Wolt backlog or dead letter makes the affected location stale even if its last successful fetch is recent.</li>
+          </ul>
+
+          <h3>Custom datasets</h3>
+          <ul>
+            <li>Add <code>woltOrders</code> with revenue, delivered orders, cancelled orders, cancellation rate inputs, and item quantity. Dimensions include location, normalized status, order type, and business-time bucket.</li>
+            <li>Add <code>woltOrderItems</code> with net line amount, quantity, and line count. Dimensions include mapped product, observed item, location, status, and order type.</li>
+            <li>Detailed datasets require <code>sales.viewDetail</code>. Aggregate outputs accept <code>sales.viewAggregate</code> only when the executor cannot reveal order, item, or small-group detail.</li>
+            <li>Keep read caps, truncation indicators, organization checks, and location scope in the custom executor.</li>
+          </ul>
+
+          <h3>Likely dashboard files</h3>
+          <p>
+            <code>lib/dashboard/types.ts</code>, <code>lib/dashboard/registry.ts</code>, <code>lib/dashboard/datasets.ts</code>, <code>convex/lib/dashboardValidators.ts</code>, <code>convex/lib/dashboardMetrics.ts</code>, <code>convex/lib/customMetricExecutor.ts</code>, <code>convex/dashboard.ts</code>, <code>convex/dashboardShare.ts</code>, <code>components/dashboard/add-widget-dialog.tsx</code>, <code>components/dashboard/dashboard-grid.tsx</code>, and the widget settings path in <code>components/dashboard/widget-card.tsx</code>.
+          </p>
+        </section>
+
+        <section id="phases">
+          <h2>10. Delivery phases</h2>
+          <p>
+            Each phase has a hard exit. Do not start production ingestion until the sandbox contract is proven. Do not expose Combined until its warning and source-specific tests pass.
+          </p>
+
+          <div class="phase">
+            <h3>Phase 0: prove the approved read path</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Demonstrate SSIO, WIO, signed event receipt, token rotation, and Order V2 fetch with the supplied test credentials.</p>
+              <p><strong>Scope.</strong> Wolt sandbox, exact redirect URLs, event and secret configuration, representative payload capture in temporary development tooling only.</p>
+              <p><strong>Constraints.</strong> No production data and no order-state mutations. Captured payloads must not enter the repository or logs.</p>
+              <p><strong>Exit.</strong> A written contract fixture describes required non-PII fields, refund visibility, preorder fulfillment time, statuses, menu access, rate guidance, and forward-only limitations.</p>
+            </div>
+          </div>
+
+          <div class="phase">
+            <h3>Phase 1: source-safe foundation</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Add isolated schema, strict PII-free internal types, indexes, crypto helpers, and daily contribution arithmetic.</p>
+              <p><strong>Likely files.</strong> <code>convex/schema.ts</code>, new <code>convex/lib/woltApi.ts</code>, new Wolt model helpers, and retention scheduling in <code>convex/crons.ts</code>.</p>
+              <p><strong>Constraints.</strong> No change to existing sales table or REST meaning. Money remains integer minor units. All org records are scoped.</p>
+              <p><strong>Exit.</strong> Parser fixtures tolerate unknown fields, reject missing required fields, discard every excluded PII field, and daily delta tests prove duplicate updates are net zero.</p>
+            </div>
+          </div>
+
+          <div class="phase">
+            <h3>Phase 2: SSIO and WIO onboarding</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Let authorized organizations connect every location through SSIO or WIO and see connection health.</p>
+              <p><strong>Likely files.</strong> New <code>convex/wolt.ts</code>, <code>convex/http.ts</code>, <code>app/organization/integrations/page.tsx</code>, and new organization Wolt connection components.</p>
+              <p><strong>Constraints.</strong> One-time state, redirect allowlist, encrypted tokens, WIO API-key verification, all-location access for bulk mapping, no Brand OAuth.</p>
+              <p><strong>Exit.</strong> Replayed state and authorization codes fail, cross-location connection attempts fail server-side, concurrent token refresh yields one stored token set, and reconnect recovery works.</p>
+            </div>
+          </div>
+
+          <div class="phase">
+            <h3>Phase 3: webhook and order ingestion</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Receive, authenticate, queue, fetch, normalize, and persist Wolt orders with correct status and daily deltas.</p>
+              <p><strong>Likely files.</strong> <code>convex/http.ts</code>, new <code>convex/woltSync.ts</code>, <code>convex/lib/woltApi.ts</code>, Wolt internal mutations, and <code>convex/crons.ts</code>.</p>
+              <p><strong>Constraints.</strong> HTTP 200 only after durable queueing. No raw body storage. No provider call from reads. Forward-only from connection activation.</p>
+              <p><strong>Exit.</strong> Valid, invalid, duplicate, out-of-order, unknown-venue, retry, dead-letter, delivered, cancelled, preorder, discount, and supported refund cases pass with exact daily totals.</p>
+            </div>
+          </div>
+
+          <div class="phase">
+            <h3>Phase 4: Wolt order page</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Provide a responsive, reactive, read-only order list and PII-free details for permitted locations.</p>
+              <p><strong>Likely files.</strong> New app route and components, new public queries in <code>convex/wolt.ts</code>, <code>components/app-shell.tsx</code>, and <code>lib/sidebar-navigation.ts</code>.</p>
+              <p><strong>Constraints.</strong> <code>sales.viewDetail</code>, server pagination and location scope, no operational controls, Danish implementation copy.</p>
+              <p><strong>Exit.</strong> Role and location tests prevent cross-tenant and cross-location reads; phone-sized and tablet layouts expose the same safe fields; no network request reaches Wolt.</p>
+            </div>
+          </div>
+
+          <div class="phase">
+            <h3>Phase 5: mapping and Count waste</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Add user-confirmed Wolt product mapping and per-location OnlinePOS, Wolt, or Combined Count sales input.</p>
+              <p><strong>Likely files.</strong> Wolt mapping queries and mutations, new organization mapping UI, <code>components/catalog/product-form.tsx</code> pattern reuse, <code>convex/onlinePos.ts</code>, and Count settings UI.</p>
+              <p><strong>Constraints.</strong> Location override beats organization mapping. Suggestions never auto-save. Combined never defaults and never deduplicates.</p>
+              <p><strong>Exit.</strong> Exact and name suggestions are labeled, conflicts remain unresolved until chosen, source selection produces exact quantities, and coverage/freshness warnings are visible.</p>
+            </div>
+          </div>
+
+          <div class="phase">
+            <h3>Phase 6: source-aware dashboards</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Expose Wolt, OnlinePOS, and explicit Combined sales metrics plus Wolt cancellation and custom datasets.</p>
+              <p><strong>Likely files.</strong> Dashboard types, validators, registry, computers, custom executor, authenticated and shared queries, add/edit widget UI, and grid requests.</p>
+              <p><strong>Constraints.</strong> Existing widget default remains OnlinePOS. Combined is literal addition with a warning. Permissions and source choice are validated server-side.</p>
+              <p><strong>Exit.</strong> Revenue, order count, weighted basket, cancellation formula, currency handling, previous period, freshness, sharing, and location scope pass for all source choices.</p>
+            </div>
+          </div>
+
+          <div class="phase">
+            <h3>Phase 7: production hardening and launch</h3>
+            <div class="phase-grid">
+              <p><strong>Goal.</strong> Complete Wolt test cases, operational alerts, retention, support runbook, staged enablement, and production credential cutover.</p>
+              <p><strong>Likely files.</strong> Focused tests, deployment environment documentation, health UI, runbook, cron retention, and feature-flag or connection-state gates.</p>
+              <p><strong>Constraints.</strong> Start with internal organizations, then a small venue set, then general availability. Disconnect never deletes retained facts immediately.</p>
+              <p><strong>Exit.</strong> Wolt QA is accepted, backlog and token alerts reach an owner, rollback is rehearsed, PII audit is clean, and production venues remain current through an observation window.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="verification">
+          <h2>11. Verification matrix</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Area</th>
+                  <th>Required proof</th>
+                  <th>Failure prevented</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Webhook authentication</td>
+                  <td>Valid signature accepted; modified body, wrong secret, malformed hex, missing header, and oversized body rejected.</td>
+                  <td>Forged events and signature bypass.</td>
+                </tr>
+                <tr>
+                  <td>Durability</td>
+                  <td>HTTP 200 follows the inbox commit; a worker crash leaves retryable state; duplicate venue/event IDs produce one event.</td>
+                  <td>Lost orders during the short Wolt retry window.</td>
+                </tr>
+                <tr>
+                  <td>Ordering</td>
+                  <td>READY before PRODUCTION, duplicate DELIVERED, and an older fetched snapshot do not regress current state or totals.</td>
+                  <td>Out-of-order corruption.</td>
+                </tr>
+                <tr>
+                  <td>Tenant isolation</td>
+                  <td>Users, OAuth state, venue routing, order queries, mappings, dashboards, and Count settings cannot cross organization or location scope.</td>
+                  <td>Cross-tenant disclosure or writes.</td>
+                </tr>
+                <tr>
+                  <td>Tokens</td>
+                  <td>Concurrent refresh has one lease winner; stale completion cannot overwrite new tokens; lost rotation moves to reauthorization.</td>
+                  <td>Single-use refresh revocation and silent outages.</td>
+                </tr>
+                <tr>
+                  <td>Privacy</td>
+                  <td>Fixtures containing every excluded consumer field leave no value in tables, logs, dead letters, errors, or UI responses.</td>
+                  <td>Unneeded PII retention.</td>
+                </tr>
+                <tr>
+                  <td>Revenue</td>
+                  <td>Instant, preorder, discount, delivered, cancelled, full refund, partial refund, and later correction yield specified minor-unit deltas.</td>
+                  <td>Wrong days, fees, or refund totals.</td>
+                </tr>
+                <tr>
+                  <td>Sources</td>
+                  <td>OnlinePOS, Wolt, and Combined return expected revenue, counts, basket, currency, previous period, and freshness. Combined visibly warns.</td>
+                  <td>Silent double counting or changed defaults.</td>
+                </tr>
+                <tr>
+                  <td>Count waste</td>
+                  <td>Each location default and saved choice selects only its intended source; combined adds both; unmapped quantities remain visible.</td>
+                  <td>Provider ID collision and quiet omissions.</td>
+                </tr>
+                <tr>
+                  <td>Retention</td>
+                  <td>400-day detail cleanup removes eligible orders, items, and events but leaves daily totals and newer data intact.</td>
+                  <td>Over-retention or aggregate loss.</td>
+                </tr>
+                <tr>
+                  <td>Wolt sandbox</td>
+                  <td>Run relevant <a href="https://developer.wolt.com/docs/testcases">Wolt test cases</a> and confirm <a href="https://developer.wolt.com/docs/errors">error</a> and <a href="https://developer.wolt.com/docs/performancestandards">performance</a> expectations.</td>
+                  <td>Contract drift between local fixtures and Wolt.</td>
+                </tr>
+                <tr>
+                  <td>Repository checks</td>
+                  <td>Focused Convex tests, <code>npx tsc --noEmit</code>, repository lint command, and production build after each coherent phase.</td>
+                  <td>Type, validator, generated API, and route regressions.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="rollout">
+          <h2>12. Rollout and operations</h2>
+          <ol>
+            <li>Deploy schema and readers with Wolt hidden and no connected venues.</li>
+            <li>Enable test SSIO and WIO connections. Prove event processing and PII minimization.</li>
+            <li>Enable one internal production organization and a small location set at recorded activation times.</li>
+            <li>Observe event lag, fetch success, token rotation, dead letters, daily corrections, and source totals through a defined monitoring window.</li>
+            <li>Enable the order page, mapping, Count source choice, then Wolt dashboard choices in that order.</li>
+            <li>Expand to general availability after Wolt QA, support ownership, and rollback rehearsal.</li>
+          </ol>
+
+          <h3>Disable and rollback</h3>
+          <ul>
+            <li>Disabling a connection stops new fetches and marks Wolt data stale. It does not immediately delete retained orders or daily totals.</li>
+            <li>Application rollback hides Wolt routes and source choices, stops Wolt scheduled work, and preserves the isolated tables for diagnosis and later resume.</li>
+            <li>Never roll back by deleting shared sales data or changing existing widget defaults.</li>
+          </ul>
+
+          <h3>Operational alerts</h3>
+          <ul>
+            <li>Signature failures above a low threshold.</li>
+            <li>Valid event for an unknown venue.</li>
+            <li>Oldest queued event beyond the freshness target.</li>
+            <li>Any dead-letter event.</li>
+            <li>Repeated <code>401</code>, refresh lease failure, or reauthorization required.</li>
+            <li>No webhook or successful fetch for a connected venue beyond its expected activity window.</li>
+          </ul>
+        </section>
+
+        <section id="risks">
+          <h2>13. Risks and validation gates</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Risk or unknown</th>
+                  <th>Decision now</th>
+                  <th>Gate before release</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>No documented history endpoint or replay guarantee.</td>
+                  <td>Forward-only, durable inbox, no promise of historical completeness before activation.</td>
+                  <td>Ask Wolt for replay and retention behavior; document the answer in the runbook.</td>
+                </tr>
+                <tr>
+                  <td>Same sale may appear in OnlinePOS and Wolt.</td>
+                  <td>No matching. Combined is literal addition and never default.</td>
+                  <td>Warning appears wherever Combined is selected or viewed.</td>
+                </tr>
+                <tr>
+                  <td>Partial and full refund observability is unclear in Order V2 read payloads.</td>
+                  <td>Store refund fields only from an auditable read-side signal. Never infer from a status alone.</td>
+                  <td>Prove exact full and partial refund payloads. If unavailable, report delivered basket without refund subtraction and label the limitation before launch.</td>
+                </tr>
+                <tr>
+                  <td>Webhook and fetched status vocabularies differ.</td>
+                  <td>Keep bounded raw status and a tested normalized lifecycle.</td>
+                  <td>Exercise every configured event and terminal path in test.</td>
+                </tr>
+                <tr>
+                  <td>Numeric rate limits are not published in the reviewed pages.</td>
+                  <td>Queue fetches and use bounded backoff.</td>
+                  <td>Obtain quota and concurrency guidance from Wolt and tune worker limits.</td>
+                </tr>
+                <tr>
+                  <td>Webhook secret may be global per client or differently scoped.</td>
+                  <td>Use separate environment secrets for test and production, then route by venue after signature verification.</td>
+                  <td>Confirm secret rotation and venue topology with Wolt.</td>
+                </tr>
+                <tr>
+                  <td>Menu API may not be in the approved credential scope.</td>
+                  <td>Observed order items are sufficient for mapping. Menu read is an enhancement.</td>
+                  <td>Test Menu API access and disable it cleanly if unavailable.</td>
+                </tr>
+                <tr>
+                  <td>Rotating refresh cannot be atomically committed with Wolt.</td>
+                  <td>Lease, version check, health state, alert, and reauthorization recovery.</td>
+                  <td>Rehearse a crash after refresh in test.</td>
+                </tr>
+                <tr>
+                  <td>Currency, tax, deposits, discounts, and fees vary by market.</td>
+                  <td>Use basket total after discounts, exclude fees, preserve currency, and avoid settlement claims.</td>
+                  <td>Validate representative markets and mixed-currency dashboard behavior.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="acceptance">
+          <h2>14. Acceptance checklist</h2>
+          <ul class="checklist">
+            <li>Wolt test and production credentials, URLs, redirect allowlist, webhook secret, WIO API key, and events are documented outside source control.</li>
+            <li>SSIO can connect one accessible location; WIO can connect many explicitly mapped locations.</li>
+            <li>Brand OAuth and every order-state mutation are absent from v1.</li>
+            <li>The integration starts at a recorded activation time and performs no historical import.</li>
+            <li>Every Wolt-owned row is tenant-scoped; inbound global indexes are internal-only and tested.</li>
+            <li>Consumer name, phone, comment, address, company or tax data, loyalty data, and raw payloads are absent.</li>
+            <li>Wolt data is isolated from current generic sales tables and OnlinePOS reset or reconciliation.</li>
+            <li>Order identity uses Wolt <code>id</code>; display order number remains a string.</li>
+            <li>Delivered revenue uses basket after discounts, excludes fees and cancelled orders, and applies only proven refunds.</li>
+            <li>Instant and preorder business dates follow the confirmed rule in the location timezone.</li>
+            <li>Detailed facts expire after 400 days and Wolt daily totals remain indefinitely.</li>
+            <li>The read-only Wolt order page requires <code>sales.viewDetail</code> and enforces location scope.</li>
+            <li>Organization product mappings support location overrides and suggestions require explicit save.</li>
+            <li>Mapping resolution is shared by order details, dashboards, and Count waste.</li>
+            <li>Count source choice is per location, defaults OnlinePOS then Wolt, and never defaults Combined.</li>
+            <li>Existing sales built-ins offer OnlinePOS, Wolt, and Combined per widget without changing old widget defaults.</li>
+            <li>Combined is literal addition, has no heuristic deduplication, and always shows a duplicate warning.</li>
+            <li>Wolt cancellation rate uses cancelled terminal orders divided by delivered plus cancelled terminal orders.</li>
+            <li>Wolt order and item custom datasets enforce aggregate and detail permissions correctly.</li>
+            <li>Freshness follows the selected provider and location set, including queue and dead-letter health.</li>
+            <li>Webhook verification, event dedupe, out-of-order handling, token rotation, retries, and dead letters pass focused tests.</li>
+            <li>Wolt QA, operational alerts, support ownership, and rollback rehearsal are complete before general availability.</li>
+          </ul>
+        </section>
+
+        <section id="sources">
+          <h2>15. Sources</h2>
+          <p>Official Wolt documentation reviewed for this plan:</p>
+          <ul>
+            <li><a href="https://developer.wolt.com/docs/api/order?server=Test">Order API reference</a></li>
+            <li><a href="https://developer.wolt.com/docs/getting-started/restaurant">Restaurant integration guide</a></li>
+            <li><a href="https://developer.wolt.com/docs/authentication20">OAuth 2.0 authentication</a></li>
+            <li><a href="https://developer.wolt.com/docs/authenticationssio">Self-service integration onboarding</a></li>
+            <li><a href="https://developer.wolt.com/docs/authenticationwio">Wolt-led integration onboarding</a></li>
+            <li><a href="https://developer.wolt.com/docs/authentication-brand">Brand OAuth</a></li>
+            <li><a href="https://developer.wolt.com/docs/webhook">Webhook events, signing, and retries</a></li>
+            <li><a href="https://developer.wolt.com/docs/menuguide">Menu identifiers and mapping guidance</a></li>
+            <li><a href="https://developer.wolt.com/docs/errors">Error handling</a></li>
+            <li><a href="https://developer.wolt.com/docs/performancestandards">Performance standards</a></li>
+            <li><a href="https://developer.wolt.com/docs/testcases">Integration test cases</a></li>
+          </ul>
+
+          <p class="small">
+            Repository findings are based on <code>convex/schema.ts</code>, <code>convex/onlinePosSync.ts</code>, <code>convex/onlinePos.ts</code>, the dashboard modules under <code>lib/dashboard</code> and <code>convex/lib</code>, and the integration and navigation components present on 27 August 2026.
+          </p>
+        </section>
+
+        <footer>
+          This is an implementation plan, not a claim that unresolved refund, replay, quota, or Menu API behavior is documented by Wolt. Phase 0 converts those items into tested facts before production work depends on them.
+        </footer>
+      </article>
+
+      <nav aria-label="Plan contents">
+        <strong>Contents</strong>
+        <a href="#outcome">1. Outcome</a>
+        <a href="#contract">2. Wolt contract</a>
+        <a href="#repository">3. Repository constraints</a>
+        <a href="#architecture">4. Architecture</a>
+        <a href="#data">5. Data model</a>
+        <a href="#security">6. Security</a>
+        <a href="#onboarding">7. Onboarding</a>
+        <a href="#product">8. Product behavior</a>
+        <a href="#dashboard">9. Dashboards</a>
+        <a href="#phases">10. Delivery phases</a>
+        <a href="#verification">11. Verification</a>
+        <a href="#rollout">12. Rollout</a>
+        <a href="#risks">13. Risks</a>
+        <a href="#acceptance">14. Acceptance</a>
+        <a href="#sources">15. Sources</a>
+      </nav>
+    </main>
+  </body>
+</html>
