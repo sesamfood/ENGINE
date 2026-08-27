@@ -19,6 +19,7 @@ import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
 import type {
   DashboardConfig,
   DashboardScope,
+  SalesSource,
   WidgetInstance,
 } from "../lib/dashboard/types";
 import {
@@ -28,6 +29,7 @@ import {
   metricRequestValidator,
   metricResultValidator,
   rangeValidator,
+  salesSourceValidator,
   scopeValidator,
   visualizationValidator,
   widgetValidator,
@@ -35,7 +37,9 @@ import {
 import {
   createMetricParamsResolver,
   dashboardMetricComputers,
+  resolveBuiltinSalesSource,
   resolveMetricParams,
+  salesSourceProviders,
 } from "./lib/dashboardMetrics";
 import {
   customMetricIsSensitive,
@@ -98,6 +102,11 @@ type DashboardAccess = {
   granularity: DataGranularity;
 };
 
+type BuiltinMetricId = Extract<
+  WidgetInstance["metric"],
+  { kind: "builtin" }
+>["id"];
+
 function customMetricAllowed(
   auth: DashboardAccess,
   spec: Doc<"customMetrics">["spec"],
@@ -110,8 +119,12 @@ function customMetricAllowed(
   const queries =
     spec.kind === "single" ? [spec.query] : [spec.numerator, spec.denominator];
   return queries.every((querySpec) => {
-    const permission = dashboardDatasets[querySpec.dataset].permission;
+    const dataset = dashboardDatasets[querySpec.dataset];
+    const permission = dataset.permission;
     if (!permission) return true;
+    if (dataset.source === "wolt") {
+      return hasPermission(auth.role, auth.permissions, "sales.viewDetail");
+    }
     return (
       hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
       hasPermission(auth.role, auth.permissions, permission) ||
@@ -127,6 +140,26 @@ function canViewSales(auth: DashboardAccess) {
     hasPermission(auth.role, auth.permissions, "sales.viewAggregate") ||
     hasPermission(auth.role, auth.permissions, "sales.viewDetail")
   );
+}
+
+function canViewWoltSales(auth: DashboardAccess) {
+  return (
+    hasPermission(auth.role, auth.permissions, "sales.viewAggregate") ||
+    hasPermission(auth.role, auth.permissions, "sales.viewDetail")
+  );
+}
+
+function canViewBuiltinMetric(
+  auth: DashboardAccess,
+  metricId: BuiltinMetricId,
+  salesSource?: SalesSource,
+) {
+  const definition = metricRegistry[metricId];
+  if (!definition.sensitive) return true;
+  const usesWolt =
+    definition.source === "wolt" ||
+    (salesSource !== undefined && salesSourceProviders(salesSource).includes("wolt"));
+  return usesWolt ? canViewWoltSales(auth) : canViewSales(auth);
 }
 
 function canViewDetailedSales(auth: DashboardAccess) {
@@ -183,10 +216,14 @@ async function validateWidgets(
     }
     if (widget.metric.kind === "builtin") {
       const definition = metricRegistry[widget.metric.id];
+      const salesSource = resolveBuiltinSalesSource(
+        widget.metric.id,
+        widget.options?.salesSource,
+      );
       if (!definition.visualizations.includes(widget.visualization)) {
         throw new ConvexError("Visualiseringen understøttes ikke af målingen");
       }
-      if (definition.sensitive && !canViewSales(auth)) {
+      if (!canViewBuiltinMetric(auth, widget.metric.id, salesSource)) {
         throw new ConvexError("Du har ikke adgang til denne måling");
       }
     } else {
@@ -209,6 +246,9 @@ async function validateWidgets(
         !metric.spec.dimension
       ) {
         throw new ConvexError("Visualiseringen kræver en dimension");
+      }
+      if (widget.options?.salesSource !== undefined) {
+        throw new ConvexError("Salgskilden kan kun bruges på salgsmålinger");
       }
     }
     if (widget.position) {
@@ -338,6 +378,11 @@ const scopeOptionsValidator = v.object({
   locations: v.array(scopeLocationOptionValidator),
 });
 
+const salesSourceAvailabilityValidator = v.object({
+  onlinePos: v.boolean(),
+  wolt: v.boolean(),
+});
+
 export const listScopeOptions = query({
   args: {},
   returns: scopeOptionsValidator,
@@ -378,6 +423,70 @@ export const listScopeOptions = query({
         marketId: location.marketId ?? null,
         operatorId: location.operatorId ?? null,
       })),
+    };
+  },
+});
+
+export const salesSourceAvailability = query({
+  args: { scope: scopeValidator },
+  returns: salesSourceAvailabilityValidator,
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardViewer(ctx);
+    const params = await resolveMetricParams(
+      ctx,
+      auth.organizationId,
+      args.scope,
+      { preset: "today" },
+      Date.now(),
+      auth.locationScope,
+    );
+    const [onlinePosIntegration, onlinePosConnections, woltIntegration, woltConnections] =
+      await Promise.all([
+        ctx.db
+          .query("onlinePosIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", auth.organizationId),
+          )
+          .unique(),
+        Promise.all(
+          params.locations.map((location) =>
+            ctx.db
+              .query("onlinePosLocationIntegrations")
+              .withIndex("by_organizationId_and_locationId", (q) =>
+                q
+                  .eq("organizationId", auth.organizationId)
+                  .eq("locationId", location.id),
+              )
+              .unique(),
+          ),
+        ),
+        ctx.db
+          .query("woltIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", auth.organizationId),
+          )
+          .unique(),
+        Promise.all(
+          params.locations.map((location) =>
+            ctx.db
+              .query("woltVenueConnections")
+              .withIndex("by_organizationId_and_locationId", (q) =>
+                q
+                  .eq("organizationId", auth.organizationId)
+                  .eq("locationId", location.id),
+              )
+              .unique(),
+          ),
+        ),
+      ]);
+    return {
+      onlinePos:
+        onlinePosIntegration?.enabled === true &&
+        onlinePosConnections.some(Boolean),
+      wolt:
+        canViewWoltSales(auth) &&
+        woltIntegration?.enabled !== false &&
+        woltConnections.some((connection) => connection?.state === "ready"),
     };
   },
 });
@@ -459,12 +568,15 @@ async function availableWidgets(
   auth: DashboardAccess & { organizationId: string },
   widgets: WidgetInstance[],
 ) {
-  const salesAllowed = canViewSales(auth);
   return (
     await Promise.all(
       widgets.map(async (widget) => {
         if (widget.metric.kind === "builtin") {
-          return salesAllowed || !metricRegistry[widget.metric.id].sensitive
+          const salesSource = resolveBuiltinSalesSource(
+            widget.metric.id,
+            widget.options?.salesSource,
+          );
+          return canViewBuiltinMetric(auth, widget.metric.id, salesSource)
             ? widget
             : null;
         }
@@ -487,8 +599,16 @@ async function dashboardExternalSources(
   const sources = new Set<ExternalMetricSource>();
   for (const widget of widgets) {
     if (widget.metric.kind === "builtin") {
-      const source = metricRegistry[widget.metric.id].source;
-      if (source !== "internal") sources.add(source);
+      const selectedSalesSource = resolveBuiltinSalesSource(
+        widget.metric.id,
+        widget.options?.salesSource,
+      );
+      const providerSources = selectedSalesSource
+        ? salesSourceProviders(selectedSalesSource)
+        : [metricRegistry[widget.metric.id].source];
+      for (const source of providerSources) {
+        if (source !== "internal") sources.add(source);
+      }
       continue;
     }
 
@@ -1158,6 +1278,7 @@ export const getMetric = query({
     scope: scopeValidator,
     range: rangeValidator,
     now: v.number(),
+    salesSource: v.optional(salesSourceValidator),
   },
   returns: metricResultValidator,
   handler: async (ctx, args) => {
@@ -1168,10 +1289,11 @@ export const getMetric = query({
     if (!definition.visualizations.includes(args.visualization)) {
       throw new ConvexError("Visualiseringen understøttes ikke af målingen");
     }
-    if (
-      definition.sensitive &&
-      !canViewSales(auth)
-    ) {
+    const salesSource = resolveBuiltinSalesSource(
+      args.metricId,
+      args.salesSource,
+    );
+    if (!canViewBuiltinMetric(auth, args.metricId, salesSource)) {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
     const params = await resolveMetricParams(
@@ -1188,7 +1310,10 @@ export const getMetric = query({
       },
     );
     return markScopeTruncated(
-      await dashboardMetricComputers[args.metricId](ctx, params),
+      await dashboardMetricComputers[args.metricId](
+        ctx,
+        salesSource ? { ...params, salesSource } : params,
+      ),
       params.scopeTruncated,
     );
   },
@@ -1220,10 +1345,17 @@ export const getMetrics = query({
         if (!definition.visualizations.includes(widget.visualization)) {
           throw new ConvexError("Visualiseringen understøttes ikke af målingen");
         }
-        if (definition.sensitive && !canViewSales(auth)) {
+        const salesSource = resolveBuiltinSalesSource(
+          widget.metric.id,
+          widget.salesSource,
+        );
+        if (!canViewBuiltinMetric(auth, widget.metric.id, salesSource)) {
           throw new ConvexError("Du har ikke adgang til denne måling");
         }
         continue;
+      }
+      if (widget.salesSource !== undefined) {
+        throw new ConvexError("Salgskilden kan kun bruges på salgsmålinger");
       }
       const metric = await ctx.db.get("customMetrics", widget.metric.id);
       if (
@@ -1261,11 +1393,18 @@ export const getMetrics = query({
         const params = await resolveParams(
           widget.range ? { preset: widget.range } : args.range,
         );
+        const salesSource =
+          widget.metric.kind === "builtin"
+            ? resolveBuiltinSalesSource(widget.metric.id, widget.salesSource)
+            : undefined;
         return {
           key: widget.key,
           result: markScopeTruncated(
             widget.metric.kind === "builtin"
-              ? await dashboardMetricComputers[widget.metric.id](ctx, params)
+              ? await dashboardMetricComputers[widget.metric.id](
+                  ctx,
+                  salesSource ? { ...params, salesSource } : params,
+                )
               : await executeCustomMetric(
                   ctx,
                   customMetrics.get(widget.metric.id)!.spec,
@@ -1397,7 +1536,6 @@ export const createShare = action({
     if (source.roleIds.length > 0 && !source.roleIds.includes(auth.role)) {
       throw new ConvexError("Du har ikke adgang til dette dashboard");
     }
-    const salesAllowed = canViewSales(auth);
     const customSnapshotById = new Map(
       source.customMetricSnapshots.map((snapshot) => [snapshot.id, snapshot]),
     );
@@ -1409,7 +1547,14 @@ export const createShare = action({
         }
         return (
           metricRegistry[widget.metric.id].shareable !== false &&
-          (salesAllowed || !metricRegistry[widget.metric.id].sensitive)
+          canViewBuiltinMetric(
+            auth,
+            widget.metric.id,
+            resolveBuiltinSalesSource(
+              widget.metric.id,
+              widget.options?.salesSource,
+            ),
+          )
         );
       },
     );

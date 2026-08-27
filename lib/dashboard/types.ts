@@ -21,6 +21,7 @@ export const metricIds = [
   "salesRevenue",
   "salesOrderCount",
   "averageBasket",
+  "woltCancellationRate",
 ] as const;
 
 export const visualizationIds = [
@@ -50,6 +51,15 @@ export type VisualizationId = (typeof visualizationIds)[number];
 export type WidgetSize = (typeof widgetSizes)[number];
 export type RangePreset = (typeof rangePresets)[number];
 export type WidgetRangePreset = Exclude<RangePreset, "custom">;
+export const salesSources = ["onlinePos", "wolt", "combined"] as const;
+export type SalesSource = (typeof salesSources)[number];
+
+export const salesSourceLabels: Record<SalesSource, string> = {
+  onlinePos: "OnlinePOS",
+  wolt: "Wolt",
+  combined: "OnlinePOS + Wolt",
+};
+
 export type CustomMetricDatasetId =
   | "waste"
   | "badDelivery"
@@ -59,7 +69,9 @@ export type CustomMetricDatasetId =
   | "counts"
   | "salesDaily"
   | "salesOrders"
-  | "salesLines";
+  | "salesLines"
+  | "woltOrders"
+  | "woltOrderItems";
 export type CustomMetricFilter = {
   field: string;
   op: "in" | "notIn";
@@ -130,7 +142,13 @@ export type WidgetInstance = {
   size: WidgetSize;
   position?: { column: number; row: number };
   range?: WidgetRangePreset;
-  options?: { limit?: number; yAxisMin?: number; yAxisMax?: number };
+  options?: {
+    limit?: number;
+    yAxisMin?: number;
+    yAxisMax?: number;
+    /** Sales widgets default to OnlinePOS for backwards compatibility. */
+    salesSource?: SalesSource;
+  };
 };
 
 export type DashboardScope = {

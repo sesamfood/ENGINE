@@ -5,10 +5,12 @@ import { Clock3Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -34,8 +36,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
 import type { CountSchedule } from "@/lib/count-window";
+import type { SalesSource } from "@/lib/dashboard/types";
 
 const scheduleOptions = [
   { value: "monthly", label: "Månedligt" },
@@ -60,11 +64,33 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
+const salesSourceOptions: Array<{ value: SalesSource; label: string }> = [
+  { value: "onlinePos", label: "OnlinePOS" },
+  { value: "wolt", label: "Wolt" },
+  { value: "combined", label: "Combined: OnlinePOS + Wolt" },
+];
+
+function salesSourceFromValue(value: string): SalesSource | null {
+  switch (value) {
+    case "onlinePos":
+    case "wolt":
+    case "combined":
+      return value;
+    default:
+      return null;
+  }
+}
+
 export function CountSettings() {
   const access = useAccess();
   const canManage = usePermission("count.settings");
   const settings = useQuery(api.count.getCountSettings, canManage ? {} : "skip");
+  const sourceSettings = useQuery(
+    api.countSales.getSettings,
+    canManage ? {} : "skip",
+  );
   const saveSettings = useMutation(api.count.setCountSettings);
+  const saveSource = useMutation(api.countSales.setSource);
   const [draftAllowOutsideWindow, setDraftAllowOutsideWindow] = useState<
     boolean | null
   >(null);
@@ -77,6 +103,10 @@ export function CountSettings() {
   const [draftSchedule, setDraftSchedule] = useState<CountSchedule | null>(
     null,
   );
+  const [draftSources, setDraftSources] = useState<Record<string, SalesSource>>(
+    {},
+  );
+  const [savingSource, setSavingSource] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const allowOutsideWindow =
     draftAllowOutsideWindow ?? settings?.allowOutsideWindow ?? false;
@@ -131,8 +161,29 @@ export function CountSettings() {
     }
   }
 
+  async function saveLocationSource(
+    locationId: Id<"locations">,
+    salesSource: SalesSource,
+  ) {
+    setSavingSource(locationId);
+    try {
+      await saveSource({ locationId, salesSource });
+      setDraftSources((current) => {
+        const next = { ...current };
+        delete next[locationId];
+        return next;
+      });
+      toast.success("Salgskilden er gemt for lokationen");
+    } catch (error) {
+      toast.error(messageFrom(error));
+    } finally {
+      setSavingSource(null);
+    }
+  }
+
   return (
-    <Card className="max-w-3xl">
+    <div className="flex flex-col gap-6 pb-10">
+      <Card className="max-w-3xl">
       <CardHeader>
         <div className="flex items-center gap-1">
           <CardTitle>Count-indstillinger</CardTitle>
@@ -330,6 +381,120 @@ export function CountSettings() {
           Gem Count-indstillinger
         </Button>
       </CardFooter>
-    </Card>
+      </Card>
+
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <CardTitle>Salgskilde til Count</CardTitle>
+          <CardDescription>
+            Vælg, hvilken salgskilde der skal bruges i Waste-rapporten for hver
+            lokation. Uden en gemt indstilling vælger Count OnlinePOS først og
+            Wolt, hvis OnlinePOS ikke er forbundet.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {!sourceSettings ? (
+            <Skeleton className="h-36 w-full" />
+          ) : sourceSettings.locations.length === 0 ? (
+            <Alert>
+              <AlertTitle>Ingen tilgængelige lokationer</AlertTitle>
+              <AlertDescription>
+                Du har ikke adgang til at vælge salgskilde for en lokation.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            sourceSettings.locations.map((location) => {
+              const draftSource = draftSources[location.id];
+              const selectedSource = draftSource ?? location.effectiveSource;
+              const hasDraft = draftSource !== undefined;
+              const isSaving = savingSource === location.id;
+              const onlinePosConnected = location.connected.onlinePos;
+              const woltConnected = location.connected.wolt;
+              return (
+                <div
+                  key={location.id}
+                  className="flex flex-col gap-3 rounded-lg border p-4"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-medium">{location.name}</h3>
+                      <div className="flex flex-wrap gap-2 pt-1 text-sm">
+                        <Badge variant={onlinePosConnected ? "secondary" : "outline"}>
+                          OnlinePOS: {onlinePosConnected ? "Forbundet" : "Ikke forbundet"}
+                        </Badge>
+                        <Badge variant={woltConnected ? "secondary" : "outline"}>
+                          Wolt: {woltConnected ? "Klar" : "Ikke klar"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {location.savedSource
+                        ? `Gemt: ${salesSourceOptions.find((option) => option.value === location.savedSource)?.label ?? location.savedSource}`
+                        : "Standardvalg endnu ikke gemt"}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <Field className="min-w-0 flex-1">
+                      <FieldLabel htmlFor={`count-sales-source-${location.id}`}>
+                        Salgskilde
+                      </FieldLabel>
+                      <Select
+                        items={salesSourceOptions}
+                        value={selectedSource}
+                        onValueChange={(value) => {
+                          const source = value
+                            ? salesSourceFromValue(value)
+                            : null;
+                          if (source) {
+                            setDraftSources((current) => ({
+                              ...current,
+                              [location.id]: source,
+                            }));
+                          }
+                        }}
+                      >
+                        <SelectTrigger
+                          id={`count-sales-source-${location.id}`}
+                          className="h-11 w-full"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {salesSourceOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Button
+                      type="button"
+                      className="min-h-11 sm:shrink-0"
+                      disabled={!hasDraft || isSaving}
+                      onClick={() => void saveLocationSource(location.id, selectedSource)}
+                    >
+                      {isSaving ? <Spinner data-icon="inline-start" /> : null}
+                      Gem salgskilde
+                    </Button>
+                  </div>
+                  {selectedSource === "combined" ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>Combined er valgt</AlertTitle>
+                      <AlertDescription>
+                        Combined lægger OnlinePOS- og Wolt-salg sammen. Det samme
+                        salg kan derfor blive talt med to gange.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

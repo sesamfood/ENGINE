@@ -47,6 +47,27 @@ crons.interval(
   { cursor: null },
 );
 
+crons.interval(
+  "recover pending Wolt jobs",
+  { minutes: 1 },
+  internal.woltSync.dispatchPendingJobs,
+  {},
+);
+
+crons.interval(
+  "maintain Wolt refresh tokens",
+  { minutes: 10 },
+  internal.woltSync.dispatchTokenMaintenance,
+  {},
+);
+
+crons.interval(
+  "prune Wolt order details",
+  { hours: 24 },
+  internal.woltSync.prune,
+  {},
+);
+
 // Audit history follows the existing 400-day sales retention window.
 crons.interval("prune audit log", { hours: 24 }, internal.audit.prune, {});
 

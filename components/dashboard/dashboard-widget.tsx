@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DashboardRange, MetricResult, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { WidgetCard } from "./widget-card";
@@ -17,6 +17,7 @@ export function DashboardWidget({
   onVisualizationChange,
   visualizations,
   onRangeChange,
+  onSalesSourceChange,
   onYAxisChange,
   onEditCustomMetric,
   onResize,
@@ -32,6 +33,7 @@ export function DashboardWidget({
   onVisualizationChange?: (visualization: VisualizationId) => void;
   visualizations?: readonly VisualizationId[];
   onRangeChange?: (range: WidgetRangePreset | undefined) => void;
+  onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
@@ -51,6 +53,7 @@ export function DashboardWidget({
       onVisualizationChange={onVisualizationChange}
       visualizations={visualizations}
       onRangeChange={onRangeChange}
+      onSalesSourceChange={onSalesSourceChange}
       onYAxisChange={onYAxisChange}
       onEditCustomMetric={onEditCustomMetric}
       onResize={onResize}

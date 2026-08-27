@@ -17,6 +17,7 @@ import {
   UtensilsIcon,
   UsersRoundIcon,
   UserRoundIcon,
+  ShoppingBagIcon,
 } from "lucide-react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Image from "next/image";
@@ -91,6 +92,7 @@ import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
 
 const primaryNavigation = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
+  { id: "woltOrders", label: "Wolt-ordrer", href: "/wolt-orders", icon: ShoppingBagIcon, pages: [] },
   { id: "transfers", label: "Transfer", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
   { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
   { id: "ownChecks", label: "Egenkontrol", href: "/own-checks", icon: ClipboardCheckIcon, pages: ["ownChecks.today", "ownChecks.overview", "ownChecks.documentation"] },
@@ -446,6 +448,7 @@ function OrganizationHome() {
   const featureLocked = useContext(FeatureLockContext);
   const kiosk = useKiosk();
   const canDashboard = usePermission("dashboard.view");
+  const canWoltOrders = usePermission("sales.viewDetail");
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
   const canWasteRegister = usePermission("waste.register");
@@ -491,9 +494,11 @@ function OrganizationHome() {
     ? effectiveKioskHome(kiosk, featureLocked)
     : featureLocked
       ? "/count"
-      : canDashboard
-        ? "/dashboard"
-        : canTransfersManage
+        : canDashboard
+          ? "/dashboard"
+          : canWoltOrders
+            ? "/wolt-orders"
+          : canTransfersManage
           ? "/transfers"
           : canTransfersView
             ? "/transfers/history"
@@ -581,6 +586,7 @@ function NavigationList() {
   const featureLocked = useContext(FeatureLockContext);
   const kiosk = useKiosk();
   const canDashboard = usePermission("dashboard.view");
+  const canWoltOrders = usePermission("sales.viewDetail");
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
   const canTransfers = canTransfersView || canTransfersManage;
@@ -623,6 +629,10 @@ function NavigationList() {
     api.navigation.getOrder,
     organization.data && isAuthenticated ? {} : "skip",
   );
+  const woltEnabled = useQuery(
+    api.wolt.isEnabled,
+    organization.data && isAuthenticated && canWoltOrders ? {} : "skip",
+  );
   const allNavigation = [
     ...primaryNavigation,
     employeesNavigation,
@@ -653,6 +663,9 @@ function NavigationList() {
   const navigation = kioskNavigation ?? orderedNavigation
     .filter((item) => {
       if (item.id === "dashboard") return canDashboard && !featureLocked;
+      if (item.id === "woltOrders") {
+        return canWoltOrders && woltEnabled === true && !featureLocked;
+      }
       if (item.id === "transfers") return canTransfers && !featureLocked;
       if (item.id === "waste") return canWaste;
       if (item.id === "ownChecks") return canOwnChecksAccess;

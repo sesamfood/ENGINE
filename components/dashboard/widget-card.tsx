@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -46,9 +47,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { metricRegistry, visualizationLabels } from "@/lib/dashboard/registry";
+import { defaultSalesSource, metricRegistry, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
-import { widgetSizes, type DashboardRange, type MetricResult, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
+import { salesSourceLabels, widgetSizes, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { previousTotal, total } from "./visualizations/utils";
@@ -167,6 +168,7 @@ export function WidgetCard({
   onVisualizationChange,
   visualizations,
   onRangeChange,
+  onSalesSourceChange,
   onYAxisChange,
   onEditCustomMetric,
   onResize,
@@ -182,6 +184,7 @@ export function WidgetCard({
   onVisualizationChange?: (visualization: VisualizationId) => void;
   visualizations?: readonly VisualizationId[];
   onRangeChange?: (range: WidgetRangePreset | undefined) => void;
+  onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
@@ -193,6 +196,11 @@ export function WidgetCard({
     : undefined;
   const metricLabel = customMetricLabel ?? definition?.label ?? "Tilpasset måling";
   const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
+  const salesSource = definition && supportsSalesSource(definition.id)
+    ? widget.options?.salesSource ?? defaultSalesSource(definition.id)
+    : definition?.id === "woltCancellationRate"
+      ? "wolt" as const
+      : undefined;
   const current = result ? total(result) : null;
   const previous = result ? previousTotal(result) : null;
   const freshness = result?.freshness;
@@ -389,6 +397,28 @@ export function WidgetCard({
                   <PencilIcon />
                 </Button>
               ) : null}
+              {definition && supportsSalesSource(definition.id) && onSalesSourceChange ? (
+                <Select
+                  items={Object.entries(salesSourceLabels).map(([value, label]) => ({ value, label }))}
+                  value={salesSource ?? "onlinePos"}
+                  onValueChange={(value) => {
+                    if (value === "onlinePos" || value === "wolt" || value === "combined") {
+                      onSalesSourceChange(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-11 w-40" aria-label={`Salgskilde for ${metricLabel}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {Object.entries(salesSourceLabels).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              ) : null}
               <Select
                 items={widgetRangeOptions}
                 value={widget.range ?? "board"}
@@ -410,7 +440,18 @@ export function WidgetCard({
           ) : null}
         </div>
       </CardHeader>
-      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", editable && "pb-8")}>{children}</CardContent>
+      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", editable && "pb-8")}>
+        {salesSource === "combined" ? (
+          <Alert className="mb-3">
+            <CircleAlertIcon />
+            <AlertTitle>Mulige dubletter</AlertTitle>
+            <AlertDescription>
+              Kombinerede OnlinePOS- og Wolt-data kan indeholde de samme ordrer.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {children}
+      </CardContent>
       {editable ? (
         <span
           data-dashboard-no-drag

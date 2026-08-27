@@ -1,12 +1,27 @@
 import type {
   MetricId,
   MetricUnit,
+  SalesSource,
   VisualizationId,
   WidgetInstance,
   WidgetSize,
 } from "./types";
 
-export type MetricSource = "internal" | "onlinepos" | "workfeed";
+export type MetricSource = "internal" | "onlinepos" | "wolt" | "workfeed";
+
+export const salesSourceMetricIds = [
+  "salesRevenue",
+  "salesOrderCount",
+  "averageBasket",
+] as const satisfies readonly MetricId[];
+
+export function supportsSalesSource(metricId: MetricId) {
+  return salesSourceMetricIds.includes(metricId as (typeof salesSourceMetricIds)[number]);
+}
+
+export function defaultSalesSource(metricId: MetricId): SalesSource {
+  return metricId === "woltCancellationRate" ? "wolt" : "onlinePos";
+}
 
 export type MetricDefinition = {
   id: MetricId;
@@ -259,6 +274,21 @@ const definitions = {
     sourceTables: ["salesDaily"],
     source: "onlinepos",
     unit: "currency",
+    visualizations: ["kpi", "line", "bar", "area", "table"],
+    defaultVisualization: "kpi",
+    defaultSize: "1x1",
+    sensitive: true,
+    shareable: true,
+  },
+  woltCancellationRate: {
+    id: "woltCancellationRate",
+    label: "Wolt-annulleringsrate",
+    category: "Salg",
+    description: "Andel af Wolt-ordrer, der blev annulleret i perioden.",
+    formula: "Annullerede Wolt-ordrer ÷ (leverede + annullerede Wolt-ordrer) × 100.",
+    sourceTables: ["woltSalesDaily"],
+    source: "wolt",
+    unit: "percent",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
     defaultSize: "1x1",

@@ -1123,12 +1123,41 @@ export function CountSheet() {
     if (!state?.count?.id) return;
     setExporting(true);
     try {
-      const report = await convex.query(api.onlinePos.buildCountWasteReport, {
+      const report = await convex.query(api.countSales.buildCountWasteReport, {
         countId: state.count.id,
       });
       if (!report.hasBaseline) {
         toast.error("Waste-rapporten kræver en tidligere registreret Count");
         return;
+      }
+      if (report.combinedWarning) {
+        toast.warning(report.combinedWarning);
+      }
+      if (report.unmappedSalesQuantity > 0) {
+        toast.warning(
+          `Wolt-salg på ${String(report.unmappedSalesQuantity).replace(".", ",")} enheder kunne ikke kobles til et Produkt.`,
+        );
+      }
+      const selectedHealth =
+        report.salesSource === "combined"
+          ? [report.sourceHealth.onlinePos, report.sourceHealth.wolt]
+          : [
+              report.salesSource === "onlinePos"
+                ? report.sourceHealth.onlinePos
+                : report.sourceHealth.wolt,
+            ];
+      if (
+        report.salesIncluded &&
+        selectedHealth.some((health) => health.freshnessAt === null)
+      ) {
+        toast.warning(
+          "Den valgte salgskilde har ingen registreret seneste synkronisering.",
+        );
+      }
+      if (!report.salesIncluded && report.salesOmittedReason) {
+        toast.warning(
+          `Salg fra den valgte kilde er ikke med: ${report.salesOmittedReason}`,
+        );
       }
       if (report.rows.length === 0) {
         toast.success("Der er ingen lagerafvigelser i denne Count");
@@ -1169,13 +1198,6 @@ export function CountSheet() {
           ]),
       );
       toast.success("Waste-rapporten er klar");
-      if (!report.salesIncluded) {
-        toast.warning(
-          report.salesOmittedReason
-            ? `OnlinePOS-salg er ikke med: ${report.salesOmittedReason}`
-            : "OnlinePOS-salg er ikke med i rapporten",
-        );
-      }
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {

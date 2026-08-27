@@ -1,5 +1,6 @@
 export const sidebarItems = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "woltOrders", label: "Wolt-ordrer" },
   { id: "transfers", label: "Transfer" },
   { id: "waste", label: "Waste" },
   { id: "ownChecks", label: "Egenkontrol" },

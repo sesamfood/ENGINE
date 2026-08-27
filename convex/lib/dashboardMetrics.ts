@@ -6,10 +6,13 @@ import {
   type MetricId,
   type MetricResult,
   type MetricUnit,
+  type SalesSource,
 } from "../../lib/dashboard/types";
 import type { DataGranularity } from "../../lib/auth-permissions";
 import {
+  defaultSalesSource,
   metricRegistry,
+  supportsSalesSource,
   type MetricSource,
 } from "../../lib/dashboard/registry";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -76,12 +79,35 @@ export type DashboardMetricParams = {
   timeZone: string;
   now: number;
   cache: Map<string, Promise<unknown>>;
+  salesSource?: SalesSource;
 };
 
 type MetricComputer = (
   ctx: QueryCtx,
   params: DashboardMetricParams,
 ) => Promise<MetricResult>;
+
+export function salesSourceProviders(source: SalesSource): MetricSource[] {
+  if (source === "combined") return ["onlinepos", "wolt"];
+  return [source === "onlinePos" ? "onlinepos" : "wolt"];
+}
+
+export function resolveBuiltinSalesSource(
+  metricId: MetricId,
+  requested?: SalesSource,
+): SalesSource | undefined {
+  if (supportsSalesSource(metricId)) return requested ?? defaultSalesSource(metricId);
+  if (metricId === "woltCancellationRate") {
+    if (requested !== undefined && requested !== "wolt") {
+      throw new ConvexError("Wolt-annulleringsrate kan kun bruge Wolt");
+    }
+    return "wolt";
+  }
+  if (requested !== undefined) {
+    throw new ConvexError("Salgskilden kan kun bruges på salgsmålinger");
+  }
+  return undefined;
+}
 
 type TimedValue = {
   timestamp: number;
@@ -748,46 +774,148 @@ function withAffectedNames(
     : freshness;
 }
 
-async function onlinePosFreshness(
+type ProviderHealth = {
+  locationId: Id<"locations">;
+  locationName: string;
+  configured: boolean;
+  lastSuccessAt: number | null;
+  stale: boolean;
+  error: boolean;
+};
+
+function freshnessFromHealth(
+  params: DashboardMetricParams,
+  health: ProviderHealth[],
+): Freshness {
+  const configured = health.filter((item) => item.configured);
+  const stale = configured.filter((item) => item.stale);
+  const errors = configured.filter((item) => item.error);
+  const successful = configured.flatMap((item) =>
+    item.lastSuccessAt === null ? [] : [item.lastSuccessAt],
+  );
+  const affectedNames = [
+    ...new Set([...stale, ...errors].map((item) => item.locationName)),
+  ];
+  return withAffectedNames(params, affectedNames, {
+    lastSuccessAt:
+      configured.length > 0 && successful.length === configured.length
+        ? Math.min(...successful)
+        : null,
+    staleLocationCount: stale.length,
+    errorLocationCount: errors.length,
+  });
+}
+
+async function onlinePosHealth(
   ctx: QueryCtx,
   params: DashboardMetricParams,
-): Promise<Freshness> {
-  return await cached(params, "freshness:onlinepos", async () => {
-    const statuses = await Promise.all(
-      params.locations.map((location) =>
-        ctx.db
-          .query("onlinePosSyncStatus")
-          .withIndex("by_organizationId_and_locationId", (q) =>
-            q
-              .eq("organizationId", params.organizationId)
-              .eq("locationId", location.id),
-          )
-          .unique(),
+): Promise<ProviderHealth[]> {
+  return await cached(params, "health:onlinepos", async () => {
+    const [master, connections, statuses] = await Promise.all([
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", params.organizationId),
+        )
+        .unique(),
+      Promise.all(
+        params.locations.map((location) =>
+          ctx.db
+            .query("onlinePosLocationIntegrations")
+            .withIndex("by_organizationId_and_locationId", (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("locationId", location.id),
+            )
+            .unique(),
+        ),
       ),
-    );
-    const staleNames: string[] = [];
-    const errorNames: string[] = [];
-    const successfulSyncs: number[] = [];
+      Promise.all(
+        params.locations.map((location) =>
+          ctx.db
+            .query("onlinePosSyncStatus")
+            .withIndex("by_organizationId_and_locationId", (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("locationId", location.id),
+            )
+            .unique(),
+        ),
+      ),
+    ]);
     const staleBefore = params.now - INTEGRATION_FRESHNESS_INTERVAL_MS;
-    for (const [index, location] of params.locations.entries()) {
+    return params.locations.map((location, index) => {
       const status = statuses[index];
+      const configured = master?.enabled === true && Boolean(connections[index]);
       const lastSuccessAt = status?.lastSuccessAt ?? null;
-      if (lastSuccessAt !== null) successfulSyncs.push(lastSuccessAt);
-      const stale = lastSuccessAt === null || lastSuccessAt < staleBefore;
-      const error = status?.state === "error" || Boolean(status?.lastError);
-      if (stale) staleNames.push(location.name);
-      if (error) errorNames.push(location.name);
-    }
-    const affectedNames = [...new Set([...staleNames, ...errorNames])];
-    return withAffectedNames(params, affectedNames, {
-      lastSuccessAt:
-        successfulSyncs.length === params.locations.length &&
-        successfulSyncs.length > 0
-          ? Math.min(...successfulSyncs)
-          : null,
-      staleLocationCount: staleNames.length,
-      errorLocationCount: errorNames.length,
+      return {
+        locationId: location.id,
+        locationName: location.name,
+        configured,
+        lastSuccessAt,
+        stale:
+          configured &&
+          (lastSuccessAt === null || lastSuccessAt < staleBefore),
+        error:
+          configured &&
+          (status?.state === "error" || Boolean(status?.lastError)),
+      };
     });
+  });
+}
+
+async function woltHealth(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+): Promise<ProviderHealth[]> {
+  return await cached(params, "health:wolt", async () => {
+    const rows = await Promise.all(
+      params.locations.map(async (location) => {
+        const [connection, pending, processing, deadLetter] = await Promise.all([
+          ctx.db
+            .query("woltVenueConnections")
+            .withIndex("by_organizationId_and_locationId", (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("locationId", location.id),
+            )
+            .unique(),
+          ...(["pending", "processing", "deadLetter"] as const).map((state) =>
+            ctx.db
+              .query("woltWebhookEvents")
+              .withIndex("by_organizationId_and_locationId_and_state", (q) =>
+                q
+                  .eq("organizationId", params.organizationId)
+                  .eq("locationId", location.id)
+                  .eq("state", state),
+              )
+              .first(),
+          ),
+        ]);
+        const lastSuccessAt = connection?.lastSuccessAt ?? null;
+        const hasBacklog = Boolean(pending || processing || deadLetter);
+        const configured = Boolean(connection);
+        return {
+          locationId: location.id,
+          locationName: location.name,
+          configured,
+          lastSuccessAt,
+          stale:
+            configured &&
+            (connection?.state !== "ready" ||
+              lastSuccessAt === null ||
+              lastSuccessAt < params.now - INTEGRATION_FRESHNESS_INTERVAL_MS ||
+              hasBacklog),
+          error:
+            configured &&
+            (connection?.state === "error" ||
+              connection?.state === "reauthorizationRequired" ||
+              Boolean(deadLetter) ||
+              Boolean(connection?.lastError)),
+        };
+      }),
+    );
+    return rows;
   });
 }
 
@@ -820,11 +948,49 @@ async function workfeedFreshness(
 async function integrationFreshness(
   ctx: QueryCtx,
   params: DashboardMetricParams,
-  source: MetricSource,
+  sources: readonly MetricSource[],
 ): Promise<Freshness> {
-  return source === "onlinepos"
-    ? await onlinePosFreshness(ctx, params)
-    : await workfeedFreshness(ctx, params);
+  if (sources.length === 1 && sources[0] === "workfeed") {
+    return await workfeedFreshness(ctx, params);
+  }
+  const health = await Promise.all(
+    sources.map(async (source) => {
+      if (source === "onlinepos") return await onlinePosHealth(ctx, params);
+      if (source === "wolt") return await woltHealth(ctx, params);
+      return null;
+    }),
+  );
+  const byLocation = new Map<Id<"locations">, ProviderHealth[]>();
+  for (const providerHealth of health) {
+    for (const item of providerHealth ?? []) {
+      byLocation.set(item.locationId, [
+        ...(byLocation.get(item.locationId) ?? []),
+        item,
+      ]);
+    }
+  }
+  const combined: ProviderHealth[] = [...byLocation].flatMap(
+    ([locationId, items]) => {
+      const configured = items.filter((item) => item.configured);
+      if (!configured.length) return [];
+      const locationName = configured[0].locationName;
+      const successes = configured.flatMap((item) =>
+        item.lastSuccessAt === null ? [] : [item.lastSuccessAt],
+      );
+      return [{
+        locationId,
+        locationName,
+        configured: true,
+        lastSuccessAt:
+          successes.length === configured.length
+            ? Math.min(...successes)
+            : null,
+        stale: configured.some((item) => item.stale),
+        error: configured.some((item) => item.error),
+      }];
+    },
+  );
+  return freshnessFromHealth(params, combined);
 }
 
 function rounded(value: number) {
@@ -908,16 +1074,39 @@ function seriesResult(
   return { unit, series, ...options };
 }
 
+type SalesDailyMetricRow = {
+  locationId: Id<"locations">;
+  dayStart: number;
+  currency: string;
+  revenue: number;
+  orderCount: number;
+  itemCount: number;
+  canceledCount: number;
+  totalCount: number;
+};
+
 function currencyOptions(
   params: DashboardMetricParams,
+  rows?: readonly Pick<SalesDailyMetricRow, "locationId" | "currency">[],
 ): Pick<MetricResult, "currency" | "mixedCurrency"> {
-  const currencies = [
-    ...new Set(
-      params.locations.map((location) => location.currency || DEFAULT_CURRENCY),
-    ),
-  ];
-  if (currencies.length > 1) return { mixedCurrency: true };
-  return { currency: currencies[0] ?? DEFAULT_CURRENCY };
+  const locationCurrencies = new Map(
+    params.locations.map((location) => [
+      location.id,
+      location.currency || DEFAULT_CURRENCY,
+    ]),
+  );
+  const currencies = new Set(
+    params.locations.map((location) => location.currency || DEFAULT_CURRENCY),
+  );
+  for (const row of rows ?? []) {
+    currencies.add(
+      row.currency ||
+        locationCurrencies.get(row.locationId) ||
+        DEFAULT_CURRENCY,
+    );
+  }
+  if (currencies.size > 1) return { mixedCurrency: true };
+  return { currency: [...currencies][0] ?? DEFAULT_CURRENCY };
 }
 
 async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
@@ -1765,31 +1954,81 @@ const locationComparison: MetricComputer = async (ctx, params) => {
   };
 };
 
-async function salesDailyRows(ctx: QueryCtx, params: DashboardMetricParams) {
-  return await cached(params, "sales-daily", async () => {
-    const rows: Doc<"salesDaily">[] = [];
+async function salesDailyRows(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+): Promise<{ rows: SalesDailyMetricRow[]; truncated: boolean }> {
+  const source = params.salesSource ?? "onlinePos";
+  return await cached(params, `sales-daily:${source}`, async () => {
+    const rows: SalesDailyMetricRow[] = [];
     let truncated = false;
-    for (const location of params.locations) {
-      const remaining = MAX_ROWS - rows.length;
-      if (remaining === 0) {
-        truncated = true;
-        break;
+    for (const provider of salesSourceProviders(source)) {
+      for (const location of params.locations) {
+        const remaining = MAX_ROWS - rows.length;
+        if (remaining === 0) {
+          truncated = true;
+          break;
+        }
+        let fetchedLength = 0;
+        if (provider === "onlinepos") {
+          const locationRows = await ctx.db
+            .query("salesDaily")
+            .withIndex(
+              "by_organizationId_and_locationId_and_dayStart",
+              (q) =>
+                q
+                  .eq("organizationId", params.organizationId)
+                  .eq("locationId", location.id)
+                  .gte("dayStart", params.previousFrom)
+                  .lt("dayStart", params.to),
+            )
+            .take(remaining + 1);
+          fetchedLength = locationRows.length;
+          rows.push(
+            ...locationRows.slice(0, remaining).map((row) => ({
+              locationId: row.locationId,
+              dayStart: row.dayStart,
+              currency: location.currency || DEFAULT_CURRENCY,
+              revenue: row.revenue,
+              orderCount: row.orderCount,
+              itemCount: row.itemCount,
+              canceledCount: 0,
+              totalCount: row.orderCount,
+            })),
+          );
+        } else {
+          const locationRows = await ctx.db
+            .query("woltSalesDaily")
+            .withIndex(
+              "by_organizationId_and_locationId_and_dayStart",
+              (q) =>
+                q
+                  .eq("organizationId", params.organizationId)
+                  .eq("locationId", location.id)
+                  .gte("dayStart", params.previousFrom)
+                  .lt("dayStart", params.to),
+            )
+            .take(remaining + 1);
+          fetchedLength = locationRows.length;
+          rows.push(
+            ...locationRows.slice(0, remaining).map((row) => ({
+              locationId: row.locationId,
+              dayStart: row.dayStart,
+              currency: row.currency || location.currency || DEFAULT_CURRENCY,
+              revenue: row.revenue,
+              orderCount: row.orderCount,
+              itemCount: row.itemCount,
+              canceledCount: row.canceledCount,
+              totalCount: row.totalCount,
+            })),
+          );
+        }
+        if (fetchedLength > remaining) {
+          truncated = true;
+          break;
+        }
       }
-      const locationRows = await ctx.db
-        .query("salesDaily")
-        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
-          q
-            .eq("organizationId", params.organizationId)
-            .eq("locationId", location.id)
-            .gte("dayStart", params.previousFrom)
-            .lt("dayStart", params.to),
-        )
-        .take(remaining + 1);
-      rows.push(...locationRows.slice(0, remaining));
-      if (locationRows.length > remaining) {
-        truncated = true;
-        break;
-      }
+      if (truncated) break;
     }
     return { rows, truncated };
   });
@@ -1805,7 +2044,10 @@ const salesRevenue: MetricComputer = async (ctx, params) => {
       value: row.revenue / 100,
     })),
     params,
-    { ...currencyOptions(params), truncated: result.truncated || undefined },
+    {
+      ...currencyOptions(params, result.rows),
+      truncated: result.truncated || undefined,
+    },
   );
 };
 
@@ -1825,7 +2067,7 @@ const salesOrderCount: MetricComputer = async (ctx, params) => {
 
 const averageBasket: MetricComputer = async (ctx, params) => {
   const result = await salesDailyRows(ctx, params);
-  const currencies = currencyOptions(params);
+  const currencies = currencyOptions(params, result.rows);
   const groups = params.compare
     ? params.locations.map((location) => ({
         key: location.id,
@@ -1901,6 +2143,95 @@ const averageBasket: MetricComputer = async (ctx, params) => {
               : 0,
           ),
         }),
+  };
+};
+
+const woltCancellationRate: MetricComputer = async (ctx, params) => {
+  const result = await salesDailyRows(ctx, {
+    ...params,
+    salesSource: "wolt",
+  });
+  const groups = params.compare
+    ? params.locations.map((location) => ({
+        key: location.id,
+        label: location.name,
+      }))
+    : [{ key: "all" as const, label: aggregateLocationLabel(params) }];
+  const days = dayStarts(params.from, params.to, params.timeZone);
+  let headlineCanceled = 0;
+  let headlineDelivered = 0;
+  let headlinePreviousCanceled = 0;
+  let headlinePreviousDelivered = 0;
+  const series = groups.map((group) => {
+    const relevant = params.compare
+      ? result.rows.filter((row) => row.locationId === group.key)
+      : result.rows;
+    const current = relevant.filter(
+      (row) => row.dayStart >= params.from && row.dayStart < params.to,
+    );
+    const previous = relevant.filter(
+      (row) =>
+        row.dayStart >= params.previousFrom && row.dayStart < params.previousTo,
+    );
+    const byDay = new Map<number, { canceled: number; delivered: number }>();
+    for (const row of current) {
+      const entry = byDay.get(row.dayStart) ?? { canceled: 0, delivered: 0 };
+      entry.canceled += row.canceledCount;
+      entry.delivered += row.orderCount;
+      byDay.set(row.dayStart, entry);
+    }
+    const canceled = current.reduce(
+      (sum, row) => sum + row.canceledCount,
+      0,
+    );
+    const delivered = current.reduce((sum, row) => sum + row.orderCount, 0);
+    const previousCanceled = previous.reduce(
+      (sum, row) => sum + row.canceledCount,
+      0,
+    );
+    const previousDelivered = previous.reduce(
+      (sum, row) => sum + row.orderCount,
+      0,
+    );
+    headlineCanceled += canceled;
+    headlineDelivered += delivered;
+    headlinePreviousCanceled += previousCanceled;
+    headlinePreviousDelivered += previousDelivered;
+    const ratio = (canceledCount: number, deliveredCount: number) => {
+      const denominator = deliveredCount + canceledCount;
+      return denominator > 0 ? (canceledCount / denominator) * 100 : 0;
+    };
+    return {
+      key: String(group.key),
+      label: group.label,
+      points: days.map((t) => {
+        const entry = byDay.get(t);
+        return {
+          t,
+          value: rounded(
+            entry ? ratio(entry.canceled, entry.delivered) : 0,
+          ),
+        };
+      }),
+      total: rounded(ratio(canceled, delivered)),
+      previousTotal: rounded(ratio(previousCanceled, previousDelivered)),
+    };
+  });
+  const currentDenominator = headlineDelivered + headlineCanceled;
+  const previousDenominator =
+    headlinePreviousDelivered + headlinePreviousCanceled;
+  return {
+    unit: "percent",
+    series,
+    truncated: result.truncated || undefined,
+    headlineTotal:
+      currentDenominator > 0
+        ? rounded((headlineCanceled / currentDenominator) * 100)
+        : 0,
+    headlinePrevious:
+      previousDenominator > 0
+        ? rounded((headlinePreviousCanceled / previousDenominator) * 100)
+        : null,
   };
 };
 
@@ -2039,12 +2370,28 @@ function withMetricMetadata(
   computer: MetricComputer,
 ): MetricComputer {
   const accessAware = withAccessGranularity(metricId, computer);
-  const source = metricRegistry[metricId].source;
-  if (source === "internal") return accessAware;
-  return async (ctx, params) => ({
-    ...(await accessAware(ctx, params)),
-    freshness: await integrationFreshness(ctx, params, source),
-  });
+  const configuredSource = metricRegistry[metricId].source;
+  if (configuredSource === "internal") return accessAware;
+  return async (ctx, params) => {
+    const selectedSalesSource = resolveBuiltinSalesSource(
+      metricId,
+      params.salesSource,
+    );
+    const effectiveParams = selectedSalesSource
+      ? { ...params, salesSource: selectedSalesSource }
+      : params;
+    const freshnessSources = selectedSalesSource
+      ? salesSourceProviders(selectedSalesSource)
+      : [configuredSource];
+    return {
+      ...(await accessAware(ctx, effectiveParams)),
+      freshness: await integrationFreshness(
+        ctx,
+        effectiveParams,
+        freshnessSources,
+      ),
+    };
+  };
 }
 
 export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {
@@ -2081,4 +2428,8 @@ export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {
   salesRevenue: withMetricMetadata("salesRevenue", salesRevenue),
   salesOrderCount: withMetricMetadata("salesOrderCount", salesOrderCount),
   averageBasket: withMetricMetadata("averageBasket", averageBasket),
+  woltCancellationRate: withMetricMetadata(
+    "woltCancellationRate",
+    woltCancellationRate,
+  ),
 };

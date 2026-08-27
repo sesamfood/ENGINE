@@ -15,9 +15,11 @@ import {
   zonedStart,
   type DashboardMetricParams,
 } from "./dashboardMetrics";
+import { resolveWoltMapping } from "./woltMappings";
 
 const MAX_ROWS = 5_000;
 const MAX_TRANSFER_DETAILS = 500;
+const MAX_PRODUCT_LABELS = 500;
 
 type MetricRow = {
   timestamp: number;
@@ -566,6 +568,228 @@ async function salesDailyRows(
   };
 }
 
+const woltStatusLabels: Record<string, string> = {
+  created: "Oprettet",
+  production: "I produktion",
+  ready: "Klar",
+  delivered: "Leveret",
+  canceled: "Annulleret",
+  other: "Anden status",
+};
+
+const woltOrderTypeLabels: Record<string, string> = {
+  instant: "Straksordre",
+  preorder: "Forudbestilling",
+  other: "Anden ordretype",
+};
+
+function woltOrderValue(
+  status: string,
+  measure: string,
+  netRevenue: number,
+  itemCount: number,
+) {
+  if (measure === "revenue") return status === "delivered" ? netRevenue / 100 : 0;
+  if (measure === "orders") {
+    return status === "delivered" ? 1 : 0;
+  }
+  if (measure === "canceled") {
+    return status === "canceled" ? 1 : 0;
+  }
+  if (measure === "total") {
+    return status === "delivered" || status === "canceled" ? 1 : 0;
+  }
+  return status === "delivered" ? itemCount : 0;
+}
+
+async function woltOrderRows(
+  ctx: QueryCtx,
+  spec: CustomMetricQuerySpec,
+  dimensionId: string | undefined,
+  params: DashboardMetricParams,
+): Promise<RowResult> {
+  const result = await locationRows(params, async (locationId, remaining) =>
+    await ctx.db
+      .query("woltOrders")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("locationId", locationId)
+          .gte("occurredAt", params.previousFrom)
+          .lt("occurredAt", params.to),
+      )
+      .take(remaining + 1),
+  );
+  const locationNames = new Map(
+    params.locations.map((location) => [location.id, location.name]),
+  );
+  const hourFormatter = new Intl.DateTimeFormat("da-DK", {
+    timeZone: params.timeZone,
+    hour: "2-digit",
+    hourCycle: "h23",
+  });
+  return {
+    truncated: result.truncated,
+    rows: result.rows.flatMap((row) => {
+      if (
+        !matchesFilters(
+          { status: row.status, orderType: row.orderType },
+          spec.filters,
+        )
+      ) {
+        return [];
+      }
+      const hour = hourFormatter.format(row.occurredAt);
+      const selected = dimension(dimensionId, {
+        location: {
+          key: row.locationId,
+          label: locationNames.get(row.locationId) ?? "Ukendt lokation",
+        },
+        status: {
+          key: row.status,
+          label: woltStatusLabels[row.status] ?? row.status,
+        },
+        orderType: {
+          key: row.orderType,
+          label: woltOrderTypeLabels[row.orderType] ?? row.orderType,
+        },
+        hourOfDay: { key: hour, label: `${hour}:00` },
+      });
+      return [{
+        timestamp: row.occurredAt,
+        locationId: row.locationId,
+        value: woltOrderValue(
+          row.status,
+          spec.measure,
+          row.netRevenue,
+          row.itemCount,
+        ),
+        dimensionKey: selected.key,
+        dimensionLabel: selected.label,
+      }];
+    }),
+  };
+}
+
+async function woltOrderItemRows(
+  ctx: QueryCtx,
+  spec: CustomMetricQuerySpec,
+  dimensionId: string | undefined,
+  params: DashboardMetricParams,
+): Promise<RowResult> {
+  const result = await locationRows(params, async (locationId, remaining) =>
+    await ctx.db
+      .query("woltOrderItems")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("locationId", locationId)
+          .gte("occurredAt", params.previousFrom)
+          .lt("occurredAt", params.to),
+      )
+      .take(remaining + 1),
+  );
+  const mappingRows = await ctx.db
+    .query("woltProductMappings")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", params.organizationId),
+    )
+    .take(MAX_ROWS + 1);
+  const mappingRowsForResolution = mappingRows.slice(0, MAX_ROWS);
+  const resolutions = new Map<
+    Id<"woltOrderItems">,
+    ReturnType<typeof resolveWoltMapping>
+  >();
+  for (const row of result.rows) {
+    resolutions.set(
+      row._id,
+      resolveWoltMapping(mappingRowsForResolution, row.locationId, {
+        gtin: row.gtin,
+        posId: row.posId,
+        sku: row.sku,
+        name: row.name,
+      }),
+    );
+  }
+  const productIds = [
+    ...new Set(
+      [...resolutions.values()].flatMap((resolution) =>
+        resolution.kind === "mapped" ? [resolution.mapping.productId] : [],
+      ),
+    ),
+  ];
+  const products = await Promise.all(
+    productIds
+      .slice(0, MAX_PRODUCT_LABELS)
+      .map((productId) => ctx.db.get(productId)),
+  );
+  const productNames = new Map(
+    products.flatMap((product) =>
+      product ? [[product._id, product.name] as const] : [],
+    ),
+  );
+  const locationNames = new Map(
+    params.locations.map((location) => [location.id, location.name]),
+  );
+  return {
+    truncated:
+      result.truncated ||
+      mappingRows.length > MAX_ROWS ||
+      productIds.length > MAX_PRODUCT_LABELS,
+    rows: result.rows.flatMap((row) => {
+      const resolution = resolutions.get(row._id);
+      const productId =
+        resolution?.kind === "mapped"
+          ? resolution.mapping.productId
+          : undefined;
+      const productKey = productId ?? row.normalizedName;
+      const productLabel = productId
+        ? productNames.get(productId) ?? row.name
+        : row.name;
+      if (
+        !matchesFilters(
+          {
+            product: productId ?? row.normalizedName,
+          },
+          spec.filters,
+        )
+      ) {
+        return [];
+      }
+      const selected = dimension(dimensionId, {
+        product: { key: productKey, label: productLabel },
+        item: { key: row.normalizedName, label: row.name },
+        location: {
+          key: row.locationId,
+          label: locationNames.get(row.locationId) ?? "Ukendt lokation",
+        },
+        status: {
+          key: row.status,
+          label: woltStatusLabels[row.status] ?? row.status,
+        },
+        orderType: {
+          key: row.orderType,
+          label: woltOrderTypeLabels[row.orderType] ?? row.orderType,
+        },
+      });
+      return [{
+        timestamp: row.occurredAt,
+        locationId: row.locationId,
+        value:
+          row.status !== "delivered"
+            ? 0
+            : spec.measure === "revenue"
+              ? row.lineTotal / 100
+              : spec.measure === "quantity"
+                ? row.quantity
+                : 1,
+        dimensionKey: selected.key,
+        dimensionLabel: selected.label,
+      }];
+    }),
+  };
+}
+
 async function salesOrderRows(
   ctx: QueryCtx,
   spec: CustomMetricQuerySpec,
@@ -732,6 +956,12 @@ async function loadRows(
       return await salesOrderRows(ctx, query, dimensionId, params);
     case "salesLines":
       return await salesLineRows(ctx, query, dimensionId, params);
+    case "woltOrders":
+      return await woltOrderRows(ctx, query, dimensionId, params);
+    case "woltOrderItems":
+      return await woltOrderItemRows(ctx, query, dimensionId, params);
+    default:
+      throw new ConvexError("Datasættet understøttes ikke");
   }
 }
 

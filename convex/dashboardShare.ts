@@ -16,11 +16,13 @@ import {
   metricIdValidator,
   metricRequestValidator,
   metricResultValidator,
+  salesSourceValidator,
   visualizationValidator,
 } from "./lib/dashboardValidators";
 import {
   createMetricParamsResolver,
   dashboardMetricComputers,
+  resolveBuiltinSalesSource,
   resolveMetricParams,
 } from "./lib/dashboardMetrics";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
@@ -257,6 +259,7 @@ export const getSharedMetric = query({
     metricId: metricIdValidator,
     visualization: visualizationValidator,
     now: v.number(),
+    salesSource: v.optional(salesSourceValidator),
   },
   returns: metricResultValidator,
   handler: async (ctx, args) => {
@@ -276,11 +279,21 @@ export const getSharedMetric = query({
     if (definition.sensitive && !share.passwordHash) {
       throw new ConvexError("Målingen er ikke en del af delingen");
     }
+    const savedSalesSource = resolveBuiltinSalesSource(
+      args.metricId,
+      widget.options?.salesSource,
+    );
+    if (
+      args.salesSource !== undefined &&
+      args.salesSource !== savedSalesSource
+    ) {
+      throw new ConvexError("Salgskilden matcher ikke delingen");
+    }
     const params = await resolveMetricParams(
       ctx,
       share.organizationId,
       share.scope,
-      share.range,
+      widget.range ? { preset: widget.range } : share.range,
       args.now,
       undefined,
       {
@@ -289,7 +302,10 @@ export const getSharedMetric = query({
         salesDetailAllowed: share.salesDetailAllowed ?? true,
       },
     );
-    return await dashboardMetricComputers[args.metricId](ctx, params);
+    return await dashboardMetricComputers[args.metricId](
+      ctx,
+      savedSalesSource ? { ...params, salesSource: savedSalesSource } : params,
+    );
   },
 });
 
@@ -321,7 +337,13 @@ export const getSharedMetrics = query({
       if (!widget) {
         throw new ConvexError("Målingen er ikke en del af delingen");
       }
+      if (requested.range !== widget.range) {
+        throw new ConvexError("Perioden matcher ikke delingen");
+      }
       if (requested.metric.kind === "custom") {
+        if (requested.salesSource !== undefined) {
+          throw new ConvexError("Salgskilden kan kun bruges på salgsmålinger");
+        }
         const snapshot = share.customMetricSnapshots.find(
           (candidate) => candidate.id === requested.metric.id,
         );
@@ -342,6 +364,16 @@ export const getSharedMetrics = query({
         ) {
           throw new ConvexError("Målingen er ikke en del af delingen");
         }
+        const savedSalesSource = resolveBuiltinSalesSource(
+          requested.metric.id,
+          widget.options?.salesSource,
+        );
+        if (
+          requested.salesSource !== undefined &&
+          requested.salesSource !== savedSalesSource
+        ) {
+          throw new ConvexError("Salgskilden matcher ikke delingen");
+        }
       }
     }
     const resolveParams = createMetricParamsResolver(
@@ -358,14 +390,28 @@ export const getSharedMetrics = query({
     );
     return await Promise.all(
       args.widgets.map(async (widget) => {
+        const savedWidget = share.widgets.find(
+          (candidate) => candidate.key === widget.key,
+        )!;
         const params = await resolveParams(
-          widget.range ? { preset: widget.range } : share.range,
+          savedWidget.range ? { preset: savedWidget.range } : share.range,
         );
         return {
           key: widget.key,
           result:
             widget.metric.kind === "builtin"
-              ? await dashboardMetricComputers[widget.metric.id](ctx, params)
+              ? await dashboardMetricComputers[widget.metric.id](
+                  ctx,
+                  (() => {
+                    const savedSalesSource = resolveBuiltinSalesSource(
+                      widget.metric.id,
+                      savedWidget.options?.salesSource,
+                    );
+                    return savedSalesSource
+                      ? { ...params, salesSource: savedSalesSource }
+                      : params;
+                  })(),
+                )
               : await executeCustomMetric(
                   ctx,
                   share.customMetricSnapshots.find(

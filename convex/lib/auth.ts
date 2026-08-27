@@ -668,6 +668,18 @@ export async function requireDashboardViewer(ctx: AuthContext) {
   return auth;
 }
 
+export async function requireSalesDetailViewer(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "sales.viewDetail");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
+export async function requireSalesAggregateViewer(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "sales.viewAggregate");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
 export async function requireDashboardManager(ctx: AuthContext) {
   const auth = await requirePermission(ctx, "dashboard.manage");
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
