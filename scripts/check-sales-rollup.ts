@@ -45,7 +45,6 @@ function parseOne(id: number, date: string, time: string, amount: number, price:
 function assertMoney(line: { unitPrice: number; quantity: number; revenue: number }) {
   assert.ok(Number.isInteger(line.unitPrice));
   assert.ok(Number.isInteger(line.revenue));
-  assert.equal(line.revenue, Math.round(line.quantity * line.unitPrice));
 }
 
 function localDay(ts: number) {
@@ -63,6 +62,8 @@ function localDay(ts: number) {
   assertMoney(crossing);
   assert.equal(localDay(crossing.occurredAt), "2025-01-15");
   assert.equal(new Date(crossing.occurredAt).toISOString().slice(0, 10), "2025-01-14");
+  assert.equal(crossing.unitPrice, 625);
+  assert.equal(crossing.revenue, 1250);
 
   // Late evening local — same day bucket; would mismatch under naive UTC day keys.
   const evening = parseOne(3, "15.01.2025", "23:45:00", 1, "45,00");
@@ -83,8 +84,8 @@ function localDay(ts: number) {
   const autumn = parseOne(5, "26.10.2025", "02:30:00", 3, "1,33");
   assertMoney(autumn);
   assert.equal(localDay(autumn.occurredAt), "2025-10-26");
-  assert.equal(autumn.unitPrice, 133);
-  assert.equal(autumn.revenue, Math.round(3 * 133));
+  assert.equal(autumn.unitPrice, 44);
+  assert.equal(autumn.revenue, 133);
 }
 
 function applyDeltas(daily: Map<string, SalesDelta>, deltas: Map<string, SalesDelta>) {

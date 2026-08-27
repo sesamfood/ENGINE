@@ -9,6 +9,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -24,6 +25,7 @@ type ScopeLocation = Location & {
   marketId: Id<"markets"> | null;
   operatorId: Id<"operators"> | null;
 };
+const checkboxItemClassName = "min-h-10 pr-1.5 pl-8 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:right-auto [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:left-2";
 
 export function ScopeSelector({
   scope,
@@ -110,6 +112,20 @@ export function ScopeSelector({
     });
   }
 
+  function selectOnlyLocation(id: Id<"locations">) {
+    if (currentLevel === "location") {
+      onChange(scopeFor("location", id));
+      return;
+    }
+    onChange({
+      ...scope,
+      level: currentLevel,
+      parentId: currentLevel === "organization" ? undefined : currentParentId,
+      mode: "aggregate",
+      locationIds: [id],
+    });
+  }
+
   const currentParentName = currentLevel === "market"
     ? scopeOptions?.markets?.find((market) => market.id === currentParentId)?.name
     : currentLevel === "operator"
@@ -150,7 +166,7 @@ export function ScopeSelector({
             <DropdownMenuGroup>
               <DropdownMenuLabel>Lokationer</DropdownMenuLabel>
               {currentLevel !== "location" ? (
-                <DropdownMenuCheckboxItem checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
+                <DropdownMenuCheckboxItem className={checkboxItemClassName} checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
                   {currentLevel === "organization" ? "Alle lokationer" : `Alle i ${currentParentName ?? "gruppen"}`}
                 </DropdownMenuCheckboxItem>
               ) : null}
@@ -158,14 +174,23 @@ export function ScopeSelector({
             {currentLevel !== "location" ? <DropdownMenuSeparator /> : null}
             <DropdownMenuGroup className="max-h-64 overflow-y-auto">
               {selectedLocations.map((location) => (
-                <DropdownMenuCheckboxItem
-                  key={location.id}
-                  checked={selectedIds.includes(location.id)}
-                  disabled={selectedIds.includes(location.id) && selectedIds.length <= 1}
-                  onCheckedChange={(checked) => toggleLocation(location.id, checked)}
-                >
-                  <span className="min-w-0 truncate">{location.name}</span>
-                </DropdownMenuCheckboxItem>
+                <div key={location.id} role="presentation" className="group/location grid grid-cols-[minmax(0,1fr)_auto] gap-x-1">
+                  <DropdownMenuCheckboxItem
+                    className={checkboxItemClassName}
+                    checked={selectedIds.includes(location.id)}
+                    disabled={selectedIds.includes(location.id) && selectedIds.length <= 1}
+                    onCheckedChange={(checked) => toggleLocation(location.id, checked)}
+                  >
+                    <span className="min-w-0 truncate">{location.name}</span>
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuItem
+                    className="invisible min-h-10 justify-center group-focus-within/location:visible group-hover/location:visible"
+                    aria-label={`Vælg kun ${location.name}`}
+                    onClick={() => selectOnlyLocation(location.id)}
+                  >
+                    Kun
+                  </DropdownMenuItem>
+                </div>
               ))}
             </DropdownMenuGroup>
           </DropdownMenuContent>

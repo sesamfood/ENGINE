@@ -62,6 +62,7 @@ import type * as lib_workfeedApi from "../lib/workfeedApi.js";
 import type * as lib_workfeedSyncRequest from "../lib/workfeedSyncRequest.js";
 import type * as locations from "../locations.js";
 import type * as masterData from "../masterData.js";
+import type * as migrations from "../migrations.js";
 import type * as navigation from "../navigation.js";
 import type * as onlinePos from "../onlinePos.js";
 import type * as onlinePosSync from "../onlinePosSync.js";
@@ -146,6 +147,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workfeedSyncRequest": typeof lib_workfeedSyncRequest;
   locations: typeof locations;
   masterData: typeof masterData;
+  migrations: typeof migrations;
   navigation: typeof navigation;
   onlinePos: typeof onlinePos;
   onlinePosSync: typeof onlinePosSync;
@@ -198,5 +200,6 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
+  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
 };
