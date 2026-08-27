@@ -25,7 +25,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "convex": "^1.42.3",
+    "convex": "^1.44.0",
     "convex-helpers": "0.1.120",
     "fflate": "^0.8.3",
     "jose": "6.2.3",
