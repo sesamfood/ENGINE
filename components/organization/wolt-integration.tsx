@@ -2,7 +2,8 @@
 
 import {
   CircleAlertIcon,
-  CircleCheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CloudOffIcon,
   ExternalLinkIcon,
   Link2Icon,
@@ -42,6 +43,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -55,6 +61,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -712,8 +719,12 @@ export function WoltIntegration() {
   const removePartnerVenueMapping = useMutation(api.wolt.removePartnerVenueMapping);
   const disconnectLocation = useMutation(api.wolt.disconnectLocation);
   const retryDeadLetters = useMutation(api.wolt.retryDeadLetters);
+  const setEnabled = useMutation(api.wolt.setEnabled);
   const saveProductMapping = useMutation(api.wolt.saveProductMapping);
   const deleteProductMapping = useMutation(api.wolt.deleteProductMapping);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [changingEnabled, setChangingEnabled] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, Id<"products"> | undefined>>({});
   const [mappingScopes, setMappingScopes] = useState<Record<string, Id<"locations"> | "all" | undefined>>({});
@@ -724,6 +735,7 @@ export function WoltIntegration() {
       return;
     }
     callbackHandled.current = true;
+    setDetailsOpen(true);
     if (result === "processing") {
       toast.success("Wolt-godkendelsen behandles. Status opdateres automatisk.");
     } else {
@@ -733,6 +745,29 @@ export function WoltIntegration() {
     next.delete("wolt");
     router.replace(next.size ? `${pathname}?${next}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
+
+  async function changeIntegrationEnabled(enabled: boolean) {
+    if (!overview?.connected) {
+      setSetupOpen(enabled);
+      return;
+    }
+
+    setChangingEnabled(true);
+    try {
+      await setEnabled({ enabled });
+      setDetailsOpen(false);
+      setSetupOpen(false);
+      toast.success(
+        enabled
+          ? "Wolt-integrationen er aktiveret"
+          : "Wolt-integrationen er deaktiveret",
+      );
+    } catch (error) {
+      toast.error(messageFrom(error));
+    } finally {
+      setChangingEnabled(false);
+    }
+  }
 
   async function startSsio(locationId: Id<"locations">) {
     setBusyKey(`ssio:${locationId}`);
@@ -870,86 +905,133 @@ export function WoltIntegration() {
     return <Skeleton className="h-96 w-full max-w-6xl" />;
   }
 
+  const integrationOpen = detailsOpen || setupOpen;
+
   return (
-    <div className="flex flex-col gap-5">
-      <Card>
+    <Collapsible
+      open={integrationOpen}
+      onOpenChange={(open) => {
+        setDetailsOpen(open);
+        if (!open && !overview.connected) setSetupOpen(false);
+      }}
+    >
+      <Card className="max-w-6xl">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CircleCheckIcon aria-hidden="true" />
-            Wolt
-          </CardTitle>
+          <CardTitle>Wolt</CardTitle>
           <CardDescription>
-            Overvåg Wolt-forbindelser pr. lokation, og start opsætning uden at vise adgangsoplysninger.
+            Modtag Wolt-ordrer, og overvåg forbindelser pr. lokation.
           </CardDescription>
-          <CardAction>
-            <Badge variant="outline">Kun læsning af ordredata</Badge>
+          <CardAction className="flex items-center gap-3">
+            <Field orientation="horizontal" className="w-auto">
+              <Switch
+                id="wolt-integration-enabled"
+                aria-controls={
+                  overview.connected ? undefined : "wolt-integration-settings"
+                }
+                aria-expanded={overview.connected ? undefined : integrationOpen}
+                aria-label="Aktivér Wolt-integration"
+                checked={overview.connected ? overview.enabled : setupOpen}
+                disabled={
+                  changingEnabled || (overview.connected && !overview.canUseWio)
+                }
+                title={
+                  overview.connected && !overview.canUseWio
+                    ? "Kræver adgang til alle lokationer"
+                    : undefined
+                }
+                onCheckedChange={(enabled) =>
+                  void changeIntegrationEnabled(enabled)
+                }
+              />
+            </Field>
+            <CollapsibleTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={`${integrationOpen ? "Skjul" : "Vis"} Wolt-indstillinger`}
+                />
+              }
+            >
+              {integrationOpen ? "Skjul" : "Vis"}
+              {integrationOpen ? (
+                <ChevronUpIcon data-icon="inline-end" />
+              ) : (
+                <ChevronDownIcon data-icon="inline-end" />
+              )}
+            </CollapsibleTrigger>
           </CardAction>
         </CardHeader>
-        <CardContent className="flex flex-col gap-5">
-          {overview.limitReached ? (
-            <Alert>
-              <CircleAlertIcon aria-hidden="true" />
-              <AlertTitle>Visningen er begrænset</AlertTitle>
-              <AlertDescription>
-                Der er flere Wolt-lokationer eller events end administrationsvisningen kan vise. Kontakt en administrator, før du foretager bulkændringer.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {!overview.canUseWio ? (
-            <Alert>
-              <CircleAlertIcon aria-hidden="true" />
-              <AlertTitle>WIO kræver adgang til alle lokationer</AlertTitle>
-              <AlertDescription>
-                Du kan stadig forbinde en tilgængelig lokation med SSIO. WIO partner-venue-id’er kræver adgang til hele organisationen.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {overview.locations.length ? (
-            <div className="grid gap-5 xl:grid-cols-2">
-              {overview.locations.map((location) => (
-                <LocationHealthCard
-                  key={`${location.id}:${location.partnerVenueId ?? ""}`}
-                  location={location}
-                  canUseWio={overview.canUseWio}
-                  busyKey={busyKey}
-                  onStartSsio={() => void startSsio(location.id)}
-                  onSavePartner={(partnerVenueId) => void savePartner(location.id, partnerVenueId)}
-                  onRemovePartner={() => void removePartner(location.id)}
-                  onDisconnect={() => void disconnect(location.id)}
-                  onRetry={() => void retry(location.id)}
-                />
-              ))}
+        <CollapsibleContent id="wolt-integration-settings">
+          <CardContent className="flex flex-col gap-5">
+            <div>
+              <Badge variant="outline">Kun læsning af ordredata</Badge>
             </div>
-          ) : (
-            <Empty className="min-h-48">
-              <EmptyHeader>
-                <EmptyMedia variant="icon"><CloudOffIcon aria-hidden="true" /></EmptyMedia>
-                <EmptyTitle>Ingen tilgængelige lokationer</EmptyTitle>
-                <EmptyDescription>Der er ingen lokationer, du kan administrere Wolt for.</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
-        </CardContent>
+            {overview.limitReached ? (
+              <Alert>
+                <CircleAlertIcon aria-hidden="true" />
+                <AlertTitle>Visningen er begrænset</AlertTitle>
+                <AlertDescription>
+                  Der er flere Wolt-lokationer eller events end administrationsvisningen kan vise. Kontakt en administrator, før du foretager bulkændringer.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {!overview.canUseWio ? (
+              <Alert>
+                <CircleAlertIcon aria-hidden="true" />
+                <AlertTitle>WIO kræver adgang til alle lokationer</AlertTitle>
+                <AlertDescription>
+                  Du kan stadig forbinde en tilgængelig lokation med SSIO. WIO partner-venue-id’er kræver adgang til hele organisationen.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {overview.locations.length ? (
+              <div className="grid gap-5 xl:grid-cols-2">
+                {overview.locations.map((location) => (
+                  <LocationHealthCard
+                    key={`${location.id}:${location.partnerVenueId ?? ""}`}
+                    location={location}
+                    canUseWio={overview.canUseWio}
+                    busyKey={busyKey}
+                    onStartSsio={() => void startSsio(location.id)}
+                    onSavePartner={(partnerVenueId) => void savePartner(location.id, partnerVenueId)}
+                    onRemovePartner={() => void removePartner(location.id)}
+                    onDisconnect={() => void disconnect(location.id)}
+                    onRetry={() => void retry(location.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <Empty className="min-h-48">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><CloudOffIcon aria-hidden="true" /></EmptyMedia>
+                  <EmptyTitle>Ingen tilgængelige lokationer</EmptyTitle>
+                  <EmptyDescription>Der er ingen lokationer, du kan administrere Wolt for.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+            <ObservedItemMappings
+              overview={overview}
+              observed={observed}
+              locationFilter={observedLocationFilter}
+              onLocationChange={setObservedLocationFilter}
+              mappingDrafts={mappingDrafts}
+              mappingScopes={mappingScopes}
+              products={products}
+              savingKey={busyKey}
+              canUseWio={overview.canUseWio}
+              onSelectProduct={(rowKey, productId) => {
+                setMappingDrafts((current) => ({ ...current, [rowKey]: productId }));
+              }}
+              onScopeChange={(rowKey, scope) => {
+                setMappingScopes((current) => ({ ...current, [rowKey]: scope }));
+              }}
+              onSave={(row, productId, scope) => void saveMapping(row, productId, scope)}
+              onDelete={(row) => void deleteMapping(row)}
+            />
+          </CardContent>
+        </CollapsibleContent>
       </Card>
-      <ObservedItemMappings
-        overview={overview}
-        observed={observed}
-        locationFilter={observedLocationFilter}
-        onLocationChange={setObservedLocationFilter}
-        mappingDrafts={mappingDrafts}
-        mappingScopes={mappingScopes}
-        products={products}
-        savingKey={busyKey}
-        canUseWio={overview.canUseWio}
-        onSelectProduct={(rowKey, productId) => {
-          setMappingDrafts((current) => ({ ...current, [rowKey]: productId }));
-        }}
-        onScopeChange={(rowKey, scope) => {
-          setMappingScopes((current) => ({ ...current, [rowKey]: scope }));
-        }}
-        onSave={(row, productId, scope) => void saveMapping(row, productId, scope)}
-        onDelete={(row) => void deleteMapping(row)}
-      />
-    </div>
+    </Collapsible>
   );
 }

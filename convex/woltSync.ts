@@ -37,6 +37,7 @@ const REFRESH_LEASE_MS = 2 * 60 * 1_000;
 
 const inboxResultValidator = v.union(
   v.object({ kind: v.literal("accepted") }),
+  v.object({ kind: v.literal("disabled") }),
   v.object({ kind: v.literal("duplicate") }),
   v.object({ kind: v.literal("quarantined") }),
 );
@@ -183,6 +184,16 @@ export const acceptWebhook = internalMutation({
         receivedAt: args.receivedAt,
       });
       return { kind: "quarantined" as const };
+    }
+
+    const integration = await ctx.db
+      .query("woltIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", connection.organizationId),
+      )
+      .unique();
+    if (integration?.enabled === false) {
+      return { kind: "disabled" as const };
     }
 
     const eventId = await ctx.db.insert("woltWebhookEvents", {
@@ -446,6 +457,24 @@ export const completeOnboardingEvent = internalMutation({
         organizationId: event.organizationId,
         locationId: event.locationId,
         ...connection,
+      });
+    }
+    const integration = await ctx.db
+      .query("woltIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", event.organizationId),
+      )
+      .unique();
+    if (!integration) {
+      await ctx.db.insert("woltIntegrations", {
+        organizationId: event.organizationId,
+        enabled: true,
+        updatedAt: args.now,
+      });
+    } else if (!integration.enabled) {
+      await ctx.db.patch(integration._id, {
+        enabled: true,
+        updatedAt: args.now,
       });
     }
     const adopted = await adoptWebhookQuarantineRows(

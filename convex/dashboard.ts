@@ -440,7 +440,7 @@ export const salesSourceAvailability = query({
       Date.now(),
       auth.locationScope,
     );
-    const [onlinePosIntegration, onlinePosConnections, woltConnections] =
+    const [onlinePosIntegration, onlinePosConnections, woltIntegration, woltConnections] =
       await Promise.all([
         ctx.db
           .query("onlinePosIntegrations")
@@ -460,6 +460,12 @@ export const salesSourceAvailability = query({
               .unique(),
           ),
         ),
+        ctx.db
+          .query("woltIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", auth.organizationId),
+          )
+          .unique(),
         Promise.all(
           params.locations.map((location) =>
             ctx.db
@@ -479,6 +485,7 @@ export const salesSourceAvailability = query({
         onlinePosConnections.some(Boolean),
       wolt:
         canViewWoltSales(auth) &&
+        woltIntegration?.enabled !== false &&
         woltConnections.some((connection) => connection?.state === "ready"),
     };
   },

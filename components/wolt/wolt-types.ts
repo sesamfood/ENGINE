@@ -66,6 +66,8 @@ export type WoltOrderDetail = {
 };
 
 export type WoltIntegrationOverview = {
+  connected: boolean;
+  enabled: boolean;
   canUseWio: boolean;
   limitReached: boolean;
   locations: Array<{

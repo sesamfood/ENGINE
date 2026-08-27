@@ -451,7 +451,7 @@ export const getSettings = query({
   handler: async (ctx) => {
     const auth = await requirePermission(ctx, "count.settings");
     const { organizationId } = auth;
-    const [locations, master, locationConnections, statuses, woltConnections, saved] =
+    const [locations, master, locationConnections, statuses, woltIntegration, woltConnections, saved] =
       await Promise.all([
         ctx.db
           .query("locations")
@@ -477,6 +477,12 @@ export const getSettings = query({
             q.eq("organizationId", organizationId),
           )
           .take(MAX_LOCATIONS + 1),
+        ctx.db
+          .query("woltIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .unique(),
         ctx.db
           .query("woltVenueConnections")
           .withIndex("by_organizationId", (q) =>
@@ -525,7 +531,8 @@ export const getSettings = query({
         const status = statusByLocationId.get(location._id);
         const wolt = woltByLocationId.get(location._id);
         const onlinePosConnected = master?.enabled === true && Boolean(locationConnection);
-        const woltConnected = wolt?.state === "ready";
+        const woltConnected =
+          woltIntegration?.enabled !== false && wolt?.state === "ready";
         const historyStart = status?.backfillThroughAt ?? status?.syncedThroughAt ?? null;
         const onlinePosHealth: OnlinePosHealth = {
           connected: onlinePosConnected,
@@ -618,7 +625,7 @@ export const buildCountWasteReport = query({
       report.organizationId,
       report.locationId,
     );
-    const [master, locationConnection, status, woltConnection] = await Promise.all([
+    const [master, locationConnection, status, woltIntegration, woltConnection] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -642,6 +649,12 @@ export const buildCountWasteReport = query({
         )
         .unique(),
       ctx.db
+        .query("woltIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", report.organizationId),
+        )
+        .unique(),
+      ctx.db
         .query("woltVenueConnections")
         .withIndex("by_organizationId_and_locationId", (q) =>
           q
@@ -651,7 +664,8 @@ export const buildCountWasteReport = query({
         .unique(),
     ]);
     const onlinePosConnected = master?.enabled === true && Boolean(locationConnection);
-    const woltConnected = woltConnection?.state === "ready";
+    const woltConnected =
+      woltIntegration?.enabled !== false && woltConnection?.state === "ready";
     const selectedSource = resolveCountSalesSource(
       saved?.salesSource ?? null,
       onlinePosConnected,

@@ -629,6 +629,10 @@ function NavigationList() {
     api.navigation.getOrder,
     organization.data && isAuthenticated ? {} : "skip",
   );
+  const woltEnabled = useQuery(
+    api.wolt.isEnabled,
+    organization.data && isAuthenticated && canWoltOrders ? {} : "skip",
+  );
   const allNavigation = [
     ...primaryNavigation,
     employeesNavigation,
@@ -659,7 +663,9 @@ function NavigationList() {
   const navigation = kioskNavigation ?? orderedNavigation
     .filter((item) => {
       if (item.id === "dashboard") return canDashboard && !featureLocked;
-      if (item.id === "woltOrders") return canWoltOrders && !featureLocked;
+      if (item.id === "woltOrders") {
+        return canWoltOrders && woltEnabled === true && !featureLocked;
+      }
       if (item.id === "transfers") return canTransfers && !featureLocked;
       if (item.id === "waste") return canWaste;
       if (item.id === "ownChecks") return canOwnChecksAccess;

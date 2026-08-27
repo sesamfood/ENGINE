@@ -324,6 +324,12 @@ export default defineSchema({
     "dayStart",
   ]),
 
+  woltIntegrations: defineTable({
+    organizationId: v.string(),
+    enabled: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   woltVenueConnections: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),

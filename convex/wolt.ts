@@ -136,6 +136,8 @@ function visibleOrderFilter(
 export const getIntegrationOverview = query({
   args: {},
   returns: v.object({
+    connected: v.boolean(),
+    enabled: v.boolean(),
     canUseWio: v.boolean(),
     limitReached: v.boolean(),
     locations: v.array(
@@ -169,7 +171,21 @@ export const getIntegrationOverview = query({
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
     const { organizationId } = auth;
-    const [locations, connections, partnerMappings, pending, processing, deadLetters] = await Promise.all([
+    const [
+      integration,
+      locations,
+      connections,
+      partnerMappings,
+      pending,
+      processing,
+      deadLetters,
+    ] = await Promise.all([
+      ctx.db
+        .query("woltIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
       ctx.db
         .query("locations")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -221,7 +237,12 @@ export const getIntegrationOverview = query({
     const visible = locations.filter(
       (location) => auth.locationScope.all || auth.locationScope.ids.has(location._id),
     );
+    const connected = connections
+      .slice(0, MAX_LOCATIONS)
+      .some((connection) => connection.state !== "disabled");
     return {
+      connected,
+      enabled: connected && (integration?.enabled ?? true),
       canUseWio: auth.locationScope.all,
       limitReached:
         locations.length > MAX_LOCATIONS ||
@@ -249,6 +270,84 @@ export const getIntegrationOverview = query({
         };
       }),
     };
+  },
+});
+
+export const isEnabled = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const { organizationId } = await requireSalesDetailViewer(ctx);
+    const [integration, connections] = await Promise.all([
+      ctx.db
+        .query("woltIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+      ctx.db
+        .query("woltVenueConnections")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+    ]);
+    const connected = connections
+      .slice(0, MAX_LOCATIONS)
+      .some((connection) => connection.state !== "disabled");
+    return connected && (integration?.enabled ?? true);
+  },
+});
+
+export const setEnabled = mutation({
+  args: { enabled: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    requireAllLocationAccess(auth);
+    const connections = await ctx.db
+      .query("woltVenueConnections")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(MAX_LOCATIONS + 1);
+    if (
+      !connections
+        .slice(0, MAX_LOCATIONS)
+        .some((connection) => connection.state !== "disabled")
+    ) {
+      throw new ConvexError("Wolt er ikke forbundet");
+    }
+    const integration = await ctx.db
+      .query("woltIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .unique();
+    const now = Date.now();
+    const integrationId = integration?._id ??
+      (await ctx.db.insert("woltIntegrations", {
+        organizationId: auth.organizationId,
+        enabled: args.enabled,
+        updatedAt: now,
+      }));
+    if (integration) {
+      await ctx.db.patch(integration._id, {
+        enabled: args.enabled,
+        updatedAt: now,
+      });
+    }
+    await recordAudit(ctx, auth, {
+      action: args.enabled
+        ? "wolt.integration.enabled"
+        : "wolt.integration.disabled",
+      entityTable: "woltIntegrations",
+      entityId: integrationId,
+      summary: args.enabled
+        ? "Aktiverede Wolt-integrationen"
+        : "Deaktiverede Wolt-integrationen",
+    });
+    return null;
   },
 });
 
@@ -462,6 +561,29 @@ export const disconnectLocation = mutation({
         disabledAt: Date.now(),
         updatedAt: Date.now(),
       });
+    }
+    const connections = await ctx.db
+      .query("woltVenueConnections")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(MAX_LOCATIONS + 1);
+    const stillConnected = connections
+      .slice(0, MAX_LOCATIONS)
+      .some((item) => item.state !== "disabled");
+    if (!stillConnected) {
+      const integration = await ctx.db
+        .query("woltIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", auth.organizationId),
+        )
+        .unique();
+      if (integration?.enabled) {
+        await ctx.db.patch(integration._id, {
+          enabled: false,
+          updatedAt: Date.now(),
+        });
+      }
     }
     await recordAudit(ctx, auth, {
       action: "wolt.connection.disconnected",
