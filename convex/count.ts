@@ -15,6 +15,7 @@ import { otherFeaturesLockState } from "./lib/countLock";
 import {
   listCountAreas,
   MAX_COUNT_AREAS,
+  MAX_COUNT_AREA_PRODUCTS,
   requireCountArea,
 } from "./lib/countAreas";
 import { countScheduleValidator } from "./lib/countSettings";
@@ -48,6 +49,13 @@ const settingsValidator = v.object({
 const countSummaryValidator = v.object({
   id: v.id("counts"),
   status: v.union(v.literal("open"), v.literal("submitted")),
+  completedCountAreaIds: v.array(v.id("countAreas")),
+  countAreaProgress: v.array(
+    v.object({
+      countAreaId: v.id("countAreas"),
+      countedProductIds: v.array(v.id("products")),
+    }),
+  ),
   submittedAt: v.union(v.number(), v.null()),
   submittedByName: v.union(v.string(), v.null()),
 });
@@ -215,6 +223,129 @@ async function getCountItems(
   return items;
 }
 
+async function listCountAreaProgress(
+  ctx: CountContext,
+  organizationId: string,
+  countId: Id<"counts">,
+) {
+  const progress = await ctx.db
+    .query("countAreaProgress")
+    .withIndex("by_organizationId_and_countId", (q) =>
+      q.eq("organizationId", organizationId).eq("countId", countId),
+    )
+    .take(MAX_COUNT_AREAS + 1);
+  if (progress.length > MAX_COUNT_AREAS) {
+    throw new ConvexError("Count har status for for mange Barer");
+  }
+  return progress;
+}
+
+async function getCountAreaProgress(
+  ctx: CountContext,
+  organizationId: string,
+  countId: Id<"counts">,
+  countAreaId: Id<"countAreas">,
+) {
+  return await ctx.db
+    .query("countAreaProgress")
+    .withIndex(
+      "by_organizationId_and_countId_and_countAreaId",
+      (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("countId", countId)
+          .eq("countAreaId", countAreaId),
+    )
+    .unique();
+}
+
+async function getWritableCount(
+  ctx: MutationCtx,
+  args: {
+    organizationId: string;
+    userIdentifier: string;
+    location: Doc<"locations">;
+    create: boolean;
+  },
+) {
+  const now = Date.now();
+  const window = await getLocationCountWindow(
+    ctx,
+    args.organizationId,
+    args.location,
+    now,
+  );
+  const [count, hasSubmitted] = await Promise.all([
+    getCount(
+      ctx,
+      args.organizationId,
+      args.location._id,
+      window.periodKey,
+    ),
+    hasSubmittedCount(ctx, args.organizationId, args.location._id),
+  ]);
+  if (
+    !window.allowOutsideWindow &&
+    hasSubmitted &&
+    !windowIsOpen(now, window)
+  ) {
+    throw new ConvexError("Count-vinduet er lukket");
+  }
+  if (count?.status === "submitted") {
+    throw new ConvexError("Count er allerede registreret");
+  }
+  if (count || !args.create) return count;
+
+  const countId = await ctx.db.insert("counts", {
+    organizationId: args.organizationId,
+    locationId: args.location._id,
+    periodKey: window.periodKey,
+    status: "open",
+    createdBy: args.userIdentifier,
+  });
+  const created = await ctx.db.get("counts", countId);
+  if (!created) throw new ConvexError("Count kunne ikke oprettes");
+  return created;
+}
+
+async function markCountAreaProduct(
+  ctx: MutationCtx,
+  args: {
+    organizationId: string;
+    locationId: Id<"locations">;
+    countId: Id<"counts">;
+    countAreaId: Id<"countAreas">;
+    productId: Id<"products">;
+  },
+) {
+  const progress = await getCountAreaProgress(
+    ctx,
+    args.organizationId,
+    args.countId,
+    args.countAreaId,
+  );
+  if (progress?.countedProductIds.includes(args.productId)) return;
+  if (
+    progress &&
+    progress.countedProductIds.length >= MAX_COUNT_AREA_PRODUCTS
+  ) {
+    throw new ConvexError("Baren har for mange optalte Produkter");
+  }
+  if (progress) {
+    await ctx.db.patch("countAreaProgress", progress._id, {
+      countedProductIds: [...progress.countedProductIds, args.productId],
+    });
+    return;
+  }
+  await ctx.db.insert("countAreaProgress", {
+    organizationId: args.organizationId,
+    locationId: args.locationId,
+    countId: args.countId,
+    countAreaId: args.countAreaId,
+    countedProductIds: [args.productId],
+  });
+}
+
 async function activeProducts(
   ctx: QueryCtx,
   organizationId: string,
@@ -334,6 +465,9 @@ export const getCountState = query({
       getCount(ctx, organizationId, args.locationId, periodKey),
       hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
+    const countAreaProgress = count
+      ? await listCountAreaProgress(ctx, organizationId, count._id)
+      : [];
 
     return {
       periodKey,
@@ -354,6 +488,11 @@ export const getCountState = query({
         ? {
             id: count._id,
             status: count.status,
+            completedCountAreaIds: count.completedCountAreaIds ?? [],
+            countAreaProgress: countAreaProgress.map((progress) => ({
+              countAreaId: progress.countAreaId,
+              countedProductIds: progress.countedProductIds,
+            })),
             submittedAt: count.submittedAt ?? null,
             submittedByName: count.submittedByName ?? null,
           }
@@ -555,40 +694,13 @@ export const setCountQuantity = mutation({
       throw new ConvexError("Baren blev ikke fundet");
     }
 
-    const now = Date.now();
-    const window = await getLocationCountWindow(
-      ctx,
+    const count = await getWritableCount(ctx, {
       organizationId,
+      userIdentifier,
       location,
-      now,
-    );
-    const periodKey = window.periodKey;
-    const [currentCount, hasSubmitted] = await Promise.all([
-      getCount(ctx, organizationId, args.locationId, periodKey),
-      hasSubmittedCount(ctx, organizationId, args.locationId),
-    ]);
-    if (
-      !window.allowOutsideWindow &&
-      hasSubmitted &&
-      !windowIsOpen(now, window)
-    ) {
-      throw new ConvexError("Count-vinduet er lukket");
-    }
-    let count = currentCount;
-    if (count?.status === "submitted") {
-      throw new ConvexError("Count er allerede registreret");
-    }
-    if (!count && args.quantity === 0) return null;
-    if (!count) {
-      const countId = await ctx.db.insert("counts", {
-        organizationId,
-        locationId: args.locationId,
-        periodKey,
-        status: "open",
-        createdBy: userIdentifier,
-      });
-      count = (await ctx.db.get("counts", countId))!;
-    }
+      create: args.quantity > 0,
+    });
+    if (!count) return null;
 
     const itemCandidates = await ctx.db
       .query("countItems")
@@ -629,6 +741,193 @@ export const setCountQuantity = mutation({
         quantity: args.quantity,
       });
     }
+    if (args.countAreaId) {
+      await markCountAreaProduct(ctx, {
+        organizationId,
+        locationId: location._id,
+        countId: count._id,
+        countAreaId: args.countAreaId,
+        productId: args.productId,
+      });
+    }
+    if (
+      args.countAreaId &&
+      count.completedCountAreaIds?.includes(args.countAreaId)
+    ) {
+      await ctx.db.patch("counts", count._id, {
+        completedCountAreaIds: count.completedCountAreaIds.filter(
+          (countAreaId) => countAreaId !== args.countAreaId,
+        ),
+      });
+    }
+    return null;
+  },
+});
+
+export const startCountArea = mutation({
+  args: {
+    locationId: v.id("locations"),
+    countAreaId: v.id("countAreas"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId, userIdentifier } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    await requireCountArea(
+      ctx,
+      organizationId,
+      location._id,
+      args.countAreaId,
+    );
+    const count = await getWritableCount(ctx, {
+      organizationId,
+      userIdentifier,
+      location,
+      create: true,
+    });
+    if (!count) throw new ConvexError("Count kunne ikke oprettes");
+
+    const progress = await getCountAreaProgress(
+      ctx,
+      organizationId,
+      count._id,
+      args.countAreaId,
+    );
+    if (!progress) {
+      await ctx.db.insert("countAreaProgress", {
+        organizationId,
+        locationId: location._id,
+        countId: count._id,
+        countAreaId: args.countAreaId,
+        countedProductIds: [],
+      });
+    }
+    return null;
+  },
+});
+
+export const markCountAreaProductCounted = mutation({
+  args: {
+    locationId: v.id("locations"),
+    countAreaId: v.id("countAreas"),
+    productId: v.id("products"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId, userIdentifier } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const [product, countArea] = await Promise.all([
+      ctx.db.get("products", args.productId),
+      requireCountArea(
+        ctx,
+        organizationId,
+        location._id,
+        args.countAreaId,
+      ),
+    ]);
+    if (
+      !product ||
+      product.organizationId !== organizationId ||
+      product.status !== "active"
+    ) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    const areaProduct = await ctx.db
+      .query("countAreaProducts")
+      .withIndex(
+        "by_organizationId_and_countAreaId_and_productId",
+        (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("countAreaId", countArea._id)
+            .eq("productId", product._id),
+      )
+      .unique();
+    if (!areaProduct) {
+      throw new ConvexError("Produktet bruges ikke i den valgte Bar");
+    }
+    await requireLocationProduct(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+    );
+
+    const count = await getWritableCount(ctx, {
+      organizationId,
+      userIdentifier,
+      location,
+      create: true,
+    });
+    if (!count) throw new ConvexError("Count kunne ikke oprettes");
+    await markCountAreaProduct(ctx, {
+      organizationId,
+      locationId: location._id,
+      countId: count._id,
+      countAreaId: countArea._id,
+      productId: product._id,
+    });
+    if (count.completedCountAreaIds?.includes(countArea._id)) {
+      await ctx.db.patch("counts", count._id, {
+        completedCountAreaIds: count.completedCountAreaIds.filter(
+          (countAreaId) => countAreaId !== countArea._id,
+        ),
+      });
+    }
+    return null;
+  },
+});
+
+export const completeCountArea = mutation({
+  args: {
+    locationId: v.id("locations"),
+    countAreaId: v.id("countAreas"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    const { organizationId, userIdentifier } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    await requireCountArea(
+      ctx,
+      organizationId,
+      location._id,
+      args.countAreaId,
+    );
+
+    const count = await getWritableCount(ctx, {
+      organizationId,
+      userIdentifier,
+      location,
+      create: true,
+    });
+    if (!count) throw new ConvexError("Count kunne ikke oprettes");
+    if (count.completedCountAreaIds?.includes(args.countAreaId)) {
+      return null;
+    }
+    await ctx.db.patch("counts", count._id, {
+      completedCountAreaIds: [
+        ...(count.completedCountAreaIds ?? []),
+        args.countAreaId,
+      ],
+    });
     return null;
   },
 });

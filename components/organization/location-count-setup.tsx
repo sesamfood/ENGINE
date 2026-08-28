@@ -473,6 +473,7 @@ export function LocationCountSetup({
                           >
                             <Checkbox
                               id={inputId}
+                              className="self-center mt-0!"
                               checked={checked}
                               disabled={
                                 isIngredient || configuration === undefined
@@ -710,6 +711,7 @@ export function LocationCountSetup({
                           >
                             <Checkbox
                               id={inputId}
+                              className="self-center mt-0!"
                               checked={checked}
                               disabled={savingOrder}
                               aria-label={`Vælg ${product.name}`}

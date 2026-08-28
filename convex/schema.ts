@@ -1701,6 +1701,7 @@ export default defineSchema({
     locationId: v.id("locations"),
     periodKey: v.string(),
     status: v.union(v.literal("open"), v.literal("submitted")),
+    completedCountAreaIds: v.optional(v.array(v.id("countAreas"))),
     submittedAt: v.optional(v.number()),
     submittedByName: v.optional(v.string()),
     createdBy: v.string(),
@@ -1737,6 +1738,20 @@ export default defineSchema({
       "unitId",
     ])
     .index("by_organizationId_and_productId", ["organizationId", "productId"]),
+
+  countAreaProgress: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    countId: v.id("counts"),
+    countAreaId: v.id("countAreas"),
+    countedProductIds: v.array(v.id("products")),
+  })
+    .index("by_organizationId_and_countId", ["organizationId", "countId"])
+    .index("by_organizationId_and_countId_and_countAreaId", [
+      "organizationId",
+      "countId",
+      "countAreaId",
+    ]),
 
   countReconciliationItems: defineTable({
     organizationId: v.string(),

@@ -82,6 +82,7 @@ import type * as ownCheckDocumentation from "../ownCheckDocumentation.js";
 import type * as ownCheckOverview from "../ownCheckOverview.js";
 import type * as ownCheckTemplates from "../ownCheckTemplates.js";
 import type * as ownChecks from "../ownChecks.js";
+import type * as presence from "../presence.js";
 import type * as rest_catalog from "../rest/catalog.js";
 import type * as rest_employees from "../rest/employees.js";
 import type * as rest_lib from "../rest/lib.js";
@@ -181,6 +182,7 @@ declare const fullApi: ApiFromModules<{
   ownCheckOverview: typeof ownCheckOverview;
   ownCheckTemplates: typeof ownCheckTemplates;
   ownChecks: typeof ownChecks;
+  presence: typeof presence;
   "rest/catalog": typeof rest_catalog;
   "rest/employees": typeof rest_employees;
   "rest/lib": typeof rest_lib;
@@ -229,5 +231,6 @@ export declare const internal: FilterApi<
 export declare const components: {
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+  presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
 };

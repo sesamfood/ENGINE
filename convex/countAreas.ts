@@ -26,7 +26,7 @@ const areaValidator = v.object({
   name: v.string(),
 });
 
-const managedAreaValidator = areaValidator.extend({
+const areaWithProductsValidator = areaValidator.extend({
   productIds: v.array(v.id("products")),
 });
 
@@ -103,23 +103,41 @@ async function filteredOrder(
 
 export const listForCount = query({
   args: { locationId: v.id("locations") },
-  returns: v.array(areaValidator),
+  returns: v.array(areaWithProductsValidator),
   handler: async (ctx, args) => {
     const auth = await requireCounter(ctx, "count.register");
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, auth.organizationId, args.locationId);
-    const areas = await listCountAreas(
-      ctx,
-      auth.organizationId,
-      args.locationId,
+    const [areas, access] = await Promise.all([
+      listCountAreas(ctx, auth.organizationId, args.locationId),
+      getLocationProductAccess(
+        ctx,
+        auth.organizationId,
+        args.locationId,
+      ),
+    ]);
+    return await Promise.all(
+      areas.map(async (area) => {
+        const order = await getCountAreaProductOrder(
+          ctx,
+          auth.organizationId,
+          area._id,
+        );
+        return {
+          id: area._id,
+          name: area.name,
+          productIds: order
+            .map((row) => row.productId)
+            .filter((productId) => productIsAvailable(access, productId)),
+        };
+      }),
     );
-    return areas.map((area) => ({ id: area._id, name: area.name }));
   },
 });
 
 export const listForManagement = query({
   args: { locationId: v.id("locations") },
-  returns: v.array(managedAreaValidator),
+  returns: v.array(areaWithProductsValidator),
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);
     requireLocationAccess(auth, args.locationId);
@@ -254,41 +272,6 @@ export const create = mutation({
       name,
       normalizedName,
     });
-    const [activeProducts, productAccess] = await Promise.all([
-      ctx.db
-        .query("products")
-        .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-          q.eq("organizationId", organizationId).eq("status", "active"),
-        )
-        .take(MAX_COUNT_AREA_PRODUCTS + 1),
-      getLocationProductAccess(ctx, organizationId, location._id),
-    ]);
-    if (activeProducts.length > MAX_COUNT_AREA_PRODUCTS) {
-      throw new ConvexError("Lokationen har for mange aktive Produkter");
-    }
-    const activeById = new Map(
-      activeProducts.map((product) => [product._id, product]),
-    );
-    const initialProductIds = [
-      ...(location.countProductOrder ?? []).filter(
-        (productId) =>
-          activeById.has(productId) &&
-          productIsAvailable(productAccess, productId),
-      ),
-      ...activeProducts
-        .filter((product) => productIsAvailable(productAccess, product._id))
-        .map((product) => product._id),
-    ];
-    const uniqueProductIds = [...new Set(initialProductIds)];
-    for (const [position, productId] of uniqueProductIds.entries()) {
-      await ctx.db.insert("countAreaProducts", {
-        organizationId,
-        locationId: location._id,
-        countAreaId,
-        productId,
-        position,
-      });
-    }
     await recordAudit(ctx, auth, {
       action: "count.areaCreated",
       entityTable: "countAreas",
@@ -386,6 +369,25 @@ export const remove = mutation({
           "Baren kan ikke fjernes, mens den indgår i en åben Count",
         );
       }
+      if (currentCount.completedCountAreaIds?.includes(area._id)) {
+        await ctx.db.patch("counts", currentCount._id, {
+          completedCountAreaIds: currentCount.completedCountAreaIds.filter(
+            (countAreaId) => countAreaId !== area._id,
+          ),
+        });
+      }
+      const progress = await ctx.db
+        .query("countAreaProgress")
+        .withIndex(
+          "by_organizationId_and_countId_and_countAreaId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("countId", currentCount._id)
+              .eq("countAreaId", area._id),
+        )
+        .unique();
+      if (progress) await ctx.db.delete("countAreaProgress", progress._id);
     }
     const order = await getCountAreaProductOrder(ctx, organizationId, area._id);
     for (const row of order) {
@@ -468,6 +470,7 @@ export const setProductOrder = mutation({
         organizationId,
         location,
       );
+      const nextProductIds = new Set(args.productIds);
       if (currentCount) {
         const countItems = await ctx.db
           .query("countItems")
@@ -480,7 +483,6 @@ export const setProductOrder = mutation({
         if (countItems.length > MAX_COUNT_ITEMS) {
           throw new ConvexError("Count har for mange enhedslinjer");
         }
-        const nextProductIds = new Set(args.productIds);
         if (
           countItems.some(
             (item) =>
@@ -504,6 +506,33 @@ export const setProductOrder = mutation({
           productId,
           position,
         });
+      }
+      if (currentCount?.completedCountAreaIds?.includes(area._id)) {
+        await ctx.db.patch("counts", currentCount._id, {
+          completedCountAreaIds: currentCount.completedCountAreaIds.filter(
+            (countAreaId) => countAreaId !== area._id,
+          ),
+        });
+      }
+      if (currentCount) {
+        const progress = await ctx.db
+          .query("countAreaProgress")
+          .withIndex(
+            "by_organizationId_and_countId_and_countAreaId",
+            (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("countId", currentCount._id)
+                .eq("countAreaId", area._id),
+          )
+          .unique();
+        if (progress) {
+          await ctx.db.patch("countAreaProgress", progress._id, {
+            countedProductIds: progress.countedProductIds.filter(
+              (productId) => nextProductIds.has(productId),
+            ),
+          });
+        }
       }
     }
     await recordAudit(ctx, auth, {
