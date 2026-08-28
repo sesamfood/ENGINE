@@ -3,15 +3,20 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
 import {
-  requireCatalogManager,
   requireCounter,
   requireLocationAccess,
+  requireLocationManager,
   requireNormalOrganization,
   requireOrganization,
   requirePermission,
   requireStockViewer,
 } from "./lib/auth";
 import { otherFeaturesLockState } from "./lib/countLock";
+import {
+  listCountAreas,
+  MAX_COUNT_AREAS,
+  requireCountArea,
+} from "./lib/countAreas";
 import { countScheduleValidator } from "./lib/countSettings";
 import {
   getCountConfiguration,
@@ -19,10 +24,19 @@ import {
 } from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
+import {
+  getLocationProductAccess,
+  requireLocationProduct,
+} from "./lib/locationProducts";
+import {
+  activeProductCatalogValidator,
+  listLocationActiveProductCatalog,
+} from "./lib/productCatalog";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
 const MAX_COUNT_ITEMS = 5000;
+const MAX_LOCATION_STOCK_ROWS = 5000;
 
 const settingsValidator = v.object({
   allowOutsideWindow: v.boolean(),
@@ -49,6 +63,7 @@ const countStateValidator = v.object({
 });
 
 const countQuantityValidator = v.object({
+  countAreaId: v.union(v.id("countAreas"), v.null()),
   productId: v.id("products"),
   unitId: v.id("units"),
   quantity: v.number(),
@@ -367,10 +382,26 @@ export const getCountQuantities = query({
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     return items.map((item) => ({
+      countAreaId: item.countAreaId ?? null,
       productId: item.productId,
       unitId: item.unitId,
       quantity: item.quantity,
     }));
+  },
+});
+
+export const listCatalog = query({
+  args: { locationId: v.id("locations") },
+  returns: v.array(activeProductCatalogValidator),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, auth.organizationId, args.locationId);
+    return await listLocationActiveProductCatalog(
+      ctx,
+      auth.organizationId,
+      args.locationId,
+    );
   },
 });
 
@@ -397,12 +428,20 @@ export const setCountProductOrder = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireCatalogManager(ctx);
+    const auth = await requireLocationManager(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
     const location = await requireLocation(
       ctx,
       organizationId,
       args.locationId,
     );
+    const countAreas = await listCountAreas(
+      ctx,
+      organizationId,
+      location._id,
+    );
+    if (countAreas.length > 0) throw new ConvexError("Vælg en Bar");
     if (
       args.productIds.length > MAX_PRODUCTS ||
       new Set(args.productIds).size !== args.productIds.length
@@ -422,6 +461,19 @@ export const setCountProductOrder = mutation({
     ) {
       throw new ConvexError("Et produkt blev ikke fundet");
     }
+    const productAccess = await getLocationProductAccess(
+      ctx,
+      organizationId,
+      location._id,
+    );
+    if (
+      productAccess.kind === "selected" &&
+      args.productIds.some(
+        (productId) => !productAccess.effectiveProductIds.has(productId),
+      )
+    ) {
+      throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
+    }
     await ctx.db.patch("locations", location._id, {
       countProductOrder: args.productIds,
     });
@@ -432,6 +484,7 @@ export const setCountProductOrder = mutation({
 export const setCountQuantity = mutation({
   args: {
     locationId: v.id("locations"),
+    countAreaId: v.union(v.id("countAreas"), v.null()),
     productId: v.id("products"),
     unitId: v.id("units"),
     quantity: v.number(),
@@ -449,7 +502,7 @@ export const setCountQuantity = mutation({
       organizationId,
       args.locationId,
     );
-    const [product, productUnit] = await Promise.all([
+    const [product, productUnit, countAreas] = await Promise.all([
       ctx.db.get("products", args.productId),
       ctx.db
         .query("productUnits")
@@ -460,6 +513,7 @@ export const setCountQuantity = mutation({
             .eq("unitId", args.unitId),
         )
         .unique(),
+      listCountAreas(ctx, organizationId, location._id),
     ]);
     if (
       !product ||
@@ -468,6 +522,37 @@ export const setCountQuantity = mutation({
       !productUnit
     ) {
       throw new ConvexError("Produktet eller enheden blev ikke fundet");
+    }
+    await requireLocationProduct(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+    );
+    if (countAreas.length > 0) {
+      if (!args.countAreaId) throw new ConvexError("Vælg en Bar");
+      const countArea = await requireCountArea(
+        ctx,
+        organizationId,
+        location._id,
+        args.countAreaId,
+      );
+      const areaProduct = await ctx.db
+        .query("countAreaProducts")
+        .withIndex(
+          "by_organizationId_and_countAreaId_and_productId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("countAreaId", countArea._id)
+              .eq("productId", product._id),
+        )
+        .unique();
+      if (!areaProduct) {
+        throw new ConvexError("Produktet bruges ikke i den valgte Bar");
+      }
+    } else if (args.countAreaId) {
+      throw new ConvexError("Baren blev ikke fundet");
     }
 
     const now = Date.now();
@@ -505,7 +590,7 @@ export const setCountQuantity = mutation({
       count = (await ctx.db.get("counts", countId))!;
     }
 
-    const item = await ctx.db
+    const itemCandidates = await ctx.db
       .query("countItems")
       .withIndex(
         "by_organizationId_and_countId_and_productId_and_unitId",
@@ -516,7 +601,17 @@ export const setCountQuantity = mutation({
             .eq("productId", args.productId)
             .eq("unitId", args.unitId),
       )
-      .unique();
+      .take(MAX_COUNT_AREAS + 2);
+    if (itemCandidates.length > MAX_COUNT_AREAS + 1) {
+      throw new ConvexError("Count har for mange Bar-linjer for Produktet");
+    }
+    const matchingItems = itemCandidates.filter(
+      (item) => (item.countAreaId ?? null) === args.countAreaId,
+    );
+    if (matchingItems.length > 1) {
+      throw new ConvexError("Produktet findes flere gange i den valgte Bar");
+    }
+    const item = matchingItems[0] ?? null;
 
     if (args.quantity === 0) {
       if (item) await ctx.db.delete("countItems", item._id);
@@ -528,6 +623,7 @@ export const setCountQuantity = mutation({
       await ctx.db.insert("countItems", {
         organizationId,
         countId: count._id,
+        countAreaId: args.countAreaId ?? undefined,
         productId: args.productId,
         unitId: args.unitId,
         quantity: args.quantity,
@@ -713,7 +809,41 @@ export const listLocationStock = query({
     const { organizationId } = auth;
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
-    const products = await activeProducts(ctx, organizationId);
+    const [allProducts, productAccess, stockRows] = await Promise.all([
+      activeProducts(ctx, organizationId),
+      getLocationProductAccess(ctx, organizationId, args.locationId),
+      ctx.db
+        .query("locationStock")
+        .withIndex(
+          "by_organizationId_and_locationId_and_productId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", args.locationId),
+        )
+        .take(MAX_LOCATION_STOCK_ROWS + 1),
+    ]);
+    if (stockRows.length > MAX_LOCATION_STOCK_ROWS) {
+      throw new ConvexError("Lokationen har for mange lagerlinjer");
+    }
+    const stockByProductId = new Map<
+      Id<"products">,
+      Doc<"locationStock">
+    >();
+    for (const stock of stockRows) {
+      if (stockByProductId.has(stock.productId)) {
+        throw new ConvexError("Produktets lager findes flere gange");
+      }
+      stockByProductId.set(stock.productId, stock);
+    }
+    const products =
+      productAccess.kind === "all"
+        ? allProducts
+        : allProducts.filter(
+            (product) =>
+              productAccess.effectiveProductIds.has(product._id) ||
+              (stockByProductId.get(product._id)?.quantity ?? 0) > 0,
+          );
     const categoryCache = new Map<
       Id<"categories">,
       Promise<Doc<"categories"> | null>
@@ -739,21 +869,11 @@ export const listLocationStock = query({
 
     return await Promise.all(
       products.map(async (product) => {
-        const [category, defaultUnit, stock, imageUrl, productUnits] =
+        const stock = stockByProductId.get(product._id);
+        const [category, defaultUnit, imageUrl, productUnits] =
           await Promise.all([
             loadCategory(product.categoryId),
             loadUnit(product.defaultUnitId),
-            ctx.db
-              .query("locationStock")
-              .withIndex(
-                "by_organizationId_and_locationId_and_productId",
-                (q) =>
-                  q
-                    .eq("organizationId", organizationId)
-                    .eq("locationId", args.locationId)
-                    .eq("productId", product._id),
-              )
-              .unique(),
             product.imageStorageId
               ? ctx.storage.getUrl(product.imageStorageId)
               : null,

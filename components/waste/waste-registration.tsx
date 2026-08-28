@@ -238,7 +238,10 @@ function WasteUndoControls({
 
 export function WasteRegistration() {
   const { locationId, locations } = useWasteContext();
-  const catalog = useQuery(api.waste.listCatalog);
+  const catalog = useQuery(
+    api.waste.listCatalog,
+    locationId ? { locationId } : "skip",
+  );
   const state = useQuery(
     api.waste.getViewState,
     locationId ? { locationId } : "skip",

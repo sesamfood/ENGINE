@@ -89,6 +89,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Tooltip,
   TooltipContent,
@@ -97,10 +98,6 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePermission } from "@/components/app-shell";
-import {
-  setCountOrder,
-  useCountOrder,
-} from "@/lib/count-prefs";
 import { downloadCsv } from "@/lib/download-csv";
 import { productSearchScore } from "@/lib/product-search";
 import { useLastDefined } from "@/lib/use-last-defined";
@@ -133,10 +130,22 @@ type CountProduct = Omit<CountCatalogProduct, "units"> & {
 
 type QuantityPayload = {
   locationId: Id<"locations">;
+  countAreaId: Id<"countAreas"> | null;
   productId: Id<"products">;
   unitId: Id<"units">;
   quantity: number;
 };
+
+type CountViewMode = "all" | "single";
+
+function quantityKey(
+  locationId: Id<"locations"> | null,
+  countAreaId: Id<"countAreas"> | null,
+  productId: Id<"products">,
+  unitId: Id<"units">,
+) {
+  return `${locationId ?? "no-location"}:${countAreaId ?? "location"}:${productId}:${unitId}`;
+}
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
@@ -411,12 +420,18 @@ function ProductCard({
                 <Select
                   items={unitItems}
                   value={selectedUnit.id}
-                  onValueChange={(value) =>
-                    onSelectedUnitChange(value as Id<"units">)
-                  }
+                  onValueChange={(value) => {
+                    const unitId = product.units.find(
+                      (unit) => unit.id === value,
+                    )?.id;
+                    if (unitId) onSelectedUnitChange(unitId);
+                  }}
                   disabled={disabled}
                 >
-                  <SelectTrigger aria-label={`Enhed for ${product.name}`} className="h-11! w-full">
+                  <SelectTrigger
+                    aria-label={`Enhed for ${product.name}`}
+                    className="h-11! w-full"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
@@ -505,11 +520,13 @@ function ProductCard({
 function OrderBuilder({
   open,
   products,
+  appendUnselected,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   products: CountProduct[];
+  appendUnselected: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (order: Id<"products">[]) => void;
 }) {
@@ -535,9 +552,11 @@ function OrderBuilder({
   function save() {
     onSave([
       ...selectedIds,
-      ...products
-        .filter((product) => !selected.has(product.id))
-        .map((product) => product.id),
+      ...(appendUnselected
+        ? products
+            .filter((product) => !selected.has(product.id))
+            .map((product) => product.id)
+        : []),
     ]);
     close(false);
   }
@@ -548,8 +567,9 @@ function OrderBuilder({
         <DialogHeader>
           <DialogTitle>Start forfra med rækkefølgen</DialogTitle>
           <DialogDescription>
-            Vælg produkterne i den rækkefølge, de skal vises. Produkter, du ikke
-            vælger, placeres til sidst.
+            {appendUnselected
+              ? "Vælg Produkterne i den rækkefølge, de skal vises. Produkter, du ikke vælger, placeres til sidst."
+              : "Vælg de Produkter, der skal tælles i denne Bar, og angiv deres rækkefølge."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-h-0 gap-4 sm:grid-cols-2">
@@ -642,7 +662,7 @@ function OrderBuilder({
             Annullér
           </Button>
           <Button type="button" onClick={save}>
-            Gem rækkefølge
+            Anvend rækkefølge
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -824,22 +844,30 @@ function CountSkeleton() {
 }
 
 export function CountSheet() {
-  const { organizationId, locations, locationId, canRegister, state } =
-    useCountState();
-  const canManageCatalog = usePermission("catalog.manage");
+  const { locations, locationId, canRegister, state } = useCountState();
+  const canManageLocations = usePermission("locations.manage");
   const canExport = usePermission("count.export");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string>("all");
-  const [editingOrder, setEditingOrder] = useState(false);
-  const [selectedUnits, setSelectedUnits] = useState<Record<string, string>>(
-    {},
+  const [editingOrderContext, setEditingOrderContext] = useState<string | null>(
+    null,
   );
+  const [selectedCountAreaId, setSelectedCountAreaId] =
+    useState<Id<"countAreas"> | null>(null);
+  const [selectedUnits, setSelectedUnits] = useState<
+    Record<string, Id<"units">>
+  >({});
   const [overrides, setOverrides] = useState<Record<string, number>>({});
+  const [viewMode, setViewMode] = useState<CountViewMode>("all");
+  const [singleProductSelection, setSingleProductSelection] = useState<{
+    key: string;
+    index: number;
+  }>({ key: "", index: 0 });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitReason, setSubmitReason] = useState("");
-  const [defaultConfirmOpen, setDefaultConfirmOpen] = useState(false);
   const [orderBuilderOpen, setOrderBuilderOpen] = useState(false);
-  const [savingDefaultOrder, setSavingDefaultOrder] = useState(false);
+  const [orderDraft, setOrderDraft] = useState<Id<"products">[] | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const pendingValues = useRef(new Map<string, QuantityPayload>());
@@ -848,8 +876,23 @@ export function CountSheet() {
   const convex = useConvex();
   const setQuantity = useMutation(api.count.setCountQuantity);
   const submitCount = useMutation(api.count.submitCount);
-  const setDefaultOrder = useMutation(api.count.setCountProductOrder);
-  const savedOrder = useCountOrder(organizationId, locationId);
+  const setProductOrder = useMutation(api.countAreas.setProductOrder);
+
+  const queriedCountAreas = useQuery(
+    api.countAreas.listForCount,
+    canRegister && locationId ? { locationId } : "skip",
+  );
+  const countAreas = queriedCountAreas;
+  const activeCountAreaId =
+    countAreas?.length === 0
+      ? null
+      : (countAreas?.find((area) => area.id === selectedCountAreaId)?.id ??
+        (countAreas?.length === 1 ? countAreas[0].id : null));
+  const countAreaSelectionReady =
+    countAreas !== undefined &&
+    (countAreas.length === 0 || activeCountAreaId !== null);
+  const countContextKey = `${locationId ?? ""}:${activeCountAreaId ?? "location"}`;
+  const editingOrder = editingOrderContext === countContextKey;
 
   const queriedQuantities = useQuery(
     api.count.getCountQuantities,
@@ -861,31 +904,48 @@ export function CountSheet() {
     queriedQuantities,
     state?.count?.id ?? null,
   );
-  const defaultOrder = useQuery(
-    api.count.getCountProductOrder,
-    canRegister && locationId ? { locationId } : "skip",
+  const queriedProductOrder = useQuery(
+    api.countAreas.getProductOrder,
+    canRegister && locationId && countAreaSelectionReady
+      ? { locationId, countAreaId: activeCountAreaId }
+      : "skip",
+  );
+  const productOrder = useLastDefined(
+    queriedProductOrder,
+    canRegister && locationId && countAreaSelectionReady
+      ? `${locationId}:${activeCountAreaId ?? "location"}`
+      : null,
   );
   const categories = useQuery(
     api.catalog.listCategoryOptions,
     canRegister ? {} : "skip",
   );
   const queriedProducts = useQuery(
-    api.catalog.listActiveProducts,
-    canRegister && locationId ? {} : "skip",
-  ) as CountCatalogProduct[] | undefined;
+    api.count.listCatalog,
+    canRegister && locationId && countAreaSelectionReady
+      ? { locationId }
+      : "skip",
+  );
   const catalogProducts = useLastDefined(
     queriedProducts,
-    locationId ? "catalog" : null,
+    canRegister && locationId && countAreaSelectionReady ? locationId : null,
   );
   const quantities = useMemo(
     () => (state?.count ? storedQuantities : state ? [] : undefined),
     [state, storedQuantities],
   );
   const products = useMemo(() => {
-    if (!catalogProducts || !quantities) return undefined;
+    if (
+      !catalogProducts ||
+      !quantities ||
+      !countAreaSelectionReady ||
+      productOrder === undefined
+    ) {
+      return undefined;
+    }
     const byUnit = new Map(
       quantities.map((row) => [
-        `${row.productId}:${row.unitId}`,
+        quantityKey(locationId, row.countAreaId, row.productId, row.unitId),
         row.quantity,
       ]),
     );
@@ -896,19 +956,34 @@ export function CountSheet() {
     return catalogProducts
       .filter(
         (product) =>
-          (!selectedCategoryIds ||
+          editingOrder ||
+          ((!selectedCategoryIds ||
             selectedCategoryIds.has(product.category.id)) &&
-          productSearchScore(product.name, product.category.path, search) !==
-            null,
+            productSearchScore(product.name, product.category.path, search) !==
+              null),
       )
       .map((product) => ({
         ...product,
         units: product.units.map((unit) => ({
           ...unit,
-          quantity: byUnit.get(`${product.id}:${unit.id}`) ?? 0,
+          quantity:
+            byUnit.get(
+              quantityKey(locationId, activeCountAreaId, product.id, unit.id),
+            ) ?? 0,
         })),
       }));
-  }, [catalogProducts, categories, categoryId, quantities, search]);
+  }, [
+    activeCountAreaId,
+    catalogProducts,
+    categories,
+    categoryId,
+    countAreaSelectionReady,
+    editingOrder,
+    locationId,
+    productOrder,
+    quantities,
+    search,
+  ]);
 
   useEffect(() => {
     if (!products) return;
@@ -917,7 +992,12 @@ export function CountSheet() {
       let changed = false;
       for (const product of products) {
         for (const unit of product.units) {
-          const key = `${product.id}:${unit.id}`;
+          const key = quantityKey(
+            locationId,
+            activeCountAreaId,
+            product.id,
+            unit.id,
+          );
           if (next[key] === unit.quantity && !pendingValues.current.has(key)) {
             delete next[key];
             changed = true;
@@ -926,7 +1006,7 @@ export function CountSheet() {
       }
       return changed ? next : current;
     });
-  }, [products]);
+  }, [activeCountAreaId, locationId, products]);
 
   async function persistQuantity(key: string) {
     const timer = timers.current.get(key);
@@ -955,10 +1035,16 @@ export function CountSheet() {
     quantity: number,
   ) {
     if (!locationId) return;
-    const key = `${product.id}:${unit.id}`;
+    const key = quantityKey(
+      locationId,
+      activeCountAreaId,
+      product.id,
+      unit.id,
+    );
     setOverrides((current) => ({ ...current, [key]: quantity }));
     pendingValues.current.set(key, {
       locationId,
+      countAreaId: activeCountAreaId,
       productId: product.id,
       unitId: unit.id,
       quantity,
@@ -994,19 +1080,74 @@ export function CountSheet() {
     [setQuantity],
   );
 
-  const displayedProducts = useMemo(() => {
-    if (!products) return [];
-    const order = savedOrder.length ? savedOrder : (defaultOrder ?? []);
-    const index = new Map(order.map((id, position) => [id, position]));
+  const serverOrderedProducts = useMemo(() => {
+    if (!products || !productOrder) return [];
+    const byId = new Map(products.map((product) => [product.id, product]));
+    if (activeCountAreaId) {
+      return productOrder
+        .map((productId) => byId.get(productId))
+        .filter((product): product is CountProduct => product !== undefined);
+    }
+    const index = new Map(productOrder.map((id, position) => [id, position]));
     return products
       .map((product, position) => ({ product, position }))
       .sort(
         (left, right) =>
-          (index.get(left.product.id) ?? order.length + left.position) -
-          (index.get(right.product.id) ?? order.length + right.position),
+          (index.get(left.product.id) ?? productOrder.length + left.position) -
+          (index.get(right.product.id) ?? productOrder.length + right.position),
       )
       .map(({ product }) => product);
-  }, [defaultOrder, products, savedOrder]);
+  }, [activeCountAreaId, productOrder, products]);
+
+  const displayedProducts = useMemo(() => {
+    if (!editingOrder || !orderDraft) return serverOrderedProducts;
+    const byId = new Map(products?.map((product) => [product.id, product]));
+    if (activeCountAreaId) {
+      return orderDraft
+        .map((productId) => byId.get(productId))
+        .filter((product): product is CountProduct => product !== undefined);
+    }
+    const draftIds = new Set(orderDraft);
+    return [
+      ...orderDraft
+        .map((productId) => byId.get(productId))
+        .filter((product): product is CountProduct => product !== undefined),
+      ...(products ?? []).filter((product) => !draftIds.has(product.id)),
+    ];
+  }, [
+    activeCountAreaId,
+    editingOrder,
+    orderDraft,
+    products,
+    serverOrderedProducts,
+  ]);
+
+  const productListKey = `${locationId ?? ""}:${activeCountAreaId ?? "location"}:${categoryId}:${search}:${displayedProducts.map((product) => product.id).join(",")}`;
+  const singleProductIndex =
+    singleProductSelection.key === productListKey
+      ? Math.min(
+          singleProductSelection.index,
+          Math.max(0, displayedProducts.length - 1),
+        )
+      : 0;
+
+  function moveSingleProduct(delta: number) {
+    setSingleProductSelection((current) => {
+      const currentIndex = current.key === productListKey ? current.index : 0;
+      return {
+        key: productListKey,
+        index: Math.max(
+          0,
+          Math.min(displayedProducts.length - 1, currentIndex + delta),
+        ),
+      };
+    });
+  }
+
+  const visibleProducts =
+    !editingOrder && viewMode === "single"
+      ? displayedProducts.slice(singleProductIndex, singleProductIndex + 1)
+      : displayedProducts;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1016,51 +1157,72 @@ export function CountSheet() {
   );
 
   function onDragEnd(event: DragEndEvent) {
-    if (
-      !organizationId ||
-      !locationId ||
-      !event.over ||
-      event.active.id === event.over.id
-    ) {
+    if (!editingOrder || !event.over || event.active.id === event.over.id) {
       return;
     }
     const ids = displayedProducts.map((product) => product.id);
-    const from = ids.indexOf(event.active.id as Id<"products">);
-    const to = ids.indexOf(event.over.id as Id<"products">);
+    const from = ids.findIndex((id) => id === event.active.id);
+    const to = ids.findIndex((id) => id === event.over?.id);
     if (from >= 0 && to >= 0) {
-      setCountOrder(organizationId, locationId, arrayMove(ids, from, to));
+      setOrderDraft(arrayMove(ids, from, to));
     }
   }
 
   function moveProduct(productId: Id<"products">, position: number) {
-    if (!organizationId || !locationId) return;
+    if (!editingOrder) return;
     const ids = displayedProducts.map((product) => product.id);
     const from = ids.indexOf(productId);
     if (from >= 0 && position >= 0 && position < ids.length) {
-      setCountOrder(organizationId, locationId, arrayMove(ids, from, position));
+      setOrderDraft(arrayMove(ids, from, position));
     }
   }
 
   function rebuildOrder(order: Id<"products">[]) {
-    if (!organizationId || !locationId) return;
-    setCountOrder(organizationId, locationId, order);
-    toast.success("Produktrækkefølgen er gemt");
+    setOrderDraft(order);
   }
 
-  async function publishDefaultOrder() {
-    if (!locationId) return;
-    setSavingDefaultOrder(true);
+  function startEditingOrder() {
+    if (!catalogProducts || !productOrder) return;
+    const catalogProductIds = catalogProducts.map((product) => product.id);
+    const catalogProductIdSet = new Set(catalogProductIds);
+    const orderedIds = productOrder.filter((productId) =>
+      catalogProductIdSet.has(productId),
+    );
+    const orderedIdSet = new Set(orderedIds);
+    const nextOrder = activeCountAreaId
+      ? orderedIds
+      : [
+          ...orderedIds,
+          ...catalogProductIds.filter(
+            (productId) => !orderedIdSet.has(productId),
+          ),
+        ];
+    setViewMode("all");
+    setOrderDraft(nextOrder);
+    setEditingOrderContext(countContextKey);
+  }
+
+  function cancelEditingOrder() {
+    setEditingOrderContext(null);
+    setOrderDraft(null);
+    setOrderBuilderOpen(false);
+  }
+
+  async function saveOrder() {
+    if (!locationId || !orderDraft || !countAreaSelectionReady) return;
+    setSavingOrder(true);
     try {
-      await setDefaultOrder({
+      await setProductOrder({
         locationId,
-        productIds: displayedProducts.map((product) => product.id),
+        countAreaId: activeCountAreaId,
+        productIds: orderDraft,
       });
-      setDefaultConfirmOpen(false);
-      toast.success("Standardrækkefølgen er gemt for lokationen");
+      toast.success("Produktrækkefølgen er gemt");
+      cancelEditingOrder();
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
-      setSavingDefaultOrder(false);
+      setSavingOrder(false);
     }
   }
 
@@ -1075,30 +1237,43 @@ export function CountSheet() {
     state && state.count?.status !== "submitted" && !state.isOpen,
   );
   const quantityFor = (product: CountProduct, unit: CountUnit) =>
-    overrides[`${product.id}:${unit.id}`] ?? unit.quantity;
+    overrides[
+      quantityKey(locationId, activeCountAreaId, product.id, unit.id)
+    ] ??
+    unit.quantity;
   const allQuantities = new Map(
     quantities?.map((row) => [
-      `${row.productId}:${row.unitId}`,
+      quantityKey(locationId, row.countAreaId, row.productId, row.unitId),
       row.quantity,
     ]),
   );
+  const currentLocationPrefix = `${locationId ?? "no-location"}:`;
   for (const [key, quantity] of Object.entries(overrides)) {
+    if (!key.startsWith(currentLocationPrefix)) continue;
     allQuantities.set(key, quantity);
   }
   const hasQuantity = [...allQuantities.values()].some(
     (quantity) => quantity > 0,
   );
+  const countAreaSelectionReason =
+    countAreas && countAreas.length > 1 && !activeCountAreaId
+      ? "Vælg en Bar"
+      : null;
   const disabledReason = !locationId
     ? "Vælg en lokation"
-    : !state
-      ? "Count indlæses"
-      : state.count?.status === "submitted"
-        ? "Count er allerede registreret"
-        : !state.isOpen
-          ? "Count-vinduet er lukket"
-          : !hasQuantity
-            ? "Indtast mindst én mængde"
-            : null;
+    : countAreas === undefined
+      ? "Barer indlæses"
+      : countAreaSelectionReason
+        ? countAreaSelectionReason
+        : !state
+          ? "Count indlæses"
+          : state.count?.status === "submitted"
+            ? "Count er allerede registreret"
+            : !state.isOpen
+              ? "Count-vinduet er lukket"
+              : !hasQuantity
+                ? "Indtast mindst én mængde"
+                : null;
 
   async function confirmSubmit() {
     if (!locationId) return;
@@ -1209,7 +1384,9 @@ export function CountSheet() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
-        <AlertDescription>Du har ikke adgang til at registrere Counts.</AlertDescription>
+        <AlertDescription>
+          Du har ikke adgang til at registrere Counts.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -1225,204 +1402,323 @@ export function CountSheet() {
           </EmptyMedia>
           <EmptyTitle>Ingen lokationer endnu</EmptyTitle>
           <EmptyDescription>
-            En bruger med rollen Administrator skal oprette en lokation, før lageret kan tælles.
+            En bruger med rollen Administrator skal oprette en lokation, før
+            lageret kan tælles.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
   }
 
+  const countAreaSelectionPending = Boolean(
+    countAreas && countAreas.length > 1 && !activeCountAreaId,
+  );
+  const emptyBarOrder = Boolean(
+    activeCountAreaId &&
+    productOrder &&
+    productOrder.length === 0 &&
+    catalogProducts?.length &&
+    categoryId === "all" &&
+    !search,
+  );
+
   return (
     <div className="flex flex-col gap-4 pb-28">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <InputGroup className="h-11 min-w-0 flex-1">
-          <InputGroupAddon>
-            <SearchIcon aria-hidden="true" />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setEditingOrder(false);
+      {countAreas && countAreas.length > 0 ? (
+        <Field className="max-w-md">
+          <FieldLabel htmlFor="count-bar">Bar</FieldLabel>
+          <Select
+            value={activeCountAreaId}
+            onValueChange={(value) => {
+              const nextArea = countAreas.find((area) => area.id === value);
+              if (nextArea) setSelectedCountAreaId(nextArea.id);
             }}
-            placeholder="Søg efter produkter"
-            aria-label="Søg efter produkter"
-          />
-        </InputGroup>
-        {categoryId === "all" && !search ? (
-          <div className="flex flex-wrap gap-2">
-            {editingOrder ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                disabled={!products}
-                onClick={() => setOrderBuilderOpen(true)}
-              >
-                <ListRestartIcon data-icon="inline-start" />
-                Start forfra
-              </Button>
-            ) : null}
-            {editingOrder && canManageCatalog ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                disabled={!products || savingDefaultOrder}
-                onClick={() => setDefaultConfirmOpen(true)}
-              >
-                {savingDefaultOrder ? (
-                  <Spinner data-icon="inline-start" />
-                ) : null}
-                Gør til standard
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant={editingOrder ? "default" : "outline"}
-              className="min-h-11"
-              onClick={() => setEditingOrder((current) => !current)}
-            >
-              <GripVerticalIcon data-icon="inline-start" />
-              {editingOrder ? "Afslut rækkefølge" : "Redigér rækkefølge"}
-            </Button>
-          </div>
-        ) : null}
-      </div>
+          >
+            <SelectTrigger id="count-bar" className="h-11 w-full">
+              <SelectValue placeholder="Vælg en Bar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {countAreas.map((area) => (
+                  <SelectItem key={area.id} value={area.id}>
+                    {area.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+      ) : null}
 
-      <Tabs
-        value={categoryId}
-        onValueChange={(value) => {
-          setCategoryId(value);
-          setEditingOrder(false);
-        }}
-        className="w-full min-w-0"
-      >
-        <TabsList
-          aria-label="Produktkategorier"
-          className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
-        >
-          <TabsTrigger value="all" className="min-w-24 shrink-0 px-4">
-            Alle
-          </TabsTrigger>
-          {categories?.map((category) => (
-            <TabsTrigger
-              key={category.id}
-              value={category.id}
-              className="min-w-28 shrink-0 px-4"
-            >
-              {category.name}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      {!products ? <CountSkeleton /> : null}
-
-      {products && displayedProducts.length === 0 ? (
+      {countAreaSelectionPending ? (
         <Empty className="min-h-72 border">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <PackageOpenIcon />
+              <BoxesIcon />
             </EmptyMedia>
-            <EmptyTitle>Ingen produkter fundet</EmptyTitle>
+            <EmptyTitle>Vælg en Bar</EmptyTitle>
             <EmptyDescription>
-              {search
-                ? "Prøv en anden søgning."
-                : "Der er ingen aktive produkter i denne kategori."}
+              Vælg en Bar for at se og registrere dens Produkter.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      ) : null}
-
-      {displayedProducts.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
-        >
-          <SortableContext
-            items={displayedProducts.map((product) => product.id)}
-            strategy={rectSortingStrategy}
-          >
-            <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
-              {displayedProducts.map((product, position) => {
-                const selectedUnitId =
-                  (selectedUnits[product.id] as Id<"units"> | undefined) ??
-                  product.defaultUnitId;
-                const renderCard = (dragHandle?: React.ReactNode) => (
-                  <ProductCard
-                    product={product}
-                    selectedUnitId={selectedUnitId}
-                    disabledReason={lockedReason}
-                    editingOrder={editingOrder}
-                    dragHandle={dragHandle}
-                    quantityFor={(unit) => quantityFor(product, unit)}
-                    onSelectedUnitChange={(unitId) =>
-                      setSelectedUnits((current) => ({
-                        ...current,
-                        [product.id]: unitId,
-                      }))
-                    }
-                    onQuantityChange={(unit, quantity) =>
-                      changeQuantity(product, unit, quantity)
-                    }
-                  />
-                );
-                return editingOrder ? (
-                  <SortableProduct
-                    key={product.id}
-                    product={product}
-                    position={position}
-                    productCount={displayedProducts.length}
-                    onMove={(nextPosition) =>
-                      moveProduct(product.id, nextPosition)
-                    }
+      ) : (
+        <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <InputGroup className="h-11 min-w-0 flex-1">
+              <InputGroupAddon>
+                <SearchIcon aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  cancelEditingOrder();
+                }}
+                placeholder="Søg efter Produkter"
+                aria-label="Søg efter Produkter"
+              />
+            </InputGroup>
+            {canManageLocations ? (
+              <div className="flex flex-wrap gap-2">
+                {editingOrder ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    disabled={!products}
+                    onClick={() => setOrderBuilderOpen(true)}
                   >
-                    {renderCard}
-                  </SortableProduct>
+                    <ListRestartIcon data-icon="inline-start" />
+                    Start forfra
+                  </Button>
+                ) : null}
+                {editingOrder ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={cancelEditingOrder}
+                  >
+                    Annullér
+                  </Button>
+                ) : null}
+                {editingOrder ? (
+                  <Button
+                    type="button"
+                    className="min-h-11"
+                    disabled={!orderDraft || savingOrder}
+                    onClick={() => void saveOrder()}
+                  >
+                    {savingOrder ? <Spinner data-icon="inline-start" /> : null}
+                    Gem rækkefølge
+                  </Button>
                 ) : (
-                  <div key={product.id}>{renderCard()}</div>
-                );
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
-      ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    disabled={!products || !productOrder || !catalogProducts}
+                    onClick={startEditingOrder}
+                  >
+                    <GripVerticalIcon data-icon="inline-start" />
+                    Redigér rækkefølge
+                  </Button>
+                )}
+              </div>
+            ) : null}
+          </div>
 
-      <OrderBuilder
-        open={orderBuilderOpen}
-        products={products ?? []}
-        onOpenChange={setOrderBuilderOpen}
-        onSave={rebuildOrder}
-      />
-
-      <AlertDialog
-        open={defaultConfirmOpen}
-        onOpenChange={setDefaultConfirmOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Gør rækkefølgen til standard?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Rækkefølgen bliver standard på den valgte lokation. Personlige
-              rækkefølger ændres ikke.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={savingDefaultOrder}>
-              Annullér
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={savingDefaultOrder}
-              onClick={() => void publishDefaultOrder()}
+          {!editingOrder ? (
+            <ToggleGroup
+              value={[viewMode]}
+              onValueChange={(value) => {
+                const nextMode = value[0];
+                if (nextMode === "all" || nextMode === "single") {
+                  setViewMode(nextMode);
+                }
+              }}
+              variant="outline"
+              spacing={0}
+              aria-label="Produktvisning"
+              className="w-full sm:w-fit"
             >
-              {savingDefaultOrder ? <Spinner data-icon="inline-start" /> : null}
-              Gør til standard
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              <ToggleGroupItem
+                value="all"
+                className="min-h-11 flex-1 sm:flex-none"
+              >
+                Alle Produkter
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="single"
+                className="min-h-11 flex-1 sm:flex-none"
+              >
+                Ét Produkt ad gangen
+              </ToggleGroupItem>
+            </ToggleGroup>
+          ) : null}
+
+          {!editingOrder &&
+          viewMode === "single" &&
+          displayedProducts.length > 0 ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span
+                className="text-sm text-muted-foreground"
+                aria-live="polite"
+              >
+                {singleProductIndex + 1} af {displayedProducts.length}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 flex-1 sm:flex-none"
+                  disabled={singleProductIndex <= 0}
+                  onClick={() => moveSingleProduct(-1)}
+                >
+                  Forrige
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 flex-1 sm:flex-none"
+                  disabled={singleProductIndex >= displayedProducts.length - 1}
+                  onClick={() => moveSingleProduct(1)}
+                >
+                  Næste
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <Tabs
+            value={categoryId}
+            onValueChange={(value) => {
+              setCategoryId(value);
+              cancelEditingOrder();
+            }}
+            className="w-full min-w-0"
+          >
+            <TabsList
+              aria-label="Produktkategorier"
+              className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
+            >
+              <TabsTrigger value="all" className="min-w-24 shrink-0 px-4">
+                Alle
+              </TabsTrigger>
+              {categories?.map((category) => (
+                <TabsTrigger
+                  key={category.id}
+                  value={category.id}
+                  className="min-w-28 shrink-0 px-4"
+                >
+                  {category.name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+
+          {!products ? <CountSkeleton /> : null}
+
+          {products && displayedProducts.length === 0 ? (
+            <Empty className="min-h-72 border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <PackageOpenIcon />
+                </EmptyMedia>
+                <EmptyTitle>
+                  {emptyBarOrder
+                    ? "Ingen Produkter i denne Bar"
+                    : "Ingen Produkter fundet"}
+                </EmptyTitle>
+                <EmptyDescription>
+                  {emptyBarOrder
+                    ? 'En bruger med tilladelsen til at administrere lokationer skal vælge Produkter med "Start forfra" i rækkefølgeeditoren.'
+                    : search
+                      ? "Prøv en anden søgning."
+                      : "Der er ingen aktive Produkter i denne kategori."}
+                </EmptyDescription>
+                {emptyBarOrder && canManageLocations ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={() => {
+                      startEditingOrder();
+                      setOrderBuilderOpen(true);
+                    }}
+                  >
+                    <ListRestartIcon data-icon="inline-start" />
+                    Start forfra
+                  </Button>
+                ) : null}
+              </EmptyHeader>
+            </Empty>
+          ) : null}
+
+          {visibleProducts.length > 0 ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={onDragEnd}
+            >
+              <SortableContext
+                items={visibleProducts.map((product) => product.id)}
+                strategy={rectSortingStrategy}
+              >
+                <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+                  {visibleProducts.map((product, position) => {
+                    const selectedUnitId =
+                      selectedUnits[product.id] ?? product.defaultUnitId;
+                    const renderCard = (dragHandle?: React.ReactNode) => (
+                      <ProductCard
+                        product={product}
+                        selectedUnitId={selectedUnitId}
+                        disabledReason={lockedReason}
+                        editingOrder={editingOrder}
+                        dragHandle={dragHandle}
+                        quantityFor={(unit) => quantityFor(product, unit)}
+                        onSelectedUnitChange={(unitId) =>
+                          setSelectedUnits((current) => ({
+                            ...current,
+                            [product.id]: unitId,
+                          }))
+                        }
+                        onQuantityChange={(unit, quantity) =>
+                          changeQuantity(product, unit, quantity)
+                        }
+                      />
+                    );
+                    return editingOrder ? (
+                      <SortableProduct
+                        key={product.id}
+                        product={product}
+                        position={position}
+                        productCount={displayedProducts.length}
+                        onMove={(nextPosition) =>
+                          moveProduct(product.id, nextPosition)
+                        }
+                      >
+                        {renderCard}
+                      </SortableProduct>
+                    ) : (
+                      <div key={product.id}>{renderCard()}</div>
+                    );
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
+          ) : null}
+
+          <OrderBuilder
+            open={orderBuilderOpen && editingOrder}
+            products={products ?? []}
+            appendUnselected={activeCountAreaId === null}
+            onOpenChange={setOrderBuilderOpen}
+            onSave={rebuildOrder}
+          />
+        </>
+      )}
 
       <CountNavigation
         action={

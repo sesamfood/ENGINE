@@ -120,7 +120,14 @@ export const listLocations = query({
             auth.locationScope.all || auth.locationScope.ids.has(location._id),
         )
         .map(async (location) => {
-          const [usedAsFrom, usedAsTo, count, stock] = await Promise.all([
+          const [
+            usedAsFrom,
+            usedAsTo,
+            count,
+            stock,
+            locationProduct,
+            countArea,
+          ] = await Promise.all([
             ctx.db
               .query("transfers")
               .withIndex("by_organizationId_and_fromLocationId", (q) =>
@@ -157,11 +164,38 @@ export const listLocations = query({
                     .eq("locationId", location._id),
               )
               .first(),
+            ctx.db
+              .query("locationProducts")
+              .withIndex(
+                "by_organizationId_and_locationId_and_productId",
+                (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("locationId", location._id),
+              )
+              .first(),
+            ctx.db
+              .query("countAreas")
+              .withIndex(
+                "by_organizationId_and_locationId_and_normalizedName",
+                (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("locationId", location._id),
+              )
+              .first(),
           ]);
           return {
             id: location._id,
             name: location.name,
-            inUse: Boolean(usedAsFrom || usedAsTo || count || stock),
+            inUse: Boolean(
+              usedAsFrom ||
+                usedAsTo ||
+                count ||
+                stock ||
+                locationProduct ||
+                countArea,
+            ),
           };
         }),
     );

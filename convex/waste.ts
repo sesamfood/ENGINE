@@ -31,8 +31,9 @@ import { addStock, normalizeStock } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
   activeProductCatalogValidator,
-  listActiveProductCatalog,
+  listLocationActiveProductCatalog,
 } from "./lib/productCatalog";
+import { requireLocationProduct } from "./lib/locationProducts";
 import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummary,
@@ -976,14 +977,20 @@ export const setSettings = mutation({
 });
 
 export const listCatalog = query({
-  args: {},
+  args: { locationId: v.id("locations") },
   returns: v.array(activeProductCatalogValidator),
-  handler: async (ctx) => {
-    const { organizationId } = await requireWasteRegistrar(
+  handler: async (ctx, args) => {
+    const auth = await requireWasteRegistrar(
       ctx,
       "waste.register",
     );
-    return await listActiveProductCatalog(ctx, organizationId);
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, auth.organizationId, args.locationId);
+    return await listLocationActiveProductCatalog(
+      ctx,
+      auth.organizationId,
+      args.locationId,
+    );
   },
 });
 
@@ -1177,6 +1184,12 @@ export const registerWaste = mutation({
         .unique(),
       ctx.db.get("units", args.unitId),
     ]);
+    await requireLocationProduct(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+    );
     if (!productUnit || !unit || unit.organizationId !== organizationId) {
       throw new ConvexError("Produktets enhed blev ikke fundet");
     }
@@ -1269,6 +1282,12 @@ export const setPinned = mutation({
     await Promise.all([
       requireLocation(ctx, organizationId, args.locationId),
       requireActiveProduct(ctx, organizationId, args.productId),
+      requireLocationProduct(
+        ctx,
+        organizationId,
+        args.locationId,
+        args.productId,
+      ),
     ]);
     const current = await ctx.db
       .query("wasteProductConfigs")
@@ -1318,12 +1337,20 @@ export const setShortcutOverride = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteSettings(ctx);
+    const auth = await requireWasteSettings(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const product = await requireActiveProduct(
       ctx,
       organizationId,
       args.productId,
+    );
+    await requireLocationProduct(
+      ctx,
+      organizationId,
+      args.locationId,
+      product._id,
     );
     if (args.shortcuts.length < 1 || args.shortcuts.length > 2) {
       throw new ConvexError("Angiv en eller to genveje");
@@ -1379,7 +1406,9 @@ export const clearShortcutOverride = mutation({
   args: { locationId: v.id("locations"), productId: v.id("products") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteSettings(ctx);
+    const auth = await requireWasteSettings(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const current = await ctx.db
       .query("wasteProductConfigs")

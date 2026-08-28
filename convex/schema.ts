@@ -1150,6 +1150,58 @@ export default defineSchema({
     ])
     .index("by_organizationId_and_marketId", ["organizationId", "marketId"]),
 
+  locationProducts: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+  })
+    .index("by_organizationId_and_locationId_and_productId", [
+      "organizationId",
+      "locationId",
+      "productId",
+    ])
+    .index("by_organizationId_and_productId", [
+      "organizationId",
+      "productId",
+    ]),
+
+  countAreas: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    name: v.string(),
+    normalizedName: v.string(),
+  }).index("by_organizationId_and_locationId_and_normalizedName", [
+    "organizationId",
+    "locationId",
+    "normalizedName",
+  ]),
+
+  countAreaProducts: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    countAreaId: v.id("countAreas"),
+    productId: v.id("products"),
+    position: v.number(),
+  })
+    .index("by_organizationId_and_countAreaId_and_position", [
+      "organizationId",
+      "countAreaId",
+      "position",
+    ])
+    .index("by_organizationId_and_countAreaId_and_productId", [
+      "organizationId",
+      "countAreaId",
+      "productId",
+    ])
+    .index("by_organizationId_and_locationId", [
+      "organizationId",
+      "locationId",
+    ])
+    .index("by_organizationId_and_productId", [
+      "organizationId",
+      "productId",
+    ]),
+
   locationSpecialOpeningHours: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
@@ -1672,6 +1724,7 @@ export default defineSchema({
   countItems: defineTable({
     organizationId: v.string(),
     countId: v.id("counts"),
+    countAreaId: v.optional(v.id("countAreas")),
     productId: v.id("products"),
     unitId: v.id("units"),
     quantity: v.number(),
