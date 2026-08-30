@@ -1,9 +1,26 @@
 "use client";
 
+import {
+  closestCorners,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  type Announcements,
+  type ScreenReaderInstructions,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery } from "convex/react";
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
+  GripVerticalIcon,
   LayoutListIcon,
   ListOrderedIcon,
   PencilIcon,
@@ -69,6 +86,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 type ProductId = Id<"products">;
 type ProductMode = "all" | "selected";
@@ -84,6 +102,11 @@ type ProductDraft = {
   selectedProductIds: Set<ProductId>;
 };
 
+const barOrderScreenReaderInstructions: ScreenReaderInstructions = {
+  draggable:
+    "Tryk på mellemrum for at vælge Produktet. Flyt det med piletasterne. Tryk på mellemrum igen for at placere det, eller Escape for at annullere.",
+};
+
 function allProductDraft(locationId: Id<"locations">): ProductDraft {
   return {
     locationId,
@@ -94,6 +117,90 @@ function allProductDraft(locationId: Id<"locations">): ProductDraft {
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
+}
+
+function SortableBarProductRow({
+  barName,
+  disabled,
+  position,
+  productId,
+  productName,
+  onRemove,
+}: {
+  barName: string;
+  disabled: boolean;
+  position: number;
+  productId: ProductId;
+  productName: string;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    isDragging,
+    isOver,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: productId, disabled });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 1 : undefined,
+      }}
+      className={cn(
+        "flex min-h-14 items-center gap-2 rounded-lg border bg-background p-1 transition-[box-shadow,border-color] duration-150",
+        isDragging && "opacity-30",
+        isOver &&
+          !isDragging &&
+          "border-primary bg-primary/5 ring-2 ring-primary/20",
+      )}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        className="flex min-h-12 min-w-0 flex-1 touch-none cursor-grab items-center gap-2 rounded-md px-1 py-0 text-left outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing disabled:pointer-events-none disabled:cursor-default disabled:opacity-50"
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+        aria-label={`Flyt ${productName}`}
+        aria-roledescription="Produkt, der kan flyttes"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center text-muted-foreground">
+          <GripVerticalIcon aria-hidden="true" />
+        </span>
+        <span className="w-6 shrink-0 text-center text-sm text-muted-foreground">
+          {position}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {productName}
+        </span>
+      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              className="size-11"
+              aria-label={`Fjern ${productName} fra ${barName}`}
+              disabled={disabled}
+              onClick={onRemove}
+            />
+          }
+        >
+          <Trash2Icon />
+        </TooltipTrigger>
+        <TooltipContent>Fjern Produkt</TooltipContent>
+      </Tooltip>
+    </li>
+  );
 }
 
 export function LocationCountSetup({
@@ -145,6 +252,12 @@ export function LocationCountSetup({
   const [barOrder, setBarOrder] = useState<ProductId[]>([]);
   const [orderError, setOrderError] = useState("");
   const [savingOrder, setSavingOrder] = useState(false);
+  const barOrderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   const serverProductDraft: ProductDraft | null = configuration
     ? {
@@ -194,6 +307,37 @@ export function LocationCountSetup({
     () =>
       products?.filter((product) => effectiveProductIds.has(product.id)) ?? [],
     [effectiveProductIds, products],
+  );
+  const productNamesById = useMemo(
+    () =>
+      new Map<string, string>(
+        effectiveProducts.map((product) => [product.id, product.name]),
+      ),
+    [effectiveProducts],
+  );
+  const barOrderAnnouncements = useMemo<Announcements>(
+    () => ({
+      onDragStart({ active }) {
+        const name = productNamesById.get(String(active.id)) ?? "Produktet";
+        return `${name} er valgt.`;
+      },
+      onDragOver({ active, over }) {
+        if (!over) return;
+        const name = productNamesById.get(String(active.id)) ?? "Produktet";
+        const overName =
+          productNamesById.get(String(over.id)) ?? "den nye placering";
+        return `${name} flyttes til ${overName}.`;
+      },
+      onDragEnd({ active }) {
+        const name = productNamesById.get(String(active.id)) ?? "Produktet";
+        return `${name} er placeret.`;
+      },
+      onDragCancel({ active }) {
+        const name = productNamesById.get(String(active.id)) ?? "Produktet";
+        return `Flytning af ${name} blev annulleret.`;
+      },
+    }),
+    [productNamesById],
   );
   const isBusy = savingProducts || savingBar || deletingBar || savingOrder;
 
@@ -301,20 +445,6 @@ export function LocationCountSetup({
         return current.includes(productId) ? current : [...current, productId];
       }
       return current.filter((id) => id !== productId);
-    });
-  }
-
-  function moveBarProduct(productId: ProductId, direction: -1 | 1) {
-    setOrderError("");
-    setBarOrder((current) => {
-      const index = current.indexOf(productId);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) {
-        return current;
-      }
-      const next = [...current];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      return next;
     });
   }
 
@@ -682,9 +812,6 @@ export function LocationCountSetup({
             <FieldGroup>
               <FieldSet>
                 <FieldLegend variant="label">Produkter i Baren</FieldLegend>
-                <FieldDescription>
-                  Valgbare Produkter følger lokationens Produktvalg.
-                </FieldDescription>
                 {effectiveProducts.length === 0 ? (
                   <Empty className="min-h-36 border">
                     <EmptyHeader>
@@ -744,7 +871,7 @@ export function LocationCountSetup({
               <FieldSet>
                 <FieldLegend variant="label">Rækkefølge</FieldLegend>
                 <FieldDescription>
-                  Brug pilene til at flytte et Produkt. Du kan gemme en tom
+                  Træk Produkterne for at ændre rækkefølgen. Du kan gemme en tom
                   rækkefølge.
                 </FieldDescription>
                 {barOrder.length === 0 ? (
@@ -757,94 +884,63 @@ export function LocationCountSetup({
                     </EmptyHeader>
                   </Empty>
                 ) : (
-                  <FieldGroup className="gap-2">
-                    {barOrder.map((productId, index) => {
-                      const product = effectiveProducts.find(
-                        (candidate) => candidate.id === productId,
-                      );
-                      if (!product) return null;
-                      return (
-                        <div
-                          key={product.id}
-                          className="flex min-h-14 items-center justify-between gap-3 rounded-lg border px-3 py-2"
-                        >
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="w-6 shrink-0 text-center text-sm text-muted-foreground">
-                              {index + 1}
-                            </span>
-                            <p className="truncate font-medium">
-                              {product.name}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 gap-1">
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-lg"
-                                    className="size-11"
-                                    aria-label={`Flyt ${product.name} op`}
-                                    disabled={index === 0 || savingOrder}
-                                    onClick={() =>
-                                      moveBarProduct(product.id, -1)
-                                    }
-                                  />
-                                }
-                              >
-                                <ArrowUpIcon />
-                              </TooltipTrigger>
-                              <TooltipContent>Flyt op</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-lg"
-                                    className="size-11"
-                                    aria-label={`Flyt ${product.name} ned`}
-                                    disabled={
-                                      index === barOrder.length - 1 ||
-                                      savingOrder
-                                    }
-                                    onClick={() =>
-                                      moveBarProduct(product.id, 1)
-                                    }
-                                  />
-                                }
-                              >
-                                <ArrowDownIcon />
-                              </TooltipTrigger>
-                              <TooltipContent>Flyt ned</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-lg"
-                                    className="size-11"
-                                    aria-label={`Fjern ${product.name} fra ${orderingBar?.name}`}
-                                    disabled={savingOrder}
-                                    onClick={() =>
-                                      toggleBarProduct(product.id, false)
-                                    }
-                                  />
-                                }
-                              >
-                                <Trash2Icon />
-                              </TooltipTrigger>
-                              <TooltipContent>Fjern Produkt</TooltipContent>
-                            </Tooltip>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </FieldGroup>
+                  <DndContext
+                    accessibility={{
+                      announcements: barOrderAnnouncements,
+                      screenReaderInstructions:
+                        barOrderScreenReaderInstructions,
+                    }}
+                    collisionDetection={closestCorners}
+                    sensors={barOrderSensors}
+                    onDragEnd={({ active, over }) => {
+                      setOrderError("");
+                      if (!over || active.id === over.id) return;
+
+                      const activeId = String(active.id);
+                      const overId = String(over.id);
+                      setBarOrder((current) => {
+                        const from = current.findIndex(
+                          (id) => String(id) === activeId,
+                        );
+                        const to = current.findIndex(
+                          (id) => String(id) === overId,
+                        );
+                        return from < 0 || to < 0
+                          ? current
+                          : arrayMove(current, from, to);
+                      });
+                    }}
+                  >
+                    <SortableContext
+                      items={barOrder}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <ol
+                        className="flex flex-col gap-2"
+                        aria-label="Produktrækkefølge"
+                      >
+                        {barOrder.map((productId, index) => {
+                          const product = effectiveProducts.find(
+                            (candidate) => candidate.id === productId,
+                          );
+                          if (!product || !orderingBar) return null;
+                          return (
+                            <SortableBarProductRow
+                              key={product.id}
+                              barName={orderingBar.name}
+                              disabled={savingOrder}
+                              position={index + 1}
+                              productId={product.id}
+                              productName={product.name}
+                              onRemove={() =>
+                                toggleBarProduct(product.id, false)
+                              }
+                            />
+                          );
+                        })}
+                      </ol>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </FieldSet>
               <FieldError>{orderError}</FieldError>
