@@ -796,23 +796,18 @@ function CountAreaPicker({
       className="flex min-h-96 flex-col gap-6 md:min-h-[calc(100svh-15rem)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h2
-            id="count-area-picker-title"
-            className="text-2xl font-semibold tracking-tight"
-          >
-            Vælg en Bar
-          </h2>
-          <p className="text-muted-foreground">
-            Status synkroniseres automatisk på tværs af enheder.
-          </p>
-        </div>
+        <h2
+          id="count-area-picker-title"
+          className="text-2xl font-semibold tracking-tight"
+        >
+          Vælg en Bar
+        </h2>
         <Badge variant="outline" aria-live="polite">
           {completedCount} af {countAreas.length} færdige
         </Badge>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {countAreas.map((countArea) => {
           const completed = completedIds.has(countArea.id);
           const progress = progressByArea.get(countArea.id);
@@ -841,8 +836,9 @@ function CountAreaPicker({
           return (
             <Card
               key={countArea.id}
+              size="sm"
               className={cn(
-                "relative min-h-36 transition-shadow has-[button:hover]:shadow-sm",
+                "relative min-h-24 transition-shadow has-[button:hover]:shadow-sm",
                 statusKind === "complete"
                   ? "bg-success/5 ring-success/30"
                   : statusKind === "active"
@@ -852,7 +848,6 @@ function CountAreaPicker({
               )}
             >
               <CardHeader className="flex-1">
-                <CardDescription>Bar</CardDescription>
                 <CardTitle>{countArea.name}</CardTitle>
                 <CardAction
                   className={cn(
@@ -866,7 +861,7 @@ function CountAreaPicker({
               <CardContent className="flex items-center justify-between">
                 <span>
                   {statusKind === "complete"
-                    ? "Åbn Bar"
+                    ? "Åbn Count"
                     : statusKind === "active" || statusKind === "paused"
                       ? "Fortsæt Count"
                       : "Start Count"}
@@ -1520,17 +1515,30 @@ export function CountSheet() {
   ]);
 
   const productListKey = `${locationId ?? ""}:${activeCountAreaId ?? "location"}:${displayedProducts.map((product) => product.id).join(",")}`;
+  const countedProductIds = new Set(
+    state?.count?.countAreaProgress.find(
+      (progress) => progress.countAreaId === activeCountAreaId,
+    )?.countedProductIds ?? [],
+  );
+  const firstUncountedProductIndex = displayedProducts.findIndex(
+    (product) => !countedProductIds.has(product.id),
+  );
+  const resumeProductIndex =
+    firstUncountedProductIndex >= 0
+      ? firstUncountedProductIndex
+      : Math.max(0, displayedProducts.length - 1);
   const singleProductIndex =
     singleProductSelection.key === productListKey
       ? Math.min(
           singleProductSelection.index,
           Math.max(0, displayedProducts.length - 1),
         )
-      : 0;
+      : resumeProductIndex;
 
   function moveSingleProduct(delta: number) {
     setSingleProductSelection((current) => {
-      const currentIndex = current.key === productListKey ? current.index : 0;
+      const currentIndex =
+        current.key === productListKey ? current.index : resumeProductIndex;
       return {
         key: productListKey,
         index: Math.max(
@@ -1861,8 +1869,6 @@ export function CountSheet() {
   const countAreaSelectionPending = Boolean(
     countAreas && countAreas.length > 0 && !activeCountAreaId,
   );
-  const countAreaItems =
-    countAreas?.map((area) => ({ value: area.id, label: area.name })) ?? [];
   const emptyBarOrder = Boolean(
     activeCountAreaId &&
     productOrder &&
@@ -1917,40 +1923,15 @@ export function CountSheet() {
               </ToggleGroup>
               <div className="ml-auto flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 {countAreas && countAreas.length > 0 ? (
-                  <Field className="w-full sm:w-52">
-                    <FieldLabel htmlFor="count-bar" className="sr-only">
-                      Bar
-                    </FieldLabel>
-                    <Select
-                      items={countAreaItems}
-                      value={activeCountAreaId}
-                      onValueChange={(value) => {
-                        const nextArea = countAreas.find(
-                          (area) => area.id === value,
-                        );
-                        if (nextArea) selectCountArea(nextArea.id);
-                      }}
-                    >
-                      <SelectTrigger id="count-bar" className="h-11! w-full">
-                        <SelectValue>
-                          {() =>
-                            countAreas.find(
-                              (area) => area.id === activeCountAreaId,
-                            )?.name ?? "Vælg en Bar"
-                          }
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {countAreas.map((area) => (
-                            <SelectItem key={area.id} value={area.id}>
-                              {area.name}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={returnToCountAreaPicker}
+                  >
+                    <ChevronLeftIcon data-icon="inline-start" />
+                    Vælg en anden Bar
+                  </Button>
                 ) : null}
                 {canManageLocations ? (
                   <Button
