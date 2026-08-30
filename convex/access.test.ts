@@ -303,6 +303,7 @@ test("valgte lokationer filtrerer valgmuligheder og optællinger", async () => {
   await expect(
     asUser.mutation(api.count.setCountQuantity, {
       locationId: foreignLocationId,
+      countAreaId: null,
       productId,
       unitId,
       quantity: 1,
@@ -400,7 +401,9 @@ test("valgt lokationsscope begrænser optællingslinjer", async () => {
       locationId: allowedLocationId,
       countId: allowedCountId,
     }),
-  ).resolves.toEqual([{ productId, unitId, quantity: 2 }]);
+  ).resolves.toEqual([
+    { countAreaId: null, productId, unitId, quantity: 2 },
+  ]);
   await expect(
     asUser.query(api.count.getCountQuantities, {
       locationId: foreignLocationId,

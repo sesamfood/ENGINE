@@ -20,6 +20,7 @@ import {
 } from "./lib/categoryHierarchy";
 import { normalizeStock } from "./lib/stock";
 import { recordAudit } from "./lib/audit";
+import { MAX_COUNT_AREAS } from "./lib/countAreas";
 import {
   activeProductCatalogValidator,
   activeProductSearchOptionValidator,
@@ -723,14 +724,36 @@ async function scrubProductFromCountOrder(
   organizationId: string,
   productId: Id<"products">,
 ) {
-  const locations = await ctx.db
-    .query("locations")
-    .withIndex("by_organizationId_and_normalizedName", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .take(MAX_LOCATIONS_PER_ORGANIZATION + 1);
+  const maxCountAreaRows =
+    MAX_LOCATIONS_PER_ORGANIZATION * MAX_COUNT_AREAS;
+  const [locations, locationProducts, countAreaProducts] = await Promise.all([
+    ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
+    ctx.db
+      .query("locationProducts")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", productId),
+      )
+      .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
+    ctx.db
+      .query("countAreaProducts")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", productId),
+      )
+      .take(maxCountAreaRows + 1),
+  ]);
   if (locations.length > MAX_LOCATIONS_PER_ORGANIZATION) {
     throw new ConvexError("Organisationen har for mange lokationer");
+  }
+  if (locationProducts.length > MAX_LOCATIONS_PER_ORGANIZATION) {
+    throw new ConvexError("Produktet bruges på for mange lokationer");
+  }
+  if (countAreaProducts.length > maxCountAreaRows) {
+    throw new ConvexError("Produktet bruges i for mange Barer");
   }
   for (const location of locations) {
     if (!location.countProductOrder?.includes(productId)) continue;
@@ -739,6 +762,12 @@ async function scrubProductFromCountOrder(
         (orderedProductId) => orderedProductId !== productId,
       ),
     });
+  }
+  for (const row of locationProducts) {
+    await ctx.db.delete("locationProducts", row._id);
+  }
+  for (const row of countAreaProducts) {
+    await ctx.db.delete("countAreaProducts", row._id);
   }
 }
 
@@ -2540,7 +2569,7 @@ export async function mergeUnitsWithAuth(
       if (count?.organizationId !== organizationId || count.status !== "open") {
         continue;
       }
-      const targetItem = await ctx.db
+      const targetItems = await ctx.db
         .query("countItems")
         .withIndex(
           "by_organizationId_and_countId_and_productId_and_unitId",
@@ -2551,7 +2580,19 @@ export async function mergeUnitsWithAuth(
               .eq("productId", item.productId)
               .eq("unitId", targetUnit._id),
         )
-        .unique();
+        .take(MAX_COUNT_AREAS + 2);
+      if (targetItems.length > MAX_COUNT_AREAS + 1) {
+        throw new ConvexError("Count har for mange Bar-linjer for Produktet");
+      }
+      const matchingTargetItems = targetItems.filter(
+        (candidate) => candidate.countAreaId === item.countAreaId,
+      );
+      if (matchingTargetItems.length > 1) {
+        throw new ConvexError(
+          "Produktet findes flere gange i den samme Bar",
+        );
+      }
+      const targetItem = matchingTargetItems[0] ?? null;
       if (targetItem) {
         const quantity = targetItem.quantity + item.quantity;
         requirePositiveNumber(quantity, "Den sammenlagte Count-mængde");

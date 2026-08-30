@@ -6,6 +6,7 @@ import {
   MAX_CATEGORIES_PER_ORGANIZATION,
 } from "./categoryHierarchy";
 import { productSearchScore } from "../../lib/product-search";
+import { getLocationProductAccess } from "./locationProducts";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
@@ -207,4 +208,19 @@ export async function listActiveProductCatalog(
       }),
     };
   });
+}
+
+export async function listLocationActiveProductCatalog(
+  ctx: QueryCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const [catalog, access] = await Promise.all([
+    listActiveProductCatalog(ctx, organizationId),
+    getLocationProductAccess(ctx, organizationId, locationId),
+  ]);
+  if (access.kind === "all") return catalog;
+  return catalog.filter((product) =>
+    access.effectiveProductIds.has(product.id),
+  );
 }

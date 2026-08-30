@@ -9,6 +9,7 @@ import {
   MergeIcon,
   PencilIcon,
   PlusIcon,
+  Settings2Icon,
   ShapesIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { toast } from "sonner";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
 import { LocationOpeningHours } from "@/components/organization/location-opening-hours";
 import { LocationDetails } from "@/components/organization/location-details";
+import { LocationCountSetup } from "@/components/organization/location-count-setup";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -147,6 +149,8 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
   const [openingHoursLocation, setOpeningHoursLocation] =
     useState<VocabularyItem | null>(null);
   const [detailsLocation, setDetailsLocation] =
+    useState<VocabularyItem | null>(null);
+  const [countSetupLocation, setCountSetupLocation] =
     useState<VocabularyItem | null>(null);
   const [pendingMerge, setPendingMerge] = useState<VocabularyItem | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<Id<"units"> | null>(null);
@@ -331,6 +335,24 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                           <TooltipContent>Åbningstider</TooltipContent>
                         </Tooltip>
                       ) : null}
+                      {kind === "location" ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-lg"
+                                className="size-11"
+                                aria-label={`Produkter og Barer for ${item.name}`}
+                                onClick={() => setCountSetupLocation(item)}
+                              />
+                            }
+                          >
+                            <Settings2Icon />
+                          </TooltipTrigger>
+                          <TooltipContent>Produkter og Barer</TooltipContent>
+                        </Tooltip>
+                      ) : null}
                       {kind === "unit" ? (
                         <Tooltip>
                           <TooltipTrigger
@@ -385,8 +407,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            Denne lokation bruges i en transfer og kan derfor
-                            ikke fjernes.
+                            Lokationen er i brug og kan derfor ikke fjernes.
                           </TooltipContent>
                         </Tooltip>
                       ) : (
@@ -553,6 +574,17 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
           open
           onOpenChange={(open) => {
             if (!open) setDetailsLocation(null);
+          }}
+        />
+      ) : null}
+
+      {kind === "location" && countSetupLocation ? (
+        <LocationCountSetup
+          locationId={countSetupLocation.id as Id<"locations">}
+          locationName={countSetupLocation.name}
+          open
+          onOpenChange={(open) => {
+            if (!open) setCountSetupLocation(null);
           }}
         />
       ) : null}

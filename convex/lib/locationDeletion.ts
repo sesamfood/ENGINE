@@ -308,6 +308,26 @@ export async function deleteLocationWithAuth(
           q.eq("organizationId", organizationId).eq("locationId", location._id),
         )
         .first(),
+      ctx.db
+        .query("locationProducts")
+        .withIndex(
+          "by_organizationId_and_locationId_and_productId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("countAreas")
+        .withIndex(
+          "by_organizationId_and_locationId_and_normalizedName",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", location._id),
+        )
+        .first(),
     ]),
     ctx.db
       .query("ownCheckEntries")
