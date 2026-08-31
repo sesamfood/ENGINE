@@ -424,7 +424,7 @@ export const beginSsio = action({
       userName: auth.userName,
       stateHash: await hashWoltState(state),
       redirectUri,
-      returnPath: "/organization/integrations",
+      returnPath: "/administration/integrations",
       now: Date.now(),
     });
     const url = new URL(woltEndpoints().ssio);

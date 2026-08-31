@@ -150,11 +150,11 @@ function productEditHref(
   search: string,
   status: ProductStatus,
 ) {
-  return `/organization/products/${productId}${catalogQuery(search, status)}`;
+  return `/administration/products/${productId}${catalogQuery(search, status)}`;
 }
 
 function newProductHref(search: string, status: ProductStatus) {
-  return `/organization/products/new${catalogQuery(search, status)}`;
+  return `/administration/products/new${catalogQuery(search, status)}`;
 }
 
 function ProductImage({ product }: { product: CatalogProduct }) {
@@ -343,7 +343,7 @@ export function ProductCatalog() {
       if (searchValue !== search) {
         pendingSearch.current = searchValue;
         router.replace(
-          `/organization/products${catalogQuery(searchValue, status)}`,
+          `/administration/products${catalogQuery(searchValue, status)}`,
           { scroll: false },
         );
       }
@@ -437,7 +437,7 @@ export function ProductCatalog() {
     setSelectedIds([]);
     setBulkCategoryId(null);
     router.replace(
-      `/organization/products${catalogQuery(searchValue, nextStatus)}`,
+      `/administration/products${catalogQuery(searchValue, nextStatus)}`,
       { scroll: false },
     );
   }

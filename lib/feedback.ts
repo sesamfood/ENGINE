@@ -63,7 +63,7 @@ export const feedbackAreas = [
     id: "organization",
     englishLabel: "Administration",
     label: "Administration",
-    pathPrefix: "/organization",
+    pathPrefix: "/administration",
     permissions: [
       "catalog.manage",
       "locations.manage",
@@ -138,8 +138,9 @@ export function accessibleFeedbackAreas(
     "has" in permissions ? permissions : new Set<string>(permissions);
   return feedbackAreas.filter(
     (area) =>
-      area.permissions.length === 0 ||
-      area.permissions.some((permission) => held.has(permission)),
+      area.id !== "settings" &&
+      (area.permissions.length === 0 ||
+        area.permissions.some((permission) => held.has(permission))),
   );
 }
 

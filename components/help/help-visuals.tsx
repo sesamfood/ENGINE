@@ -592,38 +592,38 @@ export function EmployeesVisual() {
 
 const administrationGroups = [
   {
-    label: "Grunddata",
+    label: "Organisation",
     items: [
-      { icon: PackageIcon, name: "Produkter", note: "Kategorier og enheder" },
       { icon: StoreIcon, name: "Lokationer", note: "Åbningstider og Count" },
       { icon: UsersIcon, name: "Brugere", note: "Roller og lokationsadgang" },
+      { icon: PaletteIcon, name: "Udseende", note: "Logoer og farver" },
     ],
   },
   {
-    label: "Daglig drift",
+    label: "Drift",
     items: [
+      { icon: PackageIcon, name: "Produkter", note: "Kategorier og enheder" },
       { icon: ClipboardListIcon, name: "Count", note: "Vindue og regler" },
       { icon: Trash2Icon, name: "Waste", note: "Genveje og leveringer" },
       { icon: ClipboardCheckIcon, name: "Egenkontrol", note: "Skabeloner og godkendelse" },
       { icon: UtensilsIcon, name: "Staff food", note: "Vagter og kategorier" },
       { icon: CalendarClockIcon, name: "Vagtplan", note: "Tidszone" },
-      { icon: MonitorCogIcon, name: "Kiosk", note: "Sider, konti og nulstilling" },
     ],
   },
   {
-    label: "Data og adgang",
+    label: "Appopsætning",
+    items: [
+      { icon: MonitorCogIcon, name: "Kiosk", note: "Sider, konti og nulstilling" },
+      { icon: ListOrderedIcon, name: "Sidemenu", note: "Rækkefølge" },
+      { icon: MessageSquarePlusIcon, name: "Feedback", note: "Modtagelse og historik" },
+    ],
+  },
+  {
+    label: "Data og integrationer",
     items: [
       { icon: LinkIcon, name: "Integrationer", note: "Workfeed, OnlinePOS og Wolt" },
       { icon: ChartNoAxesCombinedIcon, name: "Målinger", note: "Tilpassede dashboarddata" },
       { icon: KeyRoundIcon, name: "API", note: "Nøgler og rettigheder" },
-    ],
-  },
-  {
-    label: "Opsætning",
-    items: [
-      { icon: PaletteIcon, name: "Udseende", note: "Logoer og farver" },
-      { icon: ListOrderedIcon, name: "Sidemenu", note: "Rækkefølge" },
-      { icon: MessageSquarePlusIcon, name: "Feedback", note: "Modtagelse og historik" },
     ],
   },
 ];

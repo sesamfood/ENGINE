@@ -283,9 +283,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     const status = searchParams.get("status");
     if (search) params.set("search", search);
     params.set("status", status === "archived" ? "archived" : "active");
-    return `/organization/products?${params.toString()}`;
+    return `/administration/products?${params.toString()}`;
   }, [searchParams]);
-  const returnQuery = returnHref.slice("/organization/products".length);
+  const returnQuery = returnHref.slice("/administration/products".length);
   const product = useQuery(
     api.catalog.getProduct,
     productId ? { productId } : "skip",
@@ -605,7 +605,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         }
       } catch (imageError) {
         toast.error(`Produktet blev gemt, men ${messageFrom(imageError)}`);
-        router.push(`/organization/products/${savedProductId}${returnQuery}`);
+        router.push(`/administration/products/${savedProductId}${returnQuery}`);
         return;
       }
 

@@ -137,7 +137,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Wolt-indstillinger",
     settingsIntro:
       "Wolt sættes op under Administration og Integrationer. Indstillingerne kræver integrationsadgang.",
-    settingsHref: "/organization/integrations",
+    settingsHref: "/administration/integrations",
     settingsLinkLabel: "Åbn Wolt-indstillinger",
     settings: [
       {
@@ -191,7 +191,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Det Transfer bruger",
     settingsIntro:
       "Transfer har ingen særskilt indstillingsside. Funktionen bruger fælles grunddata og roller.",
-    settingsHref: "/organization/products",
+    settingsHref: "/administration/products",
     settingsLinkLabel: "Åbn Produktopsætning",
     settings: [
       {
@@ -240,7 +240,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Waste-indstillinger",
     settingsIntro:
       "Indstillingerne styrer genveje, nulstilling og håndtering af dårlige leveringer.",
-    settingsHref: "/organization/waste",
+    settingsHref: "/administration/waste",
     settingsLinkLabel: "Åbn Waste-indstillinger",
     settings: [
       {
@@ -293,7 +293,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Indstillinger for egenkontrol",
     settingsIntro:
       "Skabeloner bestemmer indhold og tid. Reglerne bestemmer efterregistrering og godkendelse.",
-    settingsHref: "/organization/own-checks",
+    settingsHref: "/administration/own-checks",
     settingsLinkLabel: "Åbn indstillinger for egenkontrol",
     settings: [
       {
@@ -347,7 +347,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Staff food-indstillinger",
     settingsIntro:
       "Reglerne kobler vagtlængde til kategorier, antal og tilladte Produkter.",
-    settingsHref: "/organization/staff-food",
+    settingsHref: "/administration/staff-food",
     settingsLinkLabel: "Åbn Staff food-indstillinger",
     settings: [
       {
@@ -396,7 +396,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Count-indstillinger",
     settingsIntro:
       "Count-vinduet følger lokationens åbningstider. Organisationen vælger frekvens og låseadfærd.",
-    settingsHref: "/organization/count",
+    settingsHref: "/administration/count",
     settingsLinkLabel: "Åbn Count-indstillinger",
     settings: [
       {
@@ -453,7 +453,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Opsætning af Medarbejdere",
     settingsIntro:
       "Medarbejdere har ingen særskilt indstillingsside. Workfeed og Vagtplan leverer opsætningen.",
-    settingsHref: "/organization/integrations",
+    settingsHref: "/administration/integrations",
     settingsLinkLabel: "Åbn Workfeed-indstillinger",
     settings: [
       {
@@ -495,13 +495,13 @@ export const helpFeatures: HelpFeature[] = [
     icon: SettingsIcon,
     visual: AdministrationVisual,
     visualLabel: "Alle områder i Administration grupperet efter formål",
-    caption: "Start med Grunddata. Tilføj driftsregler og integrationer bagefter.",
-    appHref: "/organization",
+    caption: "Områderne er samlet i Organisation, Drift, Appopsætning samt Data og integrationer.",
+    appHref: "/administration",
     appLinkLabel: "Åbn Administration",
     settingsTitle: "Alle administrationsområder",
     settingsIntro:
       "Administration er selve indstillingsområdet. Brug denne rækkefølge, når en ny organisation sættes op.",
-    settingsHref: "/organization",
+    settingsHref: "/administration",
     settingsLinkLabel: "Åbn Administration",
     settings: [
       {
@@ -565,7 +565,7 @@ export const helpFeatures: HelpFeature[] = [
     settingsTitle: "Adgangsindstillinger",
     settingsIntro:
       "Brugere får en rolle og et lokationsvalg. Rollen bestemmer handlinger og detaljeniveau.",
-    settingsHref: "/organization/users/roles",
+    settingsHref: "/administration/users/roles",
     settingsLinkLabel: "Åbn Roller og adgang",
     settings: [
       {
