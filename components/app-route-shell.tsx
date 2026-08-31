@@ -14,6 +14,7 @@ const shelllessRoutes = [
   "/invitation",
   "/onboarding",
   "/share",
+  "/help",
 ];
 
 function isShelllessRoute(pathname: string | null) {

@@ -7,6 +7,7 @@ import {
   ChevronsUpDownIcon,
   ClipboardCheckIcon,
   ClipboardListIcon,
+  CircleHelpIcon,
   LogOutIcon,
   LayoutDashboardIcon,
   RefreshCwIcon,
@@ -893,6 +894,10 @@ function ProfileMenu({
           <DropdownMenuItem onClick={() => goTo("/settings")}>
             <SettingsIcon />
             Indstillinger
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => goTo("/help")}>
+            <CircleHelpIcon />
+            Hjælp
           </DropdownMenuItem>
           {canManageOrganization ? (
             <DropdownMenuItem onClick={() => goTo("/organization")}>

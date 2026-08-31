@@ -16,6 +16,7 @@ const publicPaths = [
   "/verify-email",
   "/invitation",
   "/share",
+  "/help",
 ];
 
 const methodOrder = ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"];
