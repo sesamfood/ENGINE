@@ -25,6 +25,13 @@ export const feedbackAreas = [
     permissions: ["transfers.view", "transfers.manage"],
   },
   {
+    id: "goodsReceipts",
+    englishLabel: "Goods receipts",
+    label: "Varemodtagelse",
+    pathPrefix: "/goods-receipts",
+    permissions: ["goodsReceipts.register"],
+  },
+  {
     id: "waste",
     englishLabel: "Waste",
     label: "Waste",
@@ -69,6 +76,7 @@ export const feedbackAreas = [
       "locations.manage",
       "organization.settings",
       "count.settings",
+      "goodsReceipts.settings",
       "waste.settings",
       "ownChecks.manage",
       "staffFood.manage",

@@ -11,6 +11,7 @@ import {
   MessageSquarePlusIcon,
   MonitorCogIcon,
   PackageIcon,
+  PackageCheckIcon,
   PlugIcon,
   StoreIcon,
   Trash2Icon,
@@ -37,6 +38,7 @@ type AdministrationPermission = Extract<
     | "catalog.manage"
     | "count.settings"
     | "dashboard.manage"
+    | "goodsReceipts.settings"
     | "integrations.manage"
     | "locations.manage"
     | "members.manage"
@@ -109,6 +111,13 @@ const categories: AdministrationCategory[] = [
         href: "/administration/count",
         icon: ClipboardListIcon,
         permissions: ["count.settings"],
+      },
+      {
+        title: "Varemodtagelse",
+        description: "Indstil billeder af følgesedler efter oprindelse.",
+        href: "/administration/goods-receipts",
+        icon: PackageCheckIcon,
+        permissions: ["goodsReceipts.settings"],
       },
       {
         title: "Waste",
@@ -208,6 +217,7 @@ export function AdministrationOverview() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
   const canOwnChecksManage = usePermission("ownChecks.manage");
   const canStaffFood = usePermission("staffFood.manage");
   const canIntegrations = usePermission("integrations.manage");
@@ -217,6 +227,7 @@ export function AdministrationOverview() {
     "catalog.manage": canCatalog,
     "count.settings": canCountSettings,
     "dashboard.manage": canDashboardManage,
+    "goodsReceipts.settings": canGoodsReceiptSettings,
     "integrations.manage": canIntegrations,
     "locations.manage": canLocations,
     "members.manage": canMembers,

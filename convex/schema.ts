@@ -1225,6 +1225,14 @@ export default defineSchema({
     transferredAt: v.number(),
     createdBy: v.string(),
     stockApplied: v.optional(v.boolean()),
+    receiptStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("registered")),
+    ),
+    receiptRegisteredAt: v.optional(v.number()),
+    receiptRegisteredBy: v.optional(v.string()),
+    receiptRegisteredByName: v.optional(v.string()),
+    receiptComment: v.optional(v.string()),
+    deliveryNoteStorageId: v.optional(v.id("_storage")),
     // Optional for rows created before dashboard summary aggregation.
     itemCount: v.optional(v.number()),
     totalQuantity: v.optional(v.number()),
@@ -1252,7 +1260,22 @@ export default defineSchema({
       "organizationId",
       "toLocationId",
       "transferredAt",
-    ]),
+    ])
+    .index("by_organizationId_and_receiptStatus_and_transferredAt", [
+      "organizationId",
+      "receiptStatus",
+      "transferredAt",
+    ])
+    .index(
+      "by_organizationId_toLocationId_receiptStatus_transferredAt",
+      [
+        "organizationId",
+        "toLocationId",
+        "receiptStatus",
+        "transferredAt",
+      ],
+    )
+    .index("by_deliveryNoteStorageId", ["deliveryNoteStorageId"]),
 
   transferItems: defineTable({
     organizationId: v.string(),
@@ -1265,10 +1288,17 @@ export default defineSchema({
     factorToDefault: v.optional(v.number()),
     temperatureCelsius: v.optional(v.number()),
     maxTemperatureCelsius: v.optional(v.number()),
+    receivedQuantity: v.optional(v.number()),
   }).index("by_organizationId_and_transferId", [
     "organizationId",
     "transferId",
   ]),
+
+  goodsReceiptSettings: defineTable({
+    organizationId: v.string(),
+    transferDeliveryNotePhotoEnabled: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
 
   wasteSettings: defineTable({
     organizationId: v.string(),

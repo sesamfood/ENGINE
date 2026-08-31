@@ -13,6 +13,7 @@ import {
   RefreshCwIcon,
   SettingsIcon,
   MonitorIcon,
+  PackageCheckIcon,
   StoreIcon,
   Trash2Icon,
   UtensilsIcon,
@@ -95,6 +96,7 @@ const primaryNavigation = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
   { id: "woltOrders", label: "Wolt-ordrer", href: "/wolt-orders", icon: ShoppingBagIcon, pages: [] },
   { id: "transfers", label: "Transfer", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
+  { id: "goodsReceipts", label: "Varemodtagelse", href: "/goods-receipts", icon: PackageCheckIcon, pages: [] },
   { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
   { id: "ownChecks", label: "Egenkontrol", href: "/own-checks", icon: ClipboardCheckIcon, pages: ["ownChecks.today", "ownChecks.overview", "ownChecks.documentation"] },
   { id: "staffFood", label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
@@ -451,6 +453,7 @@ function OrganizationHome() {
   const canWoltOrders = usePermission("sales.viewDetail");
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
+  const canGoodsReceipts = usePermission("goodsReceipts.register");
   const canWasteRegister = usePermission("waste.register");
   const canWasteReport = usePermission("waste.report");
   const canOwnChecks = usePermission("ownChecks.perform");
@@ -466,6 +469,7 @@ function OrganizationHome() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
   const canOwnChecksManage = usePermission("ownChecks.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
@@ -479,6 +483,7 @@ function OrganizationHome() {
     canOrganizationSettings ||
     canCountSettings ||
     canWasteSettings ||
+    canGoodsReceiptSettings ||
     canOwnChecksManage ||
     canIntegrations ||
     canStaffFoodManage ||
@@ -504,6 +509,8 @@ function OrganizationHome() {
           ? "/transfers"
           : canTransfersView
             ? "/transfers/history"
+            : canGoodsReceipts
+              ? "/goods-receipts"
             : canWasteRegister
               ? "/waste"
               : canWasteReport
@@ -592,6 +599,7 @@ function NavigationList() {
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
   const canTransfers = canTransfersView || canTransfersManage;
+  const canGoodsReceipts = usePermission("goodsReceipts.register");
   const canWasteRegister = usePermission("waste.register");
   const canWasteReport = usePermission("waste.report");
   const canWaste = canWasteRegister || canWasteReport;
@@ -611,6 +619,7 @@ function NavigationList() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
   const canOwnChecksManage = usePermission("ownChecks.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
@@ -624,6 +633,7 @@ function NavigationList() {
     canOrganizationSettings ||
     canCountSettings ||
     canWasteSettings ||
+    canGoodsReceiptSettings ||
     canOwnChecksManage ||
     canIntegrations ||
     canStaffFoodManage ||
@@ -673,6 +683,9 @@ function NavigationList() {
         return canWoltOrders && woltEnabled === true && !featureLocked;
       }
       if (item.id === "transfers") return canTransfers && !featureLocked;
+      if (item.id === "goodsReceipts") {
+        return canGoodsReceipts && !featureLocked;
+      }
       if (item.id === "waste") return canWaste;
       if (item.id === "ownChecks") return canOwnChecksAccess;
       if (item.id === "staffFood") return canStaffFood && !featureLocked;
@@ -782,6 +795,7 @@ function ProfileMenu({
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
   const canOwnChecksManage = usePermission("ownChecks.manage");
@@ -795,6 +809,7 @@ function ProfileMenu({
     canOrganizationSettings ||
     canCountSettings ||
     canWasteSettings ||
+    canGoodsReceiptSettings ||
     canIntegrations ||
     canStaffFoodManage ||
     canOwnChecksManage ||
@@ -1233,6 +1248,8 @@ export function AppShell({
   const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees" || pathname.startsWith("/employees/");
   const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
+  const showGoodsReceiptsHeader =
+    pathname === "/goods-receipts" || pathname.startsWith("/goods-receipts/");
   const showDashboardHeader =
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
   const showAdministrationHeader =
@@ -1243,6 +1260,7 @@ export function AppShell({
     showStaffFoodHeader ||
     showEmployeesHeader ||
     showTransfersHeader ||
+    showGoodsReceiptsHeader ||
     showDashboardHeader ||
     showAdministrationHeader;
 
@@ -1307,6 +1325,8 @@ export function AppShell({
                             ? "employees-shell-header"
                             : showTransfersHeader
                               ? "transfers-shell-header"
+                              : showGoodsReceiptsHeader
+                                ? "goods-receipts-shell-header"
                               : showDashboardHeader
                                 ? "dashboard-shell-header"
                               : "administration-shell-header"

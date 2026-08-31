@@ -10,6 +10,7 @@ const sidebarItemValidator = v.union(
   v.literal("dashboard"),
   v.literal("woltOrders"),
   v.literal("transfers"),
+  v.literal("goodsReceipts"),
   v.literal("waste"),
   v.literal("ownChecks"),
   v.literal("staffFood"),

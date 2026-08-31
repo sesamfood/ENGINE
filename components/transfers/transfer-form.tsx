@@ -90,6 +90,7 @@ type TransferLine = {
 
 export type EditableTransfer = {
   id: Id<"transfers">;
+  receiptStatus: "pending" | "registered" | null;
   fromLocationId: Id<"locations">;
   toLocationId: Id<"locations">;
   responsibleUserId: string;
@@ -104,6 +105,7 @@ export type EditableTransfer = {
     quantity: number;
     temperatureCelsius: number | null;
     maxTemperatureCelsius: number | null;
+    receivedQuantity: number | null;
   }>;
 };
 

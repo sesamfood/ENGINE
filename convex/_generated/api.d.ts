@@ -27,6 +27,7 @@ import type * as dashboardSummaries from "../dashboardSummaries.js";
 import type * as employees from "../employees.js";
 import type * as feedback from "../feedback.js";
 import type * as feedbackDelivery from "../feedbackDelivery.js";
+import type * as goodsReceipts from "../goodsReceipts.js";
 import type * as http from "../http.js";
 import type * as kiosk from "../kiosk.js";
 import type * as lib_audit from "../lib/audit.js";
@@ -127,6 +128,7 @@ declare const fullApi: ApiFromModules<{
   employees: typeof employees;
   feedback: typeof feedback;
   feedbackDelivery: typeof feedbackDelivery;
+  goodsReceipts: typeof goodsReceipts;
   http: typeof http;
   kiosk: typeof kiosk;
   "lib/audit": typeof lib_audit;

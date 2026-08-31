@@ -29,6 +29,7 @@ import {
 } from "convex/react";
 import {
   ArrowLeftRightIcon,
+  CircleCheckBigIcon,
   DownloadIcon,
   GripVerticalIcon,
   PencilIcon,
@@ -54,6 +55,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -109,6 +111,7 @@ type TransferListRow = {
   itemCount: number;
   totalQuantity: number;
   hasTemperatureDeviation: boolean;
+  receiptStatus: "pending" | "registered" | null;
 };
 
 type TransferDetail = EditableTransfer & {
@@ -1253,6 +1256,24 @@ export function TransferHistory() {
                     {transferDetail.comment ?? "—"}
                   </dd>
                 </div>
+                {transferDetail.receiptStatus ? (
+                  <div>
+                    <dt className="text-muted-foreground">Varemodtagelse</dt>
+                    <dd>
+                      <Badge
+                        variant={
+                          transferDetail.receiptStatus === "registered"
+                            ? "secondary"
+                            : "outline"
+                        }
+                      >
+                        {transferDetail.receiptStatus === "registered"
+                          ? "Registreret"
+                          : "Afventer"}
+                      </Badge>
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
               <div className="overflow-hidden rounded-xl border">
                 <Table>
@@ -1260,7 +1281,10 @@ export function TransferHistory() {
                     <TableRow>
                       <TableHead>Produkt</TableHead>
                       <TableHead>Enhed</TableHead>
-                      <TableHead className="text-right">Antal</TableHead>
+                      <TableHead className="text-right">Sendt</TableHead>
+                      {transferDetail.receiptStatus === "registered" ? (
+                        <TableHead className="text-right">Modtaget</TableHead>
+                      ) : null}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1275,7 +1299,13 @@ export function TransferHistory() {
                         measured > maximum;
                       return [
                         <TableRow key={`${first.productId}-temperature`}>
-                          <TableCell colSpan={3}>
+                          <TableCell
+                            colSpan={
+                              transferDetail.receiptStatus === "registered"
+                                ? 4
+                                : 3
+                            }
+                          >
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <span className="font-medium">
                                 {first.productName}
@@ -1318,6 +1348,11 @@ export function TransferHistory() {
                             <TableCell className="text-right tabular-nums">
                               {item.quantity}
                             </TableCell>
+                            {transferDetail.receiptStatus === "registered" ? (
+                              <TableCell className="text-right tabular-nums">
+                                {item.receivedQuantity ?? 0}
+                              </TableCell>
+                            ) : null}
                           </TableRow>
                         )),
                       ];
@@ -1325,10 +1360,22 @@ export function TransferHistory() {
                   </TableBody>
                 </Table>
               </div>
+              {transferDetail.receiptStatus === "registered" ? (
+                <Alert>
+                  <CircleCheckBigIcon />
+                  <AlertTitle>Varemodtagelsen er registreret</AlertTitle>
+                  <AlertDescription>
+                    Transferen kan ikke redigeres eller slettes, fordi lageret
+                    er opdateret med de modtagne mængder.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
             </div>
           ) : null}
 
-          {transferDetail && !isEditing ? (
+          {transferDetail &&
+          !isEditing &&
+          transferDetail.receiptStatus !== "registered" ? (
             <DialogFooter className="sm:justify-between">
               <Button
                 variant="destructive"
