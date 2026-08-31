@@ -235,7 +235,7 @@ async function listCountAreaProgress(
     )
     .take(MAX_COUNT_AREAS + 1);
   if (progress.length > MAX_COUNT_AREAS) {
-    throw new ConvexError("Count har status for for mange Barer");
+    throw new ConvexError("Count har status for for mange Områder");
   }
   return progress;
 }
@@ -329,7 +329,7 @@ async function markCountAreaProduct(
     progress &&
     progress.countedProductIds.length >= MAX_COUNT_AREA_PRODUCTS
   ) {
-    throw new ConvexError("Baren har for mange optalte Produkter");
+    throw new ConvexError("Området har for mange optalte Produkter");
   }
   if (progress) {
     await ctx.db.patch("countAreaProgress", progress._id, {
@@ -580,7 +580,7 @@ export const setCountProductOrder = mutation({
       organizationId,
       location._id,
     );
-    if (countAreas.length > 0) throw new ConvexError("Vælg en Bar");
+    if (countAreas.length > 0) throw new ConvexError("Vælg et Område");
     if (
       args.productIds.length > MAX_PRODUCTS ||
       new Set(args.productIds).size !== args.productIds.length
@@ -669,7 +669,7 @@ export const setCountQuantity = mutation({
       product._id,
     );
     if (countAreas.length > 0) {
-      if (!args.countAreaId) throw new ConvexError("Vælg en Bar");
+      if (!args.countAreaId) throw new ConvexError("Vælg et Område");
       const countArea = await requireCountArea(
         ctx,
         organizationId,
@@ -688,10 +688,10 @@ export const setCountQuantity = mutation({
         )
         .unique();
       if (!areaProduct) {
-        throw new ConvexError("Produktet bruges ikke i den valgte Bar");
+        throw new ConvexError("Produktet bruges ikke i det valgte Område");
       }
     } else if (args.countAreaId) {
-      throw new ConvexError("Baren blev ikke fundet");
+      throw new ConvexError("Området blev ikke fundet");
     }
 
     const count = await getWritableCount(ctx, {
@@ -715,13 +715,17 @@ export const setCountQuantity = mutation({
       )
       .take(MAX_COUNT_AREAS + 2);
     if (itemCandidates.length > MAX_COUNT_AREAS + 1) {
-      throw new ConvexError("Count har for mange Bar-linjer for Produktet");
+      throw new ConvexError(
+        "Count har for mange Område-linjer for Produktet",
+      );
     }
     const matchingItems = itemCandidates.filter(
       (item) => (item.countAreaId ?? null) === args.countAreaId,
     );
     if (matchingItems.length > 1) {
-      throw new ConvexError("Produktet findes flere gange i den valgte Bar");
+      throw new ConvexError(
+        "Produktet findes flere gange i det valgte Område",
+      );
     }
     const item = matchingItems[0] ?? null;
 
@@ -856,7 +860,7 @@ export const markCountAreaProductCounted = mutation({
       )
       .unique();
     if (!areaProduct) {
-      throw new ConvexError("Produktet bruges ikke i den valgte Bar");
+      throw new ConvexError("Produktet bruges ikke i det valgte Område");
     }
     await requireLocationProduct(
       ctx,

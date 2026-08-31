@@ -753,7 +753,7 @@ async function scrubProductFromCountOrder(
     throw new ConvexError("Produktet bruges på for mange lokationer");
   }
   if (countAreaProducts.length > maxCountAreaRows) {
-    throw new ConvexError("Produktet bruges i for mange Barer");
+    throw new ConvexError("Produktet bruges i for mange Områder");
   }
   for (const location of locations) {
     if (!location.countProductOrder?.includes(productId)) continue;
@@ -2582,14 +2582,16 @@ export async function mergeUnitsWithAuth(
         )
         .take(MAX_COUNT_AREAS + 2);
       if (targetItems.length > MAX_COUNT_AREAS + 1) {
-        throw new ConvexError("Count har for mange Bar-linjer for Produktet");
+        throw new ConvexError(
+          "Count har for mange Område-linjer for Produktet",
+        );
       }
       const matchingTargetItems = targetItems.filter(
         (candidate) => candidate.countAreaId === item.countAreaId,
       );
       if (matchingTargetItems.length > 1) {
         throw new ConvexError(
-          "Produktet findes flere gange i den samme Bar",
+          "Produktet findes flere gange i det samme Område",
         );
       }
       const targetItem = matchingTargetItems[0] ?? null;
