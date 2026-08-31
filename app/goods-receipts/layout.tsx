@@ -9,8 +9,7 @@ export default function GoodsReceiptsLayout({
   return (
     <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 pb-20">
       <OrganizationAuthGate>
-        <GoodsReceiptHeader />
-        {children}
+        <GoodsReceiptHeader>{children}</GoodsReceiptHeader>
       </OrganizationAuthGate>
     </section>
   );

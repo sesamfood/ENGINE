@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAccess, usePermission } from "@/components/app-shell";
+import { useGoodsReceiptContext } from "@/components/goods-receipts/goods-receipt-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,9 +43,10 @@ const quantityFormatter = new Intl.NumberFormat("da-DK", {
 export function PendingTransfers() {
   const access = useAccess();
   const canRegister = usePermission("goodsReceipts.register");
+  const { locationId } = useGoodsReceiptContext();
   const result = useQuery(
     api.goodsReceipts.listPendingTransfers,
-    canRegister ? {} : "skip",
+    canRegister && locationId ? { locationId } : "skip",
   );
 
   if (!access) {
@@ -68,6 +70,22 @@ export function PendingTransfers() {
     );
   }
 
+  if (!locationId) {
+    return (
+      <Empty className="min-h-80 border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <PackageCheckIcon />
+          </EmptyMedia>
+          <EmptyTitle>Ingen lokationer tilgængelige</EmptyTitle>
+          <EmptyDescription>
+            Du har ikke adgang til en lokation, der kan modtage transfers.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+
   if (result === undefined) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -87,7 +105,7 @@ export function PendingTransfers() {
           </EmptyMedia>
           <EmptyTitle>Ingen transfers afventer modtagelse</EmptyTitle>
           <EmptyDescription>
-            Nye transfers vises her, indtil den modtagne mængde er registreret.
+            Der er ingen åbne transfers til den valgte lokation.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>

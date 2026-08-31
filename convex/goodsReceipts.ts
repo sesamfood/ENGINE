@@ -117,53 +117,27 @@ function pendingTransfer(
 }
 
 export const listPendingTransfers = query({
-  args: {},
+  args: { locationId: v.id("locations") },
   returns: v.object({
     transfers: v.array(pendingTransferValidator),
     truncated: v.boolean(),
   }),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const auth = await requireGoodsReceiptRegistrar(ctx);
     const { organizationId } = auth;
-    let rows: Doc<"transfers">[];
-
-    if (auth.locationScope.all) {
-      rows = await ctx.db
-        .query("transfers")
-        .withIndex(
-          "by_organizationId_and_receiptStatus_and_transferredAt",
-          (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("receiptStatus", "pending"),
-        )
-        .order("asc")
-        .take(MAX_PENDING_TRANSFERS + 1);
-    } else {
-      const byLocation = await Promise.all(
-        [...auth.locationScope.ids].map((locationId) =>
-          ctx.db
-            .query("transfers")
-            .withIndex(
-              "by_organizationId_toLocationId_receiptStatus_transferredAt",
-              (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("toLocationId", locationId)
-                  .eq("receiptStatus", "pending"),
-            )
-            .order("asc")
-            .take(MAX_PENDING_TRANSFERS + 1),
-        ),
-      );
-      rows = byLocation
-        .flat()
-        .sort(
-          (left, right) =>
-            left.transferredAt - right.transferredAt ||
-            left._creationTime - right._creationTime,
-        );
-    }
+    requireLocationAccess(auth, args.locationId);
+    const rows = await ctx.db
+      .query("transfers")
+      .withIndex(
+        "by_organizationId_toLocationId_receiptStatus_transferredAt",
+        (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("toLocationId", args.locationId)
+            .eq("receiptStatus", "pending"),
+      )
+      .order("asc")
+      .take(MAX_PENDING_TRANSFERS + 1);
 
     const visibleRows = rows.slice(0, MAX_PENDING_TRANSFERS);
     const names = await locationNames(ctx, visibleRows);
