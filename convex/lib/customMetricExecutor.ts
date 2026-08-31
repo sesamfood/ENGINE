@@ -522,6 +522,22 @@ async function countRows(
   };
 }
 
+function salesDailyRollupMeasure(
+  query: CustomMetricQuerySpec,
+  dimensionId: string | undefined,
+): "revenue" | "items" | null {
+  if (
+    query.dataset !== "salesLines" ||
+    query.filters.length > 0 ||
+    (dimensionId !== undefined && dimensionId !== "location")
+  ) {
+    return null;
+  }
+  if (query.measure === "revenue") return "revenue";
+  if (query.measure === "quantity") return "items";
+  return null;
+}
+
 async function salesDailyRows(
   ctx: QueryCtx,
   spec: CustomMetricQuerySpec,
@@ -937,6 +953,15 @@ async function loadRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ) {
+  const rollupMeasure = salesDailyRollupMeasure(query, dimensionId);
+  if (rollupMeasure) {
+    return await salesDailyRows(
+      ctx,
+      { dataset: "salesDaily", measure: rollupMeasure, filters: [] },
+      dimensionId,
+      params,
+    );
+  }
   switch (query.dataset) {
     case "waste":
       return await wasteRows(ctx, query, dimensionId, params);
