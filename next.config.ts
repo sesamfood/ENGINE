@@ -10,6 +10,20 @@ const buildId =
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  async redirects() {
+    return [
+      {
+        source: "/settings",
+        destination: "/administration",
+        permanent: false,
+      },
+      {
+        source: "/organization/:path*",
+        destination: "/administration/:path*",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

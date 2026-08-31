@@ -64,7 +64,7 @@ export const webhook = httpAction(async (ctx, request) => {
 });
 
 export const oauthCallback = httpAction(async (ctx, request) => {
-  const destination = new URL("/organization/integrations", woltAppUrl());
+  const destination = new URL("/administration/integrations", woltAppUrl());
   try {
     const url = new URL(request.url);
     const code = url.searchParams.get("code")?.trim();

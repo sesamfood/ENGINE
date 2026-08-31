@@ -109,10 +109,10 @@ const employeesNavigation = {
   pages: ["employees.schedule", "employees.directory"],
 };
 
-const organizationNavigation = {
+const administrationNavigation = {
   id: "organization",
   label: "Administration",
-  href: "/organization",
+  href: "/administration",
   icon: SettingsIcon,
   pages: [] as string[],
 };
@@ -323,12 +323,11 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
 function featureLockExempt(pathname: string) {
   return (
     pathname === "/profile" ||
-    pathname === "/settings" ||
     pathname === "/waste" ||
     pathname === "/count" ||
     pathname.startsWith("/count/") ||
-    pathname === "/organization" ||
-    pathname.startsWith("/organization/")
+    pathname === "/administration" ||
+    pathname.startsWith("/administration/")
   );
 }
 
@@ -473,6 +472,7 @@ function OrganizationHome() {
   const canMembers = usePermission("members.manage");
   const canRoles = usePermission("roles.manage");
   const canApiKeys = usePermission("apiKeys.manage");
+  const canDashboardManage = usePermission("dashboard.manage");
   const canOrganization =
     canCatalog ||
     canLocations ||
@@ -484,7 +484,8 @@ function OrganizationHome() {
     canStaffFoodManage ||
     canMembers ||
     canRoles ||
-    canApiKeys;
+    canApiKeys ||
+    canDashboardManage;
   const branding = useQuery(
     api.organization.getBranding,
     organization && isAuthenticated ? {} : "skip",
@@ -524,7 +525,7 @@ function OrganizationHome() {
                       : canEmployeesDirectory
                         ? "/employees/directory"
                         : canOrganization
-                          ? "/organization"
+                          ? "/administration"
                           : "/profile";
   const showWideLogo = state === "expanded" || isMobile;
 
@@ -615,6 +616,8 @@ function NavigationList() {
   const canStaffFoodManage = usePermission("staffFood.manage");
   const canMembers = usePermission("members.manage");
   const canRoles = usePermission("roles.manage");
+  const canApiKeys = usePermission("apiKeys.manage");
+  const canDashboardManage = usePermission("dashboard.manage");
   const canOrganization =
     canCatalog ||
     canLocations ||
@@ -625,7 +628,9 @@ function NavigationList() {
     canIntegrations ||
     canStaffFoodManage ||
     canMembers ||
-    canRoles;
+    canRoles ||
+    canApiKeys ||
+    canDashboardManage;
   const itemOrder = useQuery(
     api.navigation.getOrder,
     organization.data && isAuthenticated ? {} : "skip",
@@ -637,7 +642,7 @@ function NavigationList() {
   const allNavigation = [
     ...primaryNavigation,
     employeesNavigation,
-    organizationNavigation,
+    administrationNavigation,
   ];
   const orderedNavigation = normalizeSidebarOrder(itemOrder).flatMap((id) => {
     const item = allNavigation.find((candidate) => candidate.id === id);
@@ -703,8 +708,8 @@ function NavigationList() {
             {navigation.map((item) => {
               const Icon = item.icon;
               const active =
-                item === organizationNavigation
-                  ? pathname.startsWith("/organization")
+                item === administrationNavigation
+                  ? pathname.startsWith("/administration")
                   : pathname === item.href ||
                     pathname.startsWith(`${item.href}/`);
 
@@ -779,8 +784,11 @@ function ProfileMenu({
   const canWasteSettings = usePermission("waste.settings");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
+  const canOwnChecksManage = usePermission("ownChecks.manage");
   const canMembers = usePermission("members.manage");
   const canRoles = usePermission("roles.manage");
+  const canApiKeys = usePermission("apiKeys.manage");
+  const canDashboardManage = usePermission("dashboard.manage");
   const canManageOrganization =
     canCatalog ||
     canLocations ||
@@ -789,8 +797,11 @@ function ProfileMenu({
     canWasteSettings ||
     canIntegrations ||
     canStaffFoodManage ||
+    canOwnChecksManage ||
     canMembers ||
-    canRoles;
+    canRoles ||
+    canApiKeys ||
+    canDashboardManage;
   const { isMobile, setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
@@ -811,8 +822,7 @@ function ProfileMenu({
       .toUpperCase() || "P";
   const accountPageActive =
     pathname === "/profile" ||
-    pathname === "/settings" ||
-    pathname.startsWith("/organization");
+    pathname.startsWith("/administration");
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
@@ -891,16 +901,12 @@ function ProfileMenu({
             <UserRoundIcon />
             Profil
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => goTo("/settings")}>
-            <SettingsIcon />
-            Indstillinger
-          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => goTo("/help")}>
             <CircleHelpIcon />
             Hjælp
           </DropdownMenuItem>
           {canManageOrganization ? (
-            <DropdownMenuItem onClick={() => goTo("/organization")}>
+            <DropdownMenuItem onClick={() => goTo("/administration")}>
               <Building2Icon />
               Administration
             </DropdownMenuItem>
@@ -1216,11 +1222,10 @@ export function AppShell({
 
   if (shellless) return children;
 
-  const organizationRequired =
-    pathname !== "/profile" && pathname !== "/settings";
-  const showOrganizationBack =
-    pathname.startsWith("/organization/") &&
-    !pathname.startsWith("/organization/products/");
+  const organizationRequired = pathname !== "/profile";
+  const showAdministrationBack =
+    pathname.startsWith("/administration/") &&
+    !pathname.startsWith("/administration/products/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
   const showWasteHeader =
@@ -1230,8 +1235,8 @@ export function AppShell({
   const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
   const showDashboardHeader =
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
-  const showOrganizationHeader =
-    pathname === "/organization" || pathname.startsWith("/organization/");
+  const showAdministrationHeader =
+    pathname === "/administration" || pathname.startsWith("/administration/");
   const showPageHeader =
     showCountHeader ||
     showWasteHeader ||
@@ -1239,7 +1244,7 @@ export function AppShell({
     showEmployeesHeader ||
     showTransfersHeader ||
     showDashboardHeader ||
-    showOrganizationHeader;
+    showAdministrationHeader;
 
   if (signingOut) {
     return (
@@ -1304,21 +1309,21 @@ export function AppShell({
                               ? "transfers-shell-header"
                               : showDashboardHeader
                                 ? "dashboard-shell-header"
-                              : "organization-shell-header"
+                              : "administration-shell-header"
                   }
                   className="hidden min-w-0 flex-1 md:block"
                 />
               ) : null}
-              {showOrganizationBack ? (
+              {showAdministrationBack ? (
                 <Button
                   variant="outline"
                   size="lg"
-                  render={<Link href="/organization" />}
+                  render={<Link href="/administration" />}
                   nativeButton={false}
                 >
                   <ArrowLeftIcon data-icon="inline-start" />
                   <span className="hidden sm:inline">
-                    Tilbage til organisation
+                    Tilbage til administration
                   </span>
                   <span className="sm:hidden">Tilbage</span>
                 </Button>

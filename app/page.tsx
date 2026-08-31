@@ -25,20 +25,26 @@ export default function Home() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canOwnChecksManage = usePermission("ownChecks.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
   const canMembers = usePermission("members.manage");
   const canRoles = usePermission("roles.manage");
+  const canApiKeys = usePermission("apiKeys.manage");
+  const canDashboardManage = usePermission("dashboard.manage");
   const canOrganization =
     canCatalog ||
     canLocations ||
     canOrganizationSettings ||
     canCountSettings ||
     canWasteSettings ||
+    canOwnChecksManage ||
     canIntegrations ||
     canStaffFoodManage ||
     canMembers ||
-    canRoles;
+    canRoles ||
+    canApiKeys ||
+    canDashboardManage;
 
   useEffect(() => {
     if (!access) return;
@@ -68,14 +74,16 @@ export default function Home() {
                         : canEmployeesDirectory
                           ? "/employees/directory"
                           : canOrganization
-                            ? "/organization"
+                            ? "/administration"
                             : "/profile";
     router.replace(href);
   }, [
     access,
     canCatalog,
+    canApiKeys,
     canCountRegister,
     canCountStock,
+    canDashboardManage,
     canDashboard,
     canEmployeesDirectory,
     canEmployeesSchedule,
@@ -84,6 +92,7 @@ export default function Home() {
     canMembers,
     canOrganization,
     canOrganizationSettings,
+    canOwnChecksManage,
     canRoles,
     canStaffFood,
     canStaffFoodManage,

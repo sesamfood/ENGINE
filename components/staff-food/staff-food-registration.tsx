@@ -575,7 +575,7 @@ export function StaffFoodRegistration() {
           {canManage ? (
             <EmptyContent>
               <Button
-                render={<Link href="/organization/staff-food" />}
+                render={<Link href="/administration/staff-food" />}
                 nativeButton={false}
               >
                 Åbn indstillinger
