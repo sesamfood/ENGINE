@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import {
   ArrowRightIcon,
-  BarChart3Icon,
   BoxesIcon,
   Building2Icon,
   CalendarClockIcon,
@@ -95,70 +94,6 @@ function MetricBar({ label, width }: { label: string; width: string }) {
         <div className={cn("h-full rounded-full bg-primary", width)} />
       </div>
     </div>
-  );
-}
-
-export function StartVisual() {
-  const items = [
-    { icon: BarChart3Icon, label: "Dashboard", active: true },
-    { icon: PackageCheckIcon, label: "Transfer" },
-    { icon: Trash2Icon, label: "Waste" },
-    { icon: ClipboardCheckIcon, label: "Egenkontrol" },
-    { icon: ClipboardListIcon, label: "Count" },
-  ];
-
-  return (
-    <WindowFrame label="Sidemenu og lokationsvalg">
-      <div className="grid gap-4 sm:grid-cols-[9rem_1fr]">
-        <div className="flex flex-col gap-1 rounded-xl bg-muted p-2">
-          {items.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={item.label}
-                className={cn(
-                  "flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs font-medium",
-                  item.active && "bg-background text-foreground",
-                  !item.active && "text-muted-foreground",
-                )}
-              >
-                <Icon className="size-3.5" />
-                {item.label}
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex min-w-0 flex-col gap-4 rounded-xl border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-xs text-muted-foreground">Aktiv lokation</p>
-              <p className="font-semibold">Lokation A</p>
-            </div>
-            <MiniControl>
-              <MapPinIcon className="size-3" /> Skift lokation
-            </MiniControl>
-          </div>
-          <div className="grid grid-cols-[auto_1fr_auto_1fr_auto] items-center gap-2 text-center text-[0.65rem] font-medium text-muted-foreground">
-            <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground">
-              1
-            </span>
-            <span className="h-px bg-border" />
-            <span className="grid size-8 place-items-center rounded-full bg-secondary text-secondary-foreground">
-              2
-            </span>
-            <span className="h-px bg-border" />
-            <span className="grid size-8 place-items-center rounded-full bg-secondary text-secondary-foreground">
-              3
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-[0.65rem] text-muted-foreground">
-            <span>Vælg</span>
-            <span>Registrér</span>
-            <span>Kontrollér</span>
-          </div>
-        </div>
-      </div>
-    </WindowFrame>
   );
 }
 
