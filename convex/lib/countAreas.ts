@@ -19,7 +19,7 @@ export async function listCountAreas(
     )
     .take(MAX_COUNT_AREAS + 1);
   if (areas.length > MAX_COUNT_AREAS) {
-    throw new ConvexError("Lokationen har for mange Barer");
+    throw new ConvexError("Lokationen har for mange Områder");
   }
   return areas;
 }
@@ -36,7 +36,7 @@ export async function requireCountArea(
     area.organizationId !== organizationId ||
     area.locationId !== locationId
   ) {
-    throw new ConvexError("Baren blev ikke fundet");
+    throw new ConvexError("Området blev ikke fundet");
   }
   return area;
 }
@@ -53,7 +53,7 @@ export async function getCountAreaProductOrder(
     )
     .take(MAX_COUNT_AREA_PRODUCTS + 1);
   if (rows.length > MAX_COUNT_AREA_PRODUCTS) {
-    throw new ConvexError("Baren har for mange Produkter");
+    throw new ConvexError("Området har for mange Produkter");
   }
   return rows;
 }

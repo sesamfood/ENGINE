@@ -34,10 +34,10 @@ type CountAreaContext = QueryCtx | MutationCtx;
 
 function normalizeName(value: string) {
   const name = value.trim().replace(/\s+/g, " ");
-  if (!name) throw new ConvexError("Navnet på Baren skal udfyldes");
+  if (!name) throw new ConvexError("Navnet på Området skal udfyldes");
   if (name.length > MAX_NAME_LENGTH) {
     throw new ConvexError(
-      `Navnet på Baren må højst være ${MAX_NAME_LENGTH} tegn`,
+      `Navnet på Området må højst være ${MAX_NAME_LENGTH} tegn`,
     );
   }
   return { name, normalizedName: name.toLocaleLowerCase("da") };
@@ -188,7 +188,7 @@ export const getProductOrder = query({
     );
     if (!args.countAreaId) {
       const areas = await listCountAreas(ctx, organizationId, location._id);
-      if (areas.length > 0) throw new ConvexError("Vælg en Bar");
+      if (areas.length > 0) throw new ConvexError("Vælg et Område");
       return await filteredOrder(
         ctx,
         organizationId,
@@ -239,10 +239,10 @@ export const create = mutation({
     ]);
     if (areas.length >= MAX_COUNT_AREAS) {
       throw new ConvexError(
-        `En lokation kan højst have ${MAX_COUNT_AREAS} Barer`,
+        `En lokation kan højst have ${MAX_COUNT_AREAS} Områder`,
       );
     }
-    if (existing) throw new ConvexError("Baren findes allerede");
+    if (existing) throw new ConvexError("Området findes allerede");
     if (areas.length === 0) {
       const currentCount = await getCurrentOpenCount(
         ctx,
@@ -260,7 +260,7 @@ export const create = mutation({
           .first();
         if (countItem) {
           throw new ConvexError(
-            "Den åbne Count skal registreres, før den første Bar oprettes",
+            "Den åbne Count skal registreres, før det første Område oprettes",
           );
         }
       }
@@ -277,7 +277,7 @@ export const create = mutation({
       entityTable: "countAreas",
       entityId: countAreaId,
       locationId: location._id,
-      summary: `Baren ${name} blev oprettet på ${location.name}`,
+      summary: `Området ${name} blev oprettet på ${location.name}`,
     });
     return countAreaId;
   },
@@ -291,7 +291,7 @@ export const rename = mutation({
     const { organizationId } = auth;
     const stored = await ctx.db.get("countAreas", args.countAreaId);
     if (!stored || stored.organizationId !== organizationId) {
-      throw new ConvexError("Baren blev ikke fundet");
+      throw new ConvexError("Området blev ikke fundet");
     }
     requireLocationAccess(auth, stored.locationId);
     const area = await requireCountArea(
@@ -311,7 +311,7 @@ export const rename = mutation({
       )
       .unique();
     if (existing && existing._id !== area._id) {
-      throw new ConvexError("Baren findes allerede");
+      throw new ConvexError("Området findes allerede");
     }
     await ctx.db.patch("countAreas", area._id, { name, normalizedName });
     await recordAudit(ctx, auth, {
@@ -319,7 +319,7 @@ export const rename = mutation({
       entityTable: "countAreas",
       entityId: area._id,
       locationId: area.locationId,
-      summary: `Baren ${area.name} blev omdøbt til ${name}`,
+      summary: `Området ${area.name} blev omdøbt til ${name}`,
     });
     return null;
   },
@@ -333,7 +333,7 @@ export const remove = mutation({
     const { organizationId } = auth;
     const stored = await ctx.db.get("countAreas", args.countAreaId);
     if (!stored || stored.organizationId !== organizationId) {
-      throw new ConvexError("Baren blev ikke fundet");
+      throw new ConvexError("Området blev ikke fundet");
     }
     requireLocationAccess(auth, stored.locationId);
     const area = await requireCountArea(
@@ -366,7 +366,7 @@ export const remove = mutation({
       }
       if (items.some((item) => item.countAreaId === area._id)) {
         throw new ConvexError(
-          "Baren kan ikke fjernes, mens den indgår i en åben Count",
+          "Området kan ikke fjernes, mens det indgår i en åben Count",
         );
       }
       if (currentCount.completedCountAreaIds?.includes(area._id)) {
@@ -399,7 +399,7 @@ export const remove = mutation({
       entityTable: "countAreas",
       entityId: area._id,
       locationId: area.locationId,
-      summary: `Baren ${area.name} blev fjernet`,
+      summary: `Området ${area.name} blev fjernet`,
     });
     return null;
   },
@@ -449,7 +449,7 @@ export const setProductOrder = mutation({
 
     if (!args.countAreaId) {
       const areas = await listCountAreas(ctx, organizationId, location._id);
-      if (areas.length > 0) throw new ConvexError("Vælg en Bar");
+      if (areas.length > 0) throw new ConvexError("Vælg et Område");
       await ctx.db.patch("locations", location._id, {
         countProductOrder: args.productIds,
       });
@@ -491,7 +491,7 @@ export const setProductOrder = mutation({
           )
         ) {
           throw new ConvexError(
-            "Produkter med optalte mængder kan ikke fjernes fra Baren",
+            "Produkter med optalte mængder kan ikke fjernes fra Området",
           );
         }
       }
@@ -541,7 +541,7 @@ export const setProductOrder = mutation({
       entityId: args.countAreaId ?? location._id,
       locationId: location._id,
       summary: args.countAreaId
-        ? "Produktrækkefølgen for Baren blev ændret"
+        ? "Produktrækkefølgen for Området blev ændret"
         : "Produktrækkefølgen for lokationen blev ændret",
     });
     return null;

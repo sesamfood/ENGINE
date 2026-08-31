@@ -51,10 +51,10 @@ export const heartbeat = mutation({
       throw new ConvexError("Presence-sessionen er ugyldig");
     }
     const countAreaId = ctx.db.normalizeId("countAreas", args.roomId);
-    if (!countAreaId) throw new ConvexError("Baren blev ikke fundet");
+    if (!countAreaId) throw new ConvexError("Området blev ikke fundet");
     const countArea = await ctx.db.get("countAreas", countAreaId);
     if (!countArea || countArea.organizationId !== auth.organizationId) {
-      throw new ConvexError("Baren blev ikke fundet");
+      throw new ConvexError("Området blev ikke fundet");
     }
     requireLocationAccess(auth, countArea.locationId);
     return await countAreaPresence.heartbeat(

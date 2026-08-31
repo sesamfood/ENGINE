@@ -648,9 +648,9 @@ function SingleProductCounter({
         className="hidden size-12 rounded-full md:inline-flex"
         aria-label={
           completionPending
-            ? "Markerer Bar som færdig"
+            ? "Markerer Område som færdigt"
             : isLastProduct && onComplete
-              ? "Markér Bar som færdig"
+              ? "Markér Område som færdigt"
               : "Næste Produkt"
         }
         disabled={nextDisabled}
@@ -800,7 +800,7 @@ function CountAreaPicker({
           id="count-area-picker-title"
           className="text-2xl font-semibold tracking-tight"
         >
-          Vælg en Bar
+          Vælg et Område
         </h2>
         <Badge variant="outline" aria-live="polite">
           {completedCount} af {countAreas.length} færdige
@@ -937,7 +937,7 @@ function OrderBuilder({
           <DialogDescription>
             {appendUnselected
               ? "Vælg Produkterne i den rækkefølge, de skal vises. Produkter, du ikke vælger, placeres til sidst."
-              : "Vælg de Produkter, der skal tælles i denne Bar, og angiv deres rækkefølge."}
+              : "Vælg de Produkter, der skal tælles i dette Område, og angiv deres rækkefølge."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid min-h-0 gap-4 sm:grid-cols-2">
@@ -1687,7 +1687,7 @@ export function CountSheet() {
       await markProductCounted(singleProduct.id);
       await completeCountArea({ locationId, countAreaId });
       returnToCountAreaPicker();
-      toast.success("Baren er markeret som færdig");
+      toast.success("Området er markeret som færdigt");
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
@@ -1720,7 +1720,7 @@ export function CountSheet() {
   const disabledReason = !locationId
     ? "Vælg en lokation"
     : countAreas === undefined
-      ? "Barer indlæses"
+      ? "Områder indlæses"
       : !state
         ? "Count indlæses"
         : state.count?.status === "submitted"
@@ -1869,7 +1869,7 @@ export function CountSheet() {
   const countAreaSelectionPending = Boolean(
     countAreas && countAreas.length > 0 && !activeCountAreaId,
   );
-  const emptyBarOrder = Boolean(
+  const emptyAreaOrder = Boolean(
     activeCountAreaId &&
     productOrder &&
     productOrder.length === 0 &&
@@ -1930,7 +1930,7 @@ export function CountSheet() {
                     onClick={returnToCountAreaPicker}
                   >
                     <ChevronLeftIcon data-icon="inline-start" />
-                    Vælg en anden Bar
+                    Vælg et andet Område
                   </Button>
                 ) : null}
                 {canManageLocations ? (
@@ -2039,18 +2039,18 @@ export function CountSheet() {
                   <PackageOpenIcon />
                 </EmptyMedia>
                 <EmptyTitle>
-                  {emptyBarOrder
-                    ? "Ingen Produkter i denne Bar"
+                  {emptyAreaOrder
+                    ? "Ingen Produkter i dette Område"
                     : "Ingen Produkter fundet"}
                 </EmptyTitle>
                 <EmptyDescription>
-                  {emptyBarOrder
+                  {emptyAreaOrder
                     ? 'En bruger med tilladelsen til at administrere lokationer skal vælge Produkter med "Start forfra" i rækkefølgeeditoren.'
                     : search
                       ? "Prøv en anden søgning."
                       : "Der er ingen aktive Produkter i denne kategori."}
                 </EmptyDescription>
-                {emptyBarOrder && canManageLocations ? (
+                {emptyAreaOrder && canManageLocations ? (
                   <Button
                     type="button"
                     variant="outline"

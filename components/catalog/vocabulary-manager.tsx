@@ -343,14 +343,14 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
                                 variant="ghost"
                                 size="icon-lg"
                                 className="size-11"
-                                aria-label={`Produkter og Barer for ${item.name}`}
+                                aria-label={`Produkter og Områder for ${item.name}`}
                                 onClick={() => setCountSetupLocation(item)}
                               />
                             }
                           >
                             <Settings2Icon />
                           </TooltipTrigger>
-                          <TooltipContent>Produkter og Barer</TooltipContent>
+                          <TooltipContent>Produkter og Områder</TooltipContent>
                         </Tooltip>
                       ) : null}
                       {kind === "unit" ? (

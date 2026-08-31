@@ -23,11 +23,11 @@ import {
   GripVerticalIcon,
   LayoutListIcon,
   ListOrderedIcon,
+  MapIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
   Trash2Icon,
-  WineIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -90,7 +90,7 @@ import { cn } from "@/lib/utils";
 
 type ProductId = Id<"products">;
 type ProductMode = "all" | "selected";
-type ActiveTab = "products" | "bars";
+type ActiveTab = "products" | "areas";
 type CountArea = {
   id: Id<"countAreas">;
   name: string;
@@ -102,7 +102,7 @@ type ProductDraft = {
   selectedProductIds: Set<ProductId>;
 };
 
-const barOrderScreenReaderInstructions: ScreenReaderInstructions = {
+const areaOrderScreenReaderInstructions: ScreenReaderInstructions = {
   draggable:
     "Tryk på mellemrum for at vælge Produktet. Flyt det med piletasterne. Tryk på mellemrum igen for at placere det, eller Escape for at annullere.",
 };
@@ -119,15 +119,15 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
-function SortableBarProductRow({
-  barName,
+function SortableAreaProductRow({
+  areaName,
   disabled,
   position,
   productId,
   productName,
   onRemove,
 }: {
-  barName: string;
+  areaName: string;
   disabled: boolean;
   position: number;
   productId: ProductId;
@@ -189,7 +189,7 @@ function SortableBarProductRow({
               variant="ghost"
               size="icon-lg"
               className="size-11"
-              aria-label={`Fjern ${productName} fra ${barName}`}
+              aria-label={`Fjern ${productName} fra ${areaName}`}
               disabled={disabled}
               onClick={onRemove}
             />
@@ -222,15 +222,15 @@ export function LocationCountSetup({
     api.catalog.listActiveProductSearchOptions,
     open ? {} : "skip",
   );
-  const bars = useQuery(
+  const areas = useQuery(
     api.countAreas.listForManagement,
     open ? { locationId } : "skip",
   );
   const setConfiguration = useMutation(api.locationProducts.setConfiguration);
-  const createBar = useMutation(api.countAreas.create);
-  const renameBar = useMutation(api.countAreas.rename);
+  const createArea = useMutation(api.countAreas.create);
+  const renameArea = useMutation(api.countAreas.rename);
   const removeCountArea = useMutation(api.countAreas.remove);
-  const setBarProductOrder = useMutation(api.countAreas.setProductOrder);
+  const setAreaProductOrder = useMutation(api.countAreas.setProductOrder);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("products");
   const [search, setSearch] = useState("");
@@ -240,19 +240,19 @@ export function LocationCountSetup({
     selectedProductIds: new Set(),
   }));
   const [savingProducts, setSavingProducts] = useState(false);
-  const [editingBar, setEditingBar] = useState<CountArea | "new" | null>(null);
-  const [barName, setBarName] = useState("");
-  const [barError, setBarError] = useState("");
-  const [savingBar, setSavingBar] = useState(false);
-  const [pendingBarDelete, setPendingBarDelete] = useState<CountArea | null>(
+  const [editingArea, setEditingArea] = useState<CountArea | "new" | null>(null);
+  const [areaName, setAreaName] = useState("");
+  const [areaError, setAreaError] = useState("");
+  const [savingArea, setSavingArea] = useState(false);
+  const [pendingAreaDelete, setPendingAreaDelete] = useState<CountArea | null>(
     null,
   );
-  const [deletingBar, setDeletingBar] = useState(false);
-  const [orderingBar, setOrderingBar] = useState<CountArea | null>(null);
-  const [barOrder, setBarOrder] = useState<ProductId[]>([]);
+  const [deletingArea, setDeletingArea] = useState(false);
+  const [orderingArea, setOrderingArea] = useState<CountArea | null>(null);
+  const [areaOrder, setAreaOrder] = useState<ProductId[]>([]);
   const [orderError, setOrderError] = useState("");
   const [savingOrder, setSavingOrder] = useState(false);
-  const barOrderSensors = useSensors(
+  const areaOrderSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -315,7 +315,7 @@ export function LocationCountSetup({
       ),
     [effectiveProducts],
   );
-  const barOrderAnnouncements = useMemo<Announcements>(
+  const areaOrderAnnouncements = useMemo<Announcements>(
     () => ({
       onDragStart({ active }) {
         const name = productNamesById.get(String(active.id)) ?? "Produktet";
@@ -339,7 +339,7 @@ export function LocationCountSetup({
     }),
     [productNamesById],
   );
-  const isBusy = savingProducts || savingBar || deletingBar || savingOrder;
+  const isBusy = savingProducts || savingArea || deletingArea || savingOrder;
 
   function toggleProduct(productId: ProductId, checked: boolean) {
     setProductDraft((current) => {
@@ -383,64 +383,64 @@ export function LocationCountSetup({
     }
   }
 
-  function openNewBar() {
-    setEditingBar("new");
-    setBarName("");
-    setBarError("");
+  function openNewArea() {
+    setEditingArea("new");
+    setAreaName("");
+    setAreaError("");
   }
 
-  function openRenameBar(bar: CountArea) {
-    setEditingBar(bar);
-    setBarName(bar.name);
-    setBarError("");
+  function openRenameArea(area: CountArea) {
+    setEditingArea(area);
+    setAreaName(area.name);
+    setAreaError("");
   }
 
-  async function saveBar() {
-    if (!barName.trim()) {
-      setBarError("Indtast et navn til Baren");
+  async function saveArea() {
+    if (!areaName.trim()) {
+      setAreaError("Indtast et navn til Området");
       return;
     }
-    setSavingBar(true);
-    setBarError("");
+    setSavingArea(true);
+    setAreaError("");
     try {
-      if (editingBar === "new") {
-        await createBar({ locationId, name: barName });
-        toast.success("Baren er oprettet");
-      } else if (editingBar) {
-        await renameBar({ countAreaId: editingBar.id, name: barName });
-        toast.success("Baren er omdøbt");
+      if (editingArea === "new") {
+        await createArea({ locationId, name: areaName });
+        toast.success("Området er oprettet");
+      } else if (editingArea) {
+        await renameArea({ countAreaId: editingArea.id, name: areaName });
+        toast.success("Området er omdøbt");
       }
-      setEditingBar(null);
+      setEditingArea(null);
     } catch (error) {
-      setBarError(messageFrom(error));
+      setAreaError(messageFrom(error));
     } finally {
-      setSavingBar(false);
+      setSavingArea(false);
     }
   }
 
-  async function deleteBar() {
-    if (!pendingBarDelete) return;
-    setDeletingBar(true);
+  async function deleteArea() {
+    if (!pendingAreaDelete) return;
+    setDeletingArea(true);
     try {
-      await removeCountArea({ countAreaId: pendingBarDelete.id });
-      toast.success("Baren er fjernet");
-      setPendingBarDelete(null);
+      await removeCountArea({ countAreaId: pendingAreaDelete.id });
+      toast.success("Området er fjernet");
+      setPendingAreaDelete(null);
     } catch (error) {
       toast.error(messageFrom(error));
     } finally {
-      setDeletingBar(false);
+      setDeletingArea(false);
     }
   }
 
-  function openBarOrder(bar: CountArea) {
-    setOrderingBar(bar);
-    setBarOrder([...bar.productIds]);
+  function openAreaOrder(area: CountArea) {
+    setOrderingArea(area);
+    setAreaOrder([...area.productIds]);
     setOrderError("");
   }
 
-  function toggleBarProduct(productId: ProductId, checked: boolean) {
+  function toggleAreaProduct(productId: ProductId, checked: boolean) {
     setOrderError("");
-    setBarOrder((current) => {
+    setAreaOrder((current) => {
       if (checked) {
         return current.includes(productId) ? current : [...current, productId];
       }
@@ -448,18 +448,18 @@ export function LocationCountSetup({
     });
   }
 
-  async function saveBarOrder() {
-    if (!orderingBar) return;
+  async function saveAreaOrder() {
+    if (!orderingArea) return;
     setSavingOrder(true);
     setOrderError("");
     try {
-      await setBarProductOrder({
+      await setAreaProductOrder({
         locationId,
-        countAreaId: orderingBar.id,
-        productIds: barOrder,
+        countAreaId: orderingArea.id,
+        productIds: areaOrder,
       });
-      toast.success("Produktordenen for Baren er gemt");
-      setOrderingBar(null);
+      toast.success("Produktordenen for Området er gemt");
+      setOrderingArea(null);
     } catch (error) {
       const message = messageFrom(error);
       setOrderError(message);
@@ -479,26 +479,26 @@ export function LocationCountSetup({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Produkter og Barer</DialogTitle>
+            <DialogTitle>Produkter og Områder</DialogTitle>
             <DialogDescription>
-              Vælg de Produkter og Barer, som bruges på {locationName}.
+              Vælg de Produkter og Områder, som bruges på {locationName}.
             </DialogDescription>
           </DialogHeader>
 
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
-              if (value === "products" || value === "bars") {
+              if (value === "products" || value === "areas") {
                 setActiveTab(value);
               }
             }}
           >
             <TabsList
               className="grid h-11 w-full grid-cols-2"
-              aria-label="Produkter og Barer"
+              aria-label="Produkter og Områder"
             >
               <TabsTrigger value="products">Produkter</TabsTrigger>
-              <TabsTrigger value="bars">Barer</TabsTrigger>
+              <TabsTrigger value="areas">Områder</TabsTrigger>
             </TabsList>
 
             <TabsContent value="products" className="pt-4">
@@ -636,67 +636,67 @@ export function LocationCountSetup({
               </FieldGroup>
             </TabsContent>
 
-            <TabsContent value="bars" className="pt-4">
+            <TabsContent value="areas" className="pt-4">
               <FieldGroup>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <div className="flex flex-col gap-1">
-                    <h3 className="font-medium">Barer</h3>
+                    <h3 className="font-medium">Områder</h3>
                     <p className="text-sm text-muted-foreground">
                       Du kan ændre Produktrækkefølgen her eller på Count-siden,
-                      når du har valgt Baren.
+                      når du har valgt Området.
                     </p>
                   </div>
                   <Button
                     type="button"
                     className="min-h-11 shrink-0"
-                    onClick={openNewBar}
+                    onClick={openNewArea}
                   >
                     <PlusIcon data-icon="inline-start" />
-                    Ny Bar
+                    Nyt Område
                   </Button>
                 </div>
 
-                {bars === undefined ? (
+                {areas === undefined ? (
                   <div className="flex flex-col gap-2">
                     {Array.from({ length: 3 }, (_, index) => (
                       <Skeleton key={index} className="h-14 w-full" />
                     ))}
                   </div>
-                ) : bars.length === 0 ? (
+                ) : areas.length === 0 ? (
                   <Empty className="min-h-52 border">
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
-                        <WineIcon />
+                        <MapIcon />
                       </EmptyMedia>
-                      <EmptyTitle>Ingen Barer endnu</EmptyTitle>
+                      <EmptyTitle>Ingen Områder endnu</EmptyTitle>
                       <EmptyDescription>
-                        Opret en Bar, før du starter en Count på lokationen.
+                        Opret et Område, før du starter en Count på lokationen.
                       </EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent>
                       <Button
                         type="button"
                         className="min-h-11"
-                        onClick={openNewBar}
+                        onClick={openNewArea}
                       >
                         <PlusIcon data-icon="inline-start" />
-                        Ny Bar
+                        Nyt Område
                       </Button>
                     </EmptyContent>
                   </Empty>
                 ) : (
                   <FieldGroup className="gap-2">
-                    {bars.map((bar) => (
+                    {areas.map((area) => (
                       <div
-                        key={bar.id}
+                        key={area.id}
                         className="flex min-h-14 items-center justify-between gap-3 rounded-lg border px-3 py-2"
                       >
                         <div className="flex min-w-0 flex-col gap-1">
-                          <p className="truncate font-medium">{bar.name}</p>
+                          <p className="truncate font-medium">{area.name}</p>
                           <p className="text-sm text-muted-foreground">
-                            {bar.productIds.length === 0
+                            {area.productIds.length === 0
                               ? "Produktorden er ikke sat"
-                              : `${bar.productIds.length} Produkter i ordenen`}
+                              : `${area.productIds.length} Produkter i ordenen`}
                           </p>
                         </div>
                         <div className="flex shrink-0 gap-1">
@@ -708,8 +708,8 @@ export function LocationCountSetup({
                                   variant="ghost"
                                   size="icon-lg"
                                   className="size-11"
-                                  aria-label={`Produkter og rækkefølge for ${bar.name}`}
-                                  onClick={() => openBarOrder(bar)}
+                                  aria-label={`Produkter og rækkefølge for ${area.name}`}
+                                  onClick={() => openAreaOrder(area)}
                                 />
                               }
                             >
@@ -727,14 +727,14 @@ export function LocationCountSetup({
                                   variant="ghost"
                                   size="icon-lg"
                                   className="size-11"
-                                  aria-label={`Redigér ${bar.name}`}
-                                  onClick={() => openRenameBar(bar)}
+                                  aria-label={`Redigér ${area.name}`}
+                                  onClick={() => openRenameArea(area)}
                                 />
                               }
                             >
                               <PencilIcon />
                             </TooltipTrigger>
-                            <TooltipContent>Redigér Bar</TooltipContent>
+                            <TooltipContent>Redigér Område</TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger
@@ -744,14 +744,14 @@ export function LocationCountSetup({
                                   variant="ghost"
                                   size="icon-lg"
                                   className="size-11"
-                                  aria-label={`Fjern ${bar.name}`}
-                                  onClick={() => setPendingBarDelete(bar)}
+                                  aria-label={`Fjern ${area.name}`}
+                                  onClick={() => setPendingAreaDelete(area)}
                                 />
                               }
                             >
                               <Trash2Icon />
                             </TooltipTrigger>
-                            <TooltipContent>Fjern Bar</TooltipContent>
+                            <TooltipContent>Fjern Område</TooltipContent>
                           </Tooltip>
                         </div>
                       </div>
@@ -788,16 +788,16 @@ export function LocationCountSetup({
       </Dialog>
 
       <Dialog
-        open={Boolean(orderingBar)}
+        open={Boolean(orderingArea)}
         onOpenChange={(next) => {
-          if (!next && !savingOrder) setOrderingBar(null);
+          if (!next && !savingOrder) setOrderingArea(null);
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Produkter og rækkefølge</DialogTitle>
             <DialogDescription>
-              Vælg Produkter til {orderingBar?.name}, og placér dem i den
+              Vælg Produkter til {orderingArea?.name}, og placér dem i den
               rækkefølge, de skal tælles i.
             </DialogDescription>
           </DialogHeader>
@@ -811,7 +811,7 @@ export function LocationCountSetup({
           ) : (
             <FieldGroup>
               <FieldSet>
-                <FieldLegend variant="label">Produkter i Baren</FieldLegend>
+                <FieldLegend variant="label">Produkter i Området</FieldLegend>
                 {effectiveProducts.length === 0 ? (
                   <Empty className="min-h-36 border">
                     <EmptyHeader>
@@ -825,8 +825,8 @@ export function LocationCountSetup({
                   <div className="max-h-64 overflow-y-auto rounded-lg border p-2">
                     <FieldGroup className="gap-1">
                       {effectiveProducts.map((product) => {
-                        const checked = barOrder.includes(product.id);
-                        const inputId = `count-area-product-${orderingBar?.id}-${product.id}`;
+                        const checked = areaOrder.includes(product.id);
+                        const inputId = `count-area-product-${orderingArea?.id}-${product.id}`;
                         const isIngredient = ingredientProductIds.includes(
                           product.id,
                         );
@@ -843,7 +843,7 @@ export function LocationCountSetup({
                               disabled={savingOrder}
                               aria-label={`Vælg ${product.name}`}
                               onCheckedChange={(next) =>
-                                toggleBarProduct(product.id, next === true)
+                                toggleAreaProduct(product.id, next === true)
                               }
                             />
                             <FieldContent className="min-w-0">
@@ -874,10 +874,10 @@ export function LocationCountSetup({
                   Træk Produkterne for at ændre rækkefølgen. Du kan gemme en tom
                   rækkefølge.
                 </FieldDescription>
-                {barOrder.length === 0 ? (
+                {areaOrder.length === 0 ? (
                   <Empty className="min-h-32 border">
                     <EmptyHeader>
-                      <EmptyTitle>Ingen Produkter i Baren</EmptyTitle>
+                      <EmptyTitle>Ingen Produkter i Området</EmptyTitle>
                       <EmptyDescription>
                         Markér Produkter ovenfor for at tilføje dem.
                       </EmptyDescription>
@@ -886,19 +886,19 @@ export function LocationCountSetup({
                 ) : (
                   <DndContext
                     accessibility={{
-                      announcements: barOrderAnnouncements,
+                      announcements: areaOrderAnnouncements,
                       screenReaderInstructions:
-                        barOrderScreenReaderInstructions,
+                        areaOrderScreenReaderInstructions,
                     }}
                     collisionDetection={closestCorners}
-                    sensors={barOrderSensors}
+                    sensors={areaOrderSensors}
                     onDragEnd={({ active, over }) => {
                       setOrderError("");
                       if (!over || active.id === over.id) return;
 
                       const activeId = String(active.id);
                       const overId = String(over.id);
-                      setBarOrder((current) => {
+                      setAreaOrder((current) => {
                         const from = current.findIndex(
                           (id) => String(id) === activeId,
                         );
@@ -912,28 +912,28 @@ export function LocationCountSetup({
                     }}
                   >
                     <SortableContext
-                      items={barOrder}
+                      items={areaOrder}
                       strategy={verticalListSortingStrategy}
                     >
                       <ol
                         className="flex flex-col gap-2"
                         aria-label="Produktrækkefølge"
                       >
-                        {barOrder.map((productId, index) => {
+                        {areaOrder.map((productId, index) => {
                           const product = effectiveProducts.find(
                             (candidate) => candidate.id === productId,
                           );
-                          if (!product || !orderingBar) return null;
+                          if (!product || !orderingArea) return null;
                           return (
-                            <SortableBarProductRow
+                            <SortableAreaProductRow
                               key={product.id}
-                              barName={orderingBar.name}
+                              areaName={orderingArea.name}
                               disabled={savingOrder}
                               position={index + 1}
                               productId={product.id}
                               productName={product.name}
                               onRemove={() =>
-                                toggleBarProduct(product.id, false)
+                                toggleAreaProduct(product.id, false)
                               }
                             />
                           );
@@ -953,7 +953,7 @@ export function LocationCountSetup({
               variant="outline"
               className="min-h-11"
               disabled={savingOrder}
-              onClick={() => setOrderingBar(null)}
+              onClick={() => setOrderingArea(null)}
             >
               Annullér
             </Button>
@@ -965,7 +965,7 @@ export function LocationCountSetup({
                 configuration === undefined ||
                 products === undefined
               }
-              onClick={() => void saveBarOrder()}
+              onClick={() => void saveAreaOrder()}
             >
               {savingOrder ? <Spinner data-icon="inline-start" /> : null}
               Gem rækkefølge
@@ -975,40 +975,40 @@ export function LocationCountSetup({
       </Dialog>
 
       <Dialog
-        open={Boolean(editingBar)}
+        open={Boolean(editingArea)}
         onOpenChange={(next) => {
-          if (!next && !savingBar) setEditingBar(null);
+          if (!next && !savingArea) setEditingArea(null);
         }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingBar === "new" ? "Ny Bar" : "Redigér Bar"}
+              {editingArea === "new" ? "Nyt Område" : "Redigér Område"}
             </DialogTitle>
             <DialogDescription>
-              Giv Baren et navn. Produktordenen kan ændres her eller på
+              Giv Området et navn. Produktordenen kan ændres her eller på
               Count-siden.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            <Field data-invalid={Boolean(barError)}>
+            <Field data-invalid={Boolean(areaError)}>
               <FieldLabel htmlFor={`count-area-name-${locationId}`}>
                 Navn
               </FieldLabel>
               <Input
                 id={`count-area-name-${locationId}`}
-                value={barName}
-                onChange={(event) => setBarName(event.target.value)}
+                value={areaName}
+                onChange={(event) => setAreaName(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    void saveBar();
+                    void saveArea();
                   }
                 }}
-                aria-invalid={Boolean(barError)}
+                aria-invalid={Boolean(areaError)}
                 className="min-h-11"
               />
-              <FieldError>{barError}</FieldError>
+              <FieldError>{areaError}</FieldError>
             </Field>
           </FieldGroup>
           <DialogFooter>
@@ -1016,18 +1016,18 @@ export function LocationCountSetup({
               type="button"
               variant="outline"
               className="min-h-11"
-              disabled={savingBar}
-              onClick={() => setEditingBar(null)}
+              disabled={savingArea}
+              onClick={() => setEditingArea(null)}
             >
               Annullér
             </Button>
             <Button
               type="button"
               className="min-h-11"
-              disabled={savingBar}
-              onClick={() => void saveBar()}
+              disabled={savingArea}
+              onClick={() => void saveArea()}
             >
-              {savingBar ? <Spinner data-icon="inline-start" /> : null}
+              {savingArea ? <Spinner data-icon="inline-start" /> : null}
               Gem
             </Button>
           </DialogFooter>
@@ -1035,31 +1035,31 @@ export function LocationCountSetup({
       </Dialog>
 
       <AlertDialog
-        open={Boolean(pendingBarDelete)}
+        open={Boolean(pendingAreaDelete)}
         onOpenChange={(next) => {
-          if (!next && !deletingBar) setPendingBarDelete(null);
+          if (!next && !deletingArea) setPendingAreaDelete(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Fjern Baren?</AlertDialogTitle>
+            <AlertDialogTitle>Fjern Området?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingBarDelete?.name} og dens Produktrækkefølge fjernes
+              {pendingAreaDelete?.name} og dens Produktrækkefølge fjernes
               permanent.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="min-h-11" disabled={deletingBar}>
+            <AlertDialogCancel className="min-h-11" disabled={deletingArea}>
               Annullér
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               className="min-h-11"
-              disabled={deletingBar}
-              onClick={() => void deleteBar()}
+              disabled={deletingArea}
+              onClick={() => void deleteArea()}
             >
-              {deletingBar ? <Spinner data-icon="inline-start" /> : null}
-              Fjern Bar
+              {deletingArea ? <Spinner data-icon="inline-start" /> : null}
+              Fjern Område
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
