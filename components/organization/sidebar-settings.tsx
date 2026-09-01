@@ -43,6 +43,7 @@ import {
   type SidebarItemId,
 } from "@/lib/sidebar-navigation";
 import { cn } from "@/lib/utils";
+import { getUserErrorMessage } from "@/lib/user-errors";
 
 const labels = Object.fromEntries(
   sidebarItems.map((item) => [item.id, item.label]),
@@ -151,7 +152,10 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
       toast.success("Rækkefølgen i sidemenuen er gemt");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Rækkefølgen kunne ikke gemmes",
+        getUserErrorMessage(
+          error,
+          "Rækkefølgen kunne ikke gemmes. Prøv igen.",
+        ),
       );
     } finally {
       setSaving(false);

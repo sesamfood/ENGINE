@@ -440,13 +440,9 @@ export async function readProductArchive(
 ): Promise<ParsedProductArchive> {
   if (file.size > MAX_ARCHIVE_SIZE)
     throw new Error("ZIP-filen må højst være 250 MB");
-  const files = await unzipFile(file).catch((error: unknown) => {
-    const message =
-      error instanceof Error ? error.message : "ZIP-filen kunne ikke åbnes";
+  const files = await unzipFile(file).catch(() => {
     throw new Error(
-      message.startsWith("ZIP-filen")
-        ? message
-        : `ZIP-filen kunne ikke åbnes: ${message}`,
+      "ZIP-filen kunne ikke åbnes. Kontrollér filen, og prøv igen.",
     );
   });
   const manifestFile = files["manifest.json"];

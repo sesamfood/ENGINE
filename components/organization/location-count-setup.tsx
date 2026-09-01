@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   closestCorners,
   DndContext,
@@ -113,10 +114,6 @@ function allProductDraft(locationId: Id<"locations">): ProductDraft {
     mode: "all",
     selectedProductIds: new Set(),
   };
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 function SortableAreaProductRow({
@@ -377,7 +374,7 @@ export function LocationCountSetup({
         toast.success("Produktvalget er gemt");
       }
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSavingProducts(false);
     }
@@ -412,7 +409,7 @@ export function LocationCountSetup({
       }
       setEditingArea(null);
     } catch (error) {
-      setAreaError(messageFrom(error));
+      setAreaError(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSavingArea(false);
     }
@@ -426,7 +423,7 @@ export function LocationCountSetup({
       toast.success("Området er fjernet");
       setPendingAreaDelete(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setDeletingArea(false);
     }
@@ -461,7 +458,7 @@ export function LocationCountSetup({
       toast.success("Produktordenen for Området er gemt");
       setOrderingArea(null);
     } catch (error) {
-      const message = messageFrom(error);
+      const message = getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen.");
       setOrderError(message);
       toast.error(message);
     } finally {

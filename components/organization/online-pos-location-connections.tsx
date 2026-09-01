@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ChevronDownIcon,
@@ -59,10 +60,6 @@ const connectedAtFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
 });
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 export function OnlinePosLocationConnections() {
   const connections = useQuery(api.onlinePos.listLocationConnections);
@@ -132,7 +129,7 @@ export function OnlinePosLocationConnections() {
       clearDraft(location.id);
       toast.success(`${location.name} er forbundet med OnlinePOS`);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-forbindelsen kunne ikke opdateres. Prøv igen."));
     } finally {
       setConnectingId(undefined);
     }
@@ -145,7 +142,7 @@ export function OnlinePosLocationConnections() {
       clearDraft(location.id);
       toast.success(`Forbindelsen for ${location.name} er fjernet`);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-forbindelsen kunne ikke opdateres. Prøv igen."));
     } finally {
       setDisconnectingId(undefined);
     }

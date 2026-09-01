@@ -13,6 +13,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import posthog from "posthog-js";
 import { authClient } from "@/lib/auth-client";
 
 function organizationSlug(name: string) {
@@ -112,6 +113,10 @@ export function OnboardingForm() {
         return;
       }
 
+      posthog.capture("organization_created", {
+        organization_id: result.data.id,
+      });
+
       router.replace("/transfers");
       router.refresh();
     } catch {
@@ -151,6 +156,10 @@ export function OnboardingForm() {
         setError("Du blev tilmeldt, men organisationen kunne ikke aktiveres.");
         return;
       }
+
+      posthog.capture("organization_joined", {
+        organization_id: result.data.member.organizationId,
+      });
 
       router.replace("/transfers");
       router.refresh();

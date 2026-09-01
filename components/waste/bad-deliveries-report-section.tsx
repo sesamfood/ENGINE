@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -120,10 +121,6 @@ function formatQuantity(value: number) {
   );
 }
 
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
-
 function NoticeAudit({
   title,
   notice,
@@ -210,7 +207,7 @@ export function BadDeliveriesReportSection({
       await retryNotice({ badDeliveryId: selectedId, kind });
       toast.success("Meddelelsen sendes nu");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Rapporten over dårlige leveringer kunne ikke opdateres. Prøv igen."));
     } finally {
       setWorking(undefined);
     }
@@ -224,7 +221,7 @@ export function BadDeliveriesReportSection({
       toast.success("Registreringen er annulleret");
       setConfirmingVoid(false);
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Rapporten over dårlige leveringer kunne ikke opdateres. Prøv igen."));
     } finally {
       setWorking(undefined);
     }
@@ -296,7 +293,7 @@ export function BadDeliveriesReportSection({
         ]),
       );
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Rapporten over dårlige leveringer kunne ikke opdateres. Prøv igen."));
     } finally {
       setExporting(false);
     }

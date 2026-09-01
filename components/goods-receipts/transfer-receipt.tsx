@@ -1,5 +1,7 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
+import posthog from "posthog-js";
 import { useMutation, useQuery } from "convex/react";
 import {
   ArrowLeftIcon,
@@ -89,12 +91,6 @@ type ReceiptDetail = NonNullable<
 >;
 type PendingReceipt = Extract<ReceiptDetail, { kind: "pending" }>;
 type ReceiptItem = PendingReceipt["transfer"]["items"][number];
-
-function message(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Varemodtagelsen kunne ikke registreres";
-}
 
 function parseQuantity(value: string) {
   const normalized = value.trim().replace(",", ".");
@@ -254,11 +250,24 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
         ...(comment.trim() ? { comment: comment.trim() } : {}),
         ...(deliveryNoteStorageId ? { deliveryNoteStorageId } : {}),
       });
+      if (deviationCount > 0) {
+        posthog.capture("goods_receipt_registered_with_deviations", {
+          item_count: transfer.items.length,
+          deviation_count: deviationCount,
+          missing_line_count: missingLineCount,
+          has_delivery_note_photo: Boolean(photo),
+        });
+      } else {
+        posthog.capture("goods_receipt_registered", {
+          item_count: transfer.items.length,
+          has_delivery_note_photo: Boolean(photo),
+        });
+      }
       toast.success("Varemodtagelsen er registreret");
       setConfirming(false);
       router.replace("/goods-receipts");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Varemodtagelsen kunne ikke registreres. Prøv igen."));
     } finally {
       setSubmitting(false);
     }

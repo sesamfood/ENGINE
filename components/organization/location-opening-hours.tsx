@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
@@ -80,10 +81,6 @@ function timeValue(minuteOfDay: number) {
 function minuteValue(value: string) {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 function HoursFields({
@@ -265,7 +262,7 @@ export function LocationOpeningHours({
       toast.success("Åbningstiderne er gemt");
       onOpenChange(false);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Åbningstiderne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }

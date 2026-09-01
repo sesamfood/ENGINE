@@ -10,6 +10,7 @@ import { authClient } from "@/lib/auth-client";
 import { downloadCsv } from "@/lib/download-csv";
 import { MAX_EMBEDDED_ATTACHMENT_BYTES, MAX_EMBEDDED_ATTACHMENTS, isDocumentationReportReady } from "@/lib/own-check-documentation";
 import { formatValue, evaluateCompliance, ownCheckControlTypeLabels, ownCheckStatus, ownCheckStatusLabels } from "@/lib/own-checks";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { LocationField } from "@/components/location-field";
 import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -281,7 +282,12 @@ export function InspectionDocumentation() {
       const value = await prepare({ fromDateKey, toDateKey, locationId });
       setPrepared({ key: preparedKey, value: value as PreparedValue });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Dokumentationen kunne ikke klargøres");
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Dokumentationen kunne ikke klargøres. Prøv igen.",
+        ),
+      );
     } finally {
       setPreparing(false);
     }
@@ -374,7 +380,12 @@ export function InspectionDocumentation() {
       downloadBytes(`egenkontrol-${exportName}-${fromDateKey}-${toDateKey}.pdf`, pdf, "application/pdf");
       toast.success("PDF-dokumentationen er hentet");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "PDF-dokumentationen kunne ikke oprettes");
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "PDF-dokumentationen kunne ikke oprettes. Prøv igen.",
+        ),
+      );
     } finally {
       setGenerating(false);
     }

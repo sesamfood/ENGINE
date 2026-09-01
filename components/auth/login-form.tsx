@@ -15,6 +15,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
+import posthog from "posthog-js";
 import { authClient } from "@/lib/auth-client";
 
 export function LoginForm({
@@ -59,6 +60,14 @@ export function LoginForm({
               : "Brugernavn eller adgangskode er forkert. Har du glemt adgangskoden, skal du kontakte en bruger med rollen Administrator.",
         );
         return;
+      }
+
+      const userId = result.data?.user?.id;
+      if (userId) {
+        posthog.identify(userId);
+        posthog.capture("user_logged_in", {
+          login_method: identifier.includes("@") ? "email" : "username",
+        });
       }
 
       router.replace(destination);

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import posthog from "posthog-js";
 import { authClient } from "@/lib/auth-client";
 
 export function SignupForm({ redirectTo }: { redirectTo: string }) {
@@ -41,6 +42,12 @@ export function SignupForm({ redirectTo }: { redirectTo: string }) {
           "Kontoen kunne ikke oprettes. Kontrollér oplysningerne og prøv igen.",
         );
         return;
+      }
+
+      const userId = result.data?.user?.id;
+      if (userId) {
+        posthog.identify(userId);
+        posthog.capture("user_signed_up");
       }
 
       router.push(

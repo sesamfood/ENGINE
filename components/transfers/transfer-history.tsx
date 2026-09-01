@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -133,10 +134,6 @@ type ExportRow = {
   maxTemperatureCelsius: number | null;
   temperatureDeviation: boolean;
 };
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 function formatTemperature(value: number) {
   return new Intl.NumberFormat("da-DK", {
@@ -908,7 +905,7 @@ export function TransferHistory() {
       downloadTransfersCsv(rows, fromDate, toDate, selectedColumns);
       setIsExportOpen(false);
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferhistorikken kunne ikke opdateres. Prøv igen."));
     } finally {
       setIsExporting(false);
     }
@@ -929,7 +926,7 @@ export function TransferHistory() {
       setSelectedTransferId(null);
       setIsEditing(false);
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferhistorikken kunne ikke opdateres. Prøv igen."));
     } finally {
       setIsDeleting(false);
     }

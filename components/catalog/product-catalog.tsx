@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -129,10 +130,6 @@ function CategoryMenuItems({
         </DropdownMenuSub>
       );
     });
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 function catalogQuery(
@@ -367,7 +364,7 @@ export function ProductCatalog() {
       );
       setPendingProduct(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Produktet kunne ikke opdateres. Prøv igen."));
     } finally {
       setIsChangingStatus(false);
     }
@@ -384,7 +381,7 @@ export function ProductCatalog() {
       );
       setPendingDeleteProduct(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Produktet kunne ikke opdateres. Prøv igen."));
     } finally {
       setIsDeleting(false);
     }
@@ -462,7 +459,7 @@ export function ProductCatalog() {
       setIsSelectionMode(false);
       setIsBulkCategoryDialogOpen(false);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Produktet kunne ikke opdateres. Prøv igen."));
     } finally {
       setIsChangingCategory(false);
     }

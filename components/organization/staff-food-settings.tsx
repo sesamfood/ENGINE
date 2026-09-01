@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   DownloadIcon,
@@ -116,12 +117,6 @@ type StaffFoodExportRow = {
   registeredByName: string;
   voidedAt: number | null;
 };
-
-function message(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Indstillingerne kunne ikke gemmes";
-}
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -375,7 +370,7 @@ export function StaffFoodSettings() {
       toast.success(editingId ? "Reglen er gemt" : "Reglen er oprettet");
       setEditorOpen(false);
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Staff food-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -388,7 +383,7 @@ export function StaffFoodSettings() {
       toast.success("Reglen er slettet");
       setPendingDelete(null);
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Staff food-indstillingerne kunne ikke gemmes. Prøv igen."));
     }
   }
 
@@ -472,7 +467,7 @@ export function StaffFoodSettings() {
       );
       toast.success("CSV-filen er klar");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Staff food-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setExporting(false);
     }

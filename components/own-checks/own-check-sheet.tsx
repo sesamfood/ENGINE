@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { OwnCheckField, OwnCheckValue } from "@/lib/own-checks";
 import { evaluateCompliance, formatValue, ownCheckControlTypeLabels } from "@/lib/own-checks";
 import { compressImage } from "@/lib/compress-image";
+import { getUserErrorMessage } from "@/lib/user-errors";
 
 type TodayResult = NonNullable<ReturnType<typeof import("convex/react").useQuery<typeof api.ownChecks.listToday>>>;
 type PlanItem = TodayResult["items"][number];
@@ -78,7 +79,12 @@ export function OwnCheckSheet({ item, locationId, timeZone, open, onOpenChange }
       }
       setValue({ key: field.key, type: "attachment", storageIds: [...existing, ...storageIds] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Filen kunne ikke uploades");
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Filen kunne ikke uploades. Kontrollér filen, og prøv igen.",
+        ),
+      );
     } finally {
       setUploadingKey(null);
     }
@@ -107,7 +113,12 @@ export function OwnCheckSheet({ item, locationId, timeZone, open, onOpenChange }
       toast.success(result.status === "deviation" ? "Afvigelsen er registreret og skal følges op" : "Egenkontrollen er registreret");
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Egenkontrollen kunne ikke registreres");
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Egenkontrollen kunne ikke registreres. Prøv igen.",
+        ),
+      );
     } finally {
       setSaving(false);
     }

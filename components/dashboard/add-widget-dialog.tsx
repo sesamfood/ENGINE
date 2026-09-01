@@ -58,6 +58,7 @@ import { metricRegistry, metrics, sizeLabels, supportsSalesSource, visualization
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 
@@ -72,10 +73,6 @@ const sizePreviewClasses: Record<WidgetSize, string> = {
   "2x2": "h-28 w-40",
   "4x2": "h-28 w-full",
 };
-
-function customMetricMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Målingen kunne ikke slettes";
-}
 
 export function AddWidgetDialog({
   canViewSensitive,
@@ -248,7 +245,9 @@ export function AddWidgetDialog({
       toast.success("Målingen er slettet");
       setDeletingMetric(null);
     } catch (error) {
-      toast.error(customMetricMessage(error));
+      toast.error(
+        getUserErrorMessage(error, "Målingen kunne ikke slettes. Prøv igen."),
+      );
     } finally {
       setDeleting(false);
     }

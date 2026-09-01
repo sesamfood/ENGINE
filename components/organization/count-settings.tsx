@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { Clock3Icon } from "lucide-react";
 import { useState } from "react";
@@ -58,10 +59,6 @@ function today() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Copenhagen",
   }).format(new Date());
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 const salesSourceOptions: Array<{ value: SalesSource; label: string }> = [
@@ -155,7 +152,7 @@ export function CountSettings() {
       });
       toast.success("Count-indstillingerne er gemt");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -175,7 +172,7 @@ export function CountSettings() {
       });
       toast.success("Salgskilden er gemt for lokationen");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSavingSource(null);
     }

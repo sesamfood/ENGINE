@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
@@ -81,12 +82,6 @@ const granularityItems = [
   { value: "anonymous", label: "Anonymiseret" },
 ] satisfies Array<{ value: DataGranularity; label: string }>;
 
-function messageFrom(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Handlingen kunne ikke gennemføres";
-}
-
 export function RolePermissions() {
   const allowed = usePermission("roles.manage");
   const rows = useQuery(
@@ -112,7 +107,15 @@ export function RolePermissions() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (allowed) void ensureRoles({});
+    if (!allowed) return;
+    void ensureRoles({}).catch((error) => {
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Rollerne kunne ikke klargøres. Genindlæs siden, og prøv igen.",
+        ),
+      );
+    });
   }, [allowed, ensureRoles]);
 
   const initialDraft = Object.fromEntries(
@@ -168,7 +171,7 @@ export function RolePermissions() {
       setReason("");
       toast.success("Rollerne er gemt");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Rollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -185,7 +188,7 @@ export function RolePermissions() {
       setGranularityDraft(null);
       toast.success("Rollen er oprettet");
     } catch (error) {
-      setCreateError(messageFrom(error));
+      setCreateError(getUserErrorMessage(error, "Rollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setCreating(false);
     }
@@ -201,7 +204,7 @@ export function RolePermissions() {
       setGranularityDraft(null);
       toast.success("Rollen er slettet");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Rollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setDeleting(false);
     }

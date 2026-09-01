@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Building2Icon,
@@ -92,10 +93,6 @@ const connectedAtFormatter = new Intl.DateTimeFormat("da-DK", {
   timeStyle: "short",
 });
 
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
-
 function ConnectionCard({
   settings,
   onDisconnected,
@@ -130,7 +127,7 @@ function ConnectionCard({
         `Workfeed er forbundet. ${result.departmentCount} afdelinger blev fundet.`,
       );
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setConnecting(false);
     }
@@ -145,7 +142,7 @@ function ConnectionCard({
       onDisconnected();
       toast.success("Workfeed-integrationen er fjernet");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setDisconnecting(false);
     }
@@ -282,7 +279,7 @@ function LocationMappings() {
       setDepartments(await listDepartments({}));
     } catch (error) {
       setLoadFailed(true);
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setLoading(false);
     }
@@ -297,7 +294,7 @@ function LocationMappings() {
       .catch((error) => {
         if (cancelled) return;
         setLoadFailed(true);
-        toast.error(messageFrom(error));
+        toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -323,7 +320,7 @@ function LocationMappings() {
         ...current,
         [location.id]: previousDepartmentId,
       }));
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSavingId(undefined);
     }
@@ -336,7 +333,7 @@ function LocationMappings() {
       setDrafts((current) => ({ ...current, [location.id]: "" }));
       toast.success(`Koblingen for ${location.name} er fjernet`);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSavingId(undefined);
     }
@@ -573,7 +570,7 @@ export function WorkfeedIntegration() {
           : "Workfeed-integrationen er deaktiveret",
       );
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setChangingEnabled(false);
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import { LayoutDashboardIcon, PencilIcon, RefreshCwIcon, SaveIcon } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -28,10 +29,6 @@ import { ShareDialog } from "./share-dialog";
 
 const LAST_VIEWED_DASHBOARD_KEY = "engine.dashboard.last-viewed";
 type SearchParamsLike = { get: (name: string) => string | null; toString: () => string };
-
-function errorMessage(error: unknown, fallback = "Dashboardet kunne ikke gemmes") {
-  return error instanceof Error ? error.message : fallback;
-}
 
 function validRangePreset(value: string | null): value is RangePreset {
   return value !== null && (rangePresets as readonly string[]).includes(value);
@@ -95,7 +92,7 @@ function DashboardLanding() {
     setInitializing(true);
     void initialize({})
       .catch((error) => {
-        toast.error(errorMessage(error));
+        toast.error(getUserErrorMessage(error, "Dashboardet kunne ikke gemmes. Prøv igen."));
       })
       .finally(() => setInitializing(false));
   }, [canManage, dashboards, initialize]);
@@ -229,7 +226,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       })
       .catch((error): void => {
         lastConfigSaveFailure.current = { error };
-        toast.error(errorMessage(error));
+        toast.error(getUserErrorMessage(error, "Dashboardet kunne ikke gemmes. Prøv igen."));
       })
       .finally(() => {
         pendingSaveCount.current -= 1;
@@ -258,7 +255,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       setDashboard((current) => current ? { ...current, defaultScope: currentScope, defaultRange: currentRange, updatedAt } : current);
       toast.success("Lokationsvalg og periode er gemt som standard");
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Dashboardet kunne ikke gemmes. Prøv igen."));
     }
   }
 
@@ -299,7 +296,12 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         toast.success("Dashboardet er opdateret");
       }
     } catch (error) {
-      toast.error(errorMessage(error, "Dashboarddata kunne ikke opdateres"));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Dashboarddata kunne ikke opdateres. Prøv igen.",
+        ),
+      );
     } finally {
       setUpdatingData(false);
     }

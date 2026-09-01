@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
@@ -98,10 +99,6 @@ const PLACEMENT_ITEMS = [
   { value: "child", label: "Under en kategori" },
   { value: "parent", label: "Over en kategori" },
 ];
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 export function CategoryManager() {
   const categories = useQuery(api.catalog.listCategories) as
@@ -246,7 +243,7 @@ export function CategoryManager() {
       }
       setEditor(null);
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(getUserErrorMessage(caught, "Kategorien kunne ikke opdateres. Prøv igen."));
     } finally {
       setIsSaving(false);
     }
@@ -260,7 +257,7 @@ export function CategoryManager() {
       toast.success("Kategorien er fjernet");
       setPendingDelete(null);
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Kategorien kunne ikke opdateres. Prøv igen."));
     } finally {
       setIsDeleting(false);
     }

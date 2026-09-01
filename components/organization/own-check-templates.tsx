@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import {
   ArchiveIcon,
@@ -119,10 +120,6 @@ function draftFromTemplate(template: Template): Draft {
     responsibleRole: template.responsibleRole ?? "",
     reason: "",
   };
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Handlingen kunne ikke gennemføres";
 }
 
 function scheduleLabel(schedule: OwnCheckSchedule) {
@@ -255,7 +252,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
       toast.success(mode && mode !== "new" ? "Egenkontrollen er opdateret" : "Egenkontrollen er oprettet");
       onSaved();
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Egenkontrollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -358,7 +355,7 @@ export function OwnCheckTemplates() {
       setAction(null);
       setActionReason("");
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Egenkontrollen kunne ikke opdateres. Prøv igen."));
     } finally {
       setActionPending(false);
     }

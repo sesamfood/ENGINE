@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import { LockKeyholeIcon } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
@@ -15,10 +16,6 @@ import { api } from "@/convex/_generated/api";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { isTouchDevice } from "@/lib/touch-device";
 import { DashboardGrid } from "./dashboard-grid";
-
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Dashboardet kunne ikke åbnes";
-}
 
 export function SharedDashboard({ token }: { token: string }) {
   return <SharedDashboardContent key={token} token={token} />;
@@ -58,7 +55,14 @@ function SharedDashboardContent({ token }: { token: string }) {
         setAccessKey(result.unlockKey);
       })
       .catch((cause) => {
-        if (!cancelled) setError(message(cause));
+        if (!cancelled) {
+          setError(
+            getUserErrorMessage(
+              cause,
+              "Dashboardet kunne ikke åbnes. Prøv igen.",
+            ),
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setPending(false);
@@ -82,7 +86,12 @@ function SharedDashboardContent({ token }: { token: string }) {
       window.sessionStorage.setItem(`dashboard-share:${token}`, result.unlockKey);
       setAccessKey(result.unlockKey);
     } catch (cause) {
-      setError(message(cause));
+      setError(
+        getUserErrorMessage(
+          cause,
+          "Dashboardet kunne ikke åbnes. Prøv igen.",
+        ),
+      );
     } finally {
       setPending(false);
     }
@@ -125,7 +134,25 @@ function SharedDashboardContent({ token }: { token: string }) {
                   Åbn dashboard
                 </Button>
               </form>
-            ) : <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Åbner dashboard…</div>}
+            ) : error ? (
+              <div className="flex flex-col gap-4">
+                <Alert variant="destructive">
+                  <AlertTitle>Dashboardet kunne ikke åbnes</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => window.location.reload()}
+                >
+                  Prøv igen
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner /> Åbner dashboard…
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>

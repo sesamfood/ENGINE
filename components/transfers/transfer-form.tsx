@@ -1,7 +1,9 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import posthog from "posthog-js";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   AlertDialog,
@@ -133,10 +135,6 @@ type ValidatedTemperatures = {
   temperatures: ProductTemperatureInput[];
   deviations: TemperatureDeviationConfirmation[];
 };
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -422,7 +420,7 @@ export function TransferForm({
       addLine(product, unitId);
       setProductToAdd(null);
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
     } finally {
       setLoadingProductId(undefined);
     }
@@ -517,7 +515,7 @@ export function TransferForm({
       });
       if (!unit) toast.error("Produktet har ingen flere enheder");
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
     } finally {
       setLoadingProductId(undefined);
     }
@@ -638,15 +636,32 @@ export function TransferForm({
       };
       if (transfer) {
         await updateTransfer({ transferId: transfer.id, ...payload });
+        posthog.capture("transfer_updated", {
+          item_count: lines.length,
+          total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+          has_temperature_deviations: Boolean(confirmedTemperatureDeviations?.length),
+        });
         toast.success("Transferen er opdateret");
         onSaved?.();
       } else {
         await createTransfer(payload);
+        if (confirmedTemperatureDeviations && confirmedTemperatureDeviations.length > 0) {
+          posthog.capture("transfer_created_with_temperature_deviation", {
+            item_count: lines.length,
+            total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+            deviation_count: confirmedTemperatureDeviations.length,
+          });
+        } else {
+          posthog.capture("transfer_created", {
+            item_count: lines.length,
+            total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+          });
+        }
         toast.success("Transferen er gemt");
         resetForm();
       }
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
       setTemperatureConfirmation(null);
       setIsTemperatureDialogOpen(false);
       await refreshNewProductMaximums();

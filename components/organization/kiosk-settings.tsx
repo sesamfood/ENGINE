@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { EyeIcon, EyeOffIcon, KeyRoundIcon, LogOutIcon, MonitorCogIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
@@ -79,10 +80,6 @@ const roleLabels: Record<SystemOrganizationRole, string> = {
 };
 const roles = Object.keys(roleLabels) as SystemOrganizationRole[];
 
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Handlingen kunne ikke gennemføres";
-}
-
 type Account = NonNullable<ReturnType<typeof useQuery<typeof api.kiosk.listAccounts>>>[number];
 
 function PasswordInput(props: React.ComponentProps<"input">) {
@@ -131,7 +128,7 @@ function AccountDialog({
       toast.success("Kioskkontoen er opdateret");
       onClose();
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setPending(false);
     }
@@ -184,7 +181,7 @@ function PasswordDialog({ account, onClose }: { account: Account | null; onClose
       toast.success("Adgangskoden er ændret. Eksisterende sessioner fortsætter.");
       onClose();
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setPending(false);
     }
@@ -291,7 +288,7 @@ export function KioskSettings() {
       await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null });
       toast.success("Kioskopsætningen er gemt");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSettingsPending(false);
     }
@@ -314,7 +311,7 @@ export function KioskSettings() {
       setRole("member");
       toast.success("Kioskkontoen er oprettet");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setCreating(false);
     }
@@ -326,7 +323,7 @@ export function KioskSettings() {
       const result = await revokeSessions({ memberId: account.memberId });
       toast.success(`${result.revokedSessions} session${result.revokedSessions === 1 ? "" : "er"} blev afsluttet`);
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setPendingId(undefined);
     }
@@ -338,7 +335,7 @@ export function KioskSettings() {
       await deleteAccount({ memberId: account.memberId });
       toast.success("Kioskkontoen er slettet");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setPendingId(undefined);
     }

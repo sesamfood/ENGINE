@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   closestCenter,
   DndContext,
@@ -150,10 +151,6 @@ function quantityKey(
   unitId: Id<"units">,
 ) {
   return `${locationId ?? "no-location"}:${countAreaId ?? "location"}:${productId}:${unitId}`;
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 function categoryTreeIds(
@@ -1447,7 +1444,7 @@ export function CountSheet() {
       key,
       window.setTimeout(() => {
         void persistQuantity(key).catch((error) =>
-          toast.error(messageFrom(error)),
+          toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen.")),
         );
       }, 300),
     );
@@ -1554,7 +1551,7 @@ export function CountSheet() {
     setSingleProductSelection({ key: "", index: 0 });
     if (!locationId || lockedReason) return;
     void startCountArea({ locationId, countAreaId }).catch((error) =>
-      toast.error(messageFrom(error)),
+      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen.")),
     );
   }
 
@@ -1577,7 +1574,7 @@ export function CountSheet() {
   function advanceSingleProduct() {
     if (!singleProduct) return;
     void markProductCounted(singleProduct.id).catch((error) =>
-      toast.error(messageFrom(error)),
+      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen.")),
     );
     moveSingleProduct(1);
   }
@@ -1653,7 +1650,7 @@ export function CountSheet() {
       toast.success("Produktrækkefølgen er gemt");
       cancelEditingOrder();
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
     } finally {
       setSavingOrder(false);
     }
@@ -1689,7 +1686,7 @@ export function CountSheet() {
       returnToCountAreaPicker();
       toast.success("Området er markeret som færdigt");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
     } finally {
       setCompletingCountAreaId(null);
     }
@@ -1744,7 +1741,7 @@ export function CountSheet() {
       setConfirmOpen(false);
       toast.success("Count er registreret");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
     } finally {
       setSubmitting(false);
     }
@@ -1830,7 +1827,7 @@ export function CountSheet() {
       );
       toast.success("Waste-rapporten er klar");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
     } finally {
       setExporting(false);
     }

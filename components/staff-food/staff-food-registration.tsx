@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import {
   CheckIcon,
@@ -100,12 +101,6 @@ function initials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-}
-
-function message(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Staff food kunne ikke registreres";
 }
 
 function formatDuration(minutes: number) {
@@ -379,7 +374,7 @@ export function StaffFoodRegistration() {
       setCategoryId("all");
       setSearch("");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
     } finally {
       setStarting(false);
     }
@@ -412,7 +407,7 @@ export function StaffFoodRegistration() {
       setManualEmployee(null);
       setSearch("");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
     } finally {
       setStarting(false);
     }
@@ -481,7 +476,7 @@ export function StaffFoodRegistration() {
         },
       });
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
     } finally {
       setSubmitting(false);
     }
@@ -498,7 +493,7 @@ export function StaffFoodRegistration() {
       setVoidCheckoutId(null);
       setVoidReason("");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
     }
   }
 

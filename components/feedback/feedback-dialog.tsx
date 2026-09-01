@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { MessageSquarePlusIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -56,10 +57,6 @@ const IMAGE_TYPES = new Set([
   "image/webp",
   "image/avif",
 ]);
-
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 function FeedbackForm({
   permissions,
@@ -159,7 +156,7 @@ function FeedbackForm({
       toast.success("Tak. Din feedback er sendt");
       onDone();
     } catch (caught) {
-      toast.error(message(caught));
+      toast.error(getUserErrorMessage(caught, "Din feedback kunne ikke sendes. Prøv igen."));
     } finally {
       setSubmitting(false);
     }

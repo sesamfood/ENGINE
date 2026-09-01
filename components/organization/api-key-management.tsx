@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   CheckIcon,
@@ -134,12 +135,6 @@ const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
 });
-
-function messageFrom(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Handlingen kunne ikke gennemføres";
-}
 
 function toDateInput(value: number) {
   const date = new Date(value);
@@ -506,7 +501,9 @@ function SecretDialog({
       setCopiedSecret(secret.secret);
       toast.success("API-hemmeligheden er kopieret");
     } catch {
-      toast.error("API-hemmeligheden kunne ikke kopieres");
+      toast.error(
+        "API-hemmeligheden kunne ikke kopieres. Markér den, og kopiér den manuelt.",
+      );
     }
   }
 
@@ -653,7 +650,9 @@ export function ApiKeyManagement() {
     try {
       setKeys(await listKeys({}));
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(
+        getUserErrorMessage(error, "API-nøglerne kunne ikke indlæses. Prøv igen."),
+      );
       setKeys([]);
     } finally {
       setLoadingKeys(false);
@@ -721,7 +720,7 @@ export function ApiKeyManagement() {
       await loadKeys();
       toast.success("API-nøglen er oprettet");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "API-nøglen kunne ikke opdateres. Prøv igen."));
     } finally {
       setCreating(false);
     }
@@ -739,7 +738,7 @@ export function ApiKeyManagement() {
       await loadKeys();
       toast.success("API-nøglens adgang er opdateret");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "API-nøglen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSavingEdit(false);
     }
@@ -758,7 +757,7 @@ export function ApiKeyManagement() {
       await loadKeys();
       toast.success("API-nøglen er roteret");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "API-nøglen kunne ikke opdateres. Prøv igen."));
     } finally {
       setRotating(false);
     }
@@ -779,7 +778,7 @@ export function ApiKeyManagement() {
         toast.success("API-nøglen er tilbagekaldt");
       }
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "API-nøglen kunne ikke opdateres. Prøv igen."));
     } finally {
       setRevoking(false);
     }

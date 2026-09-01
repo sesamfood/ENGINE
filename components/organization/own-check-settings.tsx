@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,10 +25,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { useAccess, usePermission } from "@/components/app-shell";
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Indstillingerne kunne ikke gemmes";
-}
 
 export function OwnCheckSettings() {
   const access = useAccess();
@@ -74,7 +71,7 @@ export function OwnCheckSettings() {
       toast.success("Egenkontrolindstillingerne er gemt");
       setReason("");
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Egenkontrolindstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }

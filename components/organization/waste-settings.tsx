@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   TagsInputInput,
   TagsInputItem,
@@ -57,12 +58,6 @@ const periodItems = [
   { value: "30Days", label: "Seneste 30 dage" },
   { value: "90Days", label: "Seneste 90 dage" },
 ] satisfies Array<{ value: Period; label: string }>;
-
-function message(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Indstillingerne kunne ikke gemmes";
-}
 
 function recipientLists(to: string[], cc: string[], bcc: string[]) {
   const normalize = (values: string[]) =>
@@ -291,7 +286,7 @@ export function WasteSettings() {
       }
       toast.success("Waste-indstillingerne er gemt");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Waste-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(null);
     }

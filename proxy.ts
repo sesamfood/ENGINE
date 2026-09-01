@@ -7,6 +7,7 @@ import {
   createApiRequestId,
   problemResponse,
 } from "@/lib/api/v1/problems";
+import { logApiRequest } from "@/lib/api/v1/rest-request-logging";
 
 const publicPaths = [
   "/login",
@@ -70,7 +71,7 @@ async function routingProblem(input: {
     instance: input.request.nextUrl.pathname,
   });
   const responseBytes = (await response.clone().arrayBuffer()).byteLength;
-  console.warn("REST API request", {
+  logApiRequest({
     requestId,
     operationId: input.operationId,
     status: input.problem.options.status,

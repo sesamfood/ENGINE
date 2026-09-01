@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -19,10 +20,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import { useAccess, usePermission } from "@/components/app-shell";
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 export function ScheduleSettings() {
   const access = useAccess();
@@ -77,7 +74,7 @@ export function ScheduleSettings() {
       setDraft(null);
       toast.success("Tidszonen er gemt");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Tidszonen kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }
