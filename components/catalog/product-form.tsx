@@ -93,6 +93,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MIN_MAX_TEMPERATURE_CELSIUS = -100;
 const MAX_MAX_TEMPERATURE_CELSIUS = 100;
 const MAX_TEMPERATURE_INPUT = /^-?(?:\d+(?:[.,]\d{0,1})?|[.,]\d)$/;
+const FACTOR_INPUT = /^(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:e[+-]?\d+)?$/i;
 
 function newKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -105,8 +106,28 @@ function parseReference(value: string) {
   return { kind: "existing" as const, id: value.split(":")[1] };
 }
 
+function factorInputValue(value: number) {
+  return value.toString().replace(".", ",");
+}
+
 function formatFactor(value: number) {
-  return Number(value.toPrecision(10)).toString();
+  return factorInputValue(Number(value.toPrecision(10)));
+}
+
+function parseFactor(value: string) {
+  const normalized = value.trim();
+  if (!FACTOR_INPUT.test(normalized)) return Number.NaN;
+  return Number(normalized.replace(",", "."));
+}
+
+function rebaseFactor(value: string, divisor: number) {
+  const factor = parseFactor(value);
+  return Number.isFinite(factor) &&
+    factor > 0 &&
+    Number.isFinite(divisor) &&
+    divisor > 0
+    ? formatFactor(factor / divisor)
+    : value;
 }
 
 function maxTemperatureError(value: string) {
@@ -331,7 +352,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       product.units.map((unit) => ({
         key: `unit-${unit.id}`,
         unitValue: `existing:${unit.id}`,
-        factor: unit.factorToDefault.toString(),
+        factor: factorInputValue(unit.factorToDefault),
         isDefault: unit.isDefault,
       })),
     );
@@ -422,17 +443,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   function setDefaultUnit(key: string) {
     const selected = unitRows.find((row) => row.key === key);
-    const divisor = Number(selected?.factor);
+    const divisor = parseFactor(selected?.factor ?? "");
     setUnitRows((current) =>
       current.map((row) => ({
         ...row,
         isDefault: row.key === key,
         factor:
-          row.key === key
-            ? "1"
-            : Number.isFinite(divisor) && divisor > 0
-              ? formatFactor(Number(row.factor) / divisor)
-              : row.factor,
+          row.key === key ? "1" : rebaseFactor(row.factor, divisor),
       })),
     );
   }
@@ -449,16 +466,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       const removed = current.find((row) => row.key === key);
       const remaining = current.filter((row) => row.key !== key);
       if (removed?.isDefault && remaining[0]) {
-        const divisor = Number(remaining[0].factor);
+        const divisor = parseFactor(remaining[0].factor);
         return remaining.map((row, index) => ({
           ...row,
           isDefault: index === 0,
-          factor:
-            index === 0
-              ? "1"
-              : Number.isFinite(divisor) && divisor > 0
-                ? formatFactor(Number(row.factor) / divisor)
-                : row.factor,
+          factor: index === 0 ? "1" : rebaseFactor(row.factor, divisor),
         }));
       }
       return remaining;
@@ -491,8 +503,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     }
     if (
       unitRows.some(
-        (row) =>
-          !Number.isFinite(Number(row.factor)) || Number(row.factor) <= 0,
+        (row) => {
+          const factor = parseFactor(row.factor);
+          return !Number.isFinite(factor) || factor <= 0;
+        },
       )
     ) {
       nextErrors.units = "Alle omregninger skal være større end nul";
@@ -555,7 +569,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     const category = parseReference(categoryValue);
     const units = unitRows.map((row) => ({
       unit: parseReference(row.unitValue!),
-      factorToDefault: Number(row.factor),
+      factorToDefault: parseFactor(row.factor),
       isDefault: row.isDefault,
     }));
     const ingredients = ingredientRows.map((row) => ({
@@ -873,10 +887,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         </FieldLabel>
                         <Input
                           id={`${row.key}-factor`}
-                          type="number"
+                          type="text"
                           inputMode="decimal"
-                          min="0"
-                          step="any"
                           value={row.isDefault ? "1" : row.factor}
                           disabled={row.isDefault}
                           onChange={(event) =>
