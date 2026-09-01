@@ -1294,6 +1294,40 @@ export default defineSchema({
     "transferId",
   ]),
 
+  manualGoodsReceipts: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    receivedAt: v.number(),
+    registeredAt: v.number(),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    comment: v.optional(v.string()),
+    deliveryNoteStorageId: v.optional(v.id("_storage")),
+    itemCount: v.number(),
+  })
+    .index("by_organizationId_and_locationId_and_receivedAt", [
+      "organizationId",
+      "locationId",
+      "receivedAt",
+    ])
+    .index("by_deliveryNoteStorageId", ["deliveryNoteStorageId"]),
+
+  manualGoodsReceiptItems: defineTable({
+    organizationId: v.string(),
+    manualGoodsReceiptId: v.id("manualGoodsReceipts"),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+    factorToDefault: v.number(),
+    defaultQuantity: v.number(),
+  }).index("by_organizationId_and_manualGoodsReceiptId", [
+    "organizationId",
+    "manualGoodsReceiptId",
+  ]),
+
   goodsReceiptSettings: defineTable({
     organizationId: v.string(),
     transferDeliveryNotePhotoEnabled: v.boolean(),

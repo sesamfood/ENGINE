@@ -1,19 +1,27 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, type Infer, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
+import { recordAudit } from "./lib/audit";
 import {
   requireGoodsReceiptRegistrar,
   requireGoodsReceiptSettings,
   requireLocationAccess,
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
+import { getLocationProductAccess } from "./lib/locationProducts";
+import {
+  activeProductCatalogValidator,
+  listLocationActiveProductCatalog,
+} from "./lib/productCatalog";
 import { addStock, normalizeStock } from "./lib/stock";
 
 const MAX_TRANSFER_ITEMS = 200;
+const MAX_MANUAL_RECEIPT_ITEMS = 200;
 const MAX_PENDING_TRANSFERS = 100;
 const MAX_COMMENT_LENGTH = 500;
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
+const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 const IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -61,7 +69,19 @@ const receiptItemInputValidator = v.object({
   quantity: v.number(),
 });
 
+const manualReceiptItemInputValidator = v.object({
+  productId: v.id("products"),
+  unitId: v.id("units"),
+  quantity: v.number(),
+});
+
+const manualReceiptOptionsValidator = v.object({
+  locationName: v.string(),
+  products: v.array(activeProductCatalogValidator),
+});
+
 type GoodsReceiptCtx = QueryCtx | MutationCtx;
+type ManualReceiptItemInput = Infer<typeof manualReceiptItemInputValidator>;
 
 async function settingsFor(ctx: GoodsReceiptCtx, organizationId: string) {
   const settings = await ctx.db
@@ -74,6 +94,128 @@ async function settingsFor(ctx: GoodsReceiptCtx, organizationId: string) {
     transferDeliveryNotePhotoEnabled:
       settings?.transferDeliveryNotePhotoEnabled ?? false,
   };
+}
+
+async function validateUnusedDeliveryNote(
+  ctx: MutationCtx,
+  storageId: Id<"_storage">,
+) {
+  const [file, transfer, manualReceipt] = await Promise.all([
+    ctx.db.system.get("_storage", storageId),
+    ctx.db
+      .query("transfers")
+      .withIndex("by_deliveryNoteStorageId", (q) =>
+        q.eq("deliveryNoteStorageId", storageId),
+      )
+      .unique(),
+    ctx.db
+      .query("manualGoodsReceipts")
+      .withIndex("by_deliveryNoteStorageId", (q) =>
+        q.eq("deliveryNoteStorageId", storageId),
+      )
+      .unique(),
+  ]);
+  if (transfer || manualReceipt) {
+    throw new ConvexError("Billedet er allerede knyttet til en registrering");
+  }
+  if (
+    !file?.contentType ||
+    !IMAGE_TYPES.has(file.contentType) ||
+    file.size > MAX_PHOTO_SIZE
+  ) {
+    throw new ConvexError(
+      "Brug et JPEG-, PNG-, WebP- eller AVIF-billede på højst 10 MB",
+    );
+  }
+}
+
+async function resolveManualReceiptItems({
+  ctx,
+  organizationId,
+  locationId,
+  items,
+}: {
+  ctx: MutationCtx;
+  organizationId: string;
+  locationId: Id<"locations">;
+  items: ManualReceiptItemInput[];
+}) {
+  const productAccess = await getLocationProductAccess(
+    ctx,
+    organizationId,
+    locationId,
+  );
+  const pairKeys = new Set<string>();
+  const resolvedItems: Array<{
+    productId: Id<"products">;
+    productName: string;
+    unitId: Id<"units">;
+    unitName: string;
+    quantity: number;
+    factorToDefault: number;
+    defaultQuantity: number;
+  }> = [];
+
+  for (const item of items) {
+    if (
+      productAccess.kind === "selected" &&
+      !productAccess.effectiveProductIds.has(item.productId)
+    ) {
+      throw new ConvexError("Produktet bruges ikke på den valgte lokation");
+    }
+    const quantity = normalizeStock(item.quantity);
+    if (!Number.isFinite(item.quantity) || quantity <= 0) {
+      throw new ConvexError("Mængden skal være større end nul");
+    }
+    const pairKey = `${item.productId}:${item.unitId}`;
+    if (pairKeys.has(pairKey)) {
+      throw new ConvexError("Hver produktlinje kan kun tilføjes én gang");
+    }
+    pairKeys.add(pairKey);
+
+    const product = await ctx.db.get("products", item.productId);
+    const productUnit =
+      product?.organizationId === organizationId && product.status === "active"
+        ? await ctx.db
+            .query("productUnits")
+            .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", item.productId)
+                .eq("unitId", item.unitId),
+            )
+            .unique()
+        : null;
+    const unit = productUnit ? await ctx.db.get("units", item.unitId) : null;
+    if (
+      !product ||
+      product.organizationId !== organizationId ||
+      product.status !== "active" ||
+      !productUnit ||
+      !unit ||
+      unit.organizationId !== organizationId
+    ) {
+      throw new ConvexError("Produktet eller enheden blev ikke fundet");
+    }
+
+    const defaultQuantity = normalizeStock(
+      quantity * productUnit.factorToDefault,
+    );
+    if (defaultQuantity <= 0) {
+      throw new ConvexError("Produktets lageromregning er ugyldig");
+    }
+    resolvedItems.push({
+      productId: product._id,
+      productName: product.name,
+      unitId: unit._id,
+      unitName: unit.name,
+      quantity,
+      factorToDefault: productUnit.factorToDefault,
+      defaultQuantity,
+    });
+  }
+
+  return resolvedItems;
 }
 
 async function locationNames(
@@ -230,6 +372,15 @@ export const generatePhotoUploadUrl = mutation({
   },
 });
 
+export const generateManualPhotoUploadUrl = mutation({
+  args: {},
+  returns: v.string(),
+  handler: async (ctx) => {
+    await requireGoodsReceiptRegistrar(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 export const registerTransferReceipt = mutation({
   args: {
     transferId: v.id("transfers"),
@@ -324,27 +475,7 @@ export const registerTransferReceipt = mutation({
           "Billeder af følgesedler er ikke aktiveret for transfers",
         );
       }
-      const [file, existing] = await Promise.all([
-        ctx.db.system.get("_storage", args.deliveryNoteStorageId),
-        ctx.db
-          .query("transfers")
-          .withIndex("by_deliveryNoteStorageId", (q) =>
-            q.eq("deliveryNoteStorageId", args.deliveryNoteStorageId),
-          )
-          .unique(),
-      ]);
-      if (existing) {
-        throw new ConvexError("Billedet er allerede knyttet til en registrering");
-      }
-      if (
-        !file?.contentType ||
-        !IMAGE_TYPES.has(file.contentType) ||
-        file.size > MAX_PHOTO_SIZE
-      ) {
-        throw new ConvexError(
-          "Brug et JPEG-, PNG-, WebP- eller AVIF-billede på højst 10 MB",
-        );
-      }
+      await validateUnusedDeliveryNote(ctx, args.deliveryNoteStorageId);
     }
 
     for (const { item, quantity, factorToDefault } of receivedItems) {
@@ -384,6 +515,117 @@ export const registerTransferReceipt = mutation({
       deliveryNoteStorageId: args.deliveryNoteStorageId,
     });
     return null;
+  },
+});
+
+export const getManualReceiptOptions = query({
+  args: { locationId: v.id("locations") },
+  returns: manualReceiptOptionsValidator,
+  handler: async (ctx, args) => {
+    const auth = await requireGoodsReceiptRegistrar(ctx);
+    requireLocationAccess(auth, args.locationId);
+    const location = await ctx.db.get("locations", args.locationId);
+    if (!location || location.organizationId !== auth.organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
+
+    return {
+      locationName: location.name,
+      products: await listLocationActiveProductCatalog(
+        ctx,
+        auth.organizationId,
+        location._id,
+      ),
+    };
+  },
+});
+
+export const createManualReceipt = mutation({
+  args: {
+    locationId: v.id("locations"),
+    receivedAt: v.number(),
+    comment: v.optional(v.string()),
+    deliveryNoteStorageId: v.optional(v.id("_storage")),
+    items: v.array(manualReceiptItemInputValidator),
+  },
+  returns: v.id("manualGoodsReceipts"),
+  handler: async (ctx, args) => {
+    const auth = await requireGoodsReceiptRegistrar(ctx);
+    const { organizationId, userIdentifier, userName } = auth;
+    requireLocationAccess(auth, args.locationId);
+
+    const location = await ctx.db.get("locations", args.locationId);
+    if (!location || location.organizationId !== organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
+    if (
+      !Number.isFinite(args.receivedAt) ||
+      args.receivedAt <= 0 ||
+      args.receivedAt > Date.now() + MAX_FUTURE_SKEW_MS
+    ) {
+      throw new ConvexError("Modtagelsestidspunktet er ugyldigt");
+    }
+    if (args.items.length === 0) {
+      throw new ConvexError("Tilføj mindst én produktlinje");
+    }
+    if (args.items.length > MAX_MANUAL_RECEIPT_ITEMS) {
+      throw new ConvexError("Varemodtagelsen har for mange produktlinjer");
+    }
+
+    const comment = args.comment?.trim() || undefined;
+    if (comment && comment.length > MAX_COMMENT_LENGTH) {
+      throw new ConvexError("Kommentaren må højst være 500 tegn");
+    }
+    if (args.deliveryNoteStorageId) {
+      await validateUnusedDeliveryNote(ctx, args.deliveryNoteStorageId);
+    }
+
+    const resolvedItems = await resolveManualReceiptItems({
+      ctx,
+      organizationId,
+      locationId: location._id,
+      items: args.items,
+    });
+
+    await requireOtherFeaturesUnlocked(ctx, organizationId, location._id);
+
+    const manualGoodsReceiptId = await ctx.db.insert("manualGoodsReceipts", {
+      organizationId,
+      locationId: location._id,
+      locationName: location.name,
+      receivedAt: args.receivedAt,
+      registeredAt: Date.now(),
+      registeredBy: userIdentifier,
+      registeredByName: userName,
+      comment,
+      deliveryNoteStorageId: args.deliveryNoteStorageId,
+      itemCount: resolvedItems.length,
+    });
+
+    for (const item of resolvedItems) {
+      await addStock(
+        ctx,
+        organizationId,
+        location._id,
+        item.productId,
+        item.defaultQuantity,
+      );
+      await ctx.db.insert("manualGoodsReceiptItems", {
+        organizationId,
+        manualGoodsReceiptId,
+        ...item,
+      });
+    }
+
+    await recordAudit(ctx, auth, {
+      action: "goodsReceipts.manualCreated",
+      entityTable: "manualGoodsReceipts",
+      entityId: manualGoodsReceiptId,
+      summary: `Manuel varemodtagelse registreret på ${location.name}`,
+      locationId: location._id,
+    });
+
+    return manualGoodsReceiptId;
   },
 });
 

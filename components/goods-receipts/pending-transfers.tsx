@@ -6,12 +6,14 @@ import {
   Clock3Icon,
   PackageCheckIcon,
   PackageIcon,
+  PlusIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { useGoodsReceiptContext } from "@/components/goods-receipts/goods-receipt-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -23,6 +25,7 @@ import {
 } from "@/components/ui/card";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -30,6 +33,7 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
+import { cn } from "@/lib/utils";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "medium",
@@ -108,19 +112,38 @@ export function PendingTransfers() {
             Der er ingen åbne transfers til den valgte lokation.
           </EmptyDescription>
         </EmptyHeader>
+        <EmptyContent>
+          <Link
+            href="/goods-receipts/manual"
+            className={cn(buttonVariants({ size: "lg" }), "min-h-11")}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Manuel varemodtagelse
+          </Link>
+        </EmptyContent>
       </Empty>
     );
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex max-w-2xl flex-col gap-1">
-        <h2 className="text-xl font-semibold tracking-tight">
-          Transfers der afventer modtagelse
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Åbn en transfer for at registrere de mængder, lokationen har modtaget.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex max-w-2xl flex-col gap-1">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Transfers der afventer modtagelse
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Åbn en transfer for at registrere de mængder, lokationen har
+            modtaget.
+          </p>
+        </div>
+        <Link
+          href="/goods-receipts/manual"
+          className={cn(buttonVariants({ size: "lg" }), "min-h-11 sm:self-end")}
+        >
+          <PlusIcon data-icon="inline-start" />
+          Manuel varemodtagelse
+        </Link>
       </div>
 
       {result.truncated ? (
