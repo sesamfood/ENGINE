@@ -77,6 +77,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -160,6 +161,7 @@ function ManualGoodsReceiptForm({
   options: ManualReceiptOptions;
 }) {
   const router = useRouter();
+  const sidebar = useSidebar();
   const createReceipt = useMutation(api.goodsReceipts.createManualReceipt);
   const generatePhotoUploadUrl = useMutation(
     api.goodsReceipts.generateManualPhotoUploadUrl,
@@ -410,7 +412,7 @@ function ManualGoodsReceiptForm({
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 pb-24">
       <div>
         <Link
           href="/goods-receipts"
@@ -570,26 +572,12 @@ function ManualGoodsReceiptForm({
               </CardDescription>
               <CardAction>
                 <Badge variant="outline">
-                  {lines.length} produktlinje{lines.length === 1 ? "" : "r"}
+                  {lines.length} produktlinje
+                  {lines.length === 1 ? "" : "r"}
                 </Badge>
               </CardAction>
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
-              <FieldGroup>
-                <Field data-invalid={Boolean(errors.items)}>
-                  <FieldLabel>Tilføj produkt</FieldLabel>
-                  <CreatableCombobox
-                    options={productOptions}
-                    value={null}
-                    onValueChange={addProduct}
-                    placeholder="Søg efter produkter"
-                    ariaLabel="Tilføj produkt"
-                    disabled={productOptions.length === 0}
-                  />
-                  <FieldError>{errors.items}</FieldError>
-                </Field>
-              </FieldGroup>
-
               {lines.length === 0 ? (
                 <Empty className="min-h-56 border">
                   <EmptyHeader>
@@ -752,55 +740,83 @@ function ManualGoodsReceiptForm({
                   })}
                 </ul>
               )}
+
+              <FieldGroup>
+                <Field data-invalid={Boolean(errors.items)}>
+                  <FieldLabel>Tilføj produkt</FieldLabel>
+                  <CreatableCombobox
+                    options={productOptions}
+                    value={null}
+                    onValueChange={addProduct}
+                    placeholder="Søg efter produkter"
+                    ariaLabel="Tilføj produkt"
+                    disabled={productOptions.length === 0}
+                  />
+                  <FieldError>{errors.items}</FieldError>
+                </Field>
+              </FieldGroup>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Afslut modtagelse</CardTitle>
+              <CardTitle>Kommentar</CardTitle>
               <CardDescription>
-                Kontrollér mængderne. Registreringen lægger kun de angivne
-                mængder til lageret.
+                Tilføj eventuelt en kommentar til modtagelsen.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FieldGroup>
-                <Field data-invalid={Boolean(errors.comment)}>
-                  <FieldLabel htmlFor="manual-goods-receipt-comment">
-                    Kommentar
-                  </FieldLabel>
-                  <Textarea
-                    id="manual-goods-receipt-comment"
-                    value={comment}
-                    maxLength={MAX_COMMENT_LENGTH}
-                    aria-invalid={Boolean(errors.comment)}
-                    placeholder="Skriv en kommentar til modtagelsen"
-                    onChange={(event) => {
-                      setComment(event.target.value);
-                      setErrors((current) => {
-                        if (!current.comment) return current;
-                        const next = { ...current };
-                        delete next.comment;
-                        return next;
-                      });
-                    }}
-                  />
-                  <FieldError>{errors.comment}</FieldError>
-                </Field>
-              </FieldGroup>
+              <Field data-invalid={Boolean(errors.comment)}>
+                <FieldLabel
+                  htmlFor="manual-goods-receipt-comment"
+                  className="sr-only"
+                >
+                  Kommentar
+                </FieldLabel>
+                <Textarea
+                  id="manual-goods-receipt-comment"
+                  value={comment}
+                  maxLength={MAX_COMMENT_LENGTH}
+                  aria-invalid={Boolean(errors.comment)}
+                  placeholder="Skriv en kommentar til modtagelsen"
+                  onChange={(event) => {
+                    setComment(event.target.value);
+                    setErrors((current) => {
+                      if (!current.comment) return current;
+                      const next = { ...current };
+                      delete next.comment;
+                      return next;
+                    });
+                  }}
+                />
+                <FieldError>{errors.comment}</FieldError>
+              </Field>
             </CardContent>
-            <CardFooter className="justify-end">
+          </Card>
+
+          <CardFooter
+            className="fixed inset-x-0 bottom-0 z-10 rounded-none bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0"
+            style={{
+              left: sidebar.isMobile
+                ? 0
+                : sidebar.state === "collapsed"
+                  ? "var(--sidebar-width-icon)"
+                  : "var(--sidebar-width)",
+            }}
+          >
+            <div className="mx-auto flex w-full max-w-[96rem] justify-end">
               <Button
+                type="button"
                 size="lg"
-                className="min-h-11 px-5"
+                className="min-h-11 w-full px-5 sm:w-auto"
                 disabled={submitting || lines.length === 0}
                 onClick={review}
               >
                 <CheckIcon data-icon="inline-start" />
                 Registrér varemodtagelse
               </Button>
-            </CardFooter>
-          </Card>
+            </div>
+          </CardFooter>
         </main>
       </div>
 

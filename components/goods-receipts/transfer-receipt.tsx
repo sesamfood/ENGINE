@@ -690,6 +690,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
           </Card>
 
           <form
+            className="flex flex-col gap-5"
             onSubmit={(event) => {
               event.preventDefault();
               review();
@@ -1080,31 +1081,46 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                       disabled={productOptions.length === 0}
                     />
                   </Field>
-                  <Field data-invalid={Boolean(errors.comment)}>
-                    <FieldLabel htmlFor="goods-receipt-comment">
-                      Kommentar
-                    </FieldLabel>
-                    <Textarea
-                      id="goods-receipt-comment"
-                      value={comment}
-                      maxLength={MAX_COMMENT_LENGTH}
-                      aria-invalid={Boolean(errors.comment)}
-                      placeholder="Skriv en kommentar til modtagelsen"
-                      onChange={(event) => {
-                        setComment(event.target.value);
-                        setErrors((current) => {
-                          if (!current.comment) return current;
-                          const next = { ...current };
-                          delete next.comment;
-                          return next;
-                        });
-                      }}
-                    />
-                    <FieldError>{errors.comment}</FieldError>
-                  </Field>
                 </FieldGroup>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Kommentar</CardTitle>
+                <CardDescription>
+                  Tilføj eventuelt en kommentar til modtagelsen.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Field data-invalid={Boolean(errors.comment)}>
+                  <FieldLabel
+                    htmlFor="goods-receipt-comment"
+                    className="sr-only"
+                  >
+                    Kommentar
+                  </FieldLabel>
+                  <Textarea
+                    id="goods-receipt-comment"
+                    value={comment}
+                    maxLength={MAX_COMMENT_LENGTH}
+                    aria-invalid={Boolean(errors.comment)}
+                    placeholder="Skriv en kommentar til modtagelsen"
+                    onChange={(event) => {
+                      setComment(event.target.value);
+                      setErrors((current) => {
+                        if (!current.comment) return current;
+                        const next = { ...current };
+                        delete next.comment;
+                        return next;
+                      });
+                    }}
+                  />
+                  <FieldError>{errors.comment}</FieldError>
+                </Field>
+              </CardContent>
+            </Card>
+
             <CardFooter
               className="fixed inset-x-0 bottom-0 z-10 rounded-none bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0"
               style={{
