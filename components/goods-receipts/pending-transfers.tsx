@@ -40,10 +40,6 @@ const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
   timeStyle: "short",
 });
 
-const quantityFormatter = new Intl.NumberFormat("da-DK", {
-  maximumFractionDigits: 6,
-});
-
 export function PendingTransfers() {
   const access = useAccess();
   const canRegister = usePermission("goodsReceipts.register");
@@ -128,14 +124,10 @@ export function PendingTransfers() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex max-w-2xl flex-col gap-1">
+        <div className="max-w-2xl">
           <h2 className="text-xl font-semibold tracking-tight">
             Transfers der afventer modtagelse
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Åbn en transfer for at registrere de mængder, lokationen har
-            modtaget.
-          </p>
         </div>
         <Link
           href="/goods-receipts/manual"
@@ -177,18 +169,12 @@ export function PendingTransfers() {
                 </CardAction>
               </CardHeader>
               <CardContent>
-                <dl className="grid grid-cols-2 gap-4 text-sm">
+                <dl className="text-sm">
                   <div className="flex flex-col gap-1">
                     <dt className="text-muted-foreground">Produktlinjer</dt>
                     <dd className="flex items-center gap-1.5 font-medium tabular-nums">
                       <PackageIcon aria-hidden="true" />
                       {transfer.itemCount}
-                    </dd>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <dt className="text-muted-foreground">Samlet mængde</dt>
-                    <dd className="font-medium tabular-nums">
-                      {quantityFormatter.format(transfer.totalQuantity)}
                     </dd>
                   </div>
                 </dl>

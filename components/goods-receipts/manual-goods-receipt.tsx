@@ -432,26 +432,31 @@ function ManualGoodsReceiptForm({
             </CardHeader>
             <CardContent>
               <Field data-invalid={Boolean(errors.photo)}>
-                {previewUrl ? (
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-muted">
-                    <Image
-                      src={previewUrl}
-                      alt="Valgt billede af følgeseddel"
-                      fill
-                      unoptimized
-                      className="object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-lg bg-muted px-6 text-center text-muted-foreground">
-                    <CameraIcon className="size-8" aria-hidden="true" />
-                    <span className="text-sm">
-                      Kameraet åbner på enheder, der understøtter det.
-                    </span>
-                  </div>
-                )}
-                <FieldLabel htmlFor="manual-goods-receipt-photo">
-                  Billede af følgeseddel
+                <FieldLabel
+                  htmlFor="manual-goods-receipt-photo"
+                  className="block w-full cursor-pointer"
+                >
+                  {previewUrl ? (
+                    <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-muted">
+                      <Image
+                        src={previewUrl}
+                        alt="Valgt billede af følgeseddel"
+                        fill
+                        unoptimized
+                        className="object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-lg bg-muted px-6 text-center text-muted-foreground">
+                      <CameraIcon className="size-8" aria-hidden="true" />
+                      <span className="font-medium text-foreground">
+                        Tag eller upload et billede
+                      </span>
+                      <span className="text-sm">
+                        Kameraet åbner på enheder, der understøtter det.
+                      </span>
+                    </div>
+                  )}
                 </FieldLabel>
                 <Input
                   id="manual-goods-receipt-photo"

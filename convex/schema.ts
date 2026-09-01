@@ -1289,6 +1289,9 @@ export default defineSchema({
     temperatureCelsius: v.optional(v.number()),
     maxTemperatureCelsius: v.optional(v.number()),
     receivedQuantity: v.optional(v.number()),
+    receivedUnitId: v.optional(v.id("units")),
+    receivedUnitName: v.optional(v.string()),
+    receivedFactorToDefault: v.optional(v.number()),
   }).index("by_organizationId_and_transferId", [
     "organizationId",
     "transferId",
