@@ -25,6 +25,7 @@ export const removeOrphans = internalMutation({
         ownCheckAttachment,
         feedbackScreenshot,
         transferDeliveryNote,
+        manualDeliveryNote,
       ] = await Promise.all([
         ctx.db
           .query("organizationAssets")
@@ -64,6 +65,12 @@ export const removeOrphans = internalMutation({
             q.eq("deliveryNoteStorageId", file._id),
           )
           .first(),
+        ctx.db
+          .query("manualGoodsReceipts")
+          .withIndex("by_deliveryNoteStorageId", (q) =>
+            q.eq("deliveryNoteStorageId", file._id),
+          )
+          .first(),
       ]);
       if (
         !logo &&
@@ -72,7 +79,8 @@ export const removeOrphans = internalMutation({
         !attachment &&
         !ownCheckAttachment &&
         !feedbackScreenshot &&
-        !transferDeliveryNote
+        !transferDeliveryNote &&
+        !manualDeliveryNote
       ) {
         await ctx.storage.delete(file._id);
       }

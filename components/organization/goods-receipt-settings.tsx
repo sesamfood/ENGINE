@@ -78,8 +78,8 @@ export function GoodsReceiptSettings() {
       <CardHeader>
         <CardTitle>Følgesedler</CardTitle>
         <CardDescription>
-          Vælg, hvilke typer varemodtagelser der kan få et billede af
-          følgesedlen.
+          Vælg, om varemodtagelser fra transfers kan få et billede af
+          følgesedlen. Manuelle varemodtagelser har altid billedfeltet.
         </CardDescription>
       </CardHeader>
       <CardContent>

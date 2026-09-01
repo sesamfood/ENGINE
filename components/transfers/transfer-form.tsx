@@ -108,6 +108,7 @@ export type EditableTransfer = {
     temperatureCelsius: number | null;
     maxTemperatureCelsius: number | null;
     receivedQuantity: number | null;
+    receivedUnitName: string | null;
   }>;
 };
 

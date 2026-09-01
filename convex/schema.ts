@@ -1289,9 +1289,46 @@ export default defineSchema({
     temperatureCelsius: v.optional(v.number()),
     maxTemperatureCelsius: v.optional(v.number()),
     receivedQuantity: v.optional(v.number()),
+    receivedUnitId: v.optional(v.id("units")),
+    receivedUnitName: v.optional(v.string()),
+    receivedFactorToDefault: v.optional(v.number()),
   }).index("by_organizationId_and_transferId", [
     "organizationId",
     "transferId",
+  ]),
+
+  manualGoodsReceipts: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    receivedAt: v.number(),
+    registeredAt: v.number(),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    comment: v.optional(v.string()),
+    deliveryNoteStorageId: v.optional(v.id("_storage")),
+    itemCount: v.number(),
+  })
+    .index("by_organizationId_and_locationId_and_receivedAt", [
+      "organizationId",
+      "locationId",
+      "receivedAt",
+    ])
+    .index("by_deliveryNoteStorageId", ["deliveryNoteStorageId"]),
+
+  manualGoodsReceiptItems: defineTable({
+    organizationId: v.string(),
+    manualGoodsReceiptId: v.id("manualGoodsReceipts"),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+    factorToDefault: v.number(),
+    defaultQuantity: v.number(),
+  }).index("by_organizationId_and_manualGoodsReceiptId", [
+    "organizationId",
+    "manualGoodsReceiptId",
   ]),
 
   goodsReceiptSettings: defineTable({

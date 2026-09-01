@@ -105,6 +105,7 @@ const transferDetailValidator = transferHeaderValidator.extend({
       temperatureCelsius: v.union(v.number(), v.null()),
       maxTemperatureCelsius: v.union(v.number(), v.null()),
       receivedQuantity: v.union(v.number(), v.null()),
+      receivedUnitName: v.union(v.string(), v.null()),
     }),
   ),
 });
@@ -863,6 +864,7 @@ export const getTransfer = query({
         temperatureCelsius: item.temperatureCelsius ?? null,
         maxTemperatureCelsius: item.maxTemperatureCelsius ?? null,
         receivedQuantity: item.receivedQuantity ?? null,
+        receivedUnitName: item.receivedUnitName ?? null,
       })),
     };
   },

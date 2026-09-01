@@ -1348,6 +1348,9 @@ export function TransferHistory() {
                             {transferDetail.receiptStatus === "registered" ? (
                               <TableCell className="text-right tabular-nums">
                                 {item.receivedQuantity ?? 0}
+                                {item.receivedUnitName && item.receivedUnitName !== item.unitName
+                                  ? ` ${item.receivedUnitName}`
+                                  : null}
                               </TableCell>
                             ) : null}
                           </TableRow>

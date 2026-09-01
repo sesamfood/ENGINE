@@ -141,6 +141,16 @@ export async function deleteLocationWithAuth(
         )
         .first(),
       ctx.db
+        .query("manualGoodsReceipts")
+        .withIndex(
+          "by_organizationId_and_locationId_and_receivedAt",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
         .query("counts")
         .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
           q.eq("organizationId", organizationId).eq("locationId", location._id),

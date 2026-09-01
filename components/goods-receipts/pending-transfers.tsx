@@ -1,21 +1,16 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import {
-  ArrowRightIcon,
-  Clock3Icon,
-  PackageCheckIcon,
-  PackageIcon,
-} from "lucide-react";
+import { ArrowRightIcon, PackageCheckIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { useGoodsReceiptContext } from "@/components/goods-receipts/goods-receipt-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,
-  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -23,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -30,14 +26,11 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
+import { cn } from "@/lib/utils";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
-});
-
-const quantityFormatter = new Intl.NumberFormat("da-DK", {
-  maximumFractionDigits: 6,
 });
 
 export function PendingTransfers() {
@@ -108,19 +101,34 @@ export function PendingTransfers() {
             Der er ingen åbne transfers til den valgte lokation.
           </EmptyDescription>
         </EmptyHeader>
+        <EmptyContent>
+          <Link
+            href="/goods-receipts/manual"
+            className={cn(buttonVariants({ size: "lg" }), "min-h-11")}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Manuel varemodtagelse
+          </Link>
+        </EmptyContent>
       </Empty>
     );
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex max-w-2xl flex-col gap-1">
-        <h2 className="text-xl font-semibold tracking-tight">
-          Transfers der afventer modtagelse
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Åbn en transfer for at registrere de mængder, lokationen har modtaget.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="max-w-2xl">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Transfers der afventer modtagelse
+          </h2>
+        </div>
+        <Link
+          href="/goods-receipts/manual"
+          className={cn(buttonVariants({ size: "lg" }), "min-h-11 sm:self-end")}
+        >
+          <PlusIcon data-icon="inline-start" />
+          Manuel varemodtagelse
+        </Link>
       </div>
 
       {result.truncated ? (
@@ -145,31 +153,13 @@ export function PendingTransfers() {
                 <CardTitle>
                   {transfer.fromLocationName} → {transfer.toLocationName}
                 </CardTitle>
-                <CardDescription className="flex items-center gap-1.5">
-                  <Clock3Icon aria-hidden="true" />
+                <CardDescription>
                   {dateTimeFormatter.format(transfer.transferredAt)}
                 </CardDescription>
                 <CardAction>
                   <Badge variant="secondary">Transfer</Badge>
                 </CardAction>
               </CardHeader>
-              <CardContent>
-                <dl className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="flex flex-col gap-1">
-                    <dt className="text-muted-foreground">Produktlinjer</dt>
-                    <dd className="flex items-center gap-1.5 font-medium tabular-nums">
-                      <PackageIcon aria-hidden="true" />
-                      {transfer.itemCount}
-                    </dd>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <dt className="text-muted-foreground">Samlet mængde</dt>
-                    <dd className="font-medium tabular-nums">
-                      {quantityFormatter.format(transfer.totalQuantity)}
-                    </dd>
-                  </div>
-                </dl>
-              </CardContent>
               <CardFooter className="justify-between font-medium">
                 <span>Registrér modtagelse</span>
                 <ArrowRightIcon aria-hidden="true" />
