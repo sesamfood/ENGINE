@@ -1,5 +1,6 @@
 "use client";
 
+import posthog from "posthog-js";
 import { useMutation, useQuery } from "convex/react";
 import {
   ArrowLeftIcon,
@@ -254,6 +255,19 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
         ...(comment.trim() ? { comment: comment.trim() } : {}),
         ...(deliveryNoteStorageId ? { deliveryNoteStorageId } : {}),
       });
+      if (deviationCount > 0) {
+        posthog.capture("goods_receipt_registered_with_deviations", {
+          item_count: transfer.items.length,
+          deviation_count: deviationCount,
+          missing_line_count: missingLineCount,
+          has_delivery_note_photo: Boolean(photo),
+        });
+      } else {
+        posthog.capture("goods_receipt_registered", {
+          item_count: transfer.items.length,
+          has_delivery_note_photo: Boolean(photo),
+        });
+      }
       toast.success("Varemodtagelsen er registreret");
       setConfirming(false);
       router.replace("/goods-receipts");

@@ -2,6 +2,7 @@
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import posthog from "posthog-js";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   AlertDialog,
@@ -638,10 +639,27 @@ export function TransferForm({
       };
       if (transfer) {
         await updateTransfer({ transferId: transfer.id, ...payload });
+        posthog.capture("transfer_updated", {
+          item_count: lines.length,
+          total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+          has_temperature_deviations: Boolean(confirmedTemperatureDeviations?.length),
+        });
         toast.success("Transferen er opdateret");
         onSaved?.();
       } else {
         await createTransfer(payload);
+        if (confirmedTemperatureDeviations && confirmedTemperatureDeviations.length > 0) {
+          posthog.capture("transfer_created_with_temperature_deviation", {
+            item_count: lines.length,
+            total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+            deviation_count: confirmedTemperatureDeviations.length,
+          });
+        } else {
+          posthog.capture("transfer_created", {
+            item_count: lines.length,
+            total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+          });
+        }
         toast.success("Transferen er gemt");
         resetForm();
       }

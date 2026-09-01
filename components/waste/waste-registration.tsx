@@ -1,5 +1,6 @@
 "use client";
 
+import posthog from "posthog-js";
 import { useMutation, useQuery } from "convex/react";
 import {
   ImageIcon,
@@ -397,6 +398,10 @@ export function WasteRegistration() {
           },
         },
       );
+      posthog.capture("waste_registered", {
+        quantity: shortcut.quantity,
+        source,
+      });
       setUndoRegistrations((registrations) => [
         ...registrations.filter((item) => item.expiresAt > result.registeredAt),
         registration,
@@ -424,6 +429,9 @@ export function WasteRegistration() {
     );
     const failed = results.filter((result) => result.status === "rejected");
     if (succeeded.length) {
+      posthog.capture("waste_undone", {
+        undo_count: succeeded.length,
+      });
       setUndoRegistrations((current) =>
         current.filter((registration) => !succeeded.includes(registration.id)),
       );

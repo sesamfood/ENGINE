@@ -18,6 +18,7 @@ import {
   signApiKeyServiceToken,
   signRestGatewayToken,
 } from "./service-token";
+import { logApiRequest } from "./rest-request-logging";
 
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_AUTHORIZATION_BYTES = 512;
@@ -450,9 +451,7 @@ export async function executeApiOperation<T extends ApiOperation>(input: {
       rateLimited: status === 429,
       rateLimitRemaining,
     };
-    if (status >= 500) console.error("REST API request", details);
-    else if (status >= 400) console.warn("REST API request", details);
-    else console.info("REST API request", details);
+    logApiRequest(details);
   }
   try {
     const methodAllowed =
