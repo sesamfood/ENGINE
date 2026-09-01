@@ -59,6 +59,7 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldTitle,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -522,7 +523,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-56 sm:pb-36">
+    <div className="flex flex-col gap-5 pb-24">
       <div>
         <Link
           href="/goods-receipts"
@@ -802,14 +803,15 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                                 </SelectContent>
                               </Select>
                             </Field>
-                            <div className="flex flex-col gap-1">
-                              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <Field>
+                              <FieldTitle className="text-xs uppercase tracking-wide text-muted-foreground">
                                 Sendt
+                              </FieldTitle>
+                              <span className="flex h-11 items-center tabular-nums">
+                                {quantityFormatter.format(maximum)}{" "}
+                                {selectedUnit.name}
                               </span>
-                              <span className="tabular-nums">
-                                {quantityFormatter.format(maximum)}
-                              </span>
-                            </div>
+                            </Field>
                           </div>
 
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-start xl:justify-end">
@@ -1078,6 +1080,28 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                       disabled={productOptions.length === 0}
                     />
                   </Field>
+                  <Field data-invalid={Boolean(errors.comment)}>
+                    <FieldLabel htmlFor="goods-receipt-comment">
+                      Kommentar
+                    </FieldLabel>
+                    <Textarea
+                      id="goods-receipt-comment"
+                      value={comment}
+                      maxLength={MAX_COMMENT_LENGTH}
+                      aria-invalid={Boolean(errors.comment)}
+                      placeholder="Skriv en kommentar til modtagelsen"
+                      onChange={(event) => {
+                        setComment(event.target.value);
+                        setErrors((current) => {
+                          if (!current.comment) return current;
+                          const next = { ...current };
+                          delete next.comment;
+                          return next;
+                        });
+                      }}
+                    />
+                    <FieldError>{errors.comment}</FieldError>
+                  </Field>
                 </FieldGroup>
               </CardContent>
             </Card>
@@ -1091,42 +1115,17 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                     : "var(--sidebar-width)",
               }}
             >
-              <FieldGroup className="mx-auto max-w-[96rem] gap-3 sm:flex-row sm:items-end">
-                <Field
-                  className="sm:flex-1"
-                  data-invalid={Boolean(errors.comment)}
-                >
-                  <FieldLabel htmlFor="goods-receipt-comment">
-                    Kommentar
-                  </FieldLabel>
-                  <Textarea
-                    id="goods-receipt-comment"
-                    value={comment}
-                    maxLength={MAX_COMMENT_LENGTH}
-                    aria-invalid={Boolean(errors.comment)}
-                    placeholder="Skriv en kommentar til modtagelsen"
-                    onChange={(event) => {
-                      setComment(event.target.value);
-                      setErrors((current) => {
-                        if (!current.comment) return current;
-                        const next = { ...current };
-                        delete next.comment;
-                        return next;
-                      });
-                    }}
-                  />
-                  <FieldError>{errors.comment}</FieldError>
-                </Field>
+              <div className="mx-auto flex w-full max-w-[96rem] justify-end">
                 <Button
                   type="submit"
                   size="lg"
-                  className="min-h-11 px-5"
+                  className="min-h-11 w-full px-5 sm:w-auto"
                   disabled={submitting}
                 >
                   <CheckIcon data-icon="inline-start" />
                   Registrér varemodtagelse
                 </Button>
-              </FieldGroup>
+              </div>
             </CardFooter>
           </form>
         </main>
