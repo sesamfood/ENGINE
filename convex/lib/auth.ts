@@ -513,6 +513,18 @@ export async function requireTransferViewer(
   return await requirePermission(ctx, "transfers.view", page);
 }
 
+export async function requireGoodsReceiptRegistrar(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "goodsReceipts.register");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
+export async function requireGoodsReceiptSettings(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "goodsReceipts.settings");
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
+  return auth;
+}
+
 export async function requireCounter(
   ctx: AuthContext,
   page: KioskDestinationId | readonly KioskDestinationId[] = "count.register",

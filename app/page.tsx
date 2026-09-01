@@ -13,6 +13,7 @@ export default function Home() {
   const canDashboard = usePermission("dashboard.view");
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
+  const canGoodsReceipts = usePermission("goodsReceipts.register");
   const canWasteRegister = usePermission("waste.register");
   const canWasteReport = usePermission("waste.report");
   const canStaffFood = usePermission("staffFood.register");
@@ -25,6 +26,7 @@ export default function Home() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
   const canOwnChecksManage = usePermission("ownChecks.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canStaffFoodManage = usePermission("staffFood.manage");
@@ -38,6 +40,7 @@ export default function Home() {
     canOrganizationSettings ||
     canCountSettings ||
     canWasteSettings ||
+    canGoodsReceiptSettings ||
     canOwnChecksManage ||
     canIntegrations ||
     canStaffFoodManage ||
@@ -59,23 +62,25 @@ export default function Home() {
           ? "/transfers"
           : canTransfersView
             ? "/transfers/history"
-            : canWasteRegister
-              ? "/waste"
-              : canWasteReport
-                ? "/waste/report"
-                : canStaffFood
-                  ? "/staff-food"
-                  : canCountRegister
-                    ? "/count"
-                    : canCountStock
-                      ? "/count/stock"
-                      : canEmployeesSchedule
-                        ? "/employees"
-                        : canEmployeesDirectory
-                          ? "/employees/directory"
-                          : canOrganization
-                            ? "/administration"
-                            : "/profile";
+            : canGoodsReceipts
+              ? "/goods-receipts"
+              : canWasteRegister
+                ? "/waste"
+                : canWasteReport
+                  ? "/waste/report"
+                  : canStaffFood
+                    ? "/staff-food"
+                    : canCountRegister
+                      ? "/count"
+                      : canCountStock
+                        ? "/count/stock"
+                        : canEmployeesSchedule
+                          ? "/employees"
+                          : canEmployeesDirectory
+                            ? "/employees/directory"
+                            : canOrganization
+                              ? "/administration"
+                              : "/profile";
     router.replace(href);
   }, [
     access,
@@ -85,6 +90,8 @@ export default function Home() {
     canCountStock,
     canDashboardManage,
     canDashboard,
+    canGoodsReceiptSettings,
+    canGoodsReceipts,
     canEmployeesDirectory,
     canEmployeesSchedule,
     canIntegrations,

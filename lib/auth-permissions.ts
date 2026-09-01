@@ -84,6 +84,19 @@ export const permissionCatalog = [
     ],
   },
   {
+    group: "Varemodtagelse",
+    permissions: [
+      {
+        id: "goodsReceipts.register",
+        label: "Registrere varemodtagelser",
+      },
+      {
+        id: "goodsReceipts.settings",
+        label: "Administrere indstillinger for varemodtagelse",
+      },
+    ],
+  },
+  {
     group: "Staff food",
     permissions: [
       { id: "staffFood.register", label: "Registrere Staff food" },
@@ -167,6 +180,7 @@ export const defaultRolePermissions: Record<
     "count.register",
     "count.viewStock",
     "waste.register",
+    "goodsReceipts.register",
     "ownChecks.perform",
     "staffFood.register",
     "employees.schedule",

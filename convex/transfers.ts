@@ -83,6 +83,11 @@ const transferHeaderValidator = v.object({
   itemCount: v.number(),
   totalQuantity: v.number(),
   hasTemperatureDeviation: v.boolean(),
+  receiptStatus: v.union(
+    v.literal("pending"),
+    v.literal("registered"),
+    v.null(),
+  ),
 });
 
 const transferDetailValidator = transferHeaderValidator.extend({
@@ -99,6 +104,7 @@ const transferDetailValidator = transferHeaderValidator.extend({
       quantity: v.number(),
       temperatureCelsius: v.union(v.number(), v.null()),
       maxTemperatureCelsius: v.union(v.number(), v.null()),
+      receivedQuantity: v.union(v.number(), v.null()),
     }),
   ),
 });
@@ -200,6 +206,7 @@ async function hydrateTransferHeader(
     responsibleName: transfer.responsibleName,
     comment: transfer.comment ?? null,
     ...aggregates,
+    receiptStatus: transfer.receiptStatus ?? null,
   };
 }
 
@@ -544,7 +551,8 @@ export const createTransfer = mutation({
       comment,
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
-      stockApplied: true,
+      stockApplied: false,
+      receiptStatus: "pending",
       ...aggregates,
       dashboardSummaryTimeZone: summaryTimeZone,
     });
@@ -577,15 +585,6 @@ export const createTransfer = mutation({
       );
     }
 
-    await applyTransferStock(
-      ctx,
-      organizationId,
-      args.fromLocationId,
-      args.toLocationId,
-      resolvedItems,
-      1,
-    );
-
     return transferId;
   },
 });
@@ -604,6 +603,11 @@ export const updateTransfer = mutation({
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
+    }
+    if (transfer.receiptStatus === "registered") {
+      throw new ConvexError(
+        "Transferen er modtaget og kan ikke redigeres",
+      );
     }
     await requireLocationsUnlocked(ctx, organizationId, [
       transfer.fromLocationId,
@@ -715,6 +719,9 @@ export const deleteTransfer = mutation({
     const transfer = await ctx.db.get("transfers", args.transferId);
     if (!transfer || transfer.organizationId !== organizationId) {
       throw new ConvexError("Transferen blev ikke fundet");
+    }
+    if (transfer.receiptStatus === "registered") {
+      throw new ConvexError("Transferen er modtaget og kan ikke slettes");
     }
     await requireLocationsUnlocked(ctx, organizationId, [
       transfer.fromLocationId,
@@ -855,6 +862,7 @@ export const getTransfer = query({
         quantity: item.quantity,
         temperatureCelsius: item.temperatureCelsius ?? null,
         maxTemperatureCelsius: item.maxTemperatureCelsius ?? null,
+        receivedQuantity: item.receivedQuantity ?? null,
       })),
     };
   },
