@@ -2,66 +2,106 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
+type AcceptanceFailure = {
+  kind: "acceptance" | "wrong-account";
+  message: string;
+};
+
+function isExistingMemberError(error: {
+  code?: string;
+  message?: string;
+}) {
+  return (
+    error.code === "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION" ||
+    error.message?.includes("kun tilhøre én organisation")
+  );
+}
+
 export function InvitationCard({ invitationId }: { invitationId: string }) {
   const router = useRouter();
   const { data: session, isPending: sessionPending } = authClient.useSession();
-  const [pending, setPending] = useState<"accept" | "signout">();
-  const [error, setError] = useState<string>();
+  const acceptanceAttempted = useRef(false);
+  const [failure, setFailure] = useState<AcceptanceFailure>();
+  const [signingOut, setSigningOut] = useState(false);
   const redirect = `/invitation/${invitationId}`;
 
-  async function accept() {
-    setError(undefined);
-    setPending("accept");
-
-    try {
-      const result = await authClient.organization.acceptInvitation({
-        invitationId,
-      });
-
-      if (result.error) {
-        setError(
-          result.error.message?.includes("kun tilhøre én organisation")
-            ? "Din bruger tilhører allerede en organisation og kan ikke acceptere invitationen."
-            : "Log ind med den e-mailadresse, invitationen blev sendt til, og prøv igen.",
-        );
-        return;
-      }
-
-      router.replace("/onboarding");
-      router.refresh();
-    } catch {
-      setError(
-        "Invitationen kunne ikke accepteres. Kontrollér forbindelsen og prøv igen.",
-      );
-    } finally {
-      setPending(undefined);
+  useEffect(() => {
+    if (!session || acceptanceAttempted.current) {
+      return;
     }
-  }
+
+    acceptanceAttempted.current = true;
+
+    void authClient.organization
+      .acceptInvitation({ invitationId })
+      .then((result) => {
+        if (!result.error && result.data) {
+          router.replace("/");
+          router.refresh();
+          return;
+        }
+
+        if (result.error?.code === "INVITATION_NOT_FOUND") {
+          window.location.reload();
+          return;
+        }
+
+        if (result.error && isExistingMemberError(result.error)) {
+          router.replace("/");
+          router.refresh();
+          return;
+        }
+
+        setFailure({
+          kind:
+            result.error?.code ===
+            "YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION"
+              ? "wrong-account"
+              : "acceptance",
+          message:
+            result.error?.code ===
+            "YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION"
+              ? "Log ind med den e-mailadresse, invitationen blev sendt til."
+              : "Invitationen kunne ikke accepteres. Prøv igen.",
+        });
+      })
+      .catch(() => {
+        setFailure({
+          kind: "acceptance",
+          message:
+            "Invitationen kunne ikke accepteres. Kontrollér forbindelsen og prøv igen.",
+        });
+      });
+  }, [invitationId, router, session]);
 
   async function signOut() {
-    setError(undefined);
-    setPending("signout");
+    setSigningOut(true);
 
     try {
       const result = await authClient.signOut();
       if (result.error) {
-        setError("Du kunne ikke logges ud. Prøv igen.");
+        setFailure({
+          kind: "wrong-account",
+          message: "Du kunne ikke logges ud. Prøv igen.",
+        });
         return;
       }
       router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
       router.refresh();
     } catch {
-      setError(
-        "Du kunne ikke logges ud. Kontrollér forbindelsen og prøv igen.",
-      );
+      setFailure({
+        kind: "wrong-account",
+        message:
+          "Du kunne ikke logges ud. Kontrollér forbindelsen og prøv igen.",
+      });
     } finally {
-      setPending(undefined);
+      setSigningOut(false);
     }
   }
 
@@ -95,35 +135,41 @@ export function InvitationCard({ invitationId }: { invitationId: string }) {
     );
   }
 
-  return (
-    <div className="flex flex-col gap-5">
-      {error ? (
+  if (failure) {
+    return (
+      <div className="flex flex-col gap-3">
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{failure.message}</AlertDescription>
         </Alert>
-      ) : null}
-      <p className="text-sm text-muted-foreground">
-        Du er logget ind som {session.user.email}.
-      </p>
-      <Button
-        type="button"
-        size="lg"
-        onClick={accept}
-        disabled={Boolean(pending)}
-      >
-        {pending === "accept" ? <Spinner data-icon="inline-start" /> : null}
-        Acceptér invitation
-      </Button>
-      <Button
-        type="button"
-        size="lg"
-        variant="outline"
-        onClick={signOut}
-        disabled={Boolean(pending)}
-      >
-        {pending === "signout" ? <Spinner data-icon="inline-start" /> : null}
-        Log ud og skift konto
-      </Button>
+        {failure.kind === "acceptance" ? (
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => window.location.reload()}
+          >
+            Prøv igen
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="lg"
+          variant="outline"
+          onClick={signOut}
+          disabled={signingOut}
+        >
+          {signingOut ? <Spinner data-icon="inline-start" /> : null}
+          Log ud og skift konto
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex justify-center py-6"
+      aria-label="Accepterer invitation"
+    >
+      <Spinner />
     </div>
   );
 }

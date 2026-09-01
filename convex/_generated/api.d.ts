@@ -29,6 +29,7 @@ import type * as feedback from "../feedback.js";
 import type * as feedbackDelivery from "../feedbackDelivery.js";
 import type * as goodsReceipts from "../goodsReceipts.js";
 import type * as http from "../http.js";
+import type * as invitations from "../invitations.js";
 import type * as kiosk from "../kiosk.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -130,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   feedbackDelivery: typeof feedbackDelivery;
   goodsReceipts: typeof goodsReceipts;
   http: typeof http;
+  invitations: typeof invitations;
   kiosk: typeof kiosk;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
