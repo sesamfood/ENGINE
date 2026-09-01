@@ -1,13 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import {
-  ArrowRightIcon,
-  Clock3Icon,
-  PackageCheckIcon,
-  PackageIcon,
-  PlusIcon,
-} from "lucide-react";
+import { ArrowRightIcon, PackageCheckIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { useGoodsReceiptContext } from "@/components/goods-receipts/goods-receipt-header";
@@ -17,7 +11,6 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,
-  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -160,25 +153,13 @@ export function PendingTransfers() {
                 <CardTitle>
                   {transfer.fromLocationName} → {transfer.toLocationName}
                 </CardTitle>
-                <CardDescription className="flex items-center gap-1.5">
-                  <Clock3Icon aria-hidden="true" />
+                <CardDescription>
                   {dateTimeFormatter.format(transfer.transferredAt)}
                 </CardDescription>
                 <CardAction>
                   <Badge variant="secondary">Transfer</Badge>
                 </CardAction>
               </CardHeader>
-              <CardContent>
-                <dl className="text-sm">
-                  <div className="flex flex-col gap-1">
-                    <dt className="text-muted-foreground">Produktlinjer</dt>
-                    <dd className="flex items-center gap-1.5 font-medium tabular-nums">
-                      <PackageIcon aria-hidden="true" />
-                      {transfer.itemCount}
-                    </dd>
-                  </div>
-                </dl>
-              </CardContent>
               <CardFooter className="justify-between font-medium">
                 <span>Registrér modtagelse</span>
                 <ArrowRightIcon aria-hidden="true" />
