@@ -439,7 +439,7 @@ function ManualGoodsReceiptForm({
                   className="block w-full cursor-pointer"
                 >
                   {previewUrl ? (
-                    <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-muted">
+                    <div className="relative h-40 overflow-hidden rounded-lg bg-muted">
                       <Image
                         src={previewUrl}
                         alt="Valgt billede af følgeseddel"
@@ -449,13 +449,10 @@ function ManualGoodsReceiptForm({
                       />
                     </div>
                   ) : (
-                    <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-lg bg-muted px-6 text-center text-muted-foreground">
+                    <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg bg-muted px-6 text-center text-muted-foreground">
                       <CameraIcon className="size-8" aria-hidden="true" />
                       <span className="font-medium text-foreground">
                         Tag eller upload et billede
-                      </span>
-                      <span className="text-sm">
-                        Kameraet åbner på enheder, der understøtter det.
                       </span>
                     </div>
                   )}
@@ -579,17 +576,12 @@ function ManualGoodsReceiptForm({
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
               {lines.length === 0 ? (
-                <Empty className="min-h-56 border">
+                <Empty className="min-h-32 border">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
                       <PackageIcon />
                     </EmptyMedia>
                     <EmptyTitle>Ingen produkter tilføjet</EmptyTitle>
-                    <EmptyDescription>
-                      {options.products.length === 0
-                        ? "Der er ingen aktive produkter at tilføje."
-                        : "Søg efter et produkt for at starte varemodtagelsen."}
-                    </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               ) : (
