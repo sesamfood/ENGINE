@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -25,12 +26,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
-
-function message(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Indstillingerne kunne ikke gemmes";
-}
 
 export function GoodsReceiptSettings() {
   const access = useAccess();
@@ -72,7 +67,7 @@ export function GoodsReceiptSettings() {
       setPhotoDraft(null);
       toast.success("Indstillingerne for varemodtagelse er gemt");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Indstillingerne for varemodtagelse kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }

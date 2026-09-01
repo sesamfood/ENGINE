@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { DownloadIcon, FileChartColumnIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -145,10 +146,6 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 6 }).format(value);
 }
 
-
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 export function WasteReport() {
   const convex = useConvex();
@@ -306,7 +303,7 @@ export function WasteReport() {
         groups.set(key, [...(groups.get(key) ?? []), row]);
       }
       downloadCsv(`waste-oversigt-${resolvedFrom}-${resolvedTo}.csv`, ["Lokation", "Produkt", "Mængde", "Enhed", "Registreringer"], [...groups.values()].map((group) => [group[0].locationName, group[0].productName, String(group.reduce((sum, row) => sum + row.defaultQuantity, 0)).replace(".", ","), group[0].defaultUnitName, String(group.length)]));
-    } catch (error) { toast.error(message(error)); } finally { setExporting(false); }
+    } catch (error) { toast.error(getUserErrorMessage(error, "Waste-rapporten kunne ikke opdateres. Prøv igen.")); } finally { setExporting(false); }
   }
 
   async function exportLog() {
@@ -314,7 +311,7 @@ export function WasteReport() {
     try {
       const rows = await allRows(false);
       downloadCsv(`waste-registreringer-${resolvedFrom}-${resolvedTo}.csv`, ["Tidspunkt", "Lokation", "Medarbejder", "Produkt", "Mængde", "Enhed", "Kilde", "Status"], rows.map((row) => [formatter.format(row.registeredAt), row.locationName, row.registeredByName, row.productName, String(row.quantity).replace(".", ","), row.unitName, row.source === "shortcut" ? "Genvej" : "Tilpasset", row.status === "active" ? "Aktiv" : "Annulleret"]));
-    } catch (error) { toast.error(message(error)); } finally { setExporting(false); }
+    } catch (error) { toast.error(getUserErrorMessage(error, "Waste-rapporten kunne ikke opdateres. Prøv igen.")); } finally { setExporting(false); }
   }
 
   async function voidSelected() {
@@ -324,7 +321,7 @@ export function WasteReport() {
       toast.success("Waste-registreringen er annulleret");
       setConfirming(false);
       setSelected(null);
-    } catch (error) { toast.error(message(error)); }
+    } catch (error) { toast.error(getUserErrorMessage(error, "Waste-rapporten kunne ikke opdateres. Prøv igen.")); }
   }
 
   return (

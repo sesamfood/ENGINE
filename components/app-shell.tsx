@@ -87,6 +87,7 @@ import { authClient } from "@/lib/auth-client";
 import type { DataGranularity, PermissionId } from "@/lib/auth-permissions";
 import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
 import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
@@ -985,8 +986,13 @@ function KioskModeControl() {
       await setMode({ enabled });
       if (enabled) router.replace(effectiveKioskHome(kiosk, countLocked));
       router.refresh();
-    } catch {
-      toast.error("Kiosktilstanden kunne ikke ændres");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Kiosktilstanden kunne ikke ændres. Prøv igen.",
+        ),
+      );
     } finally {
       setPending(false);
     }

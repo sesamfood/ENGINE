@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -26,10 +27,6 @@ type RoleOption = {
 };
 
 type SettingsChanges = Pick<DashboardRecord, "name" | "roleIds" | "defaultForRoleIds" | "defaultForLocationIds" | "isOrganizationDefault">;
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Indstillingerne kunne ikke gemmes";
-}
 
 function toggleValue(values: string[], value: string, checked: boolean) {
   if (checked) return values.includes(value) ? values : [...values, value];
@@ -134,7 +131,9 @@ export function DashboardSettingsDialog({
       closeDialog();
       toast.success("Dashboardindstillingerne er gemt");
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(
+        getUserErrorMessage(error, "Dashboardet kunne ikke duplikeres. Prøv igen."),
+      );
     } finally {
       setPending(false);
     }
@@ -147,7 +146,9 @@ export function DashboardSettingsDialog({
       toast.success("Dashboardet er duplikeret");
       onDuplicated(dashboardId);
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(
+        getUserErrorMessage(error, "Dashboardet kunne ikke slettes. Prøv igen."),
+      );
     } finally {
       setDuplicatePending(false);
     }
@@ -162,7 +163,7 @@ export function DashboardSettingsDialog({
       toast.success("Dashboardet er slettet");
       onDeleted();
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Dashboardindstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setPending(false);
     }

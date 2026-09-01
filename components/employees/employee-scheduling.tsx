@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import {
   AlertTriangleIcon,
@@ -90,10 +91,6 @@ function formatDate(value: string, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("da-DK", { timeZone: "UTC", ...options }).format(
     new Date(`${value}T12:00:00Z`),
   );
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 type Shift = {
@@ -348,7 +345,7 @@ export function EmployeeScheduling() {
       if (result.state === "rateLimited") { setRetryAt(result.retryAt); toast.info("Der kan synkroniseres igen om få minutter"); }
       else if (result.state === "unavailable") toast.error("Workfeed-integrationen er ikke aktiv");
       else toast.success(result.accepted ? "Synkroniseringen er sat i gang" : "Synkroniseringen er allerede i gang");
-    } catch (error) { toast.error(messageFrom(error)); }
+    } catch (error) { toast.error(getUserErrorMessage(error, "Vagtplanen kunne ikke opdateres. Prøv igen.")); }
     finally { setSyncing(false); }
   };
 

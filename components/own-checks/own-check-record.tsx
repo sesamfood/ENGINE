@@ -36,6 +36,7 @@ import {
   type OwnCheckField,
   type OwnCheckValue,
 } from "@/lib/own-checks";
+import { getUserErrorMessage } from "@/lib/user-errors";
 
 type RecordResult = NonNullable<ReturnType<typeof useQuery<typeof api.ownChecks.getOwnCheckRecord>>>;
 type RecordField = RecordResult["fields"][number];
@@ -186,7 +187,12 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
       }
       setEditValue(field.key, { key: field.key, type: "attachment", storageIds: [...existing, ...storageIds] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Filen kunne ikke uploades");
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Filen kunne ikke uploades. Kontrollér filen, og prøv igen.",
+        ),
+      );
     } finally {
       setUploadingKey(null);
     }
@@ -217,7 +223,9 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
       toast.success("Rettelsen er gemt");
       setEditing(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Rettelsen kunne ikke gemmes");
+      toast.error(
+        getUserErrorMessage(error, "Rettelsen kunne ikke gemmes. Prøv igen."),
+      );
     } finally {
       setSaving(false);
     }
@@ -232,7 +240,12 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
       setCorrectiveReason("");
       setCorrectiveDraft(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Handlingen kunne ikke registreres");
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Handlingen kunne ikke registreres. Prøv igen.",
+        ),
+      );
     } finally {
       setSaving(false);
     }
@@ -244,7 +257,12 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
       await approve({ entryId });
       toast.success("Egenkontrollen er godkendt");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Egenkontrollen kunne ikke godkendes");
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Egenkontrollen kunne ikke godkendes. Prøv igen.",
+        ),
+      );
     } finally {
       setSaving(false);
     }

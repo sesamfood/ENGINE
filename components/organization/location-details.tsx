@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -72,10 +73,6 @@ const emptyDraft: Draft = {
 
 function dateValue(timestamp: number | null) {
   return timestamp === null ? "" : new Date(timestamp).toISOString().slice(0, 10);
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 export function LocationDetails({
@@ -167,7 +164,7 @@ export function LocationDetails({
       toast.success("Lokationsoplysningerne er gemt");
       onOpenChange(false);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Lokationen kunne ikke gemmes. Prøv igen."));
     } finally {
       setSaving(false);
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   useAction,
   useMutation,
@@ -165,10 +166,6 @@ function zonedDayStart(value: string, timeZone: string) {
   return guess;
 }
 
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
-
 function formatOre(revenue: number, currency = DEFAULT_CURRENCY) {
   return new Intl.NumberFormat("da-DK", {
     style: "currency",
@@ -257,7 +254,7 @@ function ConnectionCard({
         `Masterforbindelsen er oprettet. ${result.productCount} produkter blev fundet.`,
       );
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setConnecting(false);
     }
@@ -273,7 +270,7 @@ function ConnectionCard({
       onDisconnected();
       toast.success("OnlinePOS-integrationen er fjernet");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setDisconnecting(false);
     }
@@ -446,7 +443,7 @@ function RawSalesResponse() {
       setLines(result);
     } catch (error) {
       setLines(null);
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setLoading(false);
     }
@@ -458,7 +455,9 @@ function RawSalesResponse() {
       await navigator.clipboard.writeText(prettyJson);
       toast.success("Salgsresponsen er kopieret");
     } catch {
-      toast.error("Salgsresponsen kunne ikke kopieres");
+      toast.error(
+        "Salgsresponsen kunne ikke kopieres. Markér teksten, og kopiér den manuelt.",
+      );
     }
   }
 
@@ -584,7 +583,7 @@ function ProductMappings({
           : "Produktkoblingen er gemt",
       );
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSavingProductId(undefined);
     }
@@ -783,7 +782,7 @@ function SalesList() {
       await requestSync({ locationId });
       toast.success("Synkroniseringen er sat i gang");
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSyncing(false);
     }
@@ -1073,7 +1072,7 @@ export function OnlinePosIntegration() {
       setOnlinePosProducts(await listOnlinePosProducts({}));
     } catch (error) {
       setOnlinePosProducts(null);
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setLoadingProducts(false);
     }
@@ -1097,7 +1096,7 @@ export function OnlinePosIntegration() {
           : "OnlinePOS-integrationen er deaktiveret",
       );
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setChangingEnabled(false);
     }

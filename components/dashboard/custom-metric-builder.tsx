@@ -41,6 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { dashboardDatasets, type DashboardDataset } from "@/lib/dashboard/datasets";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import type {
   CustomMetricDatasetId,
   CustomMetricFilter,
@@ -256,10 +257,6 @@ function queryValidation(query: QueryDraft, label: string) {
   return null;
 }
 
-function metricError(error: unknown) {
-  return error instanceof Error ? error.message : "Målingen kunne ikke gemmes";
-}
-
 function Preview({
   result,
   loading,
@@ -382,7 +379,12 @@ export function CustomMetricBuilder({
         .catch((error: unknown) => {
           if (!active) return;
           setPreview(null);
-          setPreviewError(metricError(error));
+          setPreviewError(
+            getUserErrorMessage(
+              error,
+              "Forhåndsvisningen kunne ikke indlæses. Kontrollér målingen, og prøv igen.",
+            ),
+          );
           setPreviewLoading(false);
         });
     }, 450);
@@ -469,7 +471,9 @@ export function CustomMetricBuilder({
       onOpenChange(false);
       await onSaved?.(id);
     } catch (error) {
-      toast.error(metricError(error));
+      toast.error(
+        getUserErrorMessage(error, "Målingen kunne ikke gemmes. Prøv igen."),
+      );
     } finally {
       setSaving(false);
     }

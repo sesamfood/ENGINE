@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
@@ -61,10 +62,6 @@ const submittedAtFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "short",
   timeStyle: "short",
 });
-
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 export function FeedbackSettings() {
   const canManage = usePermission("organization.settings");
@@ -134,7 +131,7 @@ export function FeedbackSettings() {
         toast.success(`${result.length} teams blev hentet fra Linear`);
       }
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Feedbackindstillingerne kunne ikke opdateres. Prøv igen."));
     } finally {
       setLoadingTeams(false);
     }
@@ -158,7 +155,7 @@ export function FeedbackSettings() {
       setTeamDraft(null);
       toast.success("Feedbackindstillingerne blev gemt");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(getUserErrorMessage(error, "Feedbackindstillingerne kunne ikke opdateres. Prøv igen."));
     } finally {
       setSaving(false);
     }

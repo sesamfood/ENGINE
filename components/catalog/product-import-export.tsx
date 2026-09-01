@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useConvex, useMutation } from "convex/react";
@@ -38,10 +39,6 @@ import type {
   ParsedProductArchive,
   ProductExportRow,
 } from "@/lib/product-archive";
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 type ProductStatus = "active" | "archived";
 
@@ -102,7 +99,7 @@ export function ProductImportExport({
       downloadProductArchive(await createProductArchive(products));
       toast.success(`${products.length} produkter er eksporteret`);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen."));
     } finally {
       setIsExporting(false);
     }
@@ -115,7 +112,7 @@ export function ProductImportExport({
       setArchive(await readProductArchive(file));
       setArchiveName(file.name);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen."));
     } finally {
       setIsReading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -254,8 +251,8 @@ export function ProductImportExport({
     } catch (error) {
       toast.error(
         processedCount
-          ? `${processedCount} produkter blev behandlet, før importen stoppede: ${messageFrom(error)}`
-          : messageFrom(error),
+          ? `${processedCount} produkter blev behandlet, før importen stoppede: ${getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen.")}`
+          : getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen."),
       );
     } finally {
       setProgress("");

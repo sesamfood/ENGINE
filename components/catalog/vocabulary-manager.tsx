@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
@@ -125,10 +126,6 @@ const vocabularyKinds = {
   },
 } as const;
 
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
-
 export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
   const config = vocabularyKinds[kind];
   const items = useQuery(config.list) as VocabularyItem[] | undefined;
@@ -190,7 +187,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
       toast.success(`${config.definite} er gemt`);
       setEditing(null);
     } catch (caught) {
-      setError(messageFrom(caught));
+      setError(getUserErrorMessage(caught, "Indstillingen kunne ikke gemmes. Prøv igen."));
     } finally {
       setIsSaving(false);
     }
@@ -204,7 +201,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
       toast.success(`${config.definite} er fjernet`);
       setPendingDelete(null);
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Indstillingen kunne ikke gemmes. Prøv igen."));
     } finally {
       setIsDeleting(false);
     }
@@ -231,7 +228,7 @@ export function VocabularyManager({ kind }: { kind: VocabularyKind }) {
       );
       setPendingMerge(null);
     } catch (caught) {
-      setMergeError(messageFrom(caught));
+      setMergeError(getUserErrorMessage(caught, "Indstillingen kunne ikke gemmes. Prøv igen."));
     } finally {
       setIsMerging(false);
     }

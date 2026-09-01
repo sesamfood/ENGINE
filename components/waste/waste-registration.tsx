@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import posthog from "posthog-js";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -90,12 +91,6 @@ function formatQuantity(quantity: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 6 }).format(
     quantity,
   );
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Waste kunne ikke registreres";
 }
 
 function shortcutsFor(
@@ -413,7 +408,7 @@ export function WasteRegistration() {
       );
       if (source === "custom") setSelectedId(null);
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
     }
   }
 
@@ -445,7 +440,7 @@ export function WasteRegistration() {
       const firstError = results.find((result) => result.status === "rejected");
       toast.error(
         failed.length === 1 && firstError?.status === "rejected"
-          ? errorMessage(firstError.reason)
+          ? getUserErrorMessage(firstError.reason, "Waste-handlingen kunne ikke gennemføres. Prøv igen.")
           : `${failed.length} Waste-registreringer kunne ikke annulleres`,
       );
     }
@@ -462,7 +457,7 @@ export function WasteRegistration() {
         pinned: !configMap.get(product.id)?.pinnedAt,
       });
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
     }
   }
 
@@ -485,7 +480,7 @@ export function WasteRegistration() {
       toast.success("Genvejene er gemt");
       setEditingShortcuts(false);
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
     }
   }
 
@@ -782,7 +777,7 @@ export function WasteRegistration() {
                           setEditingShortcuts(false);
                           toast.success("Anbefalede mængder bruges igen");
                         } catch (error) {
-                          toast.error(errorMessage(error));
+                          toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
                         }
                       }}
                     >

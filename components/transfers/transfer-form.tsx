@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import posthog from "posthog-js";
@@ -134,10 +135,6 @@ type ValidatedTemperatures = {
   temperatures: ProductTemperatureInput[];
   deviations: TemperatureDeviationConfirmation[];
 };
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -423,7 +420,7 @@ export function TransferForm({
       addLine(product, unitId);
       setProductToAdd(null);
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
     } finally {
       setLoadingProductId(undefined);
     }
@@ -518,7 +515,7 @@ export function TransferForm({
       });
       if (!unit) toast.error("Produktet har ingen flere enheder");
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
     } finally {
       setLoadingProductId(undefined);
     }
@@ -664,7 +661,7 @@ export function TransferForm({
         resetForm();
       }
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
       setTemperatureConfirmation(null);
       setIsTemperatureDialogOpen(false);
       await refreshNewProductMaximums();

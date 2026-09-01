@@ -38,11 +38,8 @@ import { api } from "@/convex/_generated/api";
 import { dashboardDatasets } from "@/lib/dashboard/datasets";
 import type { CustomMetricSpec, DashboardRange, DashboardScope } from "@/lib/dashboard/types";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { CustomMetricBuilder, type CustomMetricDefinition } from "@/components/dashboard/custom-metric-builder";
-
-function metricMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Målingen kunne ikke opdateres";
-}
 
 function metricSummary(spec: CustomMetricSpec) {
   if (spec.kind === "single") {
@@ -84,7 +81,9 @@ export function CustomMetricLibrary() {
       toast.success("Målingen er slettet");
       setDeletingMetric(null);
     } catch (error) {
-      toast.error(metricMessage(error));
+      toast.error(
+        getUserErrorMessage(error, "Målingen kunne ikke opdateres. Prøv igen."),
+      );
     } finally {
       setDeleting(false);
     }

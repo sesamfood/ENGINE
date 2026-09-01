@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { PlusIcon } from "lucide-react";
@@ -15,10 +16,6 @@ import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { DashboardSettingsDialog } from "./dashboard-settings-dialog";
 
 const MAX_DASHBOARDS = 8;
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Dashboardrækkefølgen kunne ikke gemmes";
-}
 
 function CreateDashboardDialog({
   open,
@@ -42,7 +39,9 @@ function CreateDashboardDialog({
       toast.success("Dashboardet er oprettet");
       onCreated(String(dashboardId));
     } catch (error) {
-      toast.error(errorMessage(error));
+      toast.error(
+        getUserErrorMessage(error, "Dashboardet kunne ikke oprettes. Prøv igen."),
+      );
     } finally {
       setPending(false);
     }
@@ -111,7 +110,7 @@ export function DashboardTabs({
     } catch (error) {
       setOrder(previous);
       onReordered(previous.map((dashboard) => String(dashboard.id)));
-      toast.error(errorMessage(error));
+      toast.error(getUserErrorMessage(error, "Dashboardrækkefølgen kunne ikke gemmes. Prøv igen."));
     }
   }
 

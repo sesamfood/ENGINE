@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -95,10 +96,6 @@ const MAX_TEMPERATURE_INPUT = /^-?(?:\d+(?:[.,]\d{0,1})?|[.,]\d)$/;
 
 function newKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
-}
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
 }
 
 function parseReference(value: string) {
@@ -209,7 +206,12 @@ function OnlinePosProductMappingField({
           : "OnlinePOS-koblingen er gemt",
       );
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "OnlinePOS-koblingen kunne ikke gemmes. Prøv igen.",
+        ),
+      );
     } finally {
       setSaving(false);
     }
@@ -604,7 +606,12 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           await removeProductImage({ productId });
         }
       } catch (imageError) {
-        toast.error(`Produktet blev gemt, men ${messageFrom(imageError)}`);
+        toast.error(
+          `Produktet blev gemt, men ${getUserErrorMessage(
+            imageError,
+            "billedet kunne ikke opdateres. Prøv igen.",
+          )}`,
+        );
         router.push(`/administration/products/${savedProductId}${returnQuery}`);
         return;
       }
@@ -614,7 +621,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       );
       router.push(returnHref);
     } catch (caught) {
-      toast.error(messageFrom(caught));
+      toast.error(getUserErrorMessage(caught, "Produktet kunne ikke gemmes. Prøv igen."));
     } finally {
       setIsSaving(false);
     }

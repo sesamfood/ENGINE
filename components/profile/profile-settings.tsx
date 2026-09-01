@@ -30,7 +30,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
-function deletionError(message?: string) {
+function deletionError(error?: { message?: string }) {
+  const message = error?.message;
   if (message?.includes("Giv en anden bruger rollen Administrator")) {
     return "Giv en anden bruger rollen Administrator, før du sletter din konto.";
   }
@@ -55,7 +56,7 @@ export function ProfileSettings() {
     try {
       const result = await authClient.deleteUser({ password });
       if (result.error) {
-        setError(deletionError(result.error.message));
+        setError(deletionError(result.error));
         return;
       }
 

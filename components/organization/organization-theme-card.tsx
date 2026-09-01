@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -213,9 +214,10 @@ export function OrganizationThemeCard({
       toast.success("Organisationens farver er gemt");
     } catch (saveError) {
       toast.error(
-        saveError instanceof Error && saveError.message
-          ? saveError.message
-          : "Farverne kunne ikke gemmes. Prøv igen.",
+        getUserErrorMessage(
+          saveError,
+          "Farverne kunne ikke gemmes. Prøv igen.",
+        ),
       );
     } finally {
       setSaving(false);

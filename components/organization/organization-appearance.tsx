@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ImageIcon, Trash2Icon, UploadIcon } from "lucide-react";
@@ -45,11 +46,6 @@ import { OrganizationThemeCard } from "./organization-theme-card";
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
 const MAX_LOGO_SOURCE_SIZE = 10 * 1024 * 1024;
 const LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  return "Logoet kunne ikke opdateres. Prøv igen.";
-}
 
 function LogoUploadCard({
   name,
@@ -143,7 +139,7 @@ function LogoUploadCard({
       clearFile();
       toast.success(`${title} er opdateret`);
     } catch (uploadError) {
-      setError(getErrorMessage(uploadError));
+      setError(getUserErrorMessage(uploadError, "Logoet kunne ikke opdateres. Prøv igen."));
     } finally {
       setSaving(false);
     }
@@ -158,7 +154,7 @@ function LogoUploadCard({
       clearFile();
       toast.success(`${title} er fjernet`);
     } catch (removeError) {
-      setError(getErrorMessage(removeError));
+      setError(getUserErrorMessage(removeError, "Logoet kunne ikke opdateres. Prøv igen."));
     } finally {
       setSaving(false);
     }

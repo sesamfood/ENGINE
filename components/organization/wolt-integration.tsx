@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   CircleAlertIcon,
   ChevronDownIcon,
@@ -82,10 +83,6 @@ type MatchChoice = {
   matchValue: string;
   label: string;
 };
-
-function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Der opstod en fejl";
-}
 
 function bestMatchChoice(row: WoltObservedItem): MatchChoice {
   if (row.gtin) return { matchType: "gtin", matchValue: row.gtin, label: "GTIN" };
@@ -763,7 +760,7 @@ export function WoltIntegration() {
           : "Wolt-integrationen er deaktiveret",
       );
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
       setChangingEnabled(false);
     }
@@ -775,7 +772,7 @@ export function WoltIntegration() {
       const result = await beginSsio({ locationId });
       window.location.assign(result.url);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
       setBusyKey(null);
     }
   }
@@ -791,7 +788,7 @@ export function WoltIntegration() {
       );
       setBusyKey(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
       setBusyKey(null);
     }
   }
@@ -803,7 +800,7 @@ export function WoltIntegration() {
       toast.success("WIO partner-venue-id er fjernet");
       setBusyKey(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
       setBusyKey(null);
     }
   }
@@ -815,7 +812,7 @@ export function WoltIntegration() {
       toast.success("Wolt-forbindelsen er afbrudt");
       setBusyKey(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
       setBusyKey(null);
     }
   }
@@ -827,7 +824,7 @@ export function WoltIntegration() {
       toast.success(`${count} fejlede events blev sat til nyt forsøg`);
       setBusyKey(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
       setBusyKey(null);
     }
   }
@@ -859,7 +856,7 @@ export function WoltIntegration() {
       });
       setBusyKey(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
       setBusyKey(null);
     }
   }
@@ -882,7 +879,7 @@ export function WoltIntegration() {
       });
       setBusyKey(null);
     } catch (error) {
-      toast.error(messageFrom(error));
+      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
       setBusyKey(null);
     }
   }

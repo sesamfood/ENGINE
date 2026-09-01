@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useState } from "react";
 import { CopyIcon, LinkIcon, Share2Icon, Trash2Icon } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -41,10 +42,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Delingen kunne ikke ændres";
-}
-
 function link(token: string) {
   return `${window.location.origin}/share/${token}`;
 }
@@ -73,7 +70,9 @@ export function ShareDialog({
       await navigator.clipboard.writeText(link(token));
       toast.success("Linket er kopieret");
     } catch {
-      toast.error("Linket kunne ikke kopieres");
+      toast.error(
+        "Linket kunne ikke kopieres. Markér linket, og kopiér det manuelt.",
+      );
     }
   }
 
@@ -90,7 +89,9 @@ export function ShareDialog({
       await copy(share.token);
       setPassword("");
     } catch (error) {
-      toast.error(message(error));
+      toast.error(
+        getUserErrorMessage(error, "Delingslinket kunne ikke oprettes. Prøv igen."),
+      );
     } finally {
       setPending(false);
     }
@@ -182,7 +183,7 @@ export function ShareDialog({
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Behold link</AlertDialogCancel>
-                          <AlertDialogAction variant="destructive" onClick={() => void revokeShare({ shareId: share.id }).catch((error) => toast.error(message(error)))}>
+                          <AlertDialogAction variant="destructive" onClick={() => void revokeShare({ shareId: share.id }).catch((error) => toast.error(getUserErrorMessage(error, "Delingslinket kunne ikke tilbagekaldes. Prøv igen.")))}>
                             Tilbagekald
                           </AlertDialogAction>
                         </AlertDialogFooter>

@@ -4,7 +4,12 @@ import { MailPlusIcon, Trash2Icon, UserRoundIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +48,7 @@ import {
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   Select,
   SelectContent,
@@ -154,9 +160,10 @@ function MemberLocationPicker({
       toast.success("Lokationerne er opdateret");
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Lokationerne kunne ikke opdateres",
+        getUserErrorMessage(
+          error,
+          "Lokationerne kunne ikke opdateres. Prøv igen.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -333,7 +340,9 @@ export function MemberManagement() {
         if (!active) return;
 
         if (memberResult.error || invitationResult.error) {
-          setError("Brugere og invitationer kunne ikke indlæses.");
+          setError(
+            "Brugere og invitationer kunne ikke indlæses. Prøv igen.",
+          );
           return;
         }
 
@@ -346,7 +355,9 @@ export function MemberManagement() {
         );
       } catch {
         if (active) {
-          setError("Brugere og invitationer kunne ikke indlæses.");
+          setError(
+            "Brugere og invitationer kunne ikke indlæses. Prøv igen.",
+          );
         }
       } finally {
         if (active) setLoading(false);
@@ -384,7 +395,9 @@ export function MemberManagement() {
       toast.success("Invitationen er sendt");
       setRefreshKey((value) => value + 1);
     } catch {
-      toast.error("Invitationen kunne ikke sendes. Kontrollér forbindelsen");
+      toast.error(
+        "Invitationen kunne ikke sendes. Kontrollér forbindelsen, og prøv igen.",
+      );
     } finally {
       setInviting(false);
     }
@@ -408,7 +421,9 @@ export function MemberManagement() {
       toast.success("Rollen er opdateret");
       setRefreshKey((value) => value + 1);
     } catch {
-      toast.error("Rollen kunne ikke ændres. Kontrollér forbindelsen");
+      toast.error(
+        "Rollen kunne ikke ændres. Kontrollér forbindelsen, og prøv igen.",
+      );
     } finally {
       setPendingId(undefined);
     }
@@ -437,7 +452,9 @@ export function MemberManagement() {
       toast.success("Brugeren er fjernet");
       setRefreshKey((value) => value + 1);
     } catch {
-      toast.error("Brugeren kunne ikke fjernes. Kontrollér forbindelsen");
+      toast.error(
+        "Brugeren kunne ikke fjernes. Kontrollér forbindelsen, og prøv igen.",
+      );
     } finally {
       setPendingId(undefined);
     }
@@ -459,7 +476,7 @@ export function MemberManagement() {
       setRefreshKey((value) => value + 1);
     } catch {
       toast.error(
-        "Invitationen kunne ikke annulleres. Kontrollér forbindelsen",
+        "Invitationen kunne ikke annulleres. Kontrollér forbindelsen, og prøv igen.",
       );
     } finally {
       setPendingId(undefined);
@@ -554,6 +571,20 @@ export function MemberManagement() {
       {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
+          <AlertAction>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                setError(undefined);
+                setLoading(true);
+                setRefreshKey((value) => value + 1);
+              }}
+            >
+              Prøv igen
+            </Button>
+          </AlertAction>
         </Alert>
       ) : null}
 

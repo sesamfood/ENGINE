@@ -1,5 +1,6 @@
 "use client";
 
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useConvex, useMutation, useQuery } from "convex/react";
@@ -109,12 +110,6 @@ type Line = {
   quantity: number;
 };
 
-function message(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "Den dårlige levering kunne ikke registreres";
-}
-
 function requirePhoto(file: File) {
   if (!IMAGE_TYPES.has(file.type) || file.size > MAX_FILE_SIZE) {
     throw new Error(
@@ -154,7 +149,7 @@ function PhotoControl({
     try {
       onChange(requirePhoto(next));
     } catch (caught) {
-      toast.error(message(caught));
+      toast.error(getUserErrorMessage(caught, "Den dårlige levering kunne ikke opdateres. Prøv igen."));
     }
   }
 
@@ -363,7 +358,7 @@ export function BadDeliveryRegistration() {
       addLine(product, unitId);
       setProductToAdd(null);
     } catch (caught) {
-      toast.error(message(caught));
+      toast.error(getUserErrorMessage(caught, "Den dårlige levering kunne ikke opdateres. Prøv igen."));
     } finally {
       setLoadingProductId(undefined);
     }
@@ -492,7 +487,7 @@ export function BadDeliveryRegistration() {
         );
       }
     } catch (caught) {
-      toast.error(message(caught));
+      toast.error(getUserErrorMessage(caught, "Den dårlige levering kunne ikke opdateres. Prøv igen."));
     } finally {
       setSubmitting(false);
     }

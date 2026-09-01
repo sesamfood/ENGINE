@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Spinner } from "@/components/ui/spinner";
+import { getUserErrorMessage } from "@/lib/user-errors";
 
 const PREVIEW_SIZE = 640;
 const OUTPUT_SIZE = 1200;
@@ -304,9 +305,10 @@ export function ProductImageCropDialog({
       onOpenChange(false);
     } catch (caught) {
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Billedet kunne ikke beskæres",
+        getUserErrorMessage(
+          caught,
+          "Billedet kunne ikke beskæres. Vælg et andet billede, og prøv igen.",
+        ),
       );
       setErrorFile(file);
     } finally {
