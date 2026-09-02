@@ -726,10 +726,14 @@ export function StaffFoodSettings() {
                 Number.isInteger(amount) && amount >= 1 && amount <= 20;
               const products = productCatalog.filter(
                 (product) =>
-                  categoryIds.has(product.categoryId) &&
+                  product.categoryIds.some((categoryId) =>
+                    categoryIds.has(categoryId),
+                  ) &&
                   productSearchScore(
                     product.name,
-                    categoryPaths.get(product.categoryId) ?? "",
+                    product.categoryIds
+                      .map((categoryId) => categoryPaths.get(categoryId) ?? "")
+                      .join(" · "),
                     productSearches[index] ?? "",
                   ) !== null &&
                   (product.status === "active" ||

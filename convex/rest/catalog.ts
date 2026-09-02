@@ -25,6 +25,10 @@ import {
   buildCategoryHierarchy,
   MAX_CATEGORIES_PER_ORGANIZATION,
 } from "../lib/categoryHierarchy";
+import {
+  getProductCategoryIds,
+  MAX_PRODUCT_CATEGORIES,
+} from "../lib/productCategories";
 import { runIdempotent } from "../lib/idempotency";
 import { requireRestApiMutation } from "./lib";
 
@@ -57,6 +61,9 @@ const productValidator = v.object({
   category: v.union(
     v.object({ id: v.id("categories"), name: v.string() }),
     v.null(),
+  ),
+  categories: v.array(
+    v.object({ id: v.id("categories"), name: v.string() }),
   ),
   units: v.array(
     v.object({
@@ -118,7 +125,8 @@ const ingredientInputValidator = v.object({
 
 const productCreateInputValidator = v.object({
   name: v.string(),
-  categoryId: v.string(),
+  categoryId: v.optional(v.string()),
+  categoryIds: v.optional(v.array(v.string())),
   units: v.array(productUnitInputValidator),
   ingredients: v.array(ingredientInputValidator),
   maxTemperatureCelsius: v.optional(v.union(v.number(), v.null())),
@@ -127,6 +135,7 @@ const productCreateInputValidator = v.object({
 const productPatchInputValidator = v.object({
   name: v.optional(v.string()),
   categoryId: v.optional(v.string()),
+  categoryIds: v.optional(v.array(v.string())),
   units: v.optional(v.array(productUnitInputValidator)),
   ingredients: v.optional(v.array(ingredientInputValidator)),
   maxTemperatureCelsius: v.optional(v.union(v.number(), v.null())),
@@ -154,6 +163,7 @@ type ProductDto = {
   status: "active" | "archived";
   maxTemperatureCelsius: number | null;
   category: { id: Id<"categories">; name: string } | null;
+  categories: Array<{ id: Id<"categories">; name: string }>;
   units: Array<{
     id: Id<"units">;
     name: string;
@@ -280,9 +290,16 @@ async function categoryDto(
       "The category hierarchy is invalid and cannot be exposed.",
     );
   }
-  const [product, staffFoodAllowance] = await Promise.all([
+  const [primaryProduct, productMembership, staffFoodAllowance] =
+    await Promise.all([
     ctx.db
       .query("products")
+      .withIndex("by_organizationId_and_categoryId", (q) =>
+        q.eq("organizationId", organizationId).eq("categoryId", category._id),
+      )
+      .first(),
+    ctx.db
+      .query("productCategories")
       .withIndex("by_organizationId_and_categoryId", (q) =>
         q.eq("organizationId", organizationId).eq("categoryId", category._id),
       )
@@ -296,7 +313,7 @@ async function categoryDto(
   ]);
   return {
     ...current,
-    inUse: Boolean(product || staffFoodAllowance),
+    inUse: Boolean(primaryProduct || productMembership || staffFoodAllowance),
   };
 }
 
@@ -398,8 +415,8 @@ async function productDto(
   organizationId: string,
   product: Doc<"products">,
 ): Promise<ProductDto> {
-  const [category, unitRows, ingredientRows] = await Promise.all([
-    ctx.db.get("categories", product.categoryId),
+  const [categoryIds, unitRows, ingredientRows] = await Promise.all([
+    getProductCategoryIds(ctx, product),
     ctx.db
       .query("productUnits")
       .withIndex("by_organizationId_and_productId", (q) =>
@@ -413,6 +430,15 @@ async function productDto(
       )
       .take(MAX_CHILD_ROWS + 1),
   ]);
+  const categoryRows = await Promise.all(
+    categoryIds.map((categoryId) => ctx.db.get("categories", categoryId)),
+  );
+  const categories = categoryRows.flatMap((category) =>
+    category?.organizationId === organizationId
+      ? [{ id: category._id, name: category.name }]
+      : [],
+  );
+  const category = categories.find((item) => item.id === product.categoryId);
   if (
     unitRows.length > MAX_CHILD_ROWS ||
     ingredientRows.length > MAX_CHILD_ROWS
@@ -463,10 +489,8 @@ async function productDto(
     name: product.name,
     status: product.status,
     maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
-    category:
-      category && category.organizationId === organizationId
-        ? { id: category._id, name: category.name }
-        : null,
+    category: category ?? null,
+    categories,
     units: units.filter((row): row is NonNullable<typeof row> => row !== null),
     ingredients: ingredients.filter(
       (row): row is NonNullable<typeof row> => row !== null,
@@ -490,6 +514,30 @@ async function resolveCategoryId(
     );
   }
   return id;
+}
+
+async function resolveCategoryIds(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  values: string[],
+): Promise<[Id<"categories">, ...Id<"categories">[]]> {
+  const [firstValue, ...additionalValues] = values;
+  if (!firstValue || values.length > MAX_PRODUCT_CATEGORIES) {
+    restError(
+      "validation_error",
+      `A product must have between 1 and ${MAX_PRODUCT_CATEGORIES} categories.`,
+    );
+  }
+  const categoryIds: [Id<"categories">, ...Id<"categories">[]] = [
+    await resolveCategoryId(ctx, organizationId, firstValue),
+  ];
+  for (const value of additionalValues) {
+    categoryIds.push(await resolveCategoryId(ctx, organizationId, value));
+  }
+  if (new Set(categoryIds).size !== categoryIds.length) {
+    restError("validation_error", "Each category may only be supplied once.");
+  }
+  return categoryIds;
 }
 
 async function resolveUnitInputs(
@@ -989,10 +1037,20 @@ export const createProduct = mutation({
         requestHash: args.requestHash,
       },
       async () => {
-        const categoryId = await resolveCategoryId(
+        if (
+          args.input.categoryId !== undefined &&
+          args.input.categoryIds !== undefined
+        ) {
+          restError(
+            "validation_error",
+            "Supply categoryIds or categoryId, not both.",
+          );
+        }
+        const categoryIds = await resolveCategoryIds(
           ctx,
           auth.organizationId,
-          args.input.categoryId,
+          args.input.categoryIds ??
+            (args.input.categoryId ? [args.input.categoryId] : []),
         );
         const units = await resolveUnitInputs(
           ctx,
@@ -1007,7 +1065,7 @@ export const createProduct = mutation({
         const id = await safeCatalogMutation(() =>
           createProductWithAuth(ctx, auth, {
             name: publicName(args.input.name, "Product name"),
-            category: { kind: "existing", id: categoryId },
+            categories: categoryIds.map((id) => ({ kind: "existing", id })),
             units,
             ingredients,
             maxTemperatureCelsius: args.input.maxTemperatureCelsius,
@@ -1040,14 +1098,30 @@ export const updateProduct = mutation({
       auth.organizationId,
       product,
     );
-    const categoryId =
-      args.input.categoryId === undefined
-        ? product.categoryId
-        : await resolveCategoryId(
+    if (
+      args.input.categoryId !== undefined &&
+      args.input.categoryIds !== undefined
+    ) {
+      restError(
+        "validation_error",
+        "Supply categoryIds or categoryId, not both.",
+      );
+    }
+    const currentCategoryIds = await getProductCategoryIds(ctx, product);
+    const categoryIds =
+      args.input.categoryIds !== undefined
+        ? await resolveCategoryIds(
             ctx,
             auth.organizationId,
-            args.input.categoryId,
-          );
+            args.input.categoryIds,
+          )
+        : args.input.categoryId !== undefined
+          ? await resolveCategoryIds(
+              ctx,
+              auth.organizationId,
+              [args.input.categoryId],
+            )
+          : currentCategoryIds;
     const unitInputs =
       args.input.units === undefined
         ? current.units
@@ -1064,7 +1138,7 @@ export const updateProduct = mutation({
       updateProductWithAuth(ctx, auth, {
         productId: product._id,
         name: publicName(args.input.name ?? product.name, "Product name"),
-        category: { kind: "existing", id: categoryId },
+        categories: categoryIds.map((id) => ({ kind: "existing", id })),
         units: unitInputs,
         ingredients: ingredientInputs,
         maxTemperatureCelsius:

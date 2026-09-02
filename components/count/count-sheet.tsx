@@ -125,6 +125,12 @@ type CountCatalogProduct = {
     path: string;
     parentCategoryId: Id<"categories"> | null;
   };
+  categories: Array<{
+    id: Id<"categories">;
+    name: string;
+    path: string;
+    parentCategoryId: Id<"categories"> | null;
+  }>;
   imageUrl: string | null;
   defaultUnitId: Id<"units">;
   units: Array<Omit<CountUnit, "quantity">>;
@@ -400,7 +406,9 @@ function ProductCard({
                 {product.name}
               </CardTitle>
               <CardDescription className="max-w-[45%] shrink-0 truncate">
-                {product.category?.name ?? "Uden kategori"}
+                {product.categories
+                  .map((category) => category.name)
+                  .join(" · ") || "Uden kategori"}
               </CardDescription>
             </div>
           </CardHeader>
@@ -598,7 +606,11 @@ function SingleProductCounter({
                 <Badge variant="secondary" aria-live="polite">
                   {position + 1} af {productCount}
                 </Badge>
-                <CardDescription>{product.category.name}</CardDescription>
+                <CardDescription>
+                  {product.categories
+                    .map((category) => category.name)
+                    .join(" · ")}
+                </CardDescription>
               </div>
               <CardTitle className="text-3xl leading-tight tracking-tight sm:text-4xl">
                 {product.name}
@@ -1332,9 +1344,14 @@ export function CountSheet() {
           editingOrder ||
           viewMode === "single" ||
           ((!selectedCategoryIds ||
-            selectedCategoryIds.has(product.category.id)) &&
-            productSearchScore(product.name, product.category.path, search) !==
-              null),
+            product.categories.some((category) =>
+              selectedCategoryIds.has(category.id),
+            )) &&
+            productSearchScore(
+              product.name,
+              product.categories.map((category) => category.path).join(" · "),
+              search,
+            ) !== null),
       )
       .map((product) => ({
         ...product,
