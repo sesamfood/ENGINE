@@ -1070,6 +1070,20 @@ export default defineSchema({
       filterFields: ["organizationId", "status", "categoryId"],
     }),
 
+  productCategories: defineTable({
+    organizationId: v.string(),
+    productId: v.id("products"),
+    categoryId: v.id("categories"),
+  })
+    .index("by_organizationId_and_productId", [
+      "organizationId",
+      "productId",
+    ])
+    .index("by_organizationId_and_categoryId", [
+      "organizationId",
+      "categoryId",
+    ]),
+
   productUnits: defineTable({
     organizationId: v.string(),
     productId: v.id("products"),

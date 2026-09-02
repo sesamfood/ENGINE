@@ -21,6 +21,7 @@ import { usePermission } from "@/components/app-shell";
 import { getOnlinePosProductSuggestions } from "@/components/catalog/online-pos-product-suggestions";
 import {
   CreatableCombobox,
+  CreatableMultiCombobox,
   type ComboboxOption,
 } from "@/components/catalog/creatable-combobox";
 import { ProductImageCropDialog } from "@/components/catalog/product-image-crop-dialog";
@@ -325,7 +326,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const initializedProduct = useRef<string | null>(null);
   const [name, setName] = useState("");
   const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
-  const [categoryValue, setCategoryValue] = useState<string | null>(null);
+  const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [unitRows, setUnitRows] = useState<UnitRow[]>([
     { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
   ]);
@@ -345,8 +346,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     setMaxTemperatureCelsius(
       product.maxTemperatureCelsius?.toString() ?? "",
     );
-    setCategoryValue(
-      product.category ? `existing:${product.category.id}` : null,
+    setCategoryValues(
+      product.categories.map((category) => `existing:${category.id}`),
     );
     setUnitRows(
       product.units.map((unit) => ({
@@ -393,7 +394,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       catalog?.map((option) => ({
         id: option.id,
         name: option.name,
-        categoryPath: option.category.path,
+        categoryPath: option.categories
+          .map((category) => category.path)
+          .join(" · "),
         units: option.units.map((unit) => ({ id: unit.id, name: unit.name })),
       })) ?? [];
     if (!product) return active;
@@ -496,7 +499,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     if (temperatureError) {
       nextErrors.maxTemperatureCelsius = temperatureError;
     }
-    if (!categoryValue) nextErrors.category = "Vælg eller opret en kategori";
+    if (categoryValues.length === 0) {
+      nextErrors.category = "Vælg eller opret mindst én kategori";
+    }
     if (unitRows.length === 0) nextErrors.units = "Tilføj mindst én enhed";
     if (unitRows.some((row) => !row.unitValue)) {
       nextErrors.units = "Vælg en enhed for hver række";
@@ -563,10 +568,15 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   }
 
   async function save() {
-    if (!validate() || !categoryValue) return;
+    if (!validate() || categoryValues.length === 0) return;
     setIsSaving(true);
 
-    const category = parseReference(categoryValue);
+    const categories = categoryValues.map((value) => {
+      const category = parseReference(value);
+      return category.kind === "existing"
+        ? { kind: "existing" as const, id: category.id as Id<"categories"> }
+        : category;
+    });
     const units = unitRows.map((row) => ({
       unit: parseReference(row.unitValue!),
       factorToDefault: parseFactor(row.factor),
@@ -583,10 +593,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         ? await updateProduct({
             productId,
             name,
-            category:
-              category.kind === "existing"
-                ? { kind: "existing", id: category.id as Id<"categories"> }
-                : category,
+            categories,
             units: units.map((row) => ({
               ...row,
               unit:
@@ -599,10 +606,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           })
         : await createProduct({
             name,
-            category:
-              category.kind === "existing"
-                ? { kind: "existing", id: category.id as Id<"categories"> }
-                : category,
+            categories,
             units: units.map((row) => ({
               ...row,
               unit:
@@ -706,14 +710,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               </Field>
 
               <Field data-invalid={Boolean(errors.category)}>
-                <FieldLabel>Kategori</FieldLabel>
-                <CreatableCombobox
+                <FieldLabel>Kategorier</FieldLabel>
+                <CreatableMultiCombobox
                   options={categoryOptions}
-                  value={categoryValue}
-                  onValueChange={setCategoryValue}
-                  placeholder="Vælg eller opret en kategori"
+                  values={categoryValues}
+                  onValuesChange={setCategoryValues}
+                  placeholder="Vælg eller opret kategorier"
                   allowCreate
-                  ariaLabel="Produktkategori"
+                  ariaLabel="Produktkategorier"
                 />
                 <FieldError>{errors.category}</FieldError>
               </Field>

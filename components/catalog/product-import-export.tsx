@@ -170,13 +170,13 @@ export function ProductImportExport({
           `Behandler produkter ${index + 1} af ${archive.manifest.products.length}`,
         );
         const maxTemperature =
-          archive.manifest.version === 2 &&
+          archive.manifest.version !== 1 &&
           "maxTemperatureCelsius" in product
             ? { maxTemperatureCelsius: product.maxTemperatureCelsius }
             : {};
         const result = await importProduct({
           name: product.name,
-          category: product.category,
+          categories: product.categories ?? [product.category],
           units: product.units,
           overwrite: conflictMode === "overwrite",
           ...maxTemperature,

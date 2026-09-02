@@ -27,6 +27,11 @@ import {
   listActiveProductCatalog,
   listActiveProductSearchOptions as loadActiveProductSearchOptions,
 } from "./lib/productCatalog";
+import {
+  getProductCategoryIds,
+  MAX_PRODUCT_CATEGORIES,
+  replaceProductCategories,
+} from "./lib/productCategories";
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
 
@@ -60,14 +65,20 @@ const managedCategoryValidator = categoryOptionValidator.extend({
   hasChildren: v.boolean(),
 });
 
+const productCategoryValidator = v.object({
+  id: v.id("categories"),
+  name: v.string(),
+});
+
 const catalogProductValidator = v.object({
   id: v.id("products"),
   name: v.string(),
   status: statusValidator,
   category: v.union(
-    v.object({ id: v.id("categories"), name: v.string() }),
+    productCategoryValidator,
     v.null(),
   ),
+  categories: v.array(productCategoryValidator),
   defaultUnit: v.union(
     v.object({ id: v.id("units"), name: v.string() }),
     v.null(),
@@ -84,9 +95,10 @@ const productDetailValidator = v.object({
   status: statusValidator,
   maxTemperatureCelsius: v.union(v.number(), v.null()),
   category: v.union(
-    v.object({ id: v.id("categories"), name: v.string() }),
+    productCategoryValidator,
     v.null(),
   ),
+  categories: v.array(productCategoryValidator),
   imageUrl: v.union(v.string(), v.null()),
   units: v.array(
     v.object({
@@ -150,7 +162,7 @@ const productExportValidator = v.object({
   sourceId: v.id("products"),
   name: v.string(),
   status: statusValidator,
-  category: v.string(),
+  categories: v.array(v.string()),
   maxTemperatureCelsius: v.union(v.number(), v.null()),
   units: v.array(
     v.object({
@@ -492,6 +504,33 @@ async function resolveCategory(
   );
 }
 
+async function resolveCategories(
+  ctx: MutationCtx,
+  organizationId: string,
+  references: CategoryReference[],
+): Promise<[Id<"categories">, ...Id<"categories">[]]> {
+  const [firstReference, ...additionalReferences] = references;
+  if (!firstReference) {
+    throw new ConvexError("Vælg mindst én kategori");
+  }
+  if (references.length > MAX_PRODUCT_CATEGORIES) {
+    throw new ConvexError(
+      `Et produkt kan højst have ${MAX_PRODUCT_CATEGORIES} kategorier`,
+    );
+  }
+
+  const categoryIds: [Id<"categories">, ...Id<"categories">[]] = [
+    await resolveCategory(ctx, organizationId, firstReference),
+  ];
+  for (const reference of additionalReferences) {
+    categoryIds.push(await resolveCategory(ctx, organizationId, reference));
+  }
+  if (new Set(categoryIds).size !== categoryIds.length) {
+    throw new ConvexError("Hver kategori kan kun tilføjes én gang");
+  }
+  return categoryIds;
+}
+
 async function resolveUnits(
   ctx: MutationCtx,
   organizationId: string,
@@ -794,6 +833,7 @@ async function permanentlyDeleteProduct(
     recipeReferences,
     stockRows,
     staffFoodRules,
+    categoryMemberships,
   ] = await Promise.all([
     ctx.db
       .query("productUnits")
@@ -835,6 +875,14 @@ async function permanentlyDeleteProduct(
           .eq("productId", product._id),
       )
       .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productCategories")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_PRODUCT_CATEGORIES + 1),
   ]);
 
   if (
@@ -842,7 +890,8 @@ async function permanentlyDeleteProduct(
     ingredients.length > MAX_CHILD_ROWS ||
     recipeReferences.length > MAX_GRAPH_PRODUCTS ||
     stockRows.length > MAX_CHILD_ROWS ||
-    staffFoodRules.length > MAX_CHILD_ROWS
+    staffFoodRules.length > MAX_CHILD_ROWS ||
+    categoryMemberships.length > MAX_PRODUCT_CATEGORIES
   ) {
     throw new ConvexError(
       "Produktet har for mange relationer til at blive slettet",
@@ -859,6 +908,9 @@ async function permanentlyDeleteProduct(
   for (const row of stockRows) await ctx.db.delete("locationStock", row._id);
   for (const row of staffFoodRules) {
     await ctx.db.delete("staffFoodRuleProducts", row._id);
+  }
+  for (const membership of categoryMemberships) {
+    await ctx.db.delete("productCategories", membership._id);
   }
   await scrubProductFromCountOrder(ctx, product.organizationId, product._id);
   await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, {
@@ -882,7 +934,7 @@ async function hydrateCatalogProduct(
     defaultUnitsById: ReadonlyMap<Id<"units">, Doc<"units">>;
   },
 ) {
-  const [units, ingredients, imageUrl] = await Promise.all([
+  const [units, ingredients, imageUrl, categoryIds] = await Promise.all([
     ctx.db
       .query("productUnits")
       .withIndex("by_organizationId_and_productId", (q) =>
@@ -902,8 +954,13 @@ async function hydrateCatalogProduct(
     product.imageStorageId
       ? ctx.storage.getUrl(product.imageStorageId)
       : Promise.resolve(null),
+    getProductCategoryIds(ctx, product),
   ]);
   const category = lookups.categoriesById.get(product.categoryId);
+  const categories = categoryIds.flatMap((categoryId) => {
+    const item = lookups.categoriesById.get(categoryId);
+    return item ? [item] : [];
+  });
   const defaultUnit = lookups.defaultUnitsById.get(product.defaultUnitId);
 
   return {
@@ -911,6 +968,7 @@ async function hydrateCatalogProduct(
     name: product.name,
     status: product.status,
     category: category ? { id: category.id, name: category.name } : null,
+    categories,
     defaultUnit: defaultUnit
       ? { id: defaultUnit._id, name: defaultUnit.name }
       : null,
@@ -1087,27 +1145,51 @@ export const listProducts = query({
           ) {
             throw new ConvexError("Sideringen er ugyldig");
           }
-          const matches = scanned
-            .map((product) => {
-              const productScore = fuzzyScore(product.name, search);
-              const categoryScore = fuzzyScore(
-                categoryPaths.get(product.categoryId) ?? "",
-                search,
-              );
-              return {
-                product,
-                score:
-                  productScore === null
-                    ? categoryScore
-                    : categoryScore === null
-                      ? productScore
-                      : Math.min(productScore, categoryScore),
-              };
-            })
+          const matches = (
+            await Promise.all(
+              scanned.map(async (product) => {
+                const productCategoryIds = await getProductCategoryIds(
+                  ctx,
+                  product,
+                );
+                const categoryScores = productCategoryIds.flatMap(
+                  (categoryId) => {
+                    const score = fuzzyScore(
+                      categoryPaths.get(categoryId) ?? "",
+                      search,
+                    );
+                    return score === null ? [] : [score];
+                  },
+                );
+                const productScore = fuzzyScore(product.name, search);
+                const categoryScore = categoryScores.length
+                  ? Math.min(...categoryScores)
+                  : null;
+                return {
+                  product,
+                  matchesCategory:
+                    !categoryIds ||
+                    productCategoryIds.some((categoryId) =>
+                      categoryIds.has(categoryId),
+                    ),
+                  score:
+                    productScore === null
+                      ? categoryScore
+                      : categoryScore === null
+                        ? productScore
+                        : Math.min(productScore, categoryScore),
+                };
+              }),
+            )
+          )
             .filter(
-              (match): match is { product: Doc<"products">; score: number } =>
-                match.score !== null &&
-                (!categoryIds || categoryIds.has(match.product.categoryId)),
+              (
+                match,
+              ): match is {
+                product: Doc<"products">;
+                matchesCategory: true;
+                score: number;
+              } => match.score !== null && match.matchesCategory,
             )
             .sort((left, right) => left.score - right.score)
             .map((match) => match.product);
@@ -1208,9 +1290,9 @@ export const exportProducts = query({
       ...results,
       page: await Promise.all(
         results.page.map(async (product) => {
-          const [category, unitRows, ingredientRows, imageUrl] =
+          const [categoryIds, unitRows, ingredientRows, imageUrl] =
             await Promise.all([
-              ctx.db.get("categories", product.categoryId),
+              getProductCategoryIds(ctx, product),
               ctx.db
                 .query("productUnits")
                 .withIndex("by_organizationId_and_productId", (q) =>
@@ -1231,9 +1313,18 @@ export const exportProducts = query({
                 ? ctx.storage.getUrl(product.imageStorageId)
                 : Promise.resolve(null),
             ]);
-          if (!category || category.organizationId !== organizationId) {
+          const categories = await Promise.all(
+            categoryIds.map((categoryId) =>
+              ctx.db.get("categories", categoryId),
+            ),
+          );
+          const validCategories = categories.filter(
+            (category): category is Doc<"categories"> =>
+              Boolean(category && category.organizationId === organizationId),
+          );
+          if (validCategories.length !== categories.length) {
             throw new ConvexError(
-              `Kategorien til ${product.name} blev ikke fundet`,
+              `En kategori til ${product.name} blev ikke fundet`,
             );
           }
 
@@ -1280,7 +1371,7 @@ export const exportProducts = query({
             sourceId: product._id,
             name: product.name,
             status: product.status,
-            category: category.name,
+            categories: validCategories.map((category) => category.name),
             maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
             units,
             ingredients,
@@ -1300,8 +1391,8 @@ export const getProduct = query({
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) return null;
 
-    const [category, unitRows, ingredientRows, imageUrl] = await Promise.all([
-      ctx.db.get("categories", product.categoryId),
+    const [categoryIds, unitRows, ingredientRows, imageUrl] = await Promise.all([
+      getProductCategoryIds(ctx, product),
       ctx.db
         .query("productUnits")
         .withIndex("by_organizationId_and_productId", (q) =>
@@ -1318,6 +1409,15 @@ export const getProduct = query({
         ? ctx.storage.getUrl(product.imageStorageId)
         : Promise.resolve(null),
     ]);
+    const categoryRows = await Promise.all(
+      categoryIds.map((categoryId) => ctx.db.get("categories", categoryId)),
+    );
+    const categories = categoryRows.flatMap((category) =>
+      category?.organizationId === organizationId
+        ? [{ id: category._id, name: category.name }]
+        : [],
+    );
+    const category = categories.find((item) => item.id === product.categoryId);
 
     const units = await Promise.all(
       unitRows.map(async (row) => {
@@ -1356,7 +1456,8 @@ export const getProduct = query({
       name: product.name,
       status: product.status,
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
-      category: category ? { id: category._id, name: category.name } : null,
+      category: category ?? null,
+      categories,
       imageUrl,
       units: units.filter((row) => row !== null),
       ingredients: ingredients.filter((row) => row !== null),
@@ -1418,31 +1519,42 @@ export const listCategories = query({
 
     return await Promise.all(
       categories.map(async (category) => {
-        const [product, staffFoodAllowance] = await Promise.all([
-          ctx.db
-            .query("products")
-            .withIndex("by_organizationId_and_categoryId", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("categoryId", category.id),
-            )
-            .first(),
-          ctx.db
-            .query("staffFoodRuleAllowances")
-            .withIndex("by_organizationId_and_categoryId", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("categoryId", category.id),
-            )
-            .first(),
-        ]);
+        const [primaryProduct, productMembership, staffFoodAllowance] =
+          await Promise.all([
+            ctx.db
+              .query("products")
+              .withIndex("by_organizationId_and_categoryId", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("categoryId", category.id),
+              )
+              .first(),
+            ctx.db
+              .query("productCategories")
+              .withIndex("by_organizationId_and_categoryId", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("categoryId", category.id),
+              )
+              .first(),
+            ctx.db
+              .query("staffFoodRuleAllowances")
+              .withIndex("by_organizationId_and_categoryId", (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("categoryId", category.id),
+              )
+              .first(),
+          ]);
         return {
           id: category.id,
           name: category.name,
           parentCategoryId: category.parentCategoryId,
           path: category.path,
           depth: category.depth,
-          inUse: Boolean(product || staffFoodAllowance),
+          inUse: Boolean(
+            primaryProduct || productMembership || staffFoodAllowance,
+          ),
           hasChildren: category.hasChildren,
         };
       }),
@@ -1484,7 +1596,7 @@ export async function createProductWithAuth(
   auth: OrganizationAuth,
   args: {
     name: string;
-    category: CategoryReference;
+    categories: CategoryReference[];
     units: ProductUnitInput[];
     ingredients: IngredientInput[];
     maxTemperatureCelsius?: number | null;
@@ -1493,7 +1605,12 @@ export async function createProductWithAuth(
   const { organizationId, userIdentifier } = auth;
   const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
   await assertProductNameAvailable(ctx, organizationId, normalizedName);
-  const categoryId = await resolveCategory(ctx, organizationId, args.category);
+  const categoryIds = await resolveCategories(
+    ctx,
+    organizationId,
+    args.categories,
+  );
+  const categoryId = categoryIds[0];
   const units = await resolveUnits(ctx, organizationId, args.units);
   await validateIngredients(ctx, organizationId, args.ingredients);
   if (typeof args.maxTemperatureCelsius === "number") {
@@ -1521,6 +1638,11 @@ export async function createProductWithAuth(
     units,
     args.ingredients,
   );
+  await replaceProductCategories(
+    ctx,
+    { _id: productId, organizationId, categoryId },
+    categoryIds,
+  );
   await recordAudit(ctx, auth, {
     action: "catalog.productCreated",
     entityTable: "products",
@@ -1536,7 +1658,7 @@ export async function updateProductWithAuth(
   args: {
     productId: Id<"products">;
     name: string;
-    category: CategoryReference;
+    categories: CategoryReference[];
     units: ProductUnitInput[];
     ingredients: IngredientInput[];
     maxTemperatureCelsius?: number | null;
@@ -1558,7 +1680,12 @@ export async function updateProductWithAuth(
     normalizedName,
     product._id,
   );
-  const categoryId = await resolveCategory(ctx, organizationId, args.category);
+  const categoryIds = await resolveCategories(
+    ctx,
+    organizationId,
+    args.categories,
+  );
+  const categoryId = categoryIds[0];
   const units = await resolveUnits(ctx, organizationId, args.units);
   const existingIngredients = await ctx.db
     .query("productIngredients")
@@ -1630,6 +1757,11 @@ export async function updateProductWithAuth(
       : {}),
     updatedAt,
   });
+  await replaceProductCategories(
+    ctx,
+    { ...product, categoryId },
+    categoryIds,
+  );
   await recordAudit(ctx, auth, {
     action: "catalog.productUpdated",
     entityTable: "products",
@@ -1731,7 +1863,7 @@ export async function deleteProductWithAuth(
 export const createProduct = mutation({
   args: {
     name: v.string(),
-    category: categoryReferenceValidator,
+    categories: v.array(categoryReferenceValidator),
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
     maxTemperatureCelsius: maxTemperatureInputValidator,
@@ -1746,7 +1878,7 @@ export const createProduct = mutation({
 export const importProduct = mutation({
   args: {
     name: v.string(),
-    category: v.string(),
+    categories: v.array(v.string()),
     units: v.array(importedProductUnitValidator),
     overwrite: v.boolean(),
     maxTemperatureCelsius: maxTemperatureInputValidator,
@@ -1781,10 +1913,12 @@ export const importProduct = mutation({
       return { productId: existing._id, status: "skipped" as const };
     }
 
-    const categoryId = await resolveCategory(ctx, organizationId, {
-      kind: "new",
-      name: args.category,
-    });
+    const categoryIds = await resolveCategories(
+      ctx,
+      organizationId,
+      args.categories.map((name) => ({ kind: "new", name })),
+    );
+    const categoryId = categoryIds[0];
     const units = await resolveUnits(
       ctx,
       organizationId,
@@ -1976,6 +2110,11 @@ export const importProduct = mutation({
         archivedAt: undefined,
         updatedAt,
       });
+      await replaceProductCategories(
+        ctx,
+        { ...existing, categoryId },
+        categoryIds,
+      );
       await recordAudit(ctx, auth, {
         action: "catalog.productImported",
         entityTable: "products",
@@ -1999,6 +2138,11 @@ export const importProduct = mutation({
       updatedAt: Date.now(),
     });
     await replaceProductChildren(ctx, organizationId, productId, units, []);
+    await replaceProductCategories(
+      ctx,
+      { _id: productId, organizationId, categoryId },
+      categoryIds,
+    );
     await recordAudit(ctx, auth, {
       action: "catalog.productImported",
       entityTable: "products",
@@ -2076,7 +2220,7 @@ export const updateProduct = mutation({
   args: {
     productId: v.id("products"),
     name: v.string(),
-    category: categoryReferenceValidator,
+    categories: v.array(categoryReferenceValidator),
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
     maxTemperatureCelsius: maxTemperatureInputValidator,
@@ -2126,6 +2270,11 @@ export const bulkUpdateProductCategory = mutation({
         categoryId: category._id,
         updatedAt,
       });
+      await replaceProductCategories(
+        ctx,
+        { ...product, categoryId: category._id },
+        [category._id],
+      );
     }
     await recordAudit(ctx, auth, {
       action: "catalog.productsCategoryChanged",
@@ -2360,30 +2509,45 @@ export async function deleteCategoryWithAuth(
   if (!category || category.organizationId !== organizationId) {
     throw new ConvexError("Kategorien blev ikke fundet");
   }
-  const [child, product, staffFoodAllowance] = await Promise.all([
-    ctx.db
-      .query("categories")
-      .withIndex("by_organizationId_and_parentCategoryId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("parentCategoryId", category._id),
-      )
-      .first(),
-    ctx.db
-      .query("products")
-      .withIndex("by_organizationId_and_categoryId", (q) =>
-        q.eq("organizationId", organizationId).eq("categoryId", category._id),
-      )
-      .first(),
-    ctx.db
-      .query("staffFoodRuleAllowances")
-      .withIndex("by_organizationId_and_categoryId", (q) =>
-        q.eq("organizationId", organizationId).eq("categoryId", category._id),
-      )
-      .first(),
-  ]);
+  const [child, productMembership, primaryProduct, staffFoodAllowance] =
+    await Promise.all([
+      ctx.db
+        .query("categories")
+        .withIndex("by_organizationId_and_parentCategoryId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("parentCategoryId", category._id),
+        )
+        .first(),
+      ctx.db
+        .query("productCategories")
+        .withIndex("by_organizationId_and_categoryId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("categoryId", category._id),
+        )
+        .first(),
+      ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_categoryId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("categoryId", category._id),
+        )
+        .first(),
+      ctx.db
+        .query("staffFoodRuleAllowances")
+        .withIndex("by_organizationId_and_categoryId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("categoryId", category._id),
+        )
+        .first(),
+    ]);
   if (child) throw new ConvexError("Kategorien har underkategorier");
-  if (product) throw new ConvexError("Kategorien er stadig i brug");
+  if (primaryProduct || productMembership) {
+    throw new ConvexError("Kategorien er stadig i brug");
+  }
   if (staffFoodAllowance) {
     throw new ConvexError("Kategorien bruges stadig i Staff food");
   }

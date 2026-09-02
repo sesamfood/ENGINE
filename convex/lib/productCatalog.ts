@@ -7,6 +7,7 @@ import {
 } from "./categoryHierarchy";
 import { productSearchScore } from "../../lib/product-search";
 import { getLocationProductAccess } from "./locationProducts";
+import { getProductCategoryIds } from "./productCategories";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
@@ -18,15 +19,18 @@ export const activeProductSearchOptionValidator = v.object({
   categoryPath: v.string(),
 });
 
+const activeProductCategoryValidator = v.object({
+  id: v.id("categories"),
+  name: v.string(),
+  path: v.string(),
+  parentCategoryId: v.union(v.id("categories"), v.null()),
+});
+
 export const activeProductCatalogValidator = v.object({
   id: v.id("products"),
   name: v.string(),
-  category: v.object({
-    id: v.id("categories"),
-    name: v.string(),
-    path: v.string(),
-    parentCategoryId: v.union(v.id("categories"), v.null()),
-  }),
+  category: activeProductCategoryValidator,
+  categories: v.array(activeProductCategoryValidator),
   imageUrl: v.union(v.string(), v.null()),
   defaultUnitId: v.id("units"),
   units: v.array(
@@ -47,6 +51,12 @@ export type ActiveProductCatalogItem = {
     path: string;
     parentCategoryId: Id<"categories"> | null;
   };
+  categories: Array<{
+    id: Id<"categories">;
+    name: string;
+    path: string;
+    parentCategoryId: Id<"categories"> | null;
+  }>;
   imageUrl: string | null;
   defaultUnitId: Id<"units">;
   units: Array<{
@@ -100,17 +110,25 @@ export async function listActiveProductSearchOptions(
     hierarchy.map((category) => [category.id, category]),
   );
 
-  return products.map((product) => {
-    const category = categoriesById.get(product.categoryId);
-    if (!category) {
-      throw new ConvexError("Produktets kategori blev ikke fundet");
-    }
-    return {
-      id: product._id,
-      name: product.name,
-      categoryPath: category.path,
-    };
-  });
+  return await Promise.all(
+    products.map(async (product) => {
+      const category = categoriesById.get(product.categoryId);
+      if (!category) {
+        throw new ConvexError("Produktets kategori blev ikke fundet");
+      }
+      const categoryIds = await getProductCategoryIds(ctx, product);
+      return {
+        id: product._id,
+        name: product.name,
+        categoryPath: categoryIds
+          .flatMap((categoryId) => {
+            const item = categoriesById.get(categoryId);
+            return item ? [item.path] : [];
+          })
+          .join(" · "),
+      };
+    }),
+  );
 }
 
 export async function listActiveProductCatalog(
@@ -141,18 +159,23 @@ export async function listActiveProductCatalog(
     hierarchy.map((category) => [category.id, category]),
   );
 
-  const productUnits = await Promise.all(
-    products.map((product) =>
-      ctx.db
-        .query("productUnits")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("productId", product._id),
-        )
-        .take(MAX_PRODUCT_UNITS + 1),
+  const [productUnits, productCategoryIds] = await Promise.all([
+    Promise.all(
+      products.map((product) =>
+        ctx.db
+          .query("productUnits")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("productId", product._id),
+          )
+          .take(MAX_PRODUCT_UNITS + 1),
+      ),
     ),
-  );
+    Promise.all(
+      products.map((product) => getProductCategoryIds(ctx, product)),
+    ),
+  ]);
   if (productUnits.some((rows) => rows.length > MAX_PRODUCT_UNITS)) {
     throw new ConvexError("Produktet har for mange enheder");
   }
@@ -183,6 +206,12 @@ export async function listActiveProductCatalog(
     if (!category) {
       throw new ConvexError("Produktets kategori blev ikke fundet");
     }
+    const productCategories = productCategoryIds[index].flatMap(
+      (categoryId) => {
+        const item = categoriesById.get(categoryId);
+        return item ? [item] : [];
+      },
+    );
     return {
       id: product._id,
       name: product.name,
@@ -192,6 +221,12 @@ export async function listActiveProductCatalog(
         path: category.path,
         parentCategoryId: category.parentCategoryId,
       },
+      categories: productCategories.map((item) => ({
+        id: item.id,
+        name: item.name,
+        path: item.path,
+        parentCategoryId: item.parentCategoryId,
+      })),
       imageUrl: imageUrls[index],
       defaultUnitId: product.defaultUnitId,
       units: productUnits[index].flatMap((row) => {

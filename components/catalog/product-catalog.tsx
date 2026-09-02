@@ -71,6 +71,7 @@ type CatalogProduct = {
   name: string;
   status: ProductStatus;
   category: { id: Id<"categories">; name: string } | null;
+  categories: Array<{ id: Id<"categories">; name: string }>;
   imageUrl: string | null;
   deletesAt: number | null;
 };
@@ -224,7 +225,8 @@ function ProductCard({
       <CardHeader className="py-4">
         <CardTitle>{product.name}</CardTitle>
         <CardDescription>
-          {product.category?.name ?? "Uden kategori"}
+          {product.categories.map((category) => category.name).join(" · ") ||
+            "Uden kategori"}
           {product.deletesAt
             ? ` · Slettes automatisk ${new Intl.DateTimeFormat("da-DK", { dateStyle: "long" }).format(product.deletesAt)}`
             : null}
