@@ -20,6 +20,7 @@ const MAX_LOCATIONS = 200;
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 // Matches staffFood/waste paginated exports; caps client page size.
 const MAX_LIST_ORDERS_PAGE = 100;
+const MAX_ORDER_LINES = 500;
 
 // Money fields (revenue) are integer minor units (øre), same as storage. Callers divide by 100.
 
@@ -52,6 +53,23 @@ const orderValidator = v.object({
   itemCount: v.number(),
   paymentType: v.string(),
   department: v.string(),
+});
+
+const orderLineValidator = v.object({
+  id: v.id("salesLines"),
+  occurredAt: v.number(),
+  externalProductId: v.string(),
+  productName: v.string(),
+  quantity: v.number(),
+  unitPrice: v.number(),
+  revenue: v.number(),
+  clerkName: v.union(v.string(), v.null()),
+});
+
+const orderDetailValidator = orderValidator.extend({
+  updatedAt: v.number(),
+  linesTruncated: v.boolean(),
+  lines: v.array(orderLineValidator),
 });
 
 async function scheduleSettings(ctx: QueryCtx, organizationId: string) {
@@ -406,6 +424,66 @@ export const listOrders = query({
           location?.currency ?? DEFAULT_CURRENCY,
         );
       }),
+    };
+  },
+});
+
+export const getOrder = query({
+  args: { orderId: v.id("salesOrders") },
+  returns: v.union(orderDetailValidator, v.null()),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    const order = await ctx.db.get("salesOrders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      order.source !== "onlinePos"
+    ) {
+      return null;
+    }
+
+    requireLocationAccess(auth, order.locationId);
+    const location = await ctx.db.get("locations", order.locationId);
+    if (!location || location.organizationId !== auth.organizationId) {
+      return null;
+    }
+
+    const lines = await ctx.db
+      .query("salesLines")
+      .withIndex("by_organizationId_and_orderId", (q) =>
+        q
+          .eq("organizationId", auth.organizationId)
+          .eq("orderId", order._id),
+      )
+      .order("asc")
+      .take(MAX_ORDER_LINES + 1);
+    if (
+      lines.some(
+        (line) =>
+          line.locationId !== order.locationId || line.source !== "onlinePos",
+      )
+    ) {
+      return null;
+    }
+
+    return {
+      ...mapOrder(
+        order,
+        location.name,
+        await locationCurrency(ctx, auth.organizationId, location),
+      ),
+      updatedAt: order.updatedAt,
+      linesTruncated: lines.length > MAX_ORDER_LINES,
+      lines: lines.slice(0, MAX_ORDER_LINES).map((line) => ({
+        id: line._id,
+        occurredAt: line.occurredAt,
+        externalProductId: line.externalProductId,
+        productName: line.productName,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        revenue: line.revenue,
+        clerkName: line.clerkName ?? null,
+      })),
     };
   },
 });
