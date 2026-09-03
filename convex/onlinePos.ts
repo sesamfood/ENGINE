@@ -27,6 +27,7 @@ import { recordAudit } from "./lib/audit";
 
 const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
+const MAX_MENUS = 100;
 // ponytail: waste-report salesLines capped at 5k; upgrade: paginated sum batches.
 const MAX_WASTE_SALES_LINES = 5_000;
 
@@ -62,6 +63,7 @@ async function beginLocationSalesReset(
 
 const privateSettingsValidator = v.union(
   v.object({
+    integrationId: v.id("onlinePosIntegrations"),
     token: v.string(),
     companyId: v.number(),
     enabled: v.boolean(),
@@ -269,6 +271,7 @@ export const getPrivateSettings = internalQuery({
       .unique();
     return settings
       ? {
+          integrationId: settings._id,
           token: settings.token,
           companyId: settings.companyId,
           enabled: settings.enabled,
@@ -310,16 +313,28 @@ export const saveConnection = internalMutation({
     const now = Date.now();
 
     if (current && current.companyId !== args.companyId) {
-      const mappings = await ctx.db
-        .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .take(MAX_PRODUCTS + 1);
+      const [mappings, menus] = await Promise.all([
+        ctx.db
+          .query("onlinePosProductMappings")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", args.organizationId),
+          )
+          .take(MAX_PRODUCTS + 1),
+        ctx.db
+          .query("onlinePosMenus")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", args.organizationId),
+          )
+          .take(MAX_MENUS + 1),
+      ]);
       if (mappings.length > MAX_PRODUCTS) {
         throw new ConvexError("Der er for mange produktkoblinger");
       }
+      if (menus.length > MAX_MENUS) {
+        throw new ConvexError("Der er for mange OnlinePOS-menuer");
+      }
       for (const mapping of mappings) await ctx.db.delete(mapping._id);
+      for (const menu of menus) await ctx.db.delete(menu._id);
     }
 
     const integrationId = current
@@ -569,7 +584,7 @@ export const disconnect = mutation({
     const auth = await requireIntegrationManager(ctx);
     requireAllLocationAccess(auth);
     const { organizationId } = auth;
-    const [settings, mappings, locationConnections] = await Promise.all([
+    const [settings, mappings, menus, locationConnections] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -583,6 +598,12 @@ export const disconnect = mutation({
         )
         .take(MAX_PRODUCTS + 1),
       ctx.db
+        .query("onlinePosMenus")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_MENUS + 1),
+      ctx.db
         .query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId", (q) =>
           q.eq("organizationId", organizationId),
@@ -592,10 +613,14 @@ export const disconnect = mutation({
     if (mappings.length > MAX_PRODUCTS) {
       throw new ConvexError("Der er for mange produktkoblinger");
     }
+    if (menus.length > MAX_MENUS) {
+      throw new ConvexError("Der er for mange OnlinePOS-menuer");
+    }
     if (locationConnections.length > MAX_LOCATIONS) {
       throw new ConvexError("Der er for mange OnlinePOS-lokationer");
     }
     for (const mapping of mappings) await ctx.db.delete(mapping._id);
+    for (const menu of menus) await ctx.db.delete(menu._id);
     for (const connection of locationConnections) {
       await ctx.db.delete(connection._id);
       await beginLocationSalesReset(ctx, organizationId, connection.locationId);

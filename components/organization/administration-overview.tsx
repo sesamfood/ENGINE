@@ -100,7 +100,7 @@ const categories: AdministrationCategory[] = [
     sections: [
       {
         title: "Produkter",
-        description: "Administrér produkter, kategorier og enheder.",
+        description: "Administrér produkter, menuer, kategorier og enheder.",
         href: "/administration/products",
         icon: PackageIcon,
         permissions: ["catalog.manage"],

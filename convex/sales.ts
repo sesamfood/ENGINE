@@ -21,6 +21,7 @@ const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 // Matches staffFood/waste paginated exports; caps client page size.
 const MAX_LIST_ORDERS_PAGE = 100;
 const MAX_ORDER_LINES = 500;
+const MAX_ONLINE_POS_MENUS = 100;
 
 // Money fields (revenue) are integer minor units (øre), same as storage. Callers divide by 100.
 
@@ -55,7 +56,7 @@ const orderValidator = v.object({
   department: v.string(),
 });
 
-const orderLineValidator = v.object({
+const orderLineBaseValidator = v.object({
   id: v.id("salesLines"),
   occurredAt: v.number(),
   externalProductId: v.string(),
@@ -64,6 +65,11 @@ const orderLineValidator = v.object({
   unitPrice: v.number(),
   revenue: v.number(),
   clerkName: v.union(v.string(), v.null()),
+});
+
+const orderLineValidator = orderLineBaseValidator.extend({
+  menuItems: v.array(orderLineBaseValidator),
+  menuItemsTruncated: v.boolean(),
 });
 
 const orderDetailValidator = orderValidator.extend({
@@ -119,6 +125,72 @@ function mapOrder(
     paymentType: order.paymentType,
     department: order.department,
   };
+}
+
+function mapOrderLine(line: Doc<"salesLines">) {
+  return {
+    id: line._id,
+    occurredAt: line.occurredAt,
+    externalProductId: line.externalProductId,
+    productName: line.productName,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    revenue: line.revenue,
+    clerkName: line.clerkName ?? null,
+  };
+}
+
+function groupMenuLines(
+  lines: Doc<"salesLines">[],
+  menus: Doc<"onlinePosMenus">[],
+  maxLines: number,
+) {
+  const menuByProductId = new Map(
+    menus.map((menu) => [String(menu.onlinePosProductId), menu]),
+  );
+  const groupedLines = [];
+
+  const visibleLineCount = Math.min(lines.length, maxLines);
+  for (let index = 0; index < visibleLineCount; index += 1) {
+    const line = lines[index];
+    const menu = menuByProductId.get(line.externalProductId);
+    if (!menu) {
+      groupedLines.push({
+        ...mapOrderLine(line),
+        menuItems: [],
+        menuItemsTruncated: false,
+      });
+      continue;
+    }
+
+    const componentProductIds = new Set(
+      menu.components.map((component) => String(component.onlinePosProductId)),
+    );
+    const menuItems = [];
+    let nextIndex = index + 1;
+    const isMenuItem = (candidate: Doc<"salesLines">) =>
+      candidate.revenue === 0 &&
+      !menuByProductId.has(candidate.externalProductId) &&
+      componentProductIds.has(candidate.externalProductId);
+    while (nextIndex < visibleLineCount) {
+      const candidate = lines[nextIndex];
+      if (!isMenuItem(candidate)) break;
+      menuItems.push(mapOrderLine(candidate));
+      nextIndex += 1;
+    }
+    const nextLine = lines[nextIndex];
+    groupedLines.push({
+      ...mapOrderLine(line),
+      menuItems,
+      menuItemsTruncated:
+        nextIndex === visibleLineCount &&
+        nextLine !== undefined &&
+        isMenuItem(nextLine),
+    });
+    index = nextIndex - 1;
+  }
+
+  return groupedLines;
 }
 
 async function locationCurrency(
@@ -443,20 +515,30 @@ export const getOrder = query({
     }
 
     requireLocationAccess(auth, order.locationId);
-    const location = await ctx.db.get("locations", order.locationId);
+    const [location, lines, menus] = await Promise.all([
+      ctx.db.get("locations", order.locationId),
+      ctx.db
+        .query("salesLines")
+        .withIndex("by_organizationId_and_orderId", (q) =>
+          q
+            .eq("organizationId", auth.organizationId)
+            .eq("orderId", order._id),
+        )
+        .order("asc")
+        .take(MAX_ORDER_LINES + 1),
+      ctx.db
+        .query("onlinePosMenus")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", auth.organizationId),
+        )
+        .take(MAX_ONLINE_POS_MENUS + 1),
+    ]);
     if (!location || location.organizationId !== auth.organizationId) {
       return null;
     }
-
-    const lines = await ctx.db
-      .query("salesLines")
-      .withIndex("by_organizationId_and_orderId", (q) =>
-        q
-          .eq("organizationId", auth.organizationId)
-          .eq("orderId", order._id),
-      )
-      .order("asc")
-      .take(MAX_ORDER_LINES + 1);
+    if (menus.length > MAX_ONLINE_POS_MENUS) {
+      throw new ConvexError("Der er for mange OnlinePOS-menuer");
+    }
     if (
       lines.some(
         (line) =>
@@ -474,16 +556,7 @@ export const getOrder = query({
       ),
       updatedAt: order.updatedAt,
       linesTruncated: lines.length > MAX_ORDER_LINES,
-      lines: lines.slice(0, MAX_ORDER_LINES).map((line) => ({
-        id: line._id,
-        occurredAt: line.occurredAt,
-        externalProductId: line.externalProductId,
-        productName: line.productName,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        revenue: line.revenue,
-        clerkName: line.clerkName ?? null,
-      })),
+      lines: groupMenuLines(lines, menus, MAX_ORDER_LINES),
     };
   },
 });

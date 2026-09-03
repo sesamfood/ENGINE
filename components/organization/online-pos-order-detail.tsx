@@ -163,6 +163,63 @@ function OrderDetailContent({
                       </div>
                     ) : null}
                   </dl>
+                  {line.menuItems.length ? (
+                    <div className="mt-5 flex flex-col gap-3 border-t pt-4">
+                      <h3 className="text-sm font-medium">
+                        Produkter i menuen
+                      </h3>
+                      <ul className="flex flex-col divide-y rounded-lg border bg-muted/20">
+                        {line.menuItems.map((menuItem) => (
+                          <li
+                            key={menuItem.id}
+                            className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">
+                                {menuItem.productName || "Ukendt produkt"}
+                              </p>
+                              <p
+                                className="truncate text-xs text-muted-foreground"
+                                title={menuItem.externalProductId}
+                              >
+                                OnlinePOS-produkt-id:{" "}
+                                {menuItem.externalProductId || "—"}
+                              </p>
+                            </div>
+                            <dl className="grid grid-cols-2 gap-x-5 gap-y-1 text-sm sm:min-w-52">
+                              <div>
+                                <dt className="text-xs text-muted-foreground">
+                                  Antal
+                                </dt>
+                                <dd className="font-medium">
+                                  {menuItem.quantity.toLocaleString("da-DK")}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt className="text-xs text-muted-foreground">
+                                  Linjetotal
+                                </dt>
+                                <dd className="font-medium">
+                                  {formatMoney(
+                                    menuItem.revenue,
+                                    order.currency,
+                                  )}
+                                </dd>
+                              </div>
+                            </dl>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {line.menuItemsTruncated ? (
+                    <Alert className="mt-4">
+                      <CircleAlertIcon aria-hidden="true" />
+                      <AlertDescription>
+                        Menuens produktliste er afkortet.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
                 </CardContent>
               </Card>
             ))}
@@ -185,7 +242,11 @@ function OrderDetailContent({
             <CircleAlertIcon aria-hidden="true" />
             <AlertTitle>Produktlisten er afkortet</AlertTitle>
             <AlertDescription>
-              Viser de første {order.lines.length.toLocaleString("da-DK")} produktlinjer.
+              Viser de første{" "}
+              {order.lines
+                .reduce((sum, line) => sum + 1 + line.menuItems.length, 0)
+                .toLocaleString("da-DK")}{" "}
+              produktlinjer.
             </AlertDescription>
           </Alert>
         ) : null}

@@ -8,8 +8,15 @@ import { usePermission } from "@/components/app-shell";
 
 const administrationPath = "/administration";
 
-const catalogSections = [
+type CatalogSection = {
+  value: string;
+  label: string;
+  permission?: "integrations.manage";
+};
+
+const catalogSections: CatalogSection[] = [
   { value: "products", label: "Produkter" },
+  { value: "menus", label: "Menuer", permission: "integrations.manage" },
   { value: "categories", label: "Kategorier" },
   { value: "units", label: "Enheder" },
 ];
@@ -44,6 +51,7 @@ export function AdministrationHeader() {
   const canManageMembers = usePermission("members.manage");
   const canManageRoles = usePermission("roles.manage");
   const canManageApiKeys = usePermission("apiKeys.manage");
+  const canManageIntegrations = usePermission("integrations.manage");
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const inCatalog = catalogSections.some((item) =>
     pathname.startsWith(`${administrationPath}/${item.value}`),
@@ -57,6 +65,15 @@ export function AdministrationHeader() {
     catalogSections.find((item) =>
       pathname.startsWith(`${administrationPath}/${item.value}`),
     )?.value ?? "products";
+  const visibleCatalogSections = catalogSections.filter(
+    (item) =>
+      item.permission !== "integrations.manage" || canManageIntegrations,
+  );
+  const activeCatalogSection = visibleCatalogSections.some(
+    (item) => item.value === catalogSection,
+  )
+    ? catalogSection
+    : "products";
   const title = inCatalog
     ? "Produkter"
     : pathname === administrationPath
@@ -67,13 +84,16 @@ export function AdministrationHeader() {
 
   useEffect(() => {
     for (const item of catalogSections) {
+      if (item.permission === "integrations.manage" && !canManageIntegrations) {
+        continue;
+      }
       router.prefetch(`${administrationPath}/${item.value}`);
     }
     for (const item of userSections) {
       router.prefetch(`${administrationPath}/${item.value}`);
     }
     if (canManageApiKeys) router.prefetch(`${administrationPath}/api`);
-  }, [canManageApiKeys, router]);
+  }, [canManageApiKeys, canManageIntegrations, router]);
 
   useEffect(() => {
     if (!inUsers) return;
@@ -121,7 +141,7 @@ export function AdministrationHeader() {
 
       {inCatalog ? (
         <Tabs
-          value={catalogSection}
+          value={activeCatalogSection}
           onValueChange={(value) =>
             router.push(`${administrationPath}/${value}`, { scroll: false })
           }
@@ -130,7 +150,7 @@ export function AdministrationHeader() {
             aria-label="Katalogsektioner"
             className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
           >
-            {catalogSections.map((item) => (
+            {visibleCatalogSections.map((item) => (
               <TabsTrigger
                 key={item.value}
                 value={item.value}

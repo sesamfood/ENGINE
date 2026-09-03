@@ -211,6 +211,26 @@ export default defineSchema({
       "onlinePosProductId",
     ]),
 
+  onlinePosMenus: defineTable({
+    organizationId: v.string(),
+    onlinePosProductId: v.number(),
+    name: v.string(),
+    groupName: v.string(),
+    components: v.array(
+      v.object({
+        onlinePosProductId: v.number(),
+        name: v.string(),
+        groupName: v.string(),
+      }),
+    ),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_onlinePosProductId", [
+      "organizationId",
+      "onlinePosProductId",
+    ]),
+
   onlinePosSyncStatus: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
