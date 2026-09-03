@@ -548,15 +548,11 @@ function ProductMappings({
     >();
 
     for (const product of mappingOptions?.products ?? []) {
-      if (product.onlinePosProductId !== null) continue;
-      const { exactMatch, suggestions: matchingProducts } =
+      const { hasExactMatch, suggestions: matchingProducts } =
         getOnlinePosProductSuggestions(onlinePosProducts ?? [], product.name);
-      const suggestionProducts = exactMatch
-        ? [exactMatch]
-        : matchingProducts;
       suggestions.set(product.id, {
-        exactMatch: Boolean(exactMatch),
-        options: suggestionProducts.map((suggestion) => ({
+        exactMatch: hasExactMatch,
+        options: matchingProducts.map((suggestion) => ({
           value: String(suggestion.id),
           label: suggestion.groupName
             ? `${suggestion.name} — ${suggestion.groupName}`

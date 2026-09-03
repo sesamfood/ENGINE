@@ -209,11 +209,9 @@ function OnlinePosProductMappingField({
       })),
     [onlinePosProducts],
   );
-  const { exactMatch, suggestions: nameSuggestions } =
+  const { hasExactMatch, suggestions: nameSuggestions } =
     getOnlinePosProductSuggestions(onlinePosProducts ?? [], productName);
-  const suggestion = currentMapping == null ? exactMatch : undefined;
-  const suggestions =
-    currentMapping == null ? (suggestion ? [suggestion] : nameSuggestions) : [];
+  const suggestions = nameSuggestions;
 
   async function changeMapping(value: string | null) {
     setSaving(true);
@@ -260,7 +258,7 @@ function OnlinePosProductMappingField({
         <CreatableCombobox
           options={comboboxOptions}
           suggestionLabel={
-            suggestion
+            hasExactMatch
               ? "Forslag med samme navn"
               : "Forslag ud fra produktnavnet"
           }

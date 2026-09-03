@@ -32,13 +32,13 @@ export function getOnlinePosProductSuggestions(
   products: readonly OnlinePosProductSuggestion[],
   productName: string,
 ) {
-  const exactMatch = products.find(
+  const exactMatches = products.filter(
     (product) =>
       normalizedProductName(product.name) === normalizedProductName(productName),
   );
 
-  if (exactMatch) {
-    return { exactMatch, suggestions: [exactMatch] };
+  if (exactMatches.length > 0) {
+    return { hasExactMatch: true, suggestions: exactMatches };
   }
 
   const suggestions = products
@@ -51,5 +51,5 @@ export function getOnlinePosProductSuggestions(
     .slice(0, 3)
     .map(({ product }) => product);
 
-  return { exactMatch: undefined, suggestions };
+  return { hasExactMatch: false, suggestions };
 }
