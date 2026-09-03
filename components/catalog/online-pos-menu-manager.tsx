@@ -4,6 +4,7 @@ import { useAccess, usePermission } from "@/components/app-shell";
 import {
   CreatableCombobox,
   CreatableMultiCombobox,
+  type ComboboxOptionGroup,
 } from "@/components/catalog/creatable-combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -51,6 +52,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
@@ -87,10 +89,14 @@ type MenuCatalogProduct = Pick<
   "id" | "name" | "categoryIds"
 > & {
   value: string;
+  mapped: boolean;
   unavailableReason: string | null;
 };
 type MenuEditor =
   { kind: "create" } | { kind: "edit"; menu: OnlinePosMenu } | null;
+
+const MAX_MENU_NAME_LENGTH = 100;
+const UNCATEGORIZED_GROUP_VALUE = "__uncategorized__";
 
 function onlinePosProductLabel(product: OnlinePosProductOption) {
   return product.groupName
@@ -170,7 +176,11 @@ function MenuProductPicker({
           ? `${product.name} · ${product.unavailableReason}`
           : product.name,
         disabled: product.unavailableReason !== null,
-        group: primaryCategory?.path ?? "Uden kategori",
+        group: primaryCategory
+          ? String(primaryCategory.id)
+          : UNCATEGORIZED_GROUP_VALUE,
+        groupDepth: primaryCategory?.depth ?? 0,
+        groupLabel: primaryCategory?.name ?? "Uden kategori",
         searchText: product.categoryIds
           .flatMap((categoryId) => {
             const category = categoriesById.get(categoryId);
@@ -179,6 +189,39 @@ function MenuProductPicker({
           .join(" "),
       };
     });
+  const productGroups: ComboboxOptionGroup[] = categories.flatMap((category) => {
+    const optionValues = products.flatMap((product) => {
+      let categoryId: CatalogCategoryOption["id"] | null =
+        product.categoryIds[0] ?? null;
+      while (categoryId) {
+        if (categoryId === category.id) return [product.value];
+        categoryId = categoriesById.get(categoryId)?.parentCategoryId ?? null;
+      }
+      return [];
+    });
+    return optionValues.length
+      ? [
+          {
+            value: String(category.id),
+            label: category.name,
+            title: category.path,
+            depth: category.depth,
+            optionValues,
+          },
+        ]
+      : [];
+  });
+  const uncategorizedProductValues = products.flatMap((product) =>
+    product.categoryIds.length === 0 ? [product.value] : [],
+  );
+  if (uncategorizedProductValues.length > 0) {
+    productGroups.push({
+      value: UNCATEGORIZED_GROUP_VALUE,
+      label: "Uden kategori",
+      depth: 0,
+      optionValues: uncategorizedProductValues,
+    });
+  }
 
   return (
     <FieldSet className="gap-4 rounded-xl border p-4">
@@ -193,11 +236,14 @@ function MenuProductPicker({
           placeholder="Søg efter produkt eller kategori"
           allowCreate={false}
           preserveSearchOnSelect
+          selectableGroups
+          groups={productGroups}
           disabled={disabled}
           ariaLabel={productAriaLabel}
         />
         <FieldDescription>
-          Produkterne er opdelt efter kategori og underkategori.
+          Vælg en kategorilinje for at vælge eller fravælge alle produkter i
+          kategorien.
         </FieldDescription>
       </Field>
     </FieldSet>
@@ -264,8 +310,8 @@ function MenuCard({
       <CardHeader>
         <CardTitle className="truncate">{menu.name}</CardTitle>
         <CardDescription className="truncate">
-          OnlinePOS-produkt-id: {menu.onlinePosProductId} ·{" "}
-          {menu.groupName || "Uden gruppe"}
+          {menu.onlinePosProductName} · OnlinePOS-produkt-id:{" "}
+          {menu.onlinePosProductId} · {menu.groupName || "Uden gruppe"}
         </CardDescription>
         <CardAction className="flex flex-wrap justify-end gap-2">
           <Button
@@ -323,6 +369,7 @@ export function OnlinePosMenuManager() {
   const saveMenu = useAction(api.onlinePosMenus.save);
   const removeMenu = useMutation(api.onlinePosMenus.remove);
   const [editor, setEditor] = useState<MenuEditor>(null);
+  const [menuName, setMenuName] = useState("");
   const [selectedMenuProductId, setSelectedMenuProductId] = useState<
     string | null
   >(null);
@@ -372,6 +419,7 @@ export function OnlinePosMenuManager() {
   function openCreate() {
     if (!menuData?.enabled) return;
     setEditor({ kind: "create" });
+    setMenuName("");
     setSelectedMenuProductId(null);
     setSelectedPrimaryProductIds([]);
     setSelectedAdditionalProductIds([]);
@@ -382,6 +430,7 @@ export function OnlinePosMenuManager() {
   function openEdit(menu: OnlinePosMenu) {
     if (!menuData?.enabled) return;
     setEditor({ kind: "edit", menu });
+    setMenuName(menu.name);
     setSelectedMenuProductId(String(menu.onlinePosProductId));
     setSelectedPrimaryProductIds(
       menu.products
@@ -404,6 +453,7 @@ export function OnlinePosMenuManager() {
   }
 
   async function save() {
+    const name = menuName.trim();
     const menuProductId = selectedMenuProductId
       ? parseProductId(selectedMenuProductId)
       : null;
@@ -420,6 +470,14 @@ export function OnlinePosMenuManager() {
       knownCatalogProducts,
     );
 
+    if (!name) {
+      setFormError("Giv menuen et navn.");
+      return;
+    }
+    if (name.length > MAX_MENU_NAME_LENGTH) {
+      setFormError(`Navnet må højst være ${MAX_MENU_NAME_LENGTH} tegn.`);
+      return;
+    }
     if (menuProductId === null) {
       setFormError("Vælg menuen fra OnlinePOS.");
       return;
@@ -447,6 +505,7 @@ export function OnlinePosMenuManager() {
     try {
       await saveMenu({
         menuId: editor?.kind === "edit" ? editor.menu.id : null,
+        name,
         onlinePosProductId: menuProductId,
         primaryProductIds,
         additionalProductIds,
@@ -541,7 +600,7 @@ export function OnlinePosMenuManager() {
       value: String(editor.menu.onlinePosProductId),
       label: onlinePosProductLabel({
         id: editor.menu.onlinePosProductId,
-        name: editor.menu.name,
+        name: editor.menu.onlinePosProductName,
         groupName: editor.menu.groupName,
       }),
       disabled: true,
@@ -559,12 +618,8 @@ export function OnlinePosMenuManager() {
       name: product.name,
       categoryIds: product.categoryIds,
       value: String(product.id),
-      unavailableReason:
-        product.onlinePosProductId === null
-          ? "Mangler OnlinePOS-kobling"
-          : isMenuProduct
-            ? "Bruges som menu i OnlinePOS"
-            : null,
+      mapped: product.onlinePosProductId !== null,
+      unavailableReason: isMenuProduct ? "Bruges som menu i OnlinePOS" : null,
     };
   });
   if (editor?.kind === "edit") {
@@ -579,9 +634,8 @@ export function OnlinePosMenuManager() {
           name: product.name,
           categoryIds: [],
           value: String(product.id),
-          unavailableReason: product.mapped
-            ? null
-            : "Mangler OnlinePOS-kobling",
+          mapped: product.mapped,
+          unavailableReason: null,
         });
       }
     }
@@ -617,6 +671,12 @@ export function OnlinePosMenuManager() {
         product.value === productId && product.unavailableReason === null,
     ),
   );
+  const unmappedSelectedProducts = selectedProductIds.flatMap((productId) => {
+    const product = catalogProducts.find(
+      (catalogProduct) => catalogProduct.value === productId,
+    );
+    return product && !product.mapped ? [product] : [];
+  });
   const selectedProductsAreUnique =
     new Set(selectedProductIds).size === selectedProductIds.length;
   const menuFieldDisabled =
@@ -630,6 +690,8 @@ export function OnlinePosMenuManager() {
     !isSaving &&
     !loadingOnlinePosProducts &&
     onlinePosProductsError === null &&
+    menuName.trim().length > 0 &&
+    menuName.trim().length <= MAX_MENU_NAME_LENGTH &&
     selectedMenuIsAvailable &&
     selectedProductsAreAvailable &&
     selectedProductsAreUnique &&
@@ -641,9 +703,10 @@ export function OnlinePosMenuManager() {
         <div className="flex max-w-3xl flex-col gap-2">
           <h2 className="text-2xl font-semibold tracking-tight">Menuer</h2>
           <p className="text-sm leading-6 text-muted-foreground">
-            Vælg menuen i OnlinePOS samt dens primære og ekstra produkter fra
-            produktkataloget. De efterfølgende produktlinjer til 0 kr. samles
-            under menuen via produkternes OnlinePOS-koblinger.
+            Navngiv menuen, vælg det tilsvarende produkt i OnlinePOS, og vælg
+            dens primære og ekstra produkter fra produktkataloget. De
+            efterfølgende produktlinjer til 0 kr. samles under menuen via
+            produkternes OnlinePOS-koblinger.
           </p>
         </div>
         <Button
@@ -728,8 +791,8 @@ export function OnlinePosMenuManager() {
               {editor?.kind === "edit" ? "Redigér menu" : "Ny menu"}
             </DialogTitle>
             <DialogDescription>
-              Vælg menuen fra OnlinePOS samt dens primære og ekstra produkter
-              fra produktkataloget.
+              Giv menuen et navn, vælg den i OnlinePOS, og tilføj dens primære
+              og ekstra produkter fra produktkataloget.
             </DialogDescription>
           </DialogHeader>
 
@@ -787,13 +850,28 @@ export function OnlinePosMenuManager() {
               <CircleAlertIcon aria-hidden="true" />
               <AlertTitle>Ingen produkter kan vælges</AlertTitle>
               <AlertDescription>
-                Kobl mindst ét produkt til et OnlinePOS-produkt, som ikke bruges
-                som menu, før du gemmer menuen.
+                Alle produkter bruges allerede som menu i OnlinePOS.
               </AlertDescription>
             </Alert>
           ) : null}
 
           <FieldGroup>
+            <Field data-disabled={productFieldDisabled}>
+              <FieldLabel htmlFor="online-pos-menu-name">Navn</FieldLabel>
+              <Input
+                id="online-pos-menu-name"
+                value={menuName}
+                maxLength={MAX_MENU_NAME_LENGTH}
+                placeholder="Fx Frokostmenu"
+                className="h-11"
+                required
+                disabled={productFieldDisabled}
+                onChange={(event) => {
+                  setMenuName(event.target.value);
+                  setFormError("");
+                }}
+              />
+            </Field>
             <Field
               data-invalid={Boolean(formError)}
               data-disabled={menuFieldDisabled}
@@ -838,6 +916,22 @@ export function OnlinePosMenuManager() {
               }}
               disabled={productFieldDisabled}
             />
+            {selectedOnlinePosProductId !== null &&
+            unmappedSelectedProducts.length > 0 ? (
+              <Alert>
+                <CircleAlertIcon aria-hidden="true" />
+                <AlertTitle>
+                  Valgte produkter mangler OnlinePOS-kobling
+                </AlertTitle>
+                <AlertDescription>
+                  {unmappedSelectedProducts.length === 1
+                    ? "Ét valgt produkt er ikke koblet til OnlinePOS."
+                    : `${unmappedSelectedProducts.length.toLocaleString("da-DK")} valgte produkter er ikke koblet til OnlinePOS.`}{" "}
+                  Produkterne gemmes i menuen, men deres salgslinjer kan først
+                  genkendes, når koblingerne er oprettet.
+                </AlertDescription>
+              </Alert>
+            ) : null}
             <FieldError>{formError}</FieldError>
           </FieldGroup>
 

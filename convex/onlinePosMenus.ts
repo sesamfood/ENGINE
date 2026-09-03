@@ -16,6 +16,7 @@ const MAX_MENU_PRODUCTS = 100;
 const MAX_PRODUCT_MAPPINGS = 500;
 const MAX_ONLINE_POS_PRODUCTS = 2_000;
 const MAX_PRODUCT_NAME_LENGTH = 200;
+const MAX_MENU_NAME_LENGTH = 100;
 
 const onlinePosProductValidator = v.object({
   onlinePosProductId: v.number(),
@@ -34,6 +35,7 @@ const menuValidator = v.object({
   id: v.id("onlinePosMenus"),
   onlinePosProductId: v.number(),
   name: v.string(),
+  onlinePosProductName: v.string(),
   groupName: v.string(),
   products: v.array(menuProductValidator),
 });
@@ -75,6 +77,15 @@ function normalizeProducts(products: OnlinePosProduct[]) {
       left.groupName.localeCompare(right.groupName, "da") ||
       left.name.localeCompare(right.name, "da"),
   );
+}
+
+function normalizeMenuName(value: string) {
+  const name = value.trim().replace(/\s+/g, " ");
+  if (!name) throw new ConvexError("Giv menuen et navn");
+  if (name.length > MAX_MENU_NAME_LENGTH) {
+    throw new ConvexError(`Navnet må højst være ${MAX_MENU_NAME_LENGTH} tegn`);
+  }
+  return name;
 }
 
 function validateMenuProductIds({
@@ -162,6 +173,7 @@ export const list = query({
           id: menu._id,
           onlinePosProductId: menu.onlinePosProductId,
           name: menu.name,
+          onlinePosProductName: menu.onlinePosProductName ?? menu.name,
           groupName: menu.groupName,
           products: menu.products.map((product) => ({
             kind: product.kind,
@@ -191,6 +203,7 @@ export const saveConfiguration = internalMutation({
     menuId: v.union(v.id("onlinePosMenus"), v.null()),
     integrationId: v.id("onlinePosIntegrations"),
     companyId: v.number(),
+    name: v.string(),
     menuProduct: onlinePosProductValidator,
     primaryProductIds: v.array(v.id("products")),
     additionalProductIds: v.array(v.id("products")),
@@ -199,6 +212,7 @@ export const saveConfiguration = internalMutation({
   },
   returns: v.id("onlinePosMenus"),
   handler: async (ctx, args) => {
+    const name = normalizeMenuName(args.name);
     const productIds = validateMenuProductIds(args);
     const [
       integration,
@@ -285,11 +299,6 @@ export const saveConfiguration = internalMutation({
     const mappingByProductId = new Map(
       mappings.map((mapping) => [mapping.productId, mapping]),
     );
-    if (productIds.some((productId) => !mappingByProductId.has(productId))) {
-      throw new ConvexError(
-        "Et af produkterne mangler en OnlinePOS-kobling. Tilføj koblingen på produktet og prøv igen.",
-      );
-    }
     const menuProductIds = new Set(
       menus
         .filter((menu) => menu._id !== args.menuId)
@@ -310,7 +319,8 @@ export const saveConfiguration = internalMutation({
     const updatedAt = Date.now();
     const values = {
       onlinePosProductId: args.menuProduct.onlinePosProductId,
-      name: args.menuProduct.name,
+      name,
+      onlinePosProductName: args.menuProduct.name,
       groupName: args.menuProduct.groupName,
       products: menuProducts,
       updatedAt,
@@ -335,8 +345,8 @@ export const saveConfiguration = internalMutation({
         entityTable: "onlinePosMenus",
         entityId: menuId,
         summary: current
-          ? `OnlinePOS-menuen ${args.menuProduct.name} blev opdateret`
-          : `OnlinePOS-menuen ${args.menuProduct.name} blev oprettet`,
+          ? `OnlinePOS-menuen ${name} blev opdateret`
+          : `OnlinePOS-menuen ${name} blev oprettet`,
       },
     );
     return menuId;
@@ -346,6 +356,7 @@ export const saveConfiguration = internalMutation({
 export const save = action({
   args: {
     menuId: v.union(v.id("onlinePosMenus"), v.null()),
+    name: v.string(),
     onlinePosProductId: v.number(),
     primaryProductIds: v.array(v.id("products")),
     additionalProductIds: v.array(v.id("products")),
@@ -353,6 +364,7 @@ export const save = action({
   returns: v.id("onlinePosMenus"),
   handler: async (ctx, args): Promise<Id<"onlinePosMenus">> => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    const name = normalizeMenuName(args.name);
     if (
       !Number.isSafeInteger(args.onlinePosProductId) ||
       args.onlinePosProductId <= 0
@@ -382,6 +394,7 @@ export const save = action({
         menuId: args.menuId,
         integrationId: connection.integrationId,
         companyId: connection.settings.companyId,
+        name,
         menuProduct: {
           onlinePosProductId: menuProduct.id,
           name: menuProduct.name,

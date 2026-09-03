@@ -215,6 +215,7 @@ export default defineSchema({
     organizationId: v.string(),
     onlinePosProductId: v.number(),
     name: v.string(),
+    onlinePosProductName: v.optional(v.string()),
     groupName: v.string(),
     products: v.array(
       v.object({
