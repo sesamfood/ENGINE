@@ -845,11 +845,18 @@ export const saveProductMapping = internalMutation({
                   .eq("onlinePosProductId", onlinePosProductId),
             )
             .take(MAX_PRODUCTS + 1);
-    if (
-      existingOwners.some((mapping) => mapping.productId !== args.productId)
-    ) {
+    const existingOwner = existingOwners.find(
+      (mapping) => mapping.productId !== args.productId,
+    );
+    if (existingOwner) {
+      const existingProduct = await ctx.db.get(
+        "products",
+        existingOwner.productId,
+      );
       throw new ConvexError(
-        "OnlinePOS-produktet er allerede knyttet til et andet produkt",
+        existingProduct?.organizationId === args.organizationId
+          ? `OnlinePOS-produktet er allerede knyttet til produktet "${existingProduct.name}"`
+          : "OnlinePOS-produktet er allerede knyttet til et andet produkt",
       );
     }
 
