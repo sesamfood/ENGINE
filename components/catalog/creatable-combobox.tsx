@@ -1,7 +1,7 @@
 "use client";
 
 import { FolderIcon, PlusIcon } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Combobox,
   ComboboxChip,
@@ -38,9 +38,14 @@ export type ComboboxOptionGroup = {
 };
 
 const GROUP_SELECTION_PREFIX = "__combobox_group__:";
+const SUGGESTION_SELECTION_PREFIX = "__combobox_suggestion__:";
 
 function groupSelectionValue(group: string) {
   return `${GROUP_SELECTION_PREFIX}${group}`;
+}
+
+function suggestionSelectionValue(value: string) {
+  return `${SUGGESTION_SELECTION_PREFIX}${value}`;
 }
 
 function optionLabel(options: ComboboxOption[], value: string) {
@@ -120,8 +125,7 @@ export function CreatableCombobox({
 
     const existing = options.find(
       (option) =>
-        option.label.toLocaleLowerCase("da") ===
-        label.toLocaleLowerCase("da"),
+        option.label.toLocaleLowerCase("da") === label.toLocaleLowerCase("da"),
     );
     const nextValue = existing?.value ?? (allowCreate ? `new:${label}` : null);
     if (!nextValue) return false;
@@ -252,6 +256,8 @@ export function CreatableMultiCombobox({
   preserveSearchOnSelect = false,
   selectableGroups = false,
   groups,
+  suggestionLabel = "Forslag",
+  suggestionValues = [],
   disabled = false,
   ariaLabel,
 }: {
@@ -263,10 +269,13 @@ export function CreatableMultiCombobox({
   preserveSearchOnSelect?: boolean;
   selectableGroups?: boolean;
   groups?: ComboboxOptionGroup[];
+  suggestionLabel?: string;
+  suggestionValues?: readonly string[];
   disabled?: boolean;
   ariaLabel: string;
 }) {
   const anchor = useComboboxAnchor();
+  const listRef = useRef<HTMLDivElement | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightedValue, setHighlightedValue] = useState<string>();
@@ -279,17 +288,15 @@ export function CreatableMultiCombobox({
     const query = inputValue.trim().toLocaleLowerCase("da");
     const matches = query
       ? options.filter((option) =>
-          [
-            option.label,
-            option.group,
-            option.groupLabel,
-            option.searchText,
-          ]
+          [option.label, option.group, option.groupLabel, option.searchText]
             .filter((value): value is string => Boolean(value))
             .some((value) => value.toLocaleLowerCase("da").includes(query)),
         )
       : options;
-    const exactMatch = [...options.map((option) => option.value), ...values].some(
+    const exactMatch = [
+      ...options.map((option) => option.value),
+      ...values,
+    ].some(
       (value) => optionLabel(options, value).toLocaleLowerCase("da") === query,
     );
     if (allowCreate && query && !exactMatch) {
@@ -300,6 +307,21 @@ export function CreatableMultiCombobox({
     }
     return matches;
   }, [allowCreate, inputValue, options, values]);
+  const optionsByValue = useMemo(
+    () => new Map(options.map((option) => [option.value, option])),
+    [options],
+  );
+  const suggestionOptions = suggestionValues.flatMap((value) => {
+    const option = optionsByValue.get(value);
+    return option ? [option] : [];
+  });
+  const visibleOptionValues = useMemo(
+    () => new Set(visibleOptions.map((option) => option.value)),
+    [visibleOptions],
+  );
+  const visibleSuggestionOptions = suggestionOptions.filter((option) =>
+    visibleOptionValues.has(option.value),
+  );
   const optionGroups = useMemo(() => {
     const optionsByGroup = new Map<string, ComboboxOption[]>();
     for (const option of visibleOptions) {
@@ -309,9 +331,6 @@ export function CreatableMultiCombobox({
       else optionsByGroup.set(group, [option]);
     }
     if (groups) {
-      const visibleOptionValues = new Set(
-        visibleOptions.map((option) => option.value),
-      );
       return groups
         .filter((group) =>
           group.optionValues.some((value) => visibleOptionValues.has(value)),
@@ -331,14 +350,11 @@ export function CreatableMultiCombobox({
       depth: groupOptions[0]?.groupDepth ?? 0,
       options: groupOptions,
     }));
-  }, [groups, visibleOptions]);
+  }, [groups, visibleOptionValues, visibleOptions]);
   const selectableOptionValuesByGroup = useMemo(() => {
     const selectableValues = new Map<string, string[]>();
     if (!selectableGroups) return selectableValues;
     if (groups) {
-      const optionsByValue = new Map(
-        options.map((option) => [option.value, option]),
-      );
       for (const group of groups) {
         selectableValues.set(
           group.value,
@@ -357,7 +373,7 @@ export function CreatableMultiCombobox({
       else selectableValues.set(option.group, [option.value]);
     }
     return selectableValues;
-  }, [groups, options, selectableGroups]);
+  }, [groups, options, optionsByValue, selectableGroups]);
   const groupOptionsByValue = new Map(
     [...selectableOptionValuesByGroup].map(([group, optionValues]) => [
       groupSelectionValue(group),
@@ -374,27 +390,54 @@ export function CreatableMultiCombobox({
       )
       .map(([value]) => value),
   );
-  const comboboxValues = [...values, ...selectedGroupValues];
+  const suggestionOptionsByValue = new Map(
+    suggestionOptions.map((option) => [
+      suggestionSelectionValue(option.value),
+      option.value,
+    ]),
+  );
+  const selectedSuggestionValues = new Set(
+    [...suggestionOptionsByValue]
+      .filter(([, value]) => selectedValueSet.has(value))
+      .map(([value]) => value),
+  );
+  const comboboxValues = [
+    ...values,
+    ...selectedGroupValues,
+    ...selectedSuggestionValues,
+  ];
   const groupLabelsByValue = new Map(
     (groups ?? optionGroups).map((group) => [
       groupSelectionValue(group.value),
       group.label,
     ]),
   );
-  const itemValues = optionGroups.flatMap((group) => [
-    ...(selectableGroups && group.value
-      ? [groupSelectionValue(group.value)]
-      : []),
-    ...group.options.map((option) => option.value),
-  ]);
+  const itemValues = [
+    ...visibleSuggestionOptions.map((option) =>
+      suggestionSelectionValue(option.value),
+    ),
+    ...optionGroups.flatMap((group) => [
+      ...(selectableGroups && group.value
+        ? [groupSelectionValue(group.value)]
+        : []),
+      ...group.options.map((option) => option.value),
+    ]),
+  ];
+
+  useEffect(() => {
+    if (!open || inputValue || visibleSuggestionOptions.length === 0) return;
+    const frame = requestAnimationFrame(() => {
+      if (listRef.current) listRef.current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [inputValue, open, visibleSuggestionOptions.length]);
 
   function commitInput() {
     const label = inputValue.trim();
     if (!label) return false;
     const existing = options.find(
       (option) =>
-        option.label.toLocaleLowerCase("da") ===
-        label.toLocaleLowerCase("da"),
+        option.label.toLocaleLowerCase("da") === label.toLocaleLowerCase("da"),
     );
     const selectedValue = values.find(
       (value) =>
@@ -442,11 +485,28 @@ export function CreatableMultiCombobox({
         setHighlightedValue(undefined);
       }}
       onValueChange={(nextValues) => {
+        const nextActualValues = nextValues.filter(
+          (value) =>
+            !groupOptionsByValue.has(value) &&
+            !suggestionOptionsByValue.has(value),
+        );
+        const nextActualValueSet = new Set(nextActualValues);
+        const actualValuesChanged =
+          nextActualValueSet.size !== selectedValueSet.size ||
+          [...nextActualValueSet].some((value) => !selectedValueSet.has(value));
         const toggledGroupValue = [...groupOptionsByValue.keys()].find(
           (value) =>
             nextValues.includes(value) !== selectedGroupValues.has(value),
         );
-        if (toggledGroupValue) {
+        const toggledSuggestionValue = [
+          ...suggestionOptionsByValue.keys(),
+        ].find(
+          (value) =>
+            nextValues.includes(value) !== selectedSuggestionValues.has(value),
+        );
+        if (actualValuesChanged) {
+          onValuesChange(nextActualValues);
+        } else if (toggledGroupValue) {
           const groupOptionValues =
             groupOptionsByValue.get(toggledGroupValue) ?? [];
           const allSelected = groupOptionValues.every((value) =>
@@ -462,10 +522,17 @@ export function CreatableMultiCombobox({
                   ),
                 ],
           );
-        } else {
-          onValuesChange(
-            nextValues.filter((value) => !groupOptionsByValue.has(value)),
+        } else if (toggledSuggestionValue) {
+          const suggestionValue = suggestionOptionsByValue.get(
+            toggledSuggestionValue,
           );
+          if (suggestionValue) {
+            onValuesChange(
+              selectedValueSet.has(suggestionValue)
+                ? values.filter((value) => value !== suggestionValue)
+                : [...values, suggestionValue],
+            );
+          }
         }
         if (!preserveSearchOnSelect) setInputValue("");
         setHighlightedValue(undefined);
@@ -475,14 +542,20 @@ export function CreatableMultiCombobox({
         groupOptionsByValue.has(value)
           ? (groupLabelsByValue.get(value) ??
             value.slice(GROUP_SELECTION_PREFIX.length))
-          : labelFor(value)
+          : suggestionOptionsByValue.has(value)
+            ? labelFor(suggestionOptionsByValue.get(value) ?? value)
+            : labelFor(value)
       }
     >
       <ComboboxChips ref={anchor} className="min-h-11 w-full">
         <ComboboxValue>
           {(selectedValues: string[]) =>
             selectedValues
-              .filter((value) => !groupOptionsByValue.has(value))
+              .filter(
+                (value) =>
+                  !groupOptionsByValue.has(value) &&
+                  !suggestionOptionsByValue.has(value),
+              )
               .map((value) => (
                 <ComboboxChip
                   key={value}
@@ -512,7 +585,25 @@ export function CreatableMultiCombobox({
       </ComboboxChips>
       <ComboboxContent anchor={anchor}>
         <ComboboxEmpty>Ingen resultater fundet.</ComboboxEmpty>
-        <ComboboxList>
+        <ComboboxList ref={listRef}>
+          {visibleSuggestionOptions.length > 0 ? (
+            <>
+              <ComboboxGroup>
+                <ComboboxLabel>{suggestionLabel}</ComboboxLabel>
+                {visibleSuggestionOptions.map((option) => (
+                  <ComboboxItem
+                    key={`suggestion:${option.value}`}
+                    value={suggestionSelectionValue(option.value)}
+                    disabled={option.disabled}
+                    className="min-h-10"
+                  >
+                    {option.label}
+                  </ComboboxItem>
+                ))}
+              </ComboboxGroup>
+              {optionGroups.length > 0 ? <ComboboxSeparator /> : null}
+            </>
+          ) : null}
           {optionGroups.map((group, index) => {
             const groupDepth = Math.max(0, Math.min(group.depth, 6));
             const selectableGroupValues =

@@ -1,11 +1,8 @@
 "use client";
 
 import { useAccess, usePermission } from "@/components/app-shell";
-import {
-  CreatableCombobox,
-  CreatableMultiCombobox,
-  type ComboboxOptionGroup,
-} from "@/components/catalog/creatable-combobox";
+import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
+import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -97,7 +94,6 @@ type MenuEditor =
   { kind: "create" } | { kind: "edit"; menu: OnlinePosMenu } | null;
 
 const MAX_MENU_NAME_LENGTH = 100;
-const UNCATEGORIZED_GROUP_VALUE = "__uncategorized__";
 
 function onlinePosProductLabel(product: OnlinePosProductOption) {
   return product.groupName
@@ -145,100 +141,24 @@ function MenuProductPicker({
   onProductIdsChange: (productIds: string[]) => void;
   disabled: boolean;
 }) {
-  const categoriesById = new Map(
-    categories.map((category) => [category.id, category]),
-  );
-  const categoryOrder = new Map(
-    categories.map((category, index) => [category.id, index]),
-  );
-  const productOptions = [...products]
-    .sort((left, right) => {
-      const leftCategoryId = left.categoryIds[0];
-      const rightCategoryId = right.categoryIds[0];
-      const leftCategoryOrder = leftCategoryId
-        ? (categoryOrder.get(leftCategoryId) ?? categories.length)
-        : categories.length;
-      const rightCategoryOrder = rightCategoryId
-        ? (categoryOrder.get(rightCategoryId) ?? categories.length)
-        : categories.length;
-      return (
-        leftCategoryOrder - rightCategoryOrder ||
-        left.name.localeCompare(right.name, "da")
-      );
-    })
-    .map((product) => {
-      const primaryCategoryId = product.categoryIds[0];
-      const primaryCategory = primaryCategoryId
-        ? categoriesById.get(primaryCategoryId)
-        : undefined;
-      return {
-        value: product.value,
-        label: product.unavailableReason
-          ? `${product.name} · ${product.unavailableReason}`
-          : product.name,
-        disabled: product.unavailableReason !== null,
-        group: primaryCategory
-          ? String(primaryCategory.id)
-          : UNCATEGORIZED_GROUP_VALUE,
-        groupDepth: primaryCategory?.depth ?? 0,
-        groupLabel: primaryCategory?.name ?? "Uden kategori",
-        searchText: product.categoryIds
-          .flatMap((categoryId) => {
-            const category = categoriesById.get(categoryId);
-            return category ? [category.path] : [];
-          })
-          .join(" "),
-      };
-    });
-  const productGroups: ComboboxOptionGroup[] = categories.flatMap((category) => {
-    const optionValues = products.flatMap((product) => {
-      let categoryId: CatalogCategoryOption["id"] | null =
-        product.categoryIds[0] ?? null;
-      while (categoryId) {
-        if (categoryId === category.id) return [product.value];
-        categoryId = categoriesById.get(categoryId)?.parentCategoryId ?? null;
-      }
-      return [];
-    });
-    return optionValues.length
-      ? [
-          {
-            value: String(category.id),
-            label: category.name,
-            title: category.path,
-            depth: category.depth,
-            optionValues,
-          },
-        ]
-      : [];
-  });
-  const uncategorizedProductValues = products.flatMap((product) =>
-    product.categoryIds.length === 0 ? [product.value] : [],
-  );
-  if (uncategorizedProductValues.length > 0) {
-    productGroups.push({
-      value: UNCATEGORIZED_GROUP_VALUE,
-      label: "Uden kategori",
-      depth: 0,
-      optionValues: uncategorizedProductValues,
-    });
-  }
-
   return (
     <FieldSet className="gap-4 rounded-xl border p-4">
       <FieldLegend>{title}</FieldLegend>
       <FieldDescription>{description}</FieldDescription>
       <Field data-disabled={disabled}>
         <FieldLabel>Produkter</FieldLabel>
-        <CreatableMultiCombobox
-          options={productOptions}
+        <ProductCategoryCombobox
+          categories={categories}
+          products={products.map((product) => ({
+            value: product.value,
+            label: product.unavailableReason
+              ? `${product.name} · ${product.unavailableReason}`
+              : product.name,
+            categoryIds: product.categoryIds,
+            disabled: product.unavailableReason !== null,
+          }))}
           values={selectedProductIds}
           onValuesChange={onProductIdsChange}
-          placeholder="Søg efter produkt eller kategori"
-          allowCreate={false}
-          preserveSearchOnSelect
-          selectableGroups
-          groups={productGroups}
           disabled={disabled}
           ariaLabel={productAriaLabel}
         />
@@ -722,11 +642,7 @@ export function OnlinePosMenuManager() {
       ) : (
         <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
           {menuData.menus.map((menu) => (
-            <MenuCard
-              key={menu.id}
-              menu={menu}
-              onEdit={openEdit}
-            />
+            <MenuCard key={menu.id} menu={menu} onEdit={openEdit} />
           ))}
         </div>
       )}

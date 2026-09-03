@@ -18,6 +18,7 @@ import {
 import {
   customMetricIsSensitive,
   executeCustomMetric,
+  listCustomMetricProductOptions,
   validateCustomMetricSpec,
 } from "./lib/customMetricExecutor";
 import { resolveMetricParams } from "./lib/dashboardMetrics";
@@ -32,6 +33,12 @@ const customMetricValidator = v.object({
   sensitive: v.boolean(),
   usageCount: v.number(),
   updatedAt: v.number(),
+});
+
+const productOptionValidator = v.object({
+  value: v.string(),
+  label: v.string(),
+  categoryIds: v.array(v.id("categories")),
 });
 
 function normalizedName(value: string) {
@@ -118,15 +125,17 @@ export const list = query({
       try {
         requireDatasetPermissions(auth, metric.spec);
         validateCustomMetricSpec(metric.spec, auth.granularity);
-        return [{
-          id: metric._id,
-          name: metric.name,
-          description: metric.description ?? null,
-          spec: metric.spec,
-          sensitive: customMetricIsSensitive(metric.spec),
-          usageCount: usageCounts.get(String(metric._id)) ?? 0,
-          updatedAt: metric.updatedAt,
-        }];
+        return [
+          {
+            id: metric._id,
+            name: metric.name,
+            description: metric.description ?? null,
+            spec: metric.spec,
+            sensitive: customMetricIsSensitive(metric.spec),
+            usageCount: usageCounts.get(String(metric._id)) ?? 0,
+            updatedAt: metric.updatedAt,
+          },
+        ];
       } catch {
         return [];
       }
@@ -260,10 +269,51 @@ export const remove = mutation({
       ),
     );
     if (inUse) {
-      throw new ConvexError("Målingen kan ikke slettes, mens den bruges af en widget");
+      throw new ConvexError(
+        "Målingen kan ikke slettes, mens den bruges af en widget",
+      );
     }
     await ctx.db.delete(metric._id);
     return 0;
+  },
+});
+
+export const listProductOptions = query({
+  args: {
+    spec: customMetricSpecValidator,
+    scope: scopeValidator,
+    range: rangeValidator,
+    now: v.number(),
+  },
+  returns: v.object({
+    products: v.array(productOptionValidator),
+    topProductValues: v.array(v.string()),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const auth = await requireDashboardManager(ctx);
+    if (args.spec.dimension !== "product") {
+      throw new ConvexError("Målingen er ikke grupperet efter produkt");
+    }
+    validateCustomMetricSpec(args.spec, auth.granularity);
+    requireDatasetPermissions(auth, args.spec);
+    const human = requireHumanPrincipal(auth);
+    const params = await resolveMetricParams(
+      ctx,
+      auth.organizationId,
+      args.scope,
+      args.range,
+      args.now,
+      auth.locationScope,
+      {
+        granularity: auth.granularity,
+        anonymousSeed: human.sessionId,
+        salesDetailAllowed:
+          hasPermission(auth.role, auth.permissions, "dashboard.viewSales") ||
+          hasPermission(auth.role, auth.permissions, "sales.viewDetail"),
+      },
+    );
+    return await listCustomMetricProductOptions(ctx, args.spec, params);
   },
 });
 

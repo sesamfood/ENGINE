@@ -82,11 +82,16 @@ export type CustomMetricQuerySpec = {
   measure: string;
   filters: CustomMetricFilter[];
 };
+export type CustomMetricDimensionFilter = {
+  op: "in" | "notIn";
+  values: string[];
+};
 export type CustomMetricSpec =
   | {
       kind: "single";
       query: CustomMetricQuerySpec;
       dimension?: string;
+      dimensionFilter?: CustomMetricDimensionFilter;
       bucket: "day" | "week" | "month";
       limit?: number;
     }
@@ -95,15 +100,12 @@ export type CustomMetricSpec =
       numerator: CustomMetricQuerySpec;
       denominator: CustomMetricQuerySpec;
       dimension?: string;
+      dimensionFilter?: CustomMetricDimensionFilter;
       bucket: "day" | "week" | "month";
       limit?: number;
     };
 export type MetricUnit =
-  | "count"
-  | "currency"
-  | "percent"
-  | "quantity"
-  | "hours";
+  "count" | "currency" | "percent" | "quantity" | "hours";
 
 export type MetricSeries = {
   key: string;
