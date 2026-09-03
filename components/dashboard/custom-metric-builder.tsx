@@ -451,11 +451,15 @@ export function CustomMetricBuilder({
 
   const numeratorDefinition = dashboardDatasets[draft.numerator.dataset];
   const denominatorDefinition = dashboardDatasets[draft.denominator.dataset];
-  const dimensions = dimensionOptions(
-    draft.numerator,
-    draft.denominator,
-    draft.kind,
-    effectiveGranularity,
+  const dimensions = useMemo(
+    () =>
+      dimensionOptions(
+        draft.numerator,
+        draft.denominator,
+        draft.kind,
+        effectiveGranularity,
+      ),
+    [draft.denominator, draft.kind, draft.numerator, effectiveGranularity],
   );
   const baseSpec = useMemo<CustomMetricSpec | null>(() => {
     const numeratorError = queryValidation(
