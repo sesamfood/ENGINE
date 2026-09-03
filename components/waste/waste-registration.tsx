@@ -296,7 +296,9 @@ export function WasteRegistration() {
   const categories = useMemo(() => {
     const map = new Map<string, string>();
     for (const product of catalog ?? []) {
-      map.set(product.category.id, product.category.name);
+      for (const category of product.categories) {
+        map.set(category.id, category.name);
+      }
     }
     return [...map].sort((a, b) => collator.compare(a[1], b[1]));
   }, [catalog]);
@@ -305,15 +307,27 @@ export function WasteRegistration() {
     return [...(catalog ?? [])]
       .filter((product) =>
         hasSearch
-          ? productSearchScore(product.name, product.category.path, search) !==
-            null
-          : category === "all" || product.category.id === category,
+          ? productSearchScore(
+              product.name,
+              product.categories.map((item) => item.path).join(" · "),
+              search,
+            ) !== null
+          : category === "all" ||
+            product.categories.some((item) => item.id === category),
       )
       .sort((a, b) => {
         if (hasSearch) {
           const searchDiff =
-            productSearchScore(a.name, a.category.path, search)! -
-            productSearchScore(b.name, b.category.path, search)!;
+            productSearchScore(
+              a.name,
+              a.categories.map((item) => item.path).join(" · "),
+              search,
+            )! -
+            productSearchScore(
+              b.name,
+              b.categories.map((item) => item.path).join(" · "),
+              search,
+            )!;
           if (searchDiff) return searchDiff;
           const popularityDiff =
             (rankMap.get(b.id)?.count ?? 0) - (rankMap.get(a.id)?.count ?? 0);
@@ -594,7 +608,9 @@ export function WasteRegistration() {
                         {product.name}
                       </CardTitle>
                       <CardDescription className="max-w-[45%] shrink-0 truncate">
-                        {product.category.name}
+                        {product.categories
+                          .map((category) => category.name)
+                          .join(" · ")}
                       </CardDescription>
                     </div>
                   </CardHeader>

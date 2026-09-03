@@ -24,6 +24,7 @@ import {
   reconcileDashboardSummaryContributions,
   staffFoodSummaryContribution,
 } from "./lib/dashboardSummaries";
+import { getProductCategoryIds } from "./lib/productCategories";
 
 const MAX_TIERS = 10;
 const MAX_ALLOWANCES = 20;
@@ -55,6 +56,26 @@ function categoryIncludes(
     currentId = categories.get(currentId)?.parentCategoryId;
   }
   return false;
+}
+
+async function productCategoryInTree(
+  ctx: QueryCtx | MutationCtx,
+  product: Pick<
+    Doc<"products">,
+    "_id" | "organizationId" | "categoryId"
+  >,
+  categories: ReadonlyMap<
+    Id<"categories">,
+    Pick<Doc<"categories">, "_id" | "parentCategoryId">
+  >,
+  rootCategoryId: Id<"categories">,
+) {
+  const categoryIds = await getProductCategoryIds(ctx, product);
+  return (
+    categoryIds.find((categoryId) =>
+      categoryIncludes(categories, rootCategoryId, categoryId),
+    ) ?? null
+  );
 }
 
 const sessionSourceValidator = v.union(
@@ -735,16 +756,21 @@ export const getSessionState = query({
               allowanceRows[index].categoryId,
             );
             const product = productsById.get(row.productId);
+            const categoryId =
+              product && allowance
+                ? await productCategoryInTree(
+                    ctx,
+                    product,
+                    categoriesById,
+                    allowance.categoryId,
+                  )
+                : null;
             if (
               !product ||
               product.organizationId !== organizationId ||
               product.status !== "active" ||
               !allowance ||
-              !categoryIncludes(
-                categoriesById,
-                allowance.categoryId,
-                product.categoryId,
-              )
+              !categoryId
             ) {
               return null;
             }
@@ -754,7 +780,7 @@ export const getSessionState = query({
             return {
               id: product._id,
               name: product.name,
-              categoryId: product.categoryId,
+              categoryId,
               allowanceCategoryId: allowance.categoryId,
               categoryName: allowance.categoryName,
               imageUrl: product.imageStorageId
@@ -914,23 +940,33 @@ export const register = mutation({
       args.items.map((item) => ctx.db.get("products", item.productId)),
     );
     const basketByAllowance = new Map<Id<"staffFoodRuleAllowances">, number>();
+    const categoryByProductId = new Map<
+      Id<"products">,
+      Id<"categories">
+    >();
     for (let index = 0; index < args.items.length; index += 1) {
       const item = args.items[index];
       const product = products[index];
       const allowance = allowedProducts.get(item.productId);
+      const categoryId =
+        product && allowance
+          ? await productCategoryInTree(
+              ctx,
+              product,
+              categoriesById,
+              allowance.categoryId,
+            )
+          : null;
       if (
         !product ||
         product.organizationId !== organizationId ||
         product.status !== "active" ||
         !allowance ||
-        !categoryIncludes(
-          categoriesById,
-          allowance.categoryId,
-          product.categoryId,
-        )
+        !categoryId
       ) {
         throw new ConvexError("Et valgt produkt er ikke tilladt");
       }
+      categoryByProductId.set(product._id, categoryId);
       basketByAllowance.set(
         allowance._id,
         (basketByAllowance.get(allowance._id) ?? 0) + item.quantity,
@@ -976,8 +1012,12 @@ export const register = mutation({
       const item = args.items[index];
       const product = products[index]!;
       const allowance = allowedProducts.get(product._id)!;
+      const categoryId = categoryByProductId.get(product._id);
+      if (!categoryId) {
+        throw new ConvexError("Et valgt produkt er ikke tilladt");
+      }
       const [category, unit] = await Promise.all([
-        ctx.db.get("categories", product.categoryId),
+        ctx.db.get("categories", categoryId),
         ctx.db.get("units", product.defaultUnitId),
       ]);
       if (
@@ -1154,7 +1194,7 @@ export const getSettings = query({
       v.object({
         id: v.id("products"),
         name: v.string(),
-        categoryId: v.id("categories"),
+        categoryIds: v.array(v.id("categories")),
         status: v.union(v.literal("active"), v.literal("archived")),
       }),
     ),
@@ -1259,12 +1299,14 @@ export const getSettings = query({
         name: category.name,
         parentCategoryId: category.parentCategoryId ?? null,
       })),
-      products: products.map((product) => ({
-        id: product._id,
-        name: product.name,
-        categoryId: product.categoryId,
-        status: product.status,
-      })),
+      products: await Promise.all(
+        products.map(async (product) => ({
+          id: product._id,
+          name: product.name,
+          categoryIds: await getProductCategoryIds(ctx, product),
+          status: product.status,
+        })),
+      ),
     };
   },
 });
@@ -1392,18 +1434,21 @@ export const saveTier = mutation({
           ctx.db.get("products", productId),
         ),
       );
-      if (
-        products.some(
-          (product) =>
-            !product ||
-            product.organizationId !== organizationId ||
-            !categoryIncludes(
-              categoriesById,
-              category._id,
-              product.categoryId,
-            ),
-        )
-      ) {
+      const validProducts = await Promise.all(
+        products.map(async (product) =>
+          product?.organizationId === organizationId
+            ? Boolean(
+                await productCategoryInTree(
+                  ctx,
+                  product,
+                  categoriesById,
+                  category._id,
+                ),
+              )
+            : false,
+        ),
+      );
+      if (validProducts.some((valid) => !valid)) {
         throw new ConvexError(
           "Et produkt tilhører ikke den valgte kategori eller dens underkategorier",
         );

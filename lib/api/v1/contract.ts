@@ -198,6 +198,10 @@ export const productSchema = z.strictObject({
   category: z
     .strictObject({ id: publicIdSchema, name: z.string() })
     .nullable(),
+  categories: z
+    .array(z.strictObject({ id: publicIdSchema, name: z.string() }))
+    .min(1)
+    .max(20),
   units: z.array(productUnitSchema).max(200),
   ingredients: z.array(productIngredientSchema).max(200),
   updatedAt: z.iso.datetime({ offset: true }),
@@ -241,17 +245,32 @@ const temperatureInputSchema = z
   .max(100)
   .multipleOf(0.1)
   .nullable();
-export const productCreateSchema = z.strictObject({
-  name: nameSchema,
-  categoryId: publicIdSchema,
-  units: productUnitsInputSchema,
-  ingredients: productIngredientsInputSchema,
-  maxTemperatureCelsius: temperatureInputSchema.optional(),
-});
+const productCategoryIdsInputSchema = z
+  .array(publicIdSchema)
+  .min(1)
+  .max(20)
+  .refine(
+    (categoryIds) => new Set(categoryIds).size === categoryIds.length,
+    "Each category may only be supplied once.",
+  );
+export const productCreateSchema = z
+  .strictObject({
+    name: nameSchema,
+    categoryId: publicIdSchema.optional(),
+    categoryIds: productCategoryIdsInputSchema.optional(),
+    units: productUnitsInputSchema,
+    ingredients: productIngredientsInputSchema,
+    maxTemperatureCelsius: temperatureInputSchema.optional(),
+  })
+  .refine(
+    (value) => Boolean(value.categoryId) !== Boolean(value.categoryIds),
+    "Supply categoryIds or categoryId, not both.",
+  );
 export const productPatchSchema = z
   .strictObject({
     name: nameSchema.optional(),
     categoryId: publicIdSchema.optional(),
+    categoryIds: productCategoryIdsInputSchema.optional(),
     units: productUnitsInputSchema.optional(),
     ingredients: productIngredientsInputSchema.optional(),
     maxTemperatureCelsius: temperatureInputSchema.optional(),
@@ -259,6 +278,10 @@ export const productPatchSchema = z
   .refine(
     (value) => Object.keys(value).length > 0,
     "At least one field is required.",
+  )
+  .refine(
+    (value) => !(value.categoryId && value.categoryIds),
+    "Supply categoryIds or categoryId, not both.",
   );
 export const productPaginationQuerySchema = paginationQuerySchema.extend({
   status: productStatusSchema.optional(),
