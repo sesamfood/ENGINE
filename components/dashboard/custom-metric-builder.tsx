@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useConvex, useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -448,6 +449,10 @@ export function CustomMetricBuilder({
   const [preview, setPreview] = useState<MetricResult | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [productOptions, setProductOptions] = useState<
+    FunctionReturnType<typeof api.customMetrics.listProductOptions> | undefined
+  >();
+  const [productOptionsLoading, setProductOptionsLoading] = useState(false);
 
   const numeratorDefinition = dashboardDatasets[draft.numerator.dataset];
   const denominatorDefinition = dashboardDatasets[draft.denominator.dataset];
@@ -505,15 +510,13 @@ export function CustomMetricBuilder({
     draft.limit,
     draft.numerator,
   ]);
-  const productOptions = useQuery(
-    api.customMetrics.listProductOptions,
-    open && baseSpec?.dimension === "product"
-      ? { spec: baseSpec, scope, range, now }
-      : "skip",
-  );
+  const loadProductOptions =
+    open &&
+    baseSpec?.dimension === "product" &&
+    draft.productFilterMode !== "all";
   const productCategories = useQuery(
     api.catalog.listCategoryOptions,
-    open && baseSpec?.dimension === "product" ? {} : "skip",
+    loadProductOptions ? {} : "skip",
   );
   const spec = useMemo<CustomMetricSpec | null>(() => {
     if (!baseSpec) return null;
@@ -552,6 +555,47 @@ export function CustomMetricBuilder({
           ? "Vælg mindst ét produkt"
           : null) ??
         (!spec ? "Kontrollér målingens felter og grænse" : null));
+
+  useEffect(() => {
+    if (!loadProductOptions || !baseSpec) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      setProductOptions(undefined);
+      setProductOptionsLoading(true);
+      void convex
+        .query(api.customMetrics.listProductOptions, {
+          spec: baseSpec,
+          scope,
+          range,
+          now,
+        })
+        .then((result) => {
+          if (!active) return;
+          setProductOptions(result);
+          setProductOptionsLoading(false);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setProductOptions({
+            products: [],
+            topProductValues: [],
+            truncated: false,
+          });
+          setProductOptionsLoading(false);
+          toast.error(
+            getUserErrorMessage(
+              error,
+              "Produktlisten kunne ikke indlæses. Prøv igen.",
+            ),
+          );
+        });
+    }, 450);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [baseSpec, convex, loadProductOptions, now, range, scope]);
 
   useEffect(() => {
     if (!open || !spec) return;
@@ -994,8 +1038,9 @@ export function CustomMetricBuilder({
                       categories={productCategories ?? []}
                       topProductValues={productOptions?.topProductValues ?? []}
                       loading={
-                        Boolean(baseSpec) &&
-                        (productOptions === undefined ||
+                        loadProductOptions &&
+                        (productOptionsLoading ||
+                          productOptions === undefined ||
                           productCategories === undefined)
                       }
                       truncated={productOptions?.truncated ?? false}
