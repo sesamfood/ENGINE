@@ -228,21 +228,21 @@ function MenuCard({
 export function OnlinePosMenuManager() {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
+  const [editor, setEditor] = useState<MenuEditor>(null);
   const menuData = useQuery(api.onlinePosMenus.list, canManage ? {} : "skip");
   const mappingOptions = useQuery(
     api.onlinePos.listMappingOptions,
-    canManage ? {} : "skip",
+    canManage && editor !== null ? {} : "skip",
   );
   const catalogCategories = useQuery(
     api.catalog.listCategoryOptions,
-    canManage ? {} : "skip",
+    canManage && editor !== null ? {} : "skip",
   );
   const listOnlinePosProducts = useAction(
     api.onlinePosMenus.listOnlinePosProducts,
   );
   const saveMenu = useAction(api.onlinePosMenus.save);
   const removeMenu = useMutation(api.onlinePosMenus.remove);
-  const [editor, setEditor] = useState<MenuEditor>(null);
   const [menuName, setMenuName] = useState("");
   const [selectedMenuProductId, setSelectedMenuProductId] = useState<
     string | null
@@ -429,11 +429,7 @@ export function OnlinePosMenuManager() {
     );
   }
 
-  if (
-    !menuData ||
-    mappingOptions === undefined ||
-    catalogCategories === undefined
-  ) {
+  if (!menuData) {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-24 w-full max-w-3xl" />
@@ -553,14 +549,20 @@ export function OnlinePosMenuManager() {
   });
   const selectedProductsAreUnique =
     new Set(selectedProductIds).size === selectedProductIds.length;
+  const editorOptionsLoading =
+    editor !== null &&
+    (mappingOptions === undefined || catalogCategories === undefined);
   const menuFieldDisabled =
+    editorOptionsLoading ||
     loadingOnlinePosProducts ||
     onlinePosProductsError !== null ||
     !menuData.enabled ||
     isSaving;
-  const productFieldDisabled = !menuData.enabled || isSaving;
+  const productFieldDisabled =
+    editorOptionsLoading || !menuData.enabled || isSaving;
   const canSave =
     menuData.enabled &&
+    !editorOptionsLoading &&
     !isSaving &&
     !loadingOnlinePosProducts &&
     onlinePosProductsError === null &&
@@ -673,6 +675,15 @@ export function OnlinePosMenuManager() {
               Henter OnlinePOS-produkter…
             </div>
           ) : null}
+          {editorOptionsLoading ? (
+            <div
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+              role="status"
+            >
+              <Spinner />
+              Henter produktkatalog…
+            </div>
+          ) : null}
           {onlinePosProductsError ? (
             <Alert variant="destructive">
               <CircleAlertIcon aria-hidden="true" />
@@ -711,7 +722,9 @@ export function OnlinePosMenuManager() {
               </AlertDescription>
             </Alert>
           ) : null}
-          {catalogProducts.every(
+          {mappingOptions !== undefined &&
+          catalogCategories !== undefined &&
+          catalogProducts.every(
             (product) => product.unavailableReason !== null,
           ) ? (
             <Alert>
@@ -762,7 +775,7 @@ export function OnlinePosMenuManager() {
               title="Primære produkter"
               description="Produkter, der kan være menuens hovedprodukt."
               productAriaLabel="Primære produkter i menuen"
-              categories={catalogCategories}
+              categories={catalogCategories ?? []}
               products={primaryProducts}
               selectedProductIds={selectedPrimaryProductIds}
               onProductIdsChange={(productIds) => {
@@ -775,7 +788,7 @@ export function OnlinePosMenuManager() {
               title="Ekstra produkter"
               description="Produkter, der kan følge med menuens hovedprodukt."
               productAriaLabel="Ekstra produkter i menuen"
-              categories={catalogCategories}
+              categories={catalogCategories ?? []}
               products={additionalProducts}
               selectedProductIds={selectedAdditionalProductIds}
               onProductIdsChange={(productIds) => {

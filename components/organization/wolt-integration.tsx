@@ -566,7 +566,7 @@ function ObservedItemMappings({
   onLocationChange: (value: Id<"locations"> | "all") => void;
   mappingDrafts: Record<string, Id<"products"> | undefined>;
   mappingScopes: Record<string, Id<"locations"> | "all" | undefined>;
-  products: ProductOption[];
+  products: ProductOption[] | undefined;
   savingKey: string | null;
   canUseWio: boolean;
   onSelectProduct: (rowKey: string, productId: Id<"products">) => void;
@@ -632,7 +632,7 @@ function ObservedItemMappings({
             </AlertDescription>
           </Alert>
         ) : null}
-        {observed === undefined ? (
+        {observed === undefined || products === undefined ? (
           <div className="flex flex-col gap-3" aria-label="Indlæser observerede produkter">
             <Skeleton className="h-28 w-full" />
             <Skeleton className="h-28 w-full" />
@@ -697,19 +697,22 @@ export function WoltIntegration() {
   const callbackHandled = useRef(false);
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const integrationOpen = detailsOpen || setupOpen;
   const overview = useQuery(api.wolt.getIntegrationOverview, canManage ? {} : "skip");
   const observedLocationState = useState<Id<"locations"> | "all">("all");
   const observedLocationFilter = observedLocationState[0];
   const setObservedLocationFilter = observedLocationState[1];
   const observed = useQuery(
     api.wolt.listObservedItems,
-    canManage
+    canManage && integrationOpen
       ? { locationId: observedLocationFilter === "all" ? null : observedLocationFilter }
       : "skip",
   );
   const products = useQuery(
     api.catalog.listActiveProductSearchOptions,
-    canManage ? {} : "skip",
+    canManage && integrationOpen ? {} : "skip",
   );
   const beginSsio = useAction(api.wolt.beginSsio);
   const setPartnerVenueMapping = useMutation(api.wolt.setPartnerVenueMapping);
@@ -719,8 +722,6 @@ export function WoltIntegration() {
   const setEnabled = useMutation(api.wolt.setEnabled);
   const saveProductMapping = useMutation(api.wolt.saveProductMapping);
   const deleteProductMapping = useMutation(api.wolt.deleteProductMapping);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
   const [changingEnabled, setChangingEnabled] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, Id<"products"> | undefined>>({});
@@ -901,8 +902,6 @@ export function WoltIntegration() {
   if (!overview || !products) {
     return <Skeleton className="h-96 w-full max-w-6xl" />;
   }
-
-  const integrationOpen = detailsOpen || setupOpen;
 
   return (
     <Collapsible
