@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { CircleAlertIcon, PackageIcon, ReceiptTextIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -25,6 +26,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -164,7 +166,8 @@ function OrderDetailContent({
                     ) : null}
                   </dl>
                   {line.menuItems.length ? (
-                    <div className="mt-5 flex flex-col gap-3 border-t pt-4">
+                    <div className="mt-5 flex flex-col gap-3">
+                      <Separator />
                       <h3 className="text-sm font-medium">
                         Produkter i menuen
                       </h3>
@@ -175,14 +178,29 @@ function OrderDetailContent({
                             className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
                           >
                             <div className="min-w-0">
-                              <p className="truncate font-medium">
-                                {menuItem.productName || "Ukendt produkt"}
-                              </p>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <p className="truncate font-medium">
+                                  {menuItem.product.name}
+                                </p>
+                                <Badge
+                                  variant={
+                                    menuItem.product.kind === "primary"
+                                      ? "secondary"
+                                      : "outline"
+                                  }
+                                  className="shrink-0"
+                                >
+                                  {menuItem.product.kind === "primary"
+                                    ? "Primær"
+                                    : "Ekstra"}
+                                </Badge>
+                              </div>
                               <p
                                 className="truncate text-xs text-muted-foreground"
-                                title={menuItem.externalProductId}
+                                title={`${menuItem.productName} · OnlinePOS-produkt-id: ${menuItem.externalProductId}`}
                               >
-                                OnlinePOS-produkt-id:{" "}
+                                {menuItem.productName || "Ukendt OnlinePOS-produkt"}
+                                {" · "}OnlinePOS-produkt-id:{" "}
                                 {menuItem.externalProductId || "—"}
                               </p>
                             </div>

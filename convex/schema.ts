@@ -216,11 +216,11 @@ export default defineSchema({
     onlinePosProductId: v.number(),
     name: v.string(),
     groupName: v.string(),
-    components: v.array(
+    products: v.array(
       v.object({
-        onlinePosProductId: v.number(),
+        kind: v.union(v.literal("primary"), v.literal("additional")),
+        productId: v.id("products"),
         name: v.string(),
-        groupName: v.string(),
       }),
     ),
     updatedAt: v.number(),

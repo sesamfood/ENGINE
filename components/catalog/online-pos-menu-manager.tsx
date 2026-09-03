@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -43,9 +44,12 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -67,13 +71,28 @@ type OnlinePosMenusResult = NonNullable<
   FunctionReturnType<typeof api.onlinePosMenus.list>
 >;
 type OnlinePosMenu = OnlinePosMenusResult["menus"][number];
+type OnlinePosMenuProduct = OnlinePosMenu["products"][number];
 type OnlinePosProductOption = FunctionReturnType<
-  typeof api.onlinePosMenus.listProductOptions
+  typeof api.onlinePosMenus.listOnlinePosProducts
 >[number];
+type ProductMappingOptions = NonNullable<
+  FunctionReturnType<typeof api.onlinePos.listMappingOptions>
+>;
+type CatalogProductOption = ProductMappingOptions["products"][number];
+type CatalogCategoryOption = FunctionReturnType<
+  typeof api.catalog.listCategoryOptions
+>[number];
+type MenuCatalogProduct = Pick<
+  CatalogProductOption,
+  "id" | "name" | "categoryIds"
+> & {
+  value: string;
+  unavailableReason: string | null;
+};
 type MenuEditor =
   { kind: "create" } | { kind: "edit"; menu: OnlinePosMenu } | null;
 
-function productLabel(product: OnlinePosProductOption) {
+function onlinePosProductLabel(product: OnlinePosProductOption) {
   return product.groupName
     ? `${product.name} · ${product.groupName}`
     : product.name;
@@ -84,15 +103,162 @@ function parseProductId(value: string) {
   return Number.isSafeInteger(productId) && productId > 0 ? productId : null;
 }
 
+function resolveCatalogProductIds(
+  values: string[],
+  products: ReadonlyArray<{ id: CatalogProductOption["id"] }>,
+) {
+  const idByValue = new Map(
+    products.map((product) => [String(product.id), product.id]),
+  );
+  const productIds = [];
+  for (const value of values) {
+    const productId = idByValue.get(value);
+    if (!productId) return null;
+    productIds.push(productId);
+  }
+  return productIds;
+}
+
+function MenuProductPicker({
+  title,
+  description,
+  productAriaLabel,
+  categories,
+  products,
+  selectedProductIds,
+  onProductIdsChange,
+  disabled,
+}: {
+  title: string;
+  description: string;
+  productAriaLabel: string;
+  categories: CatalogCategoryOption[];
+  products: MenuCatalogProduct[];
+  selectedProductIds: string[];
+  onProductIdsChange: (productIds: string[]) => void;
+  disabled: boolean;
+}) {
+  const categoriesById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  const categoryOrder = new Map(
+    categories.map((category, index) => [category.id, index]),
+  );
+  const productOptions = [...products]
+    .sort((left, right) => {
+      const leftCategoryId = left.categoryIds[0];
+      const rightCategoryId = right.categoryIds[0];
+      const leftCategoryOrder = leftCategoryId
+        ? (categoryOrder.get(leftCategoryId) ?? categories.length)
+        : categories.length;
+      const rightCategoryOrder = rightCategoryId
+        ? (categoryOrder.get(rightCategoryId) ?? categories.length)
+        : categories.length;
+      return (
+        leftCategoryOrder - rightCategoryOrder ||
+        left.name.localeCompare(right.name, "da")
+      );
+    })
+    .map((product) => {
+      const primaryCategoryId = product.categoryIds[0];
+      const primaryCategory = primaryCategoryId
+        ? categoriesById.get(primaryCategoryId)
+        : undefined;
+      return {
+        value: product.value,
+        label: product.unavailableReason
+          ? `${product.name} · ${product.unavailableReason}`
+          : product.name,
+        disabled: product.unavailableReason !== null,
+        group: primaryCategory?.path ?? "Uden kategori",
+        searchText: product.categoryIds
+          .flatMap((categoryId) => {
+            const category = categoriesById.get(categoryId);
+            return category ? [category.path] : [];
+          })
+          .join(" "),
+      };
+    });
+
+  return (
+    <FieldSet className="gap-4 rounded-xl border p-4">
+      <FieldLegend>{title}</FieldLegend>
+      <FieldDescription>{description}</FieldDescription>
+      <Field data-disabled={disabled}>
+        <FieldLabel>Produkter</FieldLabel>
+        <CreatableMultiCombobox
+          options={productOptions}
+          values={selectedProductIds}
+          onValuesChange={onProductIdsChange}
+          placeholder="Søg efter produkt eller kategori"
+          allowCreate={false}
+          preserveSearchOnSelect
+          disabled={disabled}
+          ariaLabel={productAriaLabel}
+        />
+        <FieldDescription>
+          Produkterne er opdelt efter kategori og underkategori.
+        </FieldDescription>
+      </Field>
+    </FieldSet>
+  );
+}
+
+function MenuProductList({
+  title,
+  emptyText,
+  products,
+}: {
+  title: string;
+  emptyText: string;
+  products: OnlinePosMenuProduct[];
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium">
+        {title} ({products.length.toLocaleString("da-DK")})
+      </p>
+      {products.length ? (
+        <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+          {products.map((product) => (
+            <li
+              key={product.id}
+              className="flex min-w-0 items-center justify-between gap-3"
+            >
+              <span className="min-w-0 truncate">{product.name}</span>
+              {!product.mapped ? (
+                <Badge variant="outline" className="shrink-0">
+                  Mangler kobling
+                </Badge>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
+      )}
+    </div>
+  );
+}
+
 function MenuCard({
   menu,
+  canEdit,
   onEdit,
   onRemove,
 }: {
   menu: OnlinePosMenu;
+  canEdit: boolean;
   onEdit: (menu: OnlinePosMenu) => void;
   onRemove: (menu: OnlinePosMenu) => void;
 }) {
+  const primaryProducts = menu.products.filter(
+    (product) => product.kind === "primary",
+  );
+  const additionalProducts = menu.products.filter(
+    (product) => product.kind === "additional",
+  );
+
   return (
     <Card size="sm">
       <CardHeader>
@@ -106,6 +272,7 @@ function MenuCard({
             type="button"
             variant="outline"
             className="min-h-11"
+            disabled={!canEdit}
             onClick={() => onEdit(menu)}
           >
             <PencilIcon data-icon="inline-start" />
@@ -122,24 +289,17 @@ function MenuCard({
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <p className="text-sm font-medium">
-          {menu.components.length.toLocaleString("da-DK")}{" "}
-          {menu.components.length === 1 ? "muligt produkt" : "mulige produkter"}
-        </p>
-        <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
-          {menu.components.map((component) => (
-            <li
-              key={component.onlinePosProductId}
-              className="flex min-w-0 items-baseline justify-between gap-3"
-            >
-              <span className="min-w-0 truncate">{component.name}</span>
-              <span className="shrink-0 text-xs">
-                ID {component.onlinePosProductId}
-              </span>
-            </li>
-          ))}
-        </ul>
+      <CardContent className="flex flex-col gap-5">
+        <MenuProductList
+          title="Primære produkter"
+          emptyText="Ingen primære produkter valgt."
+          products={primaryProducts}
+        />
+        <MenuProductList
+          title="Ekstra produkter"
+          emptyText="Ingen ekstra produkter valgt."
+          products={additionalProducts}
+        />
       </CardContent>
     </Card>
   );
@@ -149,22 +309,36 @@ export function OnlinePosMenuManager() {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
   const menuData = useQuery(api.onlinePosMenus.list, canManage ? {} : "skip");
-  const listProductOptions = useAction(api.onlinePosMenus.listProductOptions);
+  const mappingOptions = useQuery(
+    api.onlinePos.listMappingOptions,
+    canManage ? {} : "skip",
+  );
+  const catalogCategories = useQuery(
+    api.catalog.listCategoryOptions,
+    canManage ? {} : "skip",
+  );
+  const listOnlinePosProducts = useAction(
+    api.onlinePosMenus.listOnlinePosProducts,
+  );
   const saveMenu = useAction(api.onlinePosMenus.save);
   const removeMenu = useMutation(api.onlinePosMenus.remove);
   const [editor, setEditor] = useState<MenuEditor>(null);
   const [selectedMenuProductId, setSelectedMenuProductId] = useState<
     string | null
   >(null);
-  const [selectedComponentProductIds, setSelectedComponentProductIds] =
+  const [selectedPrimaryProductIds, setSelectedPrimaryProductIds] = useState<
+    string[]
+  >([]);
+  const [selectedAdditionalProductIds, setSelectedAdditionalProductIds] =
     useState<string[]>([]);
-  const [productOptions, setProductOptions] = useState<
+  const [onlinePosProductOptions, setOnlinePosProductOptions] = useState<
     OnlinePosProductOption[] | null
   >(null);
-  const [loadingProductOptions, setLoadingProductOptions] = useState(false);
-  const [productOptionsError, setProductOptionsError] = useState<string | null>(
-    null,
-  );
+  const [loadingOnlinePosProducts, setLoadingOnlinePosProducts] =
+    useState(false);
+  const [onlinePosProductsError, setOnlinePosProductsError] = useState<
+    string | null
+  >(null);
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<OnlinePosMenu | null>(
@@ -172,41 +346,55 @@ export function OnlinePosMenuManager() {
   );
   const [isDeleting, setIsDeleting] = useState(false);
 
-  async function loadProductOptions(force = false) {
-    if (loadingProductOptions || (!force && productOptions !== null)) return;
-    setLoadingProductOptions(true);
-    setProductOptionsError(null);
+  async function loadOnlinePosProducts(force = false) {
+    if (
+      loadingOnlinePosProducts ||
+      (!force && onlinePosProductOptions !== null)
+    ) {
+      return;
+    }
+    setLoadingOnlinePosProducts(true);
+    setOnlinePosProductsError(null);
     try {
-      setProductOptions(await listProductOptions({}));
+      setOnlinePosProductOptions(await listOnlinePosProducts({}));
     } catch (error) {
-      setProductOptionsError(
+      setOnlinePosProductsError(
         getUserErrorMessage(
           error,
           "OnlinePOS-produkterne kunne ikke hentes. Prøv igen.",
         ),
       );
     } finally {
-      setLoadingProductOptions(false);
+      setLoadingOnlinePosProducts(false);
     }
   }
 
   function openCreate() {
-    if (!menuData?.connected) return;
+    if (!menuData?.enabled) return;
     setEditor({ kind: "create" });
     setSelectedMenuProductId(null);
-    setSelectedComponentProductIds([]);
+    setSelectedPrimaryProductIds([]);
+    setSelectedAdditionalProductIds([]);
     setFormError("");
-    void loadProductOptions();
+    void loadOnlinePosProducts();
   }
 
   function openEdit(menu: OnlinePosMenu) {
+    if (!menuData?.enabled) return;
     setEditor({ kind: "edit", menu });
     setSelectedMenuProductId(String(menu.onlinePosProductId));
-    setSelectedComponentProductIds(
-      menu.components.map((component) => String(component.onlinePosProductId)),
+    setSelectedPrimaryProductIds(
+      menu.products
+        .filter((product) => product.kind === "primary")
+        .map((product) => product.id),
+    );
+    setSelectedAdditionalProductIds(
+      menu.products
+        .filter((product) => product.kind === "additional")
+        .map((product) => product.id),
     );
     setFormError("");
-    void loadProductOptions();
+    void loadOnlinePosProducts();
   }
 
   function closeEditor() {
@@ -219,24 +407,38 @@ export function OnlinePosMenuManager() {
     const menuProductId = selectedMenuProductId
       ? parseProductId(selectedMenuProductId)
       : null;
-    const componentProductIds = selectedComponentProductIds
-      .map(parseProductId)
-      .filter((productId): productId is number => productId !== null);
+    const knownCatalogProducts = [
+      ...(mappingOptions?.products ?? []),
+      ...(editor?.kind === "edit" ? editor.menu.products : []),
+    ];
+    const primaryProductIds = resolveCatalogProductIds(
+      selectedPrimaryProductIds,
+      knownCatalogProducts,
+    );
+    const additionalProductIds = resolveCatalogProductIds(
+      selectedAdditionalProductIds,
+      knownCatalogProducts,
+    );
 
     if (menuProductId === null) {
-      setFormError("Vælg menuens OnlinePOS-produkt.");
+      setFormError("Vælg menuen fra OnlinePOS.");
       return;
     }
-    if (componentProductIds.length !== selectedComponentProductIds.length) {
-      setFormError("Vælg kun gyldige OnlinePOS-produkter.");
+    if (!primaryProductIds || !additionalProductIds) {
+      setFormError("Vælg kun produkter fra produktkataloget.");
       return;
     }
-    if (componentProductIds.length === 0) {
-      setFormError("Vælg mindst ét muligt produkt.");
+    if (primaryProductIds.length === 0) {
+      setFormError("Vælg mindst ét primært produkt.");
       return;
     }
-    if (componentProductIds.includes(menuProductId)) {
-      setFormError("Menuens produkt kan ikke også være et produkt i menuen.");
+    const productIds = [...primaryProductIds, ...additionalProductIds];
+    if (productIds.length > 100) {
+      setFormError("Vælg højst 100 produkter til menuen.");
+      return;
+    }
+    if (new Set(productIds).size !== productIds.length) {
+      setFormError("Et produkt kan kun vælges én gang i menuen.");
       return;
     }
 
@@ -246,7 +448,8 @@ export function OnlinePosMenuManager() {
       await saveMenu({
         menuId: editor?.kind === "edit" ? editor.menu.id : null,
         onlinePosProductId: menuProductId,
-        componentProductIds,
+        primaryProductIds,
+        additionalProductIds,
       });
       toast.success(
         editor?.kind === "edit" ? "Menuen er opdateret" : "Menuen er oprettet",
@@ -293,7 +496,11 @@ export function OnlinePosMenuManager() {
     );
   }
 
-  if (!menuData) {
+  if (
+    !menuData ||
+    mappingOptions === undefined ||
+    catalogCategories === undefined
+  ) {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-24 w-full max-w-3xl" />
@@ -306,29 +513,127 @@ export function OnlinePosMenuManager() {
   }
 
   const currentMenuId = editor?.kind === "edit" ? editor.menu.id : null;
+  const configuredMenuProductIds = new Set(
+    menuData.menus
+      .filter((menu) => menu.id !== currentMenuId)
+      .map((menu) => menu.onlinePosProductId),
+  );
+  const selectedOnlinePosProductId = selectedMenuProductId
+    ? parseProductId(selectedMenuProductId)
+    : null;
   const assignedMenuProductIds = new Set(
     menuData.menus
       .filter((menu) => menu.id !== currentMenuId)
       .map((menu) => menu.onlinePosProductId),
   );
-  const menuProductOptions = (productOptions ?? []).map((product) => ({
+  const menuProductOptions = (onlinePosProductOptions ?? []).map((product) => ({
     value: String(product.id),
-    label: productLabel(product),
+    label: onlinePosProductLabel(product),
     disabled: assignedMenuProductIds.has(product.id),
   }));
-  const componentProductOptions = (productOptions ?? [])
-    .filter((product) => String(product.id) !== selectedMenuProductId)
-    .map((product) => ({
+  if (
+    editor?.kind === "edit" &&
+    !menuProductOptions.some(
+      (option) => option.value === String(editor.menu.onlinePosProductId),
+    )
+  ) {
+    menuProductOptions.unshift({
+      value: String(editor.menu.onlinePosProductId),
+      label: onlinePosProductLabel({
+        id: editor.menu.onlinePosProductId,
+        name: editor.menu.name,
+        groupName: editor.menu.groupName,
+      }),
+      disabled: true,
+    });
+  }
+  const catalogProducts: MenuCatalogProduct[] = (
+    mappingOptions?.products ?? []
+  ).map((product) => {
+    const isMenuProduct =
+      product.onlinePosProductId !== null &&
+      (configuredMenuProductIds.has(product.onlinePosProductId) ||
+        product.onlinePosProductId === selectedOnlinePosProductId);
+    return {
+      id: product.id,
+      name: product.name,
+      categoryIds: product.categoryIds,
       value: String(product.id),
-      label: productLabel(product),
-      disabled: assignedMenuProductIds.has(product.id),
-    }));
+      unavailableReason:
+        product.onlinePosProductId === null
+          ? "Mangler OnlinePOS-kobling"
+          : isMenuProduct
+            ? "Bruges som menu i OnlinePOS"
+            : null,
+    };
+  });
+  if (editor?.kind === "edit") {
+    for (const product of editor.menu.products) {
+      if (
+        !catalogProducts.some(
+          (catalogProduct) => catalogProduct.value === String(product.id),
+        )
+      ) {
+        catalogProducts.push({
+          id: product.id,
+          name: product.name,
+          categoryIds: [],
+          value: String(product.id),
+          unavailableReason: product.mapped
+            ? null
+            : "Mangler OnlinePOS-kobling",
+        });
+      }
+    }
+  }
+  const selectedPrimaryProductIdSet = new Set(selectedPrimaryProductIds);
+  const selectedAdditionalProductIdSet = new Set(selectedAdditionalProductIds);
+  const primaryProducts = catalogProducts.map((product) => ({
+    ...product,
+    unavailableReason:
+      product.unavailableReason ??
+      (selectedAdditionalProductIdSet.has(product.value)
+        ? "Valgt som ekstra produkt"
+        : null),
+  }));
+  const additionalProducts = catalogProducts.map((product) => ({
+    ...product,
+    unavailableReason:
+      product.unavailableReason ??
+      (selectedPrimaryProductIdSet.has(product.value)
+        ? "Valgt som primært produkt"
+        : null),
+  }));
+  const selectedMenuIsAvailable = menuProductOptions.some(
+    (option) => option.value === selectedMenuProductId && !option.disabled,
+  );
+  const selectedProductIds = [
+    ...selectedPrimaryProductIds,
+    ...selectedAdditionalProductIds,
+  ];
+  const selectedProductsAreAvailable = selectedProductIds.every((productId) =>
+    catalogProducts.some(
+      (product) =>
+        product.value === productId && product.unavailableReason === null,
+    ),
+  );
+  const selectedProductsAreUnique =
+    new Set(selectedProductIds).size === selectedProductIds.length;
+  const menuFieldDisabled =
+    loadingOnlinePosProducts ||
+    onlinePosProductsError !== null ||
+    !menuData.enabled ||
+    isSaving;
+  const productFieldDisabled = !menuData.enabled || isSaving;
   const canSave =
+    menuData.enabled &&
     !isSaving &&
-    !loadingProductOptions &&
-    productOptionsError === null &&
-    selectedMenuProductId !== null &&
-    selectedComponentProductIds.length > 0;
+    !loadingOnlinePosProducts &&
+    onlinePosProductsError === null &&
+    selectedMenuIsAvailable &&
+    selectedProductsAreAvailable &&
+    selectedProductsAreUnique &&
+    selectedPrimaryProductIds.length > 0;
 
   return (
     <div className="flex flex-col gap-7 pb-10">
@@ -336,16 +641,16 @@ export function OnlinePosMenuManager() {
         <div className="flex max-w-3xl flex-col gap-2">
           <h2 className="text-2xl font-semibold tracking-tight">Menuer</h2>
           <p className="text-sm leading-6 text-muted-foreground">
-            En menu er den prissatte OnlinePOS-linje. Valgte produktlinjer til 0
-            kr., som står lige efter menulinjen, vises som menuens produkter i
-            ordreoplysningerne.
+            Vælg menuen i OnlinePOS samt dens primære og ekstra produkter fra
+            produktkataloget. De efterfølgende produktlinjer til 0 kr. samles
+            under menuen via produkternes OnlinePOS-koblinger.
           </p>
         </div>
         <Button
           type="button"
           size="lg"
           className="min-h-11 px-4"
-          disabled={!menuData.connected}
+          disabled={!menuData.enabled}
           onClick={openCreate}
         >
           <PlusIcon data-icon="inline-start" />
@@ -362,6 +667,15 @@ export function OnlinePosMenuManager() {
             tilføje menuer.
           </AlertDescription>
         </Alert>
+      ) : !menuData.enabled ? (
+        <Alert>
+          <CircleAlertIcon aria-hidden="true" />
+          <AlertTitle>OnlinePOS-integrationen er slået fra</AlertTitle>
+          <AlertDescription>
+            Aktivér OnlinePOS under Administration → Integrationer for at
+            oprette eller redigere menuer.
+          </AlertDescription>
+        </Alert>
       ) : null}
 
       {menuData.menus.length === 0 ? (
@@ -372,15 +686,15 @@ export function OnlinePosMenuManager() {
             </EmptyMedia>
             <EmptyTitle>Ingen menuer endnu</EmptyTitle>
             <EmptyDescription>
-              Opret en menu for at samle mulige OnlinePOS-produkter i
-              ordreoplysningerne.
+              Opret en menu og vælg dens primære og ekstra produkter fra
+              produktkataloget.
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button
               type="button"
               className="min-h-11 px-4"
-              disabled={!menuData.connected}
+              disabled={!menuData.enabled}
               onClick={openCreate}
             >
               <PlusIcon data-icon="inline-start" />
@@ -394,6 +708,7 @@ export function OnlinePosMenuManager() {
             <MenuCard
               key={menu.id}
               menu={menu}
+              canEdit={menuData.enabled}
               onEdit={openEdit}
               onRemove={setPendingDelete}
             />
@@ -407,18 +722,18 @@ export function OnlinePosMenuManager() {
           if (!open) closeEditor();
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
               {editor?.kind === "edit" ? "Redigér menu" : "Ny menu"}
             </DialogTitle>
             <DialogDescription>
-              Vælg den prissatte menu-linje og de produktlinjer, der kan vises
-              under den.
+              Vælg menuen fra OnlinePOS samt dens primære og ekstra produkter
+              fra produktkataloget.
             </DialogDescription>
           </DialogHeader>
 
-          {loadingProductOptions ? (
+          {loadingOnlinePosProducts ? (
             <div
               className="flex items-center gap-2 text-sm text-muted-foreground"
               role="status"
@@ -427,19 +742,19 @@ export function OnlinePosMenuManager() {
               Henter OnlinePOS-produkter…
             </div>
           ) : null}
-          {productOptionsError ? (
+          {onlinePosProductsError ? (
             <Alert variant="destructive">
               <CircleAlertIcon aria-hidden="true" />
               <AlertTitle>Produkterne kunne ikke hentes</AlertTitle>
               <AlertDescription>
-                <p>{productOptionsError}</p>
+                <p>{onlinePosProductsError}</p>
                 <Button
                   type="button"
                   variant="outline"
                   className="mt-3 min-h-11"
                   onClick={() => {
-                    setProductOptions(null);
-                    void loadProductOptions(true);
+                    setOnlinePosProductOptions(null);
+                    void loadOnlinePosProducts(true);
                   }}
                 >
                   Prøv igen
@@ -447,50 +762,82 @@ export function OnlinePosMenuManager() {
               </AlertDescription>
             </Alert>
           ) : null}
-          {productOptions?.length === 0 ? (
+          {onlinePosProductOptions?.length === 0 ? (
             <Alert>
               <CircleAlertIcon aria-hidden="true" />
               <AlertTitle>Ingen OnlinePOS-produkter</AlertTitle>
               <AlertDescription>
-                OnlinePOS skal have produkter, før en menu kan oprettes.
+                OnlinePOS skal have et produkt, der kan bruges som menu.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {mappingOptions?.limitReached ? (
+            <Alert>
+              <CircleAlertIcon aria-hidden="true" />
+              <AlertTitle>Kun de første 500 produkter vises</AlertTitle>
+              <AlertDescription>
+                Arkivér ubrugte produkter for at få hele listen med.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {catalogProducts.every(
+            (product) => product.unavailableReason !== null,
+          ) ? (
+            <Alert>
+              <CircleAlertIcon aria-hidden="true" />
+              <AlertTitle>Ingen produkter kan vælges</AlertTitle>
+              <AlertDescription>
+                Kobl mindst ét produkt til et OnlinePOS-produkt, som ikke bruges
+                som menu, før du gemmer menuen.
               </AlertDescription>
             </Alert>
           ) : null}
 
           <FieldGroup>
-            <Field data-invalid={Boolean(formError)}>
-              <FieldLabel>Menuens OnlinePOS-produkt</FieldLabel>
+            <Field
+              data-invalid={Boolean(formError)}
+              data-disabled={menuFieldDisabled}
+            >
+              <FieldLabel>Menu i OnlinePOS</FieldLabel>
               <CreatableCombobox
                 options={menuProductOptions}
                 value={selectedMenuProductId}
                 onValueChange={(value) => {
                   setSelectedMenuProductId(value);
-                  setSelectedComponentProductIds((current) =>
-                    current.filter((productId) => productId !== value),
-                  );
                   setFormError("");
                 }}
-                placeholder="Vælg menuens produkt"
+                placeholder="Vælg menu"
                 allowCreate={false}
-                disabled={loadingProductOptions || productOptionsError !== null}
-                ariaLabel="Menuens OnlinePOS-produkt"
+                disabled={menuFieldDisabled}
+                ariaLabel="Menu i OnlinePOS"
               />
             </Field>
-            <Field data-invalid={Boolean(formError)}>
-              <FieldLabel>Mulige produkter i menuen</FieldLabel>
-              <CreatableMultiCombobox
-                options={componentProductOptions}
-                values={selectedComponentProductIds}
-                onValuesChange={(values) => {
-                  setSelectedComponentProductIds(values);
-                  setFormError("");
-                }}
-                placeholder="Vælg et eller flere produkter"
-                allowCreate={false}
-                disabled={loadingProductOptions || productOptionsError !== null}
-                ariaLabel="Mulige produkter i menuen"
-              />
-            </Field>
+            <MenuProductPicker
+              title="Primære produkter"
+              description="Produkter, der kan være menuens hovedprodukt."
+              productAriaLabel="Primære produkter i menuen"
+              categories={catalogCategories}
+              products={primaryProducts}
+              selectedProductIds={selectedPrimaryProductIds}
+              onProductIdsChange={(productIds) => {
+                setSelectedPrimaryProductIds(productIds);
+                setFormError("");
+              }}
+              disabled={productFieldDisabled}
+            />
+            <MenuProductPicker
+              title="Ekstra produkter"
+              description="Produkter, der kan følge med menuens hovedprodukt."
+              productAriaLabel="Ekstra produkter i menuen"
+              categories={catalogCategories}
+              products={additionalProducts}
+              selectedProductIds={selectedAdditionalProductIds}
+              onProductIdsChange={(productIds) => {
+                setSelectedAdditionalProductIds(productIds);
+                setFormError("");
+              }}
+              disabled={productFieldDisabled}
+            />
             <FieldError>{formError}</FieldError>
           </FieldGroup>
 

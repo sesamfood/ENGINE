@@ -1,7 +1,7 @@
 "use client";
 
 import { PlusIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   Combobox,
   ComboboxChip,
@@ -23,6 +23,8 @@ export type ComboboxOption = {
   value: string;
   label: string;
   disabled?: boolean;
+  group?: string;
+  searchText?: string;
 };
 
 function optionLabel(options: ComboboxOption[], value: string) {
@@ -231,6 +233,7 @@ export function CreatableMultiCombobox({
   onValuesChange,
   placeholder,
   allowCreate = false,
+  preserveSearchOnSelect = false,
   disabled = false,
   ariaLabel,
 }: {
@@ -239,6 +242,7 @@ export function CreatableMultiCombobox({
   onValuesChange: (values: string[]) => void;
   placeholder: string;
   allowCreate?: boolean;
+  preserveSearchOnSelect?: boolean;
   disabled?: boolean;
   ariaLabel: string;
 }) {
@@ -255,7 +259,9 @@ export function CreatableMultiCombobox({
     const query = inputValue.trim().toLocaleLowerCase("da");
     const matches = query
       ? options.filter((option) =>
-          option.label.toLocaleLowerCase("da").includes(query),
+          [option.label, option.group, option.searchText]
+            .filter((value): value is string => Boolean(value))
+            .some((value) => value.toLocaleLowerCase("da").includes(query)),
         )
       : options;
     const exactMatch = [...options.map((option) => option.value), ...values].some(
@@ -270,6 +276,16 @@ export function CreatableMultiCombobox({
     return matches;
   }, [allowCreate, inputValue, options, values]);
   const itemValues = visibleOptions.map((option) => option.value);
+  const optionGroups = useMemo(() => {
+    const groups = new Map<string, ComboboxOption[]>();
+    for (const option of visibleOptions) {
+      const group = option.group ?? "";
+      const groupOptions = groups.get(group);
+      if (groupOptions) groupOptions.push(option);
+      else groups.set(group, [option]);
+    }
+    return [...groups];
+  }, [visibleOptions]);
 
   function commitInput() {
     const label = inputValue.trim();
@@ -288,7 +304,7 @@ export function CreatableMultiCombobox({
       existing?.value ?? selectedValue ?? (allowCreate ? `new:${label}` : null);
     if (!nextValue) return false;
     if (!values.includes(nextValue)) onValuesChange([...values, nextValue]);
-    setInputValue("");
+    if (!preserveSearchOnSelect) setInputValue("");
     setHighlightedValue(undefined);
     return true;
   }
@@ -302,6 +318,14 @@ export function CreatableMultiCombobox({
       inputValue={inputValue}
       open={open}
       onOpenChange={(nextOpen, eventDetails) => {
+        if (
+          !nextOpen &&
+          preserveSearchOnSelect &&
+          eventDetails.reason === "item-press"
+        ) {
+          eventDetails.cancel();
+          return;
+        }
         if (
           !nextOpen &&
           (eventDetails.reason === "outside-press" ||
@@ -318,7 +342,7 @@ export function CreatableMultiCombobox({
       }}
       onValueChange={(nextValues) => {
         onValuesChange(nextValues);
-        setInputValue("");
+        if (!preserveSearchOnSelect) setInputValue("");
         setHighlightedValue(undefined);
       }}
       disabled={disabled}
@@ -357,23 +381,29 @@ export function CreatableMultiCombobox({
       <ComboboxContent anchor={anchor}>
         <ComboboxEmpty>Ingen resultater fundet.</ComboboxEmpty>
         <ComboboxList>
-          <ComboboxGroup>
-            {visibleOptions.map((option) => (
-              <ComboboxItem
-                key={option.value}
-                value={option.value}
-                disabled={option.disabled}
-                className="min-h-10"
-              >
-                {option.value.startsWith("new:") ? (
-                  <PlusIcon aria-hidden="true" />
-                ) : null}
-                {option.value.startsWith("new:")
-                  ? `Opret “${option.label}”`
-                  : option.label}
-              </ComboboxItem>
-            ))}
-          </ComboboxGroup>
+          {optionGroups.map(([group, groupOptions], index) => (
+            <Fragment key={group ? `group:${group}` : "ungrouped"}>
+              {index > 0 ? <ComboboxSeparator /> : null}
+              <ComboboxGroup>
+                {group ? <ComboboxLabel>{group}</ComboboxLabel> : null}
+                {groupOptions.map((option) => (
+                  <ComboboxItem
+                    key={option.value}
+                    value={option.value}
+                    disabled={option.disabled}
+                    className="min-h-10"
+                  >
+                    {option.value.startsWith("new:") ? (
+                      <PlusIcon aria-hidden="true" />
+                    ) : null}
+                    {option.value.startsWith("new:")
+                      ? `Opret “${option.label}”`
+                      : option.label}
+                  </ComboboxItem>
+                ))}
+              </ComboboxGroup>
+            </Fragment>
+          ))}
         </ComboboxList>
       </ComboboxContent>
     </Combobox>

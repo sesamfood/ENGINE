@@ -22,6 +22,7 @@ import {
   type JsonValue,
   type OnlinePosProduct,
 } from "./lib/onlinePosApi";
+import { getProductCategoryIds } from "./lib/productCategories";
 import { normalizeStock } from "./lib/stock";
 import { recordAudit } from "./lib/audit";
 
@@ -730,6 +731,7 @@ export const listMappingOptions = query({
         v.object({
           id: v.id("products"),
           name: v.string(),
+          categoryIds: v.array(v.id("categories")),
           onlinePosProductId: v.union(v.number(), v.null()),
         }),
       ),
@@ -769,11 +771,14 @@ export const listMappingOptions = query({
     );
 
     return {
-      products: products.slice(0, MAX_PRODUCTS).map((product) => ({
-        id: product._id,
-        name: product.name,
-        onlinePosProductId: byProductId.get(product._id) ?? null,
-      })),
+      products: await Promise.all(
+        products.slice(0, MAX_PRODUCTS).map(async (product) => ({
+          id: product._id,
+          name: product.name,
+          categoryIds: await getProductCategoryIds(ctx, product),
+          onlinePosProductId: byProductId.get(product._id) ?? null,
+        })),
+      ),
       limitReached: products.length > MAX_PRODUCTS,
     };
   },

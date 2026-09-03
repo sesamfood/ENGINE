@@ -22,6 +22,7 @@ const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 const MAX_LIST_ORDERS_PAGE = 100;
 const MAX_ORDER_LINES = 500;
 const MAX_ONLINE_POS_MENUS = 100;
+const MAX_ONLINE_POS_PRODUCT_MAPPINGS = 500;
 
 // Money fields (revenue) are integer minor units (øre), same as storage. Callers divide by 100.
 
@@ -67,8 +68,16 @@ const orderLineBaseValidator = v.object({
   clerkName: v.union(v.string(), v.null()),
 });
 
+const menuItemValidator = orderLineBaseValidator.extend({
+  product: v.object({
+    kind: v.union(v.literal("primary"), v.literal("additional")),
+    id: v.id("products"),
+    name: v.string(),
+  }),
+});
+
 const orderLineValidator = orderLineBaseValidator.extend({
-  menuItems: v.array(orderLineBaseValidator),
+  menuItems: v.array(menuItemValidator),
   menuItemsTruncated: v.boolean(),
 });
 
@@ -143,10 +152,17 @@ function mapOrderLine(line: Doc<"salesLines">) {
 function groupMenuLines(
   lines: Doc<"salesLines">[],
   menus: Doc<"onlinePosMenus">[],
+  mappings: Doc<"onlinePosProductMappings">[],
   maxLines: number,
 ) {
   const menuByProductId = new Map(
     menus.map((menu) => [String(menu.onlinePosProductId), menu]),
+  );
+  const productIdByOnlinePosProductId = new Map(
+    mappings.map((mapping) => [
+      String(mapping.onlinePosProductId),
+      mapping.productId,
+    ]),
   );
   const groupedLines = [];
 
@@ -163,19 +179,35 @@ function groupMenuLines(
       continue;
     }
 
-    const componentProductIds = new Set(
-      menu.components.map((component) => String(component.onlinePosProductId)),
+    const menuProductById = new Map(
+      menu.products.map((product) => [product.productId, product]),
     );
     const menuItems = [];
     let nextIndex = index + 1;
-    const isMenuItem = (candidate: Doc<"salesLines">) =>
-      candidate.revenue === 0 &&
-      !menuByProductId.has(candidate.externalProductId) &&
-      componentProductIds.has(candidate.externalProductId);
+    const menuProductFor = (candidate: Doc<"salesLines">) => {
+      if (
+        candidate.revenue !== 0 ||
+        menuByProductId.has(candidate.externalProductId)
+      ) {
+        return null;
+      }
+      const productId = productIdByOnlinePosProductId.get(
+        candidate.externalProductId,
+      );
+      return productId ? (menuProductById.get(productId) ?? null) : null;
+    };
     while (nextIndex < visibleLineCount) {
       const candidate = lines[nextIndex];
-      if (!isMenuItem(candidate)) break;
-      menuItems.push(mapOrderLine(candidate));
+      const product = menuProductFor(candidate);
+      if (!product) break;
+      menuItems.push({
+        ...mapOrderLine(candidate),
+        product: {
+          kind: product.kind,
+          id: product.productId,
+          name: product.name,
+        },
+      });
       nextIndex += 1;
     }
     const nextLine = lines[nextIndex];
@@ -185,7 +217,7 @@ function groupMenuLines(
       menuItemsTruncated:
         nextIndex === visibleLineCount &&
         nextLine !== undefined &&
-        isMenuItem(nextLine),
+        menuProductFor(nextLine) !== null,
     });
     index = nextIndex - 1;
   }
@@ -515,7 +547,7 @@ export const getOrder = query({
     }
 
     requireLocationAccess(auth, order.locationId);
-    const [location, lines, menus] = await Promise.all([
+    const [location, lines, menus, mappings] = await Promise.all([
       ctx.db.get("locations", order.locationId),
       ctx.db
         .query("salesLines")
@@ -532,12 +564,21 @@ export const getOrder = query({
           q.eq("organizationId", auth.organizationId),
         )
         .take(MAX_ONLINE_POS_MENUS + 1),
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", auth.organizationId),
+        )
+        .take(MAX_ONLINE_POS_PRODUCT_MAPPINGS + 1),
     ]);
     if (!location || location.organizationId !== auth.organizationId) {
       return null;
     }
     if (menus.length > MAX_ONLINE_POS_MENUS) {
       throw new ConvexError("Der er for mange OnlinePOS-menuer");
+    }
+    if (mappings.length > MAX_ONLINE_POS_PRODUCT_MAPPINGS) {
+      throw new ConvexError("Der er for mange produktkoblinger");
     }
     if (
       lines.some(
@@ -556,7 +597,7 @@ export const getOrder = query({
       ),
       updatedAt: order.updatedAt,
       linesTruncated: lines.length > MAX_ORDER_LINES,
-      lines: groupMenuLines(lines, menus, MAX_ORDER_LINES),
+      lines: groupMenuLines(lines, menus, mappings, MAX_ORDER_LINES),
     };
   },
 });

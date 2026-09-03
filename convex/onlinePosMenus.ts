@@ -12,14 +12,22 @@ import {
 } from "./lib/onlinePosApi";
 
 const MAX_MENUS = 100;
-const MAX_MENU_COMPONENTS = 100;
+const MAX_MENU_PRODUCTS = 100;
+const MAX_PRODUCT_MAPPINGS = 500;
 const MAX_ONLINE_POS_PRODUCTS = 2_000;
 const MAX_PRODUCT_NAME_LENGTH = 200;
 
-const menuComponentValidator = v.object({
+const onlinePosProductValidator = v.object({
   onlinePosProductId: v.number(),
   name: v.string(),
   groupName: v.string(),
+});
+
+const menuProductValidator = v.object({
+  kind: v.union(v.literal("primary"), v.literal("additional")),
+  id: v.id("products"),
+  name: v.string(),
+  mapped: v.boolean(),
 });
 
 const menuValidator = v.object({
@@ -27,10 +35,10 @@ const menuValidator = v.object({
   onlinePosProductId: v.number(),
   name: v.string(),
   groupName: v.string(),
-  components: v.array(menuComponentValidator),
+  products: v.array(menuProductValidator),
 });
 
-const onlinePosProductValidator = v.object({
+const onlinePosProductOptionValidator = v.object({
   id: v.number(),
   name: v.string(),
   groupName: v.string(),
@@ -69,7 +77,27 @@ function normalizeProducts(products: OnlinePosProduct[]) {
   );
 }
 
-async function connectedSettings(
+function validateMenuProductIds({
+  primaryProductIds,
+  additionalProductIds,
+}: {
+  primaryProductIds: Id<"products">[];
+  additionalProductIds: Id<"products">[];
+}) {
+  if (primaryProductIds.length === 0) {
+    throw new ConvexError("Vælg mindst ét primært produkt");
+  }
+  const productIds = [...primaryProductIds, ...additionalProductIds];
+  if (productIds.length > MAX_MENU_PRODUCTS) {
+    throw new ConvexError("Vælg højst 100 produkter til menuen");
+  }
+  if (new Set(productIds).size !== productIds.length) {
+    throw new ConvexError("Et produkt kan kun vælges én gang i menuen");
+  }
+  return productIds;
+}
+
+async function enabledSettings(
   ctx: ActionCtx,
   organizationId: string,
 ): Promise<{
@@ -79,7 +107,9 @@ async function connectedSettings(
   const settings = await ctx.runQuery(internal.onlinePos.getPrivateSettings, {
     organizationId,
   });
-  if (!settings) throw new ConvexError("OnlinePOS er ikke forbundet");
+  if (!settings?.enabled) {
+    throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
+  }
   return {
     integrationId: settings.integrationId,
     settings,
@@ -90,11 +120,12 @@ export const list = query({
   args: {},
   returns: v.object({
     connected: v.boolean(),
+    enabled: v.boolean(),
     menus: v.array(menuValidator),
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireIntegrationManager(ctx);
-    const [integration, menus] = await Promise.all([
+    const [integration, menus, mappings] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -107,31 +138,49 @@ export const list = query({
           q.eq("organizationId", organizationId),
         )
         .take(MAX_MENUS + 1),
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_PRODUCT_MAPPINGS + 1),
     ]);
     if (menus.length > MAX_MENUS) {
       throw new ConvexError("Der er for mange OnlinePOS-menuer");
     }
+    if (mappings.length > MAX_PRODUCT_MAPPINGS) {
+      throw new ConvexError("Der er for mange produktkoblinger");
+    }
+    const mappedProductIds = new Set(
+      mappings.map((mapping) => mapping.productId),
+    );
     return {
       connected: integration !== null,
+      enabled: integration?.enabled === true,
       menus: menus
         .map((menu) => ({
           id: menu._id,
           onlinePosProductId: menu.onlinePosProductId,
           name: menu.name,
           groupName: menu.groupName,
-          components: menu.components,
+          products: menu.products.map((product) => ({
+            kind: product.kind,
+            id: product.productId,
+            name: product.name,
+            mapped: mappedProductIds.has(product.productId),
+          })),
         }))
         .sort((left, right) => left.name.localeCompare(right.name, "da")),
     };
   },
 });
 
-export const listProductOptions = action({
+export const listOnlinePosProducts = action({
   args: {},
-  returns: v.array(onlinePosProductValidator),
+  returns: v.array(onlinePosProductOptionValidator),
   handler: async (ctx): Promise<OnlinePosProduct[]> => {
     const { organizationId } = await requireIntegrationManager(ctx);
-    const { settings } = await connectedSettings(ctx, organizationId);
+    const { settings } = await enabledSettings(ctx, organizationId);
     return normalizeProducts(await requestProducts(settings));
   },
 });
@@ -142,14 +191,23 @@ export const saveConfiguration = internalMutation({
     menuId: v.union(v.id("onlinePosMenus"), v.null()),
     integrationId: v.id("onlinePosIntegrations"),
     companyId: v.number(),
-    menuProduct: menuComponentValidator,
-    components: v.array(menuComponentValidator),
+    menuProduct: onlinePosProductValidator,
+    primaryProductIds: v.array(v.id("products")),
+    additionalProductIds: v.array(v.id("products")),
     actorUserId: v.string(),
     actorName: v.string(),
   },
   returns: v.id("onlinePosMenus"),
   handler: async (ctx, args) => {
-    const [integration, current, duplicateMenus, menus] = await Promise.all([
+    const productIds = validateMenuProductIds(args);
+    const [
+      integration,
+      current,
+      duplicateMenus,
+      menus,
+      products,
+      mappings,
+    ] = await Promise.all([
       ctx.db
         .query("onlinePosIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -173,9 +231,19 @@ export const saveConfiguration = internalMutation({
           q.eq("organizationId", args.organizationId),
         )
         .take(MAX_MENUS + 1),
+      Promise.all(
+        productIds.map((productId) => ctx.db.get("products", productId)),
+      ),
+      ctx.db
+        .query("onlinePosProductMappings")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .take(MAX_PRODUCT_MAPPINGS + 1),
     ]);
     if (
       !integration ||
+      !integration.enabled ||
       integration._id !== args.integrationId ||
       integration.companyId !== args.companyId
     ) {
@@ -195,24 +263,47 @@ export const saveConfiguration = internalMutation({
     if (duplicateMenus.some((menu) => menu._id !== args.menuId)) {
       throw new ConvexError("OnlinePOS-produktet bruges allerede som menu");
     }
-    const otherMenus = menus.filter((menu) => menu._id !== args.menuId);
-    const otherMenuProductIds = new Set(
-      otherMenus.map((menu) => menu.onlinePosProductId),
+    const primaryProductIds = new Set(args.primaryProductIds);
+    const menuProducts: Array<{
+      kind: "primary" | "additional";
+      productId: Id<"products">;
+      name: string;
+    }> = [];
+    for (const product of products) {
+      if (!product || product.organizationId !== args.organizationId) {
+        throw new ConvexError("Et af produkterne blev ikke fundet");
+      }
+      menuProducts.push({
+        kind: primaryProductIds.has(product._id) ? "primary" : "additional",
+        productId: product._id,
+        name: product.name,
+      });
+    }
+    if (mappings.length > MAX_PRODUCT_MAPPINGS) {
+      throw new ConvexError("Der er for mange produktkoblinger");
+    }
+    const mappingByProductId = new Map(
+      mappings.map((mapping) => [mapping.productId, mapping]),
     );
+    if (productIds.some((productId) => !mappingByProductId.has(productId))) {
+      throw new ConvexError(
+        "Et af produkterne mangler en OnlinePOS-kobling. Tilføj koblingen på produktet og prøv igen.",
+      );
+    }
+    const menuProductIds = new Set(
+      menus
+        .filter((menu) => menu._id !== args.menuId)
+        .map((menu) => menu.onlinePosProductId),
+    );
+    menuProductIds.add(args.menuProduct.onlinePosProductId);
     if (
-      args.components.some((component) =>
-        otherMenuProductIds.has(component.onlinePosProductId),
-      ) ||
-      otherMenus.some((menu) =>
-        menu.components.some(
-          (component) =>
-            component.onlinePosProductId ===
-            args.menuProduct.onlinePosProductId,
-        ),
-      )
+      productIds.some((productId) => {
+        const mapping = mappingByProductId.get(productId);
+        return mapping && menuProductIds.has(mapping.onlinePosProductId);
+      })
     ) {
       throw new ConvexError(
-        "Et OnlinePOS-produkt kan ikke være både menu og produkt i en menu",
+        "Et produkt i menuen bruges også som menu i OnlinePOS",
       );
     }
 
@@ -221,7 +312,7 @@ export const saveConfiguration = internalMutation({
       onlinePosProductId: args.menuProduct.onlinePosProductId,
       name: args.menuProduct.name,
       groupName: args.menuProduct.groupName,
-      components: args.components,
+      products: menuProducts,
       updatedAt,
     };
     const menuId: Id<"onlinePosMenus"> = current
@@ -256,7 +347,8 @@ export const save = action({
   args: {
     menuId: v.union(v.id("onlinePosMenus"), v.null()),
     onlinePosProductId: v.number(),
-    componentProductIds: v.array(v.number()),
+    primaryProductIds: v.array(v.id("products")),
+    additionalProductIds: v.array(v.id("products")),
   },
   returns: v.id("onlinePosMenus"),
   handler: async (ctx, args): Promise<Id<"onlinePosMenus">> => {
@@ -267,45 +359,21 @@ export const save = action({
     ) {
       throw new ConvexError("Vælg et gyldigt OnlinePOS-produkt til menuen");
     }
-    if (
-      args.componentProductIds.length === 0 ||
-      args.componentProductIds.length > MAX_MENU_COMPONENTS
-    ) {
-      throw new ConvexError("Vælg mellem 1 og 100 produkter til menuen");
-    }
-    const componentProductIds = new Set(args.componentProductIds);
-    if (
-      componentProductIds.size !== args.componentProductIds.length ||
-      componentProductIds.has(args.onlinePosProductId) ||
-      [...componentProductIds].some(
-        (productId) => !Number.isSafeInteger(productId) || productId <= 0,
-      )
-    ) {
-      throw new ConvexError("Menuens OnlinePOS-produkter er ugyldige");
-    }
+    validateMenuProductIds(args);
 
-    const connection = await connectedSettings(ctx, auth.organizationId);
-    const products = normalizeProducts(
+    const connection = await enabledSettings(ctx, auth.organizationId);
+    const onlinePosProducts = normalizeProducts(
       await requestProducts(connection.settings),
     );
-    const productsById = new Map(
-      products.map((product) => [product.id, product]),
+    const onlinePosProductsById = new Map(
+      onlinePosProducts.map((product) => [product.id, product]),
     );
-    const menuProduct = productsById.get(args.onlinePosProductId);
+    const menuProduct = onlinePosProductsById.get(args.onlinePosProductId);
     if (!menuProduct) {
       throw new ConvexError(
-        "Et af produkterne findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",
+        "Menuen findes ikke længere i OnlinePOS. Opdatér listen og prøv igen.",
       );
     }
-    const components = args.componentProductIds.map((productId) => {
-      const product = productsById.get(productId);
-      if (!product) {
-        throw new ConvexError(
-          "Et af produkterne findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",
-        );
-      }
-      return product;
-    });
 
     const menuId: Id<"onlinePosMenus"> = await ctx.runMutation(
       internal.onlinePosMenus.saveConfiguration,
@@ -319,16 +387,42 @@ export const save = action({
           name: menuProduct.name,
           groupName: menuProduct.groupName,
         },
-        components: components.map((product) => ({
-          onlinePosProductId: product.id,
-          name: product.name,
-          groupName: product.groupName,
-        })),
+        primaryProductIds: args.primaryProductIds,
+        additionalProductIds: args.additionalProductIds,
         actorUserId: auth.userId,
         actorName: auth.userName,
       },
     );
     return menuId;
+  },
+});
+
+export const removeProductReferences = internalMutation({
+  args: {
+    organizationId: v.string(),
+    productId: v.id("products"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const menus = await ctx.db
+      .query("onlinePosMenus")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .take(MAX_MENUS + 1);
+    if (menus.length > MAX_MENUS) {
+      throw new ConvexError("Der er for mange OnlinePOS-menuer");
+    }
+    const updatedAt = Date.now();
+    for (const menu of menus) {
+      const products = menu.products.filter(
+        (product) => product.productId !== args.productId,
+      );
+      if (products.length !== menu.products.length) {
+        await ctx.db.patch(menu._id, { products, updatedAt });
+      }
+    }
+    return null;
   },
 });
 
