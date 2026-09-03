@@ -17,12 +17,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -55,12 +53,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   CircleAlertIcon,
-  PencilIcon,
   PlusIcon,
   Trash2Icon,
   UtensilsIcon,
@@ -73,7 +75,6 @@ type OnlinePosMenusResult = NonNullable<
   FunctionReturnType<typeof api.onlinePosMenus.list>
 >;
 type OnlinePosMenu = OnlinePosMenusResult["menus"][number];
-type OnlinePosMenuProduct = OnlinePosMenu["products"][number];
 type OnlinePosProductOption = FunctionReturnType<
   typeof api.onlinePosMenus.listOnlinePosProducts
 >[number];
@@ -250,103 +251,56 @@ function MenuProductPicker({
   );
 }
 
-function MenuProductList({
-  title,
-  emptyText,
-  products,
-}: {
-  title: string;
-  emptyText: string;
-  products: OnlinePosMenuProduct[];
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">
-        {title} ({products.length.toLocaleString("da-DK")})
-      </p>
-      {products.length ? (
-        <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
-          {products.map((product) => (
-            <li
-              key={product.id}
-              className="flex min-w-0 items-center justify-between gap-3"
-            >
-              <span className="min-w-0 truncate">{product.name}</span>
-              {!product.mapped ? (
-                <Badge variant="outline" className="shrink-0">
-                  Mangler kobling
-                </Badge>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-muted-foreground">{emptyText}</p>
-      )}
-    </div>
-  );
-}
-
 function MenuCard({
   menu,
-  canEdit,
   onEdit,
-  onRemove,
 }: {
   menu: OnlinePosMenu;
-  canEdit: boolean;
   onEdit: (menu: OnlinePosMenu) => void;
-  onRemove: (menu: OnlinePosMenu) => void;
 }) {
-  const primaryProducts = menu.products.filter(
-    (product) => product.kind === "primary",
-  );
-  const additionalProducts = menu.products.filter(
-    (product) => product.kind === "additional",
-  );
+  const hasUnmappedProducts = menu.products.some((product) => !product.mapped);
+  const productCountLabel = `${menu.products.length.toLocaleString("da-DK")} ${
+    menu.products.length === 1 ? "produkt" : "produkter"
+  }`;
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="truncate">{menu.name}</CardTitle>
-        <CardDescription className="truncate">
-          {menu.onlinePosProductName} · OnlinePOS-produkt-id:{" "}
-          {menu.onlinePosProductId} · {menu.groupName || "Uden gruppe"}
-        </CardDescription>
-        <CardAction className="flex flex-wrap justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            disabled={!canEdit}
-            onClick={() => onEdit(menu)}
-          >
-            <PencilIcon data-icon="inline-start" />
-            Redigér
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="min-h-11"
-            onClick={() => onRemove(menu)}
-          >
-            <Trash2Icon data-icon="inline-start" />
-            Fjern
-          </Button>
-        </CardAction>
+    <Card
+      size="sm"
+      role="button"
+      tabIndex={0}
+      aria-label={
+        hasUnmappedProducts
+          ? `Redigér ${menu.name}. ${productCountLabel}. Nogle produkter mangler OnlinePOS-kobling.`
+          : `Redigér ${menu.name}. ${productCountLabel}.`
+      }
+      className="cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      onClick={() => onEdit(menu)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onEdit(menu);
+        }
+      }}
+    >
+      <CardHeader className="items-center">
+        <CardTitle className="min-w-0 truncate">{menu.name}</CardTitle>
+        <CardDescription>{productCountLabel}</CardDescription>
+        {hasUnmappedProducts ? (
+          <CardAction className="self-center">
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className="inline-flex text-warning" />}
+              >
+                <CircleAlertIcon aria-hidden="true" />
+                <span className="sr-only">Produkter mangler kobling</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Et eller flere produkter mangler en OnlinePOS-kobling.
+              </TooltipContent>
+            </Tooltip>
+          </CardAction>
+        ) : null}
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        <MenuProductList
-          title="Primære produkter"
-          emptyText="Ingen primære produkter valgt."
-          products={primaryProducts}
-        />
-        <MenuProductList
-          title="Ekstra produkter"
-          emptyText="Ingen ekstra produkter valgt."
-          products={additionalProducts}
-        />
-      </CardContent>
     </Card>
   );
 }
@@ -428,7 +382,7 @@ export function OnlinePosMenuManager() {
   }
 
   function openEdit(menu: OnlinePosMenu) {
-    if (!menuData?.enabled) return;
+    if (!menuData) return;
     setEditor({ kind: "edit", menu });
     setMenuName(menu.name);
     setSelectedMenuProductId(String(menu.onlinePosProductId));
@@ -443,7 +397,7 @@ export function OnlinePosMenuManager() {
         .map((product) => product.id),
     );
     setFormError("");
-    void loadOnlinePosProducts();
+    if (menuData.enabled) void loadOnlinePosProducts();
   }
 
   function closeEditor() {
@@ -563,7 +517,7 @@ export function OnlinePosMenuManager() {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-24 w-full max-w-3xl" />
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-48 w-full" />
         </div>
@@ -766,14 +720,12 @@ export function OnlinePosMenuManager() {
           </EmptyContent>
         </Empty>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
           {menuData.menus.map((menu) => (
             <MenuCard
               key={menu.id}
               menu={menu}
-              canEdit={menuData.enabled}
               onEdit={openEdit}
-              onRemove={setPendingDelete}
             />
           ))}
         </div>
@@ -787,7 +739,7 @@ export function OnlinePosMenuManager() {
       >
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="mt-3">
               {editor?.kind === "edit" ? "Redigér menu" : "Ny menu"}
             </DialogTitle>
             <DialogDescription>
@@ -936,6 +888,21 @@ export function OnlinePosMenuManager() {
           </FieldGroup>
 
           <DialogFooter>
+            {editor?.kind === "edit" ? (
+              <Button
+                type="button"
+                variant="destructive"
+                className="sm:mr-auto"
+                disabled={isSaving}
+                onClick={() => {
+                  setPendingDelete(editor.menu);
+                  setEditor(null);
+                }}
+              >
+                <Trash2Icon data-icon="inline-start" />
+                Fjern menu
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
