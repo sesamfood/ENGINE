@@ -9,6 +9,7 @@ import {
 } from "convex/react";
 import {
   ChevronDownIcon,
+  ChevronRightIcon,
   ChevronUpIcon,
   CircleAlertIcon,
   CopyIcon,
@@ -25,6 +26,7 @@ import {
 } from "@/components/catalog/creatable-combobox";
 import { getOnlinePosProductSuggestions } from "@/components/catalog/online-pos-product-suggestions";
 import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
+import { OnlinePosOrderDetail } from "@/components/organization/online-pos-order-detail";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -546,15 +548,11 @@ function ProductMappings({
     >();
 
     for (const product of mappingOptions?.products ?? []) {
-      if (product.onlinePosProductId !== null) continue;
-      const { exactMatch, suggestions: matchingProducts } =
+      const { hasExactMatch, suggestions: matchingProducts } =
         getOnlinePosProductSuggestions(onlinePosProducts ?? [], product.name);
-      const suggestionProducts = exactMatch
-        ? [exactMatch]
-        : matchingProducts;
       suggestions.set(product.id, {
-        exactMatch: Boolean(exactMatch),
-        options: suggestionProducts.map((suggestion) => ({
+        exactMatch: hasExactMatch,
+        options: matchingProducts.map((suggestion) => ({
           value: String(suggestion.id),
           label: suggestion.groupName
             ? `${suggestion.name} — ${suggestion.groupName}`
@@ -704,6 +702,9 @@ function SalesList() {
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
   const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [selectedOrderId, setSelectedOrderId] = useState<Id<"salesOrders"> | null>(
+    null,
+  );
   const [syncing, setSyncing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -801,12 +802,13 @@ function SalesList() {
   ];
 
   return (
-    <Card className="max-w-6xl">
+    <>
+      <Card className="max-w-6xl">
       <CardHeader>
         <CardTitle>Ordrer fra OnlinePOS</CardTitle>
         <CardDescription>
           Vis synkroniserede ordrer for en periode på højst 31 dage. Datoerne er
-          inklusive.
+          inklusive. Åbn en ordre for at se oplysninger og produktlinjer.
         </CardDescription>
         <CardAction>
           <Button
@@ -1014,11 +1016,18 @@ function SalesList() {
                   <TableHead>Omsætning</TableHead>
                   <TableHead>Afdeling</TableHead>
                   <TableHead>Betaling</TableHead>
+                  <TableHead>
+                    <span className="sr-only">Detaljer</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {results.map((order) => (
-                  <TableRow key={order.id}>
+                  <TableRow
+                    key={order.id}
+                    className="cursor-pointer [&>td]:py-3"
+                    onClick={() => setSelectedOrderId(order.id)}
+                  >
                     <TableCell>
                       {orderAtFormatter.format(order.occurredAt)}
                     </TableCell>
@@ -1028,6 +1037,21 @@ function SalesList() {
                     <TableCell>{formatOre(order.revenue, order.currency)}</TableCell>
                     <TableCell>{order.department || "—"}</TableCell>
                     <TableCell>{order.paymentType || "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-11"
+                        aria-label={`Åbn OnlinePOS-ordre ${order.orderNumber}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedOrderId(order.id);
+                        }}
+                      >
+                        Åbn
+                        <ChevronRightIcon data-icon="inline-end" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1047,7 +1071,14 @@ function SalesList() {
           </>
         )}
       </CardContent>
-    </Card>
+      </Card>
+      <OnlinePosOrderDetail
+        orderId={selectedOrderId}
+        formatMoney={formatOre}
+        timeZone={context.timeZone}
+        onClose={() => setSelectedOrderId(null)}
+      />
+    </>
   );
 }
 

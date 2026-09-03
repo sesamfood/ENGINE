@@ -79,6 +79,7 @@ import type * as masterData from "../masterData.js";
 import type * as migrations from "../migrations.js";
 import type * as navigation from "../navigation.js";
 import type * as onlinePos from "../onlinePos.js";
+import type * as onlinePosMenus from "../onlinePosMenus.js";
 import type * as onlinePosSync from "../onlinePosSync.js";
 import type * as organization from "../organization.js";
 import type * as ownCheckDocumentation from "../ownCheckDocumentation.js";
@@ -182,6 +183,7 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   navigation: typeof navigation;
   onlinePos: typeof onlinePos;
+  onlinePosMenus: typeof onlinePosMenus;
   onlinePosSync: typeof onlinePosSync;
   organization: typeof organization;
   ownCheckDocumentation: typeof ownCheckDocumentation;

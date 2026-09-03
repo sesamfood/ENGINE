@@ -917,6 +917,14 @@ async function permanentlyDeleteProduct(
     organizationId: product.organizationId,
     productId: product._id,
   });
+  await ctx.scheduler.runAfter(
+    0,
+    internal.onlinePosMenus.removeProductReferences,
+    {
+      organizationId: product.organizationId,
+      productId: product._id,
+    },
+  );
   if (product.imageStorageId) {
     await ctx.storage.delete(product.imageStorageId);
   }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -57,7 +57,7 @@ import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/das
 import { metricRegistry, metrics, sizeLabels, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
-import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
@@ -88,6 +88,7 @@ export function AddWidgetDialog({
   onAdd: (widget: WidgetInstance) => void;
 }) {
   const access = useAccess();
+  const convex = useConvex();
   const available = metrics.filter(
     (metric) => !metric.sensitive || canViewSensitive,
   );
@@ -121,6 +122,7 @@ export function AddWidgetDialog({
   const [yAxisMin, setYAxisMin] = useState<number | undefined>(0);
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
+  const [previewResult, setPreviewResult] = useState<MetricResult>();
   const salesSource = metricId === "woltCancellationRate"
     ? "wolt"
     : salesSourceOverride ?? (
@@ -128,32 +130,63 @@ export function AddWidgetDialog({
           ? "wolt"
           : "onlinePos"
       );
-  const builtinPreviewResult = useQuery(
-    api.dashboard.getMetric,
-    !open || step !== 2 || Boolean(customMetricId)
-      ? "skip"
-      : {
-          metricId,
-          visualization,
-          scope,
-          range,
-          now,
-          ...(supportsSalesSource(metricId) || metricId === "woltCancellationRate" ? { salesSource } : {}),
-        },
-  );
-  const customPreviewResult = useQuery(
-    api.customMetrics.preview,
-    !open || step !== 2 || !customMetric
-      ? "skip"
-      : {
-          spec: customMetric.spec,
-          visualization,
-          scope,
-          range,
-          now,
-        },
-  );
-  const previewResult = customMetricId ? customPreviewResult : builtinPreviewResult;
+  useEffect(() => {
+    if (!open || step !== 2 || (customMetricId && !customMetric)) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      setPreviewResult(undefined);
+      const request =
+        customMetric
+          ? convex.query(api.customMetrics.preview, {
+              spec: customMetric.spec,
+              visualization: "kpi",
+              scope,
+              range,
+              now,
+            })
+          : convex.query(api.dashboard.getMetric, {
+              metricId,
+              visualization: definition.defaultVisualization,
+              scope,
+              range,
+              now,
+              ...(supportsSalesSource(metricId) ||
+              metricId === "woltCancellationRate"
+                ? { salesSource }
+                : {}),
+            });
+      void request
+        .then((result) => {
+          if (active) setPreviewResult(result);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          toast.error(
+            getUserErrorMessage(
+              error,
+              "Forhåndsvisningen kunne ikke indlæses. Prøv igen.",
+            ),
+          );
+        });
+    }, 450);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    convex,
+    customMetric,
+    customMetricId,
+    definition.defaultVisualization,
+    metricId,
+    now,
+    open,
+    range,
+    salesSource,
+    scope,
+    step,
+  ]);
   const customVisualizations = customMetric
     ? (customMetric.spec.kind === "ratio" ? ratioMetricVisualizations : customMetricVisualizations)
         .filter((value) => Boolean(customMetric.spec.dimension) || (value !== "list" && value !== "table"))
@@ -162,6 +195,7 @@ export function AddWidgetDialog({
 
   function selectMetric(nextMetricId: MetricId) {
     const next = metricRegistry[nextMetricId];
+    setPreviewResult(undefined);
     setCustomMetricId(null);
     setMetricId(next.id);
     setSalesSourceOverride(undefined);
@@ -173,6 +207,7 @@ export function AddWidgetDialog({
   }
 
   function selectCustomMetric(nextMetricId: Id<"customMetrics">) {
+    setPreviewResult(undefined);
     setCustomMetricId(nextMetricId);
     setVisualization("kpi");
     setSize("2x2");
@@ -217,6 +252,7 @@ export function AddWidgetDialog({
   function setDialogOpen(nextOpen: boolean) {
     setOpen(nextOpen);
     if (nextOpen) {
+      setPreviewResult(undefined);
       setStep(1);
       setCustomMetricId(null);
       setSalesSourceOverride(undefined);
@@ -424,6 +460,7 @@ export function AddWidgetDialog({
                     value={salesSource}
                     onValueChange={(value) => {
                       if (value === "onlinePos" || value === "wolt" || value === "combined") {
+                        setPreviewResult(undefined);
                         setSalesSourceOverride(value);
                       }
                     }}

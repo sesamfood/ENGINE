@@ -97,11 +97,17 @@ const metricBucketValidator = v.union(
   v.literal("month"),
 );
 
+const dimensionFilterValidator = v.object({
+  op: v.union(v.literal("in"), v.literal("notIn")),
+  values: v.array(v.string()),
+});
+
 export const customMetricSpecValidator = v.union(
   v.object({
     kind: v.literal("single"),
     query: querySpecValidator,
     dimension: v.optional(v.string()),
+    dimensionFilter: v.optional(dimensionFilterValidator),
     bucket: metricBucketValidator,
     limit: v.optional(v.number()),
   }),
@@ -110,6 +116,7 @@ export const customMetricSpecValidator = v.union(
     numerator: querySpecValidator,
     denominator: querySpecValidator,
     dimension: v.optional(v.string()),
+    dimensionFilter: v.optional(dimensionFilterValidator),
     bucket: metricBucketValidator,
     limit: v.optional(v.number()),
   }),
@@ -182,7 +189,9 @@ export const metricResultValidator = v.object({
   ),
   series: v.array(metricSeriesValidator),
   breakdown: v.optional(
-    v.array(v.object({ key: v.string(), label: v.string(), value: v.number() })),
+    v.array(
+      v.object({ key: v.string(), label: v.string(), value: v.number() }),
+    ),
   ),
   target: v.optional(v.number()),
   truncated: v.optional(v.boolean()),

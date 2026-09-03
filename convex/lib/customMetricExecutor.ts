@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import { dashboardDatasets } from "../../lib/dashboard/datasets";
 import type {
+  CustomMetricDimensionFilter,
   CustomMetricQuerySpec,
   CustomMetricSpec,
   MetricResult,
@@ -15,11 +16,15 @@ import {
   zonedStart,
   type DashboardMetricParams,
 } from "./dashboardMetrics";
+import { getProductCategoryIds } from "./productCategories";
 import { resolveWoltMapping } from "./woltMappings";
 
 const MAX_ROWS = 5_000;
 const MAX_TRANSFER_DETAILS = 500;
 const MAX_PRODUCT_LABELS = 500;
+const MAX_DIMENSION_FILTER_VALUES = 500;
+const MAX_PRODUCT_OPTIONS = 500;
+const MAX_TOP_PRODUCT_OPTIONS = 10;
 
 type MetricRow = {
   timestamp: number;
@@ -44,6 +49,15 @@ function matchesFilters(
     const included = filter.values.includes(fields[filter.field] ?? "");
     return filter.op === "in" ? included : !included;
   });
+}
+
+function matchesDimensionFilter(
+  key: string,
+  filter: CustomMetricDimensionFilter | undefined,
+) {
+  if (!filter) return true;
+  const included = filter.values.includes(key);
+  return filter.op === "in" ? included : !included;
 }
 
 function dimension(
@@ -83,17 +97,19 @@ async function wasteRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("wasteRegistrations")
-      .withIndex("by_org_location_time", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("registeredAt", params.previousFrom)
-          .lt("registeredAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("wasteRegistrations")
+        .withIndex("by_org_location_time", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("registeredAt", params.previousFrom)
+            .lt("registeredAt", params.to),
+        )
+        .take(remaining + 1),
   );
   const categoryByProduct = new Map<
     Id<"products">,
@@ -106,9 +122,9 @@ async function wasteRows(
       ),
     );
     const categories = await Promise.all(
-      [...new Set(products.flatMap((product) => product?.categoryId ?? []))].map(
-        (categoryId) => ctx.db.get("categories", categoryId),
-      ),
+      [
+        ...new Set(products.flatMap((product) => product?.categoryId ?? [])),
+      ].map((categoryId) => ctx.db.get("categories", categoryId)),
     );
     const names = new Map(
       categories.flatMap((category) =>
@@ -152,13 +168,15 @@ async function wasteRows(
           label: row.registeredByName,
         },
       });
-      return [{
-        timestamp: row.registeredAt,
-        locationId: row.locationId,
-        value: spec.measure === "quantity" ? row.defaultQuantity : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-      }];
+      return [
+        {
+          timestamp: row.registeredAt,
+          locationId: row.locationId,
+          value: spec.measure === "quantity" ? row.defaultQuantity : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+        },
+      ];
     }),
   };
 }
@@ -169,17 +187,19 @@ async function badDeliveryRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("badDeliveries")
-      .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("registeredAt", params.previousFrom)
-          .lt("registeredAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("badDeliveries")
+        .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("registeredAt", params.previousFrom)
+            .lt("registeredAt", params.to),
+        )
+        .take(remaining + 1),
   );
   return {
     truncated: result.truncated,
@@ -202,13 +222,15 @@ async function badDeliveryRows(
           label: row.registeredByName,
         },
       });
-      return [{
-        timestamp: row.registeredAt,
-        locationId: row.locationId,
-        value: spec.measure === "itemCount" ? row.itemCount : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-      }];
+      return [
+        {
+          timestamp: row.registeredAt,
+          locationId: row.locationId,
+          value: spec.measure === "itemCount" ? row.itemCount : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+        },
+      ];
     }),
   };
 }
@@ -298,8 +320,7 @@ async function transferRows(
   }
   const items: Doc<"transferItems">[] = [];
   const detailedTransfers = scoped.slice(0, MAX_TRANSFER_DETAILS);
-  let itemRowsTruncated =
-    truncated || detailedTransfers.length < scoped.length;
+  let itemRowsTruncated = truncated || detailedTransfers.length < scoped.length;
   for (const transfer of detailedTransfers) {
     const remaining = MAX_ROWS - items.length;
     if (remaining === 0) {
@@ -328,7 +349,8 @@ async function transferRows(
       const selected = dimension(dimensionId, {
         fromLocation: {
           key: transfer.fromLocationId,
-          label: locationNames.get(transfer.fromLocationId) ?? "Ukendt lokation",
+          label:
+            locationNames.get(transfer.fromLocationId) ?? "Ukendt lokation",
         },
         toLocation: {
           key: transfer.toLocationId,
@@ -341,18 +363,19 @@ async function transferRows(
           label: transfer.responsibleName,
         },
       });
-      return [{
-        timestamp: transfer.transferredAt,
-        locationId: transfer.fromLocationId,
-        value:
-          spec.measure === "transfers"
-            ? 1
-            : item.quantity * (item.factorToDefault ?? 1),
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-        distinctKey:
-          spec.measure === "transfers" ? transfer._id : undefined,
-      }];
+      return [
+        {
+          timestamp: transfer.transferredAt,
+          locationId: transfer.fromLocationId,
+          value:
+            spec.measure === "transfers"
+              ? 1
+              : item.quantity * (item.factorToDefault ?? 1),
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+          distinctKey: spec.measure === "transfers" ? transfer._id : undefined,
+        },
+      ];
     }),
   };
 }
@@ -363,17 +386,19 @@ async function staffFoodRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("staffFoodRegistrations")
-      .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("registeredAt", params.previousFrom)
-          .lt("registeredAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("staffFoodRegistrations")
+        .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("registeredAt", params.previousFrom)
+            .lt("registeredAt", params.to),
+        )
+        .take(remaining + 1),
   );
   return {
     truncated: result.truncated,
@@ -393,15 +418,17 @@ async function staffFoodRows(
         location: { key: row.locationId, label: row.locationName },
         sessionSource: { key: row.sessionSource, label: row.sessionSource },
       });
-      return [{
-        timestamp: row.registeredAt,
-        locationId: row.locationId,
-        value: spec.measure === "quantity" ? row.defaultQuantity : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-        distinctKey:
-          spec.measure === "employees" ? row.employeeId : undefined,
-      }];
+      return [
+        {
+          timestamp: row.registeredAt,
+          locationId: row.locationId,
+          value: spec.measure === "quantity" ? row.defaultQuantity : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+          distinctKey:
+            spec.measure === "employees" ? row.employeeId : undefined,
+        },
+      ];
     }),
   };
 }
@@ -412,17 +439,19 @@ async function shiftRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("scheduledShifts")
-      .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("startsAt", params.previousFrom)
-          .lt("startsAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("scheduledShifts")
+        .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("startsAt", params.previousFrom)
+            .lt("startsAt", params.to),
+        )
+        .take(remaining + 1),
   );
   const employeeIds = [...new Set(result.rows.map((row) => row.employeeId))];
   const employees = await Promise.all(
@@ -439,9 +468,7 @@ async function shiftRows(
   return {
     truncated: result.truncated,
     rows: result.rows.flatMap((row) => {
-      if (
-        !matchesFilters({ roleName: row.roleName ?? "" }, spec.filters)
-      ) {
+      if (!matchesFilters({ roleName: row.roleName ?? "" }, spec.filters)) {
         return [];
       }
       const selected = dimension(dimensionId, {
@@ -458,18 +485,20 @@ async function shiftRows(
           label: row.roleName ?? "Uden rolle",
         },
       });
-      return [{
-        timestamp: row.startsAt,
-        locationId: row.locationId,
-        value:
-          spec.measure === "hours"
-            ? Math.max(0, row.endsAt - row.startsAt) / 3_600_000
-            : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-        distinctKey:
-          spec.measure === "employees" ? row.employeeId : undefined,
-      }];
+      return [
+        {
+          timestamp: row.startsAt,
+          locationId: row.locationId,
+          value:
+            spec.measure === "hours"
+              ? Math.max(0, row.endsAt - row.startsAt) / 3_600_000
+              : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+          distinctKey:
+            spec.measure === "employees" ? row.employeeId : undefined,
+        },
+      ];
     }),
   };
 }
@@ -480,14 +509,18 @@ async function countRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("counts")
-      .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
-        q.eq("organizationId", params.organizationId).eq("locationId", locationId),
-      )
-      .order("desc")
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("counts")
+        .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId),
+        )
+        .order("desc")
+        .take(remaining + 1),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -511,13 +544,16 @@ async function countRows(
         status: { key: row.status, label: row.status },
         periodKey: { key: row.periodKey, label: row.periodKey },
       });
-      return [{
-        timestamp,
-        locationId: row.locationId,
-        value: spec.measure === "submitted" && row.status !== "submitted" ? 0 : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-      }];
+      return [
+        {
+          timestamp,
+          locationId: row.locationId,
+          value:
+            spec.measure === "submitted" && row.status !== "submitted" ? 0 : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+        },
+      ];
     }),
   };
 }
@@ -544,17 +580,19 @@ async function salesDailyRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("salesDaily")
-      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("dayStart", params.previousFrom)
-          .lt("dayStart", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("salesDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("dayStart", params.previousFrom)
+            .lt("dayStart", params.to),
+        )
+        .take(remaining + 1),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -605,7 +643,8 @@ function woltOrderValue(
   netRevenue: number,
   itemCount: number,
 ) {
-  if (measure === "revenue") return status === "delivered" ? netRevenue / 100 : 0;
+  if (measure === "revenue")
+    return status === "delivered" ? netRevenue / 100 : 0;
   if (measure === "orders") {
     return status === "delivered" ? 1 : 0;
   }
@@ -624,17 +663,19 @@ async function woltOrderRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("woltOrders")
-      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("occurredAt", params.previousFrom)
-          .lt("occurredAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("woltOrders")
+        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("occurredAt", params.previousFrom)
+            .lt("occurredAt", params.to),
+        )
+        .take(remaining + 1),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -671,18 +712,20 @@ async function woltOrderRows(
         },
         hourOfDay: { key: hour, label: `${hour}:00` },
       });
-      return [{
-        timestamp: row.occurredAt,
-        locationId: row.locationId,
-        value: woltOrderValue(
-          row.status,
-          spec.measure,
-          row.netRevenue,
-          row.itemCount,
-        ),
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-      }];
+      return [
+        {
+          timestamp: row.occurredAt,
+          locationId: row.locationId,
+          value: woltOrderValue(
+            row.status,
+            spec.measure,
+            row.netRevenue,
+            row.itemCount,
+          ),
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+        },
+      ];
     }),
   };
 }
@@ -693,17 +736,19 @@ async function woltOrderItemRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("woltOrderItems")
-      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("occurredAt", params.previousFrom)
-          .lt("occurredAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("woltOrderItems")
+        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("occurredAt", params.previousFrom)
+            .lt("occurredAt", params.to),
+        )
+        .take(remaining + 1),
   );
   const mappingRows = await ctx.db
     .query("woltProductMappings")
@@ -760,7 +805,7 @@ async function woltOrderItemRows(
           : undefined;
       const productKey = productId ?? row.normalizedName;
       const productLabel = productId
-        ? productNames.get(productId) ?? row.name
+        ? (productNames.get(productId) ?? row.name)
         : row.name;
       if (
         !matchesFilters(
@@ -788,20 +833,22 @@ async function woltOrderItemRows(
           label: woltOrderTypeLabels[row.orderType] ?? row.orderType,
         },
       });
-      return [{
-        timestamp: row.occurredAt,
-        locationId: row.locationId,
-        value:
-          row.status !== "delivered"
-            ? 0
-            : spec.measure === "revenue"
-              ? row.lineTotal / 100
-              : spec.measure === "quantity"
-                ? row.quantity
-                : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-      }];
+      return [
+        {
+          timestamp: row.occurredAt,
+          locationId: row.locationId,
+          value:
+            row.status !== "delivered"
+              ? 0
+              : spec.measure === "revenue"
+                ? row.lineTotal / 100
+                : spec.measure === "quantity"
+                  ? row.quantity
+                  : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+        },
+      ];
     }),
   };
 }
@@ -812,17 +859,19 @@ async function salesOrderRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("salesOrders")
-      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("occurredAt", params.previousFrom)
-          .lt("occurredAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("salesOrders")
+        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("occurredAt", params.previousFrom)
+            .lt("occurredAt", params.to),
+        )
+        .take(remaining + 1),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -849,25 +898,33 @@ async function salesOrderRows(
           key: row.locationId,
           label: locationNames.get(row.locationId) ?? "Ukendt lokation",
         },
-        paymentType: { key: row.paymentType || "unknown", label: row.paymentType || "Ukendt" },
-        department: { key: row.department || "unknown", label: row.department || "Ukendt" },
+        paymentType: {
+          key: row.paymentType || "unknown",
+          label: row.paymentType || "Ukendt",
+        },
+        department: {
+          key: row.department || "unknown",
+          label: row.department || "Ukendt",
+        },
         hourOfDay: {
           key: hour,
           label: `${hour}:00`,
         },
       });
-      return [{
-        timestamp: row.occurredAt,
-        locationId: row.locationId,
-        value:
-          spec.measure === "revenue"
-            ? row.revenue / 100
-            : spec.measure === "items"
-              ? row.itemCount
-              : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-      }];
+      return [
+        {
+          timestamp: row.occurredAt,
+          locationId: row.locationId,
+          value:
+            spec.measure === "revenue"
+              ? row.revenue / 100
+              : spec.measure === "items"
+                ? row.itemCount
+                : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+        },
+      ];
     }),
   };
 }
@@ -878,48 +935,72 @@ async function salesLineRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(params, async (locationId, remaining) =>
-    await ctx.db
-      .query("salesLines")
-      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("locationId", locationId)
-          .gte("occurredAt", params.previousFrom)
-          .lt("occurredAt", params.to),
-      )
-      .take(remaining + 1),
+  const result = await locationRows(
+    params,
+    async (locationId, remaining) =>
+      await ctx.db
+        .query("salesLines")
+        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", locationId)
+            .gte("occurredAt", params.previousFrom)
+            .lt("occurredAt", params.to),
+        )
+        .take(remaining + 1),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
   );
+  const mappings =
+    dimensionId === "product"
+      ? await ctx.db
+          .query("onlinePosProductMappings")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", params.organizationId),
+          )
+          .take(MAX_PRODUCT_OPTIONS + 1)
+      : [];
+  const productIdByOnlinePosId = new Map(
+    mappings
+      .slice(0, MAX_PRODUCT_OPTIONS)
+      .map((mapping) => [
+        String(mapping.onlinePosProductId),
+        mapping.productId,
+      ]),
+  );
   return {
-    truncated: result.truncated,
+    truncated: result.truncated || mappings.length > MAX_PRODUCT_OPTIONS,
     rows: result.rows.flatMap((row) => {
-      if (
-        !matchesFilters({ product: row.externalProductId }, spec.filters)
-      ) {
+      if (!matchesFilters({ product: row.externalProductId }, spec.filters)) {
         return [];
       }
       const selected = dimension(dimensionId, {
-        product: { key: row.externalProductId, label: row.productName },
+        product: {
+          key:
+            productIdByOnlinePosId.get(row.externalProductId) ??
+            row.externalProductId,
+          label: row.productName,
+        },
         location: {
           key: row.locationId,
           label: locationNames.get(row.locationId) ?? "Ukendt lokation",
         },
       });
-      return [{
-        timestamp: row.occurredAt,
-        locationId: row.locationId,
-        value:
-          spec.measure === "revenue"
-            ? row.revenue / 100
-            : spec.measure === "quantity"
-              ? row.quantity
-              : 1,
-        dimensionKey: selected.key,
-        dimensionLabel: selected.label,
-      }];
+      return [
+        {
+          timestamp: row.occurredAt,
+          locationId: row.locationId,
+          value:
+            spec.measure === "revenue"
+              ? row.revenue / 100
+              : spec.measure === "quantity"
+                ? row.quantity
+                : 1,
+          dimensionKey: selected.key,
+          dimensionLabel: selected.label,
+        },
+      ];
     }),
   };
 }
@@ -1002,21 +1083,43 @@ async function singleResult(
   bucket: CustomMetricSpec["bucket"],
   limit: number,
   params: DashboardMetricParams,
+  dimensionFilter?: CustomMetricDimensionFilter,
   selectedDimensionKeys?: string[],
 ): Promise<MetricResult> {
-  const loaded = await loadRows(ctx, query, dimensionId, params);
+  const loaded =
+    dimensionId === "product"
+      ? await Promise.all([
+          loadRows(ctx, query, dimensionId, {
+            ...params,
+            previousFrom: params.from,
+            previousTo: params.from,
+          }),
+          loadRows(ctx, query, dimensionId, {
+            ...params,
+            from: params.previousFrom,
+            to: params.previousTo,
+            previousTo: params.previousFrom,
+          }),
+        ]).then(([current, previous]) => ({
+          rows: [...previous.rows, ...current.rows],
+          truncated: current.truncated || previous.truncated,
+        }))
+      : await loadRows(ctx, query, dimensionId, params);
+  const rows = loaded.rows.filter((row) =>
+    matchesDimensionFilter(row.dimensionKey, dimensionFilter),
+  );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
   );
-  const current = loaded.rows.filter(
+  const current = rows.filter(
     (row) => row.timestamp >= params.from && row.timestamp < params.to,
   );
-  const previous = loaded.rows.filter(
+  const previous = rows.filter(
     (row) =>
       row.timestamp >= params.previousFrom && row.timestamp < params.previousTo,
   );
   const labels = new Map<string, string>();
-  for (const row of loaded.rows) labels.set(row.dimensionKey, row.dimensionLabel);
+  for (const row of rows) labels.set(row.dimensionKey, row.dimensionLabel);
   let groupKeys: string[];
   if (dimensionId) {
     if (selectedDimensionKeys) {
@@ -1036,21 +1139,20 @@ async function singleResult(
     }
   } else if (params.compare) {
     groupKeys = params.locations.map((location) => location.id);
-    for (const location of params.locations) labels.set(location.id, location.name);
+    for (const location of params.locations)
+      labels.set(location.id, location.name);
   } else {
     groupKeys = ["all"];
     labels.set("all", aggregateLocationLabel(params));
   }
   const topKeys = new Set(groupKeys);
-  if (
-    dimensionId &&
-    loaded.rows.some((row) => !topKeys.has(row.dimensionKey))
-  ) {
+  if (dimensionId && rows.some((row) => !topKeys.has(row.dimensionKey))) {
     groupKeys.push("other");
     labels.set("other", "Andre");
   }
   const groupFor = (row: MetricRow) => {
-    if (dimensionId) return topKeys.has(row.dimensionKey) ? row.dimensionKey : "other";
+    if (dimensionId)
+      return topKeys.has(row.dimensionKey) ? row.dimensionKey : "other";
     return params.compare ? row.locationId : "all";
   };
   const series = groupKeys.map((key) => {
@@ -1063,7 +1165,8 @@ async function singleResult(
     }
     return {
       key,
-      label: labels.get(key) ?? locationNames.get(key as Id<"locations">) ?? key,
+      label:
+        labels.get(key) ?? locationNames.get(key as Id<"locations">) ?? key,
       points: [...byBucket.entries()]
         .sort(([left], [right]) => left - right)
         .map(([t, rows]) => ({ t, value: rounded(sumRows(rows)) })),
@@ -1087,14 +1190,121 @@ async function singleResult(
   };
 }
 
+export async function listCustomMetricProductOptions(
+  ctx: QueryCtx,
+  spec: CustomMetricSpec,
+  params: DashboardMetricParams,
+) {
+  const queries =
+    spec.kind === "single" ? [spec.query] : [spec.numerator, spec.denominator];
+  const observedProducts: Array<{
+    value: string;
+    label: string;
+  }> = [];
+  const topProductRows = new Map<string, MetricRow[]>();
+  let truncated = false;
+  const currentPeriodParams = {
+    ...params,
+    previousFrom: params.from,
+    previousTo: params.from,
+  };
+
+  for (const [queryIndex, query] of queries.entries()) {
+    const loaded = await loadRows(ctx, query, "product", currentPeriodParams);
+    truncated ||= loaded.truncated;
+    for (const row of loaded.rows) {
+      if (row.timestamp < params.from || row.timestamp >= params.to) continue;
+      observedProducts.push({
+        value: row.dimensionKey,
+        label: row.dimensionLabel,
+      });
+      if (queryIndex === 0) {
+        const productRows = topProductRows.get(row.dimensionKey);
+        if (productRows) productRows.push(row);
+        else topProductRows.set(row.dimensionKey, [row]);
+      }
+    }
+  }
+
+  const catalogProducts = await ctx.db
+    .query("products")
+    .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+      q.eq("organizationId", params.organizationId).eq("status", "active"),
+    )
+    .take(MAX_PRODUCT_OPTIONS + 1);
+  const activeCatalogProducts = catalogProducts.slice(0, MAX_PRODUCT_OPTIONS);
+  const categoryIdsByProductId = new Map(
+    await Promise.all(
+      activeCatalogProducts.map((product) =>
+        getProductCategoryIds(ctx, product).then(
+          (categoryIds) => [product._id, categoryIds] as const,
+        ),
+      ),
+    ),
+  );
+  const productsByValue = new Map(
+    activeCatalogProducts.map((product) => [
+      String(product._id),
+      {
+        value: String(product._id),
+        label: product.name,
+        categoryIds: categoryIdsByProductId.get(product._id) ?? [],
+      },
+    ]),
+  );
+  for (const product of observedProducts) {
+    const value = product.value;
+    if (!productsByValue.has(value)) {
+      productsByValue.set(value, {
+        value,
+        label: product.label,
+        categoryIds: [],
+      });
+    }
+  }
+  const products = [...productsByValue.values()];
+  const returnedProducts = products.slice(0, MAX_PRODUCT_OPTIONS);
+  const returnedProductValues = new Set(
+    returnedProducts.map((product) => product.value),
+  );
+  const topProductValues = [...topProductRows]
+    .filter(([value]) => returnedProductValues.has(value))
+    .map(([value, rows]) => ({
+      value,
+      label: productsByValue.get(value)?.label ?? value,
+      total: sumRows(rows),
+    }))
+    .sort(
+      (left, right) =>
+        right.total - left.total || left.label.localeCompare(right.label, "da"),
+    )
+    .slice(0, MAX_TOP_PRODUCT_OPTIONS)
+    .map((product) => product.value);
+
+  return {
+    products: returnedProducts,
+    topProductValues,
+    truncated:
+      truncated ||
+      products.length > MAX_PRODUCT_OPTIONS ||
+      catalogProducts.length > MAX_PRODUCT_OPTIONS,
+  };
+}
+
 function ratioUnit(numerator: MetricUnit, denominator: MetricUnit): MetricUnit {
-  if (numerator === "currency" && (denominator === "count" || denominator === "hours")) {
+  if (
+    numerator === "currency" &&
+    (denominator === "count" || denominator === "hours")
+  ) {
     return "currency";
   }
   return "count";
 }
 
-function ratioResult(numerator: MetricResult, denominator: MetricResult): MetricResult {
+function ratioResult(
+  numerator: MetricResult,
+  denominator: MetricResult,
+): MetricResult {
   const denominatorByKey = new Map(
     denominator.series.map((series) => [series.key, series]),
   );
@@ -1117,13 +1327,22 @@ function ratioResult(numerator: MetricResult, denominator: MetricResult): Metric
           ? rounded(numeratorSeries.total / denominatorSeries.total)
           : 0,
       previousTotal:
-        denominatorSeries?.previousTotal && numeratorSeries.previousTotal !== null
-          ? rounded(numeratorSeries.previousTotal / denominatorSeries.previousTotal)
+        denominatorSeries?.previousTotal &&
+        numeratorSeries.previousTotal !== null
+          ? rounded(
+              numeratorSeries.previousTotal / denominatorSeries.previousTotal,
+            )
           : null,
     };
   });
-  const numeratorTotal = numerator.series.reduce((sum, item) => sum + item.total, 0);
-  const denominatorTotal = denominator.series.reduce((sum, item) => sum + item.total, 0);
+  const numeratorTotal = numerator.series.reduce(
+    (sum, item) => sum + item.total,
+    0,
+  );
+  const denominatorTotal = denominator.series.reduce(
+    (sum, item) => sum + item.total,
+    0,
+  );
   const numeratorPrevious = numerator.series.reduce(
     (sum, item) => sum + (item.previousTotal ?? 0),
     0,
@@ -1136,7 +1355,11 @@ function ratioResult(numerator: MetricResult, denominator: MetricResult): Metric
     unit: ratioUnit(numerator.unit, denominator.unit),
     series,
     breakdown: numerator.breakdown
-      ? series.map((item) => ({ key: item.key, label: item.label, value: item.total }))
+      ? series.map((item) => ({
+          key: item.key,
+          label: item.label,
+          value: item.total,
+        }))
       : undefined,
     truncated: numerator.truncated || denominator.truncated || undefined,
     headlineTotal:
@@ -1163,28 +1386,30 @@ function aggregateLocationSeries(
   return {
     ...result,
     breakdown: undefined,
-    series: [{
-      key: "all",
-      label: aggregateLocationLabel(params),
-      points: [...byTime.entries()]
-        .sort(([left], [right]) => left - right)
-        .map(([t, value]) => ({ t, value: rounded(value) })),
-      total: rounded(
-        result.headlineTotal ??
-          result.series.reduce((sum, series) => sum + series.total, 0),
-      ),
-      previousTotal:
-        result.headlinePrevious !== undefined
-          ? result.headlinePrevious
-          : previous.some((value) => value === null)
-            ? null
-            : rounded(
-                previous.reduce<number>(
-                  (sum, value) => sum + (value ?? 0),
-                  0,
+    series: [
+      {
+        key: "all",
+        label: aggregateLocationLabel(params),
+        points: [...byTime.entries()]
+          .sort(([left], [right]) => left - right)
+          .map(([t, value]) => ({ t, value: rounded(value) })),
+        total: rounded(
+          result.headlineTotal ??
+            result.series.reduce((sum, series) => sum + series.total, 0),
+        ),
+        previousTotal:
+          result.headlinePrevious !== undefined
+            ? result.headlinePrevious
+            : previous.some((value) => value === null)
+              ? null
+              : rounded(
+                  previous.reduce<number>(
+                    (sum, value) => sum + (value ?? 0),
+                    0,
+                  ),
                 ),
-              ),
-    }],
+      },
+    ],
   };
 }
 
@@ -1298,7 +1523,9 @@ export function validateCustomMetricSpec(
     if (
       datasets.some(
         (dataset) =>
-          !dataset.dimensions.some((dimension) => dimension.id === spec.dimension),
+          !dataset.dimensions.some(
+            (dimension) => dimension.id === spec.dimension,
+          ),
       )
     ) {
       throw new ConvexError("Dimensionen understøttes ikke af datasættet");
@@ -1313,6 +1540,20 @@ export function validateCustomMetricSpec(
       )
     ) {
       throw new ConvexError("Dimensionen er ikke tilgængelig for denne rolle");
+    }
+  }
+  if (spec.dimensionFilter) {
+    if (
+      spec.dimension !== "product" ||
+      spec.dimensionFilter.values.length === 0 ||
+      spec.dimensionFilter.values.length > MAX_DIMENSION_FILTER_VALUES ||
+      new Set(spec.dimensionFilter.values).size !==
+        spec.dimensionFilter.values.length ||
+      spec.dimensionFilter.values.some(
+        (value) => !value.trim() || value.length > 200,
+      )
+    ) {
+      throw new ConvexError("Produktfilteret er ugyldigt");
     }
   }
 }
@@ -1345,6 +1586,7 @@ export async function executeCustomMetric(
         spec.bucket,
         limit,
         effectiveParams,
+        spec.dimensionFilter,
       ),
       spec.dimension,
       effectiveParams,
@@ -1357,6 +1599,7 @@ export async function executeCustomMetric(
     spec.bucket,
     limit,
     effectiveParams,
+    spec.dimensionFilter,
   );
   const denominator = await singleResult(
     ctx,
@@ -1365,6 +1608,7 @@ export async function executeCustomMetric(
     spec.bucket,
     limit,
     effectiveParams,
+    spec.dimensionFilter,
     spec.dimension
       ? numerator.series
           .filter((series) => series.key !== "other")

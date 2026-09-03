@@ -209,11 +209,9 @@ function OnlinePosProductMappingField({
       })),
     [onlinePosProducts],
   );
-  const { exactMatch, suggestions: nameSuggestions } =
+  const { hasExactMatch, suggestions: nameSuggestions } =
     getOnlinePosProductSuggestions(onlinePosProducts ?? [], productName);
-  const suggestion = currentMapping == null ? exactMatch : undefined;
-  const suggestions =
-    currentMapping == null ? (suggestion ? [suggestion] : nameSuggestions) : [];
+  const suggestions = nameSuggestions;
 
   async function changeMapping(value: string | null) {
     setSaving(true);
@@ -260,7 +258,7 @@ function OnlinePosProductMappingField({
         <CreatableCombobox
           options={comboboxOptions}
           suggestionLabel={
-            suggestion
+            hasExactMatch
               ? "Forslag med samme navn"
               : "Forslag ud fra produktnavnet"
           }
@@ -315,7 +313,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     productId ? { productId } : "skip",
   );
   const options = useQuery(api.catalog.listFormOptions);
-  const catalog = useQuery(api.catalog.listActiveProducts);
   const createProduct = useMutation(api.catalog.createProduct);
   const updateProduct = useMutation(api.catalog.updateProduct);
   const generateUploadUrl = useMutation(
@@ -331,6 +328,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
   ]);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([]);
+  const catalog = useQuery(
+    api.catalog.listActiveProducts,
+    ingredientRows.length > 0 ? {} : "skip",
+  );
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
@@ -965,6 +966,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           <CreatableCombobox
                             options={productComboboxOptions}
                             value={row.productId}
+                            disabled={catalog === undefined}
                             onValueChange={(value) => {
                               const selected = productOptions.find(
                                 (option) => option.id === value,
