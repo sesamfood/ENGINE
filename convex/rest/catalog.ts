@@ -81,6 +81,7 @@ const productValidator = v.object({
       quantity: v.number(),
       unitId: v.id("units"),
       unitName: v.string(),
+      removable: v.boolean(),
     }),
   ),
   updatedAt: v.string(),
@@ -121,6 +122,7 @@ const ingredientInputValidator = v.object({
   productId: v.string(),
   quantity: v.number(),
   unitId: v.string(),
+  removable: v.optional(v.boolean()),
 });
 
 const productCreateInputValidator = v.object({
@@ -177,6 +179,7 @@ type ProductDto = {
     quantity: number;
     unitId: Id<"units">;
     unitName: string;
+    removable: boolean;
   }>;
   updatedAt: string;
   version: string;
@@ -192,6 +195,7 @@ type IngredientInput = {
   productId: Id<"products">;
   quantity: number;
   unitId: Id<"units">;
+  removable?: boolean;
 };
 
 function restError(code: string, message: string): never {
@@ -481,6 +485,7 @@ async function productDto(
         quantity: row.quantity,
         unitId: unit._id,
         unitName: unit.name,
+        removable: row.removable ?? false,
       };
     }),
   );
@@ -568,7 +573,12 @@ async function resolveUnitInputs(
 async function resolveIngredientInputs(
   ctx: MutationCtx,
   organizationId: string,
-  inputs: Array<{ productId: string; quantity: number; unitId: string }>,
+  inputs: Array<{
+    productId: string;
+    quantity: number;
+    unitId: string;
+    removable?: boolean;
+  }>,
 ): Promise<IngredientInput[]> {
   const resolved: IngredientInput[] = [];
   for (const input of inputs) {
@@ -615,7 +625,14 @@ async function resolveIngredientInputs(
         "Ingredient unit is not configured for the ingredient product.",
       );
     }
-    resolved.push({ productId, quantity: input.quantity, unitId });
+    resolved.push({
+      productId,
+      quantity: input.quantity,
+      unitId,
+      ...(input.removable === undefined
+        ? {}
+        : { removable: input.removable }),
+    });
   }
   return resolved;
 }
@@ -625,7 +642,7 @@ async function currentProductInputs(
   organizationId: string,
   product: Doc<"products">,
 ) {
-  const [unitRows, ingredientRows] = await Promise.all([
+  const [unitRows, ingredientRows, addableIngredientRows] = await Promise.all([
     ctx.db
       .query("productUnits")
       .withIndex("by_organizationId_and_productId", (q) =>
@@ -638,10 +655,17 @@ async function currentProductInputs(
         q.eq("organizationId", organizationId).eq("productId", product._id),
       )
       .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productIngredientAdditions")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
   ]);
   if (
     unitRows.length > MAX_CHILD_ROWS ||
-    ingredientRows.length > MAX_CHILD_ROWS
+    ingredientRows.length > MAX_CHILD_ROWS ||
+    addableIngredientRows.length > MAX_CHILD_ROWS
   ) {
     restError(
       "too_many_resources",
@@ -658,6 +682,10 @@ async function currentProductInputs(
       productId: row.ingredientProductId,
       quantity: row.quantity,
       unitId: row.unitId,
+      removable: row.removable ?? false,
+    })),
+    addableIngredients: addableIngredientRows.map((row) => ({
+      productId: row.ingredientProductId,
     })),
   };
 }
@@ -1068,6 +1096,7 @@ export const createProduct = mutation({
             categories: categoryIds.map((id) => ({ kind: "existing", id })),
             units,
             ingredients,
+            addableIngredients: [],
             maxTemperatureCelsius: args.input.maxTemperatureCelsius,
           }),
         );
@@ -1141,6 +1170,7 @@ export const updateProduct = mutation({
         categories: categoryIds.map((id) => ({ kind: "existing", id })),
         units: unitInputs,
         ingredients: ingredientInputs,
+        addableIngredients: current.addableIngredients,
         maxTemperatureCelsius:
           args.input.maxTemperatureCelsius === undefined
             ? product.maxTemperatureCelsius

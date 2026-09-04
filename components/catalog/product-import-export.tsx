@@ -161,7 +161,7 @@ export function ProductImportExport({
     let overwrittenCount = 0;
     let processedCount = 0;
     let imageFailures = 0;
-    let recipeFailures = 0;
+    let ingredientFailures = 0;
     let statusFailures = 0;
 
     try {
@@ -206,7 +206,7 @@ export function ProductImportExport({
       );
       for (const [index, product] of importedProducts.entries()) {
         setProgress(
-          `Importerer opskrifter ${index + 1} af ${importedProducts.length}`,
+          `Importerer ingredienser ${index + 1} af ${importedProducts.length}`,
         );
         const destination = productIds.get(product.sourceId)!;
         try {
@@ -216,10 +216,21 @@ export function ProductImportExport({
               productId: productIds.get(ingredient.sourceProductId)!.productId,
               quantity: ingredient.quantity,
               unitName: ingredient.unit,
+              removable: ingredient.removable ?? false,
             })),
+            ...(product.addableIngredients
+              ? {
+                  addableIngredients: product.addableIngredients.map(
+                    (ingredient) => ({
+                      productId: productIds.get(ingredient.sourceProductId)!
+                        .productId,
+                    }),
+                  ),
+                }
+              : {}),
           });
         } catch {
-          recipeFailures += 1;
+          ingredientFailures += 1;
         }
       }
 
@@ -241,10 +252,10 @@ export function ProductImportExport({
       toast.success(
         `${createdCount} oprettet${overwrittenCount ? ` · ${overwrittenCount} overskrevet` : ""}${skippedCount ? ` · ${skippedCount} sprunget over` : ""}`,
       );
-      const failures = imageFailures + recipeFailures + statusFailures;
+      const failures = imageFailures + ingredientFailures + statusFailures;
       if (failures) {
         toast.warning(
-          `${failures} dele kunne ikke importeres (${imageFailures} billeder, ${recipeFailures} opskrifter, ${statusFailures} arkivstatusser)`,
+          `${failures} dele kunne ikke importeres (${imageFailures} billeder, ${ingredientFailures} ingrediensopsætninger, ${statusFailures} arkivstatusser)`,
         );
       }
       setArchive(null);
