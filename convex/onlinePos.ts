@@ -79,7 +79,7 @@ const onlinePosProductValidator = v.object({
   groupName: v.string(),
 });
 
-const ingredientRemovalMappingValidator = v.object({
+const ingredientOnlinePosMappingValidator = v.object({
   ingredientProductId: v.id("products"),
   onlinePosProductId: v.number(),
 });
@@ -744,7 +744,8 @@ export const getIngredientRemovalSettings = query({
   returns: v.object({
     connected: v.boolean(),
     enabled: v.boolean(),
-    mappings: v.array(ingredientRemovalMappingValidator),
+    integrationId: v.union(v.id("onlinePosIntegrations"), v.null()),
+    mappings: v.array(ingredientOnlinePosMappingValidator),
   }),
   handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
@@ -783,6 +784,7 @@ export const getIngredientRemovalSettings = query({
     return {
       connected: settings !== null,
       enabled: settings?.enabled === true,
+      integrationId: settings?._id ?? null,
       mappings:
         settings === null
           ? []
@@ -796,6 +798,73 @@ export const getIngredientRemovalSettings = query({
                       ingredientProductId: ingredient.ingredientProductId,
                       onlinePosProductId:
                         ingredient.onlinePosRemovalProductId,
+                    },
+                  ]
+                : [],
+            ),
+    };
+  },
+});
+
+export const getIngredientAdditionSettings = query({
+  args: { productId: v.optional(v.id("products")) },
+  returns: v.object({
+    connected: v.boolean(),
+    enabled: v.boolean(),
+    integrationId: v.union(v.id("onlinePosIntegrations"), v.null()),
+    mappings: v.array(ingredientOnlinePosMappingValidator),
+  }),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireIntegrationManager(ctx);
+    const productId = args.productId;
+    const [settings, product, additions] = await Promise.all([
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+      productId === undefined
+        ? Promise.resolve(null)
+        : ctx.db.get("products", productId),
+      productId === undefined
+        ? Promise.resolve([])
+        : ctx.db
+            .query("productIngredientAdditions")
+            .withIndex("by_organizationId_and_productId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", productId),
+            )
+            .take(MAX_PRODUCT_INGREDIENTS + 1),
+    ]);
+    if (
+      productId !== undefined &&
+      (!product || product.organizationId !== organizationId)
+    ) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (additions.length > MAX_PRODUCT_INGREDIENTS) {
+      throw new ConvexError(
+        "Produktet har for mange ingredienser, der kan tilføjes",
+      );
+    }
+
+    return {
+      connected: settings !== null,
+      enabled: settings?.enabled === true,
+      integrationId: settings?._id ?? null,
+      mappings:
+        settings === null
+          ? []
+          : additions.flatMap((addition) =>
+              addition.onlinePosAdditionProductId !== undefined &&
+              addition.onlinePosAdditionIntegrationId === settings._id &&
+              addition.onlinePosAdditionCompanyId === settings.companyId
+                ? [
+                    {
+                      ingredientProductId: addition.ingredientProductId,
+                      onlinePosProductId: addition.onlinePosAdditionProductId,
                     },
                   ]
                 : [],
@@ -964,7 +1033,7 @@ export const saveIngredientRemovalMappings = internalMutation({
     integrationId: v.id("onlinePosIntegrations"),
     companyId: v.number(),
     productId: v.id("products"),
-    mappings: v.array(ingredientRemovalMappingValidator),
+    mappings: v.array(ingredientOnlinePosMappingValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1072,7 +1141,8 @@ export const saveIngredientRemovalMappings = internalMutation({
 export const setIngredientRemovalMappings = action({
   args: {
     productId: v.id("products"),
-    mappings: v.array(ingredientRemovalMappingValidator),
+    expectedIntegrationId: v.optional(v.id("onlinePosIntegrations")),
+    mappings: v.array(ingredientOnlinePosMappingValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1095,6 +1165,14 @@ export const setIngredientRemovalMappings = action({
     }
 
     const { organizationId, settings } = await requireConnectedSettings(ctx);
+    if (
+      args.expectedIntegrationId !== undefined &&
+      settings.integrationId !== args.expectedIntegrationId
+    ) {
+      throw new ConvexError(
+        "OnlinePOS-forbindelsen blev ændret. Opdatér produktlisten og prøv igen.",
+      );
+    }
     if (!settings.enabled) {
       throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
     }
@@ -1115,6 +1193,182 @@ export const setIngredientRemovalMappings = action({
     }
 
     await ctx.runMutation(internal.onlinePos.saveIngredientRemovalMappings, {
+      organizationId,
+      integrationId: settings.integrationId,
+      companyId: settings.companyId,
+      productId: args.productId,
+      mappings: args.mappings,
+    });
+    return null;
+  },
+});
+
+export const saveIngredientAdditionMappings = internalMutation({
+  args: {
+    organizationId: v.string(),
+    integrationId: v.id("onlinePosIntegrations"),
+    companyId: v.number(),
+    productId: v.id("products"),
+    mappings: v.array(ingredientOnlinePosMappingValidator),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (args.mappings.length > MAX_PRODUCT_INGREDIENTS) {
+      throw new ConvexError(
+        "Produktet har for mange ingredienser, der kan tilføjes",
+      );
+    }
+    if (
+      new Set(args.mappings.map((mapping) => mapping.ingredientProductId))
+        .size !== args.mappings.length
+    ) {
+      throw new ConvexError("Hver ingrediens kan kun kobles én gang");
+    }
+    const [settings, product, additions] = await Promise.all([
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", args.organizationId),
+        )
+        .unique(),
+      ctx.db.get("products", args.productId),
+      ctx.db
+        .query("productIngredientAdditions")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("productId", args.productId),
+        )
+        .take(MAX_PRODUCT_INGREDIENTS + 1),
+    ]);
+    if (
+      !settings ||
+      !settings.enabled ||
+      settings._id !== args.integrationId ||
+      settings.companyId !== args.companyId
+    ) {
+      throw new ConvexError(
+        "OnlinePOS-forbindelsen blev ændret. Opdatér produktlisten og prøv igen.",
+      );
+    }
+    if (!product || product.organizationId !== args.organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (additions.length > MAX_PRODUCT_INGREDIENTS) {
+      throw new ConvexError(
+        "Produktet har for mange ingredienser, der kan tilføjes",
+      );
+    }
+
+    const additionsByProductId = new Map(
+      additions.map((addition) => [
+        addition.ingredientProductId,
+        addition,
+      ]),
+    );
+    for (const mapping of args.mappings) {
+      if (!additionsByProductId.has(mapping.ingredientProductId)) {
+        throw new ConvexError(
+          "OnlinePOS kan kun kobles til en ingrediens, der kan tilføjes",
+        );
+      }
+    }
+
+    const mappingsByIngredientProductId = new Map(
+      args.mappings.map((mapping) => [
+        mapping.ingredientProductId,
+        mapping.onlinePosProductId,
+      ]),
+    );
+    for (const addition of additions) {
+      const onlinePosProductId = mappingsByIngredientProductId.get(
+        addition.ingredientProductId,
+      );
+      if (onlinePosProductId === undefined) {
+        if (
+          addition.onlinePosAdditionProductId !== undefined ||
+          addition.onlinePosAdditionIntegrationId !== undefined ||
+          addition.onlinePosAdditionCompanyId !== undefined
+        ) {
+          await ctx.db.patch("productIngredientAdditions", addition._id, {
+            onlinePosAdditionProductId: undefined,
+            onlinePosAdditionIntegrationId: undefined,
+            onlinePosAdditionCompanyId: undefined,
+          });
+        }
+        continue;
+      }
+      if (
+        addition.onlinePosAdditionProductId === onlinePosProductId &&
+        addition.onlinePosAdditionIntegrationId === args.integrationId &&
+        addition.onlinePosAdditionCompanyId === args.companyId
+      ) {
+        continue;
+      }
+      await ctx.db.patch("productIngredientAdditions", addition._id, {
+        onlinePosAdditionProductId: onlinePosProductId,
+        onlinePosAdditionIntegrationId: args.integrationId,
+        onlinePosAdditionCompanyId: args.companyId,
+      });
+    }
+    return null;
+  },
+});
+
+export const setIngredientAdditionMappings = action({
+  args: {
+    productId: v.id("products"),
+    expectedIntegrationId: v.id("onlinePosIntegrations"),
+    mappings: v.array(ingredientOnlinePosMappingValidator),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (args.mappings.length > MAX_PRODUCT_INGREDIENTS) {
+      throw new ConvexError(
+        "Produktet har for mange ingredienser, der kan tilføjes",
+      );
+    }
+    if (
+      new Set(args.mappings.map((mapping) => mapping.ingredientProductId))
+        .size !== args.mappings.length
+    ) {
+      throw new ConvexError("Hver ingrediens kan kun kobles én gang");
+    }
+    for (const mapping of args.mappings) {
+      if (
+        !Number.isSafeInteger(mapping.onlinePosProductId) ||
+        mapping.onlinePosProductId <= 0
+      ) {
+        throw new ConvexError("OnlinePOS-produktet er ugyldigt");
+      }
+    }
+
+    const { organizationId, settings } = await requireConnectedSettings(ctx);
+    if (settings.integrationId !== args.expectedIntegrationId) {
+      throw new ConvexError(
+        "OnlinePOS-forbindelsen blev ændret. Opdatér produktlisten og prøv igen.",
+      );
+    }
+    if (!settings.enabled) {
+      throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
+    }
+    if (args.mappings.length > 0) {
+      const onlinePosProducts = await requestProducts(settings);
+      const onlinePosProductIds = new Set(
+        onlinePosProducts.map((product) => product.id),
+      );
+      if (
+        args.mappings.some(
+          (mapping) => !onlinePosProductIds.has(mapping.onlinePosProductId),
+        )
+      ) {
+        throw new ConvexError(
+          "Et valgt produkt findes ikke længere i OnlinePOS. Opdatér produktlisten og prøv igen.",
+        );
+      }
+    }
+
+    await ctx.runMutation(internal.onlinePos.saveIngredientAdditionMappings, {
       organizationId,
       integrationId: settings.integrationId,
       companyId: settings.companyId,

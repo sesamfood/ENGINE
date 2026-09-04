@@ -8,8 +8,8 @@ import {
 } from "fflate";
 
 const ARCHIVE_FORMAT = "product-catalog";
-const ARCHIVE_VERSION = 3;
-type SupportedArchiveVersion = 1 | 2 | 3;
+const ARCHIVE_VERSION = 4;
+type SupportedArchiveVersion = 1 | 2 | 3 | 4;
 export const MAX_ARCHIVE_SIZE = 250 * 1024 * 1024;
 const MAX_MANIFEST_SIZE = 5 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -49,12 +49,16 @@ export type ProductExportRow = {
     unit: string;
     removable: boolean;
   }>;
+  addableIngredients: Array<{ sourceProductId: string }>;
   imageUrl: string | null;
 };
 
 type ProductArchiveProductFields = Omit<
   ProductExportRow,
-  "imageUrl" | "maxTemperatureCelsius" | "categories"
+  | "imageUrl"
+  | "maxTemperatureCelsius"
+  | "categories"
+  | "addableIngredients"
 > & {
   image?: string;
 };
@@ -63,24 +67,35 @@ export type ProductArchiveProductV1 = ProductArchiveProductFields & {
   category: string;
   categories?: undefined;
   maxTemperatureCelsius?: undefined;
+  addableIngredients?: undefined;
 };
 
 export type ProductArchiveProductV2 = ProductArchiveProductFields & {
   category: string;
   categories?: undefined;
   maxTemperatureCelsius: number | null;
+  addableIngredients?: undefined;
 };
 
 export type ProductArchiveProductV3 = ProductArchiveProductFields & {
   category?: undefined;
   categories: string[];
   maxTemperatureCelsius: number | null;
+  addableIngredients?: undefined;
+};
+
+export type ProductArchiveProductV4 = ProductArchiveProductFields & {
+  category?: undefined;
+  categories: string[];
+  maxTemperatureCelsius: number | null;
+  addableIngredients: Array<{ sourceProductId: string }>;
 };
 
 export type ProductArchiveProduct =
   | ProductArchiveProductV1
   | ProductArchiveProductV2
-  | ProductArchiveProductV3;
+  | ProductArchiveProductV3
+  | ProductArchiveProductV4;
 
 type ProductArchiveV1 = {
   format: typeof ARCHIVE_FORMAT;
@@ -103,10 +118,18 @@ type ProductArchiveV3 = {
   products: ProductArchiveProductV3[];
 };
 
+type ProductArchiveV4 = {
+  format: typeof ARCHIVE_FORMAT;
+  version: 4;
+  exportedAt: string;
+  products: ProductArchiveProductV4[];
+};
+
 export type ProductArchive =
   | ProductArchiveV1
   | ProductArchiveV2
-  | ProductArchiveV3;
+  | ProductArchiveV3
+  | ProductArchiveV4;
 
 export type ParsedProductArchive = {
   manifest: ProductArchive;
@@ -176,6 +199,11 @@ function parseProduct(
   index: number,
   version: 3,
 ): ProductArchiveProductV3;
+function parseProduct(
+  value: unknown,
+  index: number,
+  version: 4,
+): ProductArchiveProductV4;
 function parseProduct(
   value: unknown,
   index: number,
@@ -253,6 +281,41 @@ function parseProduct(
     archiveError(`produkt ${index + 1} har en ingrediens flere gange`);
   }
 
+  let addableIngredients: Array<{ sourceProductId: string }> = [];
+  if (version === 4) {
+    if (
+      !Array.isArray(value.addableIngredients) ||
+      value.addableIngredients.length > MAX_CHILDREN
+    ) {
+      archiveError(
+        `ingredienser, der kan tilføjes til produkt ${index + 1}, er ugyldige`,
+      );
+    }
+    addableIngredients = value.addableIngredients.map(
+      (ingredient, ingredientIndex) => {
+        if (!isRecord(ingredient)) {
+          return archiveError(
+            `ingrediens ${ingredientIndex + 1}, der kan tilføjes til produkt ${index + 1}, er ugyldig`,
+          );
+        }
+        return {
+          sourceProductId: requiredKey(
+            ingredient.sourceProductId,
+            "Produktnøglen",
+          ),
+        };
+      },
+    );
+    if (
+      new Set(addableIngredients.map((item) => item.sourceProductId)).size !==
+      addableIngredients.length
+    ) {
+      archiveError(
+        `produkt ${index + 1} har en ingrediens, der kan tilføjes, flere gange`,
+      );
+    }
+  }
+
   const image = value.image;
   if (
     image !== undefined &&
@@ -305,11 +368,13 @@ function parseProduct(
   ) {
     archiveError(`produkt ${index + 1} har en kategori flere gange`);
   }
-  return {
+  const productWithCategories = {
     ...product,
     categories,
     maxTemperatureCelsius,
   };
+  if (version === 3) return productWithCategories;
+  return { ...productWithCategories, addableIngredients };
 }
 
 function validateProducts(products: ProductArchiveProduct[], files: Unzipped) {
@@ -328,6 +393,13 @@ function validateProducts(products: ProductArchiveProduct[], files: Unzipped) {
         );
       }
     }
+    for (const ingredient of product.addableIngredients ?? []) {
+      if (!sourceIds.has(ingredient.sourceProductId)) {
+        archiveError(
+          `en ingrediens, der kan tilføjes til ${product.name}, mangler i produktlisten`,
+        );
+      }
+    }
   }
 }
 
@@ -337,6 +409,7 @@ function parseManifest(value: unknown, files: Unzipped): ProductArchive {
     value.format !== ARCHIVE_FORMAT ||
     (value.version !== 1 &&
       value.version !== 2 &&
+      value.version !== 3 &&
       value.version !== ARCHIVE_VERSION)
   ) {
     archiveError("formatet eller versionen understøttes ikke");
@@ -377,8 +450,21 @@ function parseManifest(value: unknown, files: Unzipped): ProductArchive {
     };
   }
 
-  const products: ProductArchiveProductV3[] = value.products.map(
-    (product, index) => parseProduct(product, index, 3),
+  if (value.version === 3) {
+    const products: ProductArchiveProductV3[] = value.products.map(
+      (product, index) => parseProduct(product, index, 3),
+    );
+    validateProducts(products, files);
+    return {
+      format: ARCHIVE_FORMAT,
+      version: 3,
+      exportedAt: value.exportedAt,
+      products,
+    };
+  }
+
+  const products: ProductArchiveProductV4[] = value.products.map(
+    (product, index) => parseProduct(product, index, 4),
   );
   validateProducts(products, files);
   return {
@@ -441,7 +527,7 @@ export async function createProductArchive(products: ProductExportRow[]) {
     throw new Error(`Eksporten kan højst indeholde ${MAX_PRODUCTS.toLocaleString("da-DK")} produkter`);
   }
   const files: AsyncZippable = {};
-  const archivedProducts: ProductArchiveProductV3[] = [];
+  const archivedProducts: ProductArchiveProductV4[] = [];
   let uncompressedSize = 0;
 
   for (const [index, product] of products.entries()) {
@@ -490,6 +576,7 @@ export async function createProductArchive(products: ProductExportRow[]) {
       maxTemperatureCelsius: product.maxTemperatureCelsius,
       units: product.units,
       ingredients: product.ingredients,
+      addableIngredients: product.addableIngredients,
       ...(image ? { image } : {}),
     });
   }

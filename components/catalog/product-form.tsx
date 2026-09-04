@@ -79,6 +79,12 @@ type IngredientRow = {
   onlinePosProductId: number | null;
 };
 
+type AddableIngredientRow = {
+  key: string;
+  productId: Id<"products"> | null;
+  onlinePosProductId: number | null;
+};
+
 type ProductOption = {
   id: Id<"products">;
   name: string;
@@ -319,11 +325,34 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           : { productId }
       : "skip",
   );
+  const ingredientAdditionSettings = useQuery(
+    api.onlinePos.getIngredientAdditionSettings,
+    canManageIntegrations
+      ? productId === undefined
+        ? {}
+        : product === undefined || product === null
+          ? "skip"
+          : { productId }
+      : "skip",
+  );
+  const onlinePosSettingsReady =
+    !canManageIntegrations ||
+    (ingredientRemovalSettings !== undefined &&
+      ingredientAdditionSettings !== undefined &&
+      ingredientRemovalSettings.integrationId ===
+        ingredientAdditionSettings.integrationId);
+  const onlinePosIntegrationId =
+    canManageIntegrations && onlinePosSettingsReady
+      ? ingredientRemovalSettings?.integrationId
+      : undefined;
   const options = useQuery(api.catalog.listFormOptions);
   const createProduct = useMutation(api.catalog.createProduct);
   const updateProduct = useMutation(api.catalog.updateProduct);
   const setIngredientRemovalMappings = useAction(
     api.onlinePos.setIngredientRemovalMappings,
+  );
+  const setIngredientAdditionMappings = useAction(
+    api.onlinePos.setIngredientAdditionMappings,
   );
   const generateUploadUrl = useMutation(
     api.catalog.generateProductImageUploadUrl,
@@ -331,6 +360,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const setProductImage = useMutation(api.catalog.setProductImage);
   const removeProductImage = useMutation(api.catalog.removeProductImage);
   const initializedProduct = useRef<string | null>(null);
+  const initializedOnlinePosIntegrationId = useRef<
+    Id<"onlinePosIntegrations"> | null | undefined
+  >(undefined);
   const [name, setName] = useState("");
   const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
@@ -338,9 +370,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
   ]);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([]);
+  const [addableIngredientRows, setAddableIngredientRows] = useState<
+    AddableIngredientRow[]
+  >([]);
   const catalog = useQuery(
     api.catalog.listActiveProducts,
-    ingredientRows.length > 0 ? {} : "skip",
+    ingredientRows.length > 0 || addableIngredientRows.length > 0
+      ? {}
+      : "skip",
   );
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
@@ -358,7 +395,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       !productId ||
       !product ||
       initializedProduct.current === productId ||
-      (canManageIntegrations && ingredientRemovalSettings === undefined)
+      !onlinePosSettingsReady
     ) {
       return;
     }
@@ -391,18 +428,81 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           )?.onlinePosProductId ?? null,
       })),
     );
+    setAddableIngredientRows(
+      product.addableIngredients.map((ingredient) => ({
+        key: `addable-ingredient-${ingredient.productId}`,
+        productId: ingredient.productId,
+        onlinePosProductId:
+          ingredientAdditionSettings?.mappings.find(
+            (mapping) => mapping.ingredientProductId === ingredient.productId,
+          )?.onlinePosProductId ?? null,
+      })),
+    );
+    initializedOnlinePosIntegrationId.current = onlinePosIntegrationId;
   }, [
     canManageIntegrations,
+    ingredientAdditionSettings,
     ingredientRemovalSettings,
+    onlinePosIntegrationId,
+    onlinePosSettingsReady,
     product,
     productId,
   ]);
 
+  useEffect(() => {
+    if (
+      !canManageIntegrations ||
+      !onlinePosSettingsReady ||
+      onlinePosIntegrationId === undefined
+    ) {
+      return;
+    }
+    if (initializedOnlinePosIntegrationId.current === undefined) {
+      initializedOnlinePosIntegrationId.current = onlinePosIntegrationId;
+      return;
+    }
+    if (
+      initializedOnlinePosIntegrationId.current === onlinePosIntegrationId
+    ) {
+      return;
+    }
+
+    initializedOnlinePosIntegrationId.current = onlinePosIntegrationId;
+    setOnlinePosProducts(undefined);
+    setIngredientRows((current) =>
+      current.map((row) => ({
+        ...row,
+        onlinePosProductId:
+          ingredientRemovalSettings?.mappings.find(
+            (mapping) => mapping.ingredientProductId === row.productId,
+          )?.onlinePosProductId ?? null,
+      })),
+    );
+    setAddableIngredientRows((current) =>
+      current.map((row) => ({
+        ...row,
+        onlinePosProductId:
+          ingredientAdditionSettings?.mappings.find(
+            (mapping) => mapping.ingredientProductId === row.productId,
+          )?.onlinePosProductId ?? null,
+      })),
+    );
+  }, [
+    canManageIntegrations,
+    ingredientAdditionSettings,
+    ingredientRemovalSettings,
+    onlinePosIntegrationId,
+    onlinePosSettingsReady,
+  ]);
+
   const shouldLoadOnlinePosProducts =
     canManageIntegrations &&
+    onlinePosSettingsReady &&
     ((productMapping !== undefined && productMapping !== null) ||
       (ingredientRemovalSettings?.enabled === true &&
-        ingredientRows.some((row) => row.removable)));
+        ingredientRows.some((row) => row.removable)) ||
+      (ingredientAdditionSettings?.enabled === true &&
+        addableIngredientRows.some((row) => row.productId !== null)));
 
   useEffect(() => {
     if (!shouldLoadOnlinePosProducts || onlinePosProducts !== undefined) return;
@@ -445,32 +545,59 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       label: unit.name,
     })) ?? [];
 
-  const productOptions = useMemo<ProductOption[]>(() => {
-    const active: ProductOption[] =
-      catalog?.map((option) => ({
-        id: option.id,
-        name: option.name,
-        categoryPath: option.categories
-          .map((category) => category.path)
-          .join(" · "),
-        units: option.units.map((unit) => ({ id: unit.id, name: unit.name })),
-      })) ?? [];
-    if (!product) return active;
+  const activeProductOptions = useMemo<ProductOption[]>(
+    () =>
+      catalog
+        ?.filter((option) => option.id !== productId)
+        .map((option) => ({
+          id: option.id,
+          name: option.name,
+          categoryPath: option.categories
+            .map((category) => category.path)
+            .join(" · "),
+          units: option.units.map((unit) => ({ id: unit.id, name: unit.name })),
+        })) ?? [],
+    [catalog, productId],
+  );
+
+  const recipeProductOptions = useMemo<ProductOption[]>(() => {
+    const available = [...activeProductOptions];
+    if (!product) return available;
 
     for (const ingredient of product.ingredients) {
-      if (active.some((option) => option.id === ingredient.productId)) continue;
-      active.push({
+      if (available.some((option) => option.id === ingredient.productId)) {
+        continue;
+      }
+      available.push({
         id: ingredient.productId,
         name: ingredient.productName,
         archived: ingredient.productStatus === "archived",
         units: [{ id: ingredient.unitId, name: ingredient.unitName }],
       });
     }
-    return active;
-  }, [catalog, product]);
+    return available;
+  }, [activeProductOptions, product]);
 
-  const productComboboxOptions: ComboboxOption[] = productOptions.map(
-    (option) => ({
+  const addableProductOptions = useMemo<ProductOption[]>(() => {
+    const available = [...activeProductOptions];
+    if (!product) return available;
+
+    for (const ingredient of product.addableIngredients) {
+      if (available.some((option) => option.id === ingredient.productId)) {
+        continue;
+      }
+      available.push({
+        id: ingredient.productId,
+        name: ingredient.productName,
+        archived: ingredient.productStatus === "archived",
+        units: [],
+      });
+    }
+    return available;
+  }, [activeProductOptions, product]);
+
+  const recipeProductComboboxOptions: ComboboxOption[] =
+    recipeProductOptions.map((option) => ({
       value: option.id,
       label: [
         option.name,
@@ -479,8 +606,18 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       ]
         .filter(Boolean)
         .join(" · "),
-    }),
-  );
+    }));
+  const addableProductComboboxOptions: ComboboxOption[] =
+    addableProductOptions.map((option) => ({
+      value: option.id,
+      label: [
+        option.name,
+        option.categoryPath,
+        option.archived ? "arkiveret" : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    }));
 
   const defaultRow = unitRows.find((row) => row.isDefault);
   const defaultUnitName = defaultRow
@@ -550,6 +687,17 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     ]);
   }
 
+  function addAddableIngredient() {
+    setAddableIngredientRows((current) => [
+      ...current,
+      {
+        key: newKey("addable-ingredient"),
+        productId: null,
+        onlinePosProductId: null,
+      },
+    ]);
+  }
+
   function validate() {
     const nextErrors: Record<string, string> = {};
     if (!name.trim()) nextErrors.name = "Indtast et produktnavn";
@@ -595,6 +743,18 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     const ingredientIds = ingredientRows.map((row) => row.productId);
     if (new Set(ingredientIds).size !== ingredientIds.length) {
       nextErrors.ingredients = "Hver ingrediens kan kun tilføjes én gang";
+    }
+    if (addableIngredientRows.some((row) => !row.productId)) {
+      nextErrors.addableIngredients =
+        "Vælg produkt for hver ingrediens, der kan tilføjes";
+    }
+    const addableIngredientIds = addableIngredientRows.flatMap((row) =>
+      row.productId ? [row.productId] : [],
+    );
+    if (
+      new Set(addableIngredientIds).size !== addableIngredientIds.length
+    ) {
+      nextErrors.addableIngredients = "Hver ingrediens kan kun tilføjes én gang";
     }
     if (imageFile) {
       const imageError = productImageError(imageFile);
@@ -652,6 +812,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           ]
         : [],
     );
+    const addableIngredients = addableIngredientRows.flatMap((row) =>
+      row.productId !== null ? [{ productId: row.productId }] : [],
+    );
 
     try {
       const savedProductId = productId
@@ -667,6 +830,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   : row.unit,
             })),
             ingredients,
+            addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
           })
         : await createProduct({
@@ -680,6 +844,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   : row.unit,
             })),
             ingredients,
+            addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
           });
 
@@ -694,7 +859,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       }
 
       let ingredientRemovalError: unknown;
-      if (canManageIntegrations && ingredientRemovalSettings?.enabled === true) {
+      if (
+        canManageIntegrations &&
+        ingredientRemovalSettings?.enabled === true &&
+        onlinePosIntegrationId
+      ) {
         const mappings = ingredientRows.flatMap((row) =>
           row.removable &&
           row.productId !== null &&
@@ -710,6 +879,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         try {
           await setIngredientRemovalMappings({
             productId: savedProductId,
+            expectedIntegrationId: onlinePosIntegrationId,
             mappings,
           });
         } catch (caughtIngredientRemovalError) {
@@ -717,7 +887,36 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         }
       }
 
-      if (imageError || ingredientRemovalError) {
+      let ingredientAdditionError: unknown;
+      if (
+        canManageIntegrations &&
+        ingredientAdditionSettings?.enabled === true &&
+        onlinePosIntegrationId
+      ) {
+        const mappings = addableIngredientRows.flatMap((row) =>
+          row.productId !== null && row.onlinePosProductId !== null
+            ? [
+                {
+                  ingredientProductId: row.productId,
+                  onlinePosProductId: row.onlinePosProductId,
+                },
+              ]
+            : [],
+        );
+        try {
+          await setIngredientAdditionMappings({
+            productId: savedProductId,
+            expectedIntegrationId: onlinePosIntegrationId,
+            mappings,
+          });
+        } catch (caughtIngredientAdditionError) {
+          ingredientAdditionError = caughtIngredientAdditionError;
+        }
+      }
+
+      if (imageError || ingredientRemovalError || ingredientAdditionError) {
+        const ingredientMappingError =
+          ingredientRemovalError ?? ingredientAdditionError;
         const messages = [
           imageError
             ? getUserErrorMessage(
@@ -725,9 +924,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 "Billedet kunne ikke opdateres. Prøv igen.",
               )
             : null,
-          ingredientRemovalError
+          ingredientMappingError
             ? getUserErrorMessage(
-                ingredientRemovalError,
+                ingredientMappingError,
                 "OnlinePOS-koblingerne kunne ikke gemmes. Prøv igen.",
               )
             : null,
@@ -751,9 +950,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   if (
     productId &&
     (product === undefined ||
-      (product !== null &&
-        canManageIntegrations &&
-        ingredientRemovalSettings === undefined))
+      (product !== null && !onlinePosSettingsReady))
   ) {
     return <FormLoading />;
   }
@@ -1066,7 +1263,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     </p>
                   ) : null}
                   {ingredientRows.map((row) => {
-                    const selectedProduct = productOptions.find(
+                    const selectedProduct = recipeProductOptions.find(
                       (option) => option.id === row.productId,
                     );
                     const onlinePosComboboxOptions: ComboboxOption[] = (
@@ -1116,11 +1313,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           <Field>
                             <FieldLabel>Produkt</FieldLabel>
                             <CreatableCombobox
-                              options={productComboboxOptions}
+                              options={recipeProductComboboxOptions}
                               value={row.productId}
                               disabled={catalog === undefined}
                               onValueChange={(value) => {
-                                const selected = productOptions.find(
+                                const selected = recipeProductOptions.find(
                                   (option) => option.id === value,
                                 );
                                 setIngredientRows((current) =>
@@ -1329,6 +1526,216 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               </FieldSet>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ingredienser, der kan tilføjes</CardTitle>
+              <CardDescription>
+                Disse ingredienser kan vælges som ekstra. De indgår ikke i
+                produktet som standard.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FieldSet>
+                <FieldLegend className="sr-only">
+                  Ingredienser, der kan tilføjes
+                </FieldLegend>
+                <FieldGroup>
+                  {addableIngredientRows.length === 0 ? (
+                    <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
+                      Der er endnu ingen ingredienser, der kan tilføjes.
+                    </p>
+                  ) : null}
+                  {addableIngredientRows.map((row) => {
+                    const selectedProduct = addableProductOptions.find(
+                      (option) => option.id === row.productId,
+                    );
+                    const productIsInvalid =
+                      Boolean(errors.addableIngredients) &&
+                      (row.productId === null ||
+                        addableIngredientRows.filter(
+                          (item) => item.productId === row.productId,
+                        ).length > 1);
+                    const onlinePosComboboxOptions: ComboboxOption[] = (
+                      onlinePosProducts ?? []
+                    ).map((onlinePosProduct) => ({
+                      value: String(onlinePosProduct.id),
+                      label: onlinePosProduct.groupName
+                        ? `${onlinePosProduct.name} — ${onlinePosProduct.groupName}`
+                        : onlinePosProduct.name,
+                    }));
+                    const staleOnlinePosProductId =
+                      onlinePosProducts !== undefined &&
+                      onlinePosProducts !== null &&
+                      row.onlinePosProductId !== null &&
+                      !onlinePosProducts.some(
+                        (product) => product.id === row.onlinePosProductId,
+                      )
+                        ? row.onlinePosProductId
+                        : null;
+                    if (staleOnlinePosProductId !== null) {
+                      onlinePosComboboxOptions.unshift({
+                        value: String(staleOnlinePosProductId),
+                        label: `Ikke længere tilgængeligt (ID ${staleOnlinePosProductId})`,
+                        disabled: true,
+                      });
+                    }
+                    const { hasExactMatch, suggestions } =
+                      getOnlinePosProductSuggestions(
+                        onlinePosProducts ?? [],
+                        selectedProduct?.name ?? "",
+                      );
+                    const showAdditionMapping =
+                      row.productId !== null &&
+                      canManageIntegrations &&
+                      ingredientAdditionSettings?.enabled === true;
+                    const showIntegrationGuidance =
+                      row.productId !== null &&
+                      canManageIntegrations &&
+                      ingredientAdditionSettings !== undefined &&
+                      !ingredientAdditionSettings.enabled;
+                    return (
+                      <div
+                        key={row.key}
+                        className="grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start"
+                      >
+                        <div className="flex min-w-0 flex-col gap-3">
+                          <Field data-invalid={productIsInvalid}>
+                            <FieldLabel>Produkt</FieldLabel>
+                            <CreatableCombobox
+                              options={addableProductComboboxOptions}
+                              value={row.productId}
+                              disabled={catalog === undefined}
+                              onValueChange={(value) => {
+                                const selected = addableProductOptions.find(
+                                  (option) => option.id === value,
+                                );
+                                setAddableIngredientRows((current) =>
+                                  current.map((item) =>
+                                    item.key === row.key
+                                      ? {
+                                          ...item,
+                                          productId: selected?.id ?? null,
+                                          onlinePosProductId: null,
+                                        }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              placeholder="Søg efter produkter"
+                              ariaLabel="Ingrediens, der kan tilføjes"
+                              ariaInvalid={productIsInvalid}
+                            />
+                            {productIsInvalid ? (
+                              <FieldError>
+                                {errors.addableIngredients}
+                              </FieldError>
+                            ) : null}
+                          </Field>
+                          {showAdditionMapping ? (
+                            <Field>
+                              <FieldLabel>
+                                OnlinePOS-produkt for tilføjelse
+                              </FieldLabel>
+                              {onlinePosProducts === undefined ? (
+                                <Skeleton className="h-11 w-full" />
+                              ) : onlinePosProducts === null ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="min-h-11"
+                                  onClick={() =>
+                                    setOnlinePosProducts(undefined)
+                                  }
+                                >
+                                  <RefreshCwIcon data-icon="inline-start" />
+                                  Prøv at hente OnlinePOS-produkter igen
+                                </Button>
+                              ) : (
+                                <CreatableCombobox
+                                  options={onlinePosComboboxOptions}
+                                  suggestionLabel={
+                                    hasExactMatch
+                                      ? "Forslag med samme navn"
+                                      : "Forslag ud fra produktnavnet"
+                                  }
+                                  suggestionOptions={suggestions.map(
+                                    (onlinePosProduct) => ({
+                                      value: String(onlinePosProduct.id),
+                                      label: onlinePosProduct.groupName
+                                        ? `${onlinePosProduct.name} — ${onlinePosProduct.groupName}`
+                                        : onlinePosProduct.name,
+                                    }),
+                                  )}
+                                  value={
+                                    row.onlinePosProductId === null
+                                      ? null
+                                      : String(row.onlinePosProductId)
+                                  }
+                                  onValueChange={(value) =>
+                                    setAddableIngredientRows((current) =>
+                                      current.map((item) =>
+                                        item.key === row.key
+                                          ? {
+                                              ...item,
+                                              onlinePosProductId:
+                                                value === null
+                                                  ? null
+                                                  : Number(value),
+                                            }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  placeholder="Søg efter OnlinePOS-produkt"
+                                  ariaLabel="OnlinePOS-produkt for tilføjelse"
+                                />
+                              )}
+                              <FieldDescription>
+                                {staleOnlinePosProductId === null
+                                  ? "Koblingen er valgfri."
+                                  : "Produktet findes ikke længere i OnlinePOS. Vælg et nyt produkt, eller fjern koblingen."}
+                              </FieldDescription>
+                            </Field>
+                          ) : null}
+                          {showIntegrationGuidance ? (
+                            <FieldDescription>
+                              {ingredientAdditionSettings.connected
+                                ? "Aktivér OnlinePOS-integrationen for at tilføje en kobling."
+                                : "Forbind OnlinePOS-integrationen for at tilføje en kobling."}
+                            </FieldDescription>
+                          ) : null}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-lg"
+                          className="md:mt-6"
+                          aria-label="Fjern ingrediens, der kan tilføjes"
+                          onClick={() =>
+                            setAddableIngredientRows((current) =>
+                              current.filter((item) => item.key !== row.key),
+                            )
+                          }
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={addAddableIngredient}
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    Tilføj ingrediens
+                  </Button>
+                </FieldGroup>
+              </FieldSet>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -1361,7 +1768,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             disabled={
               isSaving ||
               options === undefined ||
-              (canManageIntegrations && ingredientRemovalSettings === undefined)
+              !onlinePosSettingsReady
             }
             onClick={save}
           >

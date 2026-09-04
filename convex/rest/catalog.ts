@@ -642,7 +642,7 @@ async function currentProductInputs(
   organizationId: string,
   product: Doc<"products">,
 ) {
-  const [unitRows, ingredientRows] = await Promise.all([
+  const [unitRows, ingredientRows, addableIngredientRows] = await Promise.all([
     ctx.db
       .query("productUnits")
       .withIndex("by_organizationId_and_productId", (q) =>
@@ -655,10 +655,17 @@ async function currentProductInputs(
         q.eq("organizationId", organizationId).eq("productId", product._id),
       )
       .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productIngredientAdditions")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
   ]);
   if (
     unitRows.length > MAX_CHILD_ROWS ||
-    ingredientRows.length > MAX_CHILD_ROWS
+    ingredientRows.length > MAX_CHILD_ROWS ||
+    addableIngredientRows.length > MAX_CHILD_ROWS
   ) {
     restError(
       "too_many_resources",
@@ -676,6 +683,9 @@ async function currentProductInputs(
       quantity: row.quantity,
       unitId: row.unitId,
       removable: row.removable ?? false,
+    })),
+    addableIngredients: addableIngredientRows.map((row) => ({
+      productId: row.ingredientProductId,
     })),
   };
 }
@@ -1086,6 +1096,7 @@ export const createProduct = mutation({
             categories: categoryIds.map((id) => ({ kind: "existing", id })),
             units,
             ingredients,
+            addableIngredients: [],
             maxTemperatureCelsius: args.input.maxTemperatureCelsius,
           }),
         );
@@ -1159,6 +1170,7 @@ export const updateProduct = mutation({
         categories: categoryIds.map((id) => ({ kind: "existing", id })),
         units: unitInputs,
         ingredients: ingredientInputs,
+        addableIngredients: current.addableIngredients,
         maxTemperatureCelsius:
           args.input.maxTemperatureCelsius === undefined
             ? product.maxTemperatureCelsius
