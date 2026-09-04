@@ -116,6 +116,7 @@ const productDetailValidator = v.object({
       quantity: v.number(),
       unitId: v.id("units"),
       unitName: v.string(),
+      removable: v.boolean(),
     }),
   ),
 });
@@ -152,6 +153,7 @@ const ingredientInputValidator = v.object({
   productId: v.id("products"),
   quantity: v.number(),
   unitId: v.id("units"),
+  removable: v.optional(v.boolean()),
 });
 
 const maxTemperatureInputValidator = v.optional(
@@ -176,6 +178,7 @@ const productExportValidator = v.object({
       sourceProductId: v.id("products"),
       quantity: v.number(),
       unit: v.string(),
+      removable: v.boolean(),
     }),
   ),
   imageUrl: v.union(v.string(), v.null()),
@@ -191,6 +194,7 @@ const importedIngredientValidator = v.object({
   productId: v.id("products"),
   quantity: v.number(),
   unitName: v.string(),
+  removable: v.optional(v.boolean()),
 });
 
 const bulkProductCategoryArgs = v.object({
@@ -216,6 +220,7 @@ type IngredientInput = {
   productId: Id<"products">;
   quantity: number;
   unitId: Id<"units">;
+  removable?: boolean;
 };
 
 type CategoryPlacement =
@@ -694,6 +699,53 @@ async function assertNoRecipeCycle(
   }
 }
 
+async function replaceProductIngredients(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+  ingredients: IngredientInput[],
+) {
+  const existingIngredients = await ctx.db
+    .query("productIngredients")
+    .withIndex("by_organizationId_and_productId", (q) =>
+      q.eq("organizationId", organizationId).eq("productId", productId),
+    )
+    .take(MAX_CHILD_ROWS);
+  const existingIngredientsByProductId = new Map(
+    existingIngredients.map((row) => [row.ingredientProductId, row]),
+  );
+
+  for (const row of existingIngredients) {
+    await ctx.db.delete("productIngredients", row._id);
+  }
+  for (const row of ingredients) {
+    const current = existingIngredientsByProductId.get(row.productId);
+    const removable = row.removable ?? current?.removable ?? false;
+    const keepOnlinePosRemovalMapping =
+      removable &&
+      current?.removable === true &&
+      current.onlinePosRemovalProductId !== undefined &&
+      current.onlinePosRemovalIntegrationId !== undefined &&
+      current.onlinePosRemovalCompanyId !== undefined;
+    await ctx.db.insert("productIngredients", {
+      organizationId,
+      productId,
+      ingredientProductId: row.productId,
+      quantity: row.quantity,
+      unitId: row.unitId,
+      removable,
+      ...(keepOnlinePosRemovalMapping
+        ? {
+            onlinePosRemovalProductId: current.onlinePosRemovalProductId,
+            onlinePosRemovalIntegrationId:
+              current.onlinePosRemovalIntegrationId,
+            onlinePosRemovalCompanyId: current.onlinePosRemovalCompanyId,
+          }
+        : {}),
+    });
+  }
+}
+
 async function replaceProductChildren(
   ctx: MutationCtx,
   organizationId: string,
@@ -727,17 +779,7 @@ async function replaceProductChildren(
     }
   }
 
-  const existingIngredients = await ctx.db
-    .query("productIngredients")
-    .withIndex("by_organizationId_and_productId", (q) =>
-      q.eq("organizationId", organizationId).eq("productId", productId),
-    )
-    .take(MAX_CHILD_ROWS);
-
   for (const row of existingUnits) await ctx.db.delete("productUnits", row._id);
-  for (const row of existingIngredients) {
-    await ctx.db.delete("productIngredients", row._id);
-  }
 
   for (const row of units) {
     await ctx.db.insert("productUnits", {
@@ -747,15 +789,7 @@ async function replaceProductChildren(
       factorToDefault: row.factorToDefault,
     });
   }
-  for (const row of ingredients) {
-    await ctx.db.insert("productIngredients", {
-      organizationId,
-      productId,
-      ingredientProductId: row.productId,
-      quantity: row.quantity,
-      unitId: row.unitId,
-    });
-  }
+  await replaceProductIngredients(ctx, organizationId, productId, ingredients);
 }
 
 async function scrubProductFromCountOrder(
@@ -1371,6 +1405,7 @@ export const exportProducts = query({
                 sourceProductId: ingredientProduct._id,
                 quantity: row.quantity,
                 unit: unit.name,
+                removable: row.removable ?? false,
               };
             }),
           );
@@ -1454,6 +1489,7 @@ export const getProduct = query({
               quantity: row.quantity,
               unitId: unit._id,
               unitName: unit.name,
+              removable: row.removable ?? false,
             }
           : null;
       }),
@@ -2191,29 +2227,20 @@ export const importProductIngredients = mutation({
         productId: input.productId,
         quantity: input.quantity,
         unitId: unit._id,
+        ...(input.removable === undefined
+          ? {}
+          : { removable: input.removable }),
       });
     }
 
     await validateIngredients(ctx, organizationId, ingredients, product._id);
     await assertNoRecipeCycle(ctx, organizationId, product._id, ingredients);
-    const existing = await ctx.db
-      .query("productIngredients")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", product._id),
-      )
-      .take(MAX_CHILD_ROWS);
-    for (const row of existing) {
-      await ctx.db.delete("productIngredients", row._id);
-    }
-    for (const ingredient of ingredients) {
-      await ctx.db.insert("productIngredients", {
-        organizationId,
-        productId: product._id,
-        ingredientProductId: ingredient.productId,
-        quantity: ingredient.quantity,
-        unitId: ingredient.unitId,
-      });
-    }
+    await replaceProductIngredients(
+      ctx,
+      organizationId,
+      product._id,
+      ingredients,
+    );
     await recordAudit(ctx, auth, {
       action: "catalog.productIngredientsChanged",
       entityTable: "products",

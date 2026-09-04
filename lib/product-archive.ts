@@ -47,6 +47,7 @@ export type ProductExportRow = {
     sourceProductId: string;
     quantity: number;
     unit: string;
+    removable: boolean;
   }>;
   imageUrl: string | null;
 };
@@ -235,6 +236,14 @@ function parseProduct(
       sourceProductId: requiredKey(ingredient.sourceProductId, "Produktnøglen"),
       quantity: positiveNumber(ingredient.quantity, "Ingrediensmængden"),
       unit: requiredName(ingredient.unit, "Ingrediensenheden"),
+      removable:
+        ingredient.removable === undefined
+          ? false
+          : typeof ingredient.removable === "boolean"
+            ? ingredient.removable
+            : archiveError(
+                `fjernelsesindstillingen for ingrediens ${ingredientIndex + 1} for produkt ${index + 1} er ugyldig`,
+              ),
     };
   });
   if (

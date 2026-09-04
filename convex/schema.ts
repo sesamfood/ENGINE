@@ -1125,6 +1125,11 @@ export default defineSchema({
     ingredientProductId: v.id("products"),
     quantity: v.number(),
     unitId: v.id("units"),
+    removable: v.optional(v.boolean()),
+    onlinePosRemovalProductId: v.optional(v.number()),
+    // Bind provider ids to the connection that validated them.
+    onlinePosRemovalIntegrationId: v.optional(v.id("onlinePosIntegrations")),
+    onlinePosRemovalCompanyId: v.optional(v.number()),
   })
     .index("by_organizationId_and_productId", ["organizationId", "productId"])
     .index("by_organizationId_and_productId_and_ingredientProductId", [

@@ -216,6 +216,7 @@ export function ProductImportExport({
               productId: productIds.get(ingredient.sourceProductId)!.productId,
               quantity: ingredient.quantity,
               unitName: ingredient.unit,
+              removable: ingredient.removable ?? false,
             })),
           });
         } catch {
