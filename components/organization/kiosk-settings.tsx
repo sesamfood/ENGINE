@@ -208,19 +208,21 @@ export function KioskSettings() {
   const canManageSettings = usePermission("organization.settings");
   const canManageMembers = usePermission("members.manage");
   const canManageRoles = usePermission("roles.manage");
+  const canManageAccounts =
+    canManageMembers && canManageRoles && access?.locationScope.all === true;
   const settings = useQuery(
     api.kiosk.getAdminSettings,
     canManageSettings ? {} : "skip",
   );
   const accounts = useQuery(
     api.kiosk.listAccounts,
-    canManageMembers ? {} : "skip",
+    canManageAccounts ? {} : "skip",
   );
   const memberLocationAccess = useQuery(
     api.access.listMemberLocationAccess,
-    canManageMembers ? {} : "skip",
+    canManageAccounts ? {} : "skip",
   );
-  const locations = canManageMembers
+  const locations = canManageAccounts
     ? memberLocationAccess?.locations
     : undefined;
   const saveSettings = useMutation(api.kiosk.saveSettings);
@@ -253,7 +255,7 @@ export function KioskSettings() {
     return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
   }
 
-  if (!canManageSettings && !canManageMembers) {
+  if (!canManageSettings && !canManageAccounts) {
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
@@ -264,7 +266,7 @@ export function KioskSettings() {
 
   if (
     (canManageSettings && settings === undefined) ||
-    (canManageMembers && (accounts === undefined || locations === undefined))
+    (canManageAccounts && (accounts === undefined || locations === undefined))
   ) {
     return <div className="flex flex-col gap-5"><Skeleton className="h-80 w-full" /><Skeleton className="h-72 w-full" /></div>;
   }
@@ -396,7 +398,7 @@ export function KioskSettings() {
         </CardContent>
       </Card> : null}
 
-      {canManageMembers ? <>
+      {canManageAccounts ? <>
       {canManageRoles && canManageKioskLocations ? <Card>
         <CardHeader><CardTitle>Opret kioskkonto</CardTitle><CardDescription>Kontoen bindes permanent til én lokation og starter altid i kiosktilstand.</CardDescription></CardHeader>
         <CardContent>

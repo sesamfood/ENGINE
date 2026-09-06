@@ -1,8 +1,8 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { requireLocationAccess, requirePermission } from "./lib/auth";
 import {
   countCombinedWarning,
@@ -20,6 +20,12 @@ const MAX_LOCATIONS = 200;
 const MAX_MAPPINGS = 500;
 const MAX_WASTE_SALES_LINES = 5_000;
 const MAX_WOLT_SALES_LINES = 5_000;
+const SALES_BUDGET = {
+  documentsRead: 20_000,
+  databaseQueries: 3_000,
+  bytesRead: 8 * 1024 * 1024,
+};
+const SALES_BUDGET_REASON = "rapporten indeholder for mange salgsdata til at beregne sikkert";
 
 const onlinePosStateValidator = v.union(
   v.literal("idle"),
@@ -180,6 +186,7 @@ async function loadOnlinePos(
   report: ReportContext,
   from: number,
   to: number,
+  omitSales = false,
 ): Promise<ProviderLoad<OnlinePosHealth>> {
   const [master, connection, status, mappings] = await Promise.all([
     ctx.db
@@ -236,6 +243,8 @@ async function loadOnlinePos(
     reason = "der er for mange produktkoblinger til at beregne sikkert";
   } else if (duplicateMappingCount > 0) {
     reason = "et OnlinePOS-produkt er koblet til flere produkter";
+  } else if (omitSales) {
+    reason = SALES_BUDGET_REASON;
   }
 
   const health: OnlinePosHealth = {
@@ -355,6 +364,7 @@ async function loadWolt(
   report: ReportContext,
   from: number,
   to: number,
+  omitSales = false,
 ): Promise<ProviderLoad<WoltHealth>> {
   const [connection, mappings, pendingEvent, processingEvent, deadLetterEvent] =
     await Promise.all([
@@ -401,6 +411,8 @@ async function loadWolt(
     reason = "Wolt-events venter stadig på behandling";
   } else if (mappings.length > MAX_MAPPINGS) {
     reason = "der er for mange Wolt-produktkoblinger til at beregne sikkert";
+  } else if (omitSales) {
+    reason = SALES_BUDGET_REASON;
   }
 
   const health: WoltHealth = {
@@ -682,6 +694,33 @@ export const setSource = mutation({
 export const buildCountWasteReport = query({
   args: { countId: v.id("counts") },
   returns: wasteReportResultValidator,
+  handler: async (ctx, args): Promise<Infer<typeof wasteReportResultValidator>> => {
+    const before = await ctx.meta.getTransactionMetrics();
+    try {
+      return await ctx.runQuery(
+        internal.countSales.buildCountWasteReportData,
+        args,
+        { transactionLimits: SALES_BUDGET },
+      );
+    } catch (error) {
+      const after = await ctx.meta.getTransactionMetrics();
+      const exceeded =
+        after.documentsRead.used - before.documentsRead.used > SALES_BUDGET.documentsRead ||
+        after.databaseQueries.used - before.databaseQueries.used > SALES_BUDGET.databaseQueries ||
+        after.bytesRead.used - before.bytesRead.used > SALES_BUDGET.bytesRead;
+      if (!exceeded) throw error;
+      // The failed reads still count; the budget reserves room for this report.
+      return await ctx.runQuery(internal.countSales.buildCountWasteReportData, {
+        ...args,
+        omitSales: true,
+      });
+    }
+  },
+});
+
+export const buildCountWasteReportData = internalQuery({
+  args: { countId: v.id("counts"), omitSales: v.optional(v.boolean()) },
+  returns: wasteReportResultValidator,
   handler: async (ctx, args) => {
     const report: ReportContext = await ctx.runQuery(
       internal.count.getWasteReportContext,
@@ -778,8 +817,8 @@ export const buildCountWasteReport = query({
     const from = Math.min(...report.rows.map((row) => row.expectedSinceAt));
     const to = report.submittedAt;
     const [onlinePos, wolt] = await Promise.all([
-      loadOnlinePos(ctx, report, from, to),
-      loadWolt(ctx, report, from, to),
+      loadOnlinePos(ctx, report, from, to, args.omitSales),
+      loadWolt(ctx, report, from, to, args.omitSales),
     ]);
     const sourceHealth = reportSourceHealth(onlinePos.health, wolt.health);
     const combined = combineSales(selectedSource, onlinePos, wolt);

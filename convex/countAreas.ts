@@ -422,29 +422,55 @@ export const setProductOrder = mutation({
       args.locationId,
     );
     if (
-      args.productIds.length > MAX_COUNT_AREA_PRODUCTS ||
+      args.productIds.length >
+        (args.countAreaId === null ? MAX_COUNT_ITEMS : MAX_COUNT_AREA_PRODUCTS) ||
       new Set(args.productIds).size !== args.productIds.length
     ) {
       throw new ConvexError("Produktrækkefølgen er ugyldig");
     }
-    const products = await Promise.all(
-      args.productIds.map((productId) => ctx.db.get("products", productId)),
-    );
     const access = await getLocationProductAccess(
       ctx,
       organizationId,
       location._id,
     );
-    if (
-      products.some(
-        (product) =>
-          !product ||
-          product.organizationId !== organizationId ||
-          product.status !== "active" ||
-          !productIsAvailable(access, product._id),
-      )
-    ) {
+    if (args.productIds.some((productId) => !productIsAvailable(access, productId))) {
       throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
+    }
+    if (args.productIds.length <= MAX_COUNT_AREA_PRODUCTS) {
+      const products = await Promise.all(
+        args.productIds.map((productId) => ctx.db.get("products", productId)),
+      );
+      if (products.some((product) =>
+        !product || product.organizationId !== organizationId || product.status !== "active",
+      )) {
+        throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
+      }
+    } else {
+      const remaining = new Set(args.productIds);
+      async function requireScanHeadroom() {
+        const metrics = await ctx.meta.getTransactionMetrics();
+        // Reserve room for the next document, location update, and audit record.
+        if (
+          metrics.documentsRead.remaining < 2_000 ||
+          metrics.bytesRead.remaining < 2 * 1024 * 1024 ||
+          metrics.databaseQueries.remaining < 100
+        ) {
+          throw new ConvexError("Der er for mange Produkter til at gemme rækkefølgen sikkert");
+        }
+      }
+      await requireScanHeadroom();
+      for await (const product of ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+          q.eq("organizationId", organizationId).eq("status", "active"),
+        )) {
+        remaining.delete(product._id);
+        if (remaining.size === 0) break;
+        await requireScanHeadroom();
+      }
+      if (remaining.size > 0) {
+        throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
+      }
     }
 
     if (!args.countAreaId) {

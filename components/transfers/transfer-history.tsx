@@ -1,5 +1,6 @@
 "use client";
 
+import { downloadCsv } from "@/lib/download-csv";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -181,16 +182,6 @@ const timeFormatter = new Intl.DateTimeFormat("da-DK", {
   timeStyle: "short",
 });
 
-function escapeCsvValue(value: string) {
-  const safeValue = /^[\u0000-\u0020\u00a0\ufeff]*[=+\-@]/u.test(value)
-    ? `'${value}`
-    : value;
-  if (/[;"\r\n]/.test(safeValue)) {
-    return `"${safeValue.replaceAll('"', '""')}"`;
-  }
-  return safeValue;
-}
-
 type ExportColumn = {
   key: string;
   label: string;
@@ -354,28 +345,17 @@ function setExportPrefs(prefs: ExportPrefs) {
   for (const listener of exportPrefsListeners) listener();
 }
 
-// ponytail: browser-built semicolon CSV that Danish Excel opens natively — no dependency, no server route.
 function downloadTransfersCsv(
   rows: ExportRow[],
   startDate: string,
   endDate: string,
   columns: ExportColumn[],
 ) {
-  const lines = [
-    columns.map((column) => escapeCsvValue(column.label)).join(";"),
-    ...rows.map((row) =>
-      columns.map((column) => escapeCsvValue(column.value(row))).join(";"),
-    ),
-  ];
-  const blob = new Blob([`\uFEFF${lines.join("\r\n")}`], {
-    type: "text/csv;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `transfers-${startDate}-${endDate}.csv`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadCsv(
+    `transfers-${startDate}-${endDate}.csv`,
+    columns.map((column) => column.label),
+    rows.map((row) => columns.map((column) => column.value(row))),
+  );
 }
 
 type ColumnZone = "included" | "excluded";

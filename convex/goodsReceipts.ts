@@ -1,3 +1,5 @@
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
+import { claimStorageForOrganization } from "./lib/storageOwnership";
 import { ConvexError, type Infer, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -16,6 +18,7 @@ import {
 import { getLocationProductAccess } from "./lib/locationProducts";
 import {
   activeProductCatalogValidator,
+  listActiveProductPage,
   listLocationActiveProductCatalog,
 } from "./lib/productCatalog";
 import { addStock, normalizeStock } from "./lib/stock";
@@ -64,6 +67,7 @@ const receiptDetailValidator = v.union(
   v.object({
     kind: v.literal("pending"),
     transfer: pendingTransferValidator.extend({
+      toLocationId: v.id("locations"),
       items: v.array(receiptItemValidator),
     }),
     products: v.array(activeProductCatalogValidator),
@@ -109,8 +113,10 @@ async function settingsFor(ctx: GoodsReceiptCtx, organizationId: string) {
 
 async function validateUnusedDeliveryNote(
   ctx: MutationCtx,
+  organizationId: string,
   storageId: Id<"_storage">,
 ) {
+  await claimStorageForOrganization(ctx, organizationId, storageId);
   const [file, transfer, manualReceipt] = await Promise.all([
     ctx.db.system.get("_storage", storageId),
     ctx.db
@@ -410,7 +416,7 @@ export const listPendingTransfers = query({
 });
 
 export const getTransferReceipt = query({
-  args: { transferId: v.string() },
+  args: { transferId: v.string(), omitCatalog: v.optional(v.boolean()) },
   returns: receiptDetailValidator,
   handler: async (ctx, args) => {
     const auth = await requireGoodsReceiptRegistrar(ctx);
@@ -446,7 +452,7 @@ export const getTransferReceipt = query({
           ctx.db.get("products", productId),
         ),
       ),
-      listLocationActiveProductCatalog(
+      args.omitCatalog ? [] : listLocationActiveProductCatalog(
         ctx,
         auth.organizationId,
         transfer.toLocationId,
@@ -468,6 +474,7 @@ export const getTransferReceipt = query({
       kind: "pending",
       transfer: {
         ...pendingTransfer(transfer, names),
+        toLocationId: transfer.toLocationId,
         items: items.map((item) => {
           if (
             item.factorToDefault === undefined ||
@@ -599,7 +606,7 @@ export const registerTransferReceipt = mutation({
           "Billeder af følgesedler er ikke aktiveret for transfers",
         );
       }
-      await validateUnusedDeliveryNote(ctx, args.deliveryNoteStorageId);
+      await validateUnusedDeliveryNote(ctx, organizationId, args.deliveryNoteStorageId);
     }
 
     for (const {
@@ -711,8 +718,22 @@ export const registerTransferReceipt = mutation({
   },
 });
 
+export const listCatalogPage = query({
+  args: { locationId: v.id("locations"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(activeProductCatalogValidator),
+  handler: async (ctx, args) => {
+    const auth = await requireGoodsReceiptRegistrar(ctx);
+    requireLocationAccess(auth, args.locationId);
+    const location = await ctx.db.get("locations", args.locationId);
+    if (!location || location.organizationId !== auth.organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
+    return await listActiveProductPage(ctx, auth.organizationId, args.paginationOpts, location._id);
+  },
+});
+
 export const getManualReceiptOptions = query({
-  args: { locationId: v.id("locations") },
+  args: { locationId: v.id("locations"), omitCatalog: v.optional(v.boolean()) },
   returns: manualReceiptOptionsValidator,
   handler: async (ctx, args) => {
     const auth = await requireGoodsReceiptRegistrar(ctx);
@@ -724,7 +745,7 @@ export const getManualReceiptOptions = query({
 
     return {
       locationName: location.name,
-      products: await listLocationActiveProductCatalog(
+      products: args.omitCatalog ? [] : await listLocationActiveProductCatalog(
         ctx,
         auth.organizationId,
         location._id,
@@ -770,7 +791,7 @@ export const createManualReceipt = mutation({
       throw new ConvexError("Kommentaren må højst være 500 tegn");
     }
     if (args.deliveryNoteStorageId) {
-      await validateUnusedDeliveryNote(ctx, args.deliveryNoteStorageId);
+      await validateUnusedDeliveryNote(ctx, organizationId, args.deliveryNoteStorageId);
     }
 
     const resolvedItems = await resolveCatalogReceiptItems({

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
+import { getStorageReferences } from "./lib/storageOwnership";
 
 const PAGE_SIZE = 50;
 const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -17,72 +18,13 @@ export const removeOrphans = internalMutation({
 
     for (const file of page.page) {
       if (file._creationTime > cutoff) continue;
-      const [
-        logo,
-        wideLogo,
-        product,
-        attachment,
-        ownCheckAttachment,
-        feedbackScreenshot,
-        transferDeliveryNote,
-        manualDeliveryNote,
-      ] = await Promise.all([
-        ctx.db
-          .query("organizationAssets")
-          .withIndex("by_logoStorageId", (q) =>
-            q.eq("logoStorageId", file._id),
-          )
-          .first(),
-        ctx.db
-          .query("organizationAssets")
-          .withIndex("by_wideLogoStorageId", (q) =>
-            q.eq("wideLogoStorageId", file._id),
-          )
-          .first(),
-        ctx.db
-          .query("products")
-          .withIndex("by_imageStorageId", (q) =>
-            q.eq("imageStorageId", file._id),
-          )
-          .first(),
-        ctx.db
-          .query("badDeliveryAttachments")
-          .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
-          .first(),
-        ctx.db
-          .query("ownCheckAttachments")
-          .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
-          .first(),
-        ctx.db
-          .query("feedbackSubmissions")
-          .withIndex("by_screenshotStorageId", (q) =>
-            q.eq("screenshotStorageId", file._id),
-          )
-          .first(),
-        ctx.db
-          .query("transfers")
-          .withIndex("by_deliveryNoteStorageId", (q) =>
-            q.eq("deliveryNoteStorageId", file._id),
-          )
-          .first(),
-        ctx.db
-          .query("manualGoodsReceipts")
-          .withIndex("by_deliveryNoteStorageId", (q) =>
-            q.eq("deliveryNoteStorageId", file._id),
-          )
-          .first(),
-      ]);
-      if (
-        !logo &&
-        !wideLogo &&
-        !product &&
-        !attachment &&
-        !ownCheckAttachment &&
-        !feedbackScreenshot &&
-        !transferDeliveryNote &&
-        !manualDeliveryNote
-      ) {
+      const references = await getStorageReferences(ctx, file._id);
+      if (references.every((rows) => rows.length === 0)) {
         await ctx.storage.delete(file._id);
+        const owner = await ctx.db.query("storageOwners")
+          .withIndex("by_storageId", (q) => q.eq("storageId", file._id))
+          .unique();
+        if (owner) await ctx.db.delete("storageOwners", owner._id);
       }
     }
 

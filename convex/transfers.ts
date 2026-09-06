@@ -13,7 +13,6 @@ import {
 } from "./lib/auth";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
-import { searchActiveProductOptions } from "./lib/productCatalog";
 import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummary,
@@ -867,23 +866,6 @@ export const getTransfer = query({
         receivedUnitName: item.receivedUnitName ?? null,
       })),
     };
-  },
-});
-
-export const searchTransferProducts = query({
-  args: { search: v.string() },
-  returns: v.array(productSearchOptionValidator),
-  handler: async (ctx, args) => {
-    const { organizationId } = await requireTransferManager(
-      ctx,
-      "transfers.new",
-    );
-    const search = args.search.trim();
-    if (search.length > 100) {
-      throw new ConvexError("Søgningen er for lang");
-    }
-
-    return await searchActiveProductOptions(ctx, organizationId, search);
   },
 });
 

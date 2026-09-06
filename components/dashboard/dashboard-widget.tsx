@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import type { YAxisValues } from "./y-axis-settings";
@@ -9,6 +10,7 @@ import { WidgetCard } from "./widget-card";
 export function DashboardWidget({
   widget,
   result,
+  error,
   metricLabel,
   tooltipLabel,
   range,
@@ -25,6 +27,7 @@ export function DashboardWidget({
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
+  error?: string;
   metricLabel?: string;
   tooltipLabel?: string;
   range?: DashboardRange;
@@ -59,7 +62,9 @@ export function DashboardWidget({
       onResize={onResize}
       onRemove={onRemove}
     >
-      {result == null ? (
+      {error ? (
+        <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+      ) : result == null ? (
         <div className="flex h-full flex-col gap-3">
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="min-h-24 flex-1" />

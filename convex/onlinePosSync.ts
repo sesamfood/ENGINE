@@ -16,7 +16,6 @@ import {
 import { dateKey, zonedStart } from "./lib/dashboardMetrics";
 import {
   computeDailySalesDeltas,
-  dayBucketKey,
   dayStartOf,
   orderKey,
   type ExistingLineState,
@@ -34,14 +33,14 @@ const LINE_BATCH_SIZE = 250;
 const DISPATCH_PAGE = 25;
 const DELETE_PAGE = 40;
 const LINE_DELETE_PAGE = 100;
+const DELETE_WRITE_BUDGET = 500;
 const PRUNE_PAGE = 50;
 const RECONCILE_TRAILING_DAYS = 1;
 const RECONCILE_MAX_FAIL_RETRIES = 8;
 const RECONCILE_RETRY_BASE_MS = 60_000;
 const RECONCILE_RETRY_MAX_MS = 6 * 60 * 60 * 1_000;
 const RESET_PAGE = 500;
-const REROLL_PAGE = 250;
-const MAX_ORDERS_PER_DAY = 10_000;
+const REROLL_PAGE = 10;
 const rerollPhaseValidator = v.union(
   v.literal("orders"),
   v.literal("clearDaily"),
@@ -317,6 +316,7 @@ async function startSync(
 
   const status = await getStatus(ctx, organizationId, locationId);
   const now = Date.now();
+  if (status?.dayStartRerollToken) return false;
   // Prefer finishing a mid-reconcile hole (or a deferred nightly reconcile)
   // over a normal incremental window.
   const wantsReconcile =
@@ -475,7 +475,8 @@ export const getLocationSyncContext = internalQuery({
       location.organizationId !== args.organizationId ||
       !master?.enabled ||
       !connection ||
-      reset
+      reset ||
+      status?.dayStartRerollToken
     ) {
       return null;
     }
@@ -494,16 +495,69 @@ export const getLocationSyncContext = internalQuery({
   },
 });
 
+const rerollArgs = {
+  organizationId: v.string(),
+  locationId: v.id("locations"),
+  timeZone: v.string(),
+  token: v.string(),
+  phase: rerollPhaseValidator,
+  cursor: v.optional(v.string()),
+  retryCount: v.optional(v.number()),
+  strategy: v.optional(v.literal("delta")),
+};
+
 export const rerollLocationDayStarts = internalMutation({
-  args: {
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    timeZone: v.string(),
-    token: v.string(),
-    phase: rerollPhaseValidator,
-    cursor: v.optional(v.string()),
-    retryCount: v.optional(v.number()),
+  args: rerollArgs,
+  returns: v.object({ patched: v.number(), done: v.boolean() }),
+  handler: async (ctx, args): Promise<{ patched: number; done: boolean }> => {
+    try {
+      // A failed page rolls back its contributions before the retry is queued.
+      return await ctx.runMutation(
+        internal.onlinePosSync.rerollLocationDayStartsPage,
+        args,
+        {
+          transactionLimits: {
+            documentsRead: 150,
+            documentsWritten: 100,
+            bytesRead: 12 * 1024 * 1024,
+            bytesWritten: 12 * 1024 * 1024,
+          },
+        },
+      );
+    } catch (error) {
+      const status = await getStatus(ctx, args.organizationId, args.locationId);
+      if (status?.dayStartRerollToken !== args.token)
+        return { patched: 0, done: true };
+      const retryCount = (args.retryCount ?? 0) + 1;
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Genopbygningen af salgsdata mislykkedes";
+      await ctx.db.patch(status._id, {
+        ...(retryCount > RECONCILE_MAX_FAIL_RETRIES
+          ? { state: "error" as const, lastError: message }
+          : {}),
+        dayStartRerollRetryCount: retryCount,
+        dayStartRerollError: message,
+        updatedAt: Date.now(),
+      });
+      if (retryCount <= RECONCILE_MAX_FAIL_RETRIES) {
+        await ctx.scheduler.runAfter(
+          Math.min(
+            RECONCILE_RETRY_BASE_MS * 2 ** (retryCount - 1),
+            RECONCILE_RETRY_MAX_MS,
+          ),
+          internal.onlinePosSync.rerollLocationDayStarts,
+          { ...args, retryCount },
+        );
+      }
+      return { patched: 0, done: false };
+    }
   },
+});
+
+export const rerollLocationDayStartsPage = internalMutation({
+  args: rerollArgs,
   returns: v.object({ patched: v.number(), done: v.boolean() }),
   handler: async (ctx, args): Promise<{ patched: number; done: boolean }> => {
     const [location, status] = await Promise.all([
@@ -527,163 +581,134 @@ export const rerollLocationDayStarts = internalMutation({
       return { patched: 0, done: true };
     }
 
-    try {
-      if (args.phase === "clearDaily") {
-        const rows = await ctx.db
-          .query("salesDaily")
+    if (status.dailyHistoryFrom === undefined) {
+      await ctx.db.patch(status._id, {
+        dailyHistoryFrom: Math.max(
+          status.backfillThroughAt ?? 0,
+          Date.now() - RETENTION_MS + 2 * 86_400_000,
+        ),
+      });
+    }
+
+    if (args.phase !== "orders" || (args.cursor !== undefined && args.strategy !== "delta")) {
+      throw new ConvexError("En tidligere genopbygning af salgsdata skal afsluttes før opdateringen");
+    }
+
+    // Move only retained contributions. Rebuilding from retained orders would
+    // erase archived revenue and truncate the oldest partially retained day.
+    const page = await ctx.db
+      .query("salesOrders")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .paginate({
+        numItems: REROLL_PAGE,
+        maximumRowsRead: REROLL_PAGE,
+        cursor: args.cursor ?? null,
+      });
+    const connection = await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .unique();
+    let patched = 0;
+    for (const order of page.page) {
+      const dayStart = dayStartOf(order.occurredAt, args.timeZone);
+      if (dayStart === order.dayStart) {
+        const daily = await ctx.db.query("salesDaily")
           .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
-            q
-              .eq("organizationId", args.organizationId)
-              .eq("locationId", args.locationId),
-          )
-          .take(RESET_PAGE);
-        for (const row of rows) await ctx.db.delete("salesDaily", row._id);
-        await ctx.scheduler.runAfter(
-          0,
-          internal.onlinePosSync.rerollLocationDayStarts,
-          {
-            ...args,
-            phase: rows.length === RESET_PAGE ? "clearDaily" : "rebuildDaily",
-            cursor: undefined,
-            retryCount: undefined,
-          },
-        );
-        return { patched: 0, done: false };
+            q.eq("organizationId", args.organizationId).eq("locationId", args.locationId).eq("dayStart", dayStart),
+          ).unique();
+        const date = dateKey(dayStart, args.timeZone);
+        if (daily && daily.date !== date) await ctx.db.patch(daily._id, { date });
+        continue;
       }
-
-      const page = await ctx.db
-        .query("salesOrders")
-        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-          q
-            .eq("organizationId", args.organizationId)
-            .eq("locationId", args.locationId),
-        )
-        .paginate({ numItems: REROLL_PAGE, cursor: args.cursor ?? null });
-
-      if (args.phase === "orders") {
-        let patched = 0;
-        for (const order of page.page) {
-          const dayStart = dayStartOf(order.occurredAt, args.timeZone);
-          if (dayStart === order.dayStart) continue;
-          await ctx.db.patch("salesOrders", order._id, { dayStart });
-          patched++;
-        }
-        await ctx.scheduler.runAfter(
-          0,
-          internal.onlinePosSync.rerollLocationDayStarts,
-          {
-            ...args,
-            phase: page.isDone ? "clearDaily" : "orders",
-            cursor: page.isDone ? undefined : page.continueCursor,
-            retryCount: undefined,
-          },
-        );
-        return { patched, done: false };
-      }
-
-      const dayStarts = new Map<string, number>();
-      for (const order of page.page) {
-        dayStarts.set(
-          dayBucketKey(order.locationId, order.dayStart),
-          order.dayStart,
-        );
-      }
-      for (const dayStart of dayStarts.values()) {
-        const orders = await ctx.db
-          .query("salesOrders")
-          .withIndex("by_org_location_day_order_department", (q) =>
-            q
-              .eq("organizationId", args.organizationId)
-              .eq("locationId", args.locationId)
-              .eq("dayStart", dayStart),
-          )
-          .take(MAX_ORDERS_PER_DAY + 1);
-        if (orders.length > MAX_ORDERS_PER_DAY) {
-          throw new ConvexError(
-            "Der er for mange salgsordrer på samme dag til at genopbygge dagsdata",
-          );
-        }
-        const totals = orders.reduce(
-          (sum, order) => ({
-            revenue: sum.revenue + order.revenue,
-            orderCount: sum.orderCount + 1,
-            itemCount: sum.itemCount + order.itemCount,
-          }),
-          { revenue: 0, orderCount: 0, itemCount: 0 },
-        );
-        const current = await ctx.db
+      for (const [bucket, direction] of [
+        [order.dayStart, -1],
+        [dayStart, 1],
+      ]) {
+        const daily = await ctx.db
           .query("salesDaily")
           .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
             q
               .eq("organizationId", args.organizationId)
               .eq("locationId", args.locationId)
-              .eq("dayStart", dayStart),
+              .eq("dayStart", bucket),
           )
           .unique();
-        const values = {
-          date: dateKey(dayStart, args.timeZone),
-          ...totals,
+        // A missing old bucket is already lost history, not a negative sale.
+        if (!daily && direction === -1) continue;
+        const value = {
+          revenue: finiteSalesNumber(
+            (daily?.revenue ?? 0) + direction * order.revenue,
+          ),
+          orderCount: (daily?.orderCount ?? 0) + direction,
+          itemCount: finiteSalesNumber(
+            (daily?.itemCount ?? 0) + direction * order.itemCount,
+          ),
           updatedAt: Date.now(),
         };
-        if (current) await ctx.db.patch("salesDaily", current._id, values);
-        else {
+        if (daily) await ctx.db.patch(daily._id, value);
+        else
           await ctx.db.insert("salesDaily", {
             organizationId: args.organizationId,
             locationId: args.locationId,
-            dayStart,
-            ...values,
+            dayStart: bucket,
+            date: dateKey(bucket, args.timeZone),
+            ...value,
           });
-        }
       }
-      if (!page.isDone) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.onlinePosSync.rerollLocationDayStarts,
-          { ...args, cursor: page.continueCursor, retryCount: undefined },
-        );
-        return { patched: 0, done: false };
+      if (connection) {
+        const application = await ctx.db
+          .query("salesStockApplications")
+          .withIndex("by_organizationId_and_locationId_and_externalId", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("locationId", args.locationId)
+              .eq("externalId", `${connection.companyId}:${order.externalId}`),
+          )
+          .unique();
+        if (application) await ctx.db.patch(application._id, { dayStart });
       }
-      const rerollFailed =
-        status.dayStartRerollError !== undefined &&
-        status.lastError === status.dayStartRerollError;
-      await ctx.db.patch("onlinePosSyncStatus", status._id, {
-        ...(rerollFailed
-          ? { state: "idle" as const, lastError: undefined }
-          : {}),
-        dayStartRerollToken: undefined,
-        dayStartRerollTimeZone: undefined,
-        dayStartRerollRetryCount: undefined,
-        dayStartRerollError: undefined,
-        updatedAt: Date.now(),
-      });
-      return { patched: 0, done: true };
-    } catch (error) {
-      const retryCount = (args.retryCount ?? 0) + 1;
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Genopbygningen af salgsdata mislykkedes";
-      await ctx.db.patch("onlinePosSyncStatus", status._id, {
-        ...(retryCount > RECONCILE_MAX_FAIL_RETRIES
-          ? { state: "error" as const, lastError: message }
-          : {}),
-        dayStartRerollRetryCount: retryCount,
-        dayStartRerollError: message,
-        updatedAt: Date.now(),
-      });
-      if (retryCount <= RECONCILE_MAX_FAIL_RETRIES) {
-        const delay = Math.min(
-          RECONCILE_RETRY_BASE_MS * 2 ** (retryCount - 1),
-          RECONCILE_RETRY_MAX_MS,
-        );
-        await ctx.scheduler.runAfter(
-          delay,
-          internal.onlinePosSync.rerollLocationDayStarts,
-          { ...args, retryCount },
-        );
-      }
-      return { patched: 0, done: false };
+      await ctx.db.patch(order._id, { dayStart });
+      patched++;
     }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.rerollLocationDayStarts,
+        {
+          ...args,
+          phase: "orders",
+          strategy: "delta",
+          cursor: page.continueCursor,
+          retryCount: undefined,
+        },
+      );
+      return { patched, done: false };
+    }
+    const rerollFailed =
+      status.dayStartRerollError !== undefined &&
+      status.lastError === status.dayStartRerollError;
+    await ctx.db.patch("onlinePosSyncStatus", status._id, {
+      ...(rerollFailed ? { state: "idle" as const, lastError: undefined } : {}),
+      dayStartRerollToken: undefined,
+      dayStartRerollTimeZone: undefined,
+      dayStartRerollRetryCount: undefined,
+      dayStartRerollError: undefined,
+      updatedAt: Date.now(),
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.onlinePosSync.enqueueLocationSync,
+      { organizationId: args.organizationId, locationId: args.locationId },
+    );
+    return { patched, done: true };
   },
 });
 
@@ -831,8 +856,12 @@ export const dispatchEnabledLocations = internalMutation({
     const masterByOrg = new Map<string, boolean>();
     for (const connection of result.page) {
       if (args.stockOnly) {
-        const settings = await ctx.db.query("onlinePosIntegrations")
-          .withIndex("by_organizationId", q => q.eq("organizationId", connection.organizationId)).unique();
+        const settings = await ctx.db
+          .query("onlinePosIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", connection.organizationId),
+          )
+          .unique();
         if (!settings?.stockSyncEnabled) continue;
       }
       let enabled = masterByOrg.get(connection.organizationId);
@@ -851,7 +880,11 @@ export const dispatchEnabledLocations = internalMutation({
       await ctx.scheduler.runAfter(
         0,
         internal.onlinePosSync.dispatchEnabledLocations,
-        { kind: args.kind, cursor: result.continueCursor, stockOnly: args.stockOnly },
+        {
+          kind: args.kind,
+          cursor: result.continueCursor,
+          stockOnly: args.stockOnly,
+        },
       );
     }
     return null;
@@ -867,7 +900,7 @@ export const markRunning = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken === args.runToken) {
+    if (status?.runToken === args.runToken && !status.dayStartRerollToken) {
       if (status.state === "running") return null;
       await ctx.db.patch("onlinePosSyncStatus", status._id, {
         state: "running",
@@ -888,7 +921,8 @@ export const completeLocationWindow = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) return null;
+    if (status?.runToken !== args.runToken || status.dayStartRerollToken)
+      return null;
     const now = Date.now();
     const syncedThroughAt = Math.max(status.syncedThroughAt ?? 0, args.to);
     const updatedStatus = { ...status, syncedThroughAt };
@@ -943,14 +977,30 @@ export const completeBackfillChunk = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) return null;
+    if (status?.runToken !== args.runToken || status.dayStartRerollToken)
+      return null;
     const now = Date.now();
+    // Completed backfill expands rebuilt history, never the archived window.
+    const dailyHistoryFrom =
+      status.dailyHistoryFrom !== undefined &&
+      args.backfillThroughAt <
+        (status.backfillThroughAt ?? status.syncedThroughAt ?? now)
+        ? Math.min(
+            status.dailyHistoryFrom,
+            Math.max(
+              args.backfillThroughAt,
+              now - RETENTION_MS + 2 * 86_400_000,
+            ),
+          )
+        : status.dailyHistoryFrom;
     const updatedStatus = {
       ...status,
       backfillThroughAt: args.backfillThroughAt,
+      dailyHistoryFrom,
     };
     await ctx.db.patch("onlinePosSyncStatus", status._id, {
       backfillThroughAt: args.backfillThroughAt,
+      dailyHistoryFrom,
       lineIdsScoped: backfillCoversHistory(updatedStatus, now),
       lastSuccessAt: now,
       lastError: undefined,
@@ -976,7 +1026,8 @@ export const ingestSalesBatch = internalMutation({
       return null;
     }
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) return null;
+    if (status?.runToken !== args.runToken || status.dayStartRerollToken)
+      return null;
     const timeZone = await resolveTimeZone(
       ctx,
       args.organizationId,
@@ -1553,7 +1604,8 @@ export const resetDayRollup = internalMutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) return false;
+    if (status?.runToken !== args.runToken || status.dayStartRerollToken)
+      return false;
     const daily = await ctx.db
       .query("salesDaily")
       .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
@@ -1597,7 +1649,8 @@ export const markReconcilePending = internalMutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) return false;
+    if (status?.runToken !== args.runToken || status.dayStartRerollToken)
+      return false;
     await ctx.db.patch("onlinePosSyncStatus", status._id, {
       pendingReconcileDayStart: args.dayStart,
       state: "running",
@@ -1624,11 +1677,11 @@ export const deleteDayOrdersPage = internalMutation({
   returns: deleteDayPageResultValidator,
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) {
+    if (status?.runToken !== args.runToken || status.dayStartRerollToken) {
       return { active: false, isDone: true, continueCursor: "" };
     }
 
-    const result = await ctx.db
+    const orders = await ctx.db
       .query("salesOrders")
       .withIndex("by_org_location_day_order_department", (q) =>
         q
@@ -1636,30 +1689,33 @@ export const deleteDayOrdersPage = internalMutation({
           .eq("locationId", args.locationId)
           .eq("dayStart", args.dayStart),
       )
-      .paginate({ numItems: DELETE_PAGE, cursor: args.cursor });
-
-    for (const order of result.page) {
-      for (;;) {
-        const lines = await ctx.db
-          .query("salesLines")
-          .withIndex("by_organizationId_and_orderId", (q) =>
-            q
-              .eq("organizationId", args.organizationId)
-              .eq("orderId", order._id),
-          )
-          .take(LINE_DELETE_PAGE);
-        if (lines.length === 0) break;
-        for (const line of lines) {
-          await ctx.db.delete("salesLines", line._id);
-        }
+      .take(DELETE_PAGE);
+    let remaining = DELETE_WRITE_BUDGET;
+    for (const order of orders) {
+      const limit = Math.min(LINE_DELETE_PAGE, remaining);
+      const lines = await ctx.db
+        .query("salesLines")
+        .withIndex("by_organizationId_and_orderId", (q) =>
+          q.eq("organizationId", args.organizationId).eq("orderId", order._id),
+        )
+        .take(limit);
+      for (const line of lines) await ctx.db.delete(line._id);
+      remaining -= lines.length;
+      if (lines.length === limit) {
+        return { active: true, isDone: false, continueCursor: "" };
       }
-      await ctx.db.delete("salesOrders", order._id);
+      if (remaining === 0)
+        return { active: true, isDone: false, continueCursor: "" };
+      await ctx.db.delete(order._id);
+      remaining--;
+      if (remaining === 0)
+        return { active: true, isDone: false, continueCursor: "" };
     }
 
     return {
       active: true,
-      isDone: result.isDone,
-      continueCursor: result.continueCursor,
+      isDone: orders.length < DELETE_PAGE,
+      continueCursor: "",
     };
   },
 });
@@ -1676,7 +1732,8 @@ export const completeReconcileDay = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken !== args.runToken) return null;
+    if (status?.runToken !== args.runToken || status.dayStartRerollToken)
+      return null;
     const now = Date.now();
     const timeZone = await organizationTimeZone(
       ctx,
@@ -1736,7 +1793,12 @@ export const completeReconcileDay = internalMutation({
       syncedThroughAt,
       updatedAt: now,
     });
-    await queueStockSync(ctx, args.organizationId, args.locationId, args.dayStart);
+    await queueStockSync(
+      ctx,
+      args.organizationId,
+      args.locationId,
+      args.dayStart,
+    );
     return null;
   },
 });
@@ -1877,7 +1939,7 @@ export const failSync = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const status = await getStatus(ctx, args.organizationId, args.locationId);
-    if (status?.runToken === args.runToken) {
+    if (status?.runToken === args.runToken && !status.dayStartRerollToken) {
       const now = Date.now();
       const midReconcile = status.pendingReconcileDayStart != null;
       const reconcileFailCount = midReconcile
@@ -1925,22 +1987,37 @@ export const pruneSales = internalMutation({
       .withIndex("by_occurredAt", (q) => q.lt("occurredAt", cutoff))
       .paginate({ numItems: PRUNE_PAGE, cursor: args.cursor });
 
+    let remaining = DELETE_WRITE_BUDGET;
     for (const order of result.page) {
-      for (;;) {
-        const lines = await ctx.db
-          .query("salesLines")
-          .withIndex("by_organizationId_and_orderId", (q) =>
-            q
-              .eq("organizationId", order.organizationId)
-              .eq("orderId", order._id),
-          )
-          .take(LINE_DELETE_PAGE);
-        if (lines.length === 0) break;
-        for (const line of lines) {
-          await ctx.db.delete("salesLines", line._id);
-        }
+      const status = await getStatus(
+        ctx,
+        order.organizationId,
+        order.locationId,
+      );
+      if (status?.dayStartRerollToken) continue;
+      const limit = Math.min(LINE_DELETE_PAGE, remaining);
+      const lines = await ctx.db
+        .query("salesLines")
+        .withIndex("by_organizationId_and_orderId", (q) =>
+          q.eq("organizationId", order.organizationId).eq("orderId", order._id),
+        )
+        .take(limit);
+      for (const line of lines) await ctx.db.delete(line._id);
+      remaining -= lines.length;
+      if (lines.length === limit || remaining === 0) {
+        await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
+          cursor: args.cursor,
+        });
+        return null;
       }
-      await ctx.db.delete("salesOrders", order._id);
+      await ctx.db.delete(order._id);
+      remaining--;
+      if (remaining === 0) {
+        await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
+          cursor: args.cursor,
+        });
+        return null;
+      }
     }
 
     if (!result.isDone) {
@@ -1951,14 +2028,18 @@ export const pruneSales = internalMutation({
     }
 
     // Catch orphaned lines whose orders were already removed.
+    const orphanLimit = Math.min(PRUNE_PAGE, remaining);
     const orphanLines = await ctx.db
       .query("salesLines")
       .withIndex("by_occurredAt", (q) => q.lt("occurredAt", cutoff))
-      .take(PRUNE_PAGE);
+      .take(orphanLimit);
+    let removed = 0;
     for (const line of orphanLines) {
+      if (await ctx.db.get(line.orderId)) continue;
       await ctx.db.delete("salesLines", line._id);
+      removed++;
     }
-    if (orphanLines.length === PRUNE_PAGE) {
+    if (removed > 0 && orphanLines.length === orphanLimit) {
       await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
         cursor: null,
       });

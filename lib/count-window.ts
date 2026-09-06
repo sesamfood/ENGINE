@@ -326,15 +326,3 @@ export function scheduledCountWindows(
     active: now < due.closesAt ? due : next,
   };
 }
-
-export function activePeriod(
-  now: number,
-  weekly: WeeklyOpeningHours[] = DEFAULT_WEEKLY_OPENING_HOURS,
-  specialOpeningHours: SpecialOpeningHours[] = [],
-) {
-  return scheduledCountWindows(
-    now,
-    weekly,
-    specialOpeningHours,
-  ).active.periodKey;
-}

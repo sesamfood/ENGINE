@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -226,8 +228,9 @@ export function TransferForm({
   const kiosk = useKiosk();
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const [productSearch, setProductSearch] = useState("");
-  const productSearchOptions = useQuery(
-    api.catalog.listActiveProductSearchOptions,
+  const productSearchOptions = useCompleteCatalog(
+    api.catalog.listActiveProductSearchOptionsPage,
+    {},
   );
   const createTransfer = useMutation(api.transfers.createTransfer);
   const updateTransfer = useMutation(api.transfers.updateTransfer);

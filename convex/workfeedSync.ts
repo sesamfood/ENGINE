@@ -76,6 +76,7 @@ const shiftRunStateValidator = v.union(
     lastEmployeeCompanyId: v.union(v.string(), v.null()),
     lastEmployeeSuccessAt: v.union(v.number(), v.null()),
     shiftChunkHashes: v.array(v.string()),
+    summaryTimeZone: v.string(),
   }),
   v.null(),
 );
@@ -102,6 +103,7 @@ type ShiftRunState = {
   lastEmployeeCompanyId: string | null;
   lastEmployeeSuccessAt: number | null;
   shiftChunkHashes: string[];
+  summaryTimeZone: string;
 };
 
 type ShiftChunkCompletion = {
@@ -132,6 +134,7 @@ async function shiftSourceHash(
   shifts: ReturnType<typeof parseShifts>,
   companyId: string,
   lastEmployeeSuccessAt: number | null,
+  summaryTimeZone: string,
 ) {
   const serializedShifts = shifts
     .map((shift) =>
@@ -146,7 +149,8 @@ async function shiftSourceHash(
     )
     .sort();
   const value = JSON.stringify([
-    1,
+    2,
+    summaryTimeZone,
     companyId,
     lastEmployeeSuccessAt,
     serializedShifts,
@@ -166,10 +170,7 @@ async function finishShiftChunk(
   status: Doc<"workfeedSyncStatus">,
   args: ShiftChunkCompletion,
 ) {
-  const pendingShiftChunks = Math.max(
-    0,
-    (status.pendingShiftChunks ?? 1) - 1,
-  );
+  const pendingShiftChunks = Math.max(0, (status.pendingShiftChunks ?? 1) - 1);
   const shiftChunkHashes = [...(status.shiftChunkHashes ?? [])];
   if (args.sourceHash !== undefined && args.chunkIndex !== undefined) {
     shiftChunkHashes[args.chunkIndex] = args.sourceHash;
@@ -198,7 +199,21 @@ async function finishShiftChunk(
     return;
   }
 
+  const timeZone = await dashboardSummaryTimeZone(ctx, args.organizationId);
+  const continuous =
+    status.shiftCoverageCompanyId === args.companyId &&
+    status.shiftCoverageTimeZone === timeZone &&
+    status.shiftCoverageFrom !== undefined &&
+    status.shiftCoverageThrough !== undefined &&
+    args.windowStart <=
+      Math.min(status.shiftCoverageThrough, status.lastShiftSuccessAt ?? 0);
   await ctx.db.patch(status._id, {
+    shiftCoverageFrom: continuous
+      ? Math.min(status.shiftCoverageFrom!, args.windowStart)
+      : args.windowStart,
+    shiftCoverageThrough: args.windowEnd,
+    shiftCoverageCompanyId: args.companyId,
+    shiftCoverageTimeZone: timeZone,
     state: "idle",
     pendingShiftChunks: 0,
     lastShiftSuccessAt: now,
@@ -474,6 +489,7 @@ export const getShiftRunState = internalQuery({
       lastEmployeeCompanyId: status.lastEmployeeCompanyId ?? null,
       lastEmployeeSuccessAt: status.lastEmployeeSuccessAt ?? null,
       shiftChunkHashes: status.shiftChunkHashes ?? [],
+      summaryTimeZone: await dashboardSummaryTimeZone(ctx, args.organizationId),
     };
   },
 });
@@ -511,10 +527,12 @@ export const resolveEmployeeMappings = internalQuery({
     );
     return mappings.flatMap((mapping) =>
       mapping
-        ? [{
-            externalEmployeeId: mapping.externalEmployeeId,
-            employeeId: mapping.employeeId,
-          }]
+        ? [
+            {
+              externalEmployeeId: mapping.externalEmployeeId,
+              employeeId: mapping.employeeId,
+            },
+          ]
         : [],
     );
   },
@@ -573,7 +591,10 @@ export const markRunning = internalMutation({
       )
       .unique();
     if (status?.runToken === args.runToken) {
-      await ctx.db.patch(status._id, { state: "running", updatedAt: Date.now() });
+      await ctx.db.patch(status._id, {
+        state: "running",
+        updatedAt: Date.now(),
+      });
     }
     return null;
   },
@@ -756,16 +777,12 @@ export const completeEmployeeSnapshot = internalMutation({
       status.lastEmployeeCompanyId &&
       status.lastEmployeeCompanyId !== args.companyId
     ) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.workfeedSync.retireCompanyData,
-        {
-          organizationId: args.organizationId,
-          companyId: status.lastEmployeeCompanyId,
-          phase: "shifts",
-          resumeEmployeeCompletion: { ...args, previousCompanyRetired: true },
-        },
-      );
+      await ctx.scheduler.runAfter(0, internal.workfeedSync.retireCompanyData, {
+        organizationId: args.organizationId,
+        companyId: status.lastEmployeeCompanyId,
+        phase: "shifts",
+        resumeEmployeeCompletion: { ...args, previousCompanyRetired: true },
+      });
       return null;
     }
 
@@ -1160,6 +1177,7 @@ export const syncShiftChunk = internalAction({
         sourceShifts,
         settings.companyId,
         runState.lastEmployeeSuccessAt,
+        runState.summaryTimeZone,
       );
       if (sourceShifts.length < existingMappingCount) {
         const confirmationPayload = await requestWorkfeed("/shifts", settings, {
@@ -1171,6 +1189,7 @@ export const syncShiftChunk = internalAction({
           parseShifts(confirmationPayload),
           settings.companyId,
           runState.lastEmployeeSuccessAt,
+          runState.summaryTimeZone,
         );
         if (confirmationHash !== sourceHash) {
           throw new Error("Workfeed-vagtudsnittet ændrede sig mellem to kald");
@@ -1185,15 +1204,12 @@ export const syncShiftChunk = internalAction({
         throw new Error("Ugyldigt interval i vagtsynkroniseringen");
       }
       if (runState.shiftChunkHashes[chunkIndex] === sourceHash) {
-        await ctx.runMutation(
-          internal.workfeedSync.skipUnchangedShiftChunk,
-          {
-            ...args,
-            companyId: settings.companyId,
-            sourceHash,
-            chunkIndex,
-          },
-        );
+        await ctx.runMutation(internal.workfeedSync.skipUnchangedShiftChunk, {
+          ...args,
+          companyId: settings.companyId,
+          sourceHash,
+          chunkIndex,
+        });
         return null;
       }
       const [context, currentRunState]: [
@@ -1216,35 +1232,41 @@ export const syncShiftChunk = internalAction({
       ) {
         throw new Error("Medarbejderdata skal synkroniseres først");
       }
-      const externalEmployeeIds = [...new Set(
-        sourceShifts.map((shift) => shift.employeeId),
-      )];
+      const locationByDepartment = new Map(
+        context.locations.map((location) => [
+          location.departmentId,
+          location.locationId,
+        ]),
+      );
+      const linkedShifts = sourceShifts.filter((shift) =>
+        locationByDepartment.has(shift.departmentId),
+      );
+      const externalEmployeeIds = [
+        ...new Set(linkedShifts.map((shift) => shift.employeeId)),
+      ];
       const resolvedEmployees: Array<{
         externalEmployeeId: string;
         employeeId: Id<"employees">;
       }> = [];
       for (let index = 0; index < externalEmployeeIds.length; index += 100) {
         resolvedEmployees.push(
-          ...await ctx.runQuery(
+          ...(await ctx.runQuery(
             internal.workfeedSync.resolveEmployeeMappings,
             {
               organizationId: args.organizationId,
               companyId: context.settings.companyId,
-              externalEmployeeIds: externalEmployeeIds.slice(index, index + 100),
+              externalEmployeeIds: externalEmployeeIds.slice(
+                index,
+                index + 100,
+              ),
             },
-          ),
+          )),
         );
       }
       const employeeByExternalId = new Map(
         resolvedEmployees.map((employee) => [
           employee.externalEmployeeId,
           employee.employeeId,
-        ]),
-      );
-      const locationByDepartment = new Map(
-        context.locations.map((location) => [
-          location.departmentId,
-          location.locationId,
         ]),
       );
       const roleByExternalId = new Map(
@@ -1255,7 +1277,7 @@ export const syncShiftChunk = internalAction({
             role.name,
           ]),
       );
-      const shifts = sourceShifts.map((shift) => {
+      const shifts = linkedShifts.map((shift) => {
         const employeeId = employeeByExternalId.get(shift.employeeId);
         const locationId = locationByDepartment.get(shift.departmentId);
         if (!employeeId || !locationId) {
@@ -1269,9 +1291,8 @@ export const syncShiftChunk = internalAction({
           startsAt: shift.start,
           endsAt: shift.end,
           roleName: shift.roleId
-            ? (roleByExternalId.get(
-                `${shift.departmentId}:${shift.roleId}`,
-              ) ?? null)
+            ? (roleByExternalId.get(`${shift.departmentId}:${shift.roleId}`) ??
+              null)
             : null,
         };
       });
@@ -1435,7 +1456,7 @@ export const pruneShifts = internalMutation({
     for (const mapping of mappings) {
       const shift = await ctx.db.get("scheduledShifts", mapping.shiftId);
       if (shift?.organizationId === args.organizationId) {
-        if (shift.dashboardSummaryTimeZone) {
+        if (args.phase === "after" && shift.dashboardSummaryTimeZone) {
           previousSummaryContributions.push(
             ...scheduledShiftSummaryContribution(
               shift,

@@ -603,5 +603,3 @@ export function paginationOpts(query: { limit: number; cursor?: string }) {
     cursor: query.cursor ?? null,
   };
 }
-
-export type InferSchema<T extends z.ZodType> = z.output<T>;

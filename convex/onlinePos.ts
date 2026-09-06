@@ -23,15 +23,12 @@ import {
   type OnlinePosProduct,
 } from "./lib/onlinePosApi";
 import { getProductCategoryIds } from "./lib/productCategories";
-import { normalizeStock } from "./lib/stock";
 import { recordAudit } from "./lib/audit";
 
 const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_INGREDIENTS = 200;
 const MAX_MENUS = 100;
-// ponytail: waste-report salesLines capped at 5k; upgrade: paginated sum batches.
-const MAX_WASTE_SALES_LINES = 5_000;
 
 async function beginLocationSalesReset(
   ctx: MutationCtx,
@@ -82,24 +79,6 @@ const onlinePosProductValidator = v.object({
 const ingredientOnlinePosMappingValidator = v.object({
   ingredientProductId: v.id("products"),
   onlinePosProductId: v.number(),
-});
-
-const wasteReportRowValidator = v.object({
-  productName: v.string(),
-  defaultUnitName: v.string(),
-  expectedQuantity: v.number(),
-  salesQuantity: v.number(),
-  countedQuantity: v.number(),
-  wasteQuantity: v.number(),
-});
-
-const wasteReportResultValidator = v.object({
-  locationName: v.string(),
-  submittedAt: v.number(),
-  hasBaseline: v.boolean(),
-  salesIncluded: v.boolean(),
-  salesOmittedReason: v.union(v.string(), v.null()),
-  rows: v.array(wasteReportRowValidator),
 });
 
 function requireCompanyId(companyId: number) {
@@ -702,6 +681,8 @@ export const inspectRawSales = action({
   args: { date: v.string() },
   returns: v.array(v.any()),
   handler: async (ctx, args): Promise<JsonValue[]> => {
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
     const { settings } = await requireConnectedSettings(ctx);
     const { start, end } = rawSalesDayBounds(args.date);
     return requestRawSalesV20(settings, start, end);
@@ -1013,9 +994,11 @@ export const saveProductMapping = internalMutation({
     if (args.onlinePosProductId === null) {
       if (current) await ctx.db.delete(current._id);
     } else if (current) {
-      await ctx.db.patch(current._id, {
-        onlinePosProductId: args.onlinePosProductId,
-      });
+      if (current.onlinePosProductId !== args.onlinePosProductId) {
+        await ctx.db.patch(current._id, {
+          onlinePosProductId: args.onlinePosProductId,
+        });
+      }
     } else {
       await ctx.db.insert("onlinePosProductMappings", {
         organizationId: args.organizationId,
@@ -1403,193 +1386,5 @@ export const setProductMapping = action({
       onlinePosProductId: args.onlinePosProductId,
     });
     return null;
-  },
-});
-
-export const buildCountWasteReport = query({
-  args: { countId: v.id("counts") },
-  returns: wasteReportResultValidator,
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{
-    locationName: string;
-    submittedAt: number;
-    hasBaseline: boolean;
-    salesIncluded: boolean;
-    salesOmittedReason: string | null;
-    rows: Array<{
-      productName: string;
-      defaultUnitName: string;
-      expectedQuantity: number;
-      salesQuantity: number;
-      countedQuantity: number;
-      wasteQuantity: number;
-    }>;
-  }> => {
-    const report: {
-      organizationId: string;
-      locationId: Id<"locations">;
-      locationName: string;
-      submittedAt: number;
-      rows: Array<{
-        productId: Id<"products">;
-        productName: string;
-        defaultUnitName: string;
-        expectedQuantity: number;
-        countedQuantity: number;
-        expectedSinceAt: number;
-      }>;
-    } = await ctx.runQuery(internal.count.getWasteReportContext, {
-      countId: args.countId,
-    });
-    if (report.rows.length === 0) {
-      return {
-        locationName: report.locationName,
-        submittedAt: report.submittedAt,
-        hasBaseline: false,
-        salesIncluded: false,
-        salesOmittedReason: null,
-        rows: [],
-      };
-    }
-
-    const from = Math.min(...report.rows.map((row) => row.expectedSinceAt));
-    const to = report.submittedAt;
-    const salesByProduct = new Map<Id<"products">, number>();
-    let salesIncluded = false;
-    let salesOmittedReason: string | null = null;
-
-    const [master, connection, status, mappings] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", report.organizationId),
-        )
-        .unique(),
-      ctx.db
-        .query("onlinePosLocationIntegrations")
-        .withIndex("by_organizationId_and_locationId", (q) =>
-          q
-            .eq("organizationId", report.organizationId)
-            .eq("locationId", report.locationId),
-        )
-        .unique(),
-      ctx.db
-        .query("onlinePosSyncStatus")
-        .withIndex("by_organizationId_and_locationId", (q) =>
-          q
-            .eq("organizationId", report.organizationId)
-            .eq("locationId", report.locationId),
-        )
-        .unique(),
-      ctx.db
-        .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", report.organizationId),
-        )
-        .take(MAX_PRODUCTS + 1),
-    ]);
-
-    // Coverage: syncedThroughAt is the forward watermark; backfillThroughAt (falling
-    // back to syncedThroughAt, same as the sync engine) is how far history reaches.
-    const historyStart =
-      status?.backfillThroughAt ?? status?.syncedThroughAt ?? null;
-    const duplicateMappingCount =
-      mappings.length -
-      new Set(mappings.map((mapping) => mapping.onlinePosProductId)).size;
-    const connected = master?.enabled === true && Boolean(connection);
-    const windowCovered =
-      connected &&
-      status?.syncedThroughAt != null &&
-      status.syncedThroughAt >= to &&
-      historyStart != null &&
-      historyStart <= from;
-
-    if (!connected) {
-      salesOmittedReason = "lokationen er ikke forbundet til OnlinePOS";
-    } else if (!windowCovered) {
-      salesOmittedReason = "synkroniserede salg dækker ikke count-perioden";
-    } else if (mappings.length > MAX_PRODUCTS) {
-      salesOmittedReason =
-        "der er for mange produktkoblinger til at beregne sikkert";
-    } else if (duplicateMappingCount > 0) {
-      salesOmittedReason =
-        "et OnlinePOS-produkt er koblet til flere produkter";
-    } else {
-      // onlinePosProductId is a number; salesLines.externalProductId is a string.
-      const productByExternalId = new Map(
-        mappings.map((mapping) => [
-          String(mapping.onlinePosProductId),
-          mapping.productId,
-        ]),
-      );
-      const rowByProduct = new Map(
-        report.rows.map((row) => [row.productId, row]),
-      );
-      // Indexed range is inclusive on both ends, matching old
-      // `timestamp < expectedSinceAt` / `timestamp > submittedAt` exclusion.
-      const lines = await ctx.db
-        .query("salesLines")
-        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-          q
-            .eq("organizationId", report.organizationId)
-            .eq("locationId", report.locationId)
-            .gte("occurredAt", from)
-            .lte("occurredAt", to),
-        )
-        .take(MAX_WASTE_SALES_LINES + 1);
-      if (lines.length > MAX_WASTE_SALES_LINES) {
-        salesOmittedReason =
-          "der er for mange salgslinjer til at beregne sikkert";
-      } else {
-        salesIncluded = true;
-        for (const line of lines) {
-          if (line.source !== "onlinePos") continue;
-          const productId = productByExternalId.get(line.externalProductId);
-          const row = productId ? rowByProduct.get(productId) : null;
-          if (
-            !productId ||
-            !row ||
-            line.occurredAt < row.expectedSinceAt ||
-            line.occurredAt > report.submittedAt
-          ) {
-            continue;
-          }
-          salesByProduct.set(
-            productId,
-            (salesByProduct.get(productId) ?? 0) + line.quantity,
-          );
-        }
-      }
-    }
-
-    return {
-      locationName: report.locationName,
-      submittedAt: report.submittedAt,
-      hasBaseline: true,
-      salesIncluded,
-      salesOmittedReason,
-      rows: report.rows.flatMap((row) => {
-        const salesQuantity = salesIncluded
-          ? normalizeStock(salesByProduct.get(row.productId) ?? 0)
-          : 0;
-        const wasteQuantity = normalizeStock(
-          row.expectedQuantity - salesQuantity - row.countedQuantity,
-        );
-        return Math.abs(wasteQuantity) < 1e-6
-          ? []
-          : [
-              {
-                productName: row.productName,
-                defaultUnitName: row.defaultUnitName,
-                expectedQuantity: row.expectedQuantity,
-                salesQuantity,
-                countedQuantity: row.countedQuantity,
-                wasteQuantity,
-              },
-            ];
-      }),
-    };
   },
 });

@@ -28,8 +28,8 @@ function SharedDashboardContent({ token }: { token: string }) {
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const automaticUnlockAttempted = useRef(false);
   const passwordInput = useRef<HTMLInputElement>(null);
+  const requiresPassword = meta?.requiresPassword;
   const now = useDashboardNow();
   const config = useQuery(
     api.dashboardShare.getSharedConfig,
@@ -37,40 +37,43 @@ function SharedDashboardContent({ token }: { token: string }) {
   );
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setAccessKey(window.sessionStorage.getItem(`dashboard-share:${token}`));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [token]);
-
-  useEffect(() => {
-    if (!meta || meta.requiresPassword || accessKey || pending || automaticUnlockAttempted.current) return;
-    automaticUnlockAttempted.current = true;
-    setPending(true);
+    if (requiresPassword === undefined) return;
     let cancelled = false;
-    void unlock({ token, password: "" })
-      .then((result) => {
-        if (cancelled) return;
-        window.sessionStorage.setItem(`dashboard-share:${token}`, result.unlockKey);
-        setAccessKey(result.unlockKey);
-      })
-      .catch((cause) => {
-        if (!cancelled) {
-          setError(
-            getUserErrorMessage(
-              cause,
-              "Dashboardet kunne ikke åbnes. Prøv igen.",
-            ),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setPending(false);
-      });
+    const frame = window.requestAnimationFrame(() => {
+      setPending(false);
+      const savedAccessKey = window.sessionStorage.getItem(`dashboard-share:${token}`);
+      if (savedAccessKey) {
+        setAccessKey(savedAccessKey);
+        return;
+      }
+      if (requiresPassword) return;
+
+      setPending(true);
+      void unlock({ token, password: "" })
+        .then((result) => {
+          if (cancelled) return;
+          window.sessionStorage.setItem(`dashboard-share:${token}`, result.unlockKey);
+          setAccessKey(result.unlockKey);
+        })
+        .catch((cause) => {
+          if (!cancelled) {
+            setError(
+              getUserErrorMessage(
+                cause,
+                "Dashboardet kunne ikke åbnes. Prøv igen.",
+              ),
+            );
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setPending(false);
+        });
+    });
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(frame);
     };
-  }, [accessKey, meta, pending, token, unlock]);
+  }, [requiresPassword, token, unlock]);
 
   useEffect(() => {
     if (!meta?.requiresPassword || accessKey || isTouchDevice()) return;

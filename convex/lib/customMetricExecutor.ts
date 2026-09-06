@@ -1,4 +1,9 @@
 import { ConvexError } from "convex/values";
+import type {
+  DocumentByInfo,
+  GenericTableInfo,
+  OrderedQuery,
+} from "convex/server";
 import { dashboardDatasets } from "../../lib/dashboard/datasets";
 import type {
   CustomMetricDimensionFilter,
@@ -8,15 +13,18 @@ import type {
   MetricUnit,
 } from "../../lib/dashboard/types";
 import type { DataGranularity } from "../../lib/auth-permissions";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Doc, Id, TableNames } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import {
   aggregateLocationLabel,
+  cached,
   dateKey,
+  onlinePosDailyCoverage,
+  workfeedMetricCoverage,
   zonedStart,
   type DashboardMetricParams,
 } from "./dashboardMetrics";
-import { getProductCategoryIds } from "./productCategories";
+import { MAX_PRODUCT_CATEGORIES } from "./productCategories";
 import { resolveWoltMapping } from "./woltMappings";
 
 const MAX_ROWS = 5_000;
@@ -25,6 +33,67 @@ const MAX_PRODUCT_LABELS = 500;
 const MAX_DIMENSION_FILTER_VALUES = 500;
 const MAX_PRODUCT_OPTIONS = 500;
 const MAX_TOP_PRODUCT_OPTIONS = 10;
+// Leave room for another maximum-size document and the caller's remaining work.
+const READ_HEADROOM_BYTES = 2 * 1024 * 1024;
+
+async function readBudget(ctx: QueryCtx) {
+  const metrics = await ctx.meta.getTransactionMetrics();
+  if (
+    metrics.bytesRead.remaining <= READ_HEADROOM_BYTES ||
+    metrics.documentsRead.remaining <= 100 ||
+    metrics.databaseQueries.remaining <= 100
+  ) {
+    throw new ConvexError(
+      "Målingen indeholder for mange data. Vælg en kortere periode eller færre lokationer.",
+    );
+  }
+}
+
+async function takeRows<Table extends GenericTableInfo>(
+  ctx: QueryCtx,
+  query: OrderedQuery<Table>,
+  count: number,
+): Promise<DocumentByInfo<Table>[]> {
+  const rows: DocumentByInfo<Table>[] = [];
+  const iterator = query[Symbol.asyncIterator]();
+  try {
+    while (rows.length < count) {
+      await readBudget(ctx);
+      const next = await iterator.next();
+      if (next.done) break;
+      rows.push(next.value);
+    }
+  } finally {
+    await iterator.return?.();
+  }
+  return rows;
+}
+
+async function getRow<Table extends TableNames>(
+  ctx: QueryCtx,
+  params: DashboardMetricParams,
+  id: Id<Table>,
+) {
+  return await cached(
+    params,
+    `custom-document:${params.organizationId}:${id}`,
+    async () => {
+      await readBudget(ctx);
+      return await ctx.db.get(id);
+    },
+  );
+}
+
+function rawCacheKey(params: DashboardMetricParams, dataset: string) {
+  return JSON.stringify([
+    "custom-raw",
+    dataset,
+    params.organizationId,
+    params.locations.map((location) => location.id),
+    params.previousFrom,
+    params.to,
+  ]);
+}
 
 type MetricRow = {
   timestamp: number;
@@ -69,26 +138,30 @@ function dimension(
     : { key: "all", label: "Alle" };
 }
 
-async function locationRows<T>(
+async function locationRows<Table extends GenericTableInfo>(
+  ctx: QueryCtx,
   params: DashboardMetricParams,
-  load: (locationId: Id<"locations">, remaining: number) => Promise<T[]>,
+  dataset: string,
+  load: (locationId: Id<"locations">) => OrderedQuery<Table>,
 ) {
-  const rows: T[] = [];
-  let truncated = false;
-  for (const location of params.locations) {
-    const remaining = MAX_ROWS - rows.length;
-    if (remaining === 0) {
-      truncated = true;
-      break;
+  return await cached(params, rawCacheKey(params, dataset), async () => {
+    const rows: DocumentByInfo<Table>[] = [];
+    let truncated = false;
+    for (const location of params.locations) {
+      const remaining = MAX_ROWS - rows.length;
+      if (remaining <= 0) {
+        truncated = true;
+        break;
+      }
+      const part = await takeRows(ctx, load(location.id), remaining + 1);
+      rows.push(...part.slice(0, remaining));
+      if (part.length > remaining) {
+        truncated = true;
+        break;
+      }
     }
-    const part = await load(location.id, remaining);
-    rows.push(...part.slice(0, remaining));
-    if (part.length > remaining) {
-      truncated = true;
-      break;
-    }
-  }
-  return { rows, truncated };
+    return { rows, truncated };
+  });
 }
 
 async function wasteRows(
@@ -97,35 +170,32 @@ async function wasteRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(
-    params,
-    async (locationId, remaining) =>
-      await ctx.db
-        .query("wasteRegistrations")
-        .withIndex("by_org_location_time", (q) =>
-          q
-            .eq("organizationId", params.organizationId)
-            .eq("locationId", locationId)
-            .gte("registeredAt", params.previousFrom)
-            .lt("registeredAt", params.to),
-        )
-        .take(remaining + 1),
+  const result = await locationRows(ctx, params, "wasteRows", (locationId) =>
+    ctx.db
+      .query("wasteRegistrations")
+      .withIndex("by_org_location_time", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("locationId", locationId)
+          .gte("registeredAt", params.previousFrom)
+          .lt("registeredAt", params.to),
+      ),
   );
   const categoryByProduct = new Map<
     Id<"products">,
     { key: string; label: string }
   >();
   if (dimensionId === "category") {
-    const products = await Promise.all(
-      [...new Set(result.rows.map((row) => row.productId))].map((productId) =>
-        ctx.db.get("products", productId),
-      ),
-    );
-    const categories = await Promise.all(
-      [
-        ...new Set(products.flatMap((product) => product?.categoryId ?? [])),
-      ].map((categoryId) => ctx.db.get("categories", categoryId)),
-    );
+    const products = [];
+    for (const productId of new Set(result.rows.map((row) => row.productId))) {
+      products.push(await getRow(ctx, params, productId));
+    }
+    const categories = [];
+    for (const categoryId of new Set(
+      products.flatMap((product) => product?.categoryId ?? []),
+    )) {
+      categories.push(await getRow(ctx, params, categoryId));
+    }
     const names = new Map(
       categories.flatMap((category) =>
         category ? [[category._id, category.name] as const] : [],
@@ -188,9 +258,11 @@ async function badDeliveryRows(
   params: DashboardMetricParams,
 ): Promise<RowResult> {
   const result = await locationRows(
+    ctx,
     params,
-    async (locationId, remaining) =>
-      await ctx.db
+    "badDeliveryRows",
+    (locationId) =>
+      ctx.db
         .query("badDeliveries")
         .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
           q
@@ -198,8 +270,7 @@ async function badDeliveryRows(
             .eq("locationId", locationId)
             .gte("registeredAt", params.previousFrom)
             .lt("registeredAt", params.to),
-        )
-        .take(remaining + 1),
+        ),
   );
   return {
     truncated: result.truncated,
@@ -241,48 +312,59 @@ async function transferRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const byId = new Map<Id<"transfers">, Doc<"transfers">>();
-  let truncated = false;
-  for (const location of params.locations) {
-    for (const direction of ["from", "to"] as const) {
-      const remaining = MAX_ROWS - byId.size;
-      if (remaining === 0) {
-        truncated = true;
-        break;
+  const raw = await cached(
+    params,
+    rawCacheKey(params, "transfers"),
+    async () => {
+      const byId = new Map<Id<"transfers">, Doc<"transfers">>();
+      let truncated = false;
+      let scanned = 0;
+      locations: for (const location of params.locations) {
+        for (const direction of ["from", "to"] as const) {
+          const remaining = MAX_ROWS - scanned;
+          if (remaining <= 0) {
+            truncated = true;
+            break locations;
+          }
+          const part = await takeRows(
+            ctx,
+            direction === "from"
+              ? ctx.db
+                  .query("transfers")
+                  .withIndex(
+                    "by_organizationId_and_fromLocationId_and_transferredAt",
+                    (q) =>
+                      q
+                        .eq("organizationId", params.organizationId)
+                        .eq("fromLocationId", location.id)
+                        .gte("transferredAt", params.previousFrom)
+                        .lt("transferredAt", params.to),
+                  )
+              : ctx.db
+                  .query("transfers")
+                  .withIndex(
+                    "by_organizationId_and_toLocationId_and_transferredAt",
+                    (q) =>
+                      q
+                        .eq("organizationId", params.organizationId)
+                        .eq("toLocationId", location.id)
+                        .gte("transferredAt", params.previousFrom)
+                        .lt("transferredAt", params.to),
+                  ),
+            remaining + 1,
+          );
+          scanned += part.length;
+          for (const transfer of part.slice(0, remaining)) {
+            byId.set(transfer._id, transfer);
+          }
+          if (part.length > remaining) truncated = true;
+        }
       }
-      const part =
-        direction === "from"
-          ? await ctx.db
-              .query("transfers")
-              .withIndex(
-                "by_organizationId_and_fromLocationId_and_transferredAt",
-                (q) =>
-                  q
-                    .eq("organizationId", params.organizationId)
-                    .eq("fromLocationId", location.id)
-                    .gte("transferredAt", params.previousFrom)
-                    .lt("transferredAt", params.to),
-              )
-              .take(remaining + 1)
-          : await ctx.db
-              .query("transfers")
-              .withIndex(
-                "by_organizationId_and_toLocationId_and_transferredAt",
-                (q) =>
-                  q
-                    .eq("organizationId", params.organizationId)
-                    .eq("toLocationId", location.id)
-                    .gte("transferredAt", params.previousFrom)
-                    .lt("transferredAt", params.to),
-              )
-              .take(remaining + 1);
-      for (const transfer of part.slice(0, remaining)) {
-        byId.set(transfer._id, transfer);
-      }
-      if (part.length > remaining) truncated = true;
-    }
-  }
-  const scoped = [...byId.values()];
+      return { rows: [...byId.values()], truncated };
+    },
+  );
+  const scoped = raw.rows;
+  const truncated = raw.truncated;
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
   );
@@ -318,32 +400,43 @@ async function transferRows(
       }),
     };
   }
-  const items: Doc<"transferItems">[] = [];
   const detailedTransfers = scoped.slice(0, MAX_TRANSFER_DETAILS);
-  let itemRowsTruncated = truncated || detailedTransfers.length < scoped.length;
-  for (const transfer of detailedTransfers) {
-    const remaining = MAX_ROWS - items.length;
-    if (remaining === 0) {
-      itemRowsTruncated = true;
-      break;
-    }
-    const part = await ctx.db
-      .query("transferItems")
-      .withIndex("by_organizationId_and_transferId", (q) =>
-        q
-          .eq("organizationId", params.organizationId)
-          .eq("transferId", transfer._id),
-      )
-      .take(remaining + 1);
-    items.push(...part.slice(0, remaining));
-    if (part.length > remaining) itemRowsTruncated = true;
-  }
+  const detail = await cached(
+    params,
+    rawCacheKey(params, "transfer-items"),
+    async () => {
+      const items: Doc<"transferItems">[] = [];
+      let itemRowsTruncated =
+        truncated || detailedTransfers.length < scoped.length;
+      for (const transfer of detailedTransfers) {
+        const remaining = MAX_ROWS - items.length;
+        if (remaining <= 0) {
+          itemRowsTruncated = true;
+          break;
+        }
+        const part = await takeRows(
+          ctx,
+          ctx.db
+            .query("transferItems")
+            .withIndex("by_organizationId_and_transferId", (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("transferId", transfer._id),
+            ),
+          remaining + 1,
+        );
+        items.push(...part.slice(0, remaining));
+        if (part.length > remaining) itemRowsTruncated = true;
+      }
+      return { items, truncated: itemRowsTruncated };
+    },
+  );
   const transferById = new Map(
     detailedTransfers.map((transfer) => [transfer._id, transfer]),
   );
   return {
-    truncated: itemRowsTruncated,
-    rows: items.flatMap((item) => {
+    truncated: detail.truncated,
+    rows: detail.items.flatMap((item) => {
       const transfer = transferById.get(item.transferId);
       if (!transfer) return [];
       const selected = dimension(dimensionId, {
@@ -387,9 +480,11 @@ async function staffFoodRows(
   params: DashboardMetricParams,
 ): Promise<RowResult> {
   const result = await locationRows(
+    ctx,
     params,
-    async (locationId, remaining) =>
-      await ctx.db
+    "staffFoodRows",
+    (locationId) =>
+      ctx.db
         .query("staffFoodRegistrations")
         .withIndex("by_organizationId_and_locationId_and_registeredAt", (q) =>
           q
@@ -397,8 +492,7 @@ async function staffFoodRows(
             .eq("locationId", locationId)
             .gte("registeredAt", params.previousFrom)
             .lt("registeredAt", params.to),
-        )
-        .take(remaining + 1),
+        ),
   );
   return {
     truncated: result.truncated,
@@ -439,24 +533,24 @@ async function shiftRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(
-    params,
-    async (locationId, remaining) =>
-      await ctx.db
-        .query("scheduledShifts")
-        .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
-          q
-            .eq("organizationId", params.organizationId)
-            .eq("locationId", locationId)
-            .gte("startsAt", params.previousFrom)
-            .lt("startsAt", params.to),
-        )
-        .take(remaining + 1),
+  const result = await locationRows(ctx, params, "shiftRows", (locationId) =>
+    ctx.db
+      .query("scheduledShifts")
+      .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("locationId", locationId)
+          .gte("startsAt", params.previousFrom)
+          .lt("startsAt", params.to),
+      ),
   );
   const employeeIds = [...new Set(result.rows.map((row) => row.employeeId))];
-  const employees = await Promise.all(
-    employeeIds.map((employeeId) => ctx.db.get("employees", employeeId)),
-  );
+  const employees = [];
+  if (dimensionId === "employee") {
+    for (const employeeId of employeeIds) {
+      employees.push(await getRow(ctx, params, employeeId));
+    }
+  }
   const employeeNames = new Map(
     employees.flatMap((employee) =>
       employee ? [[employee._id, employee.displayName] as const] : [],
@@ -509,18 +603,15 @@ async function countRows(
   dimensionId: string | undefined,
   params: DashboardMetricParams,
 ): Promise<RowResult> {
-  const result = await locationRows(
-    params,
-    async (locationId, remaining) =>
-      await ctx.db
-        .query("counts")
-        .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
-          q
-            .eq("organizationId", params.organizationId)
-            .eq("locationId", locationId),
-        )
-        .order("desc")
-        .take(remaining + 1),
+  const result = await locationRows(ctx, params, "countRows", (locationId) =>
+    ctx.db
+      .query("counts")
+      .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+        q
+          .eq("organizationId", params.organizationId)
+          .eq("locationId", locationId),
+      )
+      .order("desc"),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -581,9 +672,11 @@ async function salesDailyRows(
   params: DashboardMetricParams,
 ): Promise<RowResult> {
   const result = await locationRows(
+    ctx,
     params,
-    async (locationId, remaining) =>
-      await ctx.db
+    "salesDailyRows",
+    (locationId) =>
+      ctx.db
         .query("salesDaily")
         .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
           q
@@ -591,8 +684,7 @@ async function salesDailyRows(
             .eq("locationId", locationId)
             .gte("dayStart", params.previousFrom)
             .lt("dayStart", params.to),
-        )
-        .take(remaining + 1),
+        ),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -664,9 +756,11 @@ async function woltOrderRows(
   params: DashboardMetricParams,
 ): Promise<RowResult> {
   const result = await locationRows(
+    ctx,
     params,
-    async (locationId, remaining) =>
-      await ctx.db
+    "woltOrderRows",
+    (locationId) =>
+      ctx.db
         .query("woltOrders")
         .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
           q
@@ -674,8 +768,7 @@ async function woltOrderRows(
             .eq("locationId", locationId)
             .gte("occurredAt", params.previousFrom)
             .lt("occurredAt", params.to),
-        )
-        .take(remaining + 1),
+        ),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -737,9 +830,11 @@ async function woltOrderItemRows(
   params: DashboardMetricParams,
 ): Promise<RowResult> {
   const result = await locationRows(
+    ctx,
     params,
-    async (locationId, remaining) =>
-      await ctx.db
+    "woltOrderItemRows",
+    (locationId) =>
+      ctx.db
         .query("woltOrderItems")
         .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
           q
@@ -747,15 +842,22 @@ async function woltOrderItemRows(
             .eq("locationId", locationId)
             .gte("occurredAt", params.previousFrom)
             .lt("occurredAt", params.to),
-        )
-        .take(remaining + 1),
+        ),
   );
-  const mappingRows = await ctx.db
-    .query("woltProductMappings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", params.organizationId),
-    )
-    .take(MAX_ROWS + 1);
+  const mappingRows = await cached(
+    params,
+    `custom-wolt-mappings:${params.organizationId}`,
+    () =>
+      takeRows(
+        ctx,
+        ctx.db
+          .query("woltProductMappings")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", params.organizationId),
+          ),
+        MAX_ROWS + 1,
+      ),
+  );
   const mappingRowsForResolution = mappingRows.slice(0, MAX_ROWS);
   const resolutions = new Map<
     Id<"woltOrderItems">,
@@ -779,11 +881,10 @@ async function woltOrderItemRows(
       ),
     ),
   ];
-  const products = await Promise.all(
-    productIds
-      .slice(0, MAX_PRODUCT_LABELS)
-      .map((productId) => ctx.db.get(productId)),
-  );
+  const products = [];
+  for (const productId of productIds.slice(0, MAX_PRODUCT_LABELS)) {
+    products.push(await getRow(ctx, params, productId));
+  }
   const productNames = new Map(
     products.flatMap((product) =>
       product ? [[product._id, product.name] as const] : [],
@@ -860,9 +961,11 @@ async function salesOrderRows(
   params: DashboardMetricParams,
 ): Promise<RowResult> {
   const result = await locationRows(
+    ctx,
     params,
-    async (locationId, remaining) =>
-      await ctx.db
+    "salesOrderRows",
+    (locationId) =>
+      ctx.db
         .query("salesOrders")
         .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
           q
@@ -870,8 +973,7 @@ async function salesOrderRows(
             .eq("locationId", locationId)
             .gte("occurredAt", params.previousFrom)
             .lt("occurredAt", params.to),
-        )
-        .take(remaining + 1),
+        ),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -936,9 +1038,11 @@ async function salesLineRows(
   params: DashboardMetricParams,
 ): Promise<RowResult> {
   const result = await locationRows(
+    ctx,
     params,
-    async (locationId, remaining) =>
-      await ctx.db
+    "salesLineRows",
+    (locationId) =>
+      ctx.db
         .query("salesLines")
         .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
           q
@@ -946,20 +1050,27 @@ async function salesLineRows(
             .eq("locationId", locationId)
             .gte("occurredAt", params.previousFrom)
             .lt("occurredAt", params.to),
-        )
-        .take(remaining + 1),
+        ),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
   );
   const mappings =
     dimensionId === "product"
-      ? await ctx.db
-          .query("onlinePosProductMappings")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", params.organizationId),
-          )
-          .take(MAX_PRODUCT_OPTIONS + 1)
+      ? await cached(
+          params,
+          `custom-onlinepos-mappings:${params.organizationId}`,
+          () =>
+            takeRows(
+              ctx,
+              ctx.db
+                .query("onlinePosProductMappings")
+                .withIndex("by_organizationId", (q) =>
+                  q.eq("organizationId", params.organizationId),
+                ),
+              MAX_PRODUCT_OPTIONS + 1,
+            ),
+        )
       : [];
   const productIdByOnlinePosId = new Map(
     mappings
@@ -1076,6 +1187,52 @@ function measureUnit(query: CustomMetricQuerySpec) {
   return dataset.measures.find((measure) => measure.id === query.measure)!.unit;
 }
 
+async function availableComparison(
+  ctx: QueryCtx,
+  query: CustomMetricQuerySpec,
+  dimensionId: string | undefined,
+  params: DashboardMetricParams,
+) {
+  let from = -Infinity;
+  let through = Infinity;
+  if (query.dataset === "shifts") {
+    const coverage = await cached(
+      params,
+      `custom-shift-coverage:${params.organizationId}:${params.timeZone}`,
+      async () => {
+        await readBudget(ctx);
+        return await workfeedMetricCoverage(ctx, { ...params, summaryReady: false });
+      },
+    );
+    if (coverage) ({ from, through } = coverage);
+  } else if (
+    query.dataset === "salesDaily" ||
+    salesDailyRollupMeasure(query, dimensionId)
+  ) {
+    for (const location of params.locations) {
+      const coverage = await cached(
+        params,
+        `custom-daily-coverage:${params.organizationId}:${location.id}`,
+        async () => {
+          await readBudget(ctx);
+          return await onlinePosDailyCoverage(ctx, {
+            organizationId: params.organizationId,
+            locationId: location.id,
+          });
+        },
+      );
+      from = Math.max(from, coverage.from);
+      through = Math.min(through, coverage.through);
+    }
+  }
+  if (params.from < from || params.to > through) {
+    throw new ConvexError(
+      "Data for den valgte periode er ikke tilgængelige. Vælg en nyere eller kortere periode.",
+    );
+  }
+  return params.previousFrom >= from && params.previousTo <= through;
+}
+
 async function singleResult(
   ctx: QueryCtx,
   query: CustomMetricQuerySpec,
@@ -1086,25 +1243,37 @@ async function singleResult(
   dimensionFilter?: CustomMetricDimensionFilter,
   selectedDimensionKeys?: string[],
 ): Promise<MetricResult> {
-  const loaded =
-    dimensionId === "product"
-      ? await Promise.all([
-          loadRows(ctx, query, dimensionId, {
-            ...params,
-            previousFrom: params.from,
-            previousTo: params.from,
-          }),
-          loadRows(ctx, query, dimensionId, {
-            ...params,
-            from: params.previousFrom,
-            to: params.previousTo,
-            previousTo: params.previousFrom,
-          }),
-        ]).then(([current, previous]) => ({
-          rows: [...previous.rows, ...current.rows],
-          truncated: current.truncated || previous.truncated,
-        }))
-      : await loadRows(ctx, query, dimensionId, params);
+  const previousAvailable = await availableComparison(
+    ctx,
+    query,
+    dimensionId,
+    params,
+  );
+  if (!previousAvailable) {
+    params = { ...params, previousFrom: params.from, previousTo: params.from };
+  }
+  let loaded: RowResult;
+  if (dimensionId === "product") {
+    const current = await loadRows(ctx, query, dimensionId, {
+      ...params,
+      previousFrom: params.from,
+      previousTo: params.from,
+    });
+    const previous = previousAvailable
+      ? await loadRows(ctx, query, dimensionId, {
+          ...params,
+          from: params.previousFrom,
+          to: params.previousTo,
+          previousTo: params.previousFrom,
+        })
+      : { rows: [], truncated: false };
+    loaded = {
+      rows: [...previous.rows, ...current.rows],
+      truncated: current.truncated || previous.truncated,
+    };
+  } else {
+    loaded = await loadRows(ctx, query, dimensionId, params);
+  }
   const rows = loaded.rows.filter((row) =>
     matchesDimensionFilter(row.dimensionKey, dimensionFilter),
   );
@@ -1171,12 +1340,13 @@ async function singleResult(
         .sort(([left], [right]) => left - right)
         .map(([t, rows]) => ({ t, value: rounded(sumRows(rows)) })),
       total: rounded(sumRows(currentRows)),
-      previousTotal: rounded(sumRows(previousRows)),
+      previousTotal: previousAvailable ? rounded(sumRows(previousRows)) : null,
     };
   });
   return {
     unit: measureUnit(query),
     series,
+    ...(!previousAvailable ? { headlinePrevious: null } : {}),
     ...(dimensionId
       ? {
           breakdown: series.map((item) => ({
@@ -1210,6 +1380,7 @@ export async function listCustomMetricProductOptions(
   };
 
   for (const [queryIndex, query] of queries.entries()) {
+    await availableComparison(ctx, query, "product", currentPeriodParams);
     const loaded = await loadRows(ctx, query, "product", currentPeriodParams);
     truncated ||= loaded.truncated;
     for (const row of loaded.rows) {
@@ -1226,22 +1397,43 @@ export async function listCustomMetricProductOptions(
     }
   }
 
-  const catalogProducts = await ctx.db
-    .query("products")
-    .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-      q.eq("organizationId", params.organizationId).eq("status", "active"),
-    )
-    .take(MAX_PRODUCT_OPTIONS + 1);
-  const activeCatalogProducts = catalogProducts.slice(0, MAX_PRODUCT_OPTIONS);
-  const categoryIdsByProductId = new Map(
-    await Promise.all(
-      activeCatalogProducts.map((product) =>
-        getProductCategoryIds(ctx, product).then(
-          (categoryIds) => [product._id, categoryIds] as const,
-        ),
+  const catalogProducts = await takeRows(
+    ctx,
+    ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+        q.eq("organizationId", params.organizationId).eq("status", "active"),
       ),
-    ),
+    MAX_PRODUCT_OPTIONS + 1,
   );
+  const activeCatalogProducts = catalogProducts.slice(0, MAX_PRODUCT_OPTIONS);
+  const categoryIdsByProductId = new Map<Id<"products">, Id<"categories">[]>();
+  for (const product of activeCatalogProducts) {
+    const memberships = await takeRows(
+      ctx,
+      ctx.db
+        .query("productCategories")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("productId", product._id),
+        ),
+      MAX_PRODUCT_CATEGORIES + 1,
+    );
+    const categoryIds = [
+      ...new Set([
+        product.categoryId,
+        ...memberships.map((membership) => membership.categoryId),
+      ]),
+    ];
+    if (
+      memberships.length > MAX_PRODUCT_CATEGORIES ||
+      categoryIds.length > MAX_PRODUCT_CATEGORIES
+    ) {
+      throw new ConvexError("Produktet har for mange kategorier");
+    }
+    categoryIdsByProductId.set(product._id, categoryIds);
+  }
   const productsByValue = new Map(
     activeCatalogProducts.map((product) => [
       String(product._id),
@@ -1365,7 +1557,12 @@ function ratioResult(
     headlineTotal:
       denominatorTotal === 0 ? 0 : rounded(numeratorTotal / denominatorTotal),
     headlinePrevious:
-      denominatorPrevious === 0
+      numerator.headlinePrevious === null ||
+      denominator.headlinePrevious === null ||
+      denominatorPrevious === 0 ||
+      [...numerator.series, ...denominator.series].some(
+        (series) => series.previousTotal === null,
+      )
         ? null
         : rounded(numeratorPrevious / denominatorPrevious),
   };

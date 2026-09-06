@@ -1,3 +1,4 @@
+import { claimStorageForOrganization } from "./lib/storageOwnership";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -29,7 +30,6 @@ import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
 import { recordAudit, requireAuditReason } from "./lib/audit";
-import { searchActiveProductOptions } from "./lib/productCatalog";
 import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummary,
@@ -300,20 +300,6 @@ export const getRegistrationConfig = query({
   },
 });
 
-export const searchProducts = query({
-  args: { search: v.string() },
-  returns: v.array(productSearchValidator),
-  handler: async (ctx, args) => {
-    const { organizationId } = await requireWasteRegistrar(
-      ctx,
-      "waste.badDelivery",
-    );
-    const search = args.search.trim();
-    if (search.length > 100) throw new ConvexError("Søgningen er for lang");
-    return await searchActiveProductOptions(ctx, organizationId, search);
-  },
-});
-
 export const getProductOption = query({
   args: { productId: v.id("products") },
   returns: v.union(productOptionValidator, v.null()),
@@ -401,6 +387,9 @@ export const registerBadDelivery = mutation({
       args.badProductsPhotoStorageId,
       args.deliveryNotePhotoStorageId,
     ];
+    for (const storageId of storageIds) {
+      await claimStorageForOrganization(ctx, organizationId, storageId);
+    }
     const [metadata, existingAttachments] = await Promise.all([
       Promise.all(storageIds.map((id) => ctx.db.system.get("_storage", id))),
       Promise.all(

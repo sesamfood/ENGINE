@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   closestCenter,
@@ -1305,8 +1307,8 @@ export function CountSheet() {
     api.catalog.listCategoryOptions,
     canRegister ? {} : "skip",
   );
-  const queriedProducts = useQuery(
-    api.count.listCatalog,
+  const queriedProducts = useCompleteCatalog(
+    api.count.listCatalogPage,
     canRegister && locationId && countAreaSelectionReady
       ? { locationId }
       : "skip",

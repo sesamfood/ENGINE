@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import posthog from "posthog-js";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -92,6 +93,7 @@ export function InvitationCard({ invitationId }: { invitationId: string }) {
         });
         return;
       }
+      posthog.reset();
       router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
       router.refresh();
     } catch {

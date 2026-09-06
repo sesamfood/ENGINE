@@ -926,6 +926,16 @@ export const listOrders = query({
               .eq("normalizedDisplayNumber", normalizedDisplayNumber),
           )
           .filter(visibleOrderFilter(auth, args.from, args.to, args.orderType))
+          .filter((q) =>
+            q.and(
+              args.locationId === null
+                ? true
+                : q.eq(q.field("locationId"), args.locationId),
+              args.status === null
+                ? true
+                : q.eq(q.field("status"), args.status),
+            ),
+          )
           .order("desc")
           .paginate(args.paginationOpts)
       : args.locationId && args.status

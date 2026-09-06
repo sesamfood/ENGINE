@@ -92,6 +92,7 @@ export async function queueStockSync(
     !connection ||
     sales?.state !== "idle" ||
     sales.pendingReconcileDayStart !== undefined ||
+    sales.dayStartRerollToken !== undefined ||
     !sales.runToken
   )
     return;
@@ -369,7 +370,8 @@ export const applyPage = internalMutation({
     if (
       sales?.state !== "idle" ||
       sales.runToken !== args.salesToken ||
-      sales.pendingReconcileDayStart !== undefined
+      sales.pendingReconcileDayStart !== undefined ||
+      sales.dayStartRerollToken !== undefined
     )
       return null;
     let done: boolean;
@@ -387,6 +389,7 @@ export const applyPage = internalMutation({
         .paginate({ numItems: 5, cursor: args.cursor });
       const resolve = createSalesStockResolver(ctx, args.organizationId);
       for (const order of page.page) {
+        if (order.occurredAt < Date.now() - 400 * 86_400_000) continue;
         if (order.source !== "onlinePos") continue;
         const lines = await ctx.db
           .query("salesLines")
@@ -451,6 +454,7 @@ export const applyPage = internalMutation({
         )
         .paginate({ numItems: 10, cursor: args.cursor });
       for (const previous of page.page) {
+        if (previous.dayStart < Date.now() - 400 * 86_400_000) continue;
         if (
           (previous.applied.length === 0 && !previous.wasteRegistrationIds?.length) ||
           previous.connectionId !== connection._id

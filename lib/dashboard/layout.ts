@@ -42,21 +42,6 @@ export function validWidgetPosition(position: WidgetInstance["position"], size: 
   return position.column >= 0 && position.row >= 0 && position.column + span.columns <= dashboardColumns;
 }
 
-export function canPlaceWidget(
-  widgets: WidgetInstance[],
-  activeKey: string,
-  position: { column: number; row: number },
-  size: WidgetSize,
-) {
-  if (!validWidgetPosition(position, size)) return false;
-  const occupied = new Set(
-    widgets
-      .filter((widget) => widget.key !== activeKey && validWidgetPosition(widget.position, widget.size))
-      .flatMap((widget) => cells(widget.position!, widget.size)),
-  );
-  return cells(position, size).every((cell) => !occupied.has(cell));
-}
-
 export function widgetsOverlappingPosition(
   widgets: WidgetInstance[],
   activeKey: string,

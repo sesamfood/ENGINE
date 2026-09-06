@@ -31,6 +31,8 @@ import { addStock, normalizeStock } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
   activeProductCatalogValidator,
+  listActiveProductPage,
+  paginateActiveProducts,
   listLocationActiveProductCatalog,
 } from "./lib/productCatalog";
 import { requireLocationProduct } from "./lib/locationProducts";
@@ -976,6 +978,25 @@ export const setSettings = mutation({
   },
 });
 
+export const listCatalogPage = query({
+  args: { locationId: v.id("locations"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(activeProductCatalogValidator),
+  handler: async (ctx, args) => {
+    const auth = await requireWasteRegistrar(
+      ctx,
+      "waste.register",
+    );
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, auth.organizationId, args.locationId);
+    return await listActiveProductPage(
+      ctx,
+      auth.organizationId,
+      args.paginationOpts,
+      args.locationId,
+    );
+  },
+});
+
 export const listCatalog = query({
   args: { locationId: v.id("locations") },
   returns: v.array(activeProductCatalogValidator),
@@ -994,25 +1015,85 @@ export const listCatalog = query({
   },
 });
 
+const productRankingValidator = v.object({
+  productId: v.id("products"),
+  count: v.number(),
+  lastRegisteredAt: v.number(),
+  learnedShortcuts: v.array(shortcutValidator),
+});
+const productViewConfigValidator = v.object({
+  productId: v.id("products"),
+  pinnedAt: v.union(v.number(), v.null()),
+  shortcutOverrides: v.union(v.array(shortcutValidator), v.null()),
+});
+
+export const listProductViewStatePage = query({
+  args: { locationId: v.id("locations"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(v.object({
+    productId: v.id("products"),
+    ranking: v.union(productRankingValidator, v.null()),
+    config: v.union(productViewConfigValidator, v.null()),
+  })),
+  handler: async (ctx, args) => {
+    const auth = await requireWasteRegistrar(ctx, "waste.register");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, organizationId, args.locationId);
+    const settings = await settingsFor(ctx, organizationId);
+    const result = await paginateActiveProducts(ctx, organizationId, args.paginationOpts, args.locationId);
+    return {
+      ...result,
+      page: await Promise.all(result.page.map(async (product) => {
+        const [organizationStat, locationStat, config] = await Promise.all([
+          ctx.db.query("wasteOrganizationProductStats")
+            .withIndex("by_org_product", (q) =>
+              q.eq("organizationId", organizationId).eq("productId", product._id),
+            ).unique(),
+          settings.historyScope === "location"
+            ? ctx.db.query("wasteProductStats")
+                .withIndex("by_org_location_product", (q) =>
+                  q.eq("organizationId", organizationId)
+                    .eq("locationId", args.locationId)
+                    .eq("productId", product._id),
+                ).unique()
+            : null,
+          ctx.db.query("wasteProductConfigs")
+            .withIndex("by_org_location_product", (q) =>
+              q.eq("organizationId", organizationId)
+                .eq("locationId", args.locationId)
+                .eq("productId", product._id),
+            ).unique(),
+        ]);
+        const stat = locationStat && (
+          !organizationStat || countForPeriod(locationStat, settings.popularityPeriod) >= MIN_PRODUCT_HISTORY
+        ) ? locationStat : organizationStat;
+        return {
+          productId: product._id,
+          ranking: stat && countForPeriod(stat, settings.popularityPeriod) > 0 ? {
+            productId: product._id,
+            count: countForPeriod(stat, settings.popularityPeriod),
+            lastRegisteredAt: stat.lastRegisteredAt,
+            learnedShortcuts: settings.popularityPeriod === "30Days"
+              ? stat.top30Days
+              : settings.popularityPeriod === "90Days" ? stat.top90Days : stat.topAllTime,
+          } : null,
+          config: config ? {
+            productId: product._id,
+            pinnedAt: config.pinnedAt ?? null,
+            shortcutOverrides: config.shortcutOverrides ?? null,
+          } : null,
+        };
+      })),
+    };
+  },
+});
+
 export const getViewState = query({
-  args: { locationId: v.id("locations") },
+  args: { locationId: v.id("locations"), omitProducts: v.optional(v.boolean()) },
   returns: v.object({
     settings: viewSettingsValidator,
-    rankings: v.array(
-      v.object({
-        productId: v.id("products"),
-        count: v.number(),
-        lastRegisteredAt: v.number(),
-        learnedShortcuts: v.array(shortcutValidator),
-      }),
-    ),
-    configs: v.array(
-      v.object({
-        productId: v.id("products"),
-        pinnedAt: v.union(v.number(), v.null()),
-        shortcutOverrides: v.union(v.array(shortcutValidator), v.null()),
-      }),
-    ),
+    rankings: v.array(productRankingValidator),
+    configs: v.array(productViewConfigValidator),
   }),
   handler: async (ctx, args) => {
     const auth = await requireWasteRegistrar(ctx, "waste.register");
@@ -1020,6 +1101,17 @@ export const getViewState = query({
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, organizationId, args.locationId);
     const settings = await settingsFor(ctx, organizationId);
+    if (args.omitProducts) {
+      return {
+        settings: {
+          inactivitySeconds: settings.inactivitySeconds,
+          popularityPeriod: settings.popularityPeriod,
+          historyScope: settings.historyScope,
+        },
+        rankings: [],
+        configs: [],
+      };
+    }
     const locationStats =
       settings.historyScope === "location"
         ? settings.popularityPeriod === "30Days"

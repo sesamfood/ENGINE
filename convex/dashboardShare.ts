@@ -15,15 +15,11 @@ import {
   keyedMetricResultValidator,
   metricIdValidator,
   metricRequestValidator,
-  metricResultValidator,
-  salesSourceValidator,
-  visualizationValidator,
 } from "./lib/dashboardValidators";
 import {
   createMetricParamsResolver,
   dashboardMetricComputers,
   resolveBuiltinSalesSource,
-  resolveMetricParams,
 } from "./lib/dashboardMetrics";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
 import {
@@ -252,63 +248,6 @@ export const requestSummaryRebuild = mutation({
   },
 });
 
-export const getSharedMetric = query({
-  args: {
-    token: v.string(),
-    accessKey: v.string(),
-    metricId: metricIdValidator,
-    visualization: visualizationValidator,
-    now: v.number(),
-    salesSource: v.optional(salesSourceValidator),
-  },
-  returns: metricResultValidator,
-  handler: async (ctx, args) => {
-    const share = await requireShare(ctx, args.token, args.accessKey);
-    const widget = share.widgets.find(
-      (candidate) =>
-        candidate.metric.kind === "builtin" &&
-        candidate.metric.id === args.metricId &&
-        candidate.visualization === args.visualization,
-    );
-    const definition = metricRegistry[args.metricId];
-    if (!widget || definition.shareable === false) {
-      throw new ConvexError("Målingen er ikke en del af delingen");
-    }
-    // Defense in depth: admin-only metrics never leave a passwordless share,
-    // including legacy links created before the createShare password gate.
-    if (definition.sensitive && !share.passwordHash) {
-      throw new ConvexError("Målingen er ikke en del af delingen");
-    }
-    const savedSalesSource = resolveBuiltinSalesSource(
-      args.metricId,
-      widget.options?.salesSource,
-    );
-    if (
-      args.salesSource !== undefined &&
-      args.salesSource !== savedSalesSource
-    ) {
-      throw new ConvexError("Salgskilden matcher ikke delingen");
-    }
-    const params = await resolveMetricParams(
-      ctx,
-      share.organizationId,
-      share.scope,
-      widget.range ? { preset: widget.range } : share.range,
-      args.now,
-      undefined,
-      {
-        granularity: share.granularity ?? "detail",
-        anonymousSeed: share.token,
-        salesDetailAllowed: share.salesDetailAllowed ?? true,
-      },
-    );
-    return await dashboardMetricComputers[args.metricId](
-      ctx,
-      savedSalesSource ? { ...params, salesSource: savedSalesSource } : params,
-    );
-  },
-});
-
 export const getSharedMetrics = query({
   args: {
     token: v.string(),
@@ -321,6 +260,8 @@ export const getSharedMetrics = query({
     const share = await requireShare(ctx, args.token, args.accessKey);
     if (
       args.widgets.length > MAX_METRIC_BATCH ||
+      (args.widgets.length > 1 &&
+        args.widgets.some((widget) => widget.metric.kind === "custom")) ||
       new Set(args.widgets.map((widget) => widget.key)).size !==
         args.widgets.length
     ) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -375,8 +377,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [addableIngredientRows, setAddableIngredientRows] = useState<
     AddableIngredientRow[]
   >([]);
-  const catalog = useQuery(
-    api.catalog.listActiveProducts,
+  const catalog = useCompleteCatalog(
+    api.catalog.listActiveProductsPage,
     ingredientRows.length > 0 || addableIngredientRows.length > 0
       ? {}
       : "skip",

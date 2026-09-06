@@ -41,24 +41,3 @@ export function woltDailyContribution(
     totalCount: delivered || canceled ? 1 : 0,
   };
 }
-
-export function subtractWoltContribution(
-  next: WoltDailyContribution,
-  previous: WoltDailyContribution,
-) {
-  if (
-    next.organizationId !== previous.organizationId ||
-    next.locationId !== previous.locationId ||
-    next.dayStart !== previous.dayStart ||
-    next.currency !== previous.currency
-  ) {
-    throw new Error("Bidragene tilhører ikke samme dagsrække");
-  }
-  return {
-    revenue: next.revenue - previous.revenue,
-    orderCount: next.orderCount - previous.orderCount,
-    itemCount: next.itemCount - previous.itemCount,
-    canceledCount: next.canceledCount - previous.canceledCount,
-    totalCount: next.totalCount - previous.totalCount,
-  };
-}

@@ -17,10 +17,11 @@ import {
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import { dashboardMetricUsesSummary } from "@/lib/dashboard/summary-sources";
@@ -46,7 +47,6 @@ const sizeClasses: Record<WidgetSize, string> = {
 };
 
 const METRIC_BATCH_SIZE = 3;
-const METRIC_BATCH_COUNT = 8;
 
 function metricBatchKey(
   widget: WidgetInstance,
@@ -56,7 +56,7 @@ function metricBatchKey(
     ? `${widget.range}::`
     : `${defaultRange.preset}:${defaultRange.from ?? ""}:${defaultRange.to ?? ""}`;
   if (widget.metric.kind === "custom") {
-    return `${range}:custom:${widget.metric.id}`;
+    return `custom:${widget.key}`;
   }
   return `${range}:${metricRegistry[widget.metric.id].sourceTables[0]}:${widget.options?.salesSource ?? "onlinePos"}`;
 }
@@ -81,51 +81,38 @@ function groupMetricBatches(
         ),
     ),
   );
-  const ordered = grouped.flat();
-  const batches =
-    groupedBatches.length <= METRIC_BATCH_COUNT
-      ? groupedBatches
-      : Array.from(
-          { length: METRIC_BATCH_COUNT },
-          (_, index) =>
-            ordered.slice(
-              index * METRIC_BATCH_SIZE,
-              (index + 1) * METRIC_BATCH_SIZE,
-            ),
-        );
-  return Array.from(
-    { length: METRIC_BATCH_COUNT },
-    (_, index) => batches[index] ?? [],
-  );
+  return groupedBatches;
 }
 
-function useMetricBatch(
-  widgets: WidgetInstance[],
+function useMetricBatches(
+  batches: WidgetInstance[][],
   scope: DashboardScope,
   range: DashboardRange,
   now: number,
   publicAccess?: { token: string; accessKey: string },
 ) {
-  const requests = widgets.map(({ key, metric, visualization, range: widgetRange, options }) => ({
-    key,
-    metric,
-    visualization,
-    range: widgetRange,
-    ...(options?.salesSource ? { salesSource: options.salesSource } : {}),
-  }));
-  const authenticated = useQuery(
-    api.dashboard.getMetrics,
-    publicAccess || requests.length === 0
-      ? "skip"
-      : { widgets: requests, scope, range, now },
-  );
-  const shared = useQuery(
-    api.dashboardShare.getSharedMetrics,
-    publicAccess && requests.length > 0
-      ? { ...publicAccess, widgets: requests, now }
-      : "skip",
-  );
-  return publicAccess ? shared : authenticated;
+  const publicToken = publicAccess?.token;
+  const publicAccessKey = publicAccess?.accessKey;
+  const queries = useMemo(() => Object.fromEntries(batches.map((widgets, index): [string, RequestForQueries[string]] => {
+    const requests = widgets.map(({ key, metric, visualization, range: widgetRange, options }) => ({
+      key, metric, visualization, range: widgetRange,
+      ...(options?.salesSource ? { salesSource: options.salesSource } : {}),
+    }));
+    return [String(index), publicToken !== undefined && publicAccessKey !== undefined
+      ? { query: api.dashboardShare.getSharedMetrics, args: { token: publicToken, accessKey: publicAccessKey, widgets: requests, now } }
+      : { query: api.dashboard.getMetrics, args: { widgets: requests, scope, range, now } }];
+  })), [batches, scope, range, now, publicToken, publicAccessKey]);
+  const results: Record<string, { key: string; result: MetricResult }[] | Error | undefined> = useQueries(queries);
+  const byWidget = new Map<string, MetricResult | Error>();
+  for (const [index, widgets] of batches.entries()) {
+    const result = results[String(index)];
+    if (result instanceof Error) {
+      for (const widget of widgets) byWidget.set(widget.key, result);
+    } else {
+      for (const item of result ?? []) byWidget.set(item.key, item.result);
+    }
+  }
+  return byWidget;
 }
 
 function dashboardCollision(widgets: WidgetInstance[]): CollisionDetection {
@@ -159,8 +146,8 @@ function positionStyle(widget: WidgetInstance) {
   } as CSSProperties;
 }
 
-function comparisonTooltipLabel(scope: DashboardScope, result?: MetricResult) {
-  if (!result || result.series.length <= 1) return undefined;
+function comparisonTooltipLabel(scope: DashboardScope, result?: MetricResult | Error) {
+  if (!result || result instanceof Error || result.series.length <= 1) return undefined;
   return scope.locationIds === null
     ? "Alle lokationer"
     : `${scope.locationIds.length} lokationer`;
@@ -271,7 +258,7 @@ function DraggableWidget({
 }: {
   widget: WidgetInstance;
   sourceSize: WidgetSize;
-  result?: MetricResult;
+  result?: MetricResult | Error;
   metricLabel?: string;
   tooltipLabel?: string;
   range: DashboardRange;
@@ -309,7 +296,8 @@ function DraggableWidget({
     >
       <DashboardWidget
         widget={widget}
-        result={result}
+        result={result instanceof Error ? undefined : result}
+        error={result instanceof Error ? getUserErrorMessage(result, "Målingen kunne ikke indlæses. Prøv en kortere periode.") : undefined}
         metricLabel={metricLabel}
         tooltipLabel={tooltipLabel}
         range={range}
@@ -419,23 +407,7 @@ export function DashboardGrid({
     () => groupMetricBatches(widgets, range),
     [range, widgets],
   );
-  const batch0 = useMetricBatch(metricBatches[0], scope, range, now, publicAccess);
-  const batch1 = useMetricBatch(metricBatches[1], scope, range, now, publicAccess);
-  const batch2 = useMetricBatch(metricBatches[2], scope, range, now, publicAccess);
-  const batch3 = useMetricBatch(metricBatches[3], scope, range, now, publicAccess);
-  const batch4 = useMetricBatch(metricBatches[4], scope, range, now, publicAccess);
-  const batch5 = useMetricBatch(metricBatches[5], scope, range, now, publicAccess);
-  const batch6 = useMetricBatch(metricBatches[6], scope, range, now, publicAccess);
-  const batch7 = useMetricBatch(metricBatches[7], scope, range, now, publicAccess);
-  const metricResults = useMemo(
-    () =>
-      new Map(
-        [batch0, batch1, batch2, batch3, batch4, batch5, batch6, batch7]
-          .flatMap((batch) => batch ?? [])
-          .map(({ key, result }) => [key, result] as const),
-      ),
-    [batch0, batch1, batch2, batch3, batch4, batch5, batch6, batch7],
-  );
+  const metricResults = useMetricBatches(metricBatches, scope, range, now, publicAccess);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),

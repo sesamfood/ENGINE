@@ -1,3 +1,4 @@
+import { claimStorageForOrganization } from "./lib/storageOwnership";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
@@ -321,6 +322,7 @@ export const submit = mutation({
     }
 
     if (args.screenshotStorageId) {
+      await claimStorageForOrganization(ctx, organizationId, args.screenshotStorageId);
       const [metadata, existing] = await Promise.all([
         ctx.db.system.get("_storage", args.screenshotStorageId),
         ctx.db

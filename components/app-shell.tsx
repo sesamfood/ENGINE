@@ -33,6 +33,7 @@ import {
   type CSSProperties,
 } from "react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1210,6 +1211,7 @@ export function AppShell({
     void authClient
       .signOut()
       .then((result) => {
+        if (!result.error) posthog.reset();
         if (cancelled) return;
         if (result.error) {
           setSigningOut(false);

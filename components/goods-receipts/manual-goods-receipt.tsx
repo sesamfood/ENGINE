@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import posthog from "posthog-js";
 import { useMutation, useQuery } from "convex/react";
@@ -855,6 +857,10 @@ export function ManualGoodsReceipt() {
   const { locationId } = useGoodsReceiptContext();
   const options = useQuery(
     api.goodsReceipts.getManualReceiptOptions,
+    canRegister && locationId ? { locationId, omitCatalog: true } : "skip",
+  );
+  const products = useCompleteCatalog(
+    api.goodsReceipts.listCatalogPage,
     canRegister && locationId ? { locationId } : "skip",
   );
 
@@ -905,7 +911,7 @@ export function ManualGoodsReceipt() {
     );
   }
 
-  if (options === undefined) {
+  if (options === undefined || products === undefined) {
     return (
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
         <Skeleton className="h-80 w-full" />
@@ -917,5 +923,5 @@ export function ManualGoodsReceipt() {
     );
   }
 
-  return <ManualGoodsReceiptForm locationId={locationId} options={options} />;
+  return <ManualGoodsReceiptForm locationId={locationId} options={{ ...options, products }} />;
 }

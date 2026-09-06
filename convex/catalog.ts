@@ -20,9 +20,13 @@ import {
 } from "./lib/categoryHierarchy";
 import { normalizeStock } from "./lib/stock";
 import { recordAudit } from "./lib/audit";
+import { claimStorageForOrganization, preserveStorageOwnership } from "./lib/storageOwnership";
 import { MAX_COUNT_AREAS } from "./lib/countAreas";
 import {
   activeProductCatalogValidator,
+  catalogPaginationOptions,
+  listActiveProductPage,
+  listActiveProductSearchOptionsPage as loadActiveProductSearchOptionsPage,
   activeProductSearchOptionValidator,
   listActiveProductCatalog,
   listActiveProductSearchOptions as loadActiveProductSearchOptions,
@@ -231,8 +235,6 @@ const bulkProductCategoryArgs = v.object({
   categoryId: v.id("categories"),
 });
 
-type ProductStatus = "active" | "archived";
-
 type CategoryReference =
   { kind: "existing"; id: Id<"categories"> } | { kind: "new"; name: string };
 
@@ -268,7 +270,6 @@ const MAX_CHILD_ROWS = 200;
 const MAX_BULK_PRODUCT_SELECTION = 200;
 const MAX_GRAPH_PRODUCTS = 500;
 const MAX_LOCATIONS_PER_ORGANIZATION = 200;
-const MAX_FUZZY_SEARCH_SCAN = 500;
 const MAX_PUBLIC_PAGE_SIZE = 100;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -377,85 +378,7 @@ function fuzzyScore(name: string, search: string) {
   return score;
 }
 
-type CategorySearchCursor = {
-  searchKey: string;
-  status: ProductStatus;
-  categoryId: string | null;
-  categoryIds: string[];
-  categoryCursor: string | null;
-  categoryDone: boolean;
-  nameOffset: number;
-};
 
-function parseCategorySearchCursor(
-  cursor: string | null,
-  categoryIds: Id<"categories">[],
-  searchKey: string,
-  status: ProductStatus,
-  categoryId: Id<"categories"> | undefined,
-): CategorySearchCursor {
-  const expectedCategoryIds = categoryIds as string[];
-  if (!cursor) {
-    return {
-      searchKey,
-      status,
-      categoryId: categoryId ?? null,
-      categoryIds: expectedCategoryIds,
-      categoryCursor: null,
-      categoryDone: false,
-      nameOffset: 0,
-    };
-  }
-
-  let value: unknown;
-  try {
-    value = JSON.parse(cursor);
-  } catch {
-    throw new ConvexError("Sideringen er ugyldig");
-  }
-  if (!value || typeof value !== "object") {
-    throw new ConvexError("Sideringen er ugyldig");
-  }
-
-  const parsed = value as {
-    searchKey?: unknown;
-    status?: unknown;
-    categoryId?: unknown;
-    categoryIds?: unknown;
-    categoryCursor?: unknown;
-    categoryDone?: unknown;
-    nameOffset?: unknown;
-  };
-  if (
-    parsed.searchKey !== searchKey ||
-    parsed.status !== status ||
-    parsed.categoryId !== (categoryId ?? null) ||
-    !Array.isArray(parsed.categoryIds) ||
-    parsed.categoryIds.some((id) => typeof id !== "string") ||
-    parsed.categoryIds.length !== expectedCategoryIds.length ||
-    parsed.categoryIds.some(
-      (id, index) => id !== expectedCategoryIds[index],
-    ) ||
-    (parsed.categoryCursor !== null &&
-      typeof parsed.categoryCursor !== "string") ||
-    typeof parsed.categoryDone !== "boolean" ||
-    typeof parsed.nameOffset !== "number" ||
-    !Number.isInteger(parsed.nameOffset) ||
-    parsed.nameOffset < 0
-  ) {
-    throw new ConvexError("Sideringen er ugyldig");
-  }
-
-  return {
-    searchKey: parsed.searchKey as string,
-    status: parsed.status as ProductStatus,
-    categoryId: parsed.categoryId as string | null,
-    categoryIds: parsed.categoryIds as string[],
-    categoryCursor: parsed.categoryCursor as string | null,
-    categoryDone: parsed.categoryDone as boolean,
-    nameOffset: parsed.nameOffset as number,
-  };
-}
 
 function requirePositiveNumber(value: number, label: string) {
   if (!Number.isFinite(value) || value <= 0) {
@@ -1136,9 +1059,7 @@ async function permanentlyDeleteProduct(
       productId: product._id,
     },
   );
-  if (product.imageStorageId) {
-    await ctx.storage.delete(product.imageStorageId);
-  }
+  await preserveStorageOwnership(ctx, product.organizationId, product.imageStorageId);
   await ctx.db.delete("products", product._id);
 }
 
@@ -1152,8 +1073,9 @@ async function hydrateCatalogProduct(
     >;
     defaultUnitsById: ReadonlyMap<Id<"units">, Doc<"units">>;
   },
+  categoryIds: Id<"categories">[],
 ) {
-  const [units, ingredients, imageUrl, categoryIds] = await Promise.all([
+  const [units, ingredients, imageUrl] = await Promise.all([
     ctx.db
       .query("productUnits")
       .withIndex("by_organizationId_and_productId", (q) =>
@@ -1173,7 +1095,6 @@ async function hydrateCatalogProduct(
     product.imageStorageId
       ? ctx.storage.getUrl(product.imageStorageId)
       : Promise.resolve(null),
-    getProductCategoryIds(ctx, product),
   ]);
   const category = lookups.categoriesById.get(product.categoryId);
   const categories = categoryIds.flatMap((categoryId) => {
@@ -1232,223 +1153,30 @@ export const listProducts = query({
     }
 
     const search = args.search.trim();
-    const results = search
-      ? await (async () => {
-          const scanned = await ctx.db
-            .query("products")
-            .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-              q.eq("organizationId", organizationId).eq("status", args.status),
-            )
-            .take(MAX_FUZZY_SEARCH_SCAN + 1);
-          if (scanned.length > MAX_FUZZY_SEARCH_SCAN) {
-            const matchingCategoryIds = categoryHierarchy
-              .filter((category) => fuzzyScore(category.path, search) !== null)
-              .filter(
-                (category) =>
-                  !categoryIds || categoryIds.has(category.id),
-                )
-                .map((category) => category.id);
-            if (matchingCategoryIds.length > 0) {
-              const cursor = parseCategorySearchCursor(
-                args.paginationOpts.cursor,
-                matchingCategoryIds,
-                normalizeSearch(search),
-                args.status,
-                args.categoryId,
-              );
-              const matchingCategoryIdSet = new Set(cursor.categoryIds);
-              const categoryQuery = () =>
-                ctx.db
-                  .query("products")
-                  .withIndex(
-                    "by_organizationId_and_status_and_categoryId_and_normalizedName",
-                    (q) =>
-                      q
-                        .eq("organizationId", organizationId)
-                        .eq("status", args.status),
-                  )
-                  .filter((q) =>
-                    q.or(
-                      ...matchingCategoryIds.map((categoryId) =>
-                        q.eq(q.field("categoryId"), categoryId),
-                      ),
-                    ),
-                  )
-                  .order("asc");
-              const nameMatches = async () =>
-                await ctx.db
-                  .query("products")
-                  .withSearchIndex("search_name", (q) => {
-                    const productSearch = q
-                      .search("name", search)
-                      .eq("organizationId", organizationId)
-                      .eq("status", args.status);
-                    return productSearch;
-                  })
-                  .take(MAX_FUZZY_SEARCH_SCAN);
-
-              if (!cursor.categoryDone) {
-                const categoryResults = await categoryQuery().paginate({
-                  ...args.paginationOpts,
-                  cursor: cursor.categoryCursor,
-                });
-                if (!categoryResults.isDone) {
-                  return {
-                    ...categoryResults,
-                    continueCursor: JSON.stringify({
-                      ...cursor,
-                      categoryCursor: categoryResults.continueCursor,
-                    }),
-                  };
-                }
-
-                const matchingNames = (await nameMatches()).filter(
-                  (product) =>
-                    (!categoryIds || categoryIds.has(product.categoryId)) &&
-                    !matchingCategoryIdSet.has(product.categoryId),
-                );
-                const remainingItems = Math.max(
-                  args.paginationOpts.numItems - categoryResults.page.length,
-                  0,
-                );
-                const namePage = matchingNames.slice(
-                  cursor.nameOffset,
-                  cursor.nameOffset + remainingItems,
-                );
-                const nextNameOffset = cursor.nameOffset + namePage.length;
-                return {
-                  page: [...categoryResults.page, ...namePage],
-                  isDone: nextNameOffset >= matchingNames.length,
-                  continueCursor: JSON.stringify({
-                    ...cursor,
-                    categoryCursor: categoryResults.continueCursor,
-                    categoryDone: true,
-                    nameOffset: nextNameOffset,
-                  }),
-                };
-              }
-
-              const matchingNames = (await nameMatches()).filter(
-                (product) =>
-                  (!categoryIds || categoryIds.has(product.categoryId)) &&
-                  !matchingCategoryIdSet.has(product.categoryId),
-              );
-              const namePage = matchingNames.slice(
-                cursor.nameOffset,
-                cursor.nameOffset + args.paginationOpts.numItems,
-              );
-              return {
-                page: namePage,
-                isDone:
-                  cursor.nameOffset + namePage.length >= matchingNames.length,
-                continueCursor: JSON.stringify({
-                  ...cursor,
-                  nameOffset: cursor.nameOffset + namePage.length,
-                }),
-              };
-            }
-            return await ctx.db
-              .query("products")
-              .withSearchIndex("search_name", (q) => {
-                const productSearch = q
-                  .search("name", search)
-                  .eq("organizationId", organizationId)
-                  .eq("status", args.status);
-                return productSearch;
-              })
-              .paginate(args.paginationOpts);
-          }
-          if (
-            args.paginationOpts.cursor &&
-            !/^\d+$/.test(args.paginationOpts.cursor)
-          ) {
-            throw new ConvexError("Sideringen er ugyldig");
-          }
-          const matches = (
-            await Promise.all(
-              scanned.map(async (product) => {
-                const productCategoryIds = await getProductCategoryIds(
-                  ctx,
-                  product,
-                );
-                const categoryScores = productCategoryIds.flatMap(
-                  (categoryId) => {
-                    const score = fuzzyScore(
-                      categoryPaths.get(categoryId) ?? "",
-                      search,
-                    );
-                    return score === null ? [] : [score];
-                  },
-                );
-                const productScore = fuzzyScore(product.name, search);
-                const categoryScore = categoryScores.length
-                  ? Math.min(...categoryScores)
-                  : null;
-                return {
-                  product,
-                  matchesCategory:
-                    !categoryIds ||
-                    productCategoryIds.some((categoryId) =>
-                      categoryIds.has(categoryId),
-                    ),
-                  score:
-                    productScore === null
-                      ? categoryScore
-                      : categoryScore === null
-                        ? productScore
-                        : Math.min(productScore, categoryScore),
-                };
-              }),
-            )
-          )
-            .filter(
-              (
-                match,
-              ): match is {
-                product: Doc<"products">;
-                matchesCategory: true;
-                score: number;
-              } => match.score !== null && match.matchesCategory,
-            )
-            .sort((left, right) => left.score - right.score)
-            .map((match) => match.product);
-          const offset = Number(args.paginationOpts.cursor ?? 0);
-          if (!Number.isInteger(offset) || offset < 0) {
-            throw new ConvexError("Søgeresultatet kan ikke fortsættes");
-          }
-          const end = Math.min(
-            offset + args.paginationOpts.numItems,
-            matches.length,
-          );
-          return {
-            page: matches.slice(offset, end),
-            isDone: end === matches.length,
-            continueCursor: String(end),
-          };
-        })()
-      : args.categoryId
-        ? await ctx.db
-            .query("products")
-            .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-              q.eq("organizationId", organizationId).eq("status", args.status),
-            )
-            .filter((q) =>
-              q.or(
-                ...[...(categoryIds ?? [])].map((categoryId) =>
-                  q.eq(q.field("categoryId"), categoryId),
-                ),
-              ),
-            )
-            .paginate(args.paginationOpts)
-        : await ctx.db
-            .query("products")
-            .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-              q.eq("organizationId", organizationId).eq("status", args.status),
-            )
-            .paginate(args.paginationOpts);
-
+    if (search.length > 100) throw new ConvexError("Søgningen er for lang");
+    const candidates = await ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId).eq("status", args.status),
+      )
+      .paginate(catalogPaginationOptions(args.paginationOpts));
+    const categorizedProducts = await Promise.all(
+      candidates.page.map(async (product) => ({
+        product,
+        memberships: await getProductCategoryIds(ctx, product),
+      })),
+    );
+    const matches = categorizedProducts.filter(({ product, memberships }) => {
+      if (categoryIds && !memberships.some((id) => categoryIds.has(id))) {
+        return false;
+      }
+      return !search || fuzzyScore(product.name, search) !== null ||
+        memberships.some((id) =>
+          fuzzyScore(categoryPaths.get(id) ?? "", search) !== null,
+        );
+    });
     const defaultUnitIds = [
-      ...new Set(results.page.map((product) => product.defaultUnitId)),
+      ...new Set(matches.map(({ product }) => product.defaultUnitId)),
     ];
     const defaultUnits = await Promise.all(
       defaultUnitIds.map((unitId) => ctx.db.get("units", unitId)),
@@ -1463,13 +1191,31 @@ export const listProducts = query({
     const lookups = { categoriesById, defaultUnitsById };
 
     return {
-      ...results,
+      ...candidates,
       page: await Promise.all(
-        results.page.map((product) =>
-          hydrateCatalogProduct(ctx, product, lookups),
+        matches.map(({ product, memberships }) =>
+          hydrateCatalogProduct(ctx, product, lookups, memberships),
         ),
       ),
     };
+  },
+});
+
+export const listActiveProductsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(activeProductCatalogValidator),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganization(ctx);
+    return await listActiveProductPage(ctx, organizationId, args.paginationOpts);
+  },
+});
+
+export const listActiveProductSearchOptionsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(activeProductSearchOptionValidator),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireOrganization(ctx);
+    return await loadActiveProductSearchOptionsPage(ctx, organizationId, args.paginationOpts);
   },
 });
 
@@ -3372,6 +3118,8 @@ export const setProductImage = mutation({
     }
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (!metadata) throw new ConvexError("Billeduploaden blev ikke fundet");
+    await claimStorageForOrganization(ctx, organizationId, args.storageId);
+    await preserveStorageOwnership(ctx, organizationId, product.imageStorageId);
     const attachedProduct = await ctx.db
       .query("products")
       .withIndex("by_imageStorageId", (q) =>
@@ -3391,9 +3139,6 @@ export const setProductImage = mutation({
       );
     }
 
-    if (product.imageStorageId && product.imageStorageId !== args.storageId) {
-      await ctx.storage.delete(product.imageStorageId);
-    }
     await ctx.db.patch("products", product._id, {
       imageStorageId: args.storageId,
       updatedAt: Date.now(),
@@ -3419,7 +3164,7 @@ export const removeProductImage = mutation({
       throw new ConvexError("Produktet blev ikke fundet");
     }
     if (product.imageStorageId) {
-      await ctx.storage.delete(product.imageStorageId);
+      await preserveStorageOwnership(ctx, organizationId, product.imageStorageId);
       await ctx.db.patch("products", product._id, {
         imageStorageId: undefined,
         updatedAt: Date.now(),

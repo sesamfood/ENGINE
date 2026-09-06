@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
-    "@better-auth/api-key": "1.6.15",
+    "@better-auth/api-key": "1.6.30",
     "@convex-dev/better-auth": "^0.12.5",
     "@convex-dev/migrations": "0.3.6",
     "@convex-dev/presence": "0.4.0",
@@ -26,7 +26,7 @@
     "@opentelemetry/resources": "^2.11.0",
     "@opentelemetry/sdk-logs": "^0.222.0",
     "@scalar/nextjs-api-reference": "0.11.16",
-    "better-auth": "1.6.15",
+    "better-auth": "1.6.30",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -35,11 +35,10 @@
     "fflate": "^0.8.3",
     "jose": "6.2.3",
     "lucide-react": "^1.24.0",
-    "next": "16.2.10",
+    "next": "16.2.12",
     "next-themes": "^0.4.6",
     "pdf-lib": "^1.17.1",
     "posthog-js": "^1.423.0",
-    "posthog-node": "^5.51.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "3.8.0",
@@ -57,7 +56,7 @@
     "@types/react-dom": "^19",
     "convex-test": "^0.0.54",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"
@@ -69,5 +68,12 @@
   "trustedDependencies": [
     "sharp",
     "unrs-resolver"
-  ]
+  ],
+  "overrides": {
+    "sharp": "0.35.4",
+    "postcss": "8.5.28"
+  },
+  "patchedDependencies": {
+    "@convex-dev/better-auth@0.12.5": "patches/@convex-dev%2Fbetter-auth@0.12.5.patch"
+  }
 }

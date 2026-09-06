@@ -328,6 +328,16 @@ export function ProductCatalog() {
     { initialNumItems: 24 },
   );
 
+  const [requestedPage, setRequestedPage] = useState({ search: querySearch, status, count: 24 });
+  const requestedResults = requestedPage.search === querySearch && requestedPage.status === status
+    ? requestedPage.count
+    : 24;
+  useEffect(() => {
+    if (paginationStatus === "CanLoadMore" && results.length < requestedResults) {
+      loadMore(24);
+    }
+  }, [loadMore, paginationStatus, requestedResults, results.length]);
+
   useEffect(() => {
     if (pendingSearch.current === search) {
       pendingSearch.current = null;
@@ -389,7 +399,8 @@ export function ProductCatalog() {
     }
   }
 
-  const loading = paginationStatus === "LoadingFirstPage";
+  const loading = paginationStatus === "LoadingFirstPage" ||
+    (results.length === 0 && paginationStatus !== "Exhausted");
   const currentResults = results as CatalogProduct[];
 
   useEffect(() => {
@@ -630,7 +641,7 @@ export function ProductCatalog() {
             size="lg"
             className="min-h-11 px-5"
             disabled={paginationStatus === "LoadingMore"}
-            onClick={() => loadMore(24)}
+            onClick={() => setRequestedPage({ search: querySearch, status, count: results.length + 24 })}
           >
             {paginationStatus === "LoadingMore" ? (
               <Spinner data-icon="inline-start" />

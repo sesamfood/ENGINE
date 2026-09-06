@@ -153,6 +153,11 @@ export default defineSchema({
     ])
     .index("by_expiresAt", ["expiresAt"]),
 
+  storageOwners: defineTable({
+    organizationId: v.string(),
+    storageId: v.id("_storage"),
+  }).index("by_storageId", ["storageId"]),
+
   organizationAssets: defineTable({
     organizationId: v.string(),
     logoStorageId: v.optional(v.id("_storage")),
@@ -303,6 +308,7 @@ export default defineSchema({
     dayStartRerollTimeZone: v.optional(v.string()),
     dayStartRerollRetryCount: v.optional(v.number()),
     dayStartRerollError: v.optional(v.string()),
+    dailyHistoryFrom: v.optional(v.number()),
     // Keep the latest reconciled day hash; replace by dayStart.
     reconcileHashes: v.optional(
       v.array(v.object({ dayStart: v.number(), hash: v.string() })),
@@ -1040,6 +1046,10 @@ export default defineSchema({
     lastEmployeeCompanyId: v.optional(v.string()),
     lastShiftAttemptAt: v.optional(v.number()),
     lastShiftSuccessAt: v.optional(v.number()),
+    shiftCoverageFrom: v.optional(v.number()),
+    shiftCoverageThrough: v.optional(v.number()),
+    shiftCoverageCompanyId: v.optional(v.string()),
+    shiftCoverageTimeZone: v.optional(v.string()),
     lastError: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),

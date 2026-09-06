@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import posthog from "posthog-js";
 import { useMutation, useQuery } from "convex/react";
@@ -234,14 +236,23 @@ function WasteUndoControls({
 
 export function WasteRegistration() {
   const { locationId, locations } = useWasteContext();
-  const catalog = useQuery(
-    api.waste.listCatalog,
+  const catalog = useCompleteCatalog(
+    api.waste.listCatalogPage,
     locationId ? { locationId } : "skip",
   );
-  const state = useQuery(
+  const viewSettings = useQuery(
     api.waste.getViewState,
+    locationId ? { locationId, omitProducts: true } : "skip",
+  );
+  const productViewState = useCompleteCatalog(
+    api.waste.listProductViewStatePage,
     locationId ? { locationId } : "skip",
   );
+  const state = useMemo(() => viewSettings && productViewState ? {
+    settings: viewSettings.settings,
+    rankings: productViewState.flatMap((product) => product.ranking ? [product.ranking] : []),
+    configs: productViewState.flatMap((product) => product.config ? [product.config] : []),
+  } : undefined, [productViewState, viewSettings]);
   const registerWaste = useMutation(api.waste.registerWaste);
   const undoWaste = useMutation(api.waste.undoWasteRegistration);
   const setPinned = useMutation(api.waste.setPinned);
