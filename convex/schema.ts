@@ -173,6 +173,11 @@ export default defineSchema({
     token: v.string(),
     companyId: v.number(),
     enabled: v.boolean(),
+    stockSyncEnabled: v.optional(v.boolean()),
+    stockRefundsToWaste: v.optional(v.boolean()),
+    stockSyncStartedAt: v.optional(v.number()),
+    stockSyncHistoryStartAt: v.optional(v.number()),
+    stockSyncSinceLastCount: v.optional(v.boolean()),
     connectedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
@@ -198,6 +203,53 @@ export default defineSchema({
     "organizationId",
     "locationId",
   ]),
+
+  onlinePosStockSyncStatus: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    runToken: v.string(),
+    activationAt: v.number(),
+    state: v.union(v.literal("running"), v.literal("idle"), v.literal("error")),
+    updatedAt: v.number(),
+    lastSuccessAt: v.optional(v.number()),
+    syncedThroughAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    unmappedQuantity: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  salesStockApplications: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    source: v.literal("onlinePos"),
+    connectionId: v.id("onlinePosLocationIntegrations"),
+    externalId: v.string(),
+    dayStart: v.number(),
+    orderNumber: v.number(),
+    department: v.string(),
+    fingerprint: v.string(),
+    activationAt: v.number(),
+    unmappedQuantity: v.number(),
+    wasteRegistrationIds: v.optional(v.array(v.id("wasteRegistrations"))),
+    entries: v.array(v.object({
+      isRefund: v.optional(v.boolean()),
+      refundToWaste: v.optional(v.boolean()),
+      externalId: v.string(),
+      occurredAt: v.number(),
+      productId: v.id("products"),
+      unitId: v.id("units"),
+      quantity: v.number(),
+      eligible: v.boolean(),
+    })),
+    applied: v.array(v.object({
+      productId: v.id("products"),
+      unitId: v.id("units"),
+      quantity: v.number(),
+      countedAt: v.union(v.number(), v.null()),
+    })),
+  })
+    .index("by_organizationId_and_locationId_and_externalId", ["organizationId", "locationId", "externalId"])
+    .index("by_organizationId_and_locationId_and_dayStart", ["organizationId", "locationId", "dayStart"])
+    .index("by_dayStart", ["dayStart"]),
 
   onlinePosProductMappings: defineTable({
     organizationId: v.string(),
@@ -1441,7 +1493,7 @@ export default defineSchema({
     registeredAt: v.number(),
     registeredBy: v.string(),
     registeredByName: v.string(),
-    source: v.union(v.literal("shortcut"), v.literal("custom")),
+    source: v.union(v.literal("shortcut"), v.literal("custom"), v.literal("onlinePos")),
     status: v.union(v.literal("active"), v.literal("voided")),
     activeIn30Days: v.boolean(),
     activeIn90Days: v.boolean(),
@@ -1452,6 +1504,7 @@ export default defineSchema({
     voidedByName: v.optional(v.string()),
     dashboardSummaryTimeZone: v.optional(v.string()),
   })
+    .index("by_org_location_source_time", ["organizationId", "locationId", "source", "registeredAt"])
     .index("by_org_and_time", ["organizationId", "registeredAt"])
     .index("by_org_location_time", [
       "organizationId",
@@ -1893,9 +1946,12 @@ export default defineSchema({
     productId: v.id("products"),
     productName: v.string(),
     defaultUnitName: v.string(),
+    defaultUnitId: v.optional(v.id("units")),
     expectedQuantity: v.number(),
     countedQuantity: v.number(),
     expectedSinceAt: v.number(),
+    onlinePosStockAccounting: v.optional(v.boolean()),
+    onlinePosAppliedSalesQuantity: v.optional(v.number()),
   }).index("by_organizationId_and_countId", ["organizationId", "countId"]),
 
   locationStock: defineTable({
@@ -1905,6 +1961,7 @@ export default defineSchema({
     quantity: v.number(),
     updatedAt: v.number(),
     lastCountedAt: v.optional(v.number()),
+    onlinePosSalesQuantity: v.optional(v.number()),
   })
     .index("by_organizationId_and_locationId_and_productId", [
       "organizationId",

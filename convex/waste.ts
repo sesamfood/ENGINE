@@ -118,7 +118,7 @@ const reportRowValidator = v.object({
   defaultQuantity: v.number(),
   registeredAt: v.number(),
   registeredByName: v.string(),
-  source: sourceValidator,
+  source: v.union(sourceValidator, v.literal("onlinePos")),
   status: statusValidator,
   voidedAt: v.union(v.number(), v.null()),
   voidedByName: v.union(v.string(), v.null()),
@@ -512,9 +512,9 @@ async function addRegistrationStats(
   if (currentProduct) {
     await ctx.db.patch("wasteProductStats", currentProduct._id, {
       allTimeCount: currentProduct.allTimeCount + 1,
-      count30Days: currentProduct.count30Days + 1,
-      count90Days: currentProduct.count90Days + 1,
-      lastRegisteredAt: registration.registeredAt,
+      count30Days: currentProduct.count30Days + Number(registration.activeIn30Days),
+      count90Days: currentProduct.count90Days + Number(registration.activeIn90Days),
+      lastRegisteredAt: Math.max(currentProduct.lastRegisteredAt, registration.registeredAt),
     });
   } else {
     await ctx.db.insert("wasteProductStats", {
@@ -522,8 +522,8 @@ async function addRegistrationStats(
       locationId: registration.locationId,
       productId: registration.productId,
       allTimeCount: 1,
-      count30Days: 1,
-      count90Days: 1,
+      count30Days: Number(registration.activeIn30Days),
+      count90Days: Number(registration.activeIn90Days),
       lastRegisteredAt: registration.registeredAt,
       topAllTime: [],
       top30Days: [],
@@ -533,9 +533,9 @@ async function addRegistrationStats(
   if (currentAmount) {
     await ctx.db.patch("wasteAmountStats", currentAmount._id, {
       allTimeCount: currentAmount.allTimeCount + 1,
-      count30Days: currentAmount.count30Days + 1,
-      count90Days: currentAmount.count90Days + 1,
-      lastRegisteredAt: registration.registeredAt,
+      count30Days: currentAmount.count30Days + Number(registration.activeIn30Days),
+      count90Days: currentAmount.count90Days + Number(registration.activeIn90Days),
+      lastRegisteredAt: Math.max(currentAmount.lastRegisteredAt, registration.registeredAt),
     });
   } else {
     await ctx.db.insert("wasteAmountStats", {
@@ -546,8 +546,8 @@ async function addRegistrationStats(
       quantity: registration.quantity,
       quantityKey: registration.quantityKey,
       allTimeCount: 1,
-      count30Days: 1,
-      count90Days: 1,
+      count30Days: Number(registration.activeIn30Days),
+      count90Days: Number(registration.activeIn90Days),
       lastRegisteredAt: registration.registeredAt,
     });
   }
@@ -557,9 +557,9 @@ async function addRegistrationStats(
       currentOrganizationProduct._id,
       {
         allTimeCount: currentOrganizationProduct.allTimeCount + 1,
-        count30Days: currentOrganizationProduct.count30Days + 1,
-        count90Days: currentOrganizationProduct.count90Days + 1,
-        lastRegisteredAt: registration.registeredAt,
+        count30Days: currentOrganizationProduct.count30Days + Number(registration.activeIn30Days),
+        count90Days: currentOrganizationProduct.count90Days + Number(registration.activeIn90Days),
+        lastRegisteredAt: Math.max(currentOrganizationProduct.lastRegisteredAt, registration.registeredAt),
       },
     );
   } else {
@@ -567,8 +567,8 @@ async function addRegistrationStats(
       organizationId: registration.organizationId,
       productId: registration.productId,
       allTimeCount: 1,
-      count30Days: 1,
-      count90Days: 1,
+      count30Days: Number(registration.activeIn30Days),
+      count90Days: Number(registration.activeIn90Days),
       lastRegisteredAt: registration.registeredAt,
       topAllTime: [],
       top30Days: [],
@@ -581,9 +581,9 @@ async function addRegistrationStats(
       currentOrganizationAmount._id,
       {
         allTimeCount: currentOrganizationAmount.allTimeCount + 1,
-        count30Days: currentOrganizationAmount.count30Days + 1,
-        count90Days: currentOrganizationAmount.count90Days + 1,
-        lastRegisteredAt: registration.registeredAt,
+        count30Days: currentOrganizationAmount.count30Days + Number(registration.activeIn30Days),
+        count90Days: currentOrganizationAmount.count90Days + Number(registration.activeIn90Days),
+        lastRegisteredAt: Math.max(currentOrganizationAmount.lastRegisteredAt, registration.registeredAt),
       },
     );
   } else {
@@ -594,8 +594,8 @@ async function addRegistrationStats(
       quantity: registration.quantity,
       quantityKey: registration.quantityKey,
       allTimeCount: 1,
-      count30Days: 1,
-      count90Days: 1,
+      count30Days: Number(registration.activeIn30Days),
+      count90Days: Number(registration.activeIn90Days),
       lastRegisteredAt: registration.registeredAt,
     });
   }
@@ -1150,6 +1150,77 @@ export const getViewState = query({
   },
 });
 
+// Stock changes are applied by the sales worker in the same transaction.
+export async function reconcileOnlinePosWaste(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+  previous: Doc<"wasteRegistrations">[],
+  refunds: Array<{ productId: Id<"products">; quantity: number; registeredAt: number }>,
+) {
+  const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
+  const now = Date.now();
+  const ids: Id<"wasteRegistrations">[] = [];
+  const remaining = new Map(previous.map(row => [`${row.productId}:${row.registeredAt}`, row]));
+  for (const refund of refunds) {
+    if (refund.quantity <= 0) continue;
+    const [product, location] = await Promise.all([
+      ctx.db.get("products", refund.productId),
+      ctx.db.get("locations", locationId),
+    ]);
+    if (product?.organizationId !== organizationId || location?.organizationId !== organizationId)
+      throw new ConvexError("Refunderingens Produkt eller Lokation blev ikke fundet");
+    const key = `${refund.productId}:${refund.registeredAt}`;
+    const existing = remaining.get(key);
+    if (existing?.status === "active" && existing.defaultUnitId === product.defaultUnitId && existing.defaultQuantity === refund.quantity) {
+      ids.push(existing._id);
+      remaining.delete(key);
+      continue;
+    }
+    const unit = await ctx.db.get("units", product.defaultUnitId);
+    if (unit?.organizationId !== organizationId) throw new ConvexError("Refunderingens lagerenhed blev ikke fundet");
+    const registrationId = await ctx.db.insert("wasteRegistrations", {
+      organizationId, locationId, locationName: location.name,
+      productId: product._id, productName: product.name,
+      unitId: unit._id, unitName: unit.name,
+      quantity: refund.quantity, quantityKey: quantityKey(refund.quantity),
+      factorToDefault: 1, defaultUnitId: unit._id, defaultUnitName: unit.name,
+      defaultQuantity: refund.quantity, registeredAt: refund.registeredAt,
+      registeredBy: "onlinePos", registeredByName: "OnlinePOS",
+      source: "onlinePos", status: "active",
+      activeIn30Days: refund.registeredAt + DAYS_30_MS > now,
+      activeIn90Days: refund.registeredAt + DAYS_90_MS > now,
+      reportSummaryApplied: true, dashboardSummaryTimeZone: summaryTimeZone,
+    });
+    const registration = (await ctx.db.get("wasteRegistrations", registrationId))!;
+    await adjustReportSummary(ctx, registration, 1);
+    await reconcileDashboardSummary(ctx, "waste", null, registration, summaryTimeZone);
+    await addRegistrationStats(ctx, registration);
+    if (registration.activeIn30Days)
+      await ctx.scheduler.runAt(refund.registeredAt + DAYS_30_MS, internal.waste.expireRegistrationFrom30DayStats, { registrationId });
+    if (registration.activeIn90Days)
+      await ctx.scheduler.runAt(refund.registeredAt + DAYS_90_MS, internal.waste.expireRegistrationFrom90DayStats, { registrationId });
+    ids.push(registrationId);
+  }
+  for (const registration of remaining.values()) {
+    if (registration.status !== "active") continue;
+    const next = {
+      ...registration, status: "voided" as const,
+      activeIn30Days: false, activeIn90Days: false,
+      voidedAt: now, voidedBy: "onlinePos", voidedByName: "OnlinePOS",
+      reportSummaryApplied: true, dashboardSummaryTimeZone: summaryTimeZone,
+    };
+    await ctx.db.replace(registration._id, next);
+    if (registration.reportSummaryApplied) await adjustReportSummary(ctx, registration, -1);
+    await reconcileDashboardSummary(ctx, "waste", registration, next, summaryTimeZone);
+    const periods: PopularityPeriod[] = ["allTime"];
+    if (registration.activeIn30Days) periods.push("30Days");
+    if (registration.activeIn90Days) periods.push("90Days");
+    await decrementStats(ctx, registration, periods, true);
+  }
+  return ids;
+}
+
 export const registerWaste = mutation({
   args: {
     locationId: v.id("locations"),
@@ -1462,6 +1533,9 @@ async function voidRegistration(
     throw new ConvexError("Registreringen blev ikke fundet");
   }
   requireLocationAccess(auth, registration.locationId);
+  if (registration.source === "onlinePos") {
+    throw new ConvexError("Ret refunderingen i OnlinePOS. Waste opdateres automatisk ved næste synkronisering");
+  }
   if (registration.status === "voided") {
     throw new ConvexError("Registreringen er allerede annulleret");
   }

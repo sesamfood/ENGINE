@@ -2064,6 +2064,7 @@ export async function updateProductWithAuth(
         quantity: normalizeStock(
           stock.quantity * oldDefaultUnit!.factorToDefault,
         ),
+        onlinePosSalesQuantity: stock.onlinePosSalesQuantity === undefined ? undefined : normalizeStock(stock.onlinePosSalesQuantity * oldDefaultUnit!.factorToDefault),
         updatedAt,
       });
     }
@@ -2406,6 +2407,7 @@ export const importProduct = mutation({
       for (const stock of stockRows) {
         await ctx.db.patch("locationStock", stock._id, {
           quantity: normalizeStock(stock.quantity * conversion!),
+          onlinePosSalesQuantity: stock.onlinePosSalesQuantity === undefined ? undefined : normalizeStock(stock.onlinePosSalesQuantity * conversion!),
           updatedAt,
         });
       }

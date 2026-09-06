@@ -402,7 +402,7 @@ export function CountSettings() {
           ) : (
             sourceSettings.locations.map((location) => {
               const draftSource = draftSources[location.id];
-              const selectedSource = draftSource ?? location.effectiveSource;
+              const selectedSource = location.stockSyncEnabled ? "onlinePos" : draftSource ?? location.effectiveSource;
               const hasDraft = draftSource !== undefined;
               const isSaving = savingSource === location.id;
               const onlinePosConnected = location.connected.onlinePos;
@@ -425,17 +425,18 @@ export function CountSettings() {
                       </div>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {location.savedSource
+                      {location.stockSyncEnabled ? "OnlinePOS bruges til lagersynkronisering" : location.savedSource
                         ? `Gemt: ${salesSourceOptions.find((option) => option.value === location.savedSource)?.label ?? location.savedSource}`
                         : "Standardvalg endnu ikke gemt"}
                     </div>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <Field className="min-w-0 flex-1">
+                    <Field className="min-w-0 flex-1" data-disabled={location.stockSyncEnabled}>
                       <FieldLabel htmlFor={`count-sales-source-${location.id}`}>
                         Salgskilde
                       </FieldLabel>
                       <Select
+                        disabled={location.stockSyncEnabled}
                         items={salesSourceOptions}
                         value={selectedSource}
                         onValueChange={(value) => {
@@ -470,7 +471,7 @@ export function CountSettings() {
                     <Button
                       type="button"
                       className="min-h-11 sm:shrink-0"
-                      disabled={!hasDraft || isSaving}
+                      disabled={location.stockSyncEnabled || !hasDraft || isSaving}
                       onClick={() => void saveLocationSource(location.id, selectedSource)}
                     >
                       {isSaving ? <Spinner data-icon="inline-start" /> : null}

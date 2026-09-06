@@ -259,43 +259,30 @@ export async function requestRawSalesV20(
   from: number,
   to: number,
 ): Promise<JsonValue[]> {
-  const body = new URLSearchParams({
-    from: String(Math.floor(from / 1000)),
-    to: String(Math.floor(to / 1000)),
-    map_to_koncern: "true",
-  });
-  let response: Response;
-  try {
-    response = await fetch(`${ONLINE_POS_API_URL}/exportSales/v20`, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        token: settings.token,
-        firmaid: String(settings.companyId),
-      },
-      body,
-    });
-  } catch {
-    throw new ConvexError("OnlinePOS kunne ikke kontaktes");
-  }
-  if (!response.ok) {
-    throw new ConvexError(`OnlinePOS svarede med status ${response.status}`);
-  }
-
-  let rawPayload: unknown;
-  try {
-    rawPayload = await response.json();
-  } catch {
-    throw new ConvexError("OnlinePOS returnerede et ugyldigt svar");
-  }
-  const payload = object(rawPayload);
-  if (!Array.isArray(payload?.sales)) {
+  const payload = object(
+    await requestOnlinePos(
+      `/exportSales/v20/${Math.floor(from / 1000)}`,
+      settings,
+      { method: "GET", cache: "no-store" },
+    ),
+  );
+  if (!Array.isArray(payload?.data)) {
     throw new ConvexError("OnlinePOS returnerede en ugyldig rå salgsliste");
   }
 
-  const lines = payload.sales
+  // The dated endpoint includes later days; only display the selected day.
+  const lines = payload.data
+    .filter((value) => {
+      const datetime = string(object(value)?.datetime);
+      const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(datetime);
+      const timestamp = match
+        ? saleTimestamp(`${match[3]}.${match[2]}.${match[1]}`, match[4], FALLBACK_TIME_ZONE)
+        : null;
+      if (timestamp === null) {
+        throw new ConvexError("OnlinePOS returnerede en rå salgslinje med ugyldig dato");
+      }
+      return timestamp >= from && timestamp < to;
+    })
     .slice(0, 5)
     .map((line) => truncateRawJson(line, { nodes: 0 }));
   if (JSON.stringify(lines).length > MAX_RAW_SALE_LINES_JSON_LENGTH) {
