@@ -1333,6 +1333,8 @@ export const getMetrics = query({
     const { organizationId } = auth;
     if (
       args.widgets.length > MAX_METRIC_BATCH ||
+      (args.widgets.length > 1 &&
+        args.widgets.some((widget) => widget.metric.kind === "custom")) ||
       new Set(args.widgets.map((widget) => widget.key)).size !==
         args.widgets.length
     ) {

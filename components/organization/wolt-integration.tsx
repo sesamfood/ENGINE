@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   CircleAlertIcon,
@@ -710,8 +712,8 @@ export function WoltIntegration() {
       ? { locationId: observedLocationFilter === "all" ? null : observedLocationFilter }
       : "skip",
   );
-  const products = useQuery(
-    api.catalog.listActiveProductSearchOptions,
+  const products = useCompleteCatalog(
+    api.catalog.listActiveProductSearchOptionsPage,
     canManage && integrationOpen ? {} : "skip",
   );
   const beginSsio = useAction(api.wolt.beginSsio);

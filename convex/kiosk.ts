@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { hasPermission } from "../lib/auth-permissions";
 import { kioskDestinations } from "../lib/kiosk";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { createAuth, getDatabaseAdapter } from "./auth";
 import {
@@ -95,6 +95,15 @@ function validatePassword(password: string) {
   }
 }
 
+async function requireKioskAccountManager(ctx: QueryCtx | MutationCtx) {
+  const auth = await requireMemberManager(ctx);
+  requireAllLocationAccess(auth);
+  if (!hasPermission(auth.role, auth.permissions, "roles.manage")) {
+    throw new ConvexError("Du har ikke adgang til at administrere roller");
+  }
+  return auth;
+}
+
 async function requireLocation(
   ctx: MutationCtx,
   organizationId: string,
@@ -125,45 +134,6 @@ async function requireKioskMember(
   }
   return member;
 }
-
-export const getRuntimeContext = query({
-  args: {},
-  returns: v.object({
-    isKioskAccount: v.boolean(),
-    kioskModeEnabled: v.boolean(),
-    locationId: v.union(v.id("locations"), v.null()),
-    locationName: v.union(v.string(), v.null()),
-    role: v.string(),
-    settings: v.union(settingsValidator, v.null()),
-  }),
-  handler: async (ctx) => {
-    const auth = await requireOrganization(ctx);
-    const settings = await ctx.db
-      .query("kioskSettings")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .unique();
-    const location = auth.kioskLocationId
-      ? await ctx.db.get("locations", auth.kioskLocationId)
-      : null;
-    return {
-      isKioskAccount: auth.isKioskAccount,
-      kioskModeEnabled: auth.kioskModeEnabled,
-      locationId: location?._id ?? null,
-      locationName: location?.name ?? null,
-      role: auth.role,
-      settings: settings
-        ? {
-            enabledPages: settings.enabledPages,
-            homePage: settings.homePage,
-            inactivitySeconds: settings.inactivitySeconds,
-            updatedAt: settings.updatedAt,
-          }
-        : null,
-    };
-  },
-});
 
 export const getAdminSettings = query({
   args: {},
@@ -210,7 +180,7 @@ export const listAccounts = query({
   args: {},
   returns: v.array(accountValidator),
   handler: async (ctx) => {
-    const { organizationId } = await requireMemberManager(ctx);
+    const { organizationId } = await requireKioskAccountManager(ctx);
     const adapter = getDatabaseAdapter(ctx);
     const members = await adapter.findMany<Member>({
       model: "member",
@@ -263,12 +233,8 @@ export const createAccount = mutation({
   },
   returns: v.object({ memberId: v.string(), userId: v.string() }),
   handler: async (ctx, args) => {
-    const auth = await requireMemberManager(ctx);
+    const auth = await requireKioskAccountManager(ctx);
     const { organizationId } = auth;
-    requireAllLocationAccess(auth);
-    if (!hasPermission(auth.role, auth.permissions, "roles.manage")) {
-      throw new ConvexError("Du har ikke adgang til at administrere roller");
-    }
     const settings = await ctx.db
       .query("kioskSettings")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
@@ -342,9 +308,8 @@ export const updateAccount = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const auth = await requireMemberManager(ctx);
+    const auth = await requireKioskAccountManager(ctx);
     const { organizationId } = auth;
-    requireAllLocationAccess(auth);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     await requireLocation(ctx, organizationId, args.locationId);
     const name = args.name.trim();
@@ -370,7 +335,7 @@ export const setPassword = mutation({
   args: { memberId: v.string(), password: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireMemberManager(ctx);
+    const { organizationId } = await requireKioskAccountManager(ctx);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     validatePassword(args.password);
     const password = await (await createAuth(ctx).$context).password.hash(
@@ -392,7 +357,7 @@ export const revokeAccountSessions = mutation({
   args: { memberId: v.string() },
   returns: v.object({ revokedSessions: v.number() }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireMemberManager(ctx);
+    const { organizationId } = await requireKioskAccountManager(ctx);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     const adapter = getDatabaseAdapter(ctx);
     const revokedSessions = await adapter.count({
@@ -414,7 +379,7 @@ export const deleteAccount = mutation({
   args: { memberId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId } = await requireMemberManager(ctx);
+    const { organizationId } = await requireKioskAccountManager(ctx);
     const member = await requireKioskMember(ctx, organizationId, args.memberId);
     const adapter = getDatabaseAdapter(ctx);
     await adapter.deleteMany({

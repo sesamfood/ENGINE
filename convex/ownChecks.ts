@@ -1,3 +1,4 @@
+import { claimStorageForOrganization } from "./lib/storageOwnership";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -331,6 +332,7 @@ async function ensureAttachmentCanBeInserted(
   entryId: Id<"ownCheckEntries">,
   storageId: Id<"_storage">,
 ) {
+  await claimStorageForOrganization(ctx, organizationId, storageId);
   const existing = await ctx.db
     .query("ownCheckAttachments")
     .withIndex("by_storageId", (q) => q.eq("storageId", storageId))

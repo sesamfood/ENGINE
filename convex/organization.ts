@@ -3,6 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
+import { claimStorageForOrganization, preserveStorageOwnership } from "./lib/storageOwnership";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
 import {
   getOrganizationThemeError,
@@ -31,34 +32,6 @@ async function requireValidLogo(ctx: MutationCtx, storageId: Id<"_storage">) {
   }
 }
 
-async function requireUnusedByAnotherOrganization(
-  ctx: MutationCtx,
-  storageId: Id<"_storage">,
-  organizationId: string,
-) {
-  const [squareAsset, wideAsset] = await Promise.all([
-    ctx.db
-      .query("organizationAssets")
-      .withIndex("by_logoStorageId", (query) =>
-        query.eq("logoStorageId", storageId),
-      )
-      .unique(),
-    ctx.db
-      .query("organizationAssets")
-      .withIndex("by_wideLogoStorageId", (query) =>
-        query.eq("wideLogoStorageId", storageId),
-      )
-      .unique(),
-  ]);
-  if (
-    [squareAsset, wideAsset].some(
-      (asset) => asset && asset.organizationId !== organizationId,
-    )
-  ) {
-    throw new ConvexError("Logouploaden blev ikke fundet");
-  }
-}
-
 export const getBranding = query({
   args: {},
   returns: organizationBrandingValidator,
@@ -74,15 +47,6 @@ export const getBranding = query({
       ? await ctx.storage.getUrl(asset.wideLogoStorageId)
       : null;
     return { wideLogoUrl, theme: asset?.theme ?? null };
-  },
-});
-
-export const requestActiveSync = mutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    await requireOrganization(ctx);
-    return null;
   },
 });
 
@@ -142,11 +106,7 @@ export const setLogo = mutation({
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
     await requireValidLogo(ctx, args.storageId);
-    await requireUnusedByAnotherOrganization(
-      ctx,
-      args.storageId,
-      organizationId,
-    );
+    await claimStorageForOrganization(ctx, organizationId, args.storageId);
 
     const logoUrl = await ctx.storage.getUrl(args.storageId);
     if (!logoUrl) throw new ConvexError("Logoet kunne ikke indlæses");
@@ -166,16 +126,7 @@ export const setLogo = mutation({
 
     if (currentAsset) {
       if (currentAsset.logoStorageId !== args.storageId) {
-        if (
-          currentAsset.logoStorageId &&
-          currentAsset.logoStorageId !== currentAsset.wideLogoStorageId
-        ) {
-          const oldLogo = await ctx.db.system.get(
-            "_storage",
-            currentAsset.logoStorageId,
-          );
-          if (oldLogo) await ctx.storage.delete(currentAsset.logoStorageId);
-        }
+        await preserveStorageOwnership(ctx, organizationId, currentAsset.logoStorageId);
         await ctx.db.patch("organizationAssets", currentAsset._id, {
           logoStorageId: args.storageId,
         });
@@ -209,16 +160,7 @@ export const removeLogo = mutation({
       )
       .unique();
     if (currentAsset) {
-      if (
-        currentAsset.logoStorageId &&
-        currentAsset.logoStorageId !== currentAsset.wideLogoStorageId
-      ) {
-        const logo = await ctx.db.system.get(
-          "_storage",
-          currentAsset.logoStorageId,
-        );
-        if (logo) await ctx.storage.delete(currentAsset.logoStorageId);
-      }
+      await preserveStorageOwnership(ctx, organizationId, currentAsset.logoStorageId);
       if (currentAsset.wideLogoStorageId || currentAsset.theme) {
         await ctx.db.patch("organizationAssets", currentAsset._id, {
           logoStorageId: undefined,
@@ -238,11 +180,7 @@ export const setWideLogo = mutation({
   handler: async (ctx, args) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
     await requireValidLogo(ctx, args.storageId);
-    await requireUnusedByAnotherOrganization(
-      ctx,
-      args.storageId,
-      organizationId,
-    );
+    await claimStorageForOrganization(ctx, organizationId, args.storageId);
 
     const logoUrl = await ctx.storage.getUrl(args.storageId);
     if (!logoUrl) throw new ConvexError("Logoet kunne ikke indlæses");
@@ -256,16 +194,7 @@ export const setWideLogo = mutation({
 
     if (currentAsset) {
       if (currentAsset.wideLogoStorageId !== args.storageId) {
-        if (
-          currentAsset.wideLogoStorageId &&
-          currentAsset.wideLogoStorageId !== currentAsset.logoStorageId
-        ) {
-          const oldLogo = await ctx.db.system.get(
-            "_storage",
-            currentAsset.wideLogoStorageId,
-          );
-          if (oldLogo) await ctx.storage.delete(currentAsset.wideLogoStorageId);
-        }
+        await preserveStorageOwnership(ctx, organizationId, currentAsset.wideLogoStorageId);
         await ctx.db.patch("organizationAssets", currentAsset._id, {
           wideLogoStorageId: args.storageId,
         });
@@ -294,16 +223,7 @@ export const removeWideLogo = mutation({
       .unique();
 
     if (currentAsset) {
-      if (
-        currentAsset.wideLogoStorageId &&
-        currentAsset.wideLogoStorageId !== currentAsset.logoStorageId
-      ) {
-        const logo = await ctx.db.system.get(
-          "_storage",
-          currentAsset.wideLogoStorageId,
-        );
-        if (logo) await ctx.storage.delete(currentAsset.wideLogoStorageId);
-      }
+      await preserveStorageOwnership(ctx, organizationId, currentAsset.wideLogoStorageId);
       if (currentAsset.logoStorageId || currentAsset.theme) {
         await ctx.db.patch("organizationAssets", currentAsset._id, {
           wideLogoStorageId: undefined,

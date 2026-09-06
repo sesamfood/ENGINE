@@ -1,3 +1,4 @@
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -5,7 +6,6 @@ import { internalQuery, mutation, query } from "./_generated/server";
 import {
   requireCounter,
   requireLocationAccess,
-  requireLocationManager,
   requireNormalOrganization,
   requireOrganization,
   requirePermission,
@@ -31,6 +31,8 @@ import {
 } from "./lib/locationProducts";
 import {
   activeProductCatalogValidator,
+  catalogPaginationOptions,
+  listActiveProductPage,
   listLocationActiveProductCatalog,
 } from "./lib/productCatalog";
 
@@ -532,6 +534,22 @@ export const getCountQuantities = query({
   },
 });
 
+export const listCatalogPage = query({
+  args: { locationId: v.id("locations"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(activeProductCatalogValidator),
+  handler: async (ctx, args) => {
+    const auth = await requireCounter(ctx, "count.register");
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, auth.organizationId, args.locationId);
+    return await listActiveProductPage(
+      ctx,
+      auth.organizationId,
+      args.paginationOpts,
+      args.locationId,
+    );
+  },
+});
+
 export const listCatalog = query({
   args: { locationId: v.id("locations") },
   returns: v.array(activeProductCatalogValidator),
@@ -544,82 +562,6 @@ export const listCatalog = query({
       auth.organizationId,
       args.locationId,
     );
-  },
-});
-
-export const getCountProductOrder = query({
-  args: { locationId: v.id("locations") },
-  returns: v.array(v.id("products")),
-  handler: async (ctx, args) => {
-    const auth = await requireCounter(ctx, "count.register");
-    const { organizationId } = auth;
-    requireLocationAccess(auth, args.locationId);
-    const location = await requireLocation(
-      ctx,
-      organizationId,
-      args.locationId,
-    );
-    return location.countProductOrder ?? [];
-  },
-});
-
-export const setCountProductOrder = mutation({
-  args: {
-    locationId: v.id("locations"),
-    productIds: v.array(v.id("products")),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireLocationManager(ctx);
-    const { organizationId } = auth;
-    requireLocationAccess(auth, args.locationId);
-    const location = await requireLocation(
-      ctx,
-      organizationId,
-      args.locationId,
-    );
-    const countAreas = await listCountAreas(
-      ctx,
-      organizationId,
-      location._id,
-    );
-    if (countAreas.length > 0) throw new ConvexError("Vælg et Område");
-    if (
-      args.productIds.length > MAX_PRODUCTS ||
-      new Set(args.productIds).size !== args.productIds.length
-    ) {
-      throw new ConvexError("Produktrækkefølgen er ugyldig");
-    }
-    const products = await Promise.all(
-      args.productIds.map((productId) => ctx.db.get("products", productId)),
-    );
-    if (
-      products.some(
-        (product) =>
-          !product ||
-          product.organizationId !== organizationId ||
-          product.status !== "active",
-      )
-    ) {
-      throw new ConvexError("Et produkt blev ikke fundet");
-    }
-    const productAccess = await getLocationProductAccess(
-      ctx,
-      organizationId,
-      location._id,
-    );
-    if (
-      productAccess.kind === "selected" &&
-      args.productIds.some(
-        (productId) => !productAccess.effectiveProductIds.has(productId),
-      )
-    ) {
-      throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
-    }
-    await ctx.db.patch("locations", location._id, {
-      countProductOrder: args.productIds,
-    });
-    return null;
   },
 });
 
@@ -1094,8 +1036,8 @@ export const getWasteReportContext = internalQuery({
       .withIndex("by_organizationId_and_countId", (q) =>
         q.eq("organizationId", auth.organizationId).eq("countId", count._id),
       )
-      .take(MAX_PRODUCTS + 1);
-    if (rows.length > MAX_PRODUCTS) {
+      .take(MAX_COUNT_ITEMS + 1);
+    if (rows.length > MAX_COUNT_ITEMS) {
       throw new ConvexError("Count har for mange produkter");
     }
 
@@ -1115,6 +1057,45 @@ export const getWasteReportContext = internalQuery({
         onlinePosStockAccounting: row.onlinePosStockAccounting,
         onlinePosAppliedSalesQuantity: row.onlinePosAppliedSalesQuantity,
       })),
+    };
+  },
+});
+
+export const listLocationStockPage = query({
+  args: { locationId: v.id("locations"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(locationStockValidator),
+  handler: async (ctx, args) => {
+    const auth = await requireStockViewer(ctx, "count.stock");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, organizationId, args.locationId);
+    const access = await getLocationProductAccess(ctx, organizationId, args.locationId);
+    const result = await ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId).eq("status", "active"),
+      )
+      .paginate(catalogPaginationOptions(args.paginationOpts));
+    const stocks = await Promise.all(result.page.map((product) =>
+      ctx.db
+        .query("locationStock")
+        .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId)
+            .eq("locationId", args.locationId)
+            .eq("productId", product._id),
+        )
+        .unique(),
+    ));
+    const stockByProductId = new Map(stocks.flatMap((stock) =>
+      stock ? [[stock.productId, stock] as const] : [],
+    ));
+    const products = result.page.filter((product) =>
+      access.kind === "all" || access.effectiveProductIds.has(product._id) ||
+      (stockByProductId.get(product._id)?.quantity ?? 0) > 0,
+    );
+    return {
+      ...result,
+      page: await hydrateLocationStock(ctx, organizationId, products, stockByProductId),
     };
   },
 });
@@ -1162,79 +1143,89 @@ export const listLocationStock = query({
               productAccess.effectiveProductIds.has(product._id) ||
               (stockByProductId.get(product._id)?.quantity ?? 0) > 0,
           );
-    const categoryCache = new Map<
-      Id<"categories">,
-      Promise<Doc<"categories"> | null>
-    >();
-    const unitCache = new Map<
-      Id<"units">,
-      Promise<Doc<"units"> | null>
-    >();
-    const loadCategory = (categoryId: Id<"categories">) => {
-      const cached = categoryCache.get(categoryId);
-      if (cached) return cached;
-      const pending = ctx.db.get("categories", categoryId);
-      categoryCache.set(categoryId, pending);
-      return pending;
-    };
-    const loadUnit = (unitId: Id<"units">) => {
-      const cached = unitCache.get(unitId);
-      if (cached) return cached;
-      const pending = ctx.db.get("units", unitId);
-      unitCache.set(unitId, pending);
-      return pending;
-    };
-
-    return await Promise.all(
-      products.map(async (product) => {
-        const stock = stockByProductId.get(product._id);
-        const [category, defaultUnit, imageUrl, productUnits] =
-          await Promise.all([
-            loadCategory(product.categoryId),
-            loadUnit(product.defaultUnitId),
-            product.imageStorageId
-              ? ctx.storage.getUrl(product.imageStorageId)
-              : null,
-            ctx.db
-              .query("productUnits")
-              .withIndex("by_organizationId_and_productId", (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("productId", product._id),
-              )
-              .take(MAX_PRODUCT_UNITS + 1),
-          ]);
-        if (!defaultUnit || defaultUnit.organizationId !== organizationId) {
-          throw new ConvexError("Produktets standardenhed blev ikke fundet");
-        }
-        if (productUnits.length > MAX_PRODUCT_UNITS) {
-          throw new ConvexError("Produktet har for mange enheder");
-        }
-        const units = await Promise.all(
-          productUnits.map((row) => loadUnit(row.unitId)),
-        );
-        return {
-          productId: product._id,
-          productName: product.name,
-          categoryName:
-            category?.organizationId === organizationId ? category.name : null,
-          imageUrl,
-          quantity: stock?.quantity ?? 0,
-          defaultUnitName: defaultUnit.name,
-          units: productUnits.flatMap((row, index) => {
-            const unit = units[index];
-            return unit?.organizationId === organizationId
-              ? [
-                  {
-                    name: unit.name,
-                    factorToDefault: row.factorToDefault,
-                  },
-                ]
-              : [];
-          }),
-          lastCountedAt: stock?.lastCountedAt ?? null,
-        };
-      }),
-    );
+    return await hydrateLocationStock(ctx, organizationId, products, stockByProductId);
   },
 });
+
+
+async function hydrateLocationStock(
+  ctx: QueryCtx,
+  organizationId: string,
+  products: Doc<"products">[],
+  stockByProductId: ReadonlyMap<Id<"products">, Doc<"locationStock">>,
+) {
+  const categoryCache = new Map<
+    Id<"categories">,
+    Promise<Doc<"categories"> | null>
+  >();
+  const unitCache = new Map<
+    Id<"units">,
+    Promise<Doc<"units"> | null>
+  >();
+  const loadCategory = (categoryId: Id<"categories">) => {
+    const cached = categoryCache.get(categoryId);
+    if (cached) return cached;
+    const pending = ctx.db.get("categories", categoryId);
+    categoryCache.set(categoryId, pending);
+    return pending;
+  };
+  const loadUnit = (unitId: Id<"units">) => {
+    const cached = unitCache.get(unitId);
+    if (cached) return cached;
+    const pending = ctx.db.get("units", unitId);
+    unitCache.set(unitId, pending);
+    return pending;
+  };
+
+  return await Promise.all(
+    products.map(async (product) => {
+      const stock = stockByProductId.get(product._id);
+      const [category, defaultUnit, imageUrl, productUnits] =
+        await Promise.all([
+          loadCategory(product.categoryId),
+          loadUnit(product.defaultUnitId),
+          product.imageStorageId
+            ? ctx.storage.getUrl(product.imageStorageId)
+            : null,
+          ctx.db
+            .query("productUnits")
+            .withIndex("by_organizationId_and_productId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("productId", product._id),
+            )
+            .take(MAX_PRODUCT_UNITS + 1),
+        ]);
+      if (!defaultUnit || defaultUnit.organizationId !== organizationId) {
+        throw new ConvexError("Produktets standardenhed blev ikke fundet");
+      }
+      if (productUnits.length > MAX_PRODUCT_UNITS) {
+        throw new ConvexError("Produktet har for mange enheder");
+      }
+      const units = await Promise.all(
+        productUnits.map((row) => loadUnit(row.unitId)),
+      );
+      return {
+        productId: product._id,
+        productName: product.name,
+        categoryName:
+          category?.organizationId === organizationId ? category.name : null,
+        imageUrl,
+        quantity: stock?.quantity ?? 0,
+        defaultUnitName: defaultUnit.name,
+        units: productUnits.flatMap((row, index) => {
+          const unit = units[index];
+          return unit?.organizationId === organizationId
+            ? [
+                {
+                  name: unit.name,
+                  factorToDefault: row.factorToDefault,
+                },
+              ]
+            : [];
+        }),
+        lastCountedAt: stock?.lastCountedAt ?? null,
+      };
+    }),
+  );
+}

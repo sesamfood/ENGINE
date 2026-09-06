@@ -337,9 +337,10 @@ export async function resolveMetricParams(
   }
   const lookupLocations = [
     ...new Map(
-      [...candidateLocations, ...(requestedRows ?? [])].map(
-        (location) => [location._id, location],
-      ),
+      [...candidateLocations, ...(requestedRows ?? [])].map((location) => [
+        location._id,
+        location,
+      ]),
     ).values(),
   ];
 
@@ -535,10 +536,12 @@ export function createMetricParamsResolver(
   organizationId: string,
   scope: DashboardScope,
   now: number,
-  allowedLocationScope: {
-    all: boolean;
-    ids: ReadonlySet<Id<"locations">>;
-  } | undefined,
+  allowedLocationScope:
+    | {
+        all: boolean;
+        ids: ReadonlySet<Id<"locations">>;
+      }
+    | undefined,
   access: {
     granularity: DataGranularity;
     anonymousSeed: string;
@@ -564,7 +567,7 @@ export function createMetricParamsResolver(
   };
 }
 
-function cached<T>(
+export function cached<T>(
   params: DashboardMetricParams,
   key: string,
   load: () => Promise<T>,
@@ -871,27 +874,29 @@ async function woltHealth(
   return await cached(params, "health:wolt", async () => {
     const rows = await Promise.all(
       params.locations.map(async (location) => {
-        const [connection, pending, processing, deadLetter] = await Promise.all([
-          ctx.db
-            .query("woltVenueConnections")
-            .withIndex("by_organizationId_and_locationId", (q) =>
-              q
-                .eq("organizationId", params.organizationId)
-                .eq("locationId", location.id),
-            )
-            .unique(),
-          ...(["pending", "processing", "deadLetter"] as const).map((state) =>
+        const [connection, pending, processing, deadLetter] = await Promise.all(
+          [
             ctx.db
-              .query("woltWebhookEvents")
-              .withIndex("by_organizationId_and_locationId_and_state", (q) =>
+              .query("woltVenueConnections")
+              .withIndex("by_organizationId_and_locationId", (q) =>
                 q
                   .eq("organizationId", params.organizationId)
-                  .eq("locationId", location.id)
-                  .eq("state", state),
+                  .eq("locationId", location.id),
               )
-              .first(),
-          ),
-        ]);
+              .unique(),
+            ...(["pending", "processing", "deadLetter"] as const).map((state) =>
+              ctx.db
+                .query("woltWebhookEvents")
+                .withIndex("by_organizationId_and_locationId_and_state", (q) =>
+                  q
+                    .eq("organizationId", params.organizationId)
+                    .eq("locationId", location.id)
+                    .eq("state", state),
+                )
+                .first(),
+            ),
+          ],
+        );
         const lastSuccessAt = connection?.lastSuccessAt ?? null;
         const hasBacklog = Boolean(pending || processing || deadLetter);
         const configured = Boolean(connection);
@@ -977,17 +982,19 @@ async function integrationFreshness(
       const successes = configured.flatMap((item) =>
         item.lastSuccessAt === null ? [] : [item.lastSuccessAt],
       );
-      return [{
-        locationId,
-        locationName,
-        configured: true,
-        lastSuccessAt:
-          successes.length === configured.length
-            ? Math.min(...successes)
-            : null,
-        stale: configured.some((item) => item.stale),
-        error: configured.some((item) => item.error),
-      }];
+      return [
+        {
+          locationId,
+          locationName,
+          configured: true,
+          lastSuccessAt:
+            successes.length === configured.length
+              ? Math.min(...successes)
+              : null,
+          stale: configured.some((item) => item.stale),
+          error: configured.some((item) => item.error),
+        },
+      ];
     },
   );
   return freshnessFromHealth(params, combined);
@@ -1479,12 +1486,15 @@ async function transferRows(ctx: QueryCtx, params: DashboardMetricParams) {
             )
             .take(MAX_ROWS + 1),
         ]).then(([sent, received]) =>
-          [...new Map([...sent, ...received].map((row) => [row._id, row])).values()]
-            .sort(
-              (left, right) =>
-                left.transferredAt - right.transferredAt ||
-                left._creationTime - right._creationTime,
-            ),
+          [
+            ...new Map(
+              [...sent, ...received].map((row) => [row._id, row]),
+            ).values(),
+          ].sort(
+            (left, right) =>
+              left.transferredAt - right.transferredAt ||
+              left._creationTime - right._creationTime,
+          ),
         )
       : await ctx.db
           .query("transfers")
@@ -1771,31 +1781,98 @@ async function shiftRows(
   });
 }
 
-const scheduledHours: MetricComputer = async (ctx, params) => {
-  const summary = await dashboardSummaryRows(ctx, params, "scheduledShifts");
-  if (summary) {
-    return seriesResult(
-      "hours",
-      summary.rows.map((row) => ({
-        timestamp: row.timestamp,
-        locationId: row.locationId,
-        value: row.value,
-      })),
-      params,
-      { truncated: summary.truncated || undefined },
-    );
+export async function workfeedMetricCoverage(
+  ctx: QueryCtx,
+  params: { organizationId: string; timeZone: string; summaryReady: boolean },
+): Promise<{ from: number; through: number } | null> {
+  const { summaryReady } = params;
+  const [status, settings] = await Promise.all([
+    ctx.db
+      .query("workfeedSyncStatus")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", params.organizationId),
+      )
+      .unique(),
+    ctx.db
+      .query("workfeedIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", params.organizationId),
+      )
+      .unique(),
+  ]);
+  if (status || settings) {
+    let coverageFrom = status?.shiftCoverageFrom;
+    const coverageThrough = status?.shiftCoverageThrough;
+    if (!summaryReady && coverageFrom !== undefined) {
+      // Raw shifts only cover the latest retained snapshot.
+      coverageFrom = Math.max(
+        coverageFrom,
+        Math.floor((status?.lastShiftSuccessAt ?? 0) / DAY_MS) * DAY_MS -
+          30 * DAY_MS,
+      );
+    }
+    // A daily bucket straddling the snapshot edge is incomplete.
+    if (coverageFrom !== undefined && summaryReady) {
+      const start = zonedStart(
+        dateKey(coverageFrom, params.timeZone),
+        params.timeZone,
+      );
+      if (start < coverageFrom)
+        coverageFrom = zonedStart(
+          addDays(dateKey(coverageFrom, params.timeZone), 1),
+          params.timeZone,
+        );
+    }
+    if (
+      coverageFrom === undefined ||
+      coverageThrough === undefined ||
+      status?.shiftCoverageCompanyId !==
+        (settings?.companyId ?? status?.shiftCoverageCompanyId) ||
+      status?.shiftCoverageTimeZone !== params.timeZone
+    ) {
+      throw new ConvexError(
+        "Workfeed-data dækker ikke hele den valgte periode",
+      );
+    }
+    return { from: coverageFrom, through: coverageThrough };
   }
-  const result = await shiftRows(ctx, params);
-  return seriesResult(
+  return null;
+}
+
+const scheduledHours: MetricComputer = async (ctx, params) => {
+  const summaryReady = await dashboardSummaryReady(ctx, params, "scheduledShifts");
+  const coverage = await workfeedMetricCoverage(ctx, { ...params, summaryReady });
+  if (coverage && (params.from < coverage.from || params.to > coverage.through)) {
+    throw new ConvexError("Workfeed-data dækker ikke hele den valgte periode");
+  }
+  const previousAvailable = !coverage || (params.previousFrom >= coverage.from && params.previousTo <= coverage.through);
+  const coveredParams = previousAvailable
+    ? params
+    : { ...params, previousFrom: params.from, previousTo: params.from };
+  const summary = summaryReady
+    ? await dashboardSummaryRows(ctx, coveredParams, "scheduledShifts")
+    : null;
+  const raw = summary ? null : await shiftRows(ctx, coveredParams);
+  const result = seriesResult(
     "hours",
-    result.rows.map((row) => ({
-      timestamp: row.startsAt,
-      locationId: row.locationId,
-      value: Math.max(0, row.endsAt - row.startsAt) / 3_600_000,
-    })),
-    params,
-    { truncated: result.truncated || undefined },
+    summary
+      ? summary.rows.map((row) => ({
+          timestamp: row.timestamp,
+          locationId: row.locationId,
+          value: row.value,
+        }))
+      : (raw?.rows ?? []).map((row) => ({
+          timestamp: row.startsAt,
+          locationId: row.locationId,
+          value: Math.max(0, row.endsAt - row.startsAt) / 3_600_000,
+        })),
+    coveredParams,
+    { truncated: (summary?.truncated ?? raw?.truncated) || undefined },
   );
+  if (!previousAvailable) {
+    for (const series of result.series) series.previousTotal = null;
+  }
+  return result;
 };
 
 const headcountToday: MetricComputer = async (ctx, params) => {
@@ -1954,14 +2031,33 @@ const locationComparison: MetricComputer = async (ctx, params) => {
   };
 };
 
+export async function onlinePosDailyCoverage(
+  ctx: QueryCtx,
+  params: { organizationId: string; locationId: Id<"locations"> },
+): Promise<{ from: number; through: number }> {
+  const status = await ctx.db.query("onlinePosSyncStatus")
+    .withIndex("by_organizationId_and_locationId", (q) =>
+      q.eq("organizationId", params.organizationId).eq("locationId", params.locationId),
+    ).unique();
+  if (status?.dayStartRerollToken) {
+    throw new ConvexError("Salgsdata i den valgte tidszone er ved at blive genopbygget");
+  }
+  return { from: status?.dailyHistoryFrom ?? -Infinity, through: Infinity };
+}
+
 async function salesDailyRows(
   ctx: QueryCtx,
   params: DashboardMetricParams,
-): Promise<{ rows: SalesDailyMetricRow[]; truncated: boolean }> {
+): Promise<{
+  rows: SalesDailyMetricRow[];
+  truncated: boolean;
+  previousAvailable: boolean;
+}> {
   const source = params.salesSource ?? "onlinePos";
   return await cached(params, `sales-daily:${source}`, async () => {
     const rows: SalesDailyMetricRow[] = [];
     let truncated = false;
+    let previousAvailable = true;
     for (const provider of salesSourceProviders(source)) {
       for (const location of params.locations) {
         const remaining = MAX_ROWS - rows.length;
@@ -1971,16 +2067,25 @@ async function salesDailyRows(
         }
         let fetchedLength = 0;
         if (provider === "onlinepos") {
+          const coverage = await onlinePosDailyCoverage(ctx, { organizationId: params.organizationId, locationId: location.id });
+          if (params.from < coverage.from) {
+            throw new ConvexError("Salgsdata i den valgte tidszone dækker ikke hele perioden");
+          }
+          if (params.previousFrom < coverage.from) previousAvailable = false;
           const locationRows = await ctx.db
             .query("salesDaily")
-            .withIndex(
-              "by_organizationId_and_locationId_and_dayStart",
-              (q) =>
-                q
-                  .eq("organizationId", params.organizationId)
-                  .eq("locationId", location.id)
-                  .gte("dayStart", params.previousFrom)
-                  .lt("dayStart", params.to),
+            .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+              q
+                .eq("organizationId", params.organizationId)
+                .eq("locationId", location.id)
+                .gte(
+                  "dayStart",
+                  Math.max(
+                    params.previousFrom,
+                    coverage.from,
+                  ),
+                )
+                .lt("dayStart", params.to),
             )
             .take(remaining + 1);
           fetchedLength = locationRows.length;
@@ -2030,13 +2135,13 @@ async function salesDailyRows(
       }
       if (truncated) break;
     }
-    return { rows, truncated };
+    return { rows, truncated, previousAvailable };
   });
 }
 
 const salesRevenue: MetricComputer = async (ctx, params) => {
   const result = await salesDailyRows(ctx, params);
-  return seriesResult(
+  const metric = seriesResult(
     "currency",
     result.rows.map((row) => ({
       timestamp: row.dayStart,
@@ -2049,11 +2154,15 @@ const salesRevenue: MetricComputer = async (ctx, params) => {
       truncated: result.truncated || undefined,
     },
   );
+  if (!result.previousAvailable) {
+    for (const series of metric.series) series.previousTotal = null;
+  }
+  return metric;
 };
 
 const salesOrderCount: MetricComputer = async (ctx, params) => {
   const result = await salesDailyRows(ctx, params);
-  return seriesResult(
+  const metric = seriesResult(
     "count",
     result.rows.map((row) => ({
       timestamp: row.dayStart,
@@ -2063,6 +2172,10 @@ const salesOrderCount: MetricComputer = async (ctx, params) => {
     params,
     { truncated: result.truncated || undefined },
   );
+  if (!result.previousAvailable) {
+    for (const series of metric.series) series.previousTotal = null;
+  }
+  return metric;
 };
 
 const averageBasket: MetricComputer = async (ctx, params) => {
@@ -2121,9 +2234,11 @@ const averageBasket: MetricComputer = async (ctx, params) => {
         };
       }),
       total: rounded(periodOrders > 0 ? periodRevenue / 100 / periodOrders : 0),
-      previousTotal: rounded(
-        previousOrders > 0 ? previousRevenue / 100 / previousOrders : 0,
-      ),
+      previousTotal: !result.previousAvailable
+        ? null
+        : rounded(
+            previousOrders > 0 ? previousRevenue / 100 / previousOrders : 0,
+          ),
     };
   });
   return {
@@ -2137,11 +2252,13 @@ const averageBasket: MetricComputer = async (ctx, params) => {
           headlineTotal: rounded(
             headlineOrders > 0 ? headlineRevenue / 100 / headlineOrders : 0,
           ),
-          headlinePrevious: rounded(
-            headlinePreviousOrders > 0
-              ? headlinePreviousRevenue / 100 / headlinePreviousOrders
-              : 0,
-          ),
+          headlinePrevious: !result.previousAvailable
+            ? null
+            : rounded(
+                headlinePreviousOrders > 0
+                  ? headlinePreviousRevenue / 100 / headlinePreviousOrders
+                  : 0,
+              ),
         }),
   };
 };
@@ -2180,10 +2297,7 @@ const woltCancellationRate: MetricComputer = async (ctx, params) => {
       entry.delivered += row.orderCount;
       byDay.set(row.dayStart, entry);
     }
-    const canceled = current.reduce(
-      (sum, row) => sum + row.canceledCount,
-      0,
-    );
+    const canceled = current.reduce((sum, row) => sum + row.canceledCount, 0);
     const delivered = current.reduce((sum, row) => sum + row.orderCount, 0);
     const previousCanceled = previous.reduce(
       (sum, row) => sum + row.canceledCount,
@@ -2208,9 +2322,7 @@ const woltCancellationRate: MetricComputer = async (ctx, params) => {
         const entry = byDay.get(t);
         return {
           t,
-          value: rounded(
-            entry ? ratio(entry.canceled, entry.delivered) : 0,
-          ),
+          value: rounded(entry ? ratio(entry.canceled, entry.delivered) : 0),
         };
       }),
       total: rounded(ratio(canceled, delivered)),

@@ -5,10 +5,6 @@ const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
   timeStyle: "short",
 });
 
-const dateFormatter = new Intl.DateTimeFormat("da-DK", {
-  dateStyle: "medium",
-});
-
 export const woltStatusLabels: Record<WoltOrderStatus, string> = {
   created: "Modtaget",
   production: "I produktion",
@@ -26,10 +22,6 @@ export const woltOrderTypeLabels: Record<WoltOrderType, string> = {
 
 export function formatWoltDateTime(value: number) {
   return dateTimeFormatter.format(value);
-}
-
-export function formatWoltDate(value: number) {
-  return dateFormatter.format(value);
 }
 
 export function formatWoltMoney(minorUnits: number, currency: string) {

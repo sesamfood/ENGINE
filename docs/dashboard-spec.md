@@ -28,7 +28,7 @@ Read alongside `AGENTS.md` (§ Dashboard widgets) and
 | 13  | Deleting a metric in use warns with usages, then cascades to remove those widgets          |
 | 14  | All 18 built-in metrics survive as curated presets                                         |
 | 15  | Per-widget range: follow board, or pin an absolute preset — field and UI both in v1        |
-| 16  | Add a raw `/exportSales/v20` response inspector to the OnlinePOS panel, gated on `integrations.manage` |
+| 16  | Add a raw `/exportSales/v20` response inspector to the OnlinePOS panel, gated on `integrations.manage` and access to all locations |
 | 17  | Once the response is understood, switch `requestSales` to v20 and capture `clerk` + `pnumber` |
 | 18  | Expose `clerk` as a raw "Kasserer" dimension. **No clerk-to-employee mapping** until the value is understood |
 | 19  | Forward-only clerk capture, plus a manual backfill on the OnlinePOS panel, 90 days per run |
@@ -446,7 +446,7 @@ Add a **"Rå salgsrespons"** section to the OnlinePOS integration panel
 
 Constraints:
 
-- Gated on `integrations.manage`, same as the rest of the panel.
+- Requires `integrations.manage` and access to all locations because the response uses the organization's master provider credentials.
 - Response is sales data, so it is never logged and never cached.
 - Cap at 5 lines and truncate any single string over 500 characters, so a
   surprising payload cannot blow up the page or the function result.

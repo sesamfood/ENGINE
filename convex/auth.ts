@@ -314,6 +314,16 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
     },
     hooks: {
       before: createAuthMiddleware(async (authCtx) => {
+        // access.ts coordinates role writes across the app and Better Auth.
+        if (
+          authCtx.path === "/organization/create-role" ||
+          authCtx.path === "/organization/update-role" ||
+          authCtx.path === "/organization/delete-role"
+        ) {
+          throw new APIError("FORBIDDEN", {
+            message: "Administrér roller via Administration",
+          });
+        }
         const roleManagementPaths = new Set([
           "/organization/invite-member",
           "/organization/add-member",
@@ -338,7 +348,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         if (
           !authCtx.path ||
           (!memberApiPaths.has(authCtx.path) &&
-            !apiKeyManagementPaths.has(authCtx.path))
+            !apiKeyManagementPaths.has(authCtx.path) &&
+            authCtx.path !== "/organization/update")
         ) {
           return;
         }
@@ -364,26 +375,56 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
           { organizationId, userId: session.user.id },
         );
         const needsRoleManagement = roleManagementPaths.has(authCtx.path);
-        const requiredPermissions = apiKeyManagementPaths.has(authCtx.path)
-          ? ["apiKeys.manage"]
-          : needsRoleManagement
-            ? ["members.manage", "roles.manage"]
-            : ["members.manage"];
+        const requiredPermissions =
+          authCtx.path === "/organization/update"
+            ? ["organization.settings"]
+            : apiKeyManagementPaths.has(authCtx.path)
+              ? ["apiKeys.manage"]
+              : needsRoleManagement
+                ? ["members.manage", "roles.manage"]
+                : ["members.manage"];
         if (
           requiredPermissions.some(
             (permission) => !roleContext.permissions.includes(permission),
           )
         ) {
           throw new APIError("FORBIDDEN", {
-            message: apiKeyManagementPaths.has(authCtx.path)
-              ? "Du har ikke adgang til at administrere API-nøgler"
-              : needsRoleManagement
-                ? "Du har ikke adgang til at administrere roller"
-              : "Du har ikke adgang til at administrere brugere",
+            message:
+              authCtx.path === "/organization/update"
+                ? "Du har ikke adgang til at administrere organisationen"
+                : apiKeyManagementPaths.has(authCtx.path)
+                  ? "Du har ikke adgang til at administrere API-nøgler"
+                  : needsRoleManagement
+                    ? "Du har ikke adgang til at administrere roller"
+                    : "Du har ikke adgang til at administrere brugere",
           });
         }
       }),
       after: createAuthMiddleware(async (authCtx) => {
+        if (authCtx.path === "/organization/get-full-organization") {
+          const organization: unknown = authCtx.context.returned;
+          if (
+            !organization ||
+            typeof organization !== "object" ||
+            !("id" in organization) ||
+            typeof organization.id !== "string"
+          ) {
+            return;
+          }
+          const session = await getSessionFromCtx(authCtx);
+          if (!session) throw new APIError("UNAUTHORIZED");
+          const roleContext = await ctx.runQuery(
+            internal.access.getMemberPermissionContext,
+            { organizationId: organization.id, userId: session.user.id },
+          );
+          if (
+            session.session.kioskModeEnabled ||
+            !roleContext.permissions.includes("members.manage")
+          ) {
+            return authCtx.json({ ...organization, members: [], invitations: [] });
+          }
+          return;
+        }
         if (authCtx.path !== "/organization/leave") return;
         const member = authCtx.context.returned as
           | { organizationId?: unknown; userId?: unknown }

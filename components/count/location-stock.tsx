@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import {
   BoxesIcon,
   Grid2X2Icon,
@@ -91,8 +92,8 @@ export function LocationStock() {
     : locations?.some((location) => location.id === storedLocationId)
       ? (storedLocationId as Id<"locations">)
       : (locations?.[0]?.id ?? null);
-  const stock = useQuery(
-    api.count.listLocationStock,
+  const stock = useCompleteCatalog(
+    api.count.listLocationStockPage,
     canView && locationId ? { locationId } : "skip",
   );
 

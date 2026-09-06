@@ -1,11 +1,6 @@
 import { AuthCard } from "@/components/auth/auth-card";
 import { LoginForm } from "@/components/auth/login-form";
-
-function safeRedirect(value?: string) {
-  return value?.startsWith("/") && !value.startsWith("//")
-    ? value
-    : "/onboarding";
-}
+import { safeRedirect } from "@/lib/safe-redirect";
 
 export default async function LoginPage({
   searchParams,

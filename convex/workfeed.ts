@@ -13,7 +13,6 @@ import {
   requireHumanPrincipal,
   requireIntegrationManager,
   requireLocationAccess,
-  requireOrganization,
 } from "./lib/auth";
 import {
   requestDepartments,
@@ -82,21 +81,6 @@ export const getSettings = query({
       companyId: settings?.companyId ?? null,
       connectedAt: settings?.connectedAt ?? null,
     };
-  },
-});
-
-export const isEnabled = query({
-  args: {},
-  returns: v.boolean(),
-  handler: async (ctx) => {
-    const { organizationId } = await requireOrganization(ctx);
-    const settings = await ctx.db
-      .query("workfeedIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .unique();
-    return settings?.enabled ?? false;
   },
 });
 

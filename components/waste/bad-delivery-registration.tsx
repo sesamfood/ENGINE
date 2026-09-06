@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -249,8 +251,8 @@ export function BadDeliveryRegistration() {
     locationId ? { locationId } : "skip",
   );
   const [search, setSearch] = useState("");
-  const productSearchOptions = useQuery(
-    api.catalog.listActiveProductSearchOptions,
+  const productSearchOptions = useCompleteCatalog(
+    api.catalog.listActiveProductSearchOptionsPage,
     locationId ? {} : "skip",
   );
   const uploadUrl = useMutation(api.badDeliveries.generatePhotoUploadUrl);

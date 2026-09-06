@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import posthog from "posthog-js";
 import { useMutation, useQuery } from "convex/react";
@@ -1188,7 +1190,11 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
   const canRegister = usePermission("goodsReceipts.register");
   const receipt = useQuery(
     api.goodsReceipts.getTransferReceipt,
-    canRegister ? { transferId } : "skip",
+    canRegister ? { transferId, omitCatalog: true } : "skip",
+  );
+  const products = useCompleteCatalog(
+    api.goodsReceipts.listCatalogPage,
+    receipt?.kind === "pending" ? { locationId: receipt.transfer.toLocationId } : "skip",
   );
 
   if (!access) {
@@ -1214,7 +1220,7 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
     );
   }
 
-  if (receipt === undefined) {
+  if (receipt === undefined || (receipt?.kind === "pending" && products === undefined)) {
     return (
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
         <Skeleton className="h-80 w-full" />
@@ -1275,5 +1281,5 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
     );
   }
 
-  return <TransferReceiptForm key={receipt.transfer.id} receipt={receipt} />;
+  return <TransferReceiptForm key={receipt.transfer.id} receipt={{ ...receipt, products: products ?? [] }} />;
 }

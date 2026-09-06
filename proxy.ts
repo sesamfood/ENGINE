@@ -126,6 +126,10 @@ async function apiRoutingResponse(request: NextRequest) {
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname === "/ingest" || pathname.startsWith("/ingest/")) {
+    return NextResponse.next();
+  }
+
   if (pathname === "/api/v1" || pathname.startsWith("/api/v1/")) {
     return (await apiRoutingResponse(request)) ?? NextResponse.next();
   }

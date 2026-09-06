@@ -1,5 +1,7 @@
 "use client";
 
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   closestCorners,
@@ -215,8 +217,8 @@ export function LocationCountSetup({
     api.locationProducts.getConfiguration,
     open ? { locationId } : "skip",
   );
-  const products = useQuery(
-    api.catalog.listActiveProductSearchOptions,
+  const products = useCompleteCatalog(
+    api.catalog.listActiveProductSearchOptionsPage,
     open ? {} : "skip",
   );
   const areas = useQuery(

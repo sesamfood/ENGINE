@@ -65,6 +65,7 @@ import type * as lib_resend from "../lib/resend.js";
 import type * as lib_salesRollup from "../lib/salesRollup.js";
 import type * as lib_salesStock from "../lib/salesStock.js";
 import type * as lib_stock from "../lib/stock.js";
+import type * as lib_storageOwnership from "../lib/storageOwnership.js";
 import type * as lib_timeZone from "../lib/timeZone.js";
 import type * as lib_transferAggregates from "../lib/transferAggregates.js";
 import type * as lib_woltApi from "../lib/woltApi.js";
@@ -171,6 +172,7 @@ declare const fullApi: ApiFromModules<{
   "lib/salesRollup": typeof lib_salesRollup;
   "lib/salesStock": typeof lib_salesStock;
   "lib/stock": typeof lib_stock;
+  "lib/storageOwnership": typeof lib_storageOwnership;
   "lib/timeZone": typeof lib_timeZone;
   "lib/transferAggregates": typeof lib_transferAggregates;
   "lib/woltApi": typeof lib_woltApi;

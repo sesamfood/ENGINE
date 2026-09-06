@@ -18,14 +18,26 @@ export async function scheduleLocationDayStartReroll(
       q.eq("organizationId", organizationId).eq("locationId", locationId),
     )
     .unique();
+  if (syncStatus?.pendingReconcileDayStart !== undefined) {
+    throw new ConvexError(
+      "Vent på, at salgsdata er synkroniseret, før du ændrer tidszonen",
+    );
+  }
+  // Keep archived buckets, but do not present them as rebuilt in the new zone.
+  const dailyHistoryFrom = Math.max(
+    syncStatus?.dailyHistoryFrom ?? 0,
+    syncStatus?.backfillThroughAt ?? 0,
+    Date.now() - 398 * 86_400_000,
+  );
   if (syncStatus) {
     const rerollFailed =
       syncStatus.dayStartRerollError !== undefined &&
       syncStatus.lastError === syncStatus.dayStartRerollError;
     await ctx.db.patch("onlinePosSyncStatus", syncStatus._id, {
-      ...(rerollFailed
-        ? { state: "idle" as const, lastError: undefined }
-        : {}),
+      ...(rerollFailed ? { lastError: undefined } : {}),
+      state: "idle",
+      runToken: undefined,
+      dailyHistoryFrom,
       dayStartRerollToken: token,
       dayStartRerollTimeZone: timeZone,
       dayStartRerollRetryCount: undefined,
@@ -37,6 +49,7 @@ export async function scheduleLocationDayStartReroll(
       organizationId,
       locationId,
       state: "idle",
+      dailyHistoryFrom,
       dayStartRerollToken: token,
       dayStartRerollTimeZone: timeZone,
       updatedAt: Date.now(),
@@ -51,6 +64,7 @@ export async function scheduleLocationDayStartReroll(
       timeZone,
       token,
       phase: "orders",
+      strategy: "delta",
     },
   );
   await ctx.scheduler.runAfter(0, internal.woltSync.rerollLocationDays, {
@@ -111,13 +125,26 @@ export async function resolveLocationTimeZones(
 ) {
   const settings = await ctx.db
     .query("organizationScheduleSettings")
-    .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId),
+    )
     .unique();
-  const marketIds = [...new Set(locations.flatMap((location) => location.marketId ? [location.marketId] : []))];
-  const markets = await Promise.all(marketIds.map((marketId) => ctx.db.get("markets", marketId)));
+  const marketIds = [
+    ...new Set(
+      locations.flatMap((location) =>
+        location.marketId ? [location.marketId] : [],
+      ),
+    ),
+  ];
+  const markets = await Promise.all(
+    marketIds.map((marketId) => ctx.db.get("markets", marketId)),
+  );
   const marketTimeZones = new Map(
     markets
-      .filter((market) => market?.organizationId === organizationId && market.timeZone)
+      .filter(
+        (market) =>
+          market?.organizationId === organizationId && market.timeZone,
+      )
       .map((market) => [market!._id, market!.timeZone!]),
   );
   const fallback = settings?.timeZone ?? DEFAULT_TIME_ZONE;

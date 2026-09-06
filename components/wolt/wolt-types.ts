@@ -107,8 +107,3 @@ export type WoltObservedItem = {
   conflict: boolean;
   suggestions: Array<{ id: Id<"products">; name: string }>;
 };
-
-export type WoltObservedItemsResult = {
-  rows: WoltObservedItem[];
-  truncated: boolean;
-};
