@@ -143,7 +143,7 @@ export async function queueStockSync(
     token,
     salesToken: sales.runToken,
     activationAt: settings.stockSyncStartedAt,
-    from: requestedFrom,
+    from: dayStartOf(requestedFrom, timeZone),
     removedFrom: dayStartOf(requestedFrom, timeZone),
     phase: "orders",
     cursor: null,

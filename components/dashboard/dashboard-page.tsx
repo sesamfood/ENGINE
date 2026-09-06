@@ -81,9 +81,11 @@ function DashboardLanding() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canManage = usePermission("dashboard.manage");
+  const router = useRouter();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
   const initialize = useMutation(api.dashboard.initialize);
   const initialized = useRef(false);
+  const resolved = useRef(false);
   const [initializing, setInitializing] = useState(false);
 
   useEffect(() => {
@@ -96,6 +98,27 @@ function DashboardLanding() {
       })
       .finally(() => setInitializing(false));
   }, [canManage, dashboards, initialize]);
+
+  useEffect(() => {
+    if (!dashboards || !dashboards.dashboards.length || resolved.current) return;
+    resolved.current = true;
+    const allowed = dashboards.dashboards;
+    const singleLocationId = dashboards.singleLocationId;
+    const lastViewed = window.localStorage.getItem(LAST_VIEWED_DASHBOARD_KEY);
+    const selected = allowed.find((dashboard) => String(dashboard.id) === lastViewed)
+      ?? allowed.find((dashboard) => dashboard.defaultForRoleIds.includes(dashboards.role))
+      ?? (singleLocationId
+        ? allowed.find((dashboard) => dashboard.defaultForLocationIds.includes(singleLocationId))
+        : undefined)
+      ?? allowed.find((dashboard) => dashboard.isOrganizationDefault)
+      ?? [...allowed].sort((left, right) => left.sortOrder - right.sortOrder)[0];
+    if (selected) {
+      router.replace(
+        `/dashboard/${selected.id}${window.location.search}${window.location.hash}`,
+        { scroll: false },
+      );
+    }
+  }, [dashboards, router]);
 
   if (!access || dashboards === undefined || initializing) return <Skeleton className="h-96 w-full" />;
   if (!canView) {
@@ -112,19 +135,7 @@ function DashboardLanding() {
       </Empty>
     );
   }
-  const allowed = dashboards.dashboards;
-  const singleLocationId = dashboards.singleLocationId;
-  const lastViewed = typeof window === "undefined"
-    ? null
-    : window.localStorage.getItem(LAST_VIEWED_DASHBOARD_KEY);
-  const selected = allowed.find((dashboard) => String(dashboard.id) === lastViewed)
-    ?? allowed.find((dashboard) => dashboard.defaultForRoleIds.includes(dashboards.role))
-    ?? (singleLocationId
-      ? allowed.find((dashboard) => dashboard.defaultForLocationIds.includes(singleLocationId))
-      : undefined)
-    ?? allowed.find((dashboard) => dashboard.isOrganizationDefault)
-    ?? [...allowed].sort((left, right) => left.sortOrder - right.sortOrder)[0];
-  return selected ? <DashboardContent key={selected.id} dashboardId={String(selected.id)} /> : <Skeleton className="h-96 w-full" />;
+  return <Skeleton className="h-96 w-full" />;
 }
 
 function DashboardContent({ dashboardId }: { dashboardId: string }) {
@@ -181,15 +192,6 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       window.localStorage.setItem(LAST_VIEWED_DASHBOARD_KEY, dashboardId);
     }
   }, [dashboardId, dashboardsQuery]);
-
-  useEffect(() => {
-    if (!dashboard || pathname !== "/dashboard") return;
-    window.history.replaceState(
-      null,
-      "",
-      `/dashboard/${dashboard.id}${window.location.search}${window.location.hash}`,
-    );
-  }, [dashboard, pathname]);
 
   const currentScope = dashboard ? scopeFromUrl(searchParams, dashboard.defaultScope) : null;
   const currentRange = dashboard ? rangeFromUrl(searchParams, dashboard.defaultRange) : null;
