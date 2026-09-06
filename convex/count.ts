@@ -97,9 +97,12 @@ const reconciliationRowValidator = v.object({
   productId: v.id("products"),
   productName: v.string(),
   defaultUnitName: v.string(),
+  defaultUnitId: v.optional(v.id("units")),
   expectedQuantity: v.number(),
   countedQuantity: v.number(),
   expectedSinceAt: v.number(),
+  onlinePosStockAccounting: v.optional(v.boolean()),
+  onlinePosAppliedSalesQuantity: v.optional(v.number()),
 });
 
 type CountContext = QueryCtx | MutationCtx;
@@ -983,6 +986,12 @@ export const submitCount = mutation({
     }
 
     const totals = new Map<Id<"products">, number>();
+    const onlinePos = await ctx.db.query("onlinePosIntegrations")
+      .withIndex("by_organizationId", q => q.eq("organizationId", organizationId)).unique();
+    const onlinePosConnection = onlinePos?.enabled && onlinePos.stockSyncEnabled
+      ? await ctx.db.query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId_and_locationId", q => q.eq("organizationId", organizationId).eq("locationId", args.locationId)).unique()
+      : null;
     for (const item of items) {
       const quantity = await toDefaultUnit(
         ctx,
@@ -1028,9 +1037,12 @@ export const submitCount = mutation({
           productId,
           productName: product.name,
           defaultUnitName: defaultUnit.name,
-          expectedQuantity: previousStock.quantity,
+          defaultUnitId: defaultUnit._id,
+          expectedQuantity: previousStock.quantity + (previousStock.onlinePosSalesQuantity ?? 0),
           countedQuantity: quantity,
           expectedSinceAt: previousStock.lastCountedAt,
+          onlinePosStockAccounting: onlinePosConnection !== null || previousStock.onlinePosSalesQuantity !== undefined,
+          onlinePosAppliedSalesQuantity: previousStock.onlinePosSalesQuantity,
         });
       }
     }
@@ -1096,9 +1108,12 @@ export const getWasteReportContext = internalQuery({
         productId: row.productId,
         productName: row.productName,
         defaultUnitName: row.defaultUnitName,
+        defaultUnitId: row.defaultUnitId,
         expectedQuantity: row.expectedQuantity,
         countedQuantity: row.countedQuantity,
         expectedSinceAt: row.expectedSinceAt,
+        onlinePosStockAccounting: row.onlinePosStockAccounting,
+        onlinePosAppliedSalesQuantity: row.onlinePosAppliedSalesQuantity,
       })),
     };
   },

@@ -22,6 +22,7 @@ import {
   type ExistingLineState,
 } from "./lib/salesRollup";
 import { resolveTimeZone } from "./lib/timeZone";
+import { queueStockSync } from "./onlinePosStock";
 
 const SOURCE = "onlinePos";
 const STUCK_MS = 30 * 60 * 1_000;
@@ -412,6 +413,7 @@ async function scheduleBackfillIfNeeded(
       lastError: undefined,
       updatedAt: now,
     });
+    await queueStockSync(ctx, status.organizationId, status.locationId);
     return;
   }
   await ctx.db.patch("onlinePosSyncStatus", status._id, {
@@ -819,6 +821,7 @@ export const dispatchEnabledLocations = internalMutation({
   args: {
     kind: v.union(v.literal("incremental"), v.literal("reconcile")),
     cursor: v.union(v.string(), v.null()),
+    stockOnly: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -827,6 +830,11 @@ export const dispatchEnabledLocations = internalMutation({
       .paginate({ numItems: DISPATCH_PAGE, cursor: args.cursor });
     const masterByOrg = new Map<string, boolean>();
     for (const connection of result.page) {
+      if (args.stockOnly) {
+        const settings = await ctx.db.query("onlinePosIntegrations")
+          .withIndex("by_organizationId", q => q.eq("organizationId", connection.organizationId)).unique();
+        if (!settings?.stockSyncEnabled) continue;
+      }
       let enabled = masterByOrg.get(connection.organizationId);
       if (enabled === undefined) {
         enabled = await isMasterEnabled(ctx, connection.organizationId);
@@ -843,7 +851,7 @@ export const dispatchEnabledLocations = internalMutation({
       await ctx.scheduler.runAfter(
         0,
         internal.onlinePosSync.dispatchEnabledLocations,
-        { kind: args.kind, cursor: result.continueCursor },
+        { kind: args.kind, cursor: result.continueCursor, stockOnly: args.stockOnly },
       );
     }
     return null;
@@ -1728,6 +1736,7 @@ export const completeReconcileDay = internalMutation({
       syncedThroughAt,
       updatedAt: now,
     });
+    await queueStockSync(ctx, args.organizationId, args.locationId, args.dayStart);
     return null;
   },
 });

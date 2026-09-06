@@ -26,6 +26,7 @@ import {
 } from "@/components/catalog/creatable-combobox";
 import { getOnlinePosProductSuggestions } from "@/components/catalog/online-pos-product-suggestions";
 import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
+import { OnlinePosStockSettings } from "@/components/organization/online-pos-stock-settings";
 import { OnlinePosOrderDetail } from "@/components/organization/online-pos-order-detail";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -1242,6 +1243,7 @@ export function OnlinePosIntegration() {
                       }}
                     />
                     <RawSalesResponse />
+                    <OnlinePosStockSettings />
                     <OnlinePosLocationConnections />
                   </div>
                 </TabsContent>
@@ -1266,6 +1268,7 @@ export function OnlinePosIntegration() {
                   }}
                 />
                 {settings.connected ? <RawSalesResponse /> : null}
+                <OnlinePosStockSettings />
                 <OnlinePosLocationConnections />
               </div>
             )}

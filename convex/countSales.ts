@@ -9,7 +9,8 @@ import {
   resolveCountSalesSource,
 } from "./lib/countSalesSource";
 import { resolveWoltMapping } from "./lib/woltMappings";
-import { normalizeStock } from "./lib/stock";
+import { normalizeStock, toDefaultUnit } from "./lib/stock";
+import { createSalesStockResolver, stockApplication, stockSalesFingerprint } from "./lib/salesStock";
 import {
   salesSourceValidator,
   woltConnectionStateValidator,
@@ -67,6 +68,7 @@ const settingLocationValidator = v.object({
     wolt: v.boolean(),
   }),
   onlinePosConnected: v.boolean(),
+  stockSyncEnabled: v.boolean(),
   woltConnected: v.boolean(),
   savedSource: v.union(salesSourceValidator, v.null()),
   effectiveSource: salesSourceValidator,
@@ -109,9 +111,12 @@ type ReportContext = {
     productId: Id<"products">;
     productName: string;
     defaultUnitName: string;
+    defaultUnitId?: Id<"units">;
     expectedQuantity: number;
     countedQuantity: number;
     expectedSinceAt: number;
+    onlinePosStockAccounting?: boolean;
+    onlinePosAppliedSalesQuantity?: number;
   }>;
 };
 
@@ -270,6 +275,35 @@ async function loadOnlinePos(
     health.usable = false;
     health.reason = "der er for mange salgslinjer til at beregne sikkert";
     return { health, salesByProduct, unmappedSalesQuantity: 0 };
+  }
+
+  if (report.rows.some(row => row.onlinePosStockAccounting)) {
+    const resolve = createSalesStockResolver(ctx, report.organizationId);
+    let unmappedSalesQuantity = 0;
+    for (const orderId of new Set(lines.filter(line => line.source === "onlinePos").map(line => line.orderId))) {
+      const order = await ctx.db.get("salesOrders", orderId);
+      if (!order || order.organizationId !== report.organizationId || order.locationId !== report.locationId || order.source !== "onlinePos") continue;
+      const orderLines = await ctx.db.query("salesLines").withIndex("by_organizationId_and_orderId", q => q.eq("organizationId", report.organizationId).eq("orderId", orderId)).take(501);
+      if (orderLines.length > 500) throw new ConvexError("En salgsordre har for mange linjer til Count-rapporten");
+      const stored = connection ? await stockApplication(ctx, order, connection.companyId) : null;
+      const result = stored?.fingerprint === stockSalesFingerprint(orderLines) && stored.unmappedQuantity === 0
+        ? { entries: stored.entries, unmappedQuantity: 0 }
+        : await resolve(orderLines);
+      unmappedSalesQuantity += result.unmappedQuantity;
+      for (const entry of result.entries) {
+        const row = rowByProduct.get(entry.productId);
+        if (!row || entry.occurredAt < row.expectedSinceAt || entry.occurredAt >= report.submittedAt) continue;
+        const quantity = await toDefaultUnit(ctx, report.organizationId, entry.productId, entry.unitId, entry.quantity);
+        const reportUnitFactor = row.defaultUnitId ? await toDefaultUnit(ctx, report.organizationId, entry.productId, row.defaultUnitId, 1) : 1;
+        if (quantity === null || !reportUnitFactor) throw new ConvexError("En lagerenhed mangler sin omregning i Count-rapporten");
+        addQuantity(salesByProduct, entry.productId, quantity / reportUnitFactor);
+      }
+    }
+    if (unmappedSalesQuantity) {
+      health.usable = false;
+      health.reason = "nogle OnlinePOS-salg mangler produktkoblinger";
+    }
+    return { health, salesByProduct, unmappedSalesQuantity };
   }
 
   for (const line of lines) {
@@ -562,9 +596,10 @@ export const getSettings = query({
           name: location.name,
           connected: { onlinePos: onlinePosConnected, wolt: woltConnected },
           onlinePosConnected,
+          stockSyncEnabled: master?.stockSyncEnabled === true && onlinePosConnected,
           woltConnected,
           savedSource,
-          effectiveSource: resolveCountSalesSource(
+          effectiveSource: master?.stockSyncEnabled && onlinePosConnected ? "onlinePos" : resolveCountSalesSource(
             savedSource,
             onlinePosConnected,
             woltConnected,
@@ -589,6 +624,13 @@ export const setSource = mutation({
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== auth.organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
+    }
+    const master = await ctx.db.query("onlinePosIntegrations")
+      .withIndex("by_organizationId", q => q.eq("organizationId", auth.organizationId)).unique();
+    const connection = await ctx.db.query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId_and_locationId", q => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId)).unique();
+    if (master?.enabled && master.stockSyncEnabled && connection && args.salesSource !== "onlinePos") {
+      throw new ConvexError("Count bruger OnlinePOS, mens lagersynkronisering er aktiveret");
     }
     const existing = await settingsForLocation(
       ctx,
@@ -666,7 +708,7 @@ export const buildCountWasteReport = query({
     const onlinePosConnected = master?.enabled === true && Boolean(locationConnection);
     const woltConnected =
       woltIntegration?.enabled !== false && woltConnection?.state === "ready";
-    const selectedSource = resolveCountSalesSource(
+    const selectedSource = report.rows.some(row => row.onlinePosStockAccounting) ? "onlinePos" : resolveCountSalesSource(
       saved?.salesSource ?? null,
       onlinePosConnected,
       woltConnected,
@@ -723,7 +765,7 @@ export const buildCountWasteReport = query({
         ? warnings.join("; ")
         : "salg fra den valgte kilde dækker ikke count-perioden";
     const unmappedSalesQuantity =
-      selectedSource === "onlinePos" ? 0 : wolt.unmappedSalesQuantity;
+      selectedSource === "onlinePos" ? onlinePos.unmappedSalesQuantity : wolt.unmappedSalesQuantity;
     return {
       locationName: report.locationName,
       submittedAt: report.submittedAt,
@@ -734,16 +776,15 @@ export const buildCountWasteReport = query({
         const salesQuantity = combined.salesIncluded
           ? normalizeStock(combined.salesByProduct.get(row.productId) ?? 0)
           : 0;
-        const wasteQuantity = normalizeStock(
-          row.expectedQuantity - salesQuantity - row.countedQuantity,
-        );
+        const expectedQuantity = row.expectedQuantity - (combined.salesIncluded ? 0 : row.onlinePosAppliedSalesQuantity ?? 0);
+        const wasteQuantity = normalizeStock(expectedQuantity - salesQuantity - row.countedQuantity);
         return Math.abs(wasteQuantity) < 1e-6
           ? []
           : [
               {
                 productName: row.productName,
                 defaultUnitName: row.defaultUnitName,
-                expectedQuantity: row.expectedQuantity,
+                expectedQuantity,
                 salesQuantity,
                 countedQuantity: row.countedQuantity,
                 wasteQuantity,

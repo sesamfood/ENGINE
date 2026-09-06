@@ -93,6 +93,7 @@ export async function setStock(
     quantity: normalizeStock(quantity),
     updatedAt: countedAt,
     lastCountedAt: countedAt,
+    onlinePosSalesQuantity: undefined,
   };
 
   if (current) {

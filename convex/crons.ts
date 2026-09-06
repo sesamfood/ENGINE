@@ -31,6 +31,13 @@ crons.cron(
   { kind: "incremental", cursor: null },
 );
 
+crons.interval(
+  "OnlinePOS sales for live stock",
+  { minutes: 10 },
+  internal.onlinePosSync.dispatchEnabledLocations,
+  { kind: "incremental", cursor: null, stockOnly: true },
+);
+
 // Convex cron expressions are UTC (not org-local). 05:23 UTC is 06:23 CET /
 // 07:23 CEST — after typical Copenhagen close-of-business for the prior local day.
 crons.cron(
@@ -45,6 +52,13 @@ crons.interval(
   { hours: 24 },
   internal.onlinePosSync.pruneSales,
   { cursor: null },
+);
+
+crons.interval(
+  "prune sales stock applications",
+  { hours: 24 },
+  internal.onlinePosStock.prune,
+  {},
 );
 
 crons.interval(
