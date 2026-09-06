@@ -11,6 +11,9 @@ import { getProductCategoryIds } from "./productCategories";
 
 const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
+const MAX_COMPLETE_UNITS = 200;
+const MAX_HYDRATED_PAGE_SIZE = 50;
+const MAX_FALLBACK_PAGE_SIZE = 25;
 
 export const activeProductSearchOptionValidator = v.object({
   id: v.id("products"),
@@ -65,7 +68,10 @@ export type ActiveProductCatalogItem = {
   }>;
 };
 
-export function catalogPaginationOptions(options: PaginationOptions) {
+export function catalogPaginationOptions(
+  options: PaginationOptions,
+  maximumRowsRead = 100,
+) {
   if (
     !Number.isInteger(options.numItems) ||
     options.numItems < 1 ||
@@ -75,7 +81,11 @@ export function catalogPaginationOptions(options: PaginationOptions) {
   }
   return {
     ...options,
-    maximumRowsRead: Math.min(options.maximumRowsRead ?? 25, 25),
+    maximumRowsRead: Math.min(
+      options.maximumRowsRead ?? options.numItems,
+      maximumRowsRead,
+      100,
+    ),
     maximumBytesRead: Math.min(options.maximumBytesRead ?? 128 * 1024, 128 * 1024),
   };
 }
@@ -112,10 +122,36 @@ export async function listActiveProductPage(
   paginationOpts: PaginationOptions,
   locationId?: Id<"locations">,
 ) {
-  const result = await paginateActiveProducts(ctx, organizationId, paginationOpts, locationId);
+  const completeUnits = await ctx.db
+    .query("units")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .take(MAX_COMPLETE_UNITS + 1);
+  const maximumRowsRead =
+    completeUnits.length <= MAX_COMPLETE_UNITS
+      ? MAX_HYDRATED_PAGE_SIZE
+      : MAX_FALLBACK_PAGE_SIZE;
+  const result = await paginateActiveProducts(
+    ctx,
+    organizationId,
+    {
+      ...paginationOpts,
+      maximumRowsRead: Math.min(
+        paginationOpts.maximumRowsRead ?? paginationOpts.numItems,
+        maximumRowsRead,
+      ),
+    },
+    locationId,
+  );
   return {
     ...result,
-    page: await hydrateActiveProductCatalog(ctx, organizationId, result.page),
+    page: await hydrateActiveProductCatalog(
+      ctx,
+      organizationId,
+      result.page,
+      completeUnits.length <= MAX_COMPLETE_UNITS ? completeUnits : undefined,
+    ),
   };
 }
 
@@ -227,6 +263,7 @@ async function hydrateActiveProductCatalog(
   ctx: QueryCtx,
   organizationId: string,
   products: Doc<"products">[],
+  knownUnits?: Doc<"units">[],
 ): Promise<ActiveProductCatalogItem[]> {
   if (products.length === 0) return [];
   const categories = await ctx.db
@@ -265,7 +302,7 @@ async function hydrateActiveProductCatalog(
     ...new Set(productUnits.flatMap((rows) => rows.map((row) => row.unitId))),
   ];
   const [units, imageUrls] = await Promise.all([
-    Promise.all(unitIds.map((unitId) => ctx.db.get("units", unitId))),
+    knownUnits ?? Promise.all(unitIds.map((unitId) => ctx.db.get("units", unitId))),
     Promise.all(
       products.map((product) =>
         product.imageStorageId

@@ -2,7 +2,8 @@
 
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
-import { LayoutDashboardIcon, PencilIcon, RefreshCwIcon, SaveIcon } from "lucide-react";
+import dynamic from "next/dynamic";
+import { LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -20,12 +21,13 @@ import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
 import { rangePresets, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
-import { AddWidgetDialog } from "./add-widget-dialog";
 import { DashboardGrid } from "./dashboard-grid";
 import { DashboardTabs } from "./dashboard-tabs";
 import { RangeSelector } from "./range-selector";
 import { ScopeSelector } from "./scope-selector";
-import { ShareDialog } from "./share-dialog";
+
+const AddWidgetDialog = dynamic(() => import("./add-widget-dialog").then((module) => module.AddWidgetDialog));
+const ShareDialog = dynamic(() => import("./share-dialog").then((module) => module.ShareDialog));
 
 const LAST_VIEWED_DASHBOARD_KEY = "engine.dashboard.last-viewed";
 type SearchParamsLike = { get: (name: string) => string | null; toString: () => string };
@@ -79,11 +81,9 @@ function DashboardLanding() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canManage = usePermission("dashboard.manage");
-  const router = useRouter();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
   const initialize = useMutation(api.dashboard.initialize);
   const initialized = useRef(false);
-  const resolved = useRef(false);
   const [initializing, setInitializing] = useState(false);
 
   useEffect(() => {
@@ -96,21 +96,6 @@ function DashboardLanding() {
       })
       .finally(() => setInitializing(false));
   }, [canManage, dashboards, initialize]);
-
-  useEffect(() => {
-    if (!dashboards || !dashboards.dashboards.length || resolved.current) return;
-    resolved.current = true;
-    const allowed = dashboards.dashboards;
-    const lastViewed = window.localStorage.getItem(LAST_VIEWED_DASHBOARD_KEY);
-    const selected = allowed.find((dashboard) => String(dashboard.id) === lastViewed)
-      ?? allowed.find((dashboard) => dashboard.defaultForRoleIds.includes(dashboards.role))
-      ?? (dashboards.singleLocationId
-        ? allowed.find((dashboard) => dashboard.defaultForLocationIds.includes(dashboards.singleLocationId!))
-        : undefined)
-      ?? allowed.find((dashboard) => dashboard.isOrganizationDefault)
-      ?? [...allowed].sort((left, right) => left.sortOrder - right.sortOrder)[0];
-    if (selected) router.replace(`/dashboard/${selected.id}`);
-  }, [dashboards, router]);
 
   if (!access || dashboards === undefined || initializing) return <Skeleton className="h-96 w-full" />;
   if (!canView) {
@@ -127,7 +112,19 @@ function DashboardLanding() {
       </Empty>
     );
   }
-  return <Skeleton className="h-96 w-full" />;
+  const allowed = dashboards.dashboards;
+  const singleLocationId = dashboards.singleLocationId;
+  const lastViewed = typeof window === "undefined"
+    ? null
+    : window.localStorage.getItem(LAST_VIEWED_DASHBOARD_KEY);
+  const selected = allowed.find((dashboard) => String(dashboard.id) === lastViewed)
+    ?? allowed.find((dashboard) => dashboard.defaultForRoleIds.includes(dashboards.role))
+    ?? (singleLocationId
+      ? allowed.find((dashboard) => dashboard.defaultForLocationIds.includes(singleLocationId))
+      : undefined)
+    ?? allowed.find((dashboard) => dashboard.isOrganizationDefault)
+    ?? [...allowed].sort((left, right) => left.sortOrder - right.sortOrder)[0];
+  return selected ? <DashboardContent key={selected.id} dashboardId={String(selected.id)} /> : <Skeleton className="h-96 w-full" />;
 }
 
 function DashboardContent({ dashboardId }: { dashboardId: string }) {
@@ -155,6 +152,10 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const [updatingData, setUpdatingData] = useState(false);
   const [manualNow, setManualNow] = useState(0);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
+  const [shareMounted, setShareMounted] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [emptyAddWidgetMounted, setEmptyAddWidgetMounted] = useState(false);
+  const [emptyAddWidgetOpen, setEmptyAddWidgetOpen] = useState(false);
   const pendingSaveCount = useRef(0);
   const pendingConfigSave = useRef<Promise<void>>(Promise.resolve());
   const lastConfigSaveFailure = useRef<{ error: unknown } | null>(null);
@@ -180,6 +181,15 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       window.localStorage.setItem(LAST_VIEWED_DASHBOARD_KEY, dashboardId);
     }
   }, [dashboardId, dashboardsQuery]);
+
+  useEffect(() => {
+    if (!dashboard || pathname !== "/dashboard") return;
+    window.history.replaceState(
+      null,
+      "",
+      `/dashboard/${dashboard.id}${window.location.search}${window.location.hash}`,
+    );
+  }, [dashboard, pathname]);
 
   const currentScope = dashboard ? scopeFromUrl(searchParams, dashboard.defaultScope) : null;
   const currentRange = dashboard ? rangeFromUrl(searchParams, dashboard.defaultRange) : null;
@@ -358,7 +368,33 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
               {updatingData ? "Opdaterer" : "Opdatér"}
             </Button>
           ) : null}
-          {canShare ? <ShareDialog dashboardId={dashboard.id} dashboardName={dashboard.name} onBeforeCreate={flushConfigSave} /> : null}
+          {canShare ? (
+            <>
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-11"
+                variant="outline"
+                onClick={() => {
+                  setShareMounted(true);
+                  setShareOpen(true);
+                }}
+              >
+                <Share2Icon data-icon="inline-start" />
+                Del
+              </Button>
+              {shareMounted ? (
+                <ShareDialog
+                  dashboardId={dashboard.id}
+                  dashboardName={dashboard.name}
+                  onBeforeCreate={flushConfigSave}
+                  open={shareOpen}
+                  onOpenChange={setShareOpen}
+                  showTrigger={false}
+                />
+              ) : null}
+            </>
+          ) : null}
           {canManage ? (
             <>
               {editing ? <Button type="button" size="lg" variant="outline" className="min-h-11" onClick={() => void saveCurrentDefaults()}><SaveIcon data-icon="inline-start" />Gem som standard</Button> : null}
@@ -380,7 +416,34 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
             <EmptyTitle>Dashboardet er tomt</EmptyTitle>
             <EmptyDescription>{canManage ? "Tilføj den første widget for at bygge dit dashboard." : "Dette dashboard har ingen widgets endnu."}</EmptyDescription>
           </EmptyHeader>
-          {canManage ? <EmptyContent><AddWidgetDialog canViewSensitive={canViewSales} scope={currentScope} range={currentRange} now={now} onAdd={(widget) => commitWidgets([widget])} /></EmptyContent> : null}
+          {canManage ? (
+            <EmptyContent>
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-11"
+                onClick={() => {
+                  setEmptyAddWidgetMounted(true);
+                  setEmptyAddWidgetOpen(true);
+                }}
+              >
+                <PlusIcon data-icon="inline-start" />
+                Tilføj widget
+              </Button>
+              {emptyAddWidgetMounted ? (
+                <AddWidgetDialog
+                  canViewSensitive={canViewSales}
+                  scope={currentScope}
+                  range={currentRange}
+                  now={now}
+                  onAdd={(widget) => commitWidgets([widget])}
+                  open={emptyAddWidgetOpen}
+                  onOpenChange={setEmptyAddWidgetOpen}
+                  showTrigger={false}
+                />
+              ) : null}
+            </EmptyContent>
+          ) : null}
         </Empty>
       )}
     </section>

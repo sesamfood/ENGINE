@@ -1159,7 +1159,7 @@ export const listProducts = query({
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
         q.eq("organizationId", organizationId).eq("status", args.status),
       )
-      .paginate(catalogPaginationOptions(args.paginationOpts));
+      .paginate(catalogPaginationOptions(args.paginationOpts, 25));
     const categorizedProducts = await Promise.all(
       candidates.page.map(async (product) => ({
         product,

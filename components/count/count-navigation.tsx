@@ -2,7 +2,7 @@
 
 import { BoxesIcon, ClipboardListIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useKiosk, usePermission } from "@/components/app-shell";
@@ -22,6 +22,11 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
     ? kiosk.settings?.enabledPages.includes("count.stock")
     : canStock;
   const showSectionTabs = Number(showCount) + Number(showStock) > 1;
+
+  useEffect(() => {
+    if (showCount) router.prefetch("/count");
+    if (showStock) router.prefetch("/count/stock");
+  }, [router, showCount, showStock]);
 
   if (!showSectionTabs && !action) return null;
 

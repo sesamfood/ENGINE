@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
 import { isAuthenticated } from "@/lib/auth-server";
 import { operationList } from "@/lib/api/v1/contract";
 import {
@@ -144,9 +145,9 @@ export default async function proxy(request: NextRequest) {
   const publicPath = publicPaths.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
-  const authenticated = await isAuthenticated();
+  const hasSessionCookie = Boolean(getSessionCookie(request));
 
-  if (!authenticated && !publicPath) {
+  if (!hasSessionCookie && !publicPath) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set(
       "redirect",
@@ -155,7 +156,11 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (authenticated && (pathname === "/login" || pathname === "/signup")) {
+  if (
+    hasSessionCookie &&
+    (pathname === "/login" || pathname === "/signup") &&
+    (await isAuthenticated())
+  ) {
     return NextResponse.redirect(new URL("/onboarding", request.url));
   }
 

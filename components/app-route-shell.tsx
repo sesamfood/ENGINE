@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
+import { useConvexAuth } from "convex/react";
 import { Spinner } from "@/components/ui/spinner";
 
 const shelllessRoutes = [
@@ -48,8 +49,26 @@ export function AppRouteShell({
   defaultSidebarOpen: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const shellless = isShelllessRoute(pathname);
+  const requiresAuth = !shellless || pathname === "/onboarding";
 
-  if (isShelllessRoute(pathname)) return children;
+  useEffect(() => {
+    if (!requiresAuth || isLoading || isAuthenticated) return;
+    const redirect = `${window.location.pathname}${window.location.search}`;
+    router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
+  }, [requiresAuth, isLoading, isAuthenticated, router]);
+
+  if (requiresAuth && !isLoading && !isAuthenticated) {
+    return (
+      <main className="grid min-h-screen place-items-center" aria-label="Indlæser program">
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  if (shellless) return children;
 
   return (
     <AuthenticatedAppShell defaultSidebarOpen={defaultSidebarOpen}>

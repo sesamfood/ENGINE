@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
@@ -59,8 +60,10 @@ import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
+import type { CustomMetricDefinition } from "./custom-metric-builder";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
+
+const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
 
 type Step = 1 | 2 | 3;
 
@@ -80,12 +83,18 @@ export function AddWidgetDialog({
   range,
   now,
   onAdd,
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
 }: {
   canViewSensitive: boolean;
   scope: DashboardScope;
   range: DashboardRange;
   now: number;
   onAdd: (widget: WidgetInstance) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
 }) {
   const access = useAccess();
   const convex = useConvex();
@@ -96,7 +105,10 @@ export function AddWidgetDialog({
     label: category,
     metrics: available.filter((metric) => metric.category === category),
   }));
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const previousOpen = useRef(open);
+  const skipNextControlledOpenReset = useRef(false);
   const customMetrics = useQuery(
     api.customMetrics.list,
     open ? {} : "skip",
@@ -237,38 +249,50 @@ export function AddWidgetDialog({
       size,
       options: Object.keys(options).length ? options : undefined,
     });
-    setOpen(false);
+    setDialogOpen(false);
     setStep(1);
   }
 
   function closeOrPrevious() {
     if (step === 1) {
-      setOpen(false);
+      setDialogOpen(false);
       return;
     }
     setStep((current) => (current - 1) as Step);
   }
 
-  function setDialogOpen(nextOpen: boolean) {
-    setOpen(nextOpen);
-    if (nextOpen) {
-      setPreviewResult(undefined);
-      setStep(1);
-      setCustomMetricId(null);
-      setSalesSourceOverride(undefined);
-      setYAxisValid(true);
-    }
+  function resetDialogState() {
+    setPreviewResult(undefined);
+    setStep(1);
+    setCustomMetricId(null);
+    setSalesSourceOverride(undefined);
+    setYAxisValid(true);
   }
+
+  function setDialogOpen(nextOpen: boolean, reset = nextOpen) {
+    setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+    if (nextOpen && reset) resetDialogState();
+    if (nextOpen && !reset) skipNextControlledOpenReset.current = true;
+  }
+
+  useEffect(() => {
+    if (controlledOpen !== undefined && open && !previousOpen.current) {
+      if (skipNextControlledOpenReset.current) skipNextControlledOpenReset.current = false;
+      else resetDialogState();
+    }
+    previousOpen.current = open;
+  }, [controlledOpen, open]);
 
   function openCustomMetricBuilder() {
     setBuilderMetric(null);
-    setOpen(false);
+    setDialogOpen(false);
     setBuilderOpen(true);
   }
 
   function editCustomMetric(metric: CustomMetricDefinition) {
     setBuilderMetric(metric);
-    setOpen(false);
+    setDialogOpen(false);
     setBuilderOpen(true);
   }
 
@@ -291,11 +315,13 @@ export function AddWidgetDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setDialogOpen}>
-      <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" />}>
-        <PlusIcon data-icon="inline-start" />
-        Tilføj widget
-      </DialogTrigger>
+      <Dialog open={open} onOpenChange={(nextOpen) => setDialogOpen(nextOpen)}>
+      {showTrigger ? (
+        <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" />}>
+          <PlusIcon data-icon="inline-start" />
+          Tilføj widget
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="grid max-h-[calc(100vh-2rem)] min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Tilføj widget</DialogTitle>
@@ -604,30 +630,32 @@ export function AddWidgetDialog({
         </DialogFooter>
       </DialogContent>
       </Dialog>
-      <CustomMetricBuilder
-        key={`${builderOpen ? "open" : "closed"}:${builderMetric?.id ?? "new"}:${builderMetric?.updatedAt ?? ""}`}
-        open={builderOpen}
-        onOpenChange={(nextOpen) => {
-          setBuilderOpen(nextOpen);
-          if (!nextOpen) {
+      {builderOpen ? (
+        <CustomMetricBuilder
+          key={`${builderOpen ? "open" : "closed"}:${builderMetric?.id ?? "new"}:${builderMetric?.updatedAt ?? ""}`}
+          open
+          onOpenChange={(nextOpen) => {
+            setBuilderOpen(nextOpen);
+            if (!nextOpen) {
+              setBuilderMetric(null);
+              setStep(1);
+              setDialogOpen(true, false);
+            }
+          }}
+          scope={scope}
+          range={range}
+          now={now}
+          granularity={access?.granularity}
+          metric={builderMetric}
+          onSaved={(id) => {
+            setBuilderOpen(false);
             setBuilderMetric(null);
-            setStep(1);
-            setOpen(true);
-          }
-        }}
-        scope={scope}
-        range={range}
-        now={now}
-        granularity={access?.granularity}
-        metric={builderMetric}
-        onSaved={(id) => {
-          setBuilderOpen(false);
-          setBuilderMetric(null);
-          selectCustomMetric(id);
-          setStep(2);
-          setOpen(true);
-        }}
-      />
+            selectCustomMetric(id);
+            setStep(2);
+            setDialogOpen(true, false);
+          }}
+        />
+      ) : null}
       <AlertDialog open={Boolean(deletingMetric)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleting) setDeletingMetric(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

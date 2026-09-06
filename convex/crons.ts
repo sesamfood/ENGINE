@@ -5,7 +5,7 @@ const crons = cronJobs();
 
 crons.interval(
   "flush dashboard summary updates",
-  { minutes: 1 },
+  { minutes: 5 },
   internal.dashboardSummaries.flushSummaryDeltas,
   {},
 );
@@ -63,7 +63,7 @@ crons.interval(
 
 crons.interval(
   "recover pending Wolt jobs",
-  { minutes: 1 },
+  { minutes: 5 },
   internal.woltSync.dispatchPendingJobs,
   {},
 );

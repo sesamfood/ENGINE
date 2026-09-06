@@ -1,7 +1,7 @@
 "use client";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CopyIcon, LinkIcon, Share2Icon, Trash2Icon } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
@@ -50,12 +50,20 @@ export function ShareDialog({
   dashboardId,
   dashboardName,
   onBeforeCreate,
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
 }: {
   dashboardId: Id<"dashboards">;
   dashboardName?: string;
   onBeforeCreate?: () => Promise<void>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const previousOpen = useRef(open);
   const [name, setName] = useState(dashboardName ?? "Dashboard");
   const [password, setPassword] = useState("");
   const [days, setDays] = useState("7");
@@ -64,6 +72,23 @@ export function ShareDialog({
   const createShare = useAction(api.dashboard.createShare);
   const revokeShare = useMutation(api.dashboard.revokeShare);
   const shares = useQuery(api.dashboard.listShares, open ? { dashboardId } : "skip");
+
+  function setDialogOpen(nextOpen: boolean) {
+    setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+    if (nextOpen) {
+      setNow(Date.now());
+      setName(dashboardName ?? "Dashboard");
+    }
+  }
+
+  useEffect(() => {
+    if (controlledOpen !== undefined && open && !previousOpen.current) {
+      setNow(Date.now());
+      setName(dashboardName ?? "Dashboard");
+    }
+    previousOpen.current = open;
+  }, [controlledOpen, dashboardName, open]);
 
   async function copy(token: string) {
     try {
@@ -98,11 +123,13 @@ export function ShareDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) { setNow(Date.now()); setName(dashboardName ?? "Dashboard"); } }}>
-      <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" variant="outline" />}>
-        <Share2Icon data-icon="inline-start" />
-        Del
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={setDialogOpen}>
+      {showTrigger ? (
+        <DialogTrigger render={<Button type="button" size="lg" className="min-h-11" variant="outline" />}>
+          <Share2Icon data-icon="inline-start" />
+          Del
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Del dashboard</DialogTitle>

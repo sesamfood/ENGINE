@@ -11,6 +11,8 @@ import {
 } from "convex/react";
 import { authClient } from "@/lib/auth-client";
 
+const COMPLETE_CATALOG_PAGE_SIZE = 100;
+
 // Registration forms need the complete catalog before choosing products or units.
 export function useCompleteCatalog<Query extends PaginatedQueryReference>(
   query: Query,
@@ -36,14 +38,16 @@ export function useCompleteCatalog<Query extends PaginatedQueryReference>(
   const { results, status, loadMore } = usePaginatedQuery(
     query,
     enabled ? args : "skip",
-    { initialNumItems: 25 },
+    { initialNumItems: COMPLETE_CATALOG_PAGE_SIZE },
   );
   const products = enabled && status === "Exhausted" ? results : undefined;
   if (changed || (products !== undefined && products !== completed.products)) {
     setCompleted({ key, products });
   }
   useEffect(() => {
-    if (enabled && status === "CanLoadMore") loadMore(25);
+    if (enabled && status === "CanLoadMore") {
+      loadMore(COMPLETE_CATALOG_PAGE_SIZE);
+    }
   }, [enabled, loadMore, status]);
   return products ?? (enabled ? completed.products : undefined);
 }

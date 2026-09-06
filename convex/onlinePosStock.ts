@@ -35,6 +35,7 @@ const pageArgs = {
   salesToken: v.string(),
   activationAt: v.number(),
   from: v.number(),
+  removedFrom: v.optional(v.number()),
   phase: v.union(v.literal("orders"), v.literal("removed")),
   cursor: v.union(v.string(), v.null()),
 };
@@ -135,13 +136,15 @@ export async function queueStockSync(
         reconcileFrom ?? now,
       );
   const timeZone = await resolveTimeZone(ctx, organizationId, locationId);
+  const requestedFrom = Math.max(historyStart, since);
   await ctx.scheduler.runAfter(0, internal.onlinePosStock.runPage, {
     organizationId,
     locationId,
     token,
     salesToken: sales.runToken,
     activationAt: settings.stockSyncStartedAt,
-    from: dayStartOf(Math.max(historyStart, since), timeZone),
+    from: requestedFrom,
+    removedFrom: dayStartOf(requestedFrom, timeZone),
     phase: "orders",
     cursor: null,
   });
@@ -450,7 +453,7 @@ export const applyPage = internalMutation({
           q
             .eq("organizationId", args.organizationId)
             .eq("locationId", args.locationId)
-            .gte("dayStart", args.from - 86_400_000),
+            .gte("dayStart", (args.removedFrom ?? args.from) - 86_400_000),
         )
         .paginate({ numItems: 10, cursor: args.cursor });
       for (const previous of page.page) {

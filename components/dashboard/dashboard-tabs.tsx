@@ -2,8 +2,9 @@
 
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { useMutation } from "convex/react";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
-import { DashboardSettingsDialog } from "./dashboard-settings-dialog";
+
+const DashboardSettingsDialog = dynamic(() => import("./dashboard-settings-dialog").then((module) => module.DashboardSettingsDialog));
 
 const MAX_DASHBOARDS = 8;
 
@@ -95,6 +97,7 @@ export function DashboardTabs({
 }) {
   const reorder = useMutation(api.dashboard.reorder);
   const [settingsId, setSettingsId] = useState<string | null>(null);
+  const [settingsMountedId, setSettingsMountedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [order, setOrder] = useState(dashboards);
 
@@ -124,25 +127,43 @@ export function DashboardTabs({
           </TabsList>
         </Tabs>
         {canManage && activeDashboard && String(activeDashboard.id) === activeId ? (
-          <DashboardSettingsDialog
-            key={`${activeDashboard.id}:${activeDashboard.updatedAt}`}
-            dashboard={activeDashboard}
-            dashboards={order}
-            open={settingsId === String(activeDashboard.id)}
-            onOpenChange={(open) => setSettingsId(open ? String(activeDashboard.id) : null)}
-            onReorder={async (dashboardIds) => {
-              const byId = new Map(order.map((dashboard) => [String(dashboard.id), dashboard]));
-              const next = dashboardIds.flatMap((dashboardId) => {
-                const dashboard = byId.get(dashboardId);
-                return dashboard ? [dashboard] : [];
-              });
-              if (next.length !== order.length) return;
-              await saveOrder(next);
-            }}
-            onSaved={(changes, updatedAt) => onSettingsSaved({ ...activeDashboard, ...changes, updatedAt })}
-            onDuplicated={onDuplicated}
-            onDeleted={() => onDeleted(String(activeDashboard.id))}
-          />
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              className="size-11"
+              aria-label={`Indstillinger for ${activeDashboard.name}`}
+              onClick={() => {
+                setSettingsMountedId(String(activeDashboard.id));
+                setSettingsId(String(activeDashboard.id));
+              }}
+            >
+              <SettingsIcon />
+            </Button>
+            {settingsMountedId === String(activeDashboard.id) ? (
+              <DashboardSettingsDialog
+                key={`${activeDashboard.id}:${activeDashboard.updatedAt}`}
+                dashboard={activeDashboard}
+                dashboards={order}
+                open={settingsId === String(activeDashboard.id)}
+                showTrigger={false}
+                onOpenChange={(open) => setSettingsId(open ? String(activeDashboard.id) : null)}
+                onReorder={async (dashboardIds) => {
+                  const byId = new Map(order.map((dashboard) => [String(dashboard.id), dashboard]));
+                  const next = dashboardIds.flatMap((dashboardId) => {
+                    const dashboard = byId.get(dashboardId);
+                    return dashboard ? [dashboard] : [];
+                  });
+                  if (next.length !== order.length) return;
+                  await saveOrder(next);
+                }}
+                onSaved={(changes, updatedAt) => onSettingsSaved({ ...activeDashboard, ...changes, updatedAt })}
+                onDuplicated={onDuplicated}
+                onDeleted={() => onDeleted(String(activeDashboard.id))}
+              />
+            ) : null}
+          </>
         ) : null}
       </div>
       <CreateDashboardDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={onCreated} />
