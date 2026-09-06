@@ -71,7 +71,7 @@ export function OnlinePosLocationConnections() {
   const [disconnectingId, setDisconnectingId] = useState<Id<"locations">>();
 
   if (!connections) {
-    return <Skeleton className="h-96 w-full max-w-5xl" />;
+    return <Skeleton className="h-96 w-full" />;
   }
   const { locations } = connections;
 
@@ -150,7 +150,7 @@ export function OnlinePosLocationConnections() {
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <Card className="max-w-5xl">
+      <Card className="w-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-1">
             Lokationsindstillinger

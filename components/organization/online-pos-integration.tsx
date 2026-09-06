@@ -280,7 +280,7 @@ function ConnectionCard({
   }
 
   return (
-    <Card className="max-w-5xl">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-1">
           Masterforbindelse
@@ -465,7 +465,7 @@ function RawSalesResponse() {
   }
 
   return (
-    <Card className="max-w-5xl">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Rå salgsrespons</CardTitle>
         <CardDescription>

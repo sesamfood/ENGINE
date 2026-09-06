@@ -67,7 +67,7 @@ export function OnlinePosStockSettings() {
   if (!settings) return <Skeleton className="h-24 w-full" />;
 
   return (
-    <Card>
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Lagersynkronisering</CardTitle>
       </CardHeader>
