@@ -899,7 +899,7 @@ export function WoltIntegration() {
     );
   }
 
-  if (!overview || !products) {
+  if (!overview) {
     return <Skeleton className="h-96 w-full max-w-6xl" />;
   }
 
