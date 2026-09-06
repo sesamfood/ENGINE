@@ -189,6 +189,7 @@ const productIngredientSchema = z.strictObject({
   quantity: z.number().positive(),
   unitId: publicIdSchema,
   unitName: z.string(),
+  removable: z.boolean(),
 });
 export const productSchema = z.strictObject({
   id: publicIdSchema,
@@ -229,6 +230,7 @@ const productIngredientInputSchema = z.strictObject({
   productId: publicIdSchema,
   quantity: z.number().positive(),
   unitId: publicIdSchema,
+  removable: z.boolean().optional(),
 });
 const productIngredientsInputSchema = z
   .array(productIngredientInputSchema)

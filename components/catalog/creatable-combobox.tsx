@@ -66,6 +66,7 @@ export function CreatableCombobox({
   allowCreate = false,
   disabled = false,
   ariaLabel,
+  ariaInvalid = false,
 }: {
   options: ComboboxOption[];
   value: string | null;
@@ -77,6 +78,7 @@ export function CreatableCombobox({
   allowCreate?: boolean;
   disabled?: boolean;
   ariaLabel: string;
+  ariaInvalid?: boolean;
 }) {
   const selectedLabel =
     options.find((option) => option.value === value)?.label ??
@@ -188,6 +190,7 @@ export function CreatableCombobox({
       <ComboboxInput
         placeholder={placeholder}
         aria-label={ariaLabel}
+        aria-invalid={ariaInvalid || undefined}
         className="h-11 w-full"
         showClear
         disabled={disabled}

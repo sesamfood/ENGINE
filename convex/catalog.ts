@@ -116,6 +116,17 @@ const productDetailValidator = v.object({
       quantity: v.number(),
       unitId: v.id("units"),
       unitName: v.string(),
+      removable: v.boolean(),
+    }),
+  ),
+  addableIngredients: v.array(
+    v.object({
+      productId: v.id("products"),
+      productName: v.string(),
+      productStatus: statusValidator,
+      quantity: v.union(v.number(), v.null()),
+      unitId: v.union(v.id("units"), v.null()),
+      unitName: v.union(v.string(), v.null()),
     }),
   ),
 });
@@ -152,6 +163,13 @@ const ingredientInputValidator = v.object({
   productId: v.id("products"),
   quantity: v.number(),
   unitId: v.id("units"),
+  removable: v.optional(v.boolean()),
+});
+
+const addableIngredientInputValidator = v.object({
+  productId: v.id("products"),
+  quantity: v.optional(v.number()),
+  unitId: v.optional(v.id("units")),
 });
 
 const maxTemperatureInputValidator = v.optional(
@@ -176,6 +194,14 @@ const productExportValidator = v.object({
       sourceProductId: v.id("products"),
       quantity: v.number(),
       unit: v.string(),
+      removable: v.boolean(),
+    }),
+  ),
+  addableIngredients: v.array(
+    v.object({
+      sourceProductId: v.id("products"),
+      quantity: v.optional(v.number()),
+      unit: v.optional(v.string()),
     }),
   ),
   imageUrl: v.union(v.string(), v.null()),
@@ -191,6 +217,13 @@ const importedIngredientValidator = v.object({
   productId: v.id("products"),
   quantity: v.number(),
   unitName: v.string(),
+  removable: v.optional(v.boolean()),
+});
+
+const importedAddableIngredientValidator = v.object({
+  productId: v.id("products"),
+  quantity: v.optional(v.number()),
+  unitName: v.optional(v.string()),
 });
 
 const bulkProductCategoryArgs = v.object({
@@ -216,6 +249,13 @@ type IngredientInput = {
   productId: Id<"products">;
   quantity: number;
   unitId: Id<"units">;
+  removable?: boolean;
+};
+
+type AddableIngredientInput = {
+  productId: Id<"products">;
+  quantity?: number;
+  unitId?: Id<"units">;
 };
 
 type CategoryPlacement =
@@ -662,6 +702,70 @@ async function validateIngredients(
   }
 }
 
+async function validateAddableIngredients(
+  ctx: MutationCtx,
+  organizationId: string,
+  addableIngredients: AddableIngredientInput[],
+  productId?: Id<"products">,
+  allowedArchivedProductIds = new Set<Id<"products">>(),
+) {
+  if (addableIngredients.length > MAX_CHILD_ROWS) {
+    throw new ConvexError(
+      "Produktet har for mange ingredienser, der kan tilføjes",
+    );
+  }
+  if (
+    new Set(addableIngredients.map((row) => row.productId)).size !==
+    addableIngredients.length
+  ) {
+    throw new ConvexError("Hver ingrediens kan kun tilføjes én gang");
+  }
+
+  for (const ingredient of addableIngredients) {
+    if (
+      (ingredient.quantity === undefined) !==
+      (ingredient.unitId === undefined)
+    ) {
+      throw new ConvexError("Vælg både mængde og enhed for ingrediensen");
+    }
+    if (ingredient.quantity !== undefined) {
+      requirePositiveNumber(ingredient.quantity, "Ingrediensmængden");
+    }
+    if (productId && ingredient.productId === productId) {
+      throw new ConvexError("Et produkt kan ikke tilføjes til sig selv");
+    }
+    const ingredientProduct = await ctx.db.get(
+      "products",
+      ingredient.productId,
+    );
+    if (
+      !ingredientProduct ||
+      ingredientProduct.organizationId !== organizationId ||
+      (ingredientProduct.status === "archived" &&
+        !allowedArchivedProductIds.has(ingredientProduct._id))
+    ) {
+      throw new ConvexError("Ingrediensproduktet blev ikke fundet");
+    }
+    const unitId = ingredient.unitId;
+    if (unitId !== undefined) {
+      const productUnit = await ctx.db
+        .query("productUnits")
+        .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", ingredient.productId)
+            .eq("unitId", unitId),
+        )
+        .unique();
+      if (!productUnit) {
+        throw new ConvexError(
+          "Vælg en enhed, der er konfigureret for ingrediensen",
+        );
+      }
+    }
+  }
+}
+
 async function assertNoRecipeCycle(
   ctx: MutationCtx,
   organizationId: string,
@@ -694,6 +798,96 @@ async function assertNoRecipeCycle(
   }
 }
 
+async function replaceProductIngredients(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+  ingredients: IngredientInput[],
+) {
+  const existingIngredients = await ctx.db
+    .query("productIngredients")
+    .withIndex("by_organizationId_and_productId", (q) =>
+      q.eq("organizationId", organizationId).eq("productId", productId),
+    )
+    .take(MAX_CHILD_ROWS);
+  const existingIngredientsByProductId = new Map(
+    existingIngredients.map((row) => [row.ingredientProductId, row]),
+  );
+
+  for (const row of existingIngredients) {
+    await ctx.db.delete("productIngredients", row._id);
+  }
+  for (const row of ingredients) {
+    const current = existingIngredientsByProductId.get(row.productId);
+    const removable = row.removable ?? current?.removable ?? false;
+    const keepOnlinePosRemovalMapping =
+      removable &&
+      current?.removable === true &&
+      current.onlinePosRemovalProductId !== undefined &&
+      current.onlinePosRemovalIntegrationId !== undefined &&
+      current.onlinePosRemovalCompanyId !== undefined;
+    await ctx.db.insert("productIngredients", {
+      organizationId,
+      productId,
+      ingredientProductId: row.productId,
+      quantity: row.quantity,
+      unitId: row.unitId,
+      removable,
+      ...(keepOnlinePosRemovalMapping
+        ? {
+            onlinePosRemovalProductId: current.onlinePosRemovalProductId,
+            onlinePosRemovalIntegrationId:
+              current.onlinePosRemovalIntegrationId,
+            onlinePosRemovalCompanyId: current.onlinePosRemovalCompanyId,
+          }
+        : {}),
+    });
+  }
+}
+
+async function replaceProductIngredientAdditions(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+  addableIngredients: AddableIngredientInput[],
+) {
+  const existingAdditions = await ctx.db
+    .query("productIngredientAdditions")
+    .withIndex("by_organizationId_and_productId", (q) =>
+      q.eq("organizationId", organizationId).eq("productId", productId),
+    )
+    .take(MAX_CHILD_ROWS);
+  const existingAdditionsByProductId = new Map(
+    existingAdditions.map((row) => [row.ingredientProductId, row]),
+  );
+
+  for (const row of existingAdditions) {
+    await ctx.db.delete("productIngredientAdditions", row._id);
+  }
+  for (const row of addableIngredients) {
+    const current = existingAdditionsByProductId.get(row.productId);
+    const keepOnlinePosAdditionMapping =
+      current?.onlinePosAdditionProductId !== undefined &&
+      current.onlinePosAdditionIntegrationId !== undefined &&
+      current.onlinePosAdditionCompanyId !== undefined;
+    await ctx.db.insert("productIngredientAdditions", {
+      organizationId,
+      productId,
+      ingredientProductId: row.productId,
+      quantity: row.quantity,
+      unitId: row.unitId,
+      ...(keepOnlinePosAdditionMapping
+        ? {
+            onlinePosAdditionProductId: current.onlinePosAdditionProductId,
+            onlinePosAdditionIntegrationId:
+              current.onlinePosAdditionIntegrationId,
+            onlinePosAdditionCompanyId: current.onlinePosAdditionCompanyId,
+          }
+        : {}),
+    });
+  }
+}
+
 async function replaceProductChildren(
   ctx: MutationCtx,
   organizationId: string,
@@ -720,24 +914,23 @@ async function replaceProductChildren(
           .eq("unitId", row.unitId),
       )
       .first();
-    if (usedByRecipe) {
+    const usedByAddition = await ctx.db
+      .query("productIngredientAdditions")
+      .withIndex("by_organizationId_and_ingredientProductId_and_unitId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("ingredientProductId", productId)
+          .eq("unitId", row.unitId),
+      )
+      .first();
+    if (usedByRecipe || usedByAddition) {
       throw new ConvexError(
-        "En enhed, der bruges af en anden opskrift, kan ikke fjernes",
+        "En enhed, der bruges af en opskrift eller en ingrediens, der kan tilføjes, kan ikke fjernes",
       );
     }
   }
 
-  const existingIngredients = await ctx.db
-    .query("productIngredients")
-    .withIndex("by_organizationId_and_productId", (q) =>
-      q.eq("organizationId", organizationId).eq("productId", productId),
-    )
-    .take(MAX_CHILD_ROWS);
-
   for (const row of existingUnits) await ctx.db.delete("productUnits", row._id);
-  for (const row of existingIngredients) {
-    await ctx.db.delete("productIngredients", row._id);
-  }
 
   for (const row of units) {
     await ctx.db.insert("productUnits", {
@@ -747,15 +940,7 @@ async function replaceProductChildren(
       factorToDefault: row.factorToDefault,
     });
   }
-  for (const row of ingredients) {
-    await ctx.db.insert("productIngredients", {
-      organizationId,
-      productId,
-      ingredientProductId: row.productId,
-      quantity: row.quantity,
-      unitId: row.unitId,
-    });
-  }
+  await replaceProductIngredients(ctx, organizationId, productId, ingredients);
 }
 
 async function scrubProductFromCountOrder(
@@ -831,6 +1016,8 @@ async function permanentlyDeleteProduct(
     units,
     ingredients,
     recipeReferences,
+    ingredientAdditions,
+    ingredientAdditionReferences,
     stockRows,
     staffFoodRules,
     categoryMemberships,
@@ -853,6 +1040,22 @@ async function permanentlyDeleteProduct(
       .take(MAX_CHILD_ROWS + 1),
     ctx.db
       .query("productIngredients")
+      .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("ingredientProductId", product._id),
+      )
+      .take(MAX_GRAPH_PRODUCTS + 1),
+    ctx.db
+      .query("productIngredientAdditions")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q
+          .eq("organizationId", product.organizationId)
+          .eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS + 1),
+    ctx.db
+      .query("productIngredientAdditions")
       .withIndex("by_organizationId_and_ingredientProductId", (q) =>
         q
           .eq("organizationId", product.organizationId)
@@ -889,6 +1092,8 @@ async function permanentlyDeleteProduct(
     units.length > MAX_CHILD_ROWS ||
     ingredients.length > MAX_CHILD_ROWS ||
     recipeReferences.length > MAX_GRAPH_PRODUCTS ||
+    ingredientAdditions.length > MAX_CHILD_ROWS ||
+    ingredientAdditionReferences.length > MAX_GRAPH_PRODUCTS ||
     stockRows.length > MAX_CHILD_ROWS ||
     staffFoodRules.length > MAX_CHILD_ROWS ||
     categoryMemberships.length > MAX_PRODUCT_CATEGORIES
@@ -904,6 +1109,12 @@ async function permanentlyDeleteProduct(
   }
   for (const row of recipeReferences) {
     await ctx.db.delete("productIngredients", row._id);
+  }
+  for (const row of ingredientAdditions) {
+    await ctx.db.delete("productIngredientAdditions", row._id);
+  }
+  for (const row of ingredientAdditionReferences) {
+    await ctx.db.delete("productIngredientAdditions", row._id);
   }
   for (const row of stockRows) await ctx.db.delete("locationStock", row._id);
   for (const row of staffFoodRules) {
@@ -1298,8 +1509,13 @@ export const exportProducts = query({
       ...results,
       page: await Promise.all(
         results.page.map(async (product) => {
-          const [categoryIds, unitRows, ingredientRows, imageUrl] =
-            await Promise.all([
+          const [
+            categoryIds,
+            unitRows,
+            ingredientRows,
+            addableIngredientRows,
+            imageUrl,
+          ] = await Promise.all([
               getProductCategoryIds(ctx, product),
               ctx.db
                 .query("productUnits")
@@ -1311,6 +1527,14 @@ export const exportProducts = query({
                 .take(MAX_CHILD_ROWS),
               ctx.db
                 .query("productIngredients")
+                .withIndex("by_organizationId_and_productId", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("productId", product._id),
+                )
+                .take(MAX_CHILD_ROWS),
+              ctx.db
+                .query("productIngredientAdditions")
                 .withIndex("by_organizationId_and_productId", (q) =>
                   q
                     .eq("organizationId", organizationId)
@@ -1371,6 +1595,36 @@ export const exportProducts = query({
                 sourceProductId: ingredientProduct._id,
                 quantity: row.quantity,
                 unit: unit.name,
+                removable: row.removable ?? false,
+              };
+            }),
+          );
+          const addableIngredients = await Promise.all(
+            addableIngredientRows.map(async (row) => {
+              const ingredientProduct = await ctx.db.get(
+                "products",
+                row.ingredientProductId,
+              );
+              if (
+                !ingredientProduct ||
+                ingredientProduct.organizationId !== organizationId
+              ) {
+                throw new ConvexError(
+                  `En ingrediens, der kan tilføjes til ${product.name}, blev ikke fundet`,
+                );
+              }
+              const unit = row.unitId
+                ? await ctx.db.get("units", row.unitId)
+                : null;
+              if (row.unitId && unit?.organizationId !== organizationId) {
+                throw new ConvexError(
+                  "Enheden for ingrediensen blev ikke fundet",
+                );
+              }
+              return {
+                sourceProductId: ingredientProduct._id,
+                quantity: row.quantity,
+                unit: unit?.name,
               };
             }),
           );
@@ -1383,6 +1637,7 @@ export const exportProducts = query({
             maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
             units,
             ingredients,
+            addableIngredients,
             imageUrl,
           };
         }),
@@ -1399,7 +1654,13 @@ export const getProduct = query({
     const product = await ctx.db.get("products", args.productId);
     if (!product || product.organizationId !== organizationId) return null;
 
-    const [categoryIds, unitRows, ingredientRows, imageUrl] = await Promise.all([
+    const [
+      categoryIds,
+      unitRows,
+      ingredientRows,
+      addableIngredientRows,
+      imageUrl,
+    ] = await Promise.all([
       getProductCategoryIds(ctx, product),
       ctx.db
         .query("productUnits")
@@ -1409,6 +1670,12 @@ export const getProduct = query({
         .take(MAX_CHILD_ROWS),
       ctx.db
         .query("productIngredients")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("productId", product._id),
+        )
+        .take(MAX_CHILD_ROWS),
+      ctx.db
+        .query("productIngredientAdditions")
         .withIndex("by_organizationId_and_productId", (q) =>
           q.eq("organizationId", organizationId).eq("productId", product._id),
         )
@@ -1454,6 +1721,27 @@ export const getProduct = query({
               quantity: row.quantity,
               unitId: unit._id,
               unitName: unit.name,
+              removable: row.removable ?? false,
+            }
+          : null;
+      }),
+    );
+    const addableIngredients = await Promise.all(
+      addableIngredientRows.map(async (row) => {
+        const ingredientProduct = await ctx.db.get(
+          "products",
+          row.ingredientProductId,
+        );
+        const unit = row.unitId ? await ctx.db.get("units", row.unitId) : null;
+        return ingredientProduct?.organizationId === organizationId
+          ? {
+              productId: ingredientProduct._id,
+              productName: ingredientProduct.name,
+              productStatus: ingredientProduct.status,
+              quantity: row.quantity ?? null,
+              unitId: row.unitId ?? null,
+              unitName:
+                unit?.organizationId === organizationId ? unit.name : null,
             }
           : null;
       }),
@@ -1469,6 +1757,7 @@ export const getProduct = query({
       imageUrl,
       units: units.filter((row) => row !== null),
       ingredients: ingredients.filter((row) => row !== null),
+      addableIngredients: addableIngredients.filter((row) => row !== null),
     };
   },
 });
@@ -1607,6 +1896,7 @@ export async function createProductWithAuth(
     categories: CategoryReference[];
     units: ProductUnitInput[];
     ingredients: IngredientInput[];
+    addableIngredients: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
   },
 ): Promise<Id<"products">> {
@@ -1621,6 +1911,11 @@ export async function createProductWithAuth(
   const categoryId = categoryIds[0];
   const units = await resolveUnits(ctx, organizationId, args.units);
   await validateIngredients(ctx, organizationId, args.ingredients);
+  await validateAddableIngredients(
+    ctx,
+    organizationId,
+    args.addableIngredients,
+  );
   if (typeof args.maxTemperatureCelsius === "number") {
     requireTemperature(args.maxTemperatureCelsius, "Maksimumtemperaturen");
   }
@@ -1646,6 +1941,12 @@ export async function createProductWithAuth(
     units,
     args.ingredients,
   );
+  await replaceProductIngredientAdditions(
+    ctx,
+    organizationId,
+    productId,
+    args.addableIngredients,
+  );
   await replaceProductCategories(
     ctx,
     { _id: productId, organizationId, categoryId },
@@ -1669,6 +1970,7 @@ export async function updateProductWithAuth(
     categories: CategoryReference[];
     units: ProductUnitInput[];
     ingredients: IngredientInput[];
+    addableIngredients?: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
   },
 ): Promise<Id<"products">> {
@@ -1695,15 +1997,30 @@ export async function updateProductWithAuth(
   );
   const categoryId = categoryIds[0];
   const units = await resolveUnits(ctx, organizationId, args.units);
-  const existingIngredients = await ctx.db
-    .query("productIngredients")
-    .withIndex("by_organizationId_and_productId", (q) =>
-      q.eq("organizationId", organizationId).eq("productId", product._id),
-    )
-    .take(MAX_CHILD_ROWS);
+  const [existingIngredients, existingAddableIngredients] = await Promise.all([
+    ctx.db
+      .query("productIngredients")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS),
+    ctx.db
+      .query("productIngredientAdditions")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS),
+  ]);
   const allowedArchivedProductIds = new Set(
     existingIngredients.map((row) => row.ingredientProductId),
   );
+  const addableIngredients =
+    args.addableIngredients ??
+    existingAddableIngredients.map((row) => ({
+      productId: row.ingredientProductId,
+      quantity: row.quantity,
+      unitId: row.unitId,
+    }));
   await validateIngredients(
     ctx,
     organizationId,
@@ -1712,6 +2029,15 @@ export async function updateProductWithAuth(
     allowedArchivedProductIds,
   );
   await assertNoRecipeCycle(ctx, organizationId, product._id, args.ingredients);
+  await validateAddableIngredients(
+    ctx,
+    organizationId,
+    addableIngredients,
+    product._id,
+    new Set(
+      existingAddableIngredients.map((row) => row.ingredientProductId),
+    ),
+  );
 
   const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
   if (defaultUnitId !== product.defaultUnitId) {
@@ -1748,6 +2074,12 @@ export async function updateProductWithAuth(
     product._id,
     units,
     args.ingredients,
+  );
+  await replaceProductIngredientAdditions(
+    ctx,
+    organizationId,
+    product._id,
+    addableIngredients,
   );
   const updatedAt = Math.max(Date.now(), product.updatedAt + 1);
   await ctx.db.patch("products", product._id, {
@@ -1874,12 +2206,16 @@ export const createProduct = mutation({
     categories: v.array(categoryReferenceValidator),
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
+    addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    return await createProductWithAuth(ctx, auth, args);
+    return await createProductWithAuth(ctx, auth, {
+      ...args,
+      addableIngredients: args.addableIngredients ?? [],
+    });
   },
 });
 
@@ -1945,6 +2281,7 @@ export const importProduct = mutation({
         recipeReferences,
         countItems,
         wasteConfigs,
+        additionReferences,
       ] = await Promise.all([
         ctx.db
           .query("productUnits")
@@ -1986,13 +2323,22 @@ export const importProduct = mutation({
               .eq("productId", existing._id),
           )
           .take(MAX_CHILD_ROWS + 1),
+        ctx.db
+          .query("productIngredientAdditions")
+          .withIndex("by_organizationId_and_ingredientProductId", (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("ingredientProductId", existing._id),
+          )
+          .take(MAX_CHILD_ROWS + 1),
       ]);
       if (
         existingUnits.length > MAX_CHILD_ROWS ||
         stockRows.length > MAX_CHILD_ROWS ||
         recipeReferences.length > MAX_CHILD_ROWS ||
         countItems.length > MAX_CHILD_ROWS ||
-        wasteConfigs.length > MAX_CHILD_ROWS
+        wasteConfigs.length > MAX_CHILD_ROWS ||
+        additionReferences.length > MAX_CHILD_ROWS
       ) {
         throw new ConvexError(
           `Produktet ${name} har for mange relationer til at blive overskrevet`,
@@ -2018,6 +2364,9 @@ export const importProduct = mutation({
       const removedUnitReferences = recipeReferences.filter(
         (row) => !nextUnitIds.has(row.unitId),
       );
+      const removedAdditionUnits = additionReferences.filter(
+        (row) => row.unitId !== undefined && !nextUnitIds.has(row.unitId),
+      );
       const openCountItems = (
         await Promise.all(
           countItems.map(async (item) => ({
@@ -2040,6 +2389,7 @@ export const importProduct = mutation({
       if (
         (stockRows.length > 0 ||
           removedUnitReferences.length > 0 ||
+          removedAdditionUnits.length > 0 ||
           openCountItems.length > 0 ||
           configsWithRemovedUnits.length > 0) &&
         !conversion
@@ -2069,6 +2419,20 @@ export const importProduct = mutation({
         const quantity = reference.quantity * oldFactor * conversion!;
         requirePositiveNumber(quantity, "Den omregnede ingrediensmængde");
         await ctx.db.patch("productIngredients", reference._id, {
+          quantity,
+          unitId: defaultUnitId,
+        });
+      }
+      for (const reference of removedAdditionUnits) {
+        const oldFactor = reference.unitId && oldUnits.get(reference.unitId);
+        if (!oldFactor || reference.quantity === undefined || !conversion) {
+          throw new ConvexError(
+            `En ingrediens, der kan tilføjes, bruger en ugyldig enhed for ${name}`,
+          );
+        }
+        const quantity = reference.quantity * oldFactor * conversion;
+        requirePositiveNumber(quantity, "Den omregnede ingrediensmængde");
+        await ctx.db.patch("productIngredientAdditions", reference._id, {
           quantity,
           unitId: defaultUnitId,
         });
@@ -2165,6 +2529,9 @@ export const importProductIngredients = mutation({
   args: {
     productId: v.id("products"),
     ingredients: v.array(importedIngredientValidator),
+    addableIngredients: v.optional(
+      v.array(importedAddableIngredientValidator),
+    ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -2191,28 +2558,62 @@ export const importProductIngredients = mutation({
         productId: input.productId,
         quantity: input.quantity,
         unitId: unit._id,
+        ...(input.removable === undefined
+          ? {}
+          : { removable: input.removable }),
       });
     }
 
     await validateIngredients(ctx, organizationId, ingredients, product._id);
     await assertNoRecipeCycle(ctx, organizationId, product._id, ingredients);
-    const existing = await ctx.db
-      .query("productIngredients")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", product._id),
-      )
-      .take(MAX_CHILD_ROWS);
-    for (const row of existing) {
-      await ctx.db.delete("productIngredients", row._id);
-    }
-    for (const ingredient of ingredients) {
-      await ctx.db.insert("productIngredients", {
+    await replaceProductIngredients(
+      ctx,
+      organizationId,
+      product._id,
+      ingredients,
+    );
+    if (args.addableIngredients !== undefined) {
+      const additions: AddableIngredientInput[] = [];
+      for (const input of args.addableIngredients) {
+        if ((input.quantity === undefined) !== (input.unitName === undefined)) {
+          throw new ConvexError("Vælg både mængde og enhed for ingrediensen");
+        }
+        const normalizedName =
+          input.unitName === undefined
+            ? null
+            : normalizeName(input.unitName, "Enhedsnavnet").normalizedName;
+        const unit =
+          normalizedName === null
+            ? null
+            : await ctx.db
+                .query("units")
+                .withIndex("by_organizationId_and_normalizedName", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("normalizedName", normalizedName),
+                )
+                .unique();
+        if (input.unitName !== undefined && !unit) {
+          throw new ConvexError("Enheden for ingrediensen blev ikke fundet");
+        }
+        additions.push({
+          productId: input.productId,
+          quantity: input.quantity,
+          unitId: unit?._id,
+        });
+      }
+      await validateAddableIngredients(
+        ctx,
         organizationId,
-        productId: product._id,
-        ingredientProductId: ingredient.productId,
-        quantity: ingredient.quantity,
-        unitId: ingredient.unitId,
-      });
+        additions,
+        product._id,
+      );
+      await replaceProductIngredientAdditions(
+        ctx,
+        organizationId,
+        product._id,
+        additions,
+      );
     }
     await recordAudit(ctx, auth, {
       action: "catalog.productIngredientsChanged",
@@ -2231,6 +2632,7 @@ export const updateProduct = mutation({
     categories: v.array(categoryReferenceValidator),
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
+    addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
   },
   returns: v.id("products"),
@@ -2667,52 +3069,70 @@ export async function mergeUnitsWithAuth(
   }
 
   for (const sourceProductUnit of sourceProductUnits) {
-    const [product, targetProductUnit, recipeReferences, countItems, configs] =
-      await Promise.all([
-        ctx.db.get("products", sourceProductUnit.productId),
-        ctx.db
-          .query("productUnits")
-          .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+    const [
+      product,
+      targetProductUnit,
+      recipeReferences,
+      countItems,
+      configs,
+      additionReferences,
+    ] = await Promise.all([
+      ctx.db.get("products", sourceProductUnit.productId),
+      ctx.db
+        .query("productUnits")
+        .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", sourceProductUnit.productId)
+            .eq("unitId", targetUnit._id),
+        )
+        .unique(),
+      ctx.db
+        .query("productIngredients")
+        .withIndex(
+          "by_organizationId_and_ingredientProductId_and_unitId",
+          (q) =>
             q
               .eq("organizationId", organizationId)
-              .eq("productId", sourceProductUnit.productId)
-              .eq("unitId", targetUnit._id),
-          )
-          .unique(),
-        ctx.db
-          .query("productIngredients")
-          .withIndex(
-            "by_organizationId_and_ingredientProductId_and_unitId",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("ingredientProductId", sourceProductUnit.productId)
-                .eq("unitId", sourceUnit._id),
-          )
-          .take(MAX_CHILD_ROWS + 1),
-        ctx.db
-          .query("countItems")
-          .withIndex("by_organizationId_and_productId", (q) =>
+              .eq("ingredientProductId", sourceProductUnit.productId)
+              .eq("unitId", sourceUnit._id),
+        )
+        .take(MAX_CHILD_ROWS + 1),
+      ctx.db
+        .query("countItems")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", sourceProductUnit.productId),
+        )
+        .take(MAX_CHILD_ROWS + 1),
+      ctx.db
+        .query("wasteProductConfigs")
+        .withIndex("by_org_product", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", sourceProductUnit.productId),
+        )
+        .take(MAX_CHILD_ROWS + 1),
+      ctx.db
+        .query("productIngredientAdditions")
+        .withIndex(
+          "by_organizationId_and_ingredientProductId_and_unitId",
+          (q) =>
             q
               .eq("organizationId", organizationId)
-              .eq("productId", sourceProductUnit.productId),
-          )
-          .take(MAX_CHILD_ROWS + 1),
-        ctx.db
-          .query("wasteProductConfigs")
-          .withIndex("by_org_product", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("productId", sourceProductUnit.productId),
-          )
-          .take(MAX_CHILD_ROWS + 1),
-      ]);
+              .eq("ingredientProductId", sourceProductUnit.productId)
+              .eq("unitId", sourceUnit._id),
+        )
+        .take(MAX_CHILD_ROWS + 1),
+    ]);
 
     if (!product || product.organizationId !== organizationId) {
       throw new ConvexError("Et produkt til enheden blev ikke fundet");
     }
     if (
       recipeReferences.length > MAX_CHILD_ROWS ||
+      additionReferences.length > MAX_CHILD_ROWS ||
       countItems.length > MAX_CHILD_ROWS ||
       configs.length > MAX_CHILD_ROWS
     ) {
@@ -2731,6 +3151,11 @@ export async function mergeUnitsWithAuth(
 
     for (const reference of recipeReferences) {
       await ctx.db.patch("productIngredients", reference._id, {
+        unitId: targetUnit._id,
+      });
+    }
+    for (const reference of additionReferences) {
+      await ctx.db.patch("productIngredientAdditions", reference._id, {
         unitId: targetUnit._id,
       });
     }
