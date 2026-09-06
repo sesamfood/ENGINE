@@ -299,6 +299,31 @@ async function loadOnlinePos(
         addQuantity(salesByProduct, entry.productId, quantity / reportUnitFactor);
       }
     }
+    const refunds = await ctx.db.query("wasteRegistrations")
+      .withIndex("by_org_location_source_time", q => q
+        .eq("organizationId", report.organizationId)
+        .eq("locationId", report.locationId)
+        .eq("source", "onlinePos")
+        .gte("registeredAt", from).lt("registeredAt", report.submittedAt))
+      .take(MAX_WASTE_SALES_LINES + 1);
+    if (refunds.length > MAX_WASTE_SALES_LINES) {
+      health.usable = false;
+      health.reason = "der er for mange refunderinger til at beregne sikkert";
+      return { health, salesByProduct, unmappedSalesQuantity };
+    }
+    // The saved stock balance already includes Waste known when Count was submitted.
+    for (const refund of refunds) {
+      const row = rowByProduct.get(refund.productId);
+      if (!row || refund.registeredAt < row.expectedSinceAt) continue;
+      const includedAtCount = refund._creationTime <= report.submittedAt &&
+        (refund.voidedAt === undefined || refund.voidedAt > report.submittedAt);
+      const adjustment = Number(refund.status === "active") - Number(includedAtCount);
+      if (adjustment === 0) continue;
+      const quantity = await toDefaultUnit(ctx, report.organizationId, refund.productId, refund.defaultUnitId, refund.defaultQuantity);
+      const factor = row.defaultUnitId ? await toDefaultUnit(ctx, report.organizationId, refund.productId, row.defaultUnitId, 1) : 1;
+      if (quantity === null || !factor) throw new ConvexError("En Waste-enhed mangler sin omregning i Count-rapporten");
+      addQuantity(salesByProduct, refund.productId, adjustment * quantity / factor);
+    }
     if (unmappedSalesQuantity) {
       health.usable = false;
       health.reason = "nogle OnlinePOS-salg mangler produktkoblinger";

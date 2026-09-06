@@ -23,6 +23,7 @@ import {
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
 import { dayStartOf } from "./lib/salesRollup";
 import { resolveTimeZone } from "./lib/timeZone";
+import { reconcileOnlinePosWaste } from "./waste";
 
 const locationArgs = {
   organizationId: v.string(),
@@ -165,8 +166,18 @@ async function applyOrder(
 ) {
   const activationAt = settings.stockSyncStartedAt;
   if (activationAt === undefined) return;
+  const previousWaste: Doc<"wasteRegistrations">[] = [];
+  for (const id of previous?.wasteRegistrationIds ?? []) {
+    const row = await ctx.db.get("wasteRegistrations", id);
+    if (!row || row.organizationId !== order.organizationId || row.locationId !== order.locationId || row.source !== "onlinePos")
+      throw new ConvexError("Refunderingens Waste-registrering blev ikke fundet");
+    previousWaste.push(row);
+  }
+  const refunds: Array<{ productId: Id<"products">; quantity: number; registeredAt: number }> = [];
+  const previousRefundPolicy = new Map(previous?.entries.filter(entry => entry.isRefund !== false).map(entry => [entry.externalId, entry.refundToWaste ?? false]));
   const productIds = new Set([
     ...entries.map((entry) => entry.productId),
+    ...previousWaste.map((entry) => entry.productId),
     ...(previous?.applied.map((entry) => entry.productId) ?? []),
   ]);
   const previousEligible = new Set(
@@ -213,6 +224,7 @@ async function applyOrder(
       before += converted;
     }
     let after = 0;
+    const refundQuantities = new Map<number, number>();
     for (const entry of entries) {
       if (entry.productId !== productId) continue;
       const start =
@@ -222,9 +234,10 @@ async function applyOrder(
           : Math.max(activationAt, connection.connectedAt);
       const eligible =
         previousEligible.has(entry.externalId) || entry.occurredAt >= start;
-      nextEntries.push({ ...entry, eligible });
-      if (!eligible || (countedAt !== null && entry.occurredAt < countedAt))
-        continue;
+      const refundToWaste = entry.isRefund === true &&
+        (previousRefundPolicy.get(entry.externalId) ?? settings.stockRefundsToWaste ?? false);
+      nextEntries.push({ ...entry, eligible, refundToWaste });
+      if (!eligible) continue;
       const converted = await toDefaultUnit(
         ctx,
         order.organizationId,
@@ -234,17 +247,35 @@ async function applyOrder(
       );
       if (converted === null)
         throw new ConvexError("En lagerenhed mangler sin omregning");
-      after += converted;
+      if (refundToWaste) refundQuantities.set(entry.occurredAt,
+        (refundQuantities.get(entry.occurredAt) ?? 0) - converted);
+      if (countedAt === null || entry.occurredAt >= countedAt) after += converted;
     }
+    let wasteAfter = 0;
+    let wasteBefore = 0;
+    for (const [registeredAt, quantity] of refundQuantities) {
+      const amount = Math.max(0, normalizeStock(quantity));
+      if (amount === 0) continue;
+      refunds.push({ productId, registeredAt, quantity: amount });
+      if (countedAt === null || registeredAt >= countedAt) wasteAfter += amount;
+    }
+    for (const row of previousWaste) {
+      if (row.productId !== productId || row.status !== "active" ||
+        (countedAt !== null && row.registeredAt < countedAt)) continue;
+      const converted = await toDefaultUnit(ctx, order.organizationId, productId, row.defaultUnitId, row.defaultQuantity);
+      if (converted === null) throw new ConvexError("En tidligere Waste-enhed mangler sin omregning");
+      wasteBefore += converted;
+    }
+    const wasteDelta = normalizeStock(wasteAfter - wasteBefore);
     after = normalizeStock(after);
     const delta = normalizeStock(after - before);
-    if (delta !== 0) {
+    if (delta !== 0 || wasteDelta !== 0) {
       await addStock(
         ctx,
         order.organizationId,
         order.locationId,
         productId,
-        -delta,
+        -delta - wasteDelta,
       );
       const updatedStock = await ctx.db
         .query("locationStock")
@@ -270,7 +301,11 @@ async function applyOrder(
         countedAt,
       });
   }
+  const wasteRegistrationIds = previousWaste.length || refunds.length
+    ? await reconcileOnlinePosWaste(ctx, order.organizationId, order.locationId, previousWaste, refunds)
+    : [];
   const value = {
+    wasteRegistrationIds,
     organizationId: order.organizationId,
     locationId: order.locationId,
     source: "onlinePos" as const,
@@ -417,7 +452,7 @@ export const applyPage = internalMutation({
         .paginate({ numItems: 10, cursor: args.cursor });
       for (const previous of page.page) {
         if (
-          previous.applied.length === 0 ||
+          (previous.applied.length === 0 && !previous.wasteRegistrationIds?.length) ||
           previous.connectionId !== connection._id
         )
           continue;
@@ -518,7 +553,7 @@ export const fail = internalMutation({
 });
 
 export const setEnabled = mutation({
-  args: { enabled: v.boolean(), syncSinceLastCount: v.boolean() },
+  args: { enabled: v.boolean(), syncSinceLastCount: v.boolean(), refundsToWaste: v.optional(v.boolean()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
@@ -532,6 +567,7 @@ export const setEnabled = mutation({
       stockSyncEnabled: args.enabled,
       ...(args.enabled
         ? {
+            stockRefundsToWaste: args.refundsToWaste ?? settings.stockRefundsToWaste ?? false,
             stockSyncStartedAt: now,
             stockSyncHistoryStartAt: settings.stockSyncHistoryStartAt ?? now,
             stockSyncSinceLastCount: args.syncSinceLastCount,
@@ -554,6 +590,25 @@ export const setEnabled = mutation({
           ? "OnlinePOS-lagersynkronisering aktiveret med salg siden seneste Count"
           : "OnlinePOS-lagersynkronisering aktiveret fra nu"
         : "OnlinePOS-lagersynkronisering deaktiveret",
+    });
+    return null;
+  },
+});
+
+export const setRefundsToWaste = mutation({
+  args: { enabled: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    const settings = await integration(ctx, auth.organizationId);
+    if (!settings?.enabled || !settings.stockSyncEnabled)
+      throw new ConvexError("Aktivér lagersynkronisering først");
+    await ctx.db.patch(settings._id, { stockRefundsToWaste: args.enabled, updatedAt: Date.now() });
+    await recordAudit(ctx, auth, {
+      action: "integration.stockRefundsToWasteChanged",
+      entityTable: "onlinePosIntegrations", entityId: settings._id,
+      summary: args.enabled ? "Nye OnlinePOS-refunderinger registreres som Waste" : "Nye OnlinePOS-refunderinger føres tilbage på lageret",
     });
     return null;
   },
@@ -586,6 +641,7 @@ export const getSettings = query({
   returns: v.object({
     enabled: v.boolean(),
     integrationEnabled: v.boolean(),
+    refundsToWaste: v.boolean(),
     canManage: v.boolean(),
     locations: v.array(
       v.object({
@@ -658,6 +714,7 @@ export const getSettings = query({
     return {
       enabled: settings?.stockSyncEnabled ?? false,
       integrationEnabled: settings?.enabled ?? false,
+      refundsToWaste: settings?.stockRefundsToWaste ?? false,
       canManage,
       locations,
     };

@@ -6,7 +6,7 @@ import { normalizeStock, toDefaultUnit } from "./stock";
 type ReadCtx = QueryCtx | MutationCtx;
 export type StockSale = Pick<
   Doc<"salesStockApplications">["entries"][number],
-  "externalId" | "occurredAt" | "productId" | "unitId" | "quantity"
+  "externalId" | "occurredAt" | "productId" | "unitId" | "quantity" | "isRefund"
 >;
 type SaleLine = Pick<
   Doc<"salesLines">,
@@ -274,6 +274,7 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
       for (const value of values)
         entries.push({
           ...value,
+          isRefund: line.quantity < 0,
           externalId: line.externalId,
           occurredAt: line.occurredAt,
         });

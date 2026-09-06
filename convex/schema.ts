@@ -174,6 +174,7 @@ export default defineSchema({
     companyId: v.number(),
     enabled: v.boolean(),
     stockSyncEnabled: v.optional(v.boolean()),
+    stockRefundsToWaste: v.optional(v.boolean()),
     stockSyncStartedAt: v.optional(v.number()),
     stockSyncHistoryStartAt: v.optional(v.number()),
     stockSyncSinceLastCount: v.optional(v.boolean()),
@@ -228,7 +229,10 @@ export default defineSchema({
     fingerprint: v.string(),
     activationAt: v.number(),
     unmappedQuantity: v.number(),
+    wasteRegistrationIds: v.optional(v.array(v.id("wasteRegistrations"))),
     entries: v.array(v.object({
+      isRefund: v.optional(v.boolean()),
+      refundToWaste: v.optional(v.boolean()),
       externalId: v.string(),
       occurredAt: v.number(),
       productId: v.id("products"),
@@ -1489,7 +1493,7 @@ export default defineSchema({
     registeredAt: v.number(),
     registeredBy: v.string(),
     registeredByName: v.string(),
-    source: v.union(v.literal("shortcut"), v.literal("custom")),
+    source: v.union(v.literal("shortcut"), v.literal("custom"), v.literal("onlinePos")),
     status: v.union(v.literal("active"), v.literal("voided")),
     activeIn30Days: v.boolean(),
     activeIn90Days: v.boolean(),
@@ -1500,6 +1504,7 @@ export default defineSchema({
     voidedByName: v.optional(v.string()),
     dashboardSummaryTimeZone: v.optional(v.string()),
   })
+    .index("by_org_location_source_time", ["organizationId", "locationId", "source", "registeredAt"])
     .index("by_org_and_time", ["organizationId", "registeredAt"])
     .index("by_org_location_time", [
       "organizationId",

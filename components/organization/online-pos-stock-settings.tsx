@@ -38,6 +38,8 @@ export function OnlinePosStockSettings() {
   const settings = useQuery(api.onlinePosStock.getSettings);
   const setEnabled = useMutation(api.onlinePosStock.setEnabled);
   const retry = useMutation(api.onlinePosStock.retry);
+  const setRefundsToWaste = useMutation(api.onlinePosStock.setRefundsToWaste);
+  const [refundsToWaste, setRefundsToWasteChoice] = useState(false);
   const [open, setOpen] = useState(false);
   const [sinceCount, setSinceCount] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,7 +48,7 @@ export function OnlinePosStockSettings() {
   async function save(enabled: boolean) {
     setSaving(true);
     try {
-      await setEnabled({ enabled, syncSinceLastCount: enabled && sinceCount });
+      await setEnabled({ enabled, syncSinceLastCount: enabled && sinceCount, refundsToWaste });
       setOpen(false);
       toast.success(
         enabled
@@ -83,7 +85,7 @@ export function OnlinePosStockSettings() {
               </FieldLabel>
               <HelpTooltip
                 label="Lagersynkronisering fra OnlinePOS"
-                content="Salg hentes hvert 10. minut. Produkter med opskrifter reducerer ingrediensernes lager; andre Produkter reducerer deres egen beholdning. Tilvalg og fravalg bruger de eksisterende koblinger. Refunderinger med negativ salgsmængde fører mængden tilbage. Deaktivering stopper nye opdateringer og bevarer tidligere lagerændringer."
+                content="Salg hentes hvert 10. minut. Produkter med opskrifter reducerer ingrediensernes lager; andre Produkter reducerer deres egen beholdning. Tilvalg og fravalg bruger de eksisterende koblinger. Refunderinger fører mængden tilbage på lageret, medmindre du vælger at registrere dem som Waste. Deaktivering stopper nye opdateringer og bevarer tidligere lagerændringer."
               />
             </div>
             <Switch
@@ -95,11 +97,30 @@ export function OnlinePosStockSettings() {
               onCheckedChange={(enabled) => {
                 if (enabled) {
                   setSinceCount(false);
+                  setRefundsToWasteChoice(settings.refundsToWaste);
                   setOpen(true);
                 } else void save(false);
               }}
             />
           </Field>
+          {settings.enabled ? (
+            <Field orientation="horizontal" data-disabled={saving || !settings.canManage || !settings.integrationEnabled}>
+              <div className="flex flex-1 items-center gap-1">
+                <FieldLabel htmlFor="online-pos-refunds-waste">Registrér refunderinger som Waste</FieldLabel>
+                <HelpTooltip label="Refunderinger som Waste" content="Nye refunderinger, der synkroniseres, registreres automatisk som Waste. Maden føres derfor ikke tilbage på lageret. Opskrifter, tilvalg og fravalg bestemmer mængderne. Allerede behandlede refunderinger ændres ikke. Ret eventuelle fejl i OnlinePOS." />
+              </div>
+              <Switch id="online-pos-refunds-waste" checked={settings.refundsToWaste} disabled={saving || !settings.canManage || !settings.integrationEnabled}
+                onCheckedChange={async (enabled) => {
+                  setSaving(true);
+                  try {
+                    await setRefundsToWaste({ enabled });
+                    toast.success(enabled ? "Nye refunderinger registreres som Waste" : "Nye refunderinger føres tilbage på lageret");
+                  } catch (error) {
+                    toast.error(getUserErrorMessage(error, "Indstillingen kunne ikke gemmes"));
+                  } finally { setSaving(false); }
+                }} />
+            </Field>
+          ) : null}
         </FieldGroup>
         {!settings.integrationEnabled ? (
           <p className="text-sm text-muted-foreground">
@@ -188,6 +209,13 @@ export function OnlinePosStockSettings() {
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
+            <Field orientation="horizontal" data-disabled={saving}>
+              <Checkbox id="online-pos-enable-refunds-waste" checked={refundsToWaste} onCheckedChange={setRefundsToWasteChoice} disabled={saving} />
+              <div className="flex flex-col gap-1">
+                <FieldLabel htmlFor="online-pos-enable-refunds-waste">Registrér refunderinger som Waste</FieldLabel>
+                <FieldDescription>Refunderinger registreres som Waste, så maden ikke føres tilbage på lageret. Gælder også refunderinger siden seneste Count, hvis du vælger at synkronisere dem. Allerede behandlede refunderinger ændres ikke.</FieldDescription>
+              </div>
+            </Field>
             <Field orientation="horizontal" data-disabled={saving}>
               <Checkbox
                 id="online-pos-stock-since-count"
