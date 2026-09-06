@@ -42,6 +42,12 @@ export function WasteNavigation() {
   const showSectionTabs = sectionCount > 1;
 
   useEffect(() => {
+    if (showRegister) router.prefetch("/waste");
+    if (showBadDelivery) router.prefetch("/waste/bad-delivery");
+    if (canReport) router.prefetch("/waste/report");
+  }, [canReport, router, showBadDelivery, showRegister]);
+
+  useEffect(() => {
     if (!showRegister && !showBadDelivery && !canReport) return;
     if (
       (pathname === "/waste" && value === "register") ||

@@ -54,6 +54,7 @@ export function DashboardSettingsDialog({
   dashboards,
   open,
   onOpenChange,
+  showTrigger = true,
   onReorder,
   onSaved,
   onDuplicated,
@@ -63,6 +64,7 @@ export function DashboardSettingsDialog({
   dashboards: DashboardRecord[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  showTrigger?: boolean;
   onReorder: (dashboardIds: string[]) => Promise<void>;
   onSaved: (changes: SettingsChanges, updatedAt: number) => void;
   onDuplicated: (dashboardId: Id<"dashboards">) => void;
@@ -183,9 +185,11 @@ export function DashboardSettingsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-        <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${dashboard.name}`} />}>
-          <SettingsIcon />
-        </DialogTrigger>
+        {showTrigger ? (
+          <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${dashboard.name}`} />}>
+            <SettingsIcon />
+          </DialogTrigger>
+        ) : null}
         <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Dashboardindstillinger</DialogTitle>

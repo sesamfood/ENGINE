@@ -1075,7 +1075,7 @@ export const listLocationStockPage = query({
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
         q.eq("organizationId", organizationId).eq("status", "active"),
       )
-      .paginate(catalogPaginationOptions(args.paginationOpts));
+      .paginate(catalogPaginationOptions(args.paginationOpts, 25));
     const stocks = await Promise.all(result.page.map((product) =>
       ctx.db
         .query("locationStock")

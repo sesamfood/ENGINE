@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
 import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/convex/_generated/api";
@@ -34,9 +35,11 @@ import {
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
 import type { DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
-import { CustomMetricBuilder, type CustomMetricDefinition } from "./custom-metric-builder";
 import { DashboardWidget } from "./dashboard-widget";
 import type { YAxisValues } from "./y-axis-settings";
+import type { CustomMetricDefinition } from "./custom-metric-builder";
+
+const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
 
 const sizeClasses: Record<WidgetSize, string> = {
   "1x1": "col-span-1 row-span-1",

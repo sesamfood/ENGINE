@@ -38,6 +38,12 @@ export function OwnChecksNavigation() {
           : "documentation";
 
   useEffect(() => {
+    if (showToday) router.prefetch("/own-checks");
+    if (showOverview) router.prefetch("/own-checks/overview");
+    if (showDocumentation) router.prefetch("/own-checks/documentation");
+  }, [router, showDocumentation, showOverview, showToday]);
+
+  useEffect(() => {
     if ((value === "today" && pathname === "/own-checks") || (value === "overview" && pathname.startsWith("/own-checks/overview")) || (value === "documentation" && pathname.startsWith("/own-checks/documentation"))) return;
     const href = value === "today" ? "/own-checks" : value === "overview" ? "/own-checks/overview" : "/own-checks/documentation";
     router.replace(href, { scroll: false });

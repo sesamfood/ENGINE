@@ -74,7 +74,6 @@ const shiftRunStateValidator = v.union(
   v.object({
     runToken: v.union(v.string(), v.null()),
     lastEmployeeCompanyId: v.union(v.string(), v.null()),
-    lastEmployeeSuccessAt: v.union(v.number(), v.null()),
     shiftChunkHashes: v.array(v.string()),
     summaryTimeZone: v.string(),
   }),
@@ -101,9 +100,18 @@ type ShiftSyncContext = EmployeeSyncContext & {
 type ShiftRunState = {
   runToken: string | null;
   lastEmployeeCompanyId: string | null;
-  lastEmployeeSuccessAt: number | null;
   shiftChunkHashes: string[];
   summaryTimeZone: string;
+};
+
+type StoredShift = {
+  id: string;
+  employeeId: Id<"employees">;
+  locationId: Id<"locations">;
+  externalDepartmentId: string;
+  startsAt: number;
+  endsAt: number;
+  roleName: string | null;
 };
 
 type ShiftChunkCompletion = {
@@ -130,10 +138,31 @@ function shiftWindow(now: number) {
   };
 }
 
-async function shiftSourceHash(
+async function hashShiftSnapshot(
+  version: number,
+  serializedShifts: string[],
+  companyId: string,
+  summaryTimeZone: string,
+) {
+  const value = JSON.stringify([
+    version,
+    summaryTimeZone,
+    companyId,
+    serializedShifts,
+  ]);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `v${version}:${hex}`;
+}
+
+async function shiftProviderHash(
   shifts: ReturnType<typeof parseShifts>,
   companyId: string,
-  lastEmployeeSuccessAt: number | null,
   summaryTimeZone: string,
 ) {
   const serializedShifts = shifts
@@ -148,21 +177,28 @@ async function shiftSourceHash(
       ]),
     )
     .sort();
-  const value = JSON.stringify([
-    2,
-    summaryTimeZone,
-    companyId,
-    lastEmployeeSuccessAt,
-    serializedShifts,
-  ]);
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value),
-  );
-  const hex = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `v1:${hex}`;
+  return hashShiftSnapshot(1, serializedShifts, companyId, summaryTimeZone);
+}
+
+async function shiftSourceHash(
+  shifts: StoredShift[],
+  companyId: string,
+  summaryTimeZone: string,
+) {
+  const serializedShifts = shifts
+    .map((shift) =>
+      JSON.stringify([
+        shift.id,
+        shift.employeeId,
+        shift.locationId,
+        shift.externalDepartmentId,
+        shift.startsAt,
+        shift.endsAt,
+        shift.roleName,
+      ]),
+    )
+    .sort();
+  return hashShiftSnapshot(2, serializedShifts, companyId, summaryTimeZone);
 }
 
 async function finishShiftChunk(
@@ -487,7 +523,6 @@ export const getShiftRunState = internalQuery({
     return {
       runToken: status.runToken ?? null,
       lastEmployeeCompanyId: status.lastEmployeeCompanyId ?? null,
-      lastEmployeeSuccessAt: status.lastEmployeeSuccessAt ?? null,
       shiftChunkHashes: status.shiftChunkHashes ?? [],
       summaryTimeZone: await dashboardSummaryTimeZone(ctx, args.organizationId),
     };
@@ -1173,10 +1208,9 @@ export const syncShiftChunk = internalAction({
       if (sourceShifts.length === 0 && existingMappingCount > 0) {
         throw new Error("Workfeed returnerede et tomt vagtudsnit");
       }
-      const sourceHash = await shiftSourceHash(
+      const providerHash = await shiftProviderHash(
         sourceShifts,
         settings.companyId,
-        runState.lastEmployeeSuccessAt,
         runState.summaryTimeZone,
       );
       if (sourceShifts.length < existingMappingCount) {
@@ -1185,13 +1219,12 @@ export const syncShiftChunk = internalAction({
           startTo: new Date(args.to).toISOString(),
           released: "true",
         });
-        const confirmationHash = await shiftSourceHash(
+        const confirmationHash = await shiftProviderHash(
           parseShifts(confirmationPayload),
           settings.companyId,
-          runState.lastEmployeeSuccessAt,
           runState.summaryTimeZone,
         );
-        if (confirmationHash !== sourceHash) {
+        if (confirmationHash !== providerHash) {
           throw new Error("Workfeed-vagtudsnittet ændrede sig mellem to kald");
         }
       }
@@ -1202,15 +1235,6 @@ export const syncShiftChunk = internalAction({
         !Number.isInteger(chunkIndex)
       ) {
         throw new Error("Ugyldigt interval i vagtsynkroniseringen");
-      }
-      if (runState.shiftChunkHashes[chunkIndex] === sourceHash) {
-        await ctx.runMutation(internal.workfeedSync.skipUnchangedShiftChunk, {
-          ...args,
-          companyId: settings.companyId,
-          sourceHash,
-          chunkIndex,
-        });
-        return null;
       }
       const [context, currentRunState]: [
         ShiftSyncContext | null,
@@ -1296,6 +1320,20 @@ export const syncShiftChunk = internalAction({
             : null,
         };
       });
+      const sourceHash = await shiftSourceHash(
+        shifts,
+        context.settings.companyId,
+        currentRunState.summaryTimeZone,
+      );
+      if (currentRunState.shiftChunkHashes[chunkIndex] === sourceHash) {
+        await ctx.runMutation(internal.workfeedSync.skipUnchangedShiftChunk, {
+          ...args,
+          companyId: context.settings.companyId,
+          sourceHash,
+          chunkIndex,
+        });
+        return null;
+      }
       for (let index = 0; index < shifts.length; index += SHIFT_BATCH_SIZE) {
         await ctx.runMutation(internal.workfeedSync.upsertShiftBatch, {
           organizationId: args.organizationId,
