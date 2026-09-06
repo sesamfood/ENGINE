@@ -1232,8 +1232,17 @@ export const syncShiftChunk = internalAction({
       ) {
         throw new Error("Medarbejderdata skal synkroniseres først");
       }
+      const locationByDepartment = new Map(
+        context.locations.map((location) => [
+          location.departmentId,
+          location.locationId,
+        ]),
+      );
+      const linkedShifts = sourceShifts.filter((shift) =>
+        locationByDepartment.has(shift.departmentId),
+      );
       const externalEmployeeIds = [
-        ...new Set(sourceShifts.map((shift) => shift.employeeId)),
+        ...new Set(linkedShifts.map((shift) => shift.employeeId)),
       ];
       const resolvedEmployees: Array<{
         externalEmployeeId: string;
@@ -1260,12 +1269,6 @@ export const syncShiftChunk = internalAction({
           employee.employeeId,
         ]),
       );
-      const locationByDepartment = new Map(
-        context.locations.map((location) => [
-          location.departmentId,
-          location.locationId,
-        ]),
-      );
       const roleByExternalId = new Map(
         context.roles
           .filter((role) => role.active)
@@ -1274,7 +1277,7 @@ export const syncShiftChunk = internalAction({
             role.name,
           ]),
       );
-      const shifts = sourceShifts.map((shift) => {
+      const shifts = linkedShifts.map((shift) => {
         const employeeId = employeeByExternalId.get(shift.employeeId);
         const locationId = locationByDepartment.get(shift.departmentId);
         if (!employeeId || !locationId) {
