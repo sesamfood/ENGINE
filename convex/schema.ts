@@ -1151,11 +1151,18 @@ export default defineSchema({
     organizationId: v.string(),
     productId: v.id("products"),
     ingredientProductId: v.id("products"),
+    quantity: v.optional(v.number()),
+    unitId: v.optional(v.id("units")),
     onlinePosAdditionProductId: v.optional(v.number()),
     // Bind provider ids to the connection that validated them.
     onlinePosAdditionIntegrationId: v.optional(v.id("onlinePosIntegrations")),
     onlinePosAdditionCompanyId: v.optional(v.number()),
   })
+    .index("by_organizationId_and_ingredientProductId_and_unitId", [
+      "organizationId",
+      "ingredientProductId",
+      "unitId",
+    ])
     .index("by_organizationId_and_productId", ["organizationId", "productId"])
     .index("by_organizationId_and_productId_and_ingredientProductId", [
       "organizationId",

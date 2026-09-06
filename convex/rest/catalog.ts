@@ -686,6 +686,8 @@ async function currentProductInputs(
     })),
     addableIngredients: addableIngredientRows.map((row) => ({
       productId: row.ingredientProductId,
+      quantity: row.quantity,
+      unitId: row.unitId,
     })),
   };
 }

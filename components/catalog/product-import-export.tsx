@@ -221,10 +221,24 @@ export function ProductImportExport({
             ...(product.addableIngredients
               ? {
                   addableIngredients: product.addableIngredients.map(
-                    (ingredient) => ({
-                      productId: productIds.get(ingredient.sourceProductId)!
-                        .productId,
-                    }),
+                    (ingredient) => {
+                      const productId = productIds.get(
+                        ingredient.sourceProductId,
+                      )!.productId;
+                      if (
+                        "quantity" in ingredient &&
+                        "unit" in ingredient &&
+                        ingredient.quantity !== undefined &&
+                        ingredient.unit !== undefined
+                      ) {
+                        return {
+                          productId,
+                          quantity: ingredient.quantity,
+                          unitName: ingredient.unit,
+                        };
+                      }
+                      return { productId };
+                    },
                   ),
                 }
               : {}),

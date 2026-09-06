@@ -8,8 +8,8 @@ import {
 } from "fflate";
 
 const ARCHIVE_FORMAT = "product-catalog";
-const ARCHIVE_VERSION = 4;
-type SupportedArchiveVersion = 1 | 2 | 3 | 4;
+const ARCHIVE_VERSION = 5;
+type SupportedArchiveVersion = 1 | 2 | 3 | 4 | 5;
 export const MAX_ARCHIVE_SIZE = 250 * 1024 * 1024;
 const MAX_MANIFEST_SIZE = 5 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -49,7 +49,11 @@ export type ProductExportRow = {
     unit: string;
     removable: boolean;
   }>;
-  addableIngredients: Array<{ sourceProductId: string }>;
+  addableIngredients: Array<{
+    sourceProductId: string;
+    quantity?: number;
+    unit?: string;
+  }>;
   imageUrl: string | null;
 };
 
@@ -91,11 +95,23 @@ export type ProductArchiveProductV4 = ProductArchiveProductFields & {
   addableIngredients: Array<{ sourceProductId: string }>;
 };
 
+export type ProductArchiveProductV5 = ProductArchiveProductFields & {
+  category?: undefined;
+  categories: string[];
+  maxTemperatureCelsius: number | null;
+  addableIngredients: Array<{
+    sourceProductId: string;
+    quantity?: number;
+    unit?: string;
+  }>;
+};
+
 export type ProductArchiveProduct =
   | ProductArchiveProductV1
   | ProductArchiveProductV2
   | ProductArchiveProductV3
-  | ProductArchiveProductV4;
+  | ProductArchiveProductV4
+  | ProductArchiveProductV5;
 
 type ProductArchiveV1 = {
   format: typeof ARCHIVE_FORMAT;
@@ -125,11 +141,19 @@ type ProductArchiveV4 = {
   products: ProductArchiveProductV4[];
 };
 
+type ProductArchiveV5 = {
+  format: typeof ARCHIVE_FORMAT;
+  version: 5;
+  exportedAt: string;
+  products: ProductArchiveProductV5[];
+};
+
 export type ProductArchive =
   | ProductArchiveV1
   | ProductArchiveV2
   | ProductArchiveV3
-  | ProductArchiveV4;
+  | ProductArchiveV4
+  | ProductArchiveV5;
 
 export type ParsedProductArchive = {
   manifest: ProductArchive;
@@ -207,6 +231,11 @@ function parseProduct(
 function parseProduct(
   value: unknown,
   index: number,
+  version: 5,
+): ProductArchiveProductV5;
+function parseProduct(
+  value: unknown,
+  index: number,
   version: SupportedArchiveVersion,
 ): ProductArchiveProduct {
   if (!isRecord(value)) archiveError(`produkt ${index + 1} er ugyldigt`);
@@ -281,8 +310,12 @@ function parseProduct(
     archiveError(`produkt ${index + 1} har en ingrediens flere gange`);
   }
 
-  let addableIngredients: Array<{ sourceProductId: string }> = [];
-  if (version === 4) {
+  let addableIngredients: Array<{
+    sourceProductId: string;
+    quantity?: number;
+    unit?: string;
+  }> = [];
+  if (version === 4 || version === 5) {
     if (
       !Array.isArray(value.addableIngredients) ||
       value.addableIngredients.length > MAX_CHILDREN
@@ -298,11 +331,27 @@ function parseProduct(
             `ingrediens ${ingredientIndex + 1}, der kan tilføjes til produkt ${index + 1}, er ugyldig`,
           );
         }
+        const sourceProductId = requiredKey(
+          ingredient.sourceProductId,
+          "Produktnøglen",
+        );
+        if (version === 4) return { sourceProductId };
+
+        const hasQuantity = ingredient.quantity !== undefined;
+        const hasUnit = ingredient.unit !== undefined;
+        if (hasQuantity !== hasUnit) {
+          archiveError(
+            `mængde og enhed for ingrediens ${ingredientIndex + 1}, der kan tilføjes til produkt ${index + 1}, skal angives sammen`,
+          );
+        }
+        if (!hasQuantity) return { sourceProductId };
         return {
-          sourceProductId: requiredKey(
-            ingredient.sourceProductId,
-            "Produktnøglen",
+          sourceProductId,
+          quantity: positiveNumber(
+            ingredient.quantity,
+            "Ingrediensmængden",
           ),
+          unit: requiredName(ingredient.unit, "Ingrediensenheden"),
         };
       },
     );
@@ -374,11 +423,22 @@ function parseProduct(
     maxTemperatureCelsius,
   };
   if (version === 3) return productWithCategories;
+  if (version === 4) {
+    return {
+      ...productWithCategories,
+      addableIngredients: addableIngredients.map(({ sourceProductId }) => ({
+        sourceProductId,
+      })),
+    };
+  }
   return { ...productWithCategories, addableIngredients };
 }
 
 function validateProducts(products: ProductArchiveProduct[], files: Unzipped) {
   const sourceIds = new Set(products.map((product) => product.sourceId));
+  const productsBySourceId = new Map(
+    products.map((product) => [product.sourceId, product]),
+  );
   if (sourceIds.size !== products.length)
     archiveError("produktnøglerne er ikke unikke");
 
@@ -394,10 +454,31 @@ function validateProducts(products: ProductArchiveProduct[], files: Unzipped) {
       }
     }
     for (const ingredient of product.addableIngredients ?? []) {
-      if (!sourceIds.has(ingredient.sourceProductId)) {
+      const ingredientProduct = productsBySourceId.get(
+        ingredient.sourceProductId,
+      );
+      if (!ingredientProduct) {
         archiveError(
           `en ingrediens, der kan tilføjes til ${product.name}, mangler i produktlisten`,
         );
+      }
+      if ("quantity" in ingredient || "unit" in ingredient) {
+        const quantity =
+          "quantity" in ingredient ? ingredient.quantity : undefined;
+        const unitName = "unit" in ingredient ? ingredient.unit : undefined;
+        if (
+          typeof quantity !== "number" ||
+          typeof unitName !== "string" ||
+          !ingredientProduct.units.some(
+            (unit) =>
+              unit.name.toLocaleLowerCase("da") ===
+              unitName.toLocaleLowerCase("da"),
+          )
+        ) {
+          archiveError(
+            `enheden for ingrediens, der kan tilføjes til ${product.name}, er ikke konfigureret for ingrediensproduktet`,
+          );
+        }
       }
     }
   }
@@ -410,6 +491,7 @@ function parseManifest(value: unknown, files: Unzipped): ProductArchive {
     (value.version !== 1 &&
       value.version !== 2 &&
       value.version !== 3 &&
+      value.version !== 4 &&
       value.version !== ARCHIVE_VERSION)
   ) {
     archiveError("formatet eller versionen understøttes ikke");
@@ -463,8 +545,21 @@ function parseManifest(value: unknown, files: Unzipped): ProductArchive {
     };
   }
 
-  const products: ProductArchiveProductV4[] = value.products.map(
-    (product, index) => parseProduct(product, index, 4),
+  if (value.version === 4) {
+    const products: ProductArchiveProductV4[] = value.products.map(
+      (product, index) => parseProduct(product, index, 4),
+    );
+    validateProducts(products, files);
+    return {
+      format: ARCHIVE_FORMAT,
+      version: 4,
+      exportedAt: value.exportedAt,
+      products,
+    };
+  }
+
+  const products: ProductArchiveProductV5[] = value.products.map(
+    (product, index) => parseProduct(product, index, 5),
   );
   validateProducts(products, files);
   return {
@@ -527,7 +622,7 @@ export async function createProductArchive(products: ProductExportRow[]) {
     throw new Error(`Eksporten kan højst indeholde ${MAX_PRODUCTS.toLocaleString("da-DK")} produkter`);
   }
   const files: AsyncZippable = {};
-  const archivedProducts: ProductArchiveProductV4[] = [];
+  const archivedProducts: ProductArchiveProductV5[] = [];
   let uncompressedSize = 0;
 
   for (const [index, product] of products.entries()) {
