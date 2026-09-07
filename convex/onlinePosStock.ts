@@ -20,7 +20,7 @@ import {
   stockSalesFingerprint,
   type StockSale,
 } from "./lib/salesStock";
-import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
+import { normalizeStock, toDefaultUnit } from "./lib/stock";
 import { dayStartOf } from "./lib/salesRollup";
 import { resolveTimeZone } from "./lib/timeZone";
 import { reconcileOnlinePosWaste } from "./waste";
@@ -274,27 +274,20 @@ async function applyOrder(
     after = normalizeStock(after);
     const delta = normalizeStock(after - before);
     if (delta !== 0 || wasteDelta !== 0) {
-      await addStock(
-        ctx,
-        order.organizationId,
-        order.locationId,
-        productId,
-        -delta - wasteDelta,
-      );
-      const updatedStock = await ctx.db
-        .query("locationStock")
-        .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
-          q
-            .eq("organizationId", order.organizationId)
-            .eq("locationId", order.locationId)
-            .eq("productId", productId),
-        )
-        .unique();
-      if (updatedStock)
-        await ctx.db.patch(updatedStock._id, {
-          onlinePosSalesQuantity: normalizeStock(
-            (stock?.onlinePosSalesQuantity ?? 0) + delta,
-          ),
+      const nextStock = {
+        quantity: normalizeStock((stock?.quantity ?? 0) + (-delta - wasteDelta)),
+        onlinePosSalesQuantity: normalizeStock(
+          (stock?.onlinePosSalesQuantity ?? 0) + delta,
+        ),
+        updatedAt: Date.now(),
+      };
+      if (stock) await ctx.db.patch(stock._id, nextStock);
+      else
+        await ctx.db.insert("locationStock", {
+          organizationId: order.organizationId,
+          locationId: order.locationId,
+          productId,
+          ...nextStock,
         });
     }
     if (after !== 0)
