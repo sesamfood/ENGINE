@@ -33,28 +33,45 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
     Id<"products">,
     Doc<"productIngredientAdditions">[]
   >();
-  const loadCatalog = () =>
-    Promise.all([
+  const mapped = new Map<string, Id<"products"> | null>();
+  const menus = new Map<string, Doc<"onlinePosMenus"> | null>();
+  let fullCatalogLoaded = false;
+  let integration: Promise<Doc<"onlinePosIntegrations"> | null> | undefined;
+
+  async function loadCatalog(externalId: string) {
+    if (mapped.has(externalId)) return;
+    const onlinePosProductId = Number(externalId);
+    if (
+      !Number.isFinite(onlinePosProductId) ||
+      String(onlinePosProductId) !== externalId
+    ) {
+      mapped.set(externalId, null);
+      menus.set(externalId, null);
+      return;
+    }
+    const [mappings, menu] = await Promise.all([
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_onlinePosProductId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("onlinePosProductId", onlinePosProductId),
         )
-        .take(501),
+        .take(2),
       ctx.db
         .query("onlinePosMenus")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_onlinePosProductId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("onlinePosProductId", onlinePosProductId),
         )
-        .take(101),
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+        .first(),
     ]);
-  let catalog: ReturnType<typeof loadCatalog> | undefined;
+    if (mappings.length > 1)
+      throw new ConvexError("Et OnlinePOS-produkt er koblet til flere Produkter");
+    mapped.set(externalId, mappings[0]?.productId ?? null);
+    menus.set(externalId, menu);
+  }
 
   async function product(id: Id<"products">) {
     const cached = products.get(id);
@@ -132,25 +149,63 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
   return async (
     lines: SaleLine[],
   ): Promise<{ entries: StockSale[]; unmappedQuantity: number }> => {
-    const [mappings, menus, integration] = await (catalog ??= loadCatalog());
-    if (mappings.length > 500 || menus.length > 100)
-      throw new ConvexError(
-        "Der er for mange OnlinePOS-koblinger til lagersynkronisering",
-      );
-    const mapped = new Map(
-      mappings.map((row) => [String(row.onlinePosProductId), row.productId]),
-    );
-    if (mapped.size !== mappings.length)
-      throw new ConvexError(
-        "Et OnlinePOS-produkt er koblet til flere Produkter",
-      );
-    const menuIds = new Set(menus.map((row) => String(row.onlinePosProductId)));
+    if (!fullCatalogLoaded) {
+      const missingIds = [
+        ...new Set(lines.map((line) => line.externalProductId)),
+      ].filter((id) => !mapped.has(id));
+      // Large batches use two bounded scans to stay within the index-read limit.
+      if (mapped.size + missingIds.length > 100) {
+        const [allMappings, allMenus] = await Promise.all([
+          ctx.db
+            .query("onlinePosProductMappings")
+            .withIndex("by_organizationId", (q) =>
+              q.eq("organizationId", organizationId),
+            )
+            .take(501),
+          ctx.db
+            .query("onlinePosMenus")
+            .withIndex("by_organizationId", (q) =>
+              q.eq("organizationId", organizationId),
+            )
+            .take(101),
+        ]);
+        if (allMappings.length > 500 || allMenus.length > 100)
+          throw new ConvexError(
+            "Der er for mange OnlinePOS-koblinger til lagersynkronisering",
+          );
+        mapped.clear();
+        menus.clear();
+        for (const row of allMappings) {
+          const id = String(row.onlinePosProductId);
+          if (mapped.has(id))
+            throw new ConvexError(
+              "Et OnlinePOS-produkt er koblet til flere Produkter",
+            );
+          mapped.set(id, row.productId);
+        }
+        for (const menu of allMenus) {
+          const id = String(menu.onlinePosProductId);
+          if (!menus.has(id)) menus.set(id, menu);
+        }
+        fullCatalogLoaded = true;
+      } else {
+        await Promise.all(missingIds.map(loadCatalog));
+      }
+    }
     const soldIds = new Set(
       lines.flatMap((line) => {
         const id = mapped.get(line.externalProductId);
-        return id && !menuIds.has(line.externalProductId) ? [id] : [];
+        return id && !menus.get(line.externalProductId) ? [id] : [];
       }),
     );
+    const settings = soldIds.size
+      ? await (integration ??= ctx.db
+          .query("onlinePosIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .unique())
+      : null;
     const modifiers = new Map<
       string,
       Array<{
@@ -184,9 +239,9 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
         if (
           ingredient.removable &&
           ingredient.onlinePosRemovalProductId !== undefined &&
-          integration &&
-          ingredient.onlinePosRemovalIntegrationId === integration._id &&
-          ingredient.onlinePosRemovalCompanyId === integration.companyId
+          settings &&
+          ingredient.onlinePosRemovalIntegrationId === settings._id &&
+          ingredient.onlinePosRemovalCompanyId === settings.companyId
         ) {
           addModifier(ingredient.onlinePosRemovalProductId, {
             productId: ingredient.ingredientProductId,
@@ -216,9 +271,9 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
             (line) =>
               line.externalProductId === String(row.onlinePosAdditionProductId),
           ) &&
-          integration &&
-          row.onlinePosAdditionIntegrationId === integration._id &&
-          row.onlinePosAdditionCompanyId === integration.companyId
+          settings &&
+          row.onlinePosAdditionIntegrationId === settings._id &&
+          row.onlinePosAdditionCompanyId === settings.companyId
         ) {
           if (row.quantity === undefined || row.unitId === undefined)
             throw new ConvexError(
@@ -235,11 +290,9 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
     const entries: StockSale[] = [];
     let unmappedQuantity = 0;
     for (const line of lines) {
-      if (menuIds.has(line.externalProductId)) {
-        const menu = menus.find(
-          (row) => String(row.onlinePosProductId) === line.externalProductId,
-        );
-        if (!menu?.products.some((row) => soldIds.has(row.productId)))
+      const menu = menus.get(line.externalProductId);
+      if (menu) {
+        if (!menu.products.some((row) => soldIds.has(row.productId)))
           unmappedQuantity += Math.abs(line.quantity);
         continue;
       }
