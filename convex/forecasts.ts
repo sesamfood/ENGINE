@@ -1,4 +1,9 @@
 import { ConvexError, v } from "convex/values";
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+  type FunctionReturnType,
+} from "convex/server";
 import { internal } from "./_generated/api";
 import {
   internalAction,
@@ -13,10 +18,15 @@ import { fetchForecastConditions } from "./lib/forecastProviders";
 import {
   forecastConditionValidator,
   forecastSnapshotValidator,
+  forecastOpeningDayValidator,
 } from "./lib/forecastValidators";
+import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { orderDate, shiftOrderDate } from "../lib/ordering-forecast";
 import {
-  forecastDailySales,
+  forecastSalesMix,
+  FORECAST_MODEL_VERSION,
+  PRODUCT_FORECAST_HISTORY_DAYS,
+  type ProductDailySales,
   SALES_FORECAST_HISTORY_DAYS,
 } from "../lib/sales-forecast";
 
@@ -98,6 +108,7 @@ export const claim = internalMutation({
     const changedZone = timeZone !== forecast.timeZone;
     if (
       !changedZone &&
+      forecast.snapshot?.modelVersion === FORECAST_MODEL_VERSION &&
       forecast.updatedAt &&
       now - forecast.updatedAt < 10 * 60_000
     )
@@ -126,12 +137,38 @@ export const trainingData = internalQuery({
   returns: v.object({
     observations: v.array(v.object({ date: v.string(), value: v.number() })),
     warning: v.string(),
+    openingDays: v.array(forecastOpeningDayValidator),
+    openingHoursKey: v.string(),
   }),
   handler: async (ctx, { forecastId, today }) => {
     const forecast = await ctx.db.get("locationForecasts", forecastId);
     if (!forecast)
-      return { observations: [], warning: "Prognosen er deaktiveret." };
+      return {
+        observations: [],
+        warning: "Prognosen er deaktiveret.",
+        openingDays: [],
+        openingHoursKey: "",
+      };
     const { organizationId, locationId, timeZone } = forecast;
+    const location = await ctx.db.get("locations", locationId);
+    if (!location || location.organizationId !== organizationId)
+      return {
+        observations: [],
+        warning: "Lokationen findes ikke længere.",
+        openingDays: [],
+        openingHoursKey: "",
+      };
+    const opening = await getForecastOpeningHours(
+      ctx,
+      location,
+      today,
+      shiftOrderDate(today, -SALES_FORECAST_HISTORY_DAYS),
+      shiftOrderDate(today, 27),
+    );
+    const openingData = {
+      openingDays: opening.days,
+      openingHoursKey: opening.key,
+    };
     const status = await ctx.db
       .query("onlinePosSyncStatus")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -145,6 +182,7 @@ export const trainingData = internalQuery({
       status.pendingReconcileDayStart !== undefined
     ) {
       return {
+        ...openingData,
         observations: [],
         warning: "Prognosen afventer synkroniseret salgshistorik.",
       };
@@ -165,6 +203,7 @@ export const trainingData = internalQuery({
       .take(SALES_FORECAST_HISTORY_DAYS + 3);
     if (!rows.length || rows.length > SALES_FORECAST_HISTORY_DAYS + 2)
       return {
+        ...openingData,
         observations: [],
         warning: "Der er ikke tilstrækkelig sammenhængende salgshistorik.",
       };
@@ -187,11 +226,76 @@ export const trainingData = internalQuery({
       observations.push({ date, value: Math.max(0, byDate.get(date) ?? 0) });
     }
     return {
+      ...openingData,
       observations,
       warning:
         observations.length < 14
           ? "Prognosen kræver mindst 14 hele dage med salgshistorik."
           : "",
+    };
+  },
+});
+
+const productSalesValidator = v.object({
+  key: v.string(),
+  date: v.string(),
+  quantity: v.number(),
+  revenue: v.number(),
+});
+
+export const productSalesPage = internalQuery({
+  args: {
+    forecastId: v.id("locationForecasts"),
+    today: v.string(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: v.object({
+    result: paginationResultValidator(productSalesValidator),
+    rowsRead: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const forecast = await ctx.db.get("locationForecasts", args.forecastId);
+    if (!forecast) throw new ConvexError("Prognosen er deaktiveret");
+    const from = shiftOrderDate(args.today, -PRODUCT_FORECAST_HISTORY_DAYS);
+    const result = await ctx.db
+      .query("salesLines")
+      .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+        q
+          .eq("organizationId", forecast.organizationId)
+          .eq("locationId", forecast.locationId)
+          .gte(
+            "occurredAt",
+            Date.parse(`${shiftOrderDate(from, -1)}T00:00:00Z`),
+          )
+          .lt(
+            "occurredAt",
+            Date.parse(`${shiftOrderDate(args.today, 1)}T00:00:00Z`),
+          ),
+      )
+      .paginate({
+        ...args.paginationOpts,
+        maximumRowsRead: 1000,
+        maximumBytesRead: 512 * 1024,
+      });
+    const daily = new Map<string, ProductDailySales>();
+    for (const row of result.page) {
+      const date = orderDate(row.occurredAt, forecast.timeZone);
+      if (date < from || date >= args.today) continue;
+      const key = JSON.stringify([row.source, row.externalProductId]);
+      const bucket = JSON.stringify([key, date]);
+      const current = daily.get(bucket) ?? {
+        key,
+        date,
+        quantity: 0,
+        revenue: 0,
+      };
+      current.quantity += row.quantity;
+      current.revenue += row.revenue;
+      daily.set(bucket, current);
+    }
+    return {
+      result: { ...result, page: [...daily.values()] },
+      rowsRead: result.page.length,
     };
   },
 });
@@ -274,17 +378,65 @@ export const refreshLocation = internalAction({
         }),
         ctx.runQuery(internal.forecasts.trainingData, { ...args, today }),
       ]);
-      const snapshot = forecastDailySales({
-        observations: training.observations,
-        conditions: environment.conditions,
-        today,
-      });
+      const productSales = new Map<string, ProductDailySales>();
+      let cursor: string | null = null;
+      let rowsRead = 0;
+      let productsComplete = !training.warning;
+      if (!training.warning)
+        for (let pageNumber = 0; ; pageNumber++) {
+          const page: FunctionReturnType<
+            typeof internal.forecasts.productSalesPage
+          > = await ctx.runQuery(internal.forecasts.productSalesPage, {
+            ...args,
+            today,
+            paginationOpts: { cursor, numItems: 1000 },
+          });
+          rowsRead += page.rowsRead;
+          for (const row of page.result.page) {
+            const key = JSON.stringify([row.key, row.date]);
+            const current = productSales.get(key) ?? {
+              ...row,
+              quantity: 0,
+              revenue: 0,
+            };
+            current.quantity += row.quantity;
+            current.revenue += row.revenue;
+            productSales.set(key, current);
+          }
+          if (rowsRead > 250_000 || productSales.size > 90_000) {
+            productsComplete = false;
+            break;
+          }
+          if (page.result.isDone) break;
+          if (pageNumber >= 500) {
+            productsComplete = false;
+            break;
+          }
+          cursor = page.result.continueCursor;
+        }
+      const snapshot = {
+        ...forecastSalesMix({
+          productSales: productsComplete ? [...productSales.values()] : [],
+          observations: training.observations,
+          conditions: environment.conditions,
+          openingDays: training.openingDays,
+          today,
+        }),
+        modelVersion: FORECAST_MODEL_VERSION,
+        openingHoursKey: training.openingHoursKey,
+      };
       if (training.warning) snapshot.points = [];
       await ctx.runMutation(internal.forecasts.finish, {
         ...run,
         ...environment,
         snapshot,
-        warning: [training.warning, environment.warning]
+        warning: [
+          training.warning,
+          environment.warning,
+          !training.warning && !snapshot.productMixApplied
+            ? "Produktmængderne dækker ikke prognosen. Omsætning beregnes fra lokationens samlede salg og åbningstider."
+            : "",
+        ]
           .filter(Boolean)
           .join(" "),
       });

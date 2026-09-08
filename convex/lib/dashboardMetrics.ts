@@ -1,5 +1,7 @@
 import { ConvexError } from "convex/values";
 import { resolveTimeZone } from "./timeZone";
+import { getForecastOpeningHours } from "./forecastOpeningHours";
+import { FORECAST_MODEL_VERSION } from "../../lib/sales-forecast";
 import {
   DEFAULT_CURRENCY,
   type DashboardRange,
@@ -2508,32 +2510,103 @@ function withMetricMetadata(
 }
 
 const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
-  if (params.scopeTruncated) throw new ConvexError("Vælg færre lokationer for at se en samlet prognose");
-  const now = Date.now();
+  if (params.scopeTruncated)
+    throw new ConvexError("Vælg færre lokationer for at se en samlet prognose");
+  const now = params.now;
   const tomorrow = addDays(dateKey(now, params.timeZone), 1);
   const through = addDays(tomorrow, 7);
-  const forecasts = await Promise.all(params.locations.map(async (location) => {
-    const forecast = await ctx.db.query("locationForecasts").withIndex("by_organizationId_and_locationId", (q) =>
-      q.eq("organizationId", params.organizationId).eq("locationId", location.id)).unique();
-    const timeZone = await resolveTimeZone(ctx, params.organizationId, location.id);
-    const points = forecast?.snapshot?.points.filter((point) => point.date >= tomorrow && point.date < through) ?? [];
-    if (!forecast || forecast.timeZone !== timeZone || !forecast.updatedAt || now - forecast.updatedAt > 26 * 3_600_000 || points.length !== 7) {
-      throw new ConvexError("Prognosen er ikke klar for alle valgte lokationer. Aktivér vejr og helligdage i lokationens oplysninger, og afvent opdateret salgshistorik.");
-    }
-    return { forecast, points };
-  }));
-  const result = seriesResult("currency", forecasts.flatMap(({ forecast, points }) => points.map((point) => ({
-    timestamp: zonedStart(point.date, params.timeZone), locationId: forecast.locationId, value: point.value / 100,
-  }))), { ...params, from: zonedStart(tomorrow, params.timeZone), to: zonedStart(through, params.timeZone),
-    previousFrom: 0, previousTo: 0 }, currencyOptions(params), params.comparisonGroups);
-  return { ...result, series: result.series.map((series) => ({ ...series, previousTotal: null })),
-    truncated: forecasts.some(({ forecast, points }) => !forecast.snapshot?.weatherLearned || !forecast.snapshot?.holidaysLearned ||
-      points.some((point) => !point.weatherApplied || !point.holidayApplied)) || undefined,
+  const forecasts = await Promise.all(
+    params.locations.map(async (location) => {
+      const forecast = await ctx.db
+        .query("locationForecasts")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", params.organizationId)
+            .eq("locationId", location.id),
+        )
+        .unique();
+      const timeZone = await resolveTimeZone(
+        ctx,
+        params.organizationId,
+        location.id,
+      );
+      const storedLocation = await ctx.db.get("locations", location.id);
+      if (
+        !storedLocation ||
+        storedLocation.organizationId !== params.organizationId
+      )
+        throw new ConvexError("Lokationen findes ikke længere");
+      const opening = await getForecastOpeningHours(
+        ctx,
+        storedLocation,
+        dateKey(now, timeZone),
+        tomorrow,
+        through,
+      );
+      const points =
+        forecast?.snapshot?.points.filter(
+          (point) => point.date >= tomorrow && point.date < through,
+        ) ?? [];
+      if (
+        !forecast ||
+        forecast.timeZone !== timeZone ||
+        !forecast.updatedAt ||
+        now - forecast.updatedAt > 26 * 3_600_000 ||
+        points.length !== 7 ||
+        forecast.snapshot?.modelVersion !== FORECAST_MODEL_VERSION ||
+        forecast.snapshot.openingHoursKey !== opening.key
+      ) {
+        throw new ConvexError(
+          "Prognosen er ikke klar for alle valgte lokationer. Aktivér vejr og helligdage i lokationens oplysninger, og afvent opdateret salgshistorik.",
+        );
+      }
+      return { forecast, points };
+    }),
+  );
+  const result = seriesResult(
+    "currency",
+    forecasts.flatMap(({ forecast, points }) =>
+      points.map((point) => ({
+        timestamp: zonedStart(point.date, params.timeZone),
+        locationId: forecast.locationId,
+        value: point.value / 100,
+      })),
+    ),
+    {
+      ...params,
+      from: zonedStart(tomorrow, params.timeZone),
+      to: zonedStart(through, params.timeZone),
+      previousFrom: 0,
+      previousTo: 0,
+    },
+    currencyOptions(params),
+    params.comparisonGroups,
+  );
+  return {
+    ...result,
+    series: result.series.map((series) => ({ ...series, previousTotal: null })),
+    truncated:
+      forecasts.some(
+        ({ forecast, points }) =>
+          !forecast.snapshot?.productMixApplied ||
+          points.some(
+            (point) =>
+              point.openMinutes !== 0 &&
+              (!point.weatherApplied || !point.holidayApplied),
+          ),
+      ) || undefined,
     freshness: {
-      lastSuccessAt: forecasts.length ? Math.min(...forecasts.map(({ forecast }) => forecast.updatedAt!)) : null,
-      staleLocationCount: forecasts.filter(({ forecast }) => now - forecast.updatedAt! > 8 * 3_600_000).length,
-      errorLocationCount: forecasts.filter(({ forecast }) => Boolean(forecast.warning)).length,
-    } };
+      lastSuccessAt: forecasts.length
+        ? Math.min(...forecasts.map(({ forecast }) => forecast.updatedAt!))
+        : null,
+      staleLocationCount: forecasts.filter(
+        ({ forecast }) => now - forecast.updatedAt! > 8 * 3_600_000,
+      ).length,
+      errorLocationCount: forecasts.filter(({ forecast }) =>
+        Boolean(forecast.warning),
+      ).length,
+    },
+  };
 };
 
 export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {

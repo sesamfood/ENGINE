@@ -5,6 +5,29 @@ import type { MutationCtx } from "../_generated/server";
 import { forecastProfileValidator } from "./forecastValidators";
 import { resolveTimeZone } from "./timeZone";
 
+export async function invalidateLocationForecast(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const forecast = await ctx.db
+    .query("locationForecasts")
+    .withIndex("by_organizationId_and_locationId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", locationId),
+    )
+    .unique();
+  if (!forecast) return;
+  await ctx.db.patch("locationForecasts", forecast._id, {
+    revision: forecast.revision + 1,
+    snapshot: undefined,
+    updatedAt: undefined,
+    runStartedAt: undefined,
+  });
+  await ctx.scheduler.runAfter(0, internal.forecasts.refreshLocation, {
+    forecastId: forecast._id,
+  });
+}
+
 export async function setForecastProfile(
   ctx: MutationCtx,
   organizationId: string,

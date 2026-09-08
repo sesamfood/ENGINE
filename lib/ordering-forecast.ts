@@ -1,27 +1,11 @@
+import { shiftOrderDate } from "./forecast-dates";
+import { forecastDailyDemand, type ForecastCondition } from "./sales-forecast";
+import type { ForecastOpeningDay } from "./forecast-opening-hours";
+export { orderDate, shiftOrderDate } from "./forecast-dates";
+
 const DAY_MS = 86_400_000;
-export const ORDER_HISTORY_DAYS = 56;
+export const ORDER_HISTORY_DAYS = 90;
 export const MAX_ORDER_QUANTITY = 1_000_000;
-const dateFormatters = new Map<string, Intl.DateTimeFormat>();
-
-export function orderDate(timestamp: number, timeZone: string) {
-  let formatter = dateFormatters.get(timeZone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    dateFormatters.set(timeZone, formatter);
-  }
-  return formatter.format(timestamp);
-}
-
-export function shiftOrderDate(date: string, days: number) {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS)
-    .toISOString()
-    .slice(0, 10);
-}
 
 export type DemandObservation = {
   date: string;
@@ -48,6 +32,11 @@ export function forecastOrder({
   bufferPercent,
   stock,
   factors = [],
+  conditions = [],
+  openingDays = [],
+  staffFood = [],
+  waste = [],
+  operationalHistoryFrom = historyFrom,
 }: {
   productId: string;
   unitId: string;
@@ -58,81 +47,119 @@ export function forecastOrder({
   bufferPercent: number;
   stock: number | null;
   factors?: readonly DemandFactor[];
+  conditions?: readonly ForecastCondition[];
+  openingDays?: readonly ForecastOpeningDay[];
+  staffFood?: readonly DemandObservation[];
+  waste?: readonly DemandObservation[];
+  operationalHistoryFrom?: string;
 }) {
-  const daily = new Map<string, number>();
-  for (const row of observations) {
-    if (
-      row.productId !== productId ||
-      row.unitId !== unitId ||
-      row.date < historyFrom ||
-      row.date >= today ||
-      !Number.isFinite(row.quantity)
-    )
-      continue;
-    daily.set(row.date, (daily.get(row.date) ?? 0) + row.quantity);
+  const from =
+    historyFrom > shiftOrderDate(today, -ORDER_HISTORY_DAYS)
+      ? historyFrom
+      : shiftOrderDate(today, -ORDER_HISTORY_DAYS);
+  function dailyObservations(rows: readonly DemandObservation[], start = from) {
+    const quantities = new Map<string, number>();
+    for (const row of rows) {
+      if (
+        row.productId === productId &&
+        row.unitId === unitId &&
+        row.date >= start &&
+        row.date < today &&
+        Number.isFinite(row.quantity)
+      ) {
+        quantities.set(
+          row.date,
+          (quantities.get(row.date) ?? 0) + row.quantity,
+        );
+      }
+    }
+    const daily = [];
+    for (let date = start; date < today; date = shiftOrderDate(date, 1))
+      daily.push({ date, value: Math.max(0, quantities.get(date) ?? 0) });
+    return daily;
   }
+  const salesHistory = dailyObservations(observations);
+  const operationsFrom =
+    operationalHistoryFrom > shiftOrderDate(today, -ORDER_HISTORY_DAYS)
+      ? operationalHistoryFrom
+      : shiftOrderDate(today, -ORDER_HISTORY_DAYS);
+  const staffHistory = dailyObservations(staffFood, operationsFrom);
+  const wasteHistory = dailyObservations(waste, operationsFrom);
   const days = Math.max(
     0,
-    Math.min(
-      ORDER_HISTORY_DAYS,
-      Math.round(
-        (Date.parse(`${today}T00:00:00Z`) -
-          Date.parse(`${historyFrom}T00:00:00Z`)) /
-          DAY_MS,
-      ),
-    ),
+    Math.round((Date.parse(today) - Date.parse(from)) / DAY_MS),
   );
-  const hasDemand = [...daily.values()].some((quantity) => quantity > 0);
-  if (!hasDemand || days === 0) {
-    return { demand: null, suggested: null, historyDays: days, limited: true };
+  if (
+    ![...salesHistory, ...staffHistory, ...wasteHistory].some(
+      (row) => row.value > 0,
+    )
+  ) {
+    return {
+      demand: null,
+      suggested: null,
+      salesDemand: 0,
+      staffFoodDemand: 0,
+      wasteDemand: 0,
+      historyDays: days,
+      limited: true,
+    };
   }
-  const weekdays = Array.from({ length: 7 }, () => ({
-    quantity: 0,
-    weight: 0,
-    samples: 0,
-  }));
-  let total = 0;
-  let weightTotal = 0;
-  for (let age = 1; age <= days; age++) {
-    const date = shiftOrderDate(today, -age);
-    const quantity = Math.max(0, daily.get(date) ?? 0);
-    const weight = 0.5 ** (age / 28);
-    const weekday = weekdays[new Date(`${date}T00:00:00Z`).getUTCDay()];
-    weekday.quantity += quantity * weight;
-    weekday.weight += weight;
-    weekday.samples++;
-    total += quantity * weight;
-    weightTotal += weight;
+  const sales = forecastDailyDemand({
+    observations: salesHistory,
+    conditions,
+    today,
+    openingDays,
+    precision: 6,
+  });
+  function total(points: typeof sales.points, applyFactors = false) {
+    return points.slice(0, coverageDays).reduce((sum, point) => {
+      const multiplier = applyFactors
+        ? factors
+            .filter(
+              (factor) =>
+                factor.productId === productId &&
+                factor.date === point.date &&
+                Number.isFinite(factor.multiplier) &&
+                factor.multiplier >= 0,
+            )
+            .reduce((value, factor) => value * factor.multiplier, 1)
+        : 1;
+      return sum + point.value * multiplier;
+    }, 0);
   }
-  let demand = 0;
-  for (let offset = 0; offset < coverageDays; offset++) {
-    const date = shiftOrderDate(today, offset);
-    const weekday = weekdays[new Date(`${date}T00:00:00Z`).getUTCDay()];
-    const baseline =
-      weekday.samples >= 2
-        ? weekday.quantity / weekday.weight
-        : total / weightTotal;
-    const multiplier = factors
-      .filter(
-        (factor) =>
-          factor.productId === productId &&
-          factor.date === date &&
-          Number.isFinite(factor.multiplier) &&
-          factor.multiplier >= 0,
-      )
-      .reduce((value, factor) => value * factor.multiplier, 1);
-    demand += baseline * multiplier;
-  }
-  // Negative book stock is a discrepancy, not an extra future requirement.
+  const salesDemand = total(sales.points, true);
+  // Non-sales use has its own weekday/hour baseline, without customer weather effects.
+  const staffFoodDemand = total(
+    forecastDailyDemand({
+      observations: staffHistory,
+      conditions: [],
+      today,
+      openingDays,
+      precision: 6,
+    }).points,
+  );
+  const wasteDemand = total(
+    forecastDailyDemand({
+      observations: wasteHistory,
+      conditions: [],
+      today,
+      precision: 6,
+    }).points,
+  );
+  const demand = salesDemand + staffFoodDemand + wasteDemand;
   const needed = Math.max(
     0,
     demand * (1 + bufferPercent / 100) - Math.max(0, stock ?? 0),
   );
+  const round = (value: number) => Math.round(value * 1e3) / 1e3;
   return {
-    demand: Math.round(demand * 1e3) / 1e3,
+    demand: round(demand),
     suggested: Math.ceil(needed * 1e3 - 1e-9) / 1e3,
+    salesDemand: round(salesDemand),
+    staffFoodDemand: round(staffFoodDemand),
+    wasteDemand: round(wasteDemand),
     historyDays: days,
-    limited: days < 28 || stock === null,
+    limited: sales.historyDays < 28 || stock === null,
   };
 }
 

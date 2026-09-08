@@ -47,6 +47,8 @@ import type * as lib_dashboardMetrics from "../lib/dashboardMetrics.js";
 import type * as lib_dashboardShareCrypto from "../lib/dashboardShareCrypto.js";
 import type * as lib_dashboardSummaries from "../lib/dashboardSummaries.js";
 import type * as lib_dashboardValidators from "../lib/dashboardValidators.js";
+import type * as lib_forecastConsumption from "../lib/forecastConsumption.js";
+import type * as lib_forecastOpeningHours from "../lib/forecastOpeningHours.js";
 import type * as lib_forecastProviders from "../lib/forecastProviders.js";
 import type * as lib_forecastSettings from "../lib/forecastSettings.js";
 import type * as lib_forecastValidators from "../lib/forecastValidators.js";
@@ -159,6 +161,8 @@ declare const fullApi: ApiFromModules<{
   "lib/dashboardShareCrypto": typeof lib_dashboardShareCrypto;
   "lib/dashboardSummaries": typeof lib_dashboardSummaries;
   "lib/dashboardValidators": typeof lib_dashboardValidators;
+  "lib/forecastConsumption": typeof lib_forecastConsumption;
+  "lib/forecastOpeningHours": typeof lib_forecastOpeningHours;
   "lib/forecastProviders": typeof lib_forecastProviders;
   "lib/forecastSettings": typeof lib_forecastSettings;
   "lib/forecastValidators": typeof lib_forecastValidators;

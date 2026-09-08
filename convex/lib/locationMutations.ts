@@ -11,6 +11,7 @@ import {
   type OrganizationAuth,
 } from "./auth";
 import { recordAudit } from "./audit";
+import { invalidateLocationForecast } from "./forecastSettings";
 import {
   requireTimeZone,
   resolveTimeZone,
@@ -571,6 +572,10 @@ export async function updateLocationWithAuth(
       effectiveTimeZone,
     );
   }
+  if (effectiveTimeZone !== previousTimeZone || currency !== location.currency ||
+    (input.status !== undefined && (input.status ?? undefined) !== location.status)) {
+    await invalidateLocationForecast(ctx, auth.organizationId, location._id);
+  }
   await recordAudit(ctx, auth, {
     action: "locations.updated",
     entityTable: "locations",
@@ -638,6 +643,7 @@ export async function setOpeningHoursWithAuth(
   for (const current of currentByDate.values()) {
     await ctx.db.delete("locationSpecialOpeningHours", current._id);
   }
+  await invalidateLocationForecast(ctx, auth.organizationId, location._id);
   await recordAudit(ctx, auth, {
     action: "locations.openingHoursUpdated",
     entityTable: "locations",

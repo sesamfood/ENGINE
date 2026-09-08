@@ -138,6 +138,50 @@ function Planner() {
         }
       : "skip",
   );
+  const staffFood = useCompleteCatalog(
+    api.ordering.listOperationalConsumption,
+    canPlan && locationId && context
+      ? {
+          locationId,
+          from: context.historyStartAt,
+          to: context.historyEndAt,
+          source: "staffFood",
+        }
+      : "skip",
+  );
+  const waste = useCompleteCatalog(
+    api.ordering.listOperationalConsumption,
+    canPlan && locationId && context
+      ? {
+          locationId,
+          from: context.historyStartAt,
+          to: context.historyEndAt,
+          source: "waste",
+        }
+      : "skip",
+  );
+  const operationalHistory = useMemo(() => {
+    function group(rows: NonNullable<typeof staffFood>) {
+      const byProduct = new Map<string, DemandObservation[]>();
+      let unresolvedCount = 0;
+      for (const row of rows) {
+        if (
+          !context ||
+          row.date >= context.today ||
+          row.date < context.historyFrom
+        )
+          continue;
+        unresolvedCount += row.unresolvedCount;
+        for (const entry of row.entries) {
+          const observations = byProduct.get(entry.productId) ?? [];
+          observations.push(entry);
+          byProduct.set(entry.productId, observations);
+        }
+      }
+      return { byProduct, unresolvedCount };
+    }
+    return { staffFood: group(staffFood ?? []), waste: group(waste ?? []) };
+  }, [staffFood, waste, context]);
   const history = useMemo(() => {
     const byProduct = new Map<string, DemandObservation[]>();
     let firstDate = context?.today ?? "";
@@ -182,7 +226,11 @@ function Planner() {
     bufferPercent <= 100;
   const validSettings = validCoverage && validBuffer;
   const loading =
-    !context || products === undefined || consumption === undefined;
+    !context ||
+    products === undefined ||
+    consumption === undefined ||
+    staffFood === undefined ||
+    waste === undefined;
   const forecasts = useMemo(
     () =>
       (products ?? []).map((product) => ({
@@ -194,13 +242,26 @@ function Planner() {
                 unitId: product.unitId,
                 observations: history.byProduct.get(product.id) ?? [],
                 historyFrom: history.from,
+                operationalHistoryFrom: context.historyFrom,
                 today: context.today,
                 coverageDays,
                 bufferPercent,
                 stock: product.stock,
-                factors: context.environment.factors.map((factor) => ({ ...factor, source: "weatherHolidays", productId: product.id })),
+                conditions: context.environment.conditions,
+                openingDays: context.openingDays,
+                staffFood:
+                  operationalHistory.staffFood.byProduct.get(product.id) ?? [],
+                waste: operationalHistory.waste.byProduct.get(product.id) ?? [],
               })
-            : { demand: null, suggested: null, historyDays: 0, limited: true },
+            : {
+                demand: null,
+                suggested: null,
+                salesDemand: 0,
+                staffFoodDemand: 0,
+                wasteDemand: 0,
+                historyDays: 0,
+                limited: true,
+              },
       })),
     [
       products,
@@ -208,6 +269,7 @@ function Planner() {
       loading,
       validSettings,
       history,
+      operationalHistory,
       coverageDays,
       bufferPercent,
     ],
@@ -451,7 +513,7 @@ function Planner() {
                 <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                   <HelpTooltip
                     label="bestillingsforslag"
-                    content="Forslag bruger op til otte ugers synkroniseret salgsforbrug. Samme ugedage sammenlignes, og nyere uger vægter mest. Solgte opskrifter er omregnet til ingredienser. Vejr og helligdage tilpasser forbruget med effekter lært fra lokationens omsætning, når der er nok historik. Produktmikset antages uændret. Buffer lægges til, og positiv lagerbeholdning trækkes fra. Waste, Staff food og indgående leverancer er ikke medregnet."
+                    content="Forslag bruger op til 90 dages produktforbrug. De seneste otte uger vægter i grundprognosen. Åbningstider og lukkedage medregnes; natåbent fordeles på kalenderdage. Vejr og helligdage læres særskilt fra hvert produkts mængder, når der er nok historik. Staff food og aktiv Waste fremskrives separat og lægges til. Waste kan indgå på lukkedage. Opskrifter i Staff food og Waste omregnes med de nuværende ingredienser. Waste skelner endnu ikke mellem forberedelsestab og undgåeligt spild. Buffer lægges til, og positiv lagerbeholdning trækkes fra. Indgående leverancer er ikke medregnet."
                   />
                   <Button
                     variant="outline"
@@ -462,9 +524,16 @@ function Planner() {
                       if (!locationId) return;
                       try {
                         await refreshEnvironment({ locationId });
-                        toast.success("Forslag opdateres. Vejr og helligdage genbruges i op til ti minutter.");
+                        toast.success(
+                          "Forslag opdateres. Vejr og helligdage genbruges i op til ti minutter.",
+                        );
                       } catch (error) {
-                        toast.error(getUserErrorMessage(error, "Prognosen kunne ikke opdateres"));
+                        toast.error(
+                          getUserErrorMessage(
+                            error,
+                            "Prognosen kunne ikke opdateres",
+                          ),
+                        );
                       }
                     }}
                   >
@@ -475,9 +544,25 @@ function Planner() {
               </FieldGroup>
               {context && (
                 <p className="mt-4 text-sm text-muted-foreground">
-                  {context.environment.message}{" "}
-                  Vejr: <a className="underline underline-offset-4" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.{" "}
-                  Helligdage: <a className="underline underline-offset-4" href="https://nagerholidays.com/" target="_blank" rel="noreferrer">Nager.Holidays</a>.
+                  {context.environment.message} Vejr:{" "}
+                  <a
+                    className="underline underline-offset-4"
+                    href="https://open-meteo.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open-Meteo
+                  </a>
+                  . Helligdage:{" "}
+                  <a
+                    className="underline underline-offset-4"
+                    href="https://nagerholidays.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Nager.Holidays
+                  </a>
+                  .
                 </p>
               )}
             </CardContent>
@@ -486,6 +571,19 @@ function Planner() {
             <Alert>
               <AlertTitle>Kontrollér datagrundlaget</AlertTitle>
               <AlertDescription>{context.warning}</AlertDescription>
+            </Alert>
+          ) : null}
+          {operationalHistory.staffFood.unresolvedCount +
+            operationalHistory.waste.unresolvedCount >
+          0 ? (
+            <Alert>
+              <AlertTitle>
+                Forbrug mangler produkt- eller enhedskoblinger
+              </AlertTitle>
+              <AlertDescription>
+                Nogle Staff food- eller Waste-registreringer kunne ikke omregnes
+                til ingredienser. Forslagene kan være for lave.
+              </AlertDescription>
             </Alert>
           ) : null}
           {!loading && history.unmappedQuantity > 0 ? (
@@ -565,7 +663,7 @@ function Planner() {
           {loading ? (
             <div role="status" className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                Indlæser produkter og salgsforbrug…
+                Indlæser produkter, salg, Staff food og Waste…
               </p>
               {Array.from({ length: 5 }, (_, index) => (
                 <Skeleton key={index} className="h-16 w-full" />
@@ -617,8 +715,19 @@ function Planner() {
                       </TableCell>
                       <TableCell>
                         {row.forecast.demand === null
-                          ? "Intet salgsgrundlag"
+                          ? "Intet forbrugsgrundlag"
                           : numberFormatter.format(row.forecast.demand)}
+                        {row.forecast.staffFoodDemand > 0 ||
+                        row.forecast.wasteDemand > 0 ? (
+                          <div className="text-xs text-muted-foreground">
+                            Heraf Staff food:{" "}
+                            {numberFormatter.format(
+                              row.forecast.staffFoodDemand,
+                            )}{" "}
+                            · Waste:{" "}
+                            {numberFormatter.format(row.forecast.wasteDemand)}
+                          </div>
+                        ) : null}
                         {row.forecast.demand !== null &&
                         row.forecast.limited ? (
                           <div className="text-xs text-muted-foreground">
@@ -661,8 +770,18 @@ function Planner() {
                       </dt>
                       <dd>
                         {row.forecast.demand === null
-                          ? "Intet salgsgrundlag"
+                          ? "Intet forbrugsgrundlag"
                           : numberFormatter.format(row.forecast.demand)}
+                      </dd>
+                      <dt className="text-muted-foreground">
+                        Heraf Staff food
+                      </dt>
+                      <dd>
+                        {numberFormatter.format(row.forecast.staffFoodDemand)}
+                      </dd>
+                      <dt className="text-muted-foreground">Heraf Waste</dt>
+                      <dd>
+                        {numberFormatter.format(row.forecast.wasteDemand)}
                       </dd>
                       <dt className="text-muted-foreground">Forslag</dt>
                       <dd>

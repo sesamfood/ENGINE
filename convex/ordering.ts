@@ -15,6 +15,12 @@ import { requireLocationAccess, requirePermission } from "./lib/auth";
 import { getLocationProductAccess } from "./lib/locationProducts";
 import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
+import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
+import { createForecastConsumptionResolver } from "./lib/forecastConsumption";
+import {
+  forecastConditionValidator,
+  forecastOpeningDayValidator,
+} from "./lib/forecastValidators";
 
 async function requirePlanner(ctx: QueryCtx, locationId: Id<"locations">) {
   const auth = await requirePermission(ctx, "ordering.plan");
@@ -119,14 +125,18 @@ export const getContext = query({
     historyStartAt: v.number(),
     historyEndAt: v.number(),
     warning: v.union(v.string(), v.null()),
+    openingDays: v.array(forecastOpeningDayValidator),
     environment: v.object({
-      factors: v.array(v.object({ date: v.string(), multiplier: v.number() })),
+      conditions: v.array(forecastConditionValidator),
       message: v.string(),
       updatedAt: v.union(v.number(), v.null()),
     }),
   }),
   handler: async (ctx, args) => {
-    const { organizationId } = await requirePlanner(ctx, args.locationId);
+    const { organizationId, location } = await requirePlanner(
+      ctx,
+      args.locationId,
+    );
     if (!Number.isFinite(args.asOf) || Math.abs(args.asOf) > 8e12)
       throw new ConvexError("Datoen er ugyldig");
     const timeZone = await resolveTimeZone(
@@ -160,23 +170,44 @@ export const getContext = query({
         )
         .unique(),
     ]);
-    const forecast = await ctx.db.query("locationForecasts").withIndex("by_organizationId_and_locationId", (q) =>
-      q.eq("organizationId", organizationId).eq("locationId", args.locationId)).unique();
-    const usable = forecast?.timeZone === timeZone && forecast.updatedAt && Date.now() - forecast.updatedAt < 26 * 3_600_000 &&
-      forecast.snapshot?.points.some((point) => point.date === today);
-    const factors = usable ? forecast.snapshot?.points.map(({ date, multiplier }) => ({ date, multiplier })) ?? [] : [];
-    const learned = [forecast?.snapshot?.weatherLearned ? "vejr" : null, forecast?.snapshot?.holidaysLearned ? "helligdage" : null].filter(Boolean);
+    const forecast = await ctx.db
+      .query("locationForecasts")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .unique();
+    const usable =
+      forecast?.timeZone === timeZone &&
+      forecast.updatedAt &&
+      args.asOf - forecast.updatedAt < 26 * 3_600_000;
+    const conditions = usable
+      ? forecast.conditions.filter((day) => day.date >= historyFrom)
+      : [];
+    const openingHours = await getForecastOpeningHours(
+      ctx,
+      location,
+      today,
+      historyFrom,
+      shiftOrderDate(today, 27),
+    );
     const message = !forecast
       ? "Vejr og helligdage er ikke sat op. Aktivér dem under lokationens oplysninger i Administration."
-      : !usable ? "Vejr- og helligdagsprognosen afventer opdatering. Forslag bruger det hidtidige ugedagsmønster."
-      : learned.length ? `Forslag tilpasses efter ${learned.join(" og ")} ud fra lokationens salgshistorik. Dage uden vejrudsigt bruger ugedagsmønstret.`
-      : "Der er endnu ikke nok historik til at lære vejr- og helligdagseffekter. Forslag bruger ugedagsmønstret.";
+      : !usable
+        ? "Vejr og helligdage afventer opdatering. Forslag bruger produkternes ugedagsmønster og åbningstider."
+        : "Vejr og helligdage tilpasser hvert produkts forbrug, når der er nok historik. Dage uden vejrudsigt bruger produktets ugedagsmønster og åbningstider.";
     // Fetch a day either side, then use local calendar dates to handle DST.
     return {
       today,
       historyFrom,
       timeZone,
-      environment: { factors, message: [message, forecast?.warning].filter(Boolean).join(" "), updatedAt: forecast?.updatedAt ?? null },
+      openingDays: openingHours.days,
+      environment: {
+        conditions,
+        message: [message, forecast?.warning].filter(Boolean).join(" "),
+        updatedAt: forecast?.updatedAt ?? null,
+      },
       historyStartAt: Date.parse(
         `${shiftOrderDate(historyFrom, -1)}T00:00:00Z`,
       ),
@@ -225,7 +256,7 @@ export const listConsumption = query({
       args.to <= args.from ||
       args.to - args.from > (ORDER_HISTORY_DAYS + 3) * 86_400_000
     ) {
-      throw new ConvexError("Vælg højst otte ugers salgshistorik");
+      throw new ConvexError("Vælg højst 90 dages forbrugshistorik");
     }
     const timeZone = await resolveTimeZone(
       ctx,
@@ -257,6 +288,91 @@ export const listConsumption = query({
           })),
         })),
     };
+  },
+});
+
+export const listOperationalConsumption = query({
+  args: {
+    locationId: v.id("locations"),
+    from: v.number(),
+    to: v.number(),
+    source: v.union(v.literal("staffFood"), v.literal("waste")),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(
+    v.object({
+      date: v.string(),
+      unresolvedCount: v.number(),
+      entries: v.array(
+        v.object({
+          productId: v.id("products"),
+          unitId: v.id("units"),
+          quantity: v.number(),
+          date: v.string(),
+        }),
+      ),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requirePlanner(ctx, args.locationId);
+    if (
+      !Number.isFinite(args.from) ||
+      !Number.isFinite(args.to) ||
+      args.to <= args.from ||
+      args.to - args.from > (ORDER_HISTORY_DAYS + 3) * 86_400_000
+    )
+      throw new ConvexError("Vælg højst 90 dages forbrugshistorik");
+    const timeZone = await resolveTimeZone(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const pagination = catalogPaginationOptions(args.paginationOpts, 20);
+    const result =
+      args.source === "staffFood"
+        ? await ctx.db
+            .query("staffFoodRegistrations")
+            .withIndex(
+              "by_organizationId_and_locationId_and_registeredAt",
+              (q) =>
+                q
+                  .eq("organizationId", organizationId)
+                  .eq("locationId", args.locationId)
+                  .gte("registeredAt", args.from)
+                  .lt("registeredAt", args.to),
+            )
+            .paginate(pagination)
+        : await ctx.db
+            .query("wasteRegistrations")
+            .withIndex("by_org_location_status_time", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("locationId", args.locationId)
+                .eq("status", "active")
+                .gte("registeredAt", args.from)
+                .lt("registeredAt", args.to),
+            )
+            .paginate(pagination);
+    const resolve = createForecastConsumptionResolver(ctx, organizationId);
+    const page = [];
+    for (const row of result.page) {
+      if (row.status !== "active") continue;
+      const date =
+        "workDate" in row
+          ? row.workDate
+          : orderDate(row.registeredAt, timeZone);
+      const entries = await resolve(
+        row.productId,
+        row.defaultUnitId,
+        row.defaultQuantity,
+      );
+      page.push({
+        date,
+        unresolvedCount: entries === null ? 1 : 0,
+        entries: (entries ?? []).map((entry) => ({ ...entry, date })),
+      });
+    }
+    return { ...result, page };
   },
 });
 

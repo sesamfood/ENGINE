@@ -20,9 +20,19 @@ export const forecastPointValidator = v.object({
   multiplier: v.number(),
   weatherApplied: v.boolean(),
   holidayApplied: v.boolean(),
+  openMinutes: v.optional(v.union(v.number(), v.null())),
+});
+
+export const forecastOpeningDayValidator = v.object({
+  date: v.string(),
+  openMinutes: v.number(),
 });
 
 export const forecastSnapshotValidator = v.object({
+  modelVersion: v.optional(v.number()),
+  openingHoursKey: v.optional(v.string()),
+  productCount: v.optional(v.number()),
+  productMixApplied: v.optional(v.boolean()),
   points: v.array(forecastPointValidator),
   historyDays: v.number(),
   weatherDays: v.number(),

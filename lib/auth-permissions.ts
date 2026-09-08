@@ -51,7 +51,7 @@ export const permissionCatalog = [
   {
     group: "Bestilling",
     permissions: [
-      { id: "ordering.plan", label: "Planlægge bestillinger og se salgsforbrug" },
+      { id: "ordering.plan", label: "Planlægge bestillinger og se produktforbrug" },
       { id: "ordering.export", label: "Eksportere bestillinger" },
     ],
   },
