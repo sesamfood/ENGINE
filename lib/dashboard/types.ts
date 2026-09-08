@@ -19,6 +19,7 @@ export const metricIds = [
   "headcountToday",
   "locationComparison",
   "salesRevenue",
+  "predictedSalesRevenue",
   "salesOrderCount",
   "averageBasket",
   "woltCancellationRate",

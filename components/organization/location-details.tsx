@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 type OwnershipType = "owned" | "franchise" | "jointVenture" | "license";
 type LocationStatus = "planned" | "open" | "temporarilyClosed" | "closed";
@@ -48,6 +50,11 @@ const statusItems = [
 ] satisfies Array<{ value: LocationStatus | "none"; label: string }>;
 
 type Draft = {
+  forecastEnabled: boolean;
+  latitude: string;
+  longitude: string;
+  countryCode: string;
+  subdivisionCode: string;
   marketId: Id<"markets"> | null;
   legalEntityId: Id<"legalEntities"> | null;
   operatorId: Id<"operators"> | null;
@@ -60,6 +67,11 @@ type Draft = {
 };
 
 const emptyDraft: Draft = {
+  forecastEnabled: false,
+  latitude: "",
+  longitude: "",
+  countryCode: "",
+  subdivisionCode: "",
   marketId: null,
   legalEntityId: null,
   operatorId: null,
@@ -105,6 +117,11 @@ export function LocationDetails({
   const draft = editedDraft ??
     (details
       ? {
+          forecastEnabled: details.forecastProfile !== null,
+          latitude: String(details.forecastProfile?.latitude ?? ""),
+          longitude: String(details.forecastProfile?.longitude ?? ""),
+          countryCode: details.forecastProfile?.countryCode ?? "",
+          subdivisionCode: details.forecastProfile?.subdivisionCode ?? "",
           marketId: details.marketId,
           legalEntityId: details.legalEntityId,
           operatorId: details.operatorId,
@@ -145,9 +162,19 @@ export function LocationDetails({
   ];
 
   async function save() {
+    if (draft.forecastEnabled && (!draft.latitude.trim() || !draft.longitude.trim() || !draft.countryCode.trim())) {
+      toast.error("Angiv koordinater og landekode for prognosen");
+      return;
+    }
     setSaving(true);
     try {
       await updateLocation({
+        forecastProfile: draft.forecastEnabled ? {
+          latitude: Number(draft.latitude.replace(",", ".")),
+          longitude: Number(draft.longitude.replace(",", ".")),
+          countryCode: draft.countryCode,
+          ...(draft.subdivisionCode.trim() ? { subdivisionCode: draft.subdivisionCode } : {}),
+        } : null,
         locationId,
         marketId: draft.marketId,
         legalEntityId: draft.legalEntityId,
@@ -188,6 +215,42 @@ export function LocationDetails({
           </div>
         ) : (
           <FieldGroup>
+            <Field orientation="horizontal">
+              <FieldLabel htmlFor="location-forecast-enabled">Vejr og helligdage i prognoser</FieldLabel>
+              <HelpTooltip label="prognoser" content="Prognoser lærer af lokationens salg på tidligere dage med lignende vejr og helligdage. Koordinater og landekode deles med vejr- og kalenderudbyderne. Salgstal deles ikke." />
+              <Switch id="location-forecast-enabled" checked={draft.forecastEnabled}
+                onCheckedChange={(forecastEnabled) => setDraft({ ...draft, forecastEnabled })} />
+            </Field>
+            {draft.forecastEnabled && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="location-latitude">Breddegrad</FieldLabel>
+                  <Input id="location-latitude" inputMode="decimal" value={draft.latitude}
+                    onChange={(event) => setDraft({ ...draft, latitude: event.target.value })} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="location-longitude">Længdegrad</FieldLabel>
+                  <Input id="location-longitude" inputMode="decimal" value={draft.longitude}
+                    onChange={(event) => setDraft({ ...draft, longitude: event.target.value })} />
+                </Field>
+                <Field>
+                  <div className="flex items-center gap-2">
+                    <FieldLabel htmlFor="location-country-code">Landekode</FieldLabel>
+                    <HelpTooltip label="landekode" content="Landekode med to bogstaver, fx DK. Bruges til nationale helligdage fra Nager.Holidays." />
+                  </div>
+                  <Input id="location-country-code" maxLength={2} autoCapitalize="characters" value={draft.countryCode}
+                    onChange={(event) => setDraft({ ...draft, countryCode: event.target.value.toUpperCase() })} />
+                </Field>
+                <Field>
+                  <div className="flex items-center gap-2">
+                    <FieldLabel htmlFor="location-subdivision-code">Regionskode</FieldLabel>
+                    <HelpTooltip label="regionskode" content="Valgfri ISO-regionskode, fx DE-BY. Kun nationale helligdage medregnes, hvis feltet er tomt. Lokale begivenheder og skoleferier indgår ikke." />
+                  </div>
+                  <Input id="location-subdivision-code" maxLength={6} autoCapitalize="characters" value={draft.subdivisionCode}
+                    onChange={(event) => setDraft({ ...draft, subdivisionCode: event.target.value.toUpperCase() })} />
+                </Field>
+              </div>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="location-market">Marked</FieldLabel>

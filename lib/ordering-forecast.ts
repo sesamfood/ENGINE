@@ -30,7 +30,7 @@ export type DemandObservation = {
   quantity: number;
 };
 
-// Future holiday/weather providers supply a multiplier per product and date.
+// Demand models supply a multiplier per product and date.
 export type DemandFactor = {
   source: string;
   date: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useConvex, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   DownloadIcon,
   Grid2X2Icon,
@@ -106,6 +106,7 @@ function Planner() {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
   const convex = useConvex();
+  const refreshEnvironment = useMutation(api.forecasts.requestRefresh);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -197,6 +198,7 @@ function Planner() {
                 coverageDays,
                 bufferPercent,
                 stock: product.stock,
+                factors: context.environment.factors.map((factor) => ({ ...factor, source: "weatherHolidays", productId: product.id })),
               })
             : { demand: null, suggested: null, historyDays: 0, limited: true },
       })),
@@ -449,19 +451,35 @@ function Planner() {
                 <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                   <HelpTooltip
                     label="bestillingsforslag"
-                    content="Forslag bruger op til otte ugers synkroniseret salgsforbrug fra OnlinePOS. Samme ugedage sammenlignes, og nyere uger vægter mest. Solgte opskrifter er omregnet til ingredienser. Buffer lægges til, og positiv lagerbeholdning trækkes fra. Waste, Staff food, indgående leverancer, helligdage og vejr er endnu ikke medregnet."
+                    content="Forslag bruger op til otte ugers synkroniseret salgsforbrug. Samme ugedage sammenlignes, og nyere uger vægter mest. Solgte opskrifter er omregnet til ingredienser. Vejr og helligdage tilpasser forbruget med effekter lært fra lokationens omsætning, når der er nok historik. Produktmikset antages uændret. Buffer lægges til, og positiv lagerbeholdning trækkes fra. Waste, Staff food og indgående leverancer er ikke medregnet."
                   />
                   <Button
                     variant="outline"
                     size="lg"
                     disabled={exporting || loading}
-                    onClick={() => setAsOf(Date.now())}
+                    onClick={async () => {
+                      setAsOf(Date.now());
+                      if (!locationId) return;
+                      try {
+                        await refreshEnvironment({ locationId });
+                        toast.success("Forslag opdateres. Vejr og helligdage genbruges i op til ti minutter.");
+                      } catch (error) {
+                        toast.error(getUserErrorMessage(error, "Prognosen kunne ikke opdateres"));
+                      }
+                    }}
                   >
                     <RefreshCwIcon data-icon="inline-start" />
                     Opdatér forslag
                   </Button>
                 </div>
               </FieldGroup>
+              {context && (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  {context.environment.message}{" "}
+                  Vejr: <a className="underline underline-offset-4" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.{" "}
+                  Helligdage: <a className="underline underline-offset-4" href="https://nagerholidays.com/" target="_blank" rel="noreferrer">Nager.Holidays</a>.
+                </p>
+              )}
             </CardContent>
           </Card>
           {context?.warning ? (

@@ -119,6 +119,11 @@ export const getContext = query({
     historyStartAt: v.number(),
     historyEndAt: v.number(),
     warning: v.union(v.string(), v.null()),
+    environment: v.object({
+      factors: v.array(v.object({ date: v.string(), multiplier: v.number() })),
+      message: v.string(),
+      updatedAt: v.union(v.number(), v.null()),
+    }),
   }),
   handler: async (ctx, args) => {
     const { organizationId } = await requirePlanner(ctx, args.locationId);
@@ -155,11 +160,23 @@ export const getContext = query({
         )
         .unique(),
     ]);
+    const forecast = await ctx.db.query("locationForecasts").withIndex("by_organizationId_and_locationId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", args.locationId)).unique();
+    const usable = forecast?.timeZone === timeZone && forecast.updatedAt && Date.now() - forecast.updatedAt < 26 * 3_600_000 &&
+      forecast.snapshot?.points.some((point) => point.date === today);
+    const factors = usable ? forecast.snapshot?.points.map(({ date, multiplier }) => ({ date, multiplier })) ?? [] : [];
+    const learned = [forecast?.snapshot?.weatherLearned ? "vejr" : null, forecast?.snapshot?.holidaysLearned ? "helligdage" : null].filter(Boolean);
+    const message = !forecast
+      ? "Vejr og helligdage er ikke sat op. Aktivér dem under lokationens oplysninger i Administration."
+      : !usable ? "Vejr- og helligdagsprognosen afventer opdatering. Forslag bruger det hidtidige ugedagsmønster."
+      : learned.length ? `Forslag tilpasses efter ${learned.join(" og ")} ud fra lokationens salgshistorik. Dage uden vejrudsigt bruger ugedagsmønstret.`
+      : "Der er endnu ikke nok historik til at lære vejr- og helligdagseffekter. Forslag bruger ugedagsmønstret.";
     // Fetch a day either side, then use local calendar dates to handle DST.
     return {
       today,
       historyFrom,
       timeZone,
+      environment: { factors, message: [message, forecast?.warning].filter(Boolean).join(" "), updatedAt: forecast?.updatedAt ?? null },
       historyStartAt: Date.parse(
         `${shiftOrderDate(historyFrom, -1)}T00:00:00Z`,
       ),

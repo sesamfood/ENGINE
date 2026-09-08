@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { locationForecastValidator } from "./lib/forecastValidators";
 import {
   openingHoursModeValidator,
   weeklyOpeningHoursValidator,
@@ -31,6 +32,9 @@ import {
 } from "./lib/woltValidators";
 
 export default defineSchema({
+  locationForecasts: defineTable(locationForecastValidator).index(
+    "by_organizationId_and_locationId", ["organizationId", "locationId"],
+  ),
   rolePermissions: defineTable({
     organizationId: v.string(),
     role: v.string(),

@@ -40,6 +40,21 @@ export type MetricDefinition = {
 };
 
 const definitions = {
+  predictedSalesRevenue: {
+    id: "predictedSalesRevenue",
+    label: "Forventet omsætning, næste 7 dage",
+    category: "Salg",
+    description: "Prognose fra i morgen og syv dage frem. Bruger salgshistorik, vejr og helligdage, når datagrundlaget rækker. Kræver prognoseopsætning i lokationens oplysninger.",
+    formula: "Vægtet omsætning på samme ugedage i de seneste otte uger, tilpasset med vejr- og helligdagseffekter lært fra op til 400 dages salg. Vejr fra Open-Meteo og helligdage fra Nager.Holidays. Manglende vejr eller utilstrækkelig historik giver et ugedagsestimat. Perioden er altid de næste syv dage, uanset dashboardets datovalg. Opdateres hver sjette time.",
+    sourceTables: ["salesDaily", "locationForecasts"],
+    source: "internal",
+    unit: "currency",
+    visualizations: ["kpi", "line", "bar", "area", "table"],
+    defaultVisualization: "line",
+    defaultSize: "2x2",
+    sensitive: true,
+    shareable: true,
+  },
   wasteQuantity: {
     id: "wasteQuantity",
     label: "Waste-mængde",

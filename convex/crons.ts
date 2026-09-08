@@ -3,6 +3,8 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
+crons.interval("refresh weather and holiday forecasts", { hours: 6 }, internal.forecasts.dispatch, { cursor: null });
+
 crons.interval(
   "flush dashboard summary updates",
   { minutes: 5 },
