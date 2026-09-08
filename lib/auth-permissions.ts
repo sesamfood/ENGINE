@@ -49,6 +49,13 @@ export type DataGranularity = (typeof dataGranularities)[number];
 
 export const permissionCatalog = [
   {
+    group: "Bestilling",
+    permissions: [
+      { id: "ordering.plan", label: "Planlægge bestillinger og se salgsforbrug" },
+      { id: "ordering.export", label: "Eksportere bestillinger" },
+    ],
+  },
+  {
     group: "Count",
     permissions: [
       { id: "count.register", label: "Registrere Counts" },

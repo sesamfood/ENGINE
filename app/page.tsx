@@ -11,6 +11,7 @@ export default function Home() {
   const access = useAccess();
   const kiosk = access?.kiosk;
   const canDashboard = usePermission("dashboard.view");
+  const canOrder = usePermission("ordering.plan");
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
   const canGoodsReceipts = usePermission("goodsReceipts.register");
@@ -78,6 +79,8 @@ export default function Home() {
                           ? "/employees"
                           : canEmployeesDirectory
                             ? "/employees/directory"
+                            : canOrder
+                              ? "/ordering"
                             : canOrganization
                               ? "/administration"
                               : "/profile";
@@ -90,6 +93,7 @@ export default function Home() {
     canCountStock,
     canDashboardManage,
     canDashboard,
+    canOrder,
     canGoodsReceiptSettings,
     canGoodsReceipts,
     canEmployeesDirectory,

@@ -84,6 +84,7 @@ import type * as onlinePos from "../onlinePos.js";
 import type * as onlinePosMenus from "../onlinePosMenus.js";
 import type * as onlinePosStock from "../onlinePosStock.js";
 import type * as onlinePosSync from "../onlinePosSync.js";
+import type * as ordering from "../ordering.js";
 import type * as organization from "../organization.js";
 import type * as ownCheckDocumentation from "../ownCheckDocumentation.js";
 import type * as ownCheckOverview from "../ownCheckOverview.js";
@@ -191,6 +192,7 @@ declare const fullApi: ApiFromModules<{
   onlinePosMenus: typeof onlinePosMenus;
   onlinePosStock: typeof onlinePosStock;
   onlinePosSync: typeof onlinePosSync;
+  ordering: typeof ordering;
   organization: typeof organization;
   ownCheckDocumentation: typeof ownCheckDocumentation;
   ownCheckOverview: typeof ownCheckOverview;
