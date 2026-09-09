@@ -28,6 +28,7 @@ import {
   validateBadDeliveryRecipients,
 } from "./lib/badDeliverySettings";
 import { addStock, normalizeStock } from "./lib/stock";
+import { invalidateSalesStockMappings } from "./lib/salesStock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
   activeProductCatalogValidator,
@@ -1985,6 +1986,9 @@ export const cleanupProductData = internalMutation({
       await ctx.db.delete("wasteProductConfigs", row._id);
     for (const row of onlinePosMappings) {
       await ctx.db.delete("onlinePosProductMappings", row._id);
+    }
+    if (onlinePosMappings.length > 0) {
+      await invalidateSalesStockMappings(ctx, args.organizationId);
     }
     if (
       productStats.length === limit ||

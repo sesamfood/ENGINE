@@ -270,6 +270,18 @@ async function getStatus(
     .unique();
 }
 
+async function markStockChanged(
+  ctx: MutationCtx,
+  status: Doc<"onlinePosSyncStatus">,
+  from: number | undefined,
+) {
+  if (from === undefined) return;
+  await ctx.db.patch(status._id, {
+    stockRevision: (status.stockRevision ?? 0) + 1,
+    stockChangedFrom: Math.min(status.stockChangedFrom ?? from, from),
+  });
+}
+
 async function isMasterEnabled(ctx: MutationCtx, organizationId: string) {
   const settings = await ctx.db
     .query("onlinePosIntegrations")
@@ -617,6 +629,7 @@ export const rerollLocationDayStartsPage = internalMutation({
       )
       .unique();
     let patched = 0;
+    let stockChangedFrom: number | undefined;
     for (const order of page.page) {
       const dayStart = dayStartOf(order.occurredAt, args.timeZone);
       if (dayStart === order.dayStart) {
@@ -676,8 +689,14 @@ export const rerollLocationDayStartsPage = internalMutation({
         if (application) await ctx.db.patch(application._id, { dayStart });
       }
       await ctx.db.patch(order._id, { dayStart });
+      stockChangedFrom = Math.min(
+        stockChangedFrom ?? dayStart,
+        order.dayStart,
+        dayStart,
+      );
       patched++;
     }
+    await markStockChanged(ctx, status, stockChangedFrom);
     if (!page.isDone) {
       await ctx.scheduler.runAfter(
         0,
@@ -1196,6 +1215,7 @@ export const ingestSalesBatch = internalMutation({
 
     const now = Date.now();
     const maybeEmptyOrders = new Map<Id<"salesOrders">, string>();
+    let stockChangedFrom: number | undefined;
     for (const line of lines) {
       const dayStart = dayStartOf(line.occurredAt, timeZone);
       const key = orderKey(
@@ -1206,6 +1226,20 @@ export const ingestSalesBatch = internalMutation({
       );
       let order = orderCache.get(key) ?? null;
       const existingLine = existingLineDocs.get(line.externalId);
+      if (
+        !existingLine ||
+        existingLine.orderId !== order?._id ||
+        existingLine.occurredAt !== line.occurredAt ||
+        existingLine.externalProductId !== line.externalProductId ||
+        existingLine.quantity !== line.quantity ||
+        existingLine.externalId !== line.externalId
+      ) {
+        stockChangedFrom = Math.min(
+          stockChangedFrom ?? dayStart,
+          dayStart,
+          existingLines.get(line.externalId)?.dayStart ?? dayStart,
+        );
+      }
 
       if (existingLine && existingLine.orderId !== order?._id) {
         const oldOrder = await ctx.db.get("salesOrders", existingLine.orderId);
@@ -1308,6 +1342,12 @@ export const ingestSalesBatch = internalMutation({
           line.orderNumber,
           line.department,
         );
+        if (
+          order.occurredAt !== nextOccurredAt ||
+          order.externalId !== externalId
+        ) {
+          stockChangedFrom = Math.min(stockChangedFrom ?? dayStart, dayStart);
+        }
         if (
           order.revenue !== revenue ||
           order.itemCount !== itemCount ||
@@ -1464,6 +1504,7 @@ export const ingestSalesBatch = internalMutation({
       }
     }
 
+    await markStockChanged(ctx, status, stockChangedFrom);
     return null;
   },
 });
@@ -1690,7 +1731,9 @@ export const deleteDayOrdersPage = internalMutation({
           .eq("dayStart", args.dayStart),
       )
       .take(DELETE_PAGE);
-    let remaining = DELETE_WRITE_BUDGET;
+    let remaining = DELETE_WRITE_BUDGET - 1;
+    let stockChangedFrom: number | undefined;
+    let isDone = orders.length < DELETE_PAGE;
     for (const order of orders) {
       const limit = Math.min(LINE_DELETE_PAGE, remaining);
       const lines = await ctx.db
@@ -1700,21 +1743,25 @@ export const deleteDayOrdersPage = internalMutation({
         )
         .take(limit);
       for (const line of lines) await ctx.db.delete(line._id);
+      if (lines.length > 0) stockChangedFrom = args.dayStart;
       remaining -= lines.length;
-      if (lines.length === limit) {
-        return { active: true, isDone: false, continueCursor: "" };
+      if (lines.length === limit || remaining === 0) {
+        isDone = false;
+        break;
       }
-      if (remaining === 0)
-        return { active: true, isDone: false, continueCursor: "" };
       await ctx.db.delete(order._id);
+      stockChangedFrom = args.dayStart;
       remaining--;
-      if (remaining === 0)
-        return { active: true, isDone: false, continueCursor: "" };
+      if (remaining === 0) {
+        isDone = false;
+        break;
+      }
     }
+    await markStockChanged(ctx, status, stockChangedFrom);
 
     return {
       active: true,
-      isDone: orders.length < DELETE_PAGE,
+      isDone,
       continueCursor: "",
     };
   },

@@ -26,6 +26,21 @@ export function stockSalesFingerprint(lines: SaleLine[]) {
   );
 }
 
+export async function invalidateSalesStockMappings(
+  ctx: MutationCtx,
+  organizationId: string,
+) {
+  const integration = await ctx.db
+    .query("onlinePosIntegrations")
+    .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+    .unique();
+  if (integration) {
+    await ctx.db.patch(integration._id, {
+      stockMappingRevision: (integration.stockMappingRevision ?? 0) + 1,
+    });
+  }
+}
+
 export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
   const products = new Map<Id<"products">, Doc<"products">>();
   const recipes = new Map<Id<"products">, Doc<"productIngredients">[]>();
