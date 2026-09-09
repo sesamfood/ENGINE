@@ -287,6 +287,7 @@ export function planItem(
     controlType: version.controlType,
     description: version.description,
     instructions: version.instructions ?? "",
+    imageStorageId: version.imageStorageId ?? null,
     fields: version.fields,
     responsibleRole: version.responsibleRole ?? null,
     dueDateKey: occurrence.dueDateKey,

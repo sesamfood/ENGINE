@@ -6,12 +6,14 @@ import {
   ArchiveIcon,
   ArrowDownIcon,
   ArrowUpIcon,
+  ImageIcon,
   PencilIcon,
   PlusIcon,
   RotateCcwIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -33,7 +35,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -44,6 +46,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import type { OwnCheckControlType, OwnCheckField, OwnCheckSchedule } from "@/lib/own-checks";
 import { useOwnCheckNow } from "@/components/own-checks/use-own-check-now";
+import { InstructionEditor } from "@/components/own-checks/instruction-editor";
+import { compressImage } from "@/lib/compress-image";
 
 type TemplatePage = NonNullable<ReturnType<typeof usePaginatedQuery<typeof api.ownCheckTemplates.listTemplates>>>;
 type Template = TemplatePage["results"][number];
@@ -53,6 +57,7 @@ type Draft = {
   name: string;
   description: string;
   instructions: string;
+  imageStorageId: Id<"_storage"> | null;
   controlType: OwnCheckControlType;
   schedule: OwnCheckSchedule;
   startMinuteOfDay: number | undefined;
@@ -96,6 +101,7 @@ function newDraft(): Draft {
     name: "",
     description: "",
     instructions: "",
+    imageStorageId: null,
     controlType: "temperature",
     schedule: { type: "daily" },
     startMinuteOfDay: undefined,
@@ -114,6 +120,7 @@ function draftFromTemplate(template: Template): Draft {
     name: template.name,
     description: template.description,
     instructions: template.instructions ?? "",
+    imageStorageId: template.imageStorageId ?? null,
     controlType: template.controlType,
     schedule: template.schedule,
     startMinuteOfDay: template.startMinuteOfDay ?? undefined,
@@ -194,8 +201,8 @@ function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispat
                 <Button type="button" variant="ghost" size="icon" aria-label="Slet felt" disabled={draft.fields.length === 1} onClick={() => setDraft((current) => ({ ...current, fields: current.fields.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2Icon /></Button>
               </div>
             </div>
-            <FieldGroup className="mt-3 grid md:grid-cols-2">
-              <Field orientation="horizontal" className="md:pt-7">
+            <FieldGroup className="mt-3">
+              <Field orientation="horizontal">
                 <FieldContent><FieldLabel htmlFor={`own-field-required-${index}`}>Påkrævet</FieldLabel></FieldContent>
                 <Switch id={`own-field-required-${index}`} checked={field.required} onCheckedChange={(checked) => patchField(index, { required: checked })} />
               </Field>
@@ -212,11 +219,57 @@ function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispat
               {field.type === "attachment" ? <Field><FieldLabel htmlFor={`own-field-max-files-${index}`}>Maks. filer</FieldLabel><Input id={`own-field-max-files-${index}`} type="number" min={1} max={5} value={field.maxFiles} onChange={(event) => patchField(index, { maxFiles: Number(event.target.value) })} /></Field> : null}
             </FieldGroup>
             {field.type === "choice" ? (
-              <Field className="mt-3">
-                <FieldLabel htmlFor={`own-field-options-${index}`}>Valgmuligheder</FieldLabel>
-                <Textarea id={`own-field-options-${index}`} value={field.options.map((option) => `${option.value}|${option.label}|${option.compliant ? "ja" : "nej"}`).join("\n")} onChange={(event) => patchField(index, { options: event.target.value.split("\n").filter(Boolean).map((line) => { const [value, label, compliant] = line.split("|"); return { value: value?.trim() ?? "", label: label?.trim() ?? "", compliant: compliant?.trim().toLowerCase() === "ja" }; }) })} />
-                <FieldDescription>Én valgmulighed pr. linje: værdi|label|ja eller nej.</FieldDescription>
-              </Field>
+              <FieldSet className="mt-3">
+                <FieldLegend variant="label" className="flex items-center gap-1">
+                  Valgmuligheder
+                  <HelpTooltip label="Valgmuligheder" content="Tilføj mellem 2 og 20 svar. Aktivér I orden for de svar, der betyder, at kontrollen er i orden. Mindst ét svar skal være i orden." />
+                </FieldLegend>
+                <FieldGroup className="gap-3">
+                  {field.options.map((option, optionIndex) => (
+                    <FieldGroup key={option.value} className="gap-3 rounded-lg border p-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+                      <Field>
+                        <FieldLabel htmlFor={`own-field-option-label-${index}-${optionIndex}`}>Valgmulighed {optionIndex + 1}</FieldLabel>
+                        <Input
+                          id={`own-field-option-label-${index}-${optionIndex}`}
+                          value={option.label}
+                          required
+                          placeholder="Skriv svaret"
+                          className="min-h-11"
+                          onChange={(event) => patchField(index, { options: field.options.map((item) => item.value === option.value ? { ...item, label: event.target.value } : item) })}
+                        />
+                      </Field>
+                      <Field orientation="horizontal" className="min-h-11 sm:w-auto">
+                        <Switch
+                          id={`own-field-option-compliant-${index}-${optionIndex}`}
+                          checked={option.compliant}
+                          onCheckedChange={(checked) => patchField(index, { options: field.options.map((item) => item.value === option.value ? { ...item, compliant: checked } : item) })}
+                        />
+                        <FieldLabel htmlFor={`own-field-option-compliant-${index}-${optionIndex}`}>I orden</FieldLabel>
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="min-h-11 min-w-11 self-end"
+                        aria-label={`Slet valgmulighed ${optionIndex + 1}`}
+                        disabled={field.options.length <= 2}
+                        onClick={() => patchField(index, { options: field.options.filter((item) => item.value !== option.value) })}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </FieldGroup>
+                  ))}
+                </FieldGroup>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 self-start"
+                  disabled={field.options.length >= 20}
+                  onClick={() => patchField(index, { options: [...field.options, { value: `option-${crypto.randomUUID()}`, label: "", compliant: false }] })}
+                >
+                  <PlusIcon data-icon="inline-start" />Tilføj valgmulighed
+                </Button>
+              </FieldSet>
             ) : null}
           </div>
         ))}
@@ -229,8 +282,16 @@ function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispat
 function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMode; locations: Array<{ id: Id<"locations">; name: string }>; onClose: () => void; onSaved: () => void }) {
   const createTemplate = useMutation(api.ownCheckTemplates.createTemplate);
   const updateTemplate = useMutation(api.ownCheckTemplates.updateTemplate);
+  const generateImageUploadUrl = useMutation(api.ownCheckTemplates.generateImageUploadUrl);
   const [draft, setDraft] = useState<Draft>(() => mode && mode !== "new" ? draftFromTemplate(mode) : newDraft());
   const [saving, setSaving] = useState(false);
+  const [imageSelection, setImageSelection] = useState<{ file: File; previewUrl: string; storageId?: Id<"_storage"> } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const localImageUrl = imageSelection?.previewUrl;
+  const imageUrl = localImageUrl ?? (draft.imageStorageId && mode && mode !== "new" ? mode.imageUrl : null);
+  useEffect(() => () => {
+    if (localImageUrl) URL.revokeObjectURL(localImageUrl);
+  }, [localImageUrl]);
   const dateContextLocationId = draft.allLocations ? locations[0]?.id : draft.locationIds[0] ?? locations[0]?.id;
   const now = useOwnCheckNow(`${mode && mode !== "new" ? mode.id : "new"}:${dateContextLocationId ?? ""}`);
   const dateContext = useQuery(api.ownCheckTemplates.getTemplateDateContext, dateContextLocationId ? { locationId: dateContextLocationId, now } : "skip");
@@ -246,10 +307,28 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
     event.preventDefault();
     setSaving(true);
     try {
+      let imageStorageId = draft.imageStorageId;
+      if (imageSelection) {
+        imageStorageId = imageSelection.storageId ?? null;
+        if (!imageStorageId) {
+          const image = await compressImage(imageSelection.file, { maxWidth: 1600, maxHeight: 1600, type: "image/webp", alwaysReencode: true });
+          const uploadUrl = await generateImageUploadUrl({});
+          const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": image.type }, body: image });
+          if (!response.ok) throw new Error("Billedet kunne ikke uploades. Prøv igen.");
+          const result: unknown = await response.json();
+          if (!result || typeof result !== "object" || !("storageId" in result) || typeof result.storageId !== "string") {
+            throw new Error("Billeduploaden kunne ikke bekræftes. Prøv igen.");
+          }
+          imageStorageId = result.storageId as Id<"_storage">;
+          const uploadedStorageId = imageStorageId;
+          setImageSelection((current) => current?.file === imageSelection.file ? { ...current, storageId: uploadedStorageId } : current);
+        }
+      }
       const payload = {
         name: draft.name,
         description: draft.description,
         instructions: draft.instructions,
+        imageStorageId,
         controlType: draft.controlType,
         schedule: draft.schedule,
         ...(draft.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: draft.startMinuteOfDay }),
@@ -287,29 +366,63 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
   }
 
   return (
-    <Dialog open={Boolean(mode)} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={Boolean(mode)} onOpenChange={(open) => !open && !saving && onClose()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{mode === "new" ? "Ny egenkontrol" : "Redigér egenkontrol"}</DialogTitle>
           <DialogDescription>Definér felter, frekvens og hvilke lokationer kontrollen gælder for.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={save} className="flex flex-col gap-6">
+        <form onSubmit={save} inert={saving} aria-busy={saving} className="flex flex-col gap-6">
           <FieldGroup className="grid md:grid-cols-2">
             <Field><FieldLabel htmlFor="own-template-name">Navn</FieldLabel><Input id="own-template-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required maxLength={100} /></Field>
             <Field><FieldLabel htmlFor="own-template-type">Kontroltype</FieldLabel><Select items={controlTypes} value={draft.controlType} onValueChange={(value) => value && setDraft((current) => ({ ...current, controlType: value as OwnCheckControlType }))}><SelectTrigger id="own-template-type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{controlTypes.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
           </FieldGroup>
+          <Field data-disabled={saving}>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-image">Billede</FieldLabel>
+              <HelpTooltip label="Billede" content="Valgfrit billede, som vises i listen og på kontrollen. Brug JPEG, PNG eller WebP på højst 10 MB." />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
+                {imageUrl ? <Image src={imageUrl} alt="Billede af kontrollen" fill unoptimized sizes="96px" className="object-cover" /> : <ImageIcon className="size-8" />}
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Input
+                  ref={imageInputRef}
+                  id="own-template-image"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={saving}
+                  className="h-auto min-h-11"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+                      toast.error("Vælg et JPEG-, PNG- eller WebP-billede på højst 10 MB.");
+                      event.target.value = "";
+                      return;
+                    }
+                    setImageSelection({ file, previewUrl: URL.createObjectURL(file) });
+                  }}
+                />
+                {imageUrl || draft.imageStorageId ? <Button type="button" variant="outline" className="min-h-11 self-start" disabled={saving} onClick={() => {
+                  setImageSelection(null);
+                  setDraft((current) => ({ ...current, imageStorageId: null }));
+                  if (imageInputRef.current) imageInputRef.current.value = "";
+                }}><Trash2Icon data-icon="inline-start" />Fjern billede</Button> : null}
+              </div>
+            </div>
+          </Field>
           <Field><FieldLabel htmlFor="own-template-description">Beskrivelse</FieldLabel><Textarea id="own-template-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={1000} /></Field>
           <Field>
             <div className="flex items-center gap-1">
               <FieldLabel htmlFor="own-template-instructions">Instruktioner</FieldLabel>
               <HelpTooltip label="Instruktioner" content="Beskriv, hvordan kontrollen skal udføres. Instruktionerne vises, når brugeren åbner kontrollen." />
             </div>
-            <Textarea
+            <InstructionEditor
               id="own-template-instructions"
-              value={draft.instructions}
-              onChange={(event) => setDraft((current) => ({ ...current, instructions: event.target.value }))}
-              maxLength={4000}
-              rows={5}
+              defaultValue={draft.instructions}
+              onChange={(instructions) => setDraft((current) => ({ ...current, instructions }))}
             />
           </Field>
           <FieldSet>
@@ -359,7 +472,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
           {mode && mode !== "new" ? <Card><CardHeader><CardTitle className="text-base">Versionshistorik</CardTitle><CardDescription>Historiske felter og grænser bevares for tidligere registreringer.</CardDescription></CardHeader><CardContent>{templateDetails === undefined ? <Spinner /> : templateDetails?.versions.length ? <div className="flex flex-col gap-3">{templateDetails.versions.map((version) => <div key={version.id} className="rounded-lg border p-3 text-sm"><div className="flex flex-wrap items-baseline justify-between gap-2"><p className="font-medium">Version {version.version}</p><p className="text-muted-foreground">{new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validFrom)} – {version.validTo === null ? "nu" : new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validTo)}</p></div><p className="text-muted-foreground">Oprettet af {version.createdByName}</p><ul className="mt-2 flex flex-col gap-1">{version.fields.map((field) => <li key={field.key}>{field.label} · {field.type}{field.type === "number" && (field.min !== undefined || field.max !== undefined) ? ` · ${field.min ?? ""}–${field.max ?? ""}` : ""}</li>)}</ul></div>)}</div> : <p className="text-sm text-muted-foreground">Ingen historik tilgængelig.</p>}</CardContent></Card> : null}
           {mode && mode !== "new" ? <Field><FieldLabel htmlFor="own-template-reason">Begrundelse</FieldLabel><Input id="own-template-reason" value={draft.reason} onChange={(event) => setDraft((current) => ({ ...current, reason: event.target.value }))} placeholder="Angiv en begrundelse" required /></Field> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Annullér</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Annullér</Button>
             <Button type="submit" size="lg" disabled={saving}>{saving ? <Spinner data-icon="inline-start" /> : null}Gem egenkontrol</Button>
           </DialogFooter>
         </form>

@@ -4,6 +4,7 @@ import {
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { systemRoleKeys, systemRoleNames } from "../lib/auth-permissions";
+import { instructionText, MAX_INSTRUCTION_LENGTH } from "../lib/own-check-instructions";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
@@ -18,6 +19,7 @@ import {
 } from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { getOwnCheckConfiguration } from "./lib/ownCheckSettings";
+import { claimStorageForOrganization } from "./lib/storageOwnership";
 import { MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./lib/ownChecks";
 
 const MAX_ACTIVE_TEMPLATES = 200;
@@ -35,6 +37,7 @@ const versionFieldsValidator = v.object({
   name: v.string(),
   description: v.string(),
   instructions: v.optional(v.string()),
+  imageStorageId: v.optional(v.union(v.id("_storage"), v.null())),
   controlType: ownCheckControlTypeValidator,
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.optional(v.number()),
@@ -55,6 +58,8 @@ const templateSummaryValidator = v.object({
   version: v.number(),
   description: v.string(),
   instructions: v.string(),
+  imageStorageId: v.union(v.id("_storage"), v.null()),
+  imageUrl: v.union(v.string(), v.null()),
   controlType: ownCheckControlTypeValidator,
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
@@ -74,6 +79,7 @@ const versionOutputValidator = v.object({
   name: v.string(),
   description: v.string(),
   instructions: v.string(),
+  imageStorageId: v.union(v.id("_storage"), v.null()),
   controlType: ownCheckControlTypeValidator,
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
@@ -188,6 +194,7 @@ type VersionFields = {
   name: string;
   description: string;
   instructions?: string;
+  imageStorageId?: Id<"_storage"> | null;
   controlType: Doc<"ownCheckTemplateVersions">["controlType"];
   schedule: Doc<"ownCheckTemplateVersions">["schedule"];
   startMinuteOfDay?: number;
@@ -198,8 +205,22 @@ type VersionFields = {
   responsibleRole?: string;
 };
 
+async function validateImage(
+  ctx: MutationCtx,
+  organizationId: string,
+  imageStorageId: Id<"_storage"> | null | undefined,
+) {
+  if (!imageStorageId) return undefined;
+  const file = await ctx.db.system.get("_storage", imageStorageId);
+  if (!file?.contentType || !["image/jpeg", "image/png", "image/webp"].includes(file.contentType) || file.size > 10 * 1024 * 1024) {
+    throw new ConvexError("Brug et JPG-, PNG- eller WebP-billede på højst 10 MB");
+  }
+  await claimStorageForOrganization(ctx, organizationId, imageStorageId);
+  return imageStorageId;
+}
+
 async function validateVersionFields(
-  ctx: TemplateContext,
+  ctx: MutationCtx,
   organizationId: string,
   input: VersionFields,
 ) {
@@ -207,7 +228,8 @@ async function validateVersionFields(
   const description = input.description.trim();
   if (description.length > 1_000) throw new ConvexError("Beskrivelsen må højst være 1.000 tegn");
   const instructions = input.instructions?.trim() ?? "";
-  if (instructions.length > 4_000) throw new ConvexError("Instruktionerne må højst være 4.000 tegn");
+  if (instructions.length > 200_000) throw new ConvexError("Instruktionerne indeholder for meget formatering");
+  if (instructionText(instructions).length > MAX_INSTRUCTION_LENGTH) throw new ConvexError("Instruktionerne må højst være 4.000 tegn");
   validateFields(input.fields);
   validateSchedule(input.schedule);
   if (input.startMinuteOfDay !== undefined) requireMinute(input.startMinuteOfDay);
@@ -230,7 +252,8 @@ async function validateVersionFields(
       .unique();
     if (!role) throw new ConvexError("Den ansvarlige rolle findes ikke");
   }
-  return { name, normalizedName, description, instructions, responsibleRole };
+  const imageStorageId = await validateImage(ctx, organizationId, input.imageStorageId);
+  return { name, normalizedName, description, instructions, imageStorageId, responsibleRole };
 }
 
 async function currentVersion(
@@ -254,6 +277,7 @@ function versionOutput(row: Doc<"ownCheckTemplateVersions">) {
     name: row.name,
     description: row.description,
     instructions: row.instructions ?? "",
+    imageStorageId: row.imageStorageId ?? null,
     controlType: row.controlType,
     schedule: row.schedule,
     startMinuteOfDay: row.startMinuteOfDay ?? null,
@@ -270,7 +294,8 @@ function versionOutput(row: Doc<"ownCheckTemplateVersions">) {
   };
 }
 
-function summaryOutput(
+async function summaryOutput(
+  ctx: QueryCtx,
   template: Doc<"ownCheckTemplates">,
   version: Doc<"ownCheckTemplateVersions">,
 ) {
@@ -284,6 +309,8 @@ function summaryOutput(
     version: version.version,
     description: version.description,
     instructions: version.instructions ?? "",
+    imageStorageId: version.imageStorageId ?? null,
+    imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
     controlType: version.controlType,
     schedule: version.schedule,
     startMinuteOfDay: version.startMinuteOfDay ?? null,
@@ -346,7 +373,7 @@ export const listTemplates = query({
       .query("ownCheckTemplates")
       .withIndex("by_organizationId_and_status_and_normalizedName", (q) => q.eq("organizationId", auth.organizationId).eq("status", args.status))
       .paginate(args.paginationOpts);
-    const hydrated = await Promise.all(page.page.map(async (template) => summaryOutput(template, await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion))));
+    const hydrated = await Promise.all(page.page.map(async (template) => summaryOutput(ctx, template, await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion))));
     return { ...page, page: hydrated };
   },
 });
@@ -366,9 +393,18 @@ export const getTemplate = query({
     const current = versions.find((version) => version.version === template.currentVersion);
     if (!current) throw new ConvexError("Egenkontrollen mangler sin aktuelle version");
     return {
-      template: summaryOutput(template, current),
+      template: await summaryOutput(ctx, template, current),
       versions: versions.sort((a, b) => b.version - a.version).map(versionOutput),
     };
+  },
+});
+
+export const generateImageUploadUrl = mutation({
+  args: {},
+  returns: v.string(),
+  handler: async (ctx) => {
+    await requireOwnCheckManager(ctx);
+    return await ctx.storage.generateUploadUrl();
   },
 });
 
@@ -402,6 +438,7 @@ export const createTemplate = mutation({
       name: validated.name,
       description: validated.description,
       instructions: validated.instructions,
+      ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
       controlType: args.controlType,
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
@@ -437,6 +474,7 @@ export const updateTemplate = mutation({
     const validated = await validateVersionFields(ctx, auth.organizationId, {
       ...args,
       instructions: args.instructions ?? current.instructions,
+      imageStorageId: args.imageStorageId === undefined ? current.imageStorageId : args.imageStorageId,
     });
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName, template._id);
     const currentKeys = new Set(current.fields.map((field) => field.key));
@@ -463,6 +501,7 @@ export const updateTemplate = mutation({
       name: validated.name,
       description: validated.description,
       instructions: validated.instructions,
+      ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
       controlType: args.controlType,
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
@@ -526,6 +565,7 @@ export const restoreTemplate = mutation({
     if (!template || template.organizationId !== auth.organizationId || template.status !== "archived") throw new ConvexError("Egenkontrollen blev ikke fundet");
     await ensureUniqueName(ctx, auth.organizationId, template.normalizedName, template._id);
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
+    const imageStorageId = await validateImage(ctx, auth.organizationId, current.imageStorageId);
     const reason = requireAuditReason(args.reason);
     const now = Math.max(Date.now(), current.validTo ?? current.validFrom + 1);
     await ctx.db.insert("ownCheckTemplateVersions", {
@@ -535,6 +575,7 @@ export const restoreTemplate = mutation({
       name: current.name,
       description: current.description,
       instructions: current.instructions ?? "",
+      ...(imageStorageId ? { imageStorageId } : {}),
       controlType: current.controlType,
       schedule: current.schedule,
       ...(current.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: current.startMinuteOfDay }),

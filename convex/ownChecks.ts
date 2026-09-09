@@ -88,6 +88,8 @@ const planItemValidator = v.object({
   controlType: ownCheckControlTypeValidator,
   description: v.string(),
   instructions: v.string(),
+  imageStorageId: v.union(v.id("_storage"), v.null()),
+  imageUrl: v.union(v.string(), v.null()),
   fields: v.array(ownCheckFieldValidator),
   responsibleRole: v.union(v.string(), v.null()),
   dueDateKey: v.string(),
@@ -263,14 +265,16 @@ export const listToday = query({
         }
       }
     }
+    const imageIds = [...new Set([...items, ...backlog].flatMap((item) => item.imageStorageId ? [item.imageStorageId] : []))];
+    const imageUrls = new Map(await Promise.all(imageIds.map(async (id) => [id, await ctx.storage.getUrl(id)] as const)));
     return {
       locationId,
       locationName: location.name,
       dateKey,
       timeZone,
       lateSubmissionDays: configuration.lateSubmissionDays,
-      items,
-      backlog,
+      items: items.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
+      backlog: backlog.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
       truncated,
     };
   },

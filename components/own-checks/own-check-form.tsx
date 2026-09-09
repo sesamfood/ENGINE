@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "convex/react";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -18,6 +19,7 @@ import type { OwnCheckField, OwnCheckValue } from "@/lib/own-checks";
 import { evaluateCompliance, ownCheckControlTypeLabels } from "@/lib/own-checks";
 import { compressImage } from "@/lib/compress-image";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { InstructionContent } from "./instruction-content";
 
 type TodayResult = NonNullable<ReturnType<typeof import("convex/react").useQuery<typeof api.ownChecks.listToday>>>;
 type PlanItem = TodayResult["items"][number];
@@ -155,7 +157,10 @@ export function OwnCheckForm({ item, locationId, timeZone, canSubmit, onSaved }:
       </div>
       <Card className="md:col-start-2 md:row-start-2">
         <CardHeader><CardTitle><h3>Instruktioner</h3></CardTitle></CardHeader>
-        <CardContent className="whitespace-pre-wrap break-words">{item.instructions || "Der er ikke tilføjet instruktioner til denne kontrol."}</CardContent>
+        <CardContent className="flex flex-col gap-4">
+          {item.imageUrl ? <div className="relative h-64 w-full"><Image src={item.imageUrl} alt={`Billede af ${item.name}`} fill unoptimized sizes="(max-width: 768px) 100vw, 50vw" className="rounded-lg object-contain" /></div> : null}
+          <div className="whitespace-pre-wrap break-words">{item.instructions ? <InstructionContent value={item.instructions} /> : "Der er ikke tilføjet instruktioner til denne kontrol."}</div>
+        </CardContent>
       </Card>
       <Card className="md:col-start-1 md:row-start-2">
         <CardHeader><CardTitle><h3>{item.entry ? "Registrering" : "Udfør kontrol"}</h3></CardTitle></CardHeader>

@@ -557,6 +557,7 @@ function OrganizationHome() {
       >
         <Image
           src={wideLogoUrl}
+          unoptimized
           alt={organization?.name ?? "Organisation"}
           width={200}
           height={48}
@@ -581,6 +582,7 @@ function OrganizationHome() {
         {logoUrl ? (
           <Image
             src={logoUrl}
+            unoptimized
             alt={organization?.name ?? "Organisation"}
             fill
             className="object-cover"

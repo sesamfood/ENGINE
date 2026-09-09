@@ -9,6 +9,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -34,7 +35,10 @@ function CheckRow({ item, locationId, timeZone, now }: { item: PlanItem; locatio
   const overdue = item.status === "notCompleted" && now > item.dueAt;
   return (
     <Button variant="outline" nativeButton={false} render={<Link href={`/own-checks/check/${item.templateId}?${new URLSearchParams({ locationId, date: item.dueDateKey })}`} />} className="flex h-auto min-h-16 w-full items-center justify-start gap-3 p-3 text-left">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><ClipboardCheckIcon /></span>
+      <Avatar size="lg" className="rounded-lg after:rounded-lg">
+        {item.imageUrl ? <AvatarImage src={item.imageUrl} alt="" className="rounded-lg" /> : null}
+        <AvatarFallback className="rounded-lg"><ClipboardCheckIcon /></AvatarFallback>
+      </Avatar>
       <span className="min-w-0 flex-1"><span className="block whitespace-normal break-words font-medium">{item.name}</span><span className="block whitespace-normal text-sm text-muted-foreground">{ownCheckControlTypeLabels[item.controlType]} · {timeLabel(item, timeZone)}</span></span>
       <span className="flex shrink-0 flex-col items-end gap-1"><StatusBadge item={item} />{overdue ? <span className="text-xs font-medium text-destructive">Overskredet</span> : null}</span>
     </Button>

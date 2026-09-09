@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import Image from "next/image";
 import {
   CheckCircle2Icon,
   FileIcon,
@@ -37,6 +38,7 @@ import {
   type OwnCheckValue,
 } from "@/lib/own-checks";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { InstructionContent } from "./instruction-content";
 
 type RecordResult = NonNullable<ReturnType<typeof useQuery<typeof api.ownChecks.getOwnCheckRecord>>>;
 type RecordField = RecordResult["fields"][number];
@@ -274,10 +276,13 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
       <StatusBadge status={record.entry.status} hasDeviation={record.entry.hasDeviation} followUp={record.entry.followUp} />
     </div>
 
-    {record.instructions ? (
+    {record.instructions || record.imageUrl ? (
       <Card>
         <CardHeader><CardTitle>Instruktioner</CardTitle></CardHeader>
-        <CardContent className="whitespace-pre-wrap break-words text-sm">{record.instructions}</CardContent>
+        <CardContent className="flex flex-col gap-4">
+          {record.imageUrl ? <div className="relative h-64 w-full"><Image src={record.imageUrl} alt={`Billede af ${record.entry.name}`} fill unoptimized sizes="(max-width: 768px) 100vw, 50vw" className="rounded-lg object-contain" /></div> : null}
+          {record.instructions ? <div className="whitespace-pre-wrap break-words text-sm"><InstructionContent value={record.instructions} /></div> : null}
+        </CardContent>
       </Card>
     ) : null}
 

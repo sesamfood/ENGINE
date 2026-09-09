@@ -2207,6 +2207,7 @@ export default defineSchema({
     name: v.string(),
     description: v.string(),
     instructions: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     controlType: ownCheckControlTypeValidator,
     schedule: ownCheckScheduleValidator,
     startMinuteOfDay: v.optional(v.number()),
@@ -2221,6 +2222,7 @@ export default defineSchema({
     createdBy: v.string(),
     createdByName: v.string(),
   })
+    .index("by_imageStorageId", ["imageStorageId"])
     .index("by_organizationId_and_templateId_and_version", [
       "organizationId", "templateId", "version",
     ])
