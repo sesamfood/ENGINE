@@ -3,7 +3,7 @@ import type { ForecastOpeningDay } from "./forecast-opening-hours";
 
 export const SALES_FORECAST_HISTORY_DAYS = 400;
 export const SALES_FORECAST_DAYS = 28;
-export const FORECAST_MODEL_VERSION = 3;
+export const FORECAST_MODEL_VERSION = 4;
 export const PRODUCT_FORECAST_HISTORY_DAYS = 90;
 
 export type ForecastCondition = {

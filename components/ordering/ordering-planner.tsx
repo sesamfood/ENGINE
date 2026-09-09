@@ -557,11 +557,20 @@ function Planner() {
                   {context.environment.message} Vejr:{" "}
                   <a
                     className="underline underline-offset-4"
-                    href="https://open-meteo.com/"
+                    href="https://openweathermap.org/"
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Open-Meteo
+                    OpenWeather
+                  </a>
+                  , bearbejdet til prognoser under{" "}
+                  <a
+                    className="underline underline-offset-4"
+                    href="https://creativecommons.org/licenses/by-sa/4.0/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    CC BY-SA 4.0
                   </a>
                   . Helligdage:{" "}
                   <a

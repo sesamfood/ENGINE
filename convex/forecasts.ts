@@ -21,6 +21,7 @@ import {
   forecastConditionValidator,
   forecastSnapshotValidator,
   forecastOpeningDayValidator,
+  FORECAST_WEATHER_PROVIDER,
 } from "./lib/forecastValidators";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { orderDate, shiftOrderDate } from "../lib/ordering-forecast";
@@ -30,6 +31,7 @@ import {
   PRODUCT_FORECAST_HISTORY_DAYS,
   type ProductDailySales,
   SALES_FORECAST_HISTORY_DAYS,
+  SALES_FORECAST_DAYS,
 } from "../lib/sales-forecast";
 
 async function requireUnchangedSales(
@@ -132,8 +134,11 @@ export const claim = internalMutation({
       forecast.locationId,
     );
     const changedZone = timeZone !== forecast.timeZone;
+    const changedProvider =
+      forecast.weatherProvider !== FORECAST_WEATHER_PROVIDER;
     if (
       !changedZone &&
+      !changedProvider &&
       forecast.snapshot?.modelVersion === FORECAST_MODEL_VERSION &&
       forecast.updatedAt &&
       now - forecast.updatedAt < 10 * 60_000
@@ -141,18 +146,21 @@ export const claim = internalMutation({
       return null;
     const changes = {
       runStartedAt: now,
-      ...(changedZone
+      ...(changedZone || changedProvider
         ? {
             timeZone,
+            weatherProvider: FORECAST_WEATHER_PROVIDER,
             revision: forecast.revision + 1,
             conditions: [],
             archiveThrough: undefined,
+            weatherUpdatedAt: undefined,
+            weatherWarning: undefined,
             snapshot: undefined,
             updatedAt: undefined,
             warning: undefined,
           }
         : {}),
-    };
+    } satisfies Partial<Doc<"locationForecasts">>;
     await ctx.db.patch("locationForecasts", forecastId, changes);
     return { ...forecast, ...changes };
   },
@@ -338,14 +346,44 @@ export const productSalesPage = internalQuery({
   },
 });
 
+export const cacheConditions = internalMutation({
+  args: {
+    forecastId: v.id("locationForecasts"),
+    revision: v.number(),
+    runStartedAt: v.number(),
+    conditions: v.array(forecastConditionValidator),
+    archiveThrough: v.optional(v.string()),
+    warning: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const current = await ctx.db.get("locationForecasts", args.forecastId);
+    if (
+      !current ||
+      current.revision !== args.revision ||
+      current.runStartedAt !== args.runStartedAt
+    )
+      return false;
+    if (args.conditions.length > 428)
+      throw new Error("Forecast exceeds bounded storage");
+    await ctx.db.patch("locationForecasts", current._id, {
+      conditions: args.conditions,
+      archiveThrough: args.archiveThrough,
+      weatherProvider: FORECAST_WEATHER_PROVIDER,
+      weatherUpdatedAt: Date.now(),
+      weatherWarning: args.warning || undefined,
+      warning: args.warning || undefined,
+    });
+    return true;
+  },
+});
+
 export const finish = internalMutation({
   args: {
     forecastId: v.id("locationForecasts"),
     revision: v.number(),
     runStartedAt: v.number(),
     salesRunToken: v.union(v.string(), v.null()),
-    conditions: v.array(forecastConditionValidator),
-    archiveThrough: v.optional(v.string()),
     snapshot: forecastSnapshotValidator,
     warning: v.string(),
   },
@@ -360,11 +398,9 @@ export const finish = internalMutation({
       return null;
     if (args.salesRunToken !== null)
       await requireUnchangedSales(ctx, current, args.salesRunToken);
-    if (args.conditions.length > 428 || args.snapshot.points.length > 28)
+    if (args.snapshot.points.length > 28)
       throw new Error("Forecast exceeds bounded storage");
     await ctx.db.patch("locationForecasts", current._id, {
-      conditions: args.conditions,
-      archiveThrough: args.archiveThrough,
       snapshot: args.snapshot,
       warning: args.warning || undefined,
       runStartedAt: undefined,
@@ -409,16 +445,42 @@ export const refreshLocation = internalAction({
     };
     try {
       const today = orderDate(Date.now(), forecast.timeZone);
-      const [environment, training] = await Promise.all([
-        fetchForecastConditions({
-          profile: forecast.profile,
-          timeZone: forecast.timeZone,
-          today,
-          cached: forecast.conditions,
-          archiveThrough: forecast.archiveThrough,
-        }),
-        ctx.runQuery(internal.forecasts.trainingData, { ...args, today }),
-      ]);
+      const weatherDates = new Set(
+        forecast.conditions
+          .filter((day) => day.temperature !== null && day.precipitation !== null)
+          .map((day) => day.date),
+      );
+      const reuseWeather =
+        forecast.weatherUpdatedAt !== undefined &&
+        Date.now() - forecast.weatherUpdatedAt < 5 * 3_600_000 &&
+        orderDate(forecast.weatherUpdatedAt, forecast.timeZone) === today &&
+        forecast.archiveThrough === shiftOrderDate(today, -1) &&
+        Array.from({ length: SALES_FORECAST_DAYS + 1 }, (_, index) =>
+          shiftOrderDate(today, index - 1),
+        ).every((date) => weatherDates.has(date));
+      const environment = reuseWeather ? {
+        conditions: forecast.conditions,
+        archiveThrough: forecast.archiveThrough,
+        warning: forecast.weatherWarning ?? "",
+      } : await fetchForecastConditions({
+        profile: forecast.profile,
+        timeZone: forecast.timeZone,
+        today,
+        cached: forecast.conditions,
+        archiveThrough: forecast.archiveThrough,
+      });
+      // Keep paid weather reads even when sales change before the forecast finishes.
+      if (!reuseWeather) {
+        const cached: boolean = await ctx.runMutation(
+          internal.forecasts.cacheConditions,
+          { ...run, ...environment },
+        );
+        if (!cached) return null;
+      }
+      const training = await ctx.runQuery(internal.forecasts.trainingData, {
+        ...args,
+        today,
+      });
       const productSales = new Map<string, ProductDailySales>();
       let cursor: string | null = null;
       let rowsRead = 0;
@@ -471,7 +533,6 @@ export const refreshLocation = internalAction({
       if (training.warning) snapshot.points = [];
       await ctx.runMutation(internal.forecasts.finish, {
         ...run,
-        ...environment,
         salesRunToken: training.salesRunToken,
         snapshot,
         warning: [

@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 
+export const FORECAST_WEATHER_PROVIDER = "openWeather";
+
 export const forecastProfileValidator = v.object({
   latitude: v.number(),
   longitude: v.number(),
@@ -48,6 +50,9 @@ export const locationForecastValidator = v.object({
   timeZone: v.string(),
   revision: v.number(),
   conditions: v.array(forecastConditionValidator),
+  weatherProvider: v.optional(v.literal(FORECAST_WEATHER_PROVIDER)),
+  weatherUpdatedAt: v.optional(v.number()),
+  weatherWarning: v.optional(v.string()),
   archiveThrough: v.optional(v.string()),
   snapshot: v.optional(forecastSnapshotValidator),
   updatedAt: v.optional(v.number()),

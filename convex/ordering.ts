@@ -20,6 +20,7 @@ import { createForecastConsumptionResolver } from "./lib/forecastConsumption";
 import {
   forecastConditionValidator,
   forecastOpeningDayValidator,
+  FORECAST_WEATHER_PROVIDER,
 } from "./lib/forecastValidators";
 
 async function requirePlanner(ctx: QueryCtx, locationId: Id<"locations">) {
@@ -180,8 +181,9 @@ export const getContext = query({
       .unique();
     const usable =
       forecast?.timeZone === timeZone &&
-      forecast.updatedAt &&
-      args.asOf - forecast.updatedAt < 26 * 3_600_000;
+      forecast.weatherProvider === FORECAST_WEATHER_PROVIDER &&
+      forecast.weatherUpdatedAt &&
+      args.asOf - forecast.weatherUpdatedAt < 26 * 3_600_000;
     const conditions = usable
       ? forecast.conditions.filter((day) => day.date >= historyFrom)
       : [];
@@ -206,7 +208,7 @@ export const getContext = query({
       environment: {
         conditions,
         message: [message, forecast?.warning].filter(Boolean).join(" "),
-        updatedAt: forecast?.updatedAt ?? null,
+        updatedAt: forecast?.weatherUpdatedAt ?? null,
       },
       historyStartAt: Date.parse(
         `${shiftOrderDate(historyFrom, -1)}T00:00:00Z`,
