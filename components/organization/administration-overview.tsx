@@ -13,6 +13,7 @@ import {
   PackageIcon,
   PackageCheckIcon,
   PlugIcon,
+  ShoppingCartIcon,
   StoreIcon,
   Trash2Icon,
   UsersIcon,
@@ -104,6 +105,13 @@ const categories: AdministrationCategory[] = [
         href: "/administration/products",
         icon: PackageIcon,
         permissions: ["catalog.manage"],
+      },
+      {
+        title: "Bestilling",
+        description: "Vælg, hvilke produkter der kan medtages i bestillinger.",
+        href: "/administration/ordering",
+        icon: ShoppingCartIcon,
+        permissions: ["organization.settings"],
       },
       {
         title: "Count",

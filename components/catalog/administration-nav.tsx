@@ -36,6 +36,7 @@ const sectionTitles = [
   { value: "staff-food", label: "Staff food" },
   { value: "own-checks", label: "Egenkontrol" },
   { value: "count", label: "Count" },
+  { value: "ordering", label: "Bestilling" },
   { value: "goods-receipts", label: "Varemodtagelse" },
   { value: "waste", label: "Waste" },
   { value: "kiosk", label: "Kiosk" },

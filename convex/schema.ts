@@ -1,6 +1,9 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { locationForecastValidator } from "./lib/forecastValidators";
+import {
+  forecastProfileValidator,
+  locationForecastValidator,
+} from "./lib/forecastValidators";
 import {
   openingHoursModeValidator,
   weeklyOpeningHoursValidator,
@@ -32,6 +35,15 @@ import {
 } from "./lib/woltValidators";
 
 export default defineSchema({
+  addressSearchCache: defineTable({
+    organizationId: v.string(),
+    query: v.string(),
+    results: v.array(forecastProfileValidator),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_query", ["organizationId", "query"])
+    .index("by_organizationId_and_updatedAt", ["organizationId", "updatedAt"]),
+
   locationForecasts: defineTable(locationForecastValidator).index(
     "by_organizationId_and_locationId", ["organizationId", "locationId"],
   ),
@@ -1463,6 +1475,12 @@ export default defineSchema({
     "organizationId",
     "manualGoodsReceiptId",
   ]),
+
+  orderingSettings: defineTable({
+    organizationId: v.string(),
+    includeRecipes: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
 
   goodsReceiptSettings: defineTable({
     organizationId: v.string(),

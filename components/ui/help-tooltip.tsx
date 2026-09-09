@@ -1,6 +1,7 @@
 "use client";
 
 import { CircleQuestionMarkIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -12,7 +13,7 @@ export function HelpTooltip({
   content,
   label,
 }: {
-  content: string;
+  content: ReactNode;
   label: string;
 }) {
   return (

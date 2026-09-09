@@ -5,7 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { LocationAddressSearch } from "@/components/organization/location-address-search";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,10 +52,7 @@ const statusItems = [
 
 type Draft = {
   forecastEnabled: boolean;
-  latitude: string;
-  longitude: string;
-  countryCode: string;
-  subdivisionCode: string;
+  forecastProfile: Doc<"locationForecasts">["profile"] | null;
   marketId: Id<"markets"> | null;
   legalEntityId: Id<"legalEntities"> | null;
   operatorId: Id<"operators"> | null;
@@ -68,10 +66,7 @@ type Draft = {
 
 const emptyDraft: Draft = {
   forecastEnabled: false,
-  latitude: "",
-  longitude: "",
-  countryCode: "",
-  subdivisionCode: "",
+  forecastProfile: null,
   marketId: null,
   legalEntityId: null,
   operatorId: null,
@@ -118,10 +113,7 @@ export function LocationDetails({
     (details
       ? {
           forecastEnabled: details.forecastProfile !== null,
-          latitude: String(details.forecastProfile?.latitude ?? ""),
-          longitude: String(details.forecastProfile?.longitude ?? ""),
-          countryCode: details.forecastProfile?.countryCode ?? "",
-          subdivisionCode: details.forecastProfile?.subdivisionCode ?? "",
+          forecastProfile: details.forecastProfile,
           marketId: details.marketId,
           legalEntityId: details.legalEntityId,
           operatorId: details.operatorId,
@@ -162,19 +154,14 @@ export function LocationDetails({
   ];
 
   async function save() {
-    if (draft.forecastEnabled && (!draft.latitude.trim() || !draft.longitude.trim() || !draft.countryCode.trim())) {
-      toast.error("Angiv koordinater og landekode for prognosen");
+    if (draft.forecastEnabled && !draft.forecastProfile) {
+      toast.error("Søg efter og vælg en adresse til prognosen");
       return;
     }
     setSaving(true);
     try {
       await updateLocation({
-        forecastProfile: draft.forecastEnabled ? {
-          latitude: Number(draft.latitude.replace(",", ".")),
-          longitude: Number(draft.longitude.replace(",", ".")),
-          countryCode: draft.countryCode,
-          ...(draft.subdivisionCode.trim() ? { subdivisionCode: draft.subdivisionCode } : {}),
-        } : null,
+        forecastProfile: draft.forecastEnabled ? draft.forecastProfile : null,
         locationId,
         marketId: draft.marketId,
         legalEntityId: draft.legalEntityId,
@@ -222,34 +209,9 @@ export function LocationDetails({
                 onCheckedChange={(forecastEnabled) => setDraft({ ...draft, forecastEnabled })} />
             </Field>
             {draft.forecastEnabled && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel htmlFor="location-latitude">Breddegrad</FieldLabel>
-                  <Input id="location-latitude" inputMode="decimal" value={draft.latitude}
-                    onChange={(event) => setDraft({ ...draft, latitude: event.target.value })} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="location-longitude">Længdegrad</FieldLabel>
-                  <Input id="location-longitude" inputMode="decimal" value={draft.longitude}
-                    onChange={(event) => setDraft({ ...draft, longitude: event.target.value })} />
-                </Field>
-                <Field>
-                  <div className="flex items-center gap-2">
-                    <FieldLabel htmlFor="location-country-code">Landekode</FieldLabel>
-                    <HelpTooltip label="landekode" content="Landekode med to bogstaver, fx DK. Bruges til nationale helligdage fra Nager.Holidays." />
-                  </div>
-                  <Input id="location-country-code" maxLength={2} autoCapitalize="characters" value={draft.countryCode}
-                    onChange={(event) => setDraft({ ...draft, countryCode: event.target.value.toUpperCase() })} />
-                </Field>
-                <Field>
-                  <div className="flex items-center gap-2">
-                    <FieldLabel htmlFor="location-subdivision-code">Regionskode</FieldLabel>
-                    <HelpTooltip label="regionskode" content="Valgfri ISO-regionskode, fx DE-BY. Kun nationale helligdage medregnes, hvis feltet er tomt. Lokale begivenheder og skoleferier indgår ikke." />
-                  </div>
-                  <Input id="location-subdivision-code" maxLength={6} autoCapitalize="characters" value={draft.subdivisionCode}
-                    onChange={(event) => setDraft({ ...draft, subdivisionCode: event.target.value.toUpperCase() })} />
-                </Field>
-              </div>
+              <LocationAddressSearch key={locationId} locationId={locationId}
+                value={draft.forecastProfile} disabled={saving}
+                onChange={(forecastProfile) => setDraft({ ...draft, forecastProfile })} />
             )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>

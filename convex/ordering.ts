@@ -38,6 +38,7 @@ async function requirePlanner(ctx: QueryCtx, locationId: Id<"locations">) {
 const productValidator = v.object({
   id: v.id("products"),
   name: v.string(),
+  imageUrl: v.union(v.string(), v.null()),
   category: v.string(),
   unitId: v.id("units"),
   unitName: v.string(),
@@ -73,7 +74,7 @@ export const listProducts = query({
       ...result,
       page: await Promise.all(
         products.map(async (product) => {
-          const [unit, category, ingredient, stock] = await Promise.all([
+          const [unit, category, ingredient, stock, imageUrl] = await Promise.all([
             ctx.db.get("units", product.defaultUnitId),
             ctx.db.get("categories", product.categoryId),
             ctx.db
@@ -95,12 +96,16 @@ export const listProducts = query({
                     .eq("productId", product._id),
               )
               .unique(),
+            product.imageStorageId
+              ? ctx.storage.getUrl(product.imageStorageId)
+              : null,
           ]);
           if (!unit || unit.organizationId !== organizationId)
             throw new ConvexError("Produktets enhed blev ikke fundet");
           return {
             id: product._id,
             name: product.name,
+            imageUrl,
             category:
               category?.organizationId === organizationId
                 ? category.name

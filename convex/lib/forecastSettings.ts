@@ -47,6 +47,10 @@ export async function setForecastProfile(
   const countryCode = profile.countryCode.trim().toUpperCase();
   const subdivisionCode =
     profile.subdivisionCode?.trim().toUpperCase() || undefined;
+  const addressLabel = profile.addressLabel?.trim() || undefined;
+  if (addressLabel && addressLabel.length > 500) {
+    throw new ConvexError("Adressen må højst indeholde 500 tegn");
+  }
   if (
     !Number.isFinite(profile.latitude) ||
     Math.abs(profile.latitude) > 90 ||
@@ -67,6 +71,7 @@ export async function setForecastProfile(
     longitude: profile.longitude,
     countryCode,
     ...(subdivisionCode ? { subdivisionCode } : {}),
+    ...(addressLabel ? { addressLabel } : {}),
   };
   if (
     current &&
@@ -75,8 +80,12 @@ export async function setForecastProfile(
     current.profile.countryCode === normalized.countryCode &&
     current.profile.subdivisionCode === normalized.subdivisionCode &&
     current.timeZone === timeZone
-  )
+  ) {
+    if (current.profile.addressLabel !== addressLabel) {
+      await ctx.db.patch("locationForecasts", current._id, { profile: normalized });
+    }
     return;
+  }
   const value = {
     organizationId,
     locationId,

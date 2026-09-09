@@ -5,6 +5,7 @@ import {
   DownloadIcon,
   Grid2X2Icon,
   ListIcon,
+  PackageOpenIcon,
   RefreshCwIcon,
   SearchIcon,
   ShoppingCartIcon,
@@ -19,6 +20,7 @@ import {
 } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,7 +47,6 @@ import {
 } from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -72,6 +73,7 @@ const numberFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
 });
 const csvNumber = (quantity: number) => String(quantity).replace(".", ",");
+const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
 
 export function OrderingPlanner() {
   const { data: session } = authClient.useSession();
@@ -96,21 +98,21 @@ function Planner() {
       locations[0]?.id ??
       null);
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
-  const [asOf, setAsOf] = useState(() => Date.now());
+  const [asOf, setAsOf] = useState(currentMinute);
   const [coverageInput, setCoverageInput] = useState("7");
   const [bufferInput, setBufferInput] = useState("10");
   const [search, setSearch] = useState("");
-  const [includeRecipes, setIncludeRecipes] = useState(false);
-  const [onlyPlanned, setOnlyPlanned] = useState(false);
   const [view, setView] = useState<"list" | "grid">("list");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
   const convex = useConvex();
   const refreshEnvironment = useMutation(api.forecasts.requestRefresh);
+  const settings = useQuery(api.orderingSettings.getSettings, canPlan ? {} : "skip");
+  const includeRecipes = settings?.includeRecipes ?? false;
   const mounted = useRef(true);
 
   useEffect(() => {
-    const update = () => setAsOf(Date.now());
+    const update = () => setAsOf(currentMinute());
     const interval = window.setInterval(update, 60_000);
     window.addEventListener("focus", update);
     return () => {
@@ -130,9 +132,24 @@ function Planner() {
     };
   }, []);
 
-  const context = useQuery(
+  const liveContext = useQuery(
     api.ordering.getContext,
     canPlan && locationId ? { locationId, asOf } : "skip",
+  );
+  const contextLocation = canPlan ? locationId : null;
+  const [lastContext, setLastContext] = useState({
+    locationId: contextLocation,
+    value: liveContext,
+  });
+  if (
+    lastContext.locationId !== contextLocation ||
+    (liveContext !== undefined && liveContext !== lastContext.value)
+  ) {
+    setLastContext({ locationId: contextLocation, value: liveContext });
+  }
+  // Keep the history subscriptions and editable rows during a clock refresh.
+  const context = liveContext ?? (
+    lastContext.locationId === contextLocation ? lastContext.value : undefined
   );
   const products = useCompleteCatalog(
     api.ordering.listProducts,
@@ -236,6 +253,7 @@ function Planner() {
     bufferPercent <= 100;
   const validSettings = validCoverage && validBuffer;
   const loading =
+    settings === undefined ||
     !context ||
     products === undefined ||
     consumption === undefined ||
@@ -303,7 +321,6 @@ function Planner() {
   const invalidQuantity = rows.some((row) => row.quantity === null);
   const visible = rows.filter(
     (row) =>
-      (!onlyPlanned || (row.quantity ?? 0) > 0) &&
       `${row.name} ${row.category}`
         .toLocaleLowerCase("da")
         .includes(search.trim().toLocaleLowerCase("da")),
@@ -333,7 +350,7 @@ function Planner() {
               const location = locations.find((item) => item.id === value);
               if (location) {
                 setSelectedLocation(location.id);
-                setAsOf(Date.now());
+                setAsOf(currentMinute());
               }
             }}
           />
@@ -469,9 +486,6 @@ function Planner() {
           <Card>
             <CardHeader>
               <CardTitle>Bestillingsforslag</CardTitle>
-              <CardDescription>
-                Tilpas mængderne. Eksportér som CSV for at gemme din plan.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <FieldGroup className="gap-5 sm:flex-row sm:items-end">
@@ -523,14 +537,31 @@ function Planner() {
                 <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                   <HelpTooltip
                     label="bestillingsforslag"
-                    content="Forslag bruger op til 90 dages produktforbrug. De seneste otte uger vægter i grundprognosen. Åbningstider og lukkedage medregnes; natåbent fordeles på kalenderdage. Vejr og helligdage læres særskilt fra hvert produkts mængder, når der er nok historik. Staff food og aktiv Waste fremskrives separat og lægges til. Waste kan indgå på lukkedage. Opskrifter i Staff food og Waste omregnes med de nuværende ingredienser. Waste skelner endnu ikke mellem forberedelsestab og undgåeligt spild. Buffer lægges til, og positiv lagerbeholdning trækkes fra. Indgående leverancer er ikke medregnet."
+                    content={
+                      <div className="flex max-w-sm flex-col gap-2">
+                        <p>Forslag bruger op til 90 dages produktforbrug. De seneste otte uger vægter i grundprognosen. Åbningstider og lukkedage medregnes; natåbent fordeles på kalenderdage. Vejr og helligdage læres særskilt fra hvert produkts mængder, når der er nok historik. Staff food og aktiv Waste fremskrives separat og lægges til. Waste kan indgå på lukkedage. Opskrifter i Staff food og Waste omregnes med de nuværende ingredienser. Waste skelner endnu ikke mellem forberedelsestab og undgåeligt spild. Buffer lægges til, og positiv lagerbeholdning trækkes fra. Indgående leverancer er ikke medregnet.</p>
+                        {context?.warning ? <p>{context.warning}</p> : null}
+                        {operationalHistory.staffFood.unresolvedCount + operationalHistory.waste.unresolvedCount > 0 ? (
+                          <p>Nogle Staff food- eller Waste-registreringer mangler produkt- eller enhedskoblinger. Forslagene kan være for lave.</p>
+                        ) : null}
+                        {history.unmappedQuantity > 0 ? (
+                          <p>{numberFormatter.format(history.unmappedQuantity)} solgte enheder mangler produkt- eller enhedskoblinger. Forslagene kan være for lave.</p>
+                        ) : null}
+                        {context ? <p>{context.environment.message}</p> : null}
+                        <p>
+                          Vejr fra <a className="underline" href="https://openweathermap.org/" target="_blank" rel="noreferrer">OpenWeather</a>,
+                          bearbejdet til prognoser under <a className="underline" href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a>.
+                          Helligdage fra <a className="underline" href="https://nagerholidays.com/" target="_blank" rel="noreferrer">Nager.Holidays</a>.
+                        </p>
+                      </div>
+                    }
                   />
                   <Button
                     variant="outline"
                     size="lg"
                     disabled={exporting || loading}
                     onClick={async () => {
-                      setAsOf(Date.now());
+                      setAsOf(currentMinute());
                       if (!locationId) return;
                       try {
                         await refreshEnvironment({ locationId });
@@ -552,69 +583,8 @@ function Planner() {
                   </Button>
                 </div>
               </FieldGroup>
-              {context && (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  {context.environment.message} Vejr:{" "}
-                  <a
-                    className="underline underline-offset-4"
-                    href="https://openweathermap.org/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    OpenWeather
-                  </a>
-                  , bearbejdet til prognoser under{" "}
-                  <a
-                    className="underline underline-offset-4"
-                    href="https://creativecommons.org/licenses/by-sa/4.0/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    CC BY-SA 4.0
-                  </a>
-                  . Helligdage:{" "}
-                  <a
-                    className="underline underline-offset-4"
-                    href="https://nagerholidays.com/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Nager.Holidays
-                  </a>
-                  .
-                </p>
-              )}
             </CardContent>
           </Card>
-          {context?.warning ? (
-            <Alert>
-              <AlertTitle>Kontrollér datagrundlaget</AlertTitle>
-              <AlertDescription>{context.warning}</AlertDescription>
-            </Alert>
-          ) : null}
-          {operationalHistory.staffFood.unresolvedCount +
-            operationalHistory.waste.unresolvedCount >
-          0 ? (
-            <Alert>
-              <AlertTitle>
-                Forbrug mangler produkt- eller enhedskoblinger
-              </AlertTitle>
-              <AlertDescription>
-                Nogle Staff food- eller Waste-registreringer kunne ikke omregnes
-                til ingredienser. Forslagene kan være for lave.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {!loading && history.unmappedQuantity > 0 ? (
-            <Alert>
-              <AlertTitle>Salg mangler produkt- eller enhedskoblinger</AlertTitle>
-              <AlertDescription>
-                {numberFormatter.format(history.unmappedQuantity)} solgte
-                enheder kunne ikke omregnes til produkter. Forslagene kan være for
-                lave.
-              </AlertDescription>
-            </Alert>
-          ) : null}
           {!validSettings || invalidQuantity ? (
             <Alert variant="destructive">
               <AlertTitle>Kontrollér mængderne</AlertTitle>
@@ -636,29 +606,6 @@ function Planner() {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </InputGroup>
-            <FieldGroup className="w-auto flex-row flex-wrap gap-4">
-              <Field orientation="horizontal" className="w-auto">
-                <Switch
-                  id="ordering-recipes"
-                  checked={includeRecipes}
-                  disabled={exporting}
-                  onCheckedChange={setIncludeRecipes}
-                />
-                <FieldLabel htmlFor="ordering-recipes">
-                  Medtag produkter med ingredienser
-                </FieldLabel>
-              </Field>
-              <Field orientation="horizontal" className="w-auto">
-                <Switch
-                  id="ordering-planned"
-                  checked={onlyPlanned}
-                  onCheckedChange={setOnlyPlanned}
-                />
-                <FieldLabel htmlFor="ordering-planned">
-                  Kun i bestillingen
-                </FieldLabel>
-              </Field>
-            </FieldGroup>
             <ToggleGroup
               value={[view]}
               variant="outline"
@@ -716,13 +663,21 @@ function Planner() {
                   {visible.map((row) => (
                     <TableRow key={row.id}>
                       <TableCell className="min-w-44 whitespace-normal">
-                        <div className="font-medium">{row.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {row.category} · {row.unitName}
+                        <div className="flex items-center gap-3">
+                          <Avatar size="lg">
+                            <AvatarImage src={row.imageUrl ?? undefined} alt="" />
+                            <AvatarFallback><PackageOpenIcon className="size-5" /></AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="font-medium">{row.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {row.category} · {row.unitName}
+                            </div>
+                            {row.hasIngredients ? (
+                              <Badge variant="secondary">Har ingredienser</Badge>
+                            ) : null}
+                          </div>
                         </div>
-                        {row.hasIngredients ? (
-                          <Badge variant="secondary">Har ingredienser</Badge>
-                        ) : null}
                       </TableCell>
                       <TableCell>
                         {row.stock === null

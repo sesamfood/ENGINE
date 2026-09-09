@@ -7,6 +7,7 @@ export const forecastProfileValidator = v.object({
   longitude: v.number(),
   countryCode: v.string(),
   subdivisionCode: v.optional(v.string()),
+  addressLabel: v.optional(v.string()),
 });
 
 export const forecastConditionValidator = v.object({
