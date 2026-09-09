@@ -87,6 +87,9 @@ const planItemValidator = v.object({
   name: v.string(),
   controlType: ownCheckControlTypeValidator,
   description: v.string(),
+  instructions: v.string(),
+  imageStorageId: v.union(v.id("_storage"), v.null()),
+  imageUrl: v.union(v.string(), v.null()),
   fields: v.array(ownCheckFieldValidator),
   responsibleRole: v.union(v.string(), v.null()),
   dueDateKey: v.string(),
@@ -262,14 +265,16 @@ export const listToday = query({
         }
       }
     }
+    const imageIds = [...new Set([...items, ...backlog].flatMap((item) => item.imageStorageId ? [item.imageStorageId] : []))];
+    const imageUrls = new Map(await Promise.all(imageIds.map(async (id) => [id, await ctx.storage.getUrl(id)] as const)));
     return {
       locationId,
       locationName: location.name,
       dateKey,
       timeZone,
       lateSubmissionDays: configuration.lateSubmissionDays,
-      items,
-      backlog,
+      items: items.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
+      backlog: backlog.map((item) => ({ ...item, imageUrl: item.imageStorageId ? imageUrls.get(item.imageStorageId) ?? null : null })),
       truncated,
     };
   },
@@ -352,6 +357,7 @@ export const submitOwnCheck = mutation({
   args: {
     locationId: v.id("locations"),
     templateId: v.id("ownCheckTemplates"),
+    templateVersionId: v.optional(v.id("ownCheckTemplateVersions")),
     dueDateKey: v.string(),
     values: v.array(ownCheckValueValidator),
     note: v.optional(v.string()),
@@ -393,6 +399,9 @@ export const submitOwnCheck = mutation({
     const occurrence = occurrenceForTemplate(occurrences, args.templateId);
     const version = versions.find((candidate) => candidate._id === occurrence.templateVersionId);
     if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    if (args.templateVersionId !== undefined && args.templateVersionId !== version._id) {
+      throw new ConvexError("Kontrollen er ændret. Luk den, og åbn den igen for at se de aktuelle instruktioner.");
+    }
     const duplicate = await ctx.db
       .query("ownCheckEntries")
       .withIndex("by_org_location_template_dueDateKey", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).eq("templateId", args.templateId).eq("dueDateKey", args.dueDateKey))

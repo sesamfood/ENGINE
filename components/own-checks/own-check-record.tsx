@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import Image from "next/image";
 import {
   CheckCircle2Icon,
   FileIcon,
@@ -37,6 +38,7 @@ import {
   type OwnCheckValue,
 } from "@/lib/own-checks";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { InstructionContent } from "./instruction-content";
 
 type RecordResult = NonNullable<ReturnType<typeof useQuery<typeof api.ownChecks.getOwnCheckRecord>>>;
 type RecordField = RecordResult["fields"][number];
@@ -273,6 +275,16 @@ export function OwnCheckRecord({ entryId, onClose }: { entryId: Id<"ownCheckEntr
       <div className="min-w-0"><h2 className="font-heading text-xl font-semibold">{record.entry.name}</h2><p className="mt-1 text-sm text-muted-foreground">{record.entry.locationName} · {ownCheckControlTypeLabels[record.entry.controlType]} · {formatDate(record.entry.dueDateKey)}</p><p className="text-sm text-muted-foreground">Planlagt {formatDateTime(record.entry.dueAt, record.timeZone)} · Udført {formatDateTime(record.entry.performedAt, record.timeZone)} af {record.entry.performedByName}</p></div>
       <StatusBadge status={record.entry.status} hasDeviation={record.entry.hasDeviation} followUp={record.entry.followUp} />
     </div>
+
+    {record.instructions || record.imageUrl ? (
+      <Card>
+        <CardHeader><CardTitle>Instruktioner</CardTitle></CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {record.imageUrl ? <div className="relative h-64 w-full"><Image src={record.imageUrl} alt={`Billede af ${record.entry.name}`} fill unoptimized sizes="(max-width: 768px) 100vw, 50vw" className="rounded-lg object-contain" /></div> : null}
+          {record.instructions ? <div className="whitespace-pre-wrap break-words text-sm"><InstructionContent value={record.instructions} /></div> : null}
+        </CardContent>
+      </Card>
+    ) : null}
 
     <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
       <Card><CardHeader><CardTitle>Kontrolpunkter</CardTitle><p className="text-sm text-muted-foreground">{record.description || "Ingen yderligere beskrivelse."}</p></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Felt</TableHead><TableHead>Værdi</TableHead><TableHead>Grænse</TableHead><TableHead>Vurdering</TableHead></TableRow></TableHeader><TableBody>{record.fields.map((field) => { const value = valueFor(values, field.key); const violation = violations.get(field.key); return <TableRow key={field.key}><TableCell className="font-medium">{field.label}</TableCell><TableCell><div>{formatValue(field, value)}</div>{field.type === "attachment" ? <AttachmentList record={record} fieldKey={field.key} /> : null}</TableCell><TableCell className="text-muted-foreground">{limitText(field)}</TableCell><TableCell>{violation ? <span className="text-sm text-destructive">{violation.message}</span> : <span className="text-sm text-muted-foreground">Inden for grænsen</span>}</TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>

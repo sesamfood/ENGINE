@@ -15,8 +15,9 @@ import { LocationField } from "@/components/location-field";
 import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -402,12 +403,55 @@ export function InspectionDocumentation() {
 
   if (!canExport) return <Alert variant="destructive"><AlertTitle>Ingen eksportadgang</AlertTitle><AlertDescription>Du kan kun se dokumentation, hvis du har adgang til at eksportere kontroldokumentation.</AlertDescription></Alert>;
   if (locations === undefined) return <Skeleton className="h-96 w-full" />;
-  if (!locations.length || !locationId) return <Card><CardContent className="p-8 text-center text-muted-foreground">Opret en lokation, før dokumentationen kan vises.</CardContent></Card>;
+  if (!locations.length || !locationId) return <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><FileDownIcon /></EmptyMedia><EmptyTitle>Ingen lokationer</EmptyTitle><EmptyDescription>Opret en lokation, før dokumentationen kan vises.</EmptyDescription></EmptyHeader></Empty>;
 
-  return <div className="flex flex-col gap-5">
-    <Card><CardContent className="pt-6"><FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"><Field className="xl:col-span-2"><FieldLabel htmlFor="own-documentation-location">Lokation</FieldLabel><LocationField id="own-documentation-location" locations={locations} value={locationId} locked={isLocked} lockedName={lockedName} onValueChange={(value) => { invalidatePrepared(); setSelectedLocation(value as Id<"locations">); }} /></Field><Field><FieldLabel htmlFor="own-documentation-from">Fra dato</FieldLabel><Input id="own-documentation-from" type="date" value={fromDateKey} onChange={(event) => updateRange({ from: event.target.value })} /></Field><Field><FieldLabel htmlFor="own-documentation-to">Til dato</FieldLabel><Input id="own-documentation-to" type="date" value={toDateKey} onChange={(event) => updateRange({ to: event.target.value })} /></Field><Field><FieldLabel>Hurtig periode</FieldLabel><Select items={[{ value: "week", label: "Denne uge" }, { value: "month", label: "Denne måned" }, { value: "quarter", label: "Sidste 3 måneder" }]} onValueChange={(value) => value && choosePreset(value as "week" | "month" | "quarter")}><SelectTrigger className="w-full"><SelectValue placeholder="Vælg periode" /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="week">Denne uge</SelectItem><SelectItem value="month">Denne måned</SelectItem><SelectItem value="quarter">Sidste 3 måneder</SelectItem></SelectGroup></SelectContent></Select></Field></FieldGroup><FieldDescription className="mt-4">Vælg en periode på højst 366 dage. Eksporten til PDF og CSV medtager både udførte og manglende kontroller.</FieldDescription></CardContent></Card>
-    {!rangeValid ? <Alert variant="destructive"><AlertTitle>Ugyldig periode</AlertTitle><AlertDescription>Vælg en periode på mellem 1 og 366 dage, hvor fra-datoen ligger før til-datoen.</AlertDescription></Alert> : null}
-    <div className="flex flex-wrap gap-2"><Button type="button" variant="default" className="min-h-11" disabled={!rangeValid || preparing || generating} onClick={() => void prepareReport()}>{preparing ? <Spinner data-icon="inline-start" /> : null}{preparedForCurrent ? "Opdatér dokumentation" : "Vis dokumentation"}</Button><Button type="button" variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={() => void exportPdf()}>{generating ? <Spinner data-icon="inline-start" /> : <FileDownIcon data-icon="inline-start" />}Hent PDF</Button><Button type="button" variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={exportCsv}><DownloadIcon data-icon="inline-start" />Eksportér CSV</Button></div>
-    {preparing ? <Card><CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground"><Spinner /><p>Forbereder dokumentationen…</p></CardContent></Card> : exportTooLarge ? <Alert variant="destructive"><AlertTitle>Dokumentationen er for stor</AlertTitle><AlertDescription>Rapporten indeholder for mange registreringer eller manglende kontroller. Vælg en kortere periode.</AlertDescription></Alert> : !preparedForCurrent ? <Card><CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground"><p>Vælg perioden, og tryk på “Vis dokumentation”.</p><p className="text-sm">Alle registreringer hentes, før rapporten kan eksporteres.</p></CardContent></Card> : !reportReady ? <Card><CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground"><Spinner /><p>{progressText}</p><p className="text-sm">Alle sider hentes, før rapporten kan eksporteres.</p></CardContent></Card> : <InspectionReport header={{ organizationName, locationName: preparedForCurrent.header.locationName, fromDateKey, toDateKey, generatedAt: preparedForCurrent.header.generatedAt, generatedBy: preparedForCurrent.header.generatedBy, timeZone: preparedForCurrent.header.timeZone }} records={reportRecords} missing={missing} />}
-  </div>;
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold">Dokumentation</h2>
+        <p className="text-sm text-muted-foreground">Eksportér udførte og manglende kontroller til PDF eller CSV.</p>
+      </div>
+      <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Field>
+          <FieldLabel htmlFor="own-documentation-location">Lokation</FieldLabel>
+          <LocationField id="own-documentation-location" locations={locations} value={locationId} locked={isLocked} lockedName={lockedName} onValueChange={(value) => { invalidatePrepared(); setSelectedLocation(value as Id<"locations">); }} />
+        </Field>
+        <Field data-invalid={!rangeValid}>
+          <FieldLabel htmlFor="own-documentation-from">Fra dato</FieldLabel>
+          <Input id="own-documentation-from" type="date" className="h-11" value={fromDateKey} aria-invalid={!rangeValid} onChange={(event) => updateRange({ from: event.target.value })} />
+        </Field>
+        <Field data-invalid={!rangeValid}>
+          <FieldLabel htmlFor="own-documentation-to">Til dato</FieldLabel>
+          <Input id="own-documentation-to" type="date" className="h-11" value={toDateKey} aria-invalid={!rangeValid} onChange={(event) => updateRange({ to: event.target.value })} />
+        </Field>
+        <Field>
+          <div className="flex items-center gap-1">
+            <FieldLabel htmlFor="own-documentation-period">Hurtig periode</FieldLabel>
+            <HelpTooltip label="Dokumentationsperiode" content="Vælg en periode på højst 366 dage. Eksporten medtager både udførte og manglende kontroller." />
+          </div>
+          <Select items={[{ value: "week", label: "Denne uge" }, { value: "month", label: "Denne måned" }, { value: "quarter", label: "Sidste 3 måneder" }]} onValueChange={(value) => value && choosePreset(value as "week" | "month" | "quarter")}>
+            <SelectTrigger id="own-documentation-period" className="min-h-11 w-full"><SelectValue placeholder="Vælg periode" /></SelectTrigger>
+            <SelectContent><SelectGroup><SelectItem value="week">Denne uge</SelectItem><SelectItem value="month">Denne måned</SelectItem><SelectItem value="quarter">Sidste 3 måneder</SelectItem></SelectGroup></SelectContent>
+          </Select>
+        </Field>
+      </FieldGroup>
+      {!rangeValid ? <Alert variant="destructive"><AlertTitle>Ugyldig periode</AlertTitle><AlertDescription>Vælg en periode på mellem 1 og 366 dage, hvor fra-datoen ligger før til-datoen.</AlertDescription></Alert> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" className="min-h-11" disabled={!rangeValid || preparing || generating} onClick={() => void prepareReport()}>{preparing ? <Spinner data-icon="inline-start" /> : null}{preparedForCurrent ? "Opdatér dokumentation" : "Vis dokumentation"}</Button>
+        <Button type="button" variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={() => void exportPdf()}>{generating ? <Spinner data-icon="inline-start" /> : <FileDownIcon data-icon="inline-start" />}Hent PDF</Button>
+        <Button type="button" variant="outline" className="min-h-11" disabled={!reportReady || generating} onClick={exportCsv}><DownloadIcon data-icon="inline-start" />Eksportér CSV</Button>
+      </div>
+      {preparing ? (
+        <Empty className="min-h-72 border" role="status"><EmptyHeader><EmptyMedia><Spinner /></EmptyMedia><EmptyTitle>Forbereder dokumentationen…</EmptyTitle></EmptyHeader></Empty>
+      ) : exportTooLarge ? (
+        <Alert variant="destructive"><AlertTitle>Dokumentationen er for stor</AlertTitle><AlertDescription>Rapporten indeholder for mange registreringer eller manglende kontroller. Vælg en kortere periode.</AlertDescription></Alert>
+      ) : !preparedForCurrent ? (
+        <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><FileDownIcon /></EmptyMedia><EmptyTitle>Vælg den periode, du vil dokumentere</EmptyTitle><EmptyDescription>Tryk på &quot;Vis dokumentation&quot;. Alle registreringer hentes, før rapporten kan eksporteres.</EmptyDescription></EmptyHeader></Empty>
+      ) : !reportReady ? (
+        <Empty className="min-h-72 border" role="status"><EmptyHeader><EmptyMedia><Spinner /></EmptyMedia><EmptyTitle>{progressText}</EmptyTitle><EmptyDescription>Alle sider hentes, før rapporten kan eksporteres.</EmptyDescription></EmptyHeader></Empty>
+      ) : (
+        <InspectionReport header={{ organizationName, locationName: preparedForCurrent.header.locationName, fromDateKey, toDateKey, generatedAt: preparedForCurrent.header.generatedAt, generatedBy: preparedForCurrent.header.generatedBy, timeZone: preparedForCurrent.header.timeZone }} records={reportRecords} missing={missing} />
+      )}
+    </div>
+  );
 }

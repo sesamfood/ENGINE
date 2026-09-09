@@ -22,6 +22,10 @@ export async function getStorageReferences(
     ctx.db.query("ownCheckAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
       .take(2),
+    // Check photos always have an owner row; one version reference keeps them alive.
+    ctx.db.query("ownCheckTemplateVersions")
+      .withIndex("by_imageStorageId", (q) => q.eq("imageStorageId", storageId))
+      .take(1),
     ctx.db.query("feedbackSubmissions")
       .withIndex("by_screenshotStorageId", (q) => q.eq("screenshotStorageId", storageId))
       .take(2),

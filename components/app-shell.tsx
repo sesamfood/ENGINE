@@ -289,7 +289,8 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       return;
     }
     const allowed = runtime.settings.enabledPages.some(
-      (page) => kioskDestination(page as KioskDestinationId).route === pathname,
+      (page) => kioskDestination(page as KioskDestinationId).route === pathname ||
+        (page === "ownChecks.today" && pathname.startsWith("/own-checks/check/")),
     );
     if (!allowed) router.replace(home);
   }, [countLocked, home, pathname, router, runtime]);
@@ -556,6 +557,7 @@ function OrganizationHome() {
       >
         <Image
           src={wideLogoUrl}
+          unoptimized
           alt={organization?.name ?? "Organisation"}
           width={200}
           height={48}
@@ -580,6 +582,7 @@ function OrganizationHome() {
         {logoUrl ? (
           <Image
             src={logoUrl}
+            unoptimized
             alt={organization?.name ?? "Organisation"}
             fill
             className="object-cover"
@@ -1261,6 +1264,8 @@ export function AppShell({
   const showOrderingHeader = pathname === "/ordering";
   const showWasteHeader =
     pathname === "/waste" || pathname.startsWith("/waste/");
+  const showOwnChecksHeader =
+    pathname === "/own-checks" || pathname.startsWith("/own-checks/");
   const showStaffFoodHeader = pathname === "/staff-food";
   const showEmployeesHeader = pathname === "/employees" || pathname.startsWith("/employees/");
   const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
@@ -1274,6 +1279,7 @@ export function AppShell({
     showOrderingHeader ||
     showCountHeader ||
     showWasteHeader ||
+    showOwnChecksHeader ||
     showStaffFoodHeader ||
     showEmployeesHeader ||
     showTransfersHeader ||
@@ -1338,6 +1344,8 @@ export function AppShell({
                       ? "count-shell-header"
                       : showWasteHeader
                         ? "waste-shell-header"
+                        : showOwnChecksHeader
+                          ? "own-checks-shell-header"
                         : showStaffFoodHeader
                           ? "staff-food-shell-header"
                           : showEmployeesHeader
