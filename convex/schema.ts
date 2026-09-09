@@ -199,6 +199,7 @@ export default defineSchema({
     stockSyncStartedAt: v.optional(v.number()),
     stockSyncHistoryStartAt: v.optional(v.number()),
     stockSyncSinceLastCount: v.optional(v.boolean()),
+    stockMappingRevision: v.optional(v.number()),
     connectedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
@@ -234,6 +235,11 @@ export default defineSchema({
     updatedAt: v.number(),
     lastSuccessAt: v.optional(v.number()),
     syncedThroughAt: v.optional(v.number()),
+    salesStatusId: v.optional(v.id("onlinePosSyncStatus")),
+    salesRevision: v.optional(v.number()),
+    mappingRevision: v.optional(v.number()),
+    connectionId: v.optional(v.id("onlinePosLocationIntegrations")),
+    connectedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
     unmappedQuantity: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
@@ -317,6 +323,8 @@ export default defineSchema({
     runToken: v.optional(v.string()),
     syncedThroughAt: v.optional(v.number()),
     backfillThroughAt: v.optional(v.number()),
+    stockRevision: v.optional(v.number()),
+    stockChangedFrom: v.optional(v.number()),
     // Set before destroying a day during reconcile; cleared only on success.
     // Dispatcher retries this dayStart until the rebuild completes.
     pendingReconcileDayStart: v.optional(v.number()),

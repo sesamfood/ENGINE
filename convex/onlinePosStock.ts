@@ -34,6 +34,10 @@ const pageArgs = {
   token: v.string(),
   salesToken: v.string(),
   activationAt: v.number(),
+  salesRevision: v.optional(v.number()),
+  mappingRevision: v.optional(v.number()),
+  connectedAt: v.optional(v.number()),
+  resetUnmapped: v.optional(v.boolean()),
   from: v.number(),
   removedFrom: v.optional(v.number()),
   phase: v.union(v.literal("orders"), v.literal("removed")),
@@ -63,7 +67,7 @@ export async function queueStockSync(
     settings.stockSyncStartedAt === undefined
   )
     return;
-  const [sales, connection, stocks, previous] = await Promise.all([
+  const [sales, connection, previous] = await Promise.all([
     ctx.db
       .query("onlinePosSyncStatus")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -76,12 +80,6 @@ export async function queueStockSync(
         q.eq("organizationId", organizationId).eq("locationId", locationId),
       )
       .unique(),
-    ctx.db
-      .query("locationStock")
-      .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", locationId),
-      )
-      .take(501),
     ctx.db
       .query("onlinePosStockSyncStatus")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -100,6 +98,37 @@ export async function queueStockSync(
   const token = crypto.randomUUID();
   const now = Date.now();
   const activationAt = settings.stockSyncStartedAt;
+  const salesRevision = sales.stockRevision ?? 0;
+  const mappingRevision = settings.stockMappingRevision ?? 0;
+  const firstRun =
+    full ||
+    previous?.activationAt !== activationAt ||
+    previous.salesStatusId !== sales._id ||
+    previous.connectionId !== connection._id ||
+    previous.connectedAt !== connection.connectedAt ||
+    previous.salesRevision === undefined ||
+    previous.syncedThroughAt === undefined ||
+    previous.mappingRevision !== mappingRevision;
+  if (
+    !firstRun &&
+    previous.salesRevision === salesRevision &&
+    previous.state !== "running"
+  ) {
+    if (previous.syncedThroughAt !== sales.syncedThroughAt) {
+      await ctx.db.patch(previous._id, {
+        syncedThroughAt: sales.syncedThroughAt,
+        updatedAt: now,
+        ...(previous.unmappedQuantity === 0 ? { lastSuccessAt: now } : {}),
+      });
+    }
+    return;
+  }
+  const stocks = await ctx.db
+    .query("locationStock")
+    .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", locationId),
+    )
+    .take(501);
   const earliestCount = Math.min(
     activationAt,
     ...stocks.map((row) => row.lastCountedAt ?? activationAt),
@@ -119,30 +148,43 @@ export async function queueStockSync(
     state: error ? ("error" as const) : ("running" as const),
     updatedAt: now,
     lastError: error,
-    unmappedQuantity: 0,
+    unmappedQuantity: firstRun ? 0 : previous.unmappedQuantity,
+    ...(firstRun ? { salesRevision: undefined } : {}),
   };
   if (previous) await ctx.db.patch(previous._id, value);
   else await ctx.db.insert("onlinePosStockSyncStatus", value);
   if (error) return;
-  const firstRun =
-    full ||
-    previous?.activationAt !== activationAt ||
-    previous.lastSuccessAt === undefined;
+  const earliestApplication = await ctx.db
+    .query("salesStockApplications")
+    .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", locationId),
+    )
+    .first();
+  const stockHistoryStart = Math.min(
+    earliestCount,
+    settings.stockSyncHistoryStartAt ?? activationAt,
+    earliestApplication?.dayStart ?? activationAt,
+  );
   const since = firstRun
-    ? Math.min(earliestCount, settings.stockSyncHistoryStartAt ?? activationAt)
+    ? stockHistoryStart
     : Math.min(
-        (previous.syncedThroughAt ?? previous.lastSuccessAt!) -
+        previous.syncedThroughAt! -
           2 * 60 * 60 * 1_000,
+        sales.stockChangedFrom ?? now,
         reconcileFrom ?? now,
       );
   const timeZone = await resolveTimeZone(ctx, organizationId, locationId);
-  const requestedFrom = Math.max(historyStart, since);
+  const requestedFrom = Math.max(historyStart, stockHistoryStart, since);
   await ctx.scheduler.runAfter(0, internal.onlinePosStock.runPage, {
     organizationId,
     locationId,
     token,
     salesToken: sales.runToken,
     activationAt: settings.stockSyncStartedAt,
+    salesRevision,
+    mappingRevision,
+    connectedAt: connection.connectedAt,
+    resetUnmapped: firstRun,
     from: dayStartOf(requestedFrom, timeZone),
     removedFrom: dayStartOf(requestedFrom, timeZone),
     phase: "orders",
@@ -326,6 +368,9 @@ export const applyPage = internalMutation({
   args: pageArgs,
   returns: v.null(),
   handler: async (ctx, args) => {
+    // Jobs scheduled before revision tracking leave the next sales sync to restart them.
+    if (args.salesRevision === undefined || args.mappingRevision === undefined)
+      return null;
     const [settings, status, sales, location, connection] = await Promise.all([
       integration(ctx, args.organizationId),
       ctx.db
@@ -358,14 +403,17 @@ export const applyPage = internalMutation({
       !settings?.enabled ||
       !settings.stockSyncEnabled ||
       settings.stockSyncStartedAt !== args.activationAt ||
+      (settings.stockMappingRevision ?? 0) !== args.mappingRevision ||
       status?.runToken !== args.token ||
       !connection ||
+      connection.connectedAt !== args.connectedAt ||
       location?.organizationId !== args.organizationId
     )
       return null;
     if (
       sales?.state !== "idle" ||
       sales.runToken !== args.salesToken ||
+      (sales.stockRevision ?? 0) !== args.salesRevision ||
       sales.pendingReconcileDayStart !== undefined ||
       sales.dayStartRerollToken !== undefined
     )
@@ -435,7 +483,9 @@ export const applyPage = internalMutation({
           fingerprint,
           result.unmappedQuantity,
         );
-        unmappedQuantity += result.unmappedQuantity;
+        unmappedQuantity +=
+          result.unmappedQuantity -
+          (args.resetUnmapped ? 0 : (previous?.unmappedQuantity ?? 0));
       }
       done = page.isDone;
       cursor = page.continueCursor;
@@ -452,7 +502,9 @@ export const applyPage = internalMutation({
       for (const previous of page.page) {
         if (previous.dayStart < Date.now() - 400 * 86_400_000) continue;
         if (
-          (previous.applied.length === 0 && !previous.wasteRegistrationIds?.length) ||
+          (previous.applied.length === 0 &&
+            !previous.wasteRegistrationIds?.length &&
+            previous.unmappedQuantity === 0) ||
           previous.connectionId !== connection._id
         )
           continue;
@@ -467,7 +519,7 @@ export const applyPage = internalMutation({
               .eq("department", previous.department),
           )
           .unique();
-        if (!order)
+        if (!order) {
           await applyOrder(
             ctx,
             settings,
@@ -478,10 +530,13 @@ export const applyPage = internalMutation({
             "",
             0,
           );
+          if (!args.resetUnmapped) unmappedQuantity -= previous.unmappedQuantity;
+        }
       }
       done = page.isDone;
       cursor = page.continueCursor;
     }
+    unmappedQuantity = normalizeStock(unmappedQuantity);
     const complete = done && args.phase === "removed";
     const now = Date.now();
     await ctx.db.patch(status._id, {
@@ -493,12 +548,21 @@ export const applyPage = internalMutation({
             lastError: unmappedQuantity
               ? `${unmappedQuantity} solgte enheder mangler en produktkobling. Tilføj koblingerne, og synkronisér igen.`
               : undefined,
+            syncedThroughAt: sales.syncedThroughAt,
+            salesStatusId: sales._id,
+            salesRevision: args.salesRevision,
+            mappingRevision: args.mappingRevision,
+            connectionId: connection._id,
+            connectedAt: connection.connectedAt,
             ...(unmappedQuantity
               ? {}
-              : { lastSuccessAt: now, syncedThroughAt: sales.syncedThroughAt }),
+              : { lastSuccessAt: now }),
           }
         : {}),
     });
+    if (complete && sales.stockChangedFrom !== undefined) {
+      await ctx.db.patch(sales._id, { stockChangedFrom: undefined });
+    }
     if (!complete)
       await ctx.scheduler.runAfter(0, internal.onlinePosStock.runPage, {
         ...args,
@@ -620,13 +684,16 @@ export const retry = mutation({
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     requireLocationAccess(auth, args.locationId);
-    await queueStockSync(
-      ctx,
-      auth.organizationId,
-      args.locationId,
-      undefined,
-      true,
-    );
+    const status = await ctx.db
+      .query("onlinePosStockSyncStatus")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId),
+      )
+      .unique();
+    if (status) await ctx.db.patch(status._id, {
+      salesRevision: undefined,
+      runToken: crypto.randomUUID(),
+    });
     await ctx.scheduler.runAfter(
       0,
       internal.onlinePosSync.enqueueLocationSync,
@@ -730,7 +797,24 @@ export const prune = internalMutation({
       .query("salesStockApplications")
       .withIndex("by_dayStart", (q) => q.lt("dayStart", cutoff))
       .take(100);
-    for (const row of rows) await ctx.db.delete(row._id);
+    const invalidated = new Set<string>();
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+      if (row.unmappedQuantity === 0) continue;
+      const key = `${row.organizationId}:${row.locationId}`;
+      if (invalidated.has(key)) continue;
+      invalidated.add(key);
+      const status = await ctx.db
+        .query("onlinePosStockSyncStatus")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", row.organizationId).eq("locationId", row.locationId),
+        )
+        .unique();
+      if (status) await ctx.db.patch(status._id, {
+        salesRevision: undefined,
+        runToken: crypto.randomUUID(),
+      });
+    }
     if (rows.length === 100)
       await ctx.scheduler.runAfter(0, internal.onlinePosStock.prune, {});
     return null;

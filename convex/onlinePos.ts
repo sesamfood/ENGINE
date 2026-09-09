@@ -1006,6 +1006,11 @@ export const saveProductMapping = internalMutation({
         onlinePosProductId: args.onlinePosProductId,
       });
     }
+    if ((current?.onlinePosProductId ?? null) !== args.onlinePosProductId) {
+      await ctx.db.patch(settings._id, {
+        stockMappingRevision: (settings.stockMappingRevision ?? 0) + 1,
+      });
+    }
     return null;
   },
 });
@@ -1086,6 +1091,7 @@ export const saveIngredientRemovalMappings = internalMutation({
         mapping.onlinePosProductId,
       ]),
     );
+    let changed = false;
     for (const ingredient of ingredients) {
       const onlinePosProductId = mappingsByIngredientProductId.get(
         ingredient.ingredientProductId,
@@ -1101,6 +1107,7 @@ export const saveIngredientRemovalMappings = internalMutation({
             onlinePosRemovalIntegrationId: undefined,
             onlinePosRemovalCompanyId: undefined,
           });
+          changed = true;
         }
         continue;
       }
@@ -1115,6 +1122,12 @@ export const saveIngredientRemovalMappings = internalMutation({
         onlinePosRemovalProductId: onlinePosProductId,
         onlinePosRemovalIntegrationId: args.integrationId,
         onlinePosRemovalCompanyId: args.companyId,
+      });
+      changed = true;
+    }
+    if (changed) {
+      await ctx.db.patch(settings._id, {
+        stockMappingRevision: (settings.stockMappingRevision ?? 0) + 1,
       });
     }
     return null;
@@ -1263,6 +1276,7 @@ export const saveIngredientAdditionMappings = internalMutation({
         mapping.onlinePosProductId,
       ]),
     );
+    let changed = false;
     for (const addition of additions) {
       const onlinePosProductId = mappingsByIngredientProductId.get(
         addition.ingredientProductId,
@@ -1278,6 +1292,7 @@ export const saveIngredientAdditionMappings = internalMutation({
             onlinePosAdditionIntegrationId: undefined,
             onlinePosAdditionCompanyId: undefined,
           });
+          changed = true;
         }
         continue;
       }
@@ -1292,6 +1307,12 @@ export const saveIngredientAdditionMappings = internalMutation({
         onlinePosAdditionProductId: onlinePosProductId,
         onlinePosAdditionIntegrationId: args.integrationId,
         onlinePosAdditionCompanyId: args.companyId,
+      });
+      changed = true;
+    }
+    if (changed) {
+      await ctx.db.patch(settings._id, {
+        stockMappingRevision: (settings.stockMappingRevision ?? 0) + 1,
       });
     }
     return null;

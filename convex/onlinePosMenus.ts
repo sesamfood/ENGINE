@@ -5,6 +5,7 @@ import type { ActionCtx } from "./_generated/server";
 import { action, internalMutation, mutation, query } from "./_generated/server";
 import { requireHumanPrincipal, requireIntegrationManager } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
+import { invalidateSalesStockMappings } from "./lib/salesStock";
 import {
   requestProducts,
   type OnlinePosProduct,
@@ -332,6 +333,16 @@ export const saveConfiguration = internalMutation({
           ...values,
         });
     if (current) await ctx.db.patch(current._id, values);
+    if (
+      !current ||
+      current.onlinePosProductId !== values.onlinePosProductId ||
+      current.products.length !== productIds.length ||
+      current.products.some((product) => !productIds.includes(product.productId))
+    ) {
+      await ctx.db.patch(integration._id, {
+        stockMappingRevision: (integration.stockMappingRevision ?? 0) + 1,
+      });
+    }
 
     await recordAudit(
       ctx,
@@ -427,14 +438,17 @@ export const removeProductReferences = internalMutation({
       throw new ConvexError("Der er for mange OnlinePOS-menuer");
     }
     const updatedAt = Date.now();
+    let changed = false;
     for (const menu of menus) {
       const products = menu.products.filter(
         (product) => product.productId !== args.productId,
       );
       if (products.length !== menu.products.length) {
         await ctx.db.patch(menu._id, { products, updatedAt });
+        changed = true;
       }
     }
+    if (changed) await invalidateSalesStockMappings(ctx, args.organizationId);
     return null;
   },
 });
@@ -449,6 +463,7 @@ export const remove = mutation({
       throw new ConvexError("Menuen blev ikke fundet");
     }
     await ctx.db.delete(menu._id);
+    await invalidateSalesStockMappings(ctx, auth.organizationId);
     await recordAudit(ctx, auth, {
       action: "onlinePos.menuRemoved",
       entityTable: "onlinePosMenus",

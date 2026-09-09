@@ -19,6 +19,7 @@ import {
   validateCategoryParentAssignment,
 } from "./lib/categoryHierarchy";
 import { normalizeStock } from "./lib/stock";
+import { invalidateSalesStockMappings } from "./lib/salesStock";
 import { recordAudit } from "./lib/audit";
 import { claimStorageForOrganization, preserveStorageOwnership } from "./lib/storageOwnership";
 import { MAX_COUNT_AREAS } from "./lib/countAreas";
@@ -736,6 +737,18 @@ async function replaceProductIngredients(
   const existingIngredientsByProductId = new Map(
     existingIngredients.map((row) => [row.ingredientProductId, row]),
   );
+  const changed =
+    existingIngredients.length !== ingredients.length ||
+    ingredients.some((row) => {
+      const current = existingIngredientsByProductId.get(row.productId);
+      return (
+        !current ||
+        current.quantity !== row.quantity ||
+        current.unitId !== row.unitId ||
+        (current.removable ?? false) !==
+          (row.removable ?? current.removable ?? false)
+      );
+    });
 
   for (const row of existingIngredients) {
     await ctx.db.delete("productIngredients", row._id);
@@ -766,6 +779,7 @@ async function replaceProductIngredients(
         : {}),
     });
   }
+  if (changed) await invalidateSalesStockMappings(ctx, organizationId);
 }
 
 async function replaceProductIngredientAdditions(
@@ -783,6 +797,16 @@ async function replaceProductIngredientAdditions(
   const existingAdditionsByProductId = new Map(
     existingAdditions.map((row) => [row.ingredientProductId, row]),
   );
+  const changed =
+    existingAdditions.length !== addableIngredients.length ||
+    addableIngredients.some((row) => {
+      const current = existingAdditionsByProductId.get(row.productId);
+      return (
+        !current ||
+        current.quantity !== row.quantity ||
+        current.unitId !== row.unitId
+      );
+    });
 
   for (const row of existingAdditions) {
     await ctx.db.delete("productIngredientAdditions", row._id);
@@ -809,6 +833,7 @@ async function replaceProductIngredientAdditions(
         : {}),
     });
   }
+  if (changed) await invalidateSalesStockMappings(ctx, organizationId);
 }
 
 async function replaceProductChildren(
@@ -826,6 +851,14 @@ async function replaceProductChildren(
     .take(MAX_CHILD_ROWS);
 
   const nextUnitIds = new Set(units.map((row) => row.unitId));
+  const unitsChanged =
+    existingUnits.length !== units.length ||
+    units.some((unit) =>
+      !existingUnits.some((current) =>
+        current.unitId === unit.unitId &&
+        current.factorToDefault === unit.factorToDefault,
+      ),
+    );
   for (const row of existingUnits) {
     if (nextUnitIds.has(row.unitId)) continue;
     const usedByRecipe = await ctx.db
@@ -864,6 +897,7 @@ async function replaceProductChildren(
     });
   }
   await replaceProductIngredients(ctx, organizationId, productId, ingredients);
+  if (unitsChanged) await invalidateSalesStockMappings(ctx, organizationId);
 }
 
 async function scrubProductFromCountOrder(
@@ -1061,6 +1095,7 @@ async function permanentlyDeleteProduct(
   );
   await preserveStorageOwnership(ctx, product.organizationId, product.imageStorageId);
   await ctx.db.delete("products", product._id);
+  await invalidateSalesStockMappings(ctx, product.organizationId);
 }
 
 async function hydrateCatalogProduct(
@@ -1787,6 +1822,7 @@ export async function updateProductWithAuth(
 
   const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
   if (defaultUnitId !== product.defaultUnitId) {
+    await invalidateSalesStockMappings(ctx, organizationId);
     const stockRows = await ctx.db
       .query("locationStock")
       .withIndex("by_organizationId_and_productId", (q) =>
@@ -2206,6 +2242,9 @@ export const importProduct = mutation({
         });
       }
 
+      if (defaultUnitId !== existing.defaultUnitId) {
+        await invalidateSalesStockMappings(ctx, organizationId);
+      }
       await replaceProductChildren(
         ctx,
         organizationId,
@@ -2988,6 +3027,9 @@ export async function mergeUnitsWithAuth(
   }
 
   await ctx.db.delete("units", sourceUnit._id);
+  if (sourceProductUnits.length > 0) {
+    await invalidateSalesStockMappings(ctx, organizationId);
+  }
   await recordAudit(ctx, auth, {
     action: "catalog.unitMerged",
     entityTable: "units",
