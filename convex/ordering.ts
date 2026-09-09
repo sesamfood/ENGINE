@@ -273,21 +273,39 @@ export const listConsumption = query({
           .lt("dayStart", args.to),
       )
       .paginate(catalogPaginationOptions(args.paginationOpts));
-    return {
-      ...result,
-      page: result.page
-        .filter((row) => row.fingerprint !== "")
-        .map((row) => ({
-          date: orderDate(row.dayStart, timeZone),
-          unmappedQuantity: row.unmappedQuantity,
-          entries: row.entries.map((entry) => ({
-            productId: entry.productId,
-            unitId: entry.unitId,
-            quantity: entry.quantity,
+    // Sales entries already contain the recipe used when the sale was synced.
+    const resolve = createForecastConsumptionResolver(ctx, organizationId, {
+      expandRecipes: false,
+    });
+    const page = [];
+    for (const row of result.page) {
+      if (row.fingerprint === "") continue;
+      let unmappedQuantity = row.unmappedQuantity;
+      const entries = [];
+      for (const entry of row.entries) {
+        const converted = await resolve(
+          entry.productId,
+          entry.unitId,
+          entry.quantity,
+        );
+        if (converted === null) {
+          unmappedQuantity += Math.abs(entry.quantity);
+          continue;
+        }
+        entries.push(
+          ...converted.map((value) => ({
+            ...value,
             date: orderDate(entry.occurredAt, timeZone),
           })),
-        })),
-    };
+        );
+      }
+      page.push({
+        date: orderDate(row.dayStart, timeZone),
+        unmappedQuantity,
+        entries,
+      });
+    }
+    return { ...result, page };
   },
 });
 

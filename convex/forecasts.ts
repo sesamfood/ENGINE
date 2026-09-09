@@ -10,7 +10,9 @@ import {
   internalMutation,
   internalQuery,
   mutation,
+  type QueryCtx,
 } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import schema from "./schema";
 import { requireLocationAccess, requirePermission } from "./lib/auth";
 import { resolveTimeZone } from "./lib/timeZone";
@@ -29,6 +31,30 @@ import {
   type ProductDailySales,
   SALES_FORECAST_HISTORY_DAYS,
 } from "../lib/sales-forecast";
+
+async function requireUnchangedSales(
+  ctx: QueryCtx,
+  forecast: Doc<"locationForecasts">,
+  salesRunToken: string,
+) {
+  const status = await ctx.db
+    .query("onlinePosSyncStatus")
+    .withIndex("by_organizationId_and_locationId", (q) =>
+      q
+        .eq("organizationId", forecast.organizationId)
+        .eq("locationId", forecast.locationId),
+    )
+    .unique();
+  if (
+    status?.state !== "idle" ||
+    status.runToken !== salesRunToken ||
+    status.dayStartRerollToken ||
+    status.pendingReconcileDayStart !== undefined
+  )
+    throw new ConvexError(
+      "Salgshistorikken blev ændret under prognosen. Prøv igen.",
+    );
+}
 
 export const requestRefresh = mutation({
   args: { locationId: v.id("locations") },
@@ -139,6 +165,7 @@ export const trainingData = internalQuery({
     warning: v.string(),
     openingDays: v.array(forecastOpeningDayValidator),
     openingHoursKey: v.string(),
+    salesRunToken: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, { forecastId, today }) => {
     const forecast = await ctx.db.get("locationForecasts", forecastId);
@@ -148,6 +175,7 @@ export const trainingData = internalQuery({
         warning: "Prognosen er deaktiveret.",
         openingDays: [],
         openingHoursKey: "",
+        salesRunToken: null,
       };
     const { organizationId, locationId, timeZone } = forecast;
     const location = await ctx.db.get("locations", locationId);
@@ -157,6 +185,7 @@ export const trainingData = internalQuery({
         warning: "Lokationen findes ikke længere.",
         openingDays: [],
         openingHoursKey: "",
+        salesRunToken: null,
       };
     const opening = await getForecastOpeningHours(
       ctx,
@@ -168,6 +197,7 @@ export const trainingData = internalQuery({
     const openingData = {
       openingDays: opening.days,
       openingHoursKey: opening.key,
+      salesRunToken: null,
     };
     const status = await ctx.db
       .query("onlinePosSyncStatus")
@@ -175,8 +205,13 @@ export const trainingData = internalQuery({
         q.eq("organizationId", organizationId).eq("locationId", locationId),
       )
       .unique();
+    // Keep the previous snapshot while a sales sync is still in progress.
+    if (status?.state === "running" || status?.state === "queued")
+      throw new ConvexError("Prognosen afventer synkroniseret salgshistorik.");
     if (
-      !status?.syncedThroughAt ||
+      status?.state !== "idle" ||
+      !status.runToken ||
+      !status.syncedThroughAt ||
       orderDate(status.syncedThroughAt, timeZone) < today ||
       status.dayStartRerollToken ||
       status.pendingReconcileDayStart !== undefined
@@ -228,6 +263,7 @@ export const trainingData = internalQuery({
     return {
       ...openingData,
       observations,
+      salesRunToken: status.runToken,
       warning:
         observations.length < 14
           ? "Prognosen kræver mindst 14 hele dage med salgshistorik."
@@ -247,6 +283,7 @@ export const productSalesPage = internalQuery({
   args: {
     forecastId: v.id("locationForecasts"),
     today: v.string(),
+    salesRunToken: v.string(),
     paginationOpts: paginationOptsValidator,
   },
   returns: v.object({
@@ -256,6 +293,7 @@ export const productSalesPage = internalQuery({
   handler: async (ctx, args) => {
     const forecast = await ctx.db.get("locationForecasts", args.forecastId);
     if (!forecast) throw new ConvexError("Prognosen er deaktiveret");
+    await requireUnchangedSales(ctx, forecast, args.salesRunToken);
     const from = shiftOrderDate(args.today, -PRODUCT_FORECAST_HISTORY_DAYS);
     const result = await ctx.db
       .query("salesLines")
@@ -305,6 +343,7 @@ export const finish = internalMutation({
     forecastId: v.id("locationForecasts"),
     revision: v.number(),
     runStartedAt: v.number(),
+    salesRunToken: v.union(v.string(), v.null()),
     conditions: v.array(forecastConditionValidator),
     archiveThrough: v.optional(v.string()),
     snapshot: forecastSnapshotValidator,
@@ -319,6 +358,8 @@ export const finish = internalMutation({
       current.runStartedAt !== args.runStartedAt
     )
       return null;
+    if (args.salesRunToken !== null)
+      await requireUnchangedSales(ctx, current, args.salesRunToken);
     if (args.conditions.length > 428 || args.snapshot.points.length > 28)
       throw new Error("Forecast exceeds bounded storage");
     await ctx.db.patch("locationForecasts", current._id, {
@@ -381,14 +422,16 @@ export const refreshLocation = internalAction({
       const productSales = new Map<string, ProductDailySales>();
       let cursor: string | null = null;
       let rowsRead = 0;
-      let productsComplete = !training.warning;
-      if (!training.warning)
+      let productsComplete =
+        !training.warning && training.salesRunToken !== null;
+      if (!training.warning && training.salesRunToken !== null)
         for (let pageNumber = 0; ; pageNumber++) {
           const page: FunctionReturnType<
             typeof internal.forecasts.productSalesPage
           > = await ctx.runQuery(internal.forecasts.productSalesPage, {
             ...args,
             today,
+            salesRunToken: training.salesRunToken,
             paginationOpts: { cursor, numItems: 1000 },
           });
           rowsRead += page.rowsRead;
@@ -429,6 +472,7 @@ export const refreshLocation = internalAction({
       await ctx.runMutation(internal.forecasts.finish, {
         ...run,
         ...environment,
+        salesRunToken: training.salesRunToken,
         snapshot,
         warning: [
           training.warning,

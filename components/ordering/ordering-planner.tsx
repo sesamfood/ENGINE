@@ -110,6 +110,16 @@ function Planner() {
   const mounted = useRef(true);
 
   useEffect(() => {
+    const update = () => setAsOf(Date.now());
+    const interval = window.setInterval(update, 60_000);
+    window.addEventListener("focus", update);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", update);
+    };
+  }, []);
+
+  useEffect(() => {
     mounted.current = true;
     const frame = requestAnimationFrame(() =>
       setHeaderTarget(document.getElementById("ordering-shell-header")),
@@ -588,10 +598,10 @@ function Planner() {
           ) : null}
           {!loading && history.unmappedQuantity > 0 ? (
             <Alert>
-              <AlertTitle>Salg mangler produktkoblinger</AlertTitle>
+              <AlertTitle>Salg mangler produkt- eller enhedskoblinger</AlertTitle>
               <AlertDescription>
                 {numberFormatter.format(history.unmappedQuantity)} solgte
-                enheder kunne ikke kobles til produkter. Forslagene kan være for
+                enheder kunne ikke omregnes til produkter. Forslagene kan være for
                 lave.
               </AlertDescription>
             </Alert>

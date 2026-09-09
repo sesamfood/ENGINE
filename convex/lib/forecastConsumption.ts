@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { toDefaultUnit } from "./stock";
+import { normalizeStock } from "./stock";
 
 type Consumption = {
   productId: Id<"products">;
@@ -12,8 +12,10 @@ type Consumption = {
 export function createForecastConsumptionResolver(
   ctx: QueryCtx,
   organizationId: string,
+  { expandRecipes = true } = {},
 ) {
   const products = new Map<Id<"products">, Doc<"products"> | null>();
+  const conversions = new Map<string, number | null>();
   const recipes = new Map<Id<"products">, Doc<"productIngredients">[]>();
   let recipeRows = 0;
   async function expand(
@@ -30,11 +32,25 @@ export function createForecastConsumptionResolver(
       products.set(productId, await ctx.db.get("products", productId));
     const product = products.get(productId);
     if (!product || product.organizationId !== organizationId) return null;
-    const amount =
-      unitId === product.defaultUnitId
-        ? quantity
-        : await toDefaultUnit(ctx, organizationId, productId, unitId, quantity);
-    if (amount === null) return null;
+    const conversionKey = `${productId}:${unitId}`;
+    if (unitId !== product.defaultUnitId && !conversions.has(conversionKey)) {
+      const unit = await ctx.db
+        .query("productUnits")
+        .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", productId)
+            .eq("unitId", unitId),
+        )
+        .unique();
+      conversions.set(conversionKey, unit?.factorToDefault ?? null);
+    }
+    const factor =
+      unitId === product.defaultUnitId ? 1 : conversions.get(conversionKey);
+    if (factor == null) return null;
+    const amount = normalizeStock(quantity * factor);
+    if (!expandRecipes)
+      return [{ productId, unitId: product.defaultUnitId, quantity: amount }];
     let ingredients = recipes.get(productId);
     if (!ingredients) {
       ingredients = await ctx.db

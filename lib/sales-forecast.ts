@@ -3,7 +3,7 @@ import type { ForecastOpeningDay } from "./forecast-opening-hours";
 
 export const SALES_FORECAST_HISTORY_DAYS = 400;
 export const SALES_FORECAST_DAYS = 28;
-export const FORECAST_MODEL_VERSION = 2;
+export const FORECAST_MODEL_VERSION = 3;
 export const PRODUCT_FORECAST_HISTORY_DAYS = 90;
 
 export type ForecastCondition = {
@@ -290,6 +290,11 @@ export function forecastDailyDemand({
     Array<number>(dimensions).fill(0),
   );
   const target = Array<number>(dimensions).fill(0);
+  const meanRate =
+    history.reduce((sum, row) => sum + row.value / exposure(row.date), 0) /
+    Math.max(1, history.length);
+  // Scale the log offset with demand so kilograms and grams learn the same effect.
+  const logOffset = meanRate > 0 ? meanRate / 100 : 1;
   let trainingDays = 0;
   for (const row of history) {
     const condition = conditionByDate.get(row.date);
@@ -302,7 +307,7 @@ export function forecastDailyDemand({
     trainingDays++;
     const x = features(row.date);
     const weight = 0.5 ** ((dayNumber(today) - dayNumber(row.date)) / 180);
-    const y = Math.log1p(row.value / exposure(row.date));
+    const y = Math.log1p(row.value / exposure(row.date) / logOffset);
     for (let i = 0; i < dimensions; i++) {
       target[i] += weight * x[i] * y;
       for (let j = 0; j < dimensions; j++) matrix[i][j] += weight * x[i] * x[j];
