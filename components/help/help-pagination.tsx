@@ -26,7 +26,7 @@ export function HelpPagination({ href }: { href: string }) {
             {previous ? `Forrige · ${previous.feature.label}` : "Tilbage til"}
           </span>
           <span className="font-semibold">
-            {previous?.guide.label ?? "Alle hjælpeemner"}
+            {previous?.guide.label ?? "Hjem"}
           </span>
         </span>
       </Link>
@@ -56,7 +56,7 @@ export function HelpPagination({ href }: { href: string }) {
             <span className="text-xs text-muted-foreground">
               Du har nået sidste guide
             </span>
-            <span className="font-semibold">Tilbage til alle hjælpeemner</span>
+            <span className="font-semibold">Tilbage til Hjem</span>
           </span>
           <ArrowRightIcon className="size-4 shrink-0" aria-hidden="true" />
         </Link>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRightIcon, SearchIcon } from "lucide-react";
+import { FileTextIcon, SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -36,15 +36,6 @@ function normalizeSearch(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/æ/g, "ae")
     .replace(/ø/g, "o");
-}
-
-function searchExcerpt(text: string, words: string[]) {
-  const sentences = text.split(/(?<=[.!?])\s+/);
-  const excerpt =
-    sentences.find((sentence) =>
-      words.some((word) => normalizeSearch(sentence).includes(word)),
-    ) ?? text;
-  return excerpt.length > 180 ? `${excerpt.slice(0, 177)}…` : excerpt;
 }
 
 export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
@@ -138,10 +129,10 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
         </kbd>
       </DialogTrigger>
       <DialogContent
-        className="gap-3 sm:max-w-2xl [&_[data-slot=dialog-close]]:size-11"
+        className="gap-0 overflow-hidden p-2 sm:max-w-xl [&_[data-slot=dialog-close]]:top-4 [&_[data-slot=dialog-close]]:right-3 [&_[data-slot=dialog-close]]:size-11"
         initialFocus={inputRef}
       >
-        <DialogHeader className="pr-12">
+        <DialogHeader className="sr-only">
           <DialogTitle>Søg i hjælpen</DialogTitle>
           <DialogDescription>
             Find funktioner, opsætning og svar på spørgsmål.
@@ -151,22 +142,17 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
           label="Søgeord"
           shouldFilter={false}
           loop
-          className="[&_[data-slot=input-group]]:h-12"
+          className="[&_[data-slot=command-input-wrapper]]:pr-12 [&_[data-slot=input-group]]:h-12"
         >
           <CommandInput
             ref={inputRef}
             value={query}
             onValueChange={setQuery}
-            placeholder="Søg fx efter temperatur, roller eller Wolt…"
+            placeholder="Søg i hjælpen…"
             aria-label="Søgeord"
             className="min-h-11"
           />
-          <p role="status" className="px-3 py-3 text-xs text-muted-foreground">
-            {normalizedQuery
-              ? `${results.length} ${results.length === 1 ? "side fundet" : "sider fundet"}`
-              : "Vælg et emne, eller søg i alle guider."}
-          </p>
-          <CommandList label="Søgeresultater" className="max-h-[min(55dvh,28rem)]">
+          <CommandList label="Søgeresultater" className="max-h-[min(55dvh,24rem)]">
             <CommandEmpty>
               Ingen resultater. Prøv et andet søgeord.
             </CommandEmpty>
@@ -185,30 +171,38 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
                         (result.section ? `#${result.section.id}` : ""),
                     );
                   }}
-                  className="min-h-16 cursor-pointer items-start gap-3 py-3 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+                  className="min-h-11 cursor-pointer gap-3 py-2 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
                 >
-                  <SearchIcon className="mt-1 shrink-0" aria-hidden="true" />
-                  <span className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="text-xs text-muted-foreground">
-                      {result.feature}
-                      {result.label === "Overblik" ? " · Overblik" : ""}
-                    </span>
-                    <span className="font-medium">
+                  <FileTextIcon aria-hidden="true" />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate">
                       {result.label === "Overblik"
                         ? result.feature
                         : result.label}
                     </span>
-                    <span className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                      {result.section
-                        ? `${result.section.title}. ${searchExcerpt(result.section.text, words)}`
-                        : result.summary}
-                    </span>
+                    {result.label !== "Overblik" && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {result.feature}
+                        {result.section ? ` › ${result.section.title}` : ""}
+                      </span>
+                    )}
                   </span>
-                  <ArrowUpRightIcon className="mt-1" aria-hidden="true" />
                 </CommandItem>
               ))}
             </CommandGroup>
           </CommandList>
+          <div className="flex items-center justify-between gap-3 border-t px-2 py-2 text-xs text-muted-foreground">
+            <p role="status">
+              {normalizedQuery
+                ? `${results.length} ${results.length === 1 ? "side fundet" : "sider fundet"}`
+                : "Søg i alle guider"}
+            </p>
+            <span className="hidden items-center gap-3 sm:flex" aria-hidden="true">
+              <span><kbd>↑↓</kbd> Vælg</span>
+              <span><kbd>Enter</kbd> Åbn</span>
+              <span><kbd>Esc</kbd> Luk</span>
+            </span>
+          </div>
         </Command>
       </DialogContent>
     </Dialog>

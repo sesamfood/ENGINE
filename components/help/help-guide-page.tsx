@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { ArrowRightIcon, ArrowUpRightIcon } from "lucide-react";
 import {
@@ -16,20 +17,20 @@ import {
 } from "@/components/ui/breadcrumb";
 import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { HelpFeature } from "./help-types";
-import type { HelpGuide } from "./help-types";
+import type { HelpPage } from "./help-features";
 import { HelpScreenshot } from "./help-screenshot";
 import { HelpPagination } from "./help-pagination";
 import { HelpGuideList } from "./help-guide-list";
 
 export function HelpGuidePage({
-  feature,
-  guide,
+  page: { feature, guide, href, parents },
 }: {
-  feature: HelpFeature;
-  guide: HelpGuide;
+  page: HelpPage;
 }) {
   const isOverview = guide.slug === "overblik";
+  const childGuides = isOverview
+    ? feature.guides.filter((item) => item.slug !== "overblik")
+    : guide.children ?? [];
 
   return (
     <article className="flex max-w-4xl flex-col gap-9 py-6 sm:gap-10 sm:py-10">
@@ -53,6 +54,19 @@ export function HelpGuidePage({
                 {feature.label}
               </BreadcrumbLink>
             </BreadcrumbItem>
+            {parents.map((parent) => (
+              <Fragment key={parent.href}>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink
+                    render={<Link href={parent.href} />}
+                    className="inline-flex min-h-11 items-center rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    {parent.label}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+              </Fragment>
+            ))}
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbPage>{guide.label}</BreadcrumbPage>
@@ -87,6 +101,9 @@ export function HelpGuidePage({
               id: section.id,
               title: section.title,
             })),
+            ...(childGuides.length
+              ? [{ id: "guides", title: "Guider" }]
+              : []),
             ...(guide.troubleshooting?.length
               ? [{ id: "troubleshooting", title: "Spørgsmål og fejlfinding" }]
               : []),
@@ -150,7 +167,11 @@ export function HelpGuidePage({
           ) : null}
         </section>
       ))}
-      {isOverview ? <HelpGuideList feature={feature} /> : null}
+      <HelpGuideList
+        label={isOverview ? feature.label : guide.label}
+        guides={childGuides}
+        baseHref={isOverview ? `/help/${feature.slug}` : href}
+      />
       {guide.troubleshooting?.length ? (
         <section
           id="troubleshooting"
@@ -200,7 +221,7 @@ export function HelpGuidePage({
         </section>
       ) : null}
       <Separator />
-      <HelpPagination href={`/help/${feature.slug}/${guide.slug}`} />
+      <HelpPagination href={href} />
     </article>
   );
 }

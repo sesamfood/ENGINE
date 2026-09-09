@@ -3,13 +3,31 @@ import { ArrowLeftIcon, BookOpenIcon } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { helpFeatures, helpPages } from "@/components/help/help-features";
-import { HelpNavigation } from "@/components/help/help-navigation";
+import {
+  HelpNavigation,
+  type NavigationGuide,
+} from "@/components/help/help-navigation";
+import type { HelpGuide } from "./help-types";
 import { HelpSearch } from "./help-search";
 
+function navigationGuides(
+  guides: HelpGuide[],
+  baseHref: string,
+): NavigationGuide[] {
+  return guides.map((guide) => {
+    const href = `${baseHref}/${guide.slug}`;
+    return {
+      href,
+      label: guide.label,
+      children: navigationGuides(guide.children ?? [], href),
+    };
+  });
+}
+
 export function HelpShell({ children }: { children: ReactNode }) {
-  const searchDocuments = helpPages.map(({ feature, guide, href }) => ({
+  const searchDocuments = helpPages.map(({ feature, guide, href, parents }) => ({
     href,
-    feature: feature.label,
+    feature: [feature.label, ...parents.map((parent) => parent.label)].join(" · "),
     label: guide.label,
     summary: guide.summary,
     sections: [
@@ -86,12 +104,10 @@ export function HelpShell({ children }: { children: ReactNode }) {
             const Icon = feature.icon;
             return {
               slug: feature.slug,
+              href: `/help/${feature.slug}/overblik`,
               label: feature.label,
               icon: <Icon className="size-4 shrink-0" aria-hidden="true" />,
-              guides: feature.guides.map(({ slug, label }) => ({
-                slug,
-                label,
-              })),
+              children: navigationGuides(feature.guides, `/help/${feature.slug}`),
             };
           })}
         />

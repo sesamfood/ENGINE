@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDownIcon, LayoutGridIcon, MenuIcon } from "lucide-react";
+import { ChevronDownIcon, HouseIcon, MenuIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -12,11 +12,16 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-type NavigationTopic = {
-  slug: string;
+export type NavigationGuide = {
+  href: string;
   label: string;
+  children: NavigationGuide[];
+  icon?: ReactNode;
+};
+
+type NavigationTopic = NavigationGuide & {
+  slug: string;
   icon: ReactNode;
-  guides: { slug: string; label: string }[];
 };
 
 export function HelpNavigation({ topics }: { topics: NavigationTopic[] }) {
@@ -47,6 +52,52 @@ export function HelpNavigation({ topics }: { topics: NavigationTopic[] }) {
     );
   }
 
+  function containsCurrentPage(item: NavigationGuide): boolean {
+    return pathname === item.href || item.children.some(containsCurrentPage);
+  }
+
+  function navigationItem(item: NavigationGuide) {
+    const pageLink = link(
+      item.href,
+      <>
+        {item.icon}
+        <span>{item.label}</span>
+      </>,
+    );
+    if (!item.children.length) return <li key={item.href}>{pageLink}</li>;
+    const current = containsCurrentPage(item);
+
+    return (
+      <li key={item.href}>
+        <Collapsible key={`${item.href}-${current}`} defaultOpen={current}>
+          <div className="flex items-start gap-1">
+            {pageLink}
+            <CollapsibleTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="group size-11 shrink-0"
+                />
+              }
+              aria-label={`Undersider til ${item.label}`}
+            >
+              <ChevronDownIcon
+                className="transition-transform group-aria-expanded:rotate-180"
+                aria-hidden="true"
+              />
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent>
+            <ul className="my-1 ml-3 flex flex-col gap-1 border-l pl-2">
+              {item.children.map(navigationItem)}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      </li>
+    );
+  }
+
   const navigation = (
     <nav aria-label="Hjælpeemner">
       <ul className="flex flex-col gap-1">
@@ -54,47 +105,12 @@ export function HelpNavigation({ topics }: { topics: NavigationTopic[] }) {
           {link(
             "/help",
             <>
-              <LayoutGridIcon className="size-4 shrink-0" aria-hidden="true" />
-              <span>Alle hjælpeemner</span>
+              <HouseIcon className="size-4 shrink-0" aria-hidden="true" />
+              <span>Hjem</span>
             </>,
           )}
         </li>
-        {topics.map((topic) => (
-          <li key={topic.slug}>
-            <Collapsible
-              key={`${topic.slug}-${currentTopic?.slug === topic.slug}`}
-              defaultOpen={currentTopic?.slug === topic.slug}
-            >
-              <CollapsibleTrigger
-                className={cn(
-                  "group flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium outline-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
-                  currentTopic?.slug === topic.slug
-                    ? "text-foreground"
-                    : "text-muted-foreground",
-                )}
-                aria-label={`Undersider til ${topic.label}`}
-              >
-                {topic.icon}
-                <span className="flex-1">{topic.label}</span>
-                <ChevronDownIcon
-                  className="size-4 shrink-0 transition-transform group-aria-expanded:rotate-180"
-                  aria-hidden="true"
-                />
-              </CollapsibleTrigger>
-              {topic.guides.length > 0 ? (
-                <CollapsibleContent>
-                  <ul className="my-1 ml-5 flex flex-col gap-1 border-l pl-2">
-                    {topic.guides.map((guide) => (
-                      <li key={guide.slug}>
-                        {link(`/help/${topic.slug}/${guide.slug}`, guide.label)}
-                      </li>
-                    ))}
-                  </ul>
-                </CollapsibleContent>
-              ) : null}
-            </Collapsible>
-          </li>
-        ))}
+        {topics.map(navigationItem)}
       </ul>
     </nav>
   );
@@ -120,7 +136,7 @@ export function HelpNavigation({ topics }: { topics: NavigationTopic[] }) {
             <MenuIcon className="size-4" aria-hidden="true" />
             Hjælpeemner
           </span>
-          <span className="truncate">{currentTopic?.label ?? "Overblik"}</span>
+          <span className="truncate">{currentTopic?.label ?? "Hjem"}</span>
         </CollapsibleTrigger>
         <CollapsibleContent className="max-h-[calc(100dvh-9rem)] overflow-y-auto pb-2">
           {navigation}

@@ -43,6 +43,11 @@ export function HelpIndex() {
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {helpFeatures.map((feature) => {
             const Icon = feature.icon;
+            const guideCount = helpPages.filter(
+              (page) =>
+                page.feature.slug === feature.slug &&
+                page.guide.slug !== "overblik",
+            ).length;
             return (
               <li key={feature.slug}>
                 <Link
@@ -70,8 +75,8 @@ export function HelpIndex() {
                         {feature.summary}
                       </p>
                       <p className="mt-auto text-xs text-muted-foreground">
-                        Overblik og {Math.max(0, feature.guides.length - 1)}{" "}
-                        {feature.guides.length === 2 ? "guide" : "guider"}
+                        Overblik og {guideCount}{" "}
+                        {guideCount === 1 ? "guide" : "guider"}
                       </p>
                     </CardContent>
                   </Card>

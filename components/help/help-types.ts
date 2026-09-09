@@ -22,6 +22,7 @@ export type HelpGuide = {
   summary: string;
   appHref: string;
   appLinkLabel: string;
+  children?: HelpGuide[];
   sections: {
     id: string;
     title: string;

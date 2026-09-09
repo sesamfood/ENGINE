@@ -31,7 +31,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Dashboard",
             paragraphs: [
-              "Et dashboard samler målinger fra driften i widgets. Hver widget har en måling, en visualisering og en størrelse. Du vælger periode og Lokation, når du vil undersøge tallene.",
+              "Et dashboard samler målinger fra driften i widgets. Hver widget har en måling, en visualisering og en størrelse. Brug en indbygget måling, eller opret egne datapunkter som en tilpasset måling. Du vælger periode og Lokation, når du vil undersøge tallene.",
             ],
           },
           {
@@ -39,6 +39,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Fra opsætning til daglig brug",
             steps: [
               "Opret dashboardet, vælg widgets, og angiv adgang og standardvisning.",
+              "Opret eventuelt en tilpasset måling med de datasæt, filtre og grupper, du vil følge. Målingen kan genbruges i flere widgets.",
               "Følg tallene i den relevante periode. Del derefter et læselink, hvis andre skal følge samme overblik.",
             ],
           },
@@ -74,7 +75,8 @@ export const operationFeatures: HelpFeature[] = [
             title: "Tilføj og tilpas widgets",
             steps: [
               "Vælg Redigér og derefter Tilføj widget. På et tomt dashboard kan du vælge Tilføj widget direkte.",
-              "Søg efter målingen. Vælg derefter en kompatibel visualisering og en størrelse. Kontrollér Salgskilde, når valget vises.",
+              "Søg efter en indbygget måling eller en af Organisationens målinger. Vælg Opret tilpasset måling under Byg selv, hvis du vil definere egne datapunkter.",
+              "Vælg en kompatibel visualisering og en størrelse. Kontrollér Salgskilde, når valget vises.",
               "Flyt widgetten til den ønskede placering. Brug widgettens knapper til at ændre visualisering, redigere eller fjerne den.",
               "Vælg Gem som standard, hvis den aktuelle periode og lokationsvalget skal være dashboardets udgangspunkt. Afslut med Færdig.",
             ],
@@ -118,12 +120,150 @@ export const operationFeatures: HelpFeature[] = [
         ],
         relatedLinks: [
           {
+            href: "/help/dashboard/datapunkter",
+            label: "Opret egne datapunkter",
+          },
+          {
             href: "/help/dashboard/deling",
             label: "Del et dashboard",
           },
           {
             href: "/help/integrationer",
             label: "Integrationer og datakilder",
+          },
+        ],
+      },
+      {
+        slug: "datapunkter",
+        label: "Opret egne datapunkter",
+        summary:
+          "Byg en tilpasset måling fra organisationens data, og brug den i en eller flere widgets.",
+        appHref: "/dashboard",
+        appLinkLabel: "Åbn Dashboard",
+        sections: [
+          {
+            id: "start",
+            title: "Start en tilpasset måling",
+            paragraphs: [
+              "Egne datapunkter oprettes som en tilpasset måling. Du vælger datagrundlag, beregning og gruppering; appen henter værdierne fra organisationens registreringer og integrationer.",
+            ],
+            steps: [
+              "Vælg en Lokation og en periode med kendte data på dashboardet. De bruges i forhåndsvisningen.",
+              "Vælg Redigér → Tilføj widget. Under Måling vælger du Byg selv → Opret tilpasset måling.",
+              "Giv målingen et entydigt Navn på højst 100 tegn. Tilføj eventuelt en Beskrivelse på højst 500 tegn, som forklarer, hvad tallet viser.",
+            ],
+          },
+          {
+            id: "beregning",
+            title: "Vælg, hvad der skal beregnes",
+            steps: [
+              "Vælg Enkeltmåling for ét mål fra ét datasæt. Vælg derefter Datasæt og Mål, eksempelvis Waste og Registreringer.",
+              "Vælg Forhold for at dele én måling med en anden. Angiv Datasæt og Mål særskilt for Tæller og Nævner. De kan komme fra forskellige datasæt.",
+            ],
+            bullets: [
+              "Driftsdata findes i Waste, Dårlige leveringer, Transfer, Staff food, Vagter og Count. Vagter kommer fra Workfeed.",
+              "Salgsdata findes i Dagligt salg, Salgsordrer, Salgslinjer, Wolt-ordrer og Wolt-ordrelinjer. Vælg det datasæt, der dækker det salg, du vil følge.",
+              "Datasættet bestemmer de mulige mål, filtre og dimensioner. Et Forhold beregnes som tæller divideret med nævner. Periodens samlede værdi beregnes af de samlede tal.",
+            ],
+          },
+          {
+            id: "filtre",
+            title: "Afgræns registreringer og Produkter",
+            steps: [
+              "Vælg Tilføj filter, hvis datasættet har filtre. Vælg Felt og Operator, enten Er lig med eller Er ikke lig med, og angiv Værdier adskilt med komma.",
+              "Brug kildens præcise værdier. For aktive Waste-registreringer vælger du Status, Er lig med og værdien active. Værdien voided betegner annullerede registreringer.",
+              "Vælg hvert filterfelt højst én gang. Flere filtre skal alle være opfyldt; flere værdier i samme filter er alternativer. Hvert filter kan have højst 50 værdier på hver højst 200 tegn.",
+            ],
+            paragraphs: [
+              "Når Dimension er Produkt, vises Produktvalg. Vælg Alle, Kun valgte eller Alle undtagen valgte. Søg efter Produkter, eller brug en kategorilinje til at vælge alle Produkter i kategorien. Et afgrænset produktvalg skal indeholde mindst ét og højst 500 Produkter. Ved Forhold gælder produktvalget både tæller og nævner.",
+            ],
+          },
+          {
+            id: "gruppering",
+            title: "Saml datapunkterne i grupper og perioder",
+            steps: [
+              "Vælg Dimension, hvis målingen skal opdeles efter eksempelvis Lokation, Produkt eller kategori. Behold Ingen dimension for at følge dashboardets lokationsvalg uden en ekstra opdeling.",
+              "Vælg Tidsopdeling som Dag, Uge eller Måned. Det bestemmer afstanden mellem datapunkterne i et diagram.",
+              "Angiv Grænse som et helt tal fra 1 til 50. Ved en dimension vises de største grupper, og resten samles under Andre. For et Forhold bestemmer tælleren, hvilke grupper der er størst.",
+            ],
+            paragraphs: [
+              "Et Forhold kan kun bruge dimensioner, som findes i begge datasæt. Din rolles datavisning kan samle eller anonymisere lokationer og skjule medarbejderdimensionen.",
+            ],
+          },
+          {
+            id: "eksempel",
+            title: "Eksempel: omsætning pr. planlagt time",
+            steps: [
+              "Giv målingen navnet Omsætning pr. planlagt time, og vælg Forhold.",
+              "Vælg Dagligt salg og Omsætning under Tæller. Vælg Vagter og Timer under Nævner.",
+              "Vælg Lokation som Dimension og Dag som Tidsopdeling. Kontrollér, at salgsdata og Workfeed-vagter dækker de samme lokationer og datoer.",
+              "Kontrollér Forhåndsvisning. Eksempelvis giver 12.000 kr. i omsætning og 40 planlagte timer 300 kr. pr. time. Timer beregnes fra vagternes start til slut.",
+            ],
+            paragraphs: [
+              "Når nævneren er 0, udelades datapunktet fra diagrammet. Er nævneren 0 for hele perioden, vises 0 som samlet værdi. Kontrollér derfor datagrundlaget, hvis et Forhold er tomt eller viser 0.",
+            ],
+            screenshot: {
+              src: "/help/screenshots/datapunkter.png",
+              alt: "Tilpasset måling med omsætning som tæller, planlagte timer som nævner og gruppering efter Lokation og dag",
+              caption:
+                "Opsætningen til Omsætning pr. planlagt time. Vælg datasæt og mål for både tæller og nævner, og angiv derefter datagrupperingen.",
+              width: 1280,
+              height: 1400,
+            },
+          },
+          {
+            id: "gem",
+            title: "Gem målingen, og tilføj widgetten",
+            steps: [
+              "Vent på, at Forhåndsvisning er opdateret. Den opdateres automatisk efter ændringer. Sammenhold resultatet med registreringer eller rapporter for den valgte periode.",
+              "Vælg Gem og fortsæt. Vælg derefter Visualisering og Størrelse, og afslut med Tilføj widget.",
+              "Find senere målingen under Organisationens målinger i Tilføj widget for at genbruge den. Hver widget kan have sin egen visualisering og størrelse.",
+            ],
+            bullets: [
+              "Liste og Tabel kræver en dimension. Donutdiagram kræver en Enkeltmåling med en dimension og kan ikke bruges til et Forhold.",
+              "Du kan også oprette målingen under Administration → Målinger → Opret måling. Her afslutter du med Gem måling og tilføjer bagefter en widget fra dashboardet. Bibliotekets forhåndsvisning bruger de seneste 30 dage og de lokationer, du har adgang til.",
+            ],
+          },
+          {
+            id: "vedligehold",
+            title: "Redigér og administrér fælles målinger",
+            bullets: [
+              "Brug blyanten ved målingen i Tilføj widget, på widgetten i redigeringstilstand eller under Administration → Målinger. Gem ændringer opdaterer alle widgets, der bruger målingen.",
+              "Skal kun én widget have en anden beregning, skal du oprette en ny måling og bruge den i widgetten.",
+              "Organisationen kan have højst 50 tilpassede målinger. Navne skal være unikke, også når forskellen kun er store og små bogstaver.",
+              "En måling kan kun slettes, når ingen widgets bruger den. Biblioteket viser antallet af widgets. Fjern brugen først, og bekræft derefter Slet måling. Sletningen er permanent.",
+            ],
+          },
+        ],
+        troubleshooting: [
+          {
+            question: "Hvorfor kan jeg ikke oprette eller se målingen?",
+            answer:
+              "Oprettelse og ændringer kræver Administrere dashboards. Salgsdatasæt kræver også adgang til de relevante salgstal. Dagligt salg bruger aggregerede salgstal; salgsordrer, salgslinjer og Wolt bruger detaljerede salgstal. Rettigheden Se salgstal giver også adgang. Målinger med salgsdata markeres Følsom. Rollen og dens datavisning kan begrænse, hvilke målinger der er synlige.",
+          },
+          {
+            question: "Forhåndsvisningen mangler data",
+            answer:
+              "Kontrollér periode, Lokation, filtre, produktvalg og integrationer. Filterværdier skal matche kilden præcist. Hvis datamængden er for stor, så vælg en kortere periode eller færre lokationer. En afkortet produktliste indeholder ikke nødvendigvis alle Produkter.",
+          },
+          {
+            question: "Hvorfor kan ændringen ikke gemmes?",
+            answer:
+              "Kontrollér felter, navn og grænse. Hvis en ændret type eller dimension ikke passer til eksisterende widgets, skal deres visualisering ændres først. Er målingen ændret i en anden fane, skal du åbne den igen og tage udgangspunkt i den seneste version.",
+          },
+        ],
+        relatedLinks: [
+          {
+            href: "/help/dashboard/widgets",
+            label: "Opret og brug widgets",
+          },
+          {
+            href: "/administration/metrics",
+            label: "Åbn organisationens målinger",
+          },
+          {
+            href: "/help/integrationer/overblik",
+            label: "Kontrollér integrationer og datakilder",
           },
         ],
       },
@@ -409,7 +549,7 @@ export const operationFeatures: HelpFeature[] = [
         relatedLinks: [
           {
             href: "/help/transfer/historik",
-            label: "Transferhistorik og CSV",
+            label: "Transferhistorik og eksport",
           },
           {
             href: "/help/varemodtagelse/transfer",
@@ -419,7 +559,7 @@ export const operationFeatures: HelpFeature[] = [
       },
       {
         slug: "historik",
-        label: "Transferhistorik og CSV",
+        label: "Transferhistorik og eksport",
         summary:
           "Find en transfer, kontrollér modtagelsen, og eksportér de nødvendige kolonner.",
         appHref: "/transfers/history",

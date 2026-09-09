@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "lucide-react";
-import type { HelpFeature } from "./help-types";
+import type { HelpGuide } from "./help-types";
 
-export function HelpGuideList({ feature }: { feature: HelpFeature }) {
-  const guides = feature.guides.filter((guide) => guide.slug !== "overblik");
+export function HelpGuideList({
+  label,
+  guides,
+  baseHref,
+}: {
+  label: string;
+  guides: HelpGuide[];
+  baseHref: string;
+}) {
   if (!guides.length) return null;
 
   return (
@@ -13,7 +20,7 @@ export function HelpGuideList({ feature }: { feature: HelpFeature }) {
       className="scroll-mt-40 lg:scroll-mt-24"
     >
       <h2 id="guides-title" className="text-xl font-semibold tracking-tight">
-        Læs videre om {feature.label}
+        Læs videre om {label}
       </h2>
       <ul className="mt-4 grid gap-x-8 border-y sm:grid-cols-2">
         {guides.map((guide) => (
@@ -22,7 +29,7 @@ export function HelpGuideList({ feature }: { feature: HelpFeature }) {
             className="border-b last:border-b-0 sm:border-b-0"
           >
             <Link
-              href={`/help/${feature.slug}/${guide.slug}`}
+              href={`${baseHref}/${guide.slug}`}
               className="group flex h-full items-start justify-between gap-4 rounded-sm py-5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <span className="flex flex-col gap-1.5">
