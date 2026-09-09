@@ -1,4 +1,6 @@
 import { ConvexError, v } from "convex/values";
+import { forecastProfileValidator } from "./lib/forecastValidators";
+import { setForecastProfile } from "./lib/forecastSettings";
 import { DEFAULT_WEEKLY_OPENING_HOURS, MAX_SPECIAL_OPENING_DATES } from "../lib/count-window";
 import { internal } from "./_generated/api";
 import {
@@ -87,6 +89,7 @@ const locationStatusValidator = v.union(
 );
 
 const locationDetailsValidator = v.object({
+  forecastProfile: v.union(forecastProfileValidator, v.null()),
   id: v.id("locations"),
   name: v.string(),
   marketId: v.union(v.id("markets"), v.null()),
@@ -234,7 +237,10 @@ export const getLocationDetails = query({
     if (!location || location.organizationId !== organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
     }
+    const forecast = await ctx.db.query("locationForecasts").withIndex("by_organizationId_and_locationId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", location._id)).unique();
     return {
+      forecastProfile: forecast?.profile ?? null,
       id: location._id,
       name: location.name,
       marketId: location.marketId ?? null,
@@ -360,6 +366,7 @@ export const renameLocation = mutation({
 
 export const updateLocation = mutation({
   args: {
+    forecastProfile: v.optional(v.union(forecastProfileValidator, v.null())),
     locationId: v.id("locations"),
     marketId: v.union(v.id("markets"), v.null()),
     legalEntityId: v.union(v.id("legalEntities"), v.null()),
@@ -376,6 +383,7 @@ export const updateLocation = mutation({
     const auth = await requireLocationManager(ctx);
     try {
       await updateLocationWithAuth(ctx, auth, { ...args });
+      if (args.forecastProfile !== undefined) await setForecastProfile(ctx, auth.organizationId, args.locationId, args.forecastProfile);
     } catch (error) {
       throwHumanLocationMutationError(error);
     }

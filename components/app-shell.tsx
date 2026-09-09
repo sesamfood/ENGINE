@@ -20,6 +20,7 @@ import {
   UsersRoundIcon,
   UserRoundIcon,
   ShoppingBagIcon,
+  ShoppingCartIcon,
 } from "lucide-react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Image from "next/image";
@@ -97,6 +98,7 @@ import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
 const primaryNavigation = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
   { id: "woltOrders", label: "Wolt-ordrer", href: "/wolt-orders", icon: ShoppingBagIcon, pages: [] },
+  { id: "ordering", label: "Bestilling", href: "/ordering", icon: ShoppingCartIcon, pages: [] },
   { id: "transfers", label: "Transfer", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
   { id: "goodsReceipts", label: "Varemodtagelse", href: "/goods-receipts", icon: PackageCheckIcon, pages: [] },
   { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
@@ -452,6 +454,7 @@ function OrganizationHome() {
   const featureLocked = useContext(FeatureLockContext);
   const kiosk = useKiosk();
   const canDashboard = usePermission("dashboard.view");
+  const canOrder = usePermission("ordering.plan");
   const canWoltOrders = usePermission("sales.viewDetail");
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
@@ -533,6 +536,8 @@ function OrganizationHome() {
                       ? "/employees"
                       : canEmployeesDirectory
                         ? "/employees/directory"
+                        : canOrder
+                          ? "/ordering"
                         : canOrganization
                           ? "/administration"
                           : "/profile";
@@ -597,6 +602,7 @@ function NavigationList() {
   const featureLocked = useContext(FeatureLockContext);
   const kiosk = useKiosk();
   const canDashboard = usePermission("dashboard.view");
+  const canOrder = usePermission("ordering.plan");
   const canWoltOrders = usePermission("sales.viewDetail");
   const canTransfersManage = usePermission("transfers.manage");
   const canTransfersView = usePermission("transfers.view");
@@ -681,6 +687,7 @@ function NavigationList() {
   const navigation = kioskNavigation ?? orderedNavigation
     .filter((item) => {
       if (item.id === "dashboard") return canDashboard && !featureLocked;
+      if (item.id === "ordering") return canOrder && !featureLocked;
       if (item.id === "woltOrders") {
         return canWoltOrders && woltEnabled === true && !featureLocked;
       }
@@ -1251,6 +1258,7 @@ export function AppShell({
     !pathname.startsWith("/administration/products/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
+  const showOrderingHeader = pathname === "/ordering";
   const showWasteHeader =
     pathname === "/waste" || pathname.startsWith("/waste/");
   const showStaffFoodHeader = pathname === "/staff-food";
@@ -1263,6 +1271,7 @@ export function AppShell({
   const showAdministrationHeader =
     pathname === "/administration" || pathname.startsWith("/administration/");
   const showPageHeader =
+    showOrderingHeader ||
     showCountHeader ||
     showWasteHeader ||
     showStaffFoodHeader ||
@@ -1323,7 +1332,9 @@ export function AppShell({
               {showPageHeader ? (
                 <div
                   id={
-                    showCountHeader
+                    showOrderingHeader
+                      ? "ordering-shell-header"
+                      : showCountHeader
                       ? "count-shell-header"
                       : showWasteHeader
                         ? "waste-shell-header"

@@ -20,6 +20,7 @@ export const metricIdValidator = v.union(
   v.literal("headcountToday"),
   v.literal("locationComparison"),
   v.literal("salesRevenue"),
+  v.literal("predictedSalesRevenue"),
   v.literal("salesOrderCount"),
   v.literal("averageBasket"),
   v.literal("woltCancellationRate"),

@@ -40,6 +40,21 @@ export type MetricDefinition = {
 };
 
 const definitions = {
+  predictedSalesRevenue: {
+    id: "predictedSalesRevenue",
+    label: "Forventet omsætning, næste 7 dage",
+    category: "Salg",
+    description: "Prognose fra i morgen og syv dage frem. Bruger produktmængder, salgsmiks, åbningstider, lukkedage, vejr og helligdage. Kræver prognoseopsætning i lokationens oplysninger.",
+    formula: "Hvert salgsprodukts forventede mængde pr. åben time ganges med åbningstiden og den seneste vægtede salgspris. Produktprognoserne summeres og afstemmes med omsætningen, så rabatter på ordreniveau medregnes. Produktmængder bruger op til 90 dages historik; manglende produktdata giver en prognose ud fra den samlede omsætning. Vejr fra OpenWeather og helligdage fra Nager.Holidays læres pr. produkt, når historikken rækker. Staff food og Waste indgår kun i bestillingsforbrug. Perioden er altid de næste syv dage, uanset dashboardets datovalg. Opdateres hver sjette time og efter ændringer i åbningstider.",
+    sourceTables: ["salesDaily", "salesLines", "locationForecasts", "locations", "locationSpecialOpeningHours"],
+    source: "internal",
+    unit: "currency",
+    visualizations: ["kpi", "line", "bar", "area", "table"],
+    defaultVisualization: "line",
+    defaultSize: "2x2",
+    sensitive: true,
+    shareable: true,
+  },
   wasteQuantity: {
     id: "wasteQuantity",
     label: "Waste-mængde",

@@ -25,19 +25,19 @@ The system should support practical customization without becoming a general-pur
 
 Use this vocabulary in every user-facing surface, including navigation, help text, validation errors, e-mails, exports, and dashboard metadata.
 
-| Concept | Use |
-| --- | --- |
-| Transfers | `Transfer` |
-| Waste | `Waste` |
-| Counts | `Count` |
-| Staff food | `Staff food` |
-| Organization management | `Administration` |
-| Bad deliveries | `Dårlig levering` / `Dårlige leveringer` |
-| Product or item | `Produkt` |
-| Organization person | `Bruger` |
-| Built-in roles | `Administrator`, `Manager`, `Medlem` |
-| Restaurant site | `Lokation` |
-| Personal areas | `Profil` and `Indstillinger` as separate siblings |
+| Concept                 | Use                                               |
+| ----------------------- | ------------------------------------------------- |
+| Transfers               | `Transfer`                                        |
+| Waste                   | `Waste`                                           |
+| Counts                  | `Count`                                           |
+| Staff food              | `Staff food`                                      |
+| Organization management | `Administration`                                  |
+| Bad deliveries          | `Dårlig levering` / `Dårlige leveringer`          |
+| Product or item         | `Produkt`                                         |
+| Organization person     | `Bruger`                                          |
+| Built-in roles          | `Administrator`, `Manager`, `Medlem`              |
+| Restaurant site         | `Lokation`                                        |
+| Personal areas          | `Profil` and `Indstillinger` as separate siblings |
 
 - Treat `Transfer`, `Waste`, `Count`, and `Staff food` as fixed product terms inside Danish copy. Write `Transferhistorik`, `transferdato`, and `transferlinje`. Use a hyphen after the other product terms, for example `Waste-rapport`, `Count-vindue`, and `Staff food-regel`. Use `transferen` and `transfers` when Danish grammar requires inflection.
 - Reserve `Medlem` for the built-in role name. Use `Bruger` for a person who belongs to an organization. `Medarbejder` still means a Workfeed employee.
@@ -88,6 +88,8 @@ Use this vocabulary in every user-facing surface, including navigation, help tex
 - Avoid adding dependencies when the existing stack or platform can solve the problem clearly.
 
 # Model use
+
+DISREGARD THIS SECTION
 
 Always follow this section when orchestrating work or delegating to subagents. The pattern is: **write the code with the cheap model, then debug and review it with the expensive ones.**
 

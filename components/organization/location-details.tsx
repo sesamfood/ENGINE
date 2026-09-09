@@ -5,7 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { LocationAddressSearch } from "@/components/organization/location-address-search";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +28,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 type OwnershipType = "owned" | "franchise" | "jointVenture" | "license";
 type LocationStatus = "planned" | "open" | "temporarilyClosed" | "closed";
@@ -48,6 +51,8 @@ const statusItems = [
 ] satisfies Array<{ value: LocationStatus | "none"; label: string }>;
 
 type Draft = {
+  forecastEnabled: boolean;
+  forecastProfile: Doc<"locationForecasts">["profile"] | null;
   marketId: Id<"markets"> | null;
   legalEntityId: Id<"legalEntities"> | null;
   operatorId: Id<"operators"> | null;
@@ -60,6 +65,8 @@ type Draft = {
 };
 
 const emptyDraft: Draft = {
+  forecastEnabled: false,
+  forecastProfile: null,
   marketId: null,
   legalEntityId: null,
   operatorId: null,
@@ -105,6 +112,8 @@ export function LocationDetails({
   const draft = editedDraft ??
     (details
       ? {
+          forecastEnabled: details.forecastProfile !== null,
+          forecastProfile: details.forecastProfile,
           marketId: details.marketId,
           legalEntityId: details.legalEntityId,
           operatorId: details.operatorId,
@@ -145,9 +154,14 @@ export function LocationDetails({
   ];
 
   async function save() {
+    if (draft.forecastEnabled && !draft.forecastProfile) {
+      toast.error("Søg efter og vælg en adresse til prognosen");
+      return;
+    }
     setSaving(true);
     try {
       await updateLocation({
+        forecastProfile: draft.forecastEnabled ? draft.forecastProfile : null,
         locationId,
         marketId: draft.marketId,
         legalEntityId: draft.legalEntityId,
@@ -188,6 +202,17 @@ export function LocationDetails({
           </div>
         ) : (
           <FieldGroup>
+            <Field orientation="horizontal">
+              <FieldLabel htmlFor="location-forecast-enabled">Vejr og helligdage i prognoser</FieldLabel>
+              <HelpTooltip label="prognoser" content="Prognoser lærer af lokationens salg på tidligere dage med lignende vejr og helligdage. Koordinater og landekode deles med vejr- og kalenderudbyderne. Salgstal deles ikke." />
+              <Switch id="location-forecast-enabled" checked={draft.forecastEnabled}
+                onCheckedChange={(forecastEnabled) => setDraft({ ...draft, forecastEnabled })} />
+            </Field>
+            {draft.forecastEnabled && (
+              <LocationAddressSearch key={locationId} locationId={locationId}
+                value={draft.forecastProfile} disabled={saving}
+                onChange={(forecastProfile) => setDraft({ ...draft, forecastProfile })} />
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="location-market">Marked</FieldLabel>

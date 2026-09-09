@@ -2,6 +2,12 @@ import { MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { components } from "../_generated/api";
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
+  locationAddressSearch: {
+    kind: "token bucket",
+    period: 1100,
+    rate: 1,
+    capacity: 1,
+  },
   manualWorkfeedSync: {
     kind: "fixed window",
     period: 5 * MINUTE,
