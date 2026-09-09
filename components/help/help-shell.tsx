@@ -1,39 +1,43 @@
 import type { ReactNode } from "react";
-import { ArrowLeftIcon, BookOpenIcon, LayoutGridIcon } from "lucide-react";
+import { ArrowLeftIcon, BookOpenIcon } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
-import { helpFeatures } from "@/components/help/help-features";
-import { HelpNavigationLink } from "@/components/help/help-navigation";
-
-function HelpNavigation() {
-  return (
-    <aside className="sticky top-16 z-10 -mx-4 border-b bg-background px-4 py-2 lg:top-24 lg:mx-0 lg:mt-10 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto lg:border-0 lg:bg-transparent lg:p-0">
-      <nav aria-label="Hjælpeemner" className="overflow-x-auto lg:overflow-visible">
-        <ol className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
-          <li>
-            <HelpNavigationLink href="/help">
-              <LayoutGridIcon className="size-4 shrink-0" aria-hidden="true" />
-              <span>Overblik</span>
-            </HelpNavigationLink>
-          </li>
-          {helpFeatures.map((feature) => {
-            const Icon = feature.icon;
-            return (
-              <li key={feature.slug}>
-                <HelpNavigationLink href={`/help/${feature.slug}`}>
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  <span>{feature.label}</span>
-                </HelpNavigationLink>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-    </aside>
-  );
-}
+import { helpFeatures, helpPages } from "@/components/help/help-features";
+import { HelpNavigation } from "@/components/help/help-navigation";
+import { HelpSearch } from "./help-search";
 
 export function HelpShell({ children }: { children: ReactNode }) {
+  const searchDocuments = helpPages.map(({ feature, guide, href }) => ({
+    href,
+    feature: feature.label,
+    label: guide.label,
+    summary: guide.summary,
+    sections: [
+      ...guide.sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        text: [
+          ...(section.paragraphs ?? []),
+          ...(section.steps ?? []),
+          ...(section.bullets ?? []),
+          ...(section.screenshot
+            ? [section.screenshot.alt, section.screenshot.caption]
+            : []),
+        ].join(" "),
+      })),
+      ...(guide.troubleshooting?.length
+        ? [
+            {
+              id: "troubleshooting",
+              title: "Spørgsmål og fejlfinding",
+              text: guide.troubleshooting
+                .map((item) => `${item.question} ${item.answer}`)
+                .join(" "),
+            },
+          ]
+        : []),
+    ],
+  }));
   return (
     <main className="min-h-screen bg-background">
       <a
@@ -59,6 +63,9 @@ export function HelpShell({ children }: { children: ReactNode }) {
               </span>
             </span>
           </Link>
+          <div className="min-w-0 flex-1 sm:max-w-sm">
+            <HelpSearch documents={searchDocuments} />
+          </div>
           <Link
             href="/"
             className={buttonVariants({
@@ -68,13 +75,26 @@ export function HelpShell({ children }: { children: ReactNode }) {
             })}
           >
             <ArrowLeftIcon data-icon="inline-start" aria-hidden="true" />
-            Åbn appen
+            Tilbage til appen
           </Link>
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-x-8 px-4 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:px-8">
-        <HelpNavigation />
+      <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-x-8 px-4 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:px-8">
+        <HelpNavigation
+          topics={helpFeatures.map((feature) => {
+            const Icon = feature.icon;
+            return {
+              slug: feature.slug,
+              label: feature.label,
+              icon: <Icon className="size-4 shrink-0" aria-hidden="true" />,
+              guides: feature.guides.map(({ slug, label }) => ({
+                slug,
+                label,
+              })),
+            };
+          })}
+        />
         <div id="help-content" className="min-w-0">
           {children}
         </div>
