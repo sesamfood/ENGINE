@@ -3,8 +3,6 @@
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   DownloadIcon,
-  Grid2X2Icon,
-  ListIcon,
   PackageOpenIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -26,7 +24,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -55,7 +52,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
@@ -102,7 +98,6 @@ function Planner() {
   const [coverageInput, setCoverageInput] = useState("7");
   const [bufferInput, setBufferInput] = useState("10");
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"list" | "grid">("list");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
   const convex = useConvex();
@@ -606,25 +601,6 @@ function Planner() {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </InputGroup>
-            <ToggleGroup
-              value={[view]}
-              variant="outline"
-              className="ml-auto"
-              aria-label="Produktvisning"
-              onValueChange={(values) => {
-                if (values[0] === "list" || values[0] === "grid")
-                  setView(values[0]);
-              }}
-            >
-              <ToggleGroupItem value="list" aria-label="Liste">
-                <ListIcon />
-                <span className="hidden sm:inline">Liste</span>
-              </ToggleGroupItem>
-              <ToggleGroupItem value="grid" aria-label="Kort">
-                <Grid2X2Icon />
-                <span className="hidden sm:inline">Kort</span>
-              </ToggleGroupItem>
-            </ToggleGroup>
           </div>
           {loading ? (
             <div role="status" className="flex flex-col gap-3">
@@ -632,7 +608,7 @@ function Planner() {
                 Indlæser produkter, salg, Staff food og Waste…
               </p>
               {Array.from({ length: 5 }, (_, index) => (
-                <Skeleton key={index} className="h-16 w-full" />
+                <Skeleton key={index} className="h-20 w-full" />
               ))}
             </div>
           ) : !visible.length ? (
@@ -647,7 +623,7 @@ function Planner() {
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
-          ) : view === "list" ? (
+          ) : (
             <div className="overflow-hidden rounded-xl border">
               <Table>
                 <TableHeader>
@@ -661,12 +637,12 @@ function Planner() {
                 </TableHeader>
                 <TableBody>
                   {visible.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="min-w-44 whitespace-normal">
+                    <TableRow key={row.id} className="h-20">
+                      <TableCell className="min-w-44 py-3 whitespace-normal">
                         <div className="flex items-center gap-3">
-                          <Avatar size="lg">
+                          <Avatar className="size-14">
                             <AvatarImage src={row.imageUrl ?? undefined} alt="" />
-                            <AvatarFallback><PackageOpenIcon className="size-5" /></AvatarFallback>
+                            <AvatarFallback><PackageOpenIcon className="size-6" /></AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
                             <div className="font-medium">{row.name}</div>
@@ -719,63 +695,6 @@ function Planner() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {visible.map((row) => (
-                <Card key={row.id}>
-                  <CardHeader>
-                    <CardTitle>{row.name}</CardTitle>
-                    <CardDescription>
-                      {row.category} · {row.unitName}
-                      {row.hasIngredients ? " · Har ingredienser" : ""}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
-                    <dl className="grid grid-cols-2 gap-2 text-sm">
-                      <dt className="text-muted-foreground">Lager</dt>
-                      <dd>
-                        {row.stock === null
-                          ? "Ukendt"
-                          : numberFormatter.format(row.stock)}
-                      </dd>
-                      <dt className="text-muted-foreground">
-                        Forventet forbrug
-                      </dt>
-                      <dd>
-                        {row.forecast.demand === null
-                          ? "Intet forbrugsgrundlag"
-                          : numberFormatter.format(row.forecast.demand)}
-                      </dd>
-                      <dt className="text-muted-foreground">
-                        Heraf Staff food
-                      </dt>
-                      <dd>
-                        {numberFormatter.format(row.forecast.staffFoodDemand)}
-                      </dd>
-                      <dt className="text-muted-foreground">Heraf Waste</dt>
-                      <dd>
-                        {numberFormatter.format(row.forecast.wasteDemand)}
-                      </dd>
-                      <dt className="text-muted-foreground">Forslag</dt>
-                      <dd>
-                        {row.forecast.suggested === null
-                          ? "Angiv manuelt"
-                          : numberFormatter.format(row.forecast.suggested)}
-                      </dd>
-                    </dl>
-                    {row.forecast.limited ? (
-                      <p className="text-xs text-muted-foreground">
-                        Begrænset datagrundlag
-                      </p>
-                    ) : null}
-                    <div className="text-sm font-medium">
-                      Bestil i {row.unitName}
-                    </div>
-                    {quantityInput(row)}
-                  </CardContent>
-                </Card>
-              ))}
             </div>
           )}
           <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4">

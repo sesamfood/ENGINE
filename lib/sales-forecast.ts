@@ -3,7 +3,7 @@ import type { ForecastOpeningDay } from "./forecast-opening-hours";
 
 export const SALES_FORECAST_HISTORY_DAYS = 400;
 export const SALES_FORECAST_DAYS = 28;
-export const FORECAST_MODEL_VERSION = 4;
+export const FORECAST_MODEL_VERSION = 5;
 export const PRODUCT_FORECAST_HISTORY_DAYS = 90;
 
 export type ForecastCondition = {
@@ -314,7 +314,7 @@ export function forecastDailyDemand({
     }
   }
   // Shrink sparse weather/holiday effects; weekday and trend terms absorb calendar variation.
-  const penalties = [0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 8, 4, 4, 6, 6, 3];
+  const penalties = [0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 8, 4, 4, 5, 5, 2.5];
   for (let i = 0; i < dimensions; i++) matrix[i][i] += penalties[i];
   const coefficients = trainingDays >= 56 ? solve(matrix, target) : null;
   const recent = history.filter(
@@ -331,7 +331,7 @@ export function forecastDailyDemand({
     let weightSum = 0;
     const normal = [0, 0, 0];
     for (const row of samples) {
-      const weight = 0.5 ** ((dayNumber(today) - dayNumber(row.date)) / 28);
+      const weight = 0.5 ** ((dayNumber(today) - dayNumber(row.date)) / 21);
       valueSum += (weight * row.value) / exposure(row.date);
       weightSum += weight;
       const x = features(row.date);

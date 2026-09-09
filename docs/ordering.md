@@ -6,7 +6,7 @@
 
 ## Forecast
 
-`lib/ordering-forecast.ts` reads up to 90 complete local calendar days and forecasts each product's consumption quantities independently. The baseline uses the latest 56 days, with a weight that halves every 28 days. With fewer than two open samples for a weekday, it uses the weighted mean across open days. This is a simple seasonal baseline, following the use of seasonal benchmarks described in [Forecasting: Principles and Practice](https://otexts.com/fpp3/simple-methods.html). It has not been calibrated against this organization's future orders.
+`lib/ordering-forecast.ts` reads up to 90 complete local calendar days and forecasts each product's consumption quantities independently. The baseline uses the latest 56 days, with a weight that halves every 21 days. With fewer than two open samples for a weekday, it uses the weighted mean across open days. This is a simple seasonal baseline, following the use of seasonal benchmarks described in [Forecasting: Principles and Practice](https://otexts.com/fpp3/simple-methods.html). It has not been calibrated against this organization's future orders.
 
 Customer consumption comes from `salesStockApplications`, the stored ingredient consumption produced by OnlinePOS stock synchronization. No provider API runs when opening the page. Historical recipes, modifiers, and refunds are already represented in these records. Stored quantities are converted to the current default unit using the product's unit mappings. Historical sales entries are not expanded through today's recipes again. Missing conversions are flagged alongside unmapped sales. Removed sales applications are excluded. Pages have bounded reads and load to completion before suggestions or export become available.
 
