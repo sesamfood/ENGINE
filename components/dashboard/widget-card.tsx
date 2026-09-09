@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { defaultSalesSource, metricRegistry, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
@@ -337,37 +338,57 @@ export function WidgetCard({
                       <DialogTitle>Vælg visualisering</DialogTitle>
                       <DialogDescription>Samme data vist med alle kompatible visualiseringer.</DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <ToggleGroup
+                      value={[widget.visualization]}
+                      onValueChange={(values) => {
+                        const next = availableVisualizations.find((item) => item === values[0]);
+                        if (next) chooseVisualization(next);
+                      }}
+                      spacing={3}
+                      aria-label="Visualisering"
+                      className="grid w-full min-w-0 items-stretch gap-3 rounded-none md:grid-cols-2"
+                    >
                       {availableVisualizations.map((visualization) => {
                         const Visualization = visualizationRegistry[visualization];
                         return (
-                          <Card
+                          <ToggleGroupItem
                             key={visualization}
-                            size="sm"
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={widget.visualization === visualization}
-                            className={cn(
-                              "cursor-pointer outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
-                              widget.visualization === visualization && "ring-2 ring-primary/30",
+                            value={visualization}
+                            nativeButton={false}
+                            render={(props) => (
+                              <Card
+                                {...props}
+                                size="sm"
+                                data-size="sm"
+                                data-slot="card"
+                                className={cn(
+                                  "cursor-pointer outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
+                                  widget.visualization === visualization && "ring-2 ring-primary/30",
+                                )}
+                              />
                             )}
-                            onClick={() => chooseVisualization(visualization)}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter" && event.key !== " ") return;
-                              event.preventDefault();
-                              chooseVisualization(visualization);
-                            }}
                           >
                             <CardHeader>
                               <CardTitle>{visualizationLabels[visualization]}</CardTitle>
                             </CardHeader>
-                            <CardContent className="h-52 min-h-0 overflow-hidden">
+                            <CardContent
+                              className="h-52 min-h-0 overflow-hidden"
+                              onKeyDown={(event) => {
+                                if (
+                                  ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) &&
+                                  event.target instanceof Element &&
+                                  event.target.closest('[role="application"]')
+                                ) {
+                                  event.stopPropagation();
+                                }
+                              }}
+                            >
                               {result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
                             </CardContent>
-                          </Card>
+                          </ToggleGroupItem>
                         );
                       })}
-                    </div>
+                    </ToggleGroup>
                     {visualizationHasYAxis(widget.visualization) && onYAxisChange ? (
                       <div className="mt-4 flex flex-col gap-3 border-t pt-4">
                         <div>

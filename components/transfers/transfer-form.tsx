@@ -31,6 +31,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Empty } from "@/components/ui/empty";
 import {
   Field,
   FieldError,
@@ -818,9 +819,9 @@ export function TransferForm({
             </Field>
 
             {lines.length === 0 ? (
-              <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
+              <Empty className="block w-auto min-w-auto flex-initial border p-5 text-start text-wrap text-sm text-muted-foreground">
                 Ingen produkter tilføjet endnu.
-              </p>
+              </Empty>
             ) : (
               <ul className="flex flex-col gap-3">
                 {lineGroups.map((group) => {

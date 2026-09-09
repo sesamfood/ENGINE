@@ -38,6 +38,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -544,13 +545,13 @@ export function OwnCheckTemplates() {
         <CardContent className="flex flex-col gap-6">
           <section className="flex flex-col gap-3">
             <h3 className="font-medium">Aktive egenkontroller</h3>
-            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">Ingen aktive egenkontroller endnu.</div>}
+            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty className="block w-auto min-w-auto flex-initial border p-8 text-wrap text-muted-foreground">Ingen aktive egenkontroller endnu.</Empty>}
             {activeTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => activeTemplates.loadMore(50)}>Vis flere aktive</Button> : null}
             {activeTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere aktive egenkontroller…</div> : null}
           </section>
           {includeArchived ? <section className="flex flex-col gap-3">
             <h3 className="font-medium">Arkiverede egenkontroller</h3>
-            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">Ingen arkiverede egenkontroller endnu.</div>}
+            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty className="block w-auto min-w-auto flex-initial border p-8 text-wrap text-muted-foreground">Ingen arkiverede egenkontroller endnu.</Empty>}
             {archivedTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => archivedTemplates.loadMore(50)}>Vis flere arkiverede</Button> : null}
             {archivedTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere arkiverede egenkontroller…</div> : null}
           </section> : null}

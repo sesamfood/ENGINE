@@ -55,6 +55,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -1197,9 +1198,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 <FieldLegend className="sr-only">Ingredienser</FieldLegend>
                 <FieldGroup>
                   {ingredientRows.length === 0 ? (
-                    <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
+                    <Empty className="block w-auto min-w-auto flex-initial border p-5 text-start text-sm text-wrap text-muted-foreground">
                       Produktet har endnu ingen ingredienser.
-                    </p>
+                    </Empty>
                   ) : null}
                   {ingredientRows.map((row) => {
                     const selectedProduct = recipeProductOptions.find(
@@ -1330,9 +1331,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 </FieldLegend>
                 <FieldGroup>
                   {addableIngredientRows.length === 0 ? (
-                    <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
+                    <Empty className="block w-auto min-w-auto flex-initial border p-5 text-start text-sm text-wrap text-muted-foreground">
                       Der er endnu ingen ingredienser, der kan tilføjes.
-                    </p>
+                    </Empty>
                   ) : null}
                   {addableIngredientRows.map((row) => {
                     const selectedProduct = addableProductOptions.find(

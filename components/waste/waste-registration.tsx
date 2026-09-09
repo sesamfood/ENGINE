@@ -23,6 +23,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Empty,
@@ -619,112 +620,112 @@ export function WasteRegistration() {
         />
       </InputGroup>
 
-      {products.length ? (
-        <div className={productGridClassName}>
-          {products.map((product) => {
-            const config = configMap.get(product.id);
-            const shortcuts = shortcutsFor(
-              product,
-              rankMap.get(product.id)?.learnedShortcuts,
-              config?.shortcutOverrides,
-            );
-            return (
-              <Card
-                key={product.id}
-                className={cn(
-                  "relative isolate h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm lg:[--card-spacing:--spacing(4)]",
-                  recent?.startsWith(`${product.id}:`) && "ring-2 ring-primary",
-                )}
-              >
-                <div className="relative">
-                  <ProductCardMedia
-                    imageUrl={product.imageUrl}
-                    alt=""
-                    fallback={
-                      <ImageIcon
-                        className="size-10 lg:size-12"
-                        aria-hidden="true"
-                      />
-                    }
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                  />
-                  <CardHeader className="py-3 lg:py-4">
-                    <div className="flex min-w-0 items-baseline gap-2">
-                      <CardTitle className="min-w-0 flex-1 truncate">
-                        {product.name}
-                      </CardTitle>
-                      <CardDescription className="max-w-[45%] shrink-0 truncate">
-                        {product.categories
-                          .map((category) => category.name)
-                          .join(" · ")}
-                      </CardDescription>
-                    </div>
-                  </CardHeader>
-                  <button
-                    type="button"
-                    data-card-trigger
-                    className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                    aria-label={`Registrér en anden mængde Waste for ${product.name}`}
-                    onClick={() => openProduct(product)}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-lg"
-                    className="absolute right-1 top-1 z-10 size-11 rounded-full bg-background/85"
-                    aria-label={
-                      config?.pinnedAt
-                        ? `Fjern ${product.name} fra fastgjorte produkter`
-                        : `Fastgør ${product.name}`
-                    }
-                    aria-pressed={Boolean(config?.pinnedAt)}
-                    onClick={() => togglePin(product)}
-                  >
-                    <PinIcon
-                      className={cn(
-                        config?.pinnedAt && "fill-current text-primary",
-                      )}
-                    />
-                  </Button>
-                </div>
-                <CardContent className="grid grid-cols-2 gap-2 pb-3 lg:pb-4">
-                  {shortcuts.map((shortcut, index) => {
-                    const unit = product.units.find(
-                      (item) => item.id === shortcut.unitId,
-                    );
-                    const key = `${product.id}:${shortcut.unitId}:${shortcut.quantity}`;
-                    return (
-                      <Button
-                        key={`${shortcut.unitId}:${shortcut.quantity}`}
-                        variant={index === 0 ? "default" : "outline"}
-                        className={cn(
-                          "h-12 min-w-0 px-2",
-                          recent === key && "ring-3 ring-ring/40",
-                        )}
-                        onClick={() => register(product, shortcut, "shortcut")}
-                      >
-                        {formatQuantity(shortcut.quantity)} {unit?.name}
-                      </Button>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      ) : (
-        <Empty className="min-h-56">
-          <EmptyHeader>
-            <EmptyTitle>Ingen produkter fundet</EmptyTitle>
-            <EmptyDescription>Prøv et andet søgeord.</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )}
-
       <Dialog
         open={Boolean(selected)}
         onOpenChange={(open) => !open && setSelectedId(null)}
       >
+        {products.length ? (
+          <div className={productGridClassName}>
+            {products.map((product) => {
+              const config = configMap.get(product.id);
+              const shortcuts = shortcutsFor(
+                product,
+                rankMap.get(product.id)?.learnedShortcuts,
+                config?.shortcutOverrides,
+              );
+              return (
+                <Card
+                  key={product.id}
+                  className={cn(
+                    "relative isolate h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm lg:[--card-spacing:--spacing(4)]",
+                    recent?.startsWith(`${product.id}:`) && "ring-2 ring-primary",
+                  )}
+                >
+                  <div className="relative">
+                    <ProductCardMedia
+                      imageUrl={product.imageUrl}
+                      alt=""
+                      fallback={
+                        <ImageIcon
+                          className="size-10 lg:size-12"
+                          aria-hidden="true"
+                        />
+                      }
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                    />
+                    <CardHeader className="py-3 lg:py-4">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <CardTitle className="min-w-0 flex-1 truncate">
+                          {product.name}
+                        </CardTitle>
+                        <CardDescription className="max-w-[45%] shrink-0 truncate">
+                          {product.categories
+                            .map((category) => category.name)
+                            .join(" · ")}
+                        </CardDescription>
+                      </div>
+                    </CardHeader>
+                    <DialogTrigger
+                      type="button"
+                      data-card-trigger
+                      className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                      aria-label={`Registrér en anden mængde Waste for ${product.name}`}
+                      onClick={() => openProduct(product)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-lg"
+                      className="absolute right-1 top-1 z-10 size-11 rounded-full bg-background/85"
+                      aria-label={
+                        config?.pinnedAt
+                          ? `Fjern ${product.name} fra fastgjorte produkter`
+                          : `Fastgør ${product.name}`
+                      }
+                      aria-pressed={Boolean(config?.pinnedAt)}
+                      onClick={() => togglePin(product)}
+                    >
+                      <PinIcon
+                        className={cn(
+                          config?.pinnedAt && "fill-current text-primary",
+                        )}
+                      />
+                    </Button>
+                  </div>
+                  <CardContent className="grid grid-cols-2 gap-2 pb-3 lg:pb-4">
+                    {shortcuts.map((shortcut, index) => {
+                      const unit = product.units.find(
+                        (item) => item.id === shortcut.unitId,
+                      );
+                      const key = `${product.id}:${shortcut.unitId}:${shortcut.quantity}`;
+                      return (
+                        <Button
+                          key={`${shortcut.unitId}:${shortcut.quantity}`}
+                          variant={index === 0 ? "default" : "outline"}
+                          className={cn(
+                            "h-12 min-w-0 px-2",
+                            recent === key && "ring-3 ring-ring/40",
+                          )}
+                          onClick={() => register(product, shortcut, "shortcut")}
+                        >
+                          {formatQuantity(shortcut.quantity)} {unit?.name}
+                        </Button>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty className="min-h-56">
+            <EmptyHeader>
+              <EmptyTitle>Ingen produkter fundet</EmptyTitle>
+              <EmptyDescription>Prøv et andet søgeord.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+
         <DialogContent className="sm:max-w-lg">
           {selected ? (
             <>

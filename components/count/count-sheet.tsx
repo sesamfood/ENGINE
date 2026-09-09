@@ -45,6 +45,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Empty,
@@ -356,7 +357,7 @@ function ProductCard({
             </div>
           </CardHeader>
           {!editingOrder ? (
-            <button
+            <DialogTrigger
               type="button"
               data-card-trigger
               className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
