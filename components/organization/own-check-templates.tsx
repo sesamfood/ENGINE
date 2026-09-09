@@ -67,7 +67,6 @@ type Draft = {
   allLocations: boolean;
   locationIds: Id<"locations">[];
   responsibleRole: string;
-  reason: string;
 };
 
 const controlTypes: Array<{ value: OwnCheckControlType; label: string }> = [
@@ -87,6 +86,16 @@ const fieldTypes = [
   { value: "text", label: "Tekst" },
   { value: "attachment", label: "Fil" },
 ] as const;
+
+const weekdays = [
+  { day: 1, label: "Man" },
+  { day: 2, label: "Tir" },
+  { day: 3, label: "Ons" },
+  { day: 4, label: "Tor" },
+  { day: 5, label: "Fre" },
+  { day: 6, label: "Lør" },
+  { day: 0, label: "Søn" },
+];
 
 function newFieldKey() {
   return `field-${crypto.randomUUID()}`;
@@ -111,7 +120,6 @@ function newDraft(): Draft {
     allLocations: true,
     locationIds: [],
     responsibleRole: "",
-    reason: "",
   };
 }
 
@@ -130,7 +138,6 @@ function draftFromTemplate(template: Template): Draft {
     allLocations: template.allLocations,
     locationIds: template.locationIds,
     responsibleRole: template.responsibleRole ?? "",
-    reason: "",
   };
 }
 
@@ -295,7 +302,6 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
   const dateContextLocationId = draft.allLocations ? locations[0]?.id : draft.locationIds[0] ?? locations[0]?.id;
   const now = useOwnCheckNow(`${mode && mode !== "new" ? mode.id : "new"}:${dateContextLocationId ?? ""}`);
   const dateContext = useQuery(api.ownCheckTemplates.getTemplateDateContext, dateContextLocationId ? { locationId: dateContextLocationId, now } : "skip");
-  const templateDetails = useQuery(api.ownCheckTemplates.getTemplate, mode && mode !== "new" ? { templateId: mode.id } : "skip");
   const responsibleRoles = useQuery(api.ownCheckTemplates.listResponsibleRoles, {});
 
   function responsibleRoleLabel(key: string) {
@@ -338,7 +344,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
         locationIds: draft.locationIds,
         ...(draft.responsibleRole.trim() ? { responsibleRole: draft.responsibleRole.trim() } : {}),
       };
-      if (mode && mode !== "new") await updateTemplate({ ...payload, templateId: mode.id, reason: draft.reason, removedFieldKeys: draft.originalFieldKeys.filter((key) => !draft.fields.some((field) => field.key === key)) });
+      if (mode && mode !== "new") await updateTemplate({ ...payload, templateId: mode.id, reason: "Opdatering af egenkontrol", removedFieldKeys: draft.originalFieldKeys.filter((key) => !draft.fields.some((field) => field.key === key)) });
       else await createTemplate(payload);
       toast.success(mode && mode !== "new" ? "Egenkontrollen er opdateret" : "Egenkontrollen er oprettet");
       onSaved();
@@ -383,9 +389,16 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
               <HelpTooltip label="Billede" content="Valgfrit billede, som vises i listen og på kontrollen. Brug JPEG, PNG eller WebP på højst 10 MB." />
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted text-muted-foreground">
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={imageUrl ? "Skift billede" : "Vælg billede"}
+                disabled={saving}
+                onClick={() => imageInputRef.current?.click()}
+                className="relative size-24 overflow-hidden bg-muted p-0 text-muted-foreground"
+              >
                 {imageUrl ? <Image src={imageUrl} alt="Billede af kontrollen" fill unoptimized sizes="96px" className="object-cover" /> : <ImageIcon className="size-8" />}
-              </div>
+              </Button>
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <Input
                   ref={imageInputRef}
@@ -429,7 +442,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
             <FieldTitle>Frekvens og tidsrum</FieldTitle>
             <FieldGroup className="grid md:grid-cols-2">
               <Field><FieldLabel htmlFor="own-template-schedule">Frekvens</FieldLabel><Select items={[{ value: "daily", label: "Dagligt" }, { value: "weekly", label: "Ugentligt" }, { value: "monthly", label: "Månedligt" }, { value: "interval", label: "Fast interval" }]} value={draft.schedule.type} onValueChange={changeSchedule}><SelectTrigger id="own-template-schedule" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="daily">Dagligt</SelectItem><SelectItem value="weekly">Ugentligt</SelectItem><SelectItem value="monthly">Månedligt</SelectItem><SelectItem value="interval">Fast interval</SelectItem></SelectGroup></SelectContent></Select></Field>
-              {draft.schedule.type === "weekly" ? <Field><FieldLabel>Ugedage</FieldLabel><div className="grid grid-cols-4 gap-2">{["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"].map((label, day) => <label key={label} className="flex min-h-11 items-center gap-2 rounded-md border px-2 text-sm"><Checkbox checked={draft.schedule.type === "weekly" && draft.schedule.weekdays.includes(day)} onCheckedChange={(checked) => setDraft((current) => current.schedule.type !== "weekly" ? current : { ...current, schedule: { ...current.schedule, weekdays: checked ? [...current.schedule.weekdays, day] : current.schedule.weekdays.filter((item) => item !== day) } })} />{label}</label>)}</div></Field> : null}
+              {draft.schedule.type === "weekly" ? <Field><FieldLabel>Ugedage</FieldLabel><div className="grid grid-cols-4 gap-2">{weekdays.map(({ label, day }) => <label key={day} className="flex min-h-11 items-center gap-2 rounded-md border px-2 text-sm"><Checkbox checked={draft.schedule.type === "weekly" && draft.schedule.weekdays.includes(day)} onCheckedChange={(checked) => setDraft((current) => current.schedule.type !== "weekly" ? current : { ...current, schedule: { ...current.schedule, weekdays: checked ? [...current.schedule.weekdays, day] : current.schedule.weekdays.filter((item) => item !== day) } })} />{label}</label>)}</div></Field> : null}
               {draft.schedule.type === "monthly" ? <Field><FieldLabel htmlFor="own-template-month-days">Månedsdage</FieldLabel><Input id="own-template-month-days" value={draft.schedule.days.join(",")} onChange={(event) => setDraft((current) => current.schedule.type !== "monthly" ? current : { ...current, schedule: { ...current.schedule, days: event.target.value.split(",").map(Number).filter((value) => Number.isFinite(value)) } })} /><FieldDescription>Brug 1–28 eller 0 for sidste dag i måneden.</FieldDescription></Field> : null}
               {draft.schedule.type === "interval" ? <FieldGroup className="grid grid-cols-2"><Field><FieldLabel htmlFor="own-template-interval">Antal dage</FieldLabel><Input id="own-template-interval" type="number" min={1} max={365} value={draft.schedule.intervalDays} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, intervalDays: Number(event.target.value) } })} /></Field><Field><FieldLabel htmlFor="own-template-anchor">Startdato</FieldLabel><Input id="own-template-anchor" type="date" value={draft.schedule.anchorDate} onChange={(event) => setDraft((current) => current.schedule.type !== "interval" ? current : { ...current, schedule: { ...current.schedule, anchorDate: event.target.value } })} /><FieldDescription>Standarddatoen følger den valgte lokations tidszone.</FieldDescription></Field></FieldGroup> : null}
             </FieldGroup>
@@ -469,8 +482,6 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
             </Combobox>
           </Field>
           <FieldEditor draft={draft} setDraft={setDraft} />
-          {mode && mode !== "new" ? <Card><CardHeader><CardTitle className="text-base">Versionshistorik</CardTitle><CardDescription>Historiske felter og grænser bevares for tidligere registreringer.</CardDescription></CardHeader><CardContent>{templateDetails === undefined ? <Spinner /> : templateDetails?.versions.length ? <div className="flex flex-col gap-3">{templateDetails.versions.map((version) => <div key={version.id} className="rounded-lg border p-3 text-sm"><div className="flex flex-wrap items-baseline justify-between gap-2"><p className="font-medium">Version {version.version}</p><p className="text-muted-foreground">{new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validFrom)} – {version.validTo === null ? "nu" : new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validTo)}</p></div><p className="text-muted-foreground">Oprettet af {version.createdByName}</p><ul className="mt-2 flex flex-col gap-1">{version.fields.map((field) => <li key={field.key}>{field.label} · {field.type}{field.type === "number" && (field.min !== undefined || field.max !== undefined) ? ` · ${field.min ?? ""}–${field.max ?? ""}` : ""}</li>)}</ul></div>)}</div> : <p className="text-sm text-muted-foreground">Ingen historik tilgængelig.</p>}</CardContent></Card> : null}
-          {mode && mode !== "new" ? <Field><FieldLabel htmlFor="own-template-reason">Begrundelse</FieldLabel><Input id="own-template-reason" value={draft.reason} onChange={(event) => setDraft((current) => ({ ...current, reason: event.target.value }))} placeholder="Angiv en begrundelse" required /></Field> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Annullér</Button>
             <Button type="submit" size="lg" disabled={saving}>{saving ? <Spinner data-icon="inline-start" /> : null}Gem egenkontrol</Button>
