@@ -1,39 +1,62 @@
 import type { ReactNode } from "react";
-import { ArrowLeftIcon, BookOpenIcon, LayoutGridIcon } from "lucide-react";
+import { ArrowLeftIcon } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
-import { helpFeatures } from "@/components/help/help-features";
-import { HelpNavigationLink } from "@/components/help/help-navigation";
+import { helpFeatures, helpPages } from "@/components/help/help-features";
+import {
+  HelpNavigation,
+  type NavigationGuide,
+} from "@/components/help/help-navigation";
+import type { HelpGuide } from "./help-types";
+import { HelpSearch } from "./help-search";
 
-function HelpNavigation() {
-  return (
-    <aside className="sticky top-16 z-10 -mx-4 border-b bg-background px-4 py-2 lg:top-24 lg:mx-0 lg:mt-10 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto lg:border-0 lg:bg-transparent lg:p-0">
-      <nav aria-label="Hjælpeemner" className="overflow-x-auto lg:overflow-visible">
-        <ol className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
-          <li>
-            <HelpNavigationLink href="/help">
-              <LayoutGridIcon className="size-4 shrink-0" aria-hidden="true" />
-              <span>Overblik</span>
-            </HelpNavigationLink>
-          </li>
-          {helpFeatures.map((feature) => {
-            const Icon = feature.icon;
-            return (
-              <li key={feature.slug}>
-                <HelpNavigationLink href={`/help/${feature.slug}`}>
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  <span>{feature.label}</span>
-                </HelpNavigationLink>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-    </aside>
-  );
+function navigationGuides(
+  guides: HelpGuide[],
+  baseHref: string,
+): NavigationGuide[] {
+  return guides.map((guide) => {
+    const href = `${baseHref}/${guide.slug}`;
+    return {
+      href,
+      label: guide.label,
+      children: navigationGuides(guide.children ?? [], href),
+    };
+  });
 }
 
 export function HelpShell({ children }: { children: ReactNode }) {
+  const searchDocuments = helpPages.map(({ feature, guide, href, parents }) => ({
+    href,
+    feature: [feature.label, ...parents.map((parent) => parent.label)].join(" · "),
+    label: guide.label,
+    summary: guide.summary,
+    sections: [
+      ...guide.sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        text: [
+          ...(section.paragraphs ?? []),
+          ...(section.steps ?? []),
+          ...(section.bullets ?? []),
+          ...(section.screenshot
+            ? [section.screenshot.alt, section.screenshot.caption]
+            : []),
+        ].join(" "),
+      })),
+      ...(guide.troubleshooting?.length
+        ? [
+            {
+              id: "troubleshooting",
+              title: "Spørgsmål og fejlfinding",
+              text: guide.troubleshooting
+                .map((item) => `${item.question} ${item.answer}`)
+                .join(" "),
+            },
+          ]
+        : []),
+    ],
+  }));
   return (
     <main className="min-h-screen bg-background">
       <a
@@ -49,9 +72,15 @@ export function HelpShell({ children }: { children: ReactNode }) {
             href="/help"
             className="flex min-h-11 items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <span className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <BookOpenIcon className="size-4" aria-hidden="true" />
-            </span>
+            <Image
+              src="/favicon.ico"
+              alt=""
+              width={36}
+              height={36}
+              unoptimized
+              loading="eager"
+              className="size-9 shrink-0 object-contain"
+            />
             <span>
               <span className="block text-sm font-semibold">Hjælp</span>
               <span className="hidden text-xs text-muted-foreground sm:block">
@@ -59,6 +88,9 @@ export function HelpShell({ children }: { children: ReactNode }) {
               </span>
             </span>
           </Link>
+          <div className="min-w-0 flex-1 sm:max-w-sm">
+            <HelpSearch documents={searchDocuments} />
+          </div>
           <Link
             href="/"
             className={buttonVariants({
@@ -68,13 +100,24 @@ export function HelpShell({ children }: { children: ReactNode }) {
             })}
           >
             <ArrowLeftIcon data-icon="inline-start" aria-hidden="true" />
-            Åbn appen
+            Tilbage til appen
           </Link>
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-x-8 px-4 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:px-8">
-        <HelpNavigation />
+      <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-x-8 px-4 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:px-8">
+        <HelpNavigation
+          topics={helpFeatures.map((feature) => {
+            const Icon = feature.icon;
+            return {
+              slug: feature.slug,
+              href: `/help/${feature.slug}/overblik`,
+              label: feature.label,
+              icon: <Icon className="size-4 shrink-0" aria-hidden="true" />,
+              children: navigationGuides(feature.guides, `/help/${feature.slug}`),
+            };
+          })}
+        />
         <div id="help-content" className="min-w-0">
           {children}
         </div>

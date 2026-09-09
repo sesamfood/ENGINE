@@ -1,71 +1,96 @@
-import { ArrowRightIcon, SettingsIcon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 import Link from "next/link";
-import { helpFeatures } from "@/components/help/help-features";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { helpFeatures, helpPages } from "./help-features";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 
 export function HelpIndex() {
   return (
-    <div className="flex flex-col gap-9 py-8 sm:gap-10 sm:py-12">
-      <header className="flex max-w-2xl flex-col gap-3">
+    <div className="flex max-w-5xl flex-col gap-10 py-8 sm:gap-12 sm:py-12">
+      <header className="flex max-w-2xl flex-col items-start gap-4">
+        <p className="text-sm font-medium text-muted-foreground">
+          Opsætning og daglig brug
+        </p>
         <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          Hjælp til funktioner og opsætning
+          Hjælp til hele driften
         </h1>
         <p className="text-base leading-7 text-muted-foreground">
-          Vælg en funktion, og følg opsætningen trin for trin. Guiderne viser,
-          hvad du skal have klar, hvor du finder indstillingerne, og hvordan du
-          tjekker, at alt er klar til brug.
+          Start med organisationens opsætning, og følg guiderne frem til den
+          daglige drift. Du kan også vælge en funktion herunder eller søge efter
+          en bestemt opgave.
         </p>
+        <Link
+          href={helpPages[0]?.href ?? "/help/administration/overblik"}
+          className={buttonVariants({ size: "lg", className: "min-h-11" })}
+        >
+          Læs fra begyndelsen
+          <ArrowRightIcon data-icon="inline-end" aria-hidden="true" />
+        </Link>
       </header>
 
-      <Alert role="note" className="p-4">
-        <SettingsIcon aria-hidden="true" />
-        <AlertTitle>Skal du sætte organisationen op?</AlertTitle>
-        <AlertDescription className="flex flex-col items-start gap-2">
-          <p>Start med lokationer, brugere og rettigheder i Administration.</p>
-          <Link
-            href="/help/administration"
-            className="inline-flex min-h-11 items-center gap-2 rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            Se guiden til Administration
-            <ArrowRightIcon className="size-4" aria-hidden="true" />
-          </Link>
-        </AlertDescription>
-      </Alert>
-
       <section aria-labelledby="topics-title">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="topics-title" className="text-xl font-semibold tracking-tight">
-            Vælg en funktion
+        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
+          <h2
+            id="topics-title"
+            className="text-xl font-semibold tracking-tight"
+          >
+            Find din funktion
           </h2>
-          <Badge variant="outline">{helpFeatures.length} guider</Badge>
+          <p className="text-sm text-muted-foreground">
+            Overblik, opsætning og brug i hvert emne
+          </p>
         </div>
-
-        <ul className="divide-y border-y">
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {helpFeatures.map((feature) => {
             const Icon = feature.icon;
+            const guideCount = helpPages.filter(
+              (page) =>
+                page.feature.slug === feature.slug &&
+                page.guide.slug !== "overblik",
+            ).length;
             return (
               <li key={feature.slug}>
                 <Link
-                  href={`/help/${feature.slug}`}
-                  className="group grid min-h-24 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 py-5 outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 sm:items-center sm:px-3 xl:grid-cols-[1.25rem_minmax(9rem,0.4fr)_minmax(0,1fr)_auto]"
+                  href={`/help/${feature.slug}/overblik`}
+                  className="group block h-full rounded-xl outline-none transition-shadow hover:ring-2 hover:ring-primary/30 focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
-                  <Icon className="mt-0.5 size-5 text-muted-foreground sm:mt-0" aria-hidden="true" />
-                  <span className="font-semibold">{feature.label}</span>
-                  <span className="col-start-2 row-start-2 text-sm leading-6 text-muted-foreground xl:col-start-3 xl:row-start-1">
-                    {feature.summary}
-                  </span>
-                  <ArrowRightIcon className="col-start-3 row-start-1 mt-1 size-4 text-muted-foreground sm:mt-0 xl:col-start-4" aria-hidden="true" />
+                  <Card className="h-full gap-4 py-5">
+                    <CardHeader className="gap-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <Icon
+                          className="size-5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <ArrowRightIcon
+                          className="size-4 text-muted-foreground transition-transform motion-safe:group-hover:translate-x-1"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <CardTitle>
+                        <h3>{feature.label}</h3>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-1 flex-col gap-4">
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        {feature.summary}
+                      </p>
+                      <p className="mt-auto text-xs text-muted-foreground">
+                        Overblik og {guideCount}{" "}
+                        {guideCount === 1 ? "guide" : "guider"}
+                      </p>
+                    </CardContent>
+                  </Card>
                 </Link>
               </li>
             );
           })}
         </ul>
-        <p className="mt-5 text-sm leading-6 text-muted-foreground">
-          Din rolle og organisationens opsætning bestemmer, hvilke funktioner og
-          indstillinger du har adgang til.
-        </p>
       </section>
+      <p className="max-w-2xl border-t pt-6 text-sm leading-6 text-muted-foreground">
+        Din rolle og organisationens opsætning bestemmer, hvilke funktioner du
+        kan bruge. Hvert emne starter med et overblik. Brug Næste nederst på
+        siderne for at læse videre i rækkefølge.
+      </p>
     </div>
   );
 }

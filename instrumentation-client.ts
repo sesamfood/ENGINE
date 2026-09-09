@@ -16,6 +16,7 @@ if (!token) {
     ui_host: host ?? "https://eu.posthog.com",
     defaults: "2026-01-30",
     capture_exceptions: true,
+    disable_session_recording: process.env.NODE_ENV === "development",
     // Flag requests bypass before_send and include unredacted initial URLs.
     advanced_disable_feature_flags: true,
     before_send(event) {
