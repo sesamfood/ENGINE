@@ -31,9 +31,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -50,6 +52,7 @@ type EditorMode = Template | "new" | null;
 type Draft = {
   name: string;
   description: string;
+  instructions: string;
   controlType: OwnCheckControlType;
   schedule: OwnCheckSchedule;
   startMinuteOfDay: number | undefined;
@@ -92,6 +95,7 @@ function newDraft(): Draft {
   return {
     name: "",
     description: "",
+    instructions: "",
     controlType: "temperature",
     schedule: { type: "daily" },
     startMinuteOfDay: undefined,
@@ -109,6 +113,7 @@ function draftFromTemplate(template: Template): Draft {
   return {
     name: template.name,
     description: template.description,
+    instructions: template.instructions ?? "",
     controlType: template.controlType,
     schedule: template.schedule,
     startMinuteOfDay: template.startMinuteOfDay ?? undefined,
@@ -230,6 +235,12 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
   const now = useOwnCheckNow(`${mode && mode !== "new" ? mode.id : "new"}:${dateContextLocationId ?? ""}`);
   const dateContext = useQuery(api.ownCheckTemplates.getTemplateDateContext, dateContextLocationId ? { locationId: dateContextLocationId, now } : "skip");
   const templateDetails = useQuery(api.ownCheckTemplates.getTemplate, mode && mode !== "new" ? { templateId: mode.id } : "skip");
+  const responsibleRoles = useQuery(api.ownCheckTemplates.listResponsibleRoles, {});
+
+  function responsibleRoleLabel(key: string) {
+    if (!key) return "Ingen ansvarlig rolle";
+    return responsibleRoles?.find((role) => role.key === key)?.name ?? key;
+  }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -238,6 +249,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
       const payload = {
         name: draft.name,
         description: draft.description,
+        instructions: draft.instructions,
         controlType: draft.controlType,
         schedule: draft.schedule,
         ...(draft.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: draft.startMinuteOfDay }),
@@ -287,6 +299,19 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
             <Field><FieldLabel htmlFor="own-template-type">Kontroltype</FieldLabel><Select items={controlTypes} value={draft.controlType} onValueChange={(value) => value && setDraft((current) => ({ ...current, controlType: value as OwnCheckControlType }))}><SelectTrigger id="own-template-type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{controlTypes.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
           </FieldGroup>
           <Field><FieldLabel htmlFor="own-template-description">Beskrivelse</FieldLabel><Textarea id="own-template-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={1000} /></Field>
+          <Field>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-instructions">Instruktioner</FieldLabel>
+              <HelpTooltip label="Instruktioner" content="Beskriv, hvordan kontrollen skal udføres. Instruktionerne vises, når brugeren åbner kontrollen." />
+            </div>
+            <Textarea
+              id="own-template-instructions"
+              value={draft.instructions}
+              onChange={(event) => setDraft((current) => ({ ...current, instructions: event.target.value }))}
+              maxLength={4000}
+              rows={5}
+            />
+          </Field>
           <FieldSet>
             <FieldTitle>Frekvens og tidsrum</FieldTitle>
             <FieldGroup className="grid md:grid-cols-2">
@@ -305,7 +330,31 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
             <Field orientation="horizontal"><FieldContent><FieldLabel htmlFor="own-template-all-locations">Alle lokationer</FieldLabel></FieldContent><Switch id="own-template-all-locations" checked={draft.allLocations} onCheckedChange={(checked) => setDraft((current) => ({ ...current, allLocations: checked }))} /></Field>
             {!draft.allLocations ? <div className="grid gap-2 md:grid-cols-2">{locations.map((location) => <label key={location.id} className="flex min-h-11 items-center gap-2 rounded-md border px-3"><Checkbox checked={draft.locationIds.includes(location.id)} onCheckedChange={(checked) => setDraft((current) => ({ ...current, locationIds: checked ? [...current.locationIds, location.id] : current.locationIds.filter((id) => id !== location.id) }))} />{location.name}</label>)}</div> : null}
           </FieldSet>
-          <Field><FieldLabel htmlFor="own-template-role">Ansvarlig rolle</FieldLabel><Input id="own-template-role" value={draft.responsibleRole} onChange={(event) => setDraft((current) => ({ ...current, responsibleRole: event.target.value }))} placeholder="Valgfrit" /><FieldDescription>Rollen bruges til visning og filtrering, men begrænser ikke, hvem der kan udføre kontrollen.</FieldDescription></Field>
+          <Field data-disabled={responsibleRoles === undefined}>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-role">Ansvarlig rolle</FieldLabel>
+              <HelpTooltip label="Ansvarlig rolle" content="Rollen bruges til visning og filtrering, men begrænser ikke, hvem der kan udføre kontrollen." />
+            </div>
+            <Combobox
+              items={["", ...(responsibleRoles ?? []).map((role) => role.key)]}
+              value={draft.responsibleRole || null}
+              itemToStringLabel={responsibleRoleLabel}
+              disabled={responsibleRoles === undefined}
+              onValueChange={(key) => setDraft((current) => ({ ...current, responsibleRole: key ?? "" }))}
+            >
+              <ComboboxInput
+                id="own-template-role"
+                disabled={responsibleRoles === undefined}
+                placeholder={responsibleRoles === undefined ? "Henter roller…" : "Vælg eller søg efter rolle"}
+              />
+              <ComboboxContent>
+                <ComboboxEmpty>Ingen roller matcher søgningen.</ComboboxEmpty>
+                <ComboboxList>
+                  {(key: string) => <ComboboxItem key={key} value={key}>{responsibleRoleLabel(key)}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+          </Field>
           <FieldEditor draft={draft} setDraft={setDraft} />
           {mode && mode !== "new" ? <Card><CardHeader><CardTitle className="text-base">Versionshistorik</CardTitle><CardDescription>Historiske felter og grænser bevares for tidligere registreringer.</CardDescription></CardHeader><CardContent>{templateDetails === undefined ? <Spinner /> : templateDetails?.versions.length ? <div className="flex flex-col gap-3">{templateDetails.versions.map((version) => <div key={version.id} className="rounded-lg border p-3 text-sm"><div className="flex flex-wrap items-baseline justify-between gap-2"><p className="font-medium">Version {version.version}</p><p className="text-muted-foreground">{new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validFrom)} – {version.validTo === null ? "nu" : new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeZone: "UTC" }).format(version.validTo)}</p></div><p className="text-muted-foreground">Oprettet af {version.createdByName}</p><ul className="mt-2 flex flex-col gap-1">{version.fields.map((field) => <li key={field.key}>{field.label} · {field.type}{field.type === "number" && (field.min !== undefined || field.max !== undefined) ? ` · ${field.min ?? ""}–${field.max ?? ""}` : ""}</li>)}</ul></div>)}</div> : <p className="text-sm text-muted-foreground">Ingen historik tilgængelig.</p>}</CardContent></Card> : null}
           {mode && mode !== "new" ? <Field><FieldLabel htmlFor="own-template-reason">Begrundelse</FieldLabel><Input id="own-template-reason" value={draft.reason} onChange={(event) => setDraft((current) => ({ ...current, reason: event.target.value }))} placeholder="Angiv en begrundelse" required /></Field> : null}
@@ -385,7 +434,15 @@ export function OwnCheckTemplates() {
           </section> : null}
         </CardContent>
       </Card>
-      <TemplateEditor mode={editor} locations={locations} onClose={() => setEditor(null)} onSaved={() => setEditor(null)} />
+      {editor ? (
+        <TemplateEditor
+          key={editor === "new" ? "new" : editor.id}
+          mode={editor}
+          locations={locations}
+          onClose={() => setEditor(null)}
+          onSaved={() => setEditor(null)}
+        />
+      ) : null}
       <AlertDialog open={Boolean(action)} onOpenChange={(open) => !open && setAction(null)}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>{action?.type === "archive" ? "Arkivér egenkontrollen?" : "Gendan egenkontrollen?"}</AlertDialogTitle><AlertDialogDescription>{action?.type === "archive" ? "Nye datoer får ikke længere planlagt denne kontrol. Historikken bevares." : "Kontrollen bliver planlagt igen fra den nye versions gyldighed."}</AlertDialogDescription></AlertDialogHeader>

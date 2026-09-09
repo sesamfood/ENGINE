@@ -286,6 +286,7 @@ export function planItem(
     name: version.name,
     controlType: version.controlType,
     description: version.description,
+    instructions: version.instructions ?? "",
     fields: version.fields,
     responsibleRole: version.responsibleRole ?? null,
     dueDateKey: occurrence.dueDateKey,

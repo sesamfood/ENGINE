@@ -3,7 +3,7 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { systemRoleKeys } from "../lib/auth-permissions";
+import { systemRoleKeys, systemRoleNames } from "../lib/auth-permissions";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
@@ -22,6 +22,7 @@ import { MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./l
 
 const MAX_ACTIVE_TEMPLATES = 200;
 const MAX_TEMPLATE_PAGE_SIZE = 100;
+const MAX_RESPONSIBLE_ROLES = 1_000;
 type TemplateContext = QueryCtx | MutationCtx;
 
 function requirePageSize(numItems: number) {
@@ -33,6 +34,7 @@ function requirePageSize(numItems: number) {
 const versionFieldsValidator = v.object({
   name: v.string(),
   description: v.string(),
+  instructions: v.optional(v.string()),
   controlType: ownCheckControlTypeValidator,
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.optional(v.number()),
@@ -52,6 +54,7 @@ const templateSummaryValidator = v.object({
   archivedAt: v.union(v.number(), v.null()),
   version: v.number(),
   description: v.string(),
+  instructions: v.string(),
   controlType: ownCheckControlTypeValidator,
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
@@ -70,6 +73,7 @@ const versionOutputValidator = v.object({
   version: v.number(),
   name: v.string(),
   description: v.string(),
+  instructions: v.string(),
   controlType: ownCheckControlTypeValidator,
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
@@ -183,6 +187,7 @@ function validateSchedule(schedule: Doc<"ownCheckTemplateVersions">["schedule"])
 type VersionFields = {
   name: string;
   description: string;
+  instructions?: string;
   controlType: Doc<"ownCheckTemplateVersions">["controlType"];
   schedule: Doc<"ownCheckTemplateVersions">["schedule"];
   startMinuteOfDay?: number;
@@ -201,6 +206,8 @@ async function validateVersionFields(
   const { name, normalizedName } = normalizeName(input.name);
   const description = input.description.trim();
   if (description.length > 1_000) throw new ConvexError("Beskrivelsen må højst være 1.000 tegn");
+  const instructions = input.instructions?.trim() ?? "";
+  if (instructions.length > 4_000) throw new ConvexError("Instruktionerne må højst være 4.000 tegn");
   validateFields(input.fields);
   validateSchedule(input.schedule);
   if (input.startMinuteOfDay !== undefined) requireMinute(input.startMinuteOfDay);
@@ -223,7 +230,7 @@ async function validateVersionFields(
       .unique();
     if (!role) throw new ConvexError("Den ansvarlige rolle findes ikke");
   }
-  return { name, normalizedName, description, responsibleRole };
+  return { name, normalizedName, description, instructions, responsibleRole };
 }
 
 async function currentVersion(
@@ -246,6 +253,7 @@ function versionOutput(row: Doc<"ownCheckTemplateVersions">) {
     version: row.version,
     name: row.name,
     description: row.description,
+    instructions: row.instructions ?? "",
     controlType: row.controlType,
     schedule: row.schedule,
     startMinuteOfDay: row.startMinuteOfDay ?? null,
@@ -275,6 +283,7 @@ function summaryOutput(
     archivedAt: template.archivedAt ?? null,
     version: version.version,
     description: version.description,
+    instructions: version.instructions ?? "",
     controlType: version.controlType,
     schedule: version.schedule,
     startMinuteOfDay: version.startMinuteOfDay ?? null,
@@ -301,6 +310,28 @@ async function ensureUniqueName(
     .unique();
   if (existing && existing._id !== exceptId) throw new ConvexError("Navnet bruges allerede");
 }
+
+export const listResponsibleRoles = query({
+  args: {},
+  returns: v.array(v.object({ key: v.string(), name: v.string() })),
+  handler: async (ctx) => {
+    const auth = await requireOwnCheckManager(ctx);
+    const roles = await ctx.db
+      .query("roles")
+      .withIndex("by_organizationId_and_key", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(MAX_RESPONSIBLE_ROLES + 1);
+    if (roles.length > MAX_RESPONSIBLE_ROLES) {
+      throw new ConvexError("Der er for mange roller til at vise listen");
+    }
+    const names = new Map<string, string>(
+      systemRoleKeys.map((key) => [key, systemRoleNames[key]]),
+    );
+    for (const role of roles) names.set(role.key, role.name);
+    return Array.from(names, ([key, name]) => ({ key, name }));
+  },
+});
 
 export const listTemplates = query({
   args: {
@@ -370,6 +401,7 @@ export const createTemplate = mutation({
       version: 1,
       name: validated.name,
       description: validated.description,
+      instructions: validated.instructions,
       controlType: args.controlType,
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
@@ -402,7 +434,10 @@ export const updateTemplate = mutation({
     const template = await ctx.db.get("ownCheckTemplates", args.templateId);
     if (!template || template.organizationId !== auth.organizationId || template.status !== "active") throw new ConvexError("Egenkontrollen blev ikke fundet");
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
-    const validated = await validateVersionFields(ctx, auth.organizationId, args);
+    const validated = await validateVersionFields(ctx, auth.organizationId, {
+      ...args,
+      instructions: args.instructions ?? current.instructions,
+    });
     await ensureUniqueName(ctx, auth.organizationId, validated.normalizedName, template._id);
     const currentKeys = new Set(current.fields.map((field) => field.key));
     const nextFieldsByKey = new Map(args.fields.map((field) => [field.key, field]));
@@ -427,6 +462,7 @@ export const updateTemplate = mutation({
       version: current.version + 1,
       name: validated.name,
       description: validated.description,
+      instructions: validated.instructions,
       controlType: args.controlType,
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
@@ -498,6 +534,7 @@ export const restoreTemplate = mutation({
       version: current.version + 1,
       name: current.name,
       description: current.description,
+      instructions: current.instructions ?? "",
       controlType: current.controlType,
       schedule: current.schedule,
       ...(current.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: current.startMinuteOfDay }),

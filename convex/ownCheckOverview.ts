@@ -463,7 +463,7 @@ export const getOverviewDateContext = query({
 
 export const getOwnCheckRecord = query({
   args: { entryId: v.id("ownCheckEntries") },
-  returns: v.union(v.object({ entry: recordEntryValidator, fields: v.array(ownCheckFieldValidator), description: v.string(), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), timeZone: v.string() }), v.null()),
+  returns: v.union(v.object({ entry: recordEntryValidator, fields: v.array(ownCheckFieldValidator), description: v.string(), instructions: v.string(), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), timeZone: v.string() }), v.null()),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckViewer(ctx);
     const entry = await ctx.db.get("ownCheckEntries", args.entryId);
@@ -508,6 +508,7 @@ export const getOwnCheckRecord = query({
       },
       fields: version.fields,
       description: version.description,
+      instructions: version.instructions ?? "",
       attachments: await Promise.all(attachments.map(async (attachment) => ({
         id: attachment._id,
         fieldKey: attachment.fieldKey,

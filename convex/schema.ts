@@ -2206,6 +2206,7 @@ export default defineSchema({
     version: v.number(),
     name: v.string(),
     description: v.string(),
+    instructions: v.optional(v.string()),
     controlType: ownCheckControlTypeValidator,
     schedule: ownCheckScheduleValidator,
     startMinuteOfDay: v.optional(v.number()),
