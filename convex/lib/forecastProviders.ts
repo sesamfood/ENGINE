@@ -1,3 +1,4 @@
+import { dateTimeFormatter, dateKey as dateInTimeZone, zonedStart as localStartUtc } from "../../lib/date";
 import { z } from "zod";
 import type { Infer } from "convex/values";
 import { env } from "../_generated/server";
@@ -110,7 +111,7 @@ function isValidTimeZone(timeZone: string) {
 }
 
 function partsAt(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+  const parts = dateTimeFormatter("en-CA", {
     timeZone,
     calendar: "iso8601",
     numberingSystem: "latn",
@@ -145,13 +146,6 @@ function partsAt(timestamp: number, timeZone: string) {
   return { year, month, day, hour, minute, second };
 }
 
-function dateInTimeZone(timestamp: number, timeZone: string) {
-  const parts = partsAt(timestamp, timeZone);
-  return `${String(parts.year).padStart(4, "0")}-${String(
-    parts.month,
-  ).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
-}
-
 function offsetAt(timestamp: number, timeZone: string) {
   const parts = partsAt(timestamp, timeZone);
   const localAsUtc = Date.UTC(
@@ -163,26 +157,6 @@ function offsetAt(timestamp: number, timeZone: string) {
     parts.second,
   );
   return Math.round((localAsUtc - timestamp) / 1000);
-}
-
-function localStartUtc(date: string, timeZone: string) {
-  const target = Date.parse(`${date}T00:00:00.000Z`);
-  let guess = target;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const parts = partsAt(guess, timeZone);
-    const localAsUtc = Date.UTC(
-      parts.year,
-      parts.month - 1,
-      parts.day,
-      parts.hour,
-      parts.minute,
-      parts.second,
-    );
-    const next = guess + target - localAsUtc;
-    if (next === guess) return guess;
-    guess = next;
-  }
-  return guess;
 }
 
 function safeDate(value: string) {

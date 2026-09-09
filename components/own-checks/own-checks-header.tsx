@@ -1,18 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { AppPageHeader } from "@/components/app-page-header";
 
 export function OwnChecksHeader() {
-  const [target, setTarget] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const frame = requestAnimationFrame(() =>
-      setTarget(document.getElementById("own-checks-shell-header")),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
   const title = (
     <div className="flex min-w-0 flex-col gap-2">
       <p className="text-sm font-semibold uppercase tracking-widest text-primary">
@@ -24,10 +14,5 @@ export function OwnChecksHeader() {
     </div>
   );
 
-  return (
-    <>
-      <header className="md:hidden">{title}</header>
-      {target ? createPortal(title, target) : null}
-    </>
-  );
+  return <AppPageHeader>{title}</AppPageHeader>;
 }

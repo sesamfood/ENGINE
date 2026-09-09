@@ -83,6 +83,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import {
+  AppPageHeaderProvider,
+  AppPageHeaderTarget,
+} from "@/components/app-page-header";
 import { BrowserBranding } from "@/components/browser-branding";
 import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
 import { authClient } from "@/lib/auth-client";
@@ -93,35 +97,30 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
 import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
-import { normalizeSidebarOrder } from "@/lib/sidebar-navigation";
+import {
+  normalizeSidebarOrder,
+  type SidebarItemId,
+} from "@/lib/sidebar-navigation";
+import {
+  canOpenAdministration,
+  homeDestination,
+  kioskHome,
+  resolveAppNavigation,
+} from "@/lib/app-navigation";
 
-const primaryNavigation = [
-  { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, pages: [] },
-  { id: "woltOrders", label: "Wolt-ordrer", href: "/wolt-orders", icon: ShoppingBagIcon, pages: [] },
-  { id: "ordering", label: "Bestilling", href: "/ordering", icon: ShoppingCartIcon, pages: [] },
-  { id: "transfers", label: "Transfer", href: "/transfers", icon: ArrowRightLeftIcon, pages: ["transfers.new", "transfers.history"] },
-  { id: "goodsReceipts", label: "Varemodtagelse", href: "/goods-receipts", icon: PackageCheckIcon, pages: [] },
-  { id: "waste", label: "Waste", href: "/waste", icon: Trash2Icon, pages: ["waste.register", "waste.badDelivery", "waste.report"] },
-  { id: "ownChecks", label: "Egenkontrol", href: "/own-checks", icon: ClipboardCheckIcon, pages: ["ownChecks.today", "ownChecks.overview", "ownChecks.documentation"] },
-  { id: "staffFood", label: "Staff food", href: "/staff-food", icon: UtensilsIcon, pages: ["staffFood.register"] },
-  { id: "count", label: "Count", href: "/count", icon: ClipboardListIcon, pages: ["count.register", "count.stock"] },
-];
-
-const employeesNavigation = {
-  id: "employees",
-  label: "Medarbejdere",
-  href: "/employees",
-  icon: UsersRoundIcon,
-  pages: ["employees.schedule", "employees.directory"],
-};
-
-const administrationNavigation = {
-  id: "organization",
-  label: "Administration",
-  href: "/administration",
-  icon: SettingsIcon,
-  pages: [] as string[],
-};
+const navigationIcons = {
+  dashboard: LayoutDashboardIcon,
+  woltOrders: ShoppingBagIcon,
+  ordering: ShoppingCartIcon,
+  transfers: ArrowRightLeftIcon,
+  goodsReceipts: PackageCheckIcon,
+  waste: Trash2Icon,
+  ownChecks: ClipboardCheckIcon,
+  staffFood: UtensilsIcon,
+  count: ClipboardListIcon,
+  employees: UsersRoundIcon,
+  organization: SettingsIcon,
+} satisfies Record<SidebarItemId, typeof LayoutDashboardIcon>;
 
 type KioskSettings = {
   enabledPages: string[];
@@ -243,10 +242,32 @@ export function useLocationAccess() {
   };
 }
 
-function effectiveKioskHome(runtime: KioskRuntime, countLocked: boolean) {
+function useAppNavigation() {
+  const access = useAccess();
+  const countLocked = useContext(FeatureLockContext);
+  const canWolt = Boolean(access?.permissions.includes("sales.viewDetail"));
+  const woltEnabled = useQuery(api.wolt.isEnabled, canWolt ? {} : "skip");
+  const navigation = resolveAppNavigation({
+    permissions: access?.permissions ?? [],
+    kiosk: access?.kiosk ?? null,
+    countLocked,
+    woltEnabled: woltEnabled === true,
+  });
+  return {
+    navigation,
+    ready: access !== null && (!canWolt || woltEnabled !== undefined),
+  };
+}
+
+export function useHomeDestination() {
+  const kiosk = useKiosk();
+  const countLocked = useContext(FeatureLockContext);
+  const { navigation, ready } = useAppNavigation();
+  if (!ready) return null;
   if (countLocked) return "/count";
-  const homePage = runtime.settings?.homePage as KioskDestinationId | undefined;
-  return homePage ? kioskDestination(homePage).route : "/transfers";
+  return kiosk?.kioskModeEnabled
+    ? kioskHome(kiosk, countLocked)
+    : homeDestination(navigation);
 }
 
 function AccessBoundary({ children }: { children: React.ReactNode }) {
@@ -257,20 +278,23 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
     isAuthenticated && organization.data ? {} : "skip",
   );
 
-  if (
-    isAuthenticated &&
-    organization.data &&
-    runtime === undefined
-  ) {
+  if (isAuthenticated && organization.data && runtime === undefined) {
     return (
-      <main className="grid min-h-screen place-items-center" aria-label="Indlæser adgange">
+      <main
+        className="grid min-h-screen place-items-center"
+        aria-label="Indlæser adgange"
+      >
         <Spinner className="size-5" />
       </main>
     );
   }
 
   const contextValue = runtime ?? null;
-  return <AccessContext.Provider value={contextValue}>{children}</AccessContext.Provider>;
+  return (
+    <AccessContext.Provider value={contextValue}>
+      {children}
+    </AccessContext.Provider>
+  );
 }
 
 function KioskBehavior({ children }: { children: React.ReactNode }) {
@@ -278,7 +302,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   const countLocked = useContext(FeatureLockContext);
   const pathname = usePathname();
   const router = useRouter();
-  const home = runtime ? effectiveKioskHome(runtime, countLocked) : "/transfers";
+  const home = runtime ? kioskHome(runtime, countLocked) : "/transfers";
 
   useEffect(() => {
     if (!runtime?.kioskModeEnabled || !runtime.settings) return;
@@ -289,8 +313,10 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       return;
     }
     const allowed = runtime.settings.enabledPages.some(
-      (page) => kioskDestination(page as KioskDestinationId).route === pathname ||
-        (page === "ownChecks.today" && pathname.startsWith("/own-checks/check/")),
+      (page) =>
+        kioskDestination(page as KioskDestinationId).route === pathname ||
+        (page === "ownChecks.today" &&
+          pathname.startsWith("/own-checks/check/")),
     );
     if (!allowed) router.replace(home);
   }, [countLocked, home, pathname, router, runtime]);
@@ -300,10 +326,16 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       ? runtime.settings?.inactivitySeconds
       : null;
     if (!seconds || pathname === home) return;
-    let timeout = window.setTimeout(() => window.location.replace(home), seconds * 1000);
+    let timeout = window.setTimeout(
+      () => window.location.replace(home),
+      seconds * 1000,
+    );
     const activity = () => {
       window.clearTimeout(timeout);
-      timeout = window.setTimeout(() => window.location.replace(home), seconds * 1000);
+      timeout = window.setTimeout(
+        () => window.location.replace(home),
+        seconds * 1000,
+      );
     };
     const visibility = () => {
       if (document.visibilityState === "visible") activity();
@@ -315,14 +347,21 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       "scroll",
       "focus",
     ];
-    for (const event of events) window.addEventListener(event, activity, { passive: true });
+    for (const event of events)
+      window.addEventListener(event, activity, { passive: true });
     document.addEventListener("visibilitychange", visibility);
     return () => {
       window.clearTimeout(timeout);
       for (const event of events) window.removeEventListener(event, activity);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [home, pathname, runtime?.kioskModeEnabled, runtime?.settings?.inactivitySeconds, runtime?.settings?.updatedAt]);
+  }, [
+    home,
+    pathname,
+    runtime?.kioskModeEnabled,
+    runtime?.settings?.inactivitySeconds,
+    runtime?.settings?.updatedAt,
+  ]);
 
   return children;
 }
@@ -383,16 +422,17 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!lockEnabled) return;
-    const timeout = window.setTimeout(
-      () => setQueryNow(minuteTimestamp()),
-      0,
-    );
+    const timeout = window.setTimeout(() => setQueryNow(minuteTimestamp()), 0);
     return () => window.clearTimeout(timeout);
   }, [locationId, lockEnabled, organizationId]);
 
   useEffect(() => {
     const nextTransitionAt = currentLockState?.nextTransitionAt;
-    if (!lockEnabled || nextTransitionAt === null || nextTransitionAt === undefined) {
+    if (
+      !lockEnabled ||
+      nextTransitionAt === null ||
+      nextTransitionAt === undefined
+    ) {
       return;
     }
     const refresh = () => setQueryNow(minuteTimestamp());
@@ -452,96 +492,13 @@ function OrganizationHome() {
   const { data: organization } = authClient.useActiveOrganization();
   const { state, isMobile } = useSidebar();
   const { isAuthenticated } = useConvexAuth();
-  const featureLocked = useContext(FeatureLockContext);
-  const kiosk = useKiosk();
-  const canDashboard = usePermission("dashboard.view");
-  const canOrder = usePermission("ordering.plan");
-  const canWoltOrders = usePermission("sales.viewDetail");
-  const canTransfersManage = usePermission("transfers.manage");
-  const canTransfersView = usePermission("transfers.view");
-  const canGoodsReceipts = usePermission("goodsReceipts.register");
-  const canWasteRegister = usePermission("waste.register");
-  const canWasteReport = usePermission("waste.report");
-  const canOwnChecks = usePermission("ownChecks.perform");
-  const canOwnChecksView = usePermission("ownChecks.view");
-  const canOwnChecksExport = usePermission("ownChecks.export");
-  const canStaffFood = usePermission("staffFood.register");
-  const canCountRegister = usePermission("count.register");
-  const canCountStock = usePermission("count.viewStock");
-  const canEmployeesSchedule = usePermission("employees.schedule");
-  const canEmployeesDirectory = usePermission("employees.directory");
-  const canCatalog = usePermission("catalog.manage");
-  const canLocations = usePermission("locations.manage");
-  const canOrganizationSettings = usePermission("organization.settings");
-  const canCountSettings = usePermission("count.settings");
-  const canWasteSettings = usePermission("waste.settings");
-  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
-  const canOwnChecksManage = usePermission("ownChecks.manage");
-  const canIntegrations = usePermission("integrations.manage");
-  const canStaffFoodManage = usePermission("staffFood.manage");
-  const canMembers = usePermission("members.manage");
-  const canRoles = usePermission("roles.manage");
-  const canApiKeys = usePermission("apiKeys.manage");
-  const canDashboardManage = usePermission("dashboard.manage");
-  const canOrganization =
-    canCatalog ||
-    canLocations ||
-    canOrganizationSettings ||
-    canCountSettings ||
-    canWasteSettings ||
-    canGoodsReceiptSettings ||
-    canOwnChecksManage ||
-    canIntegrations ||
-    canStaffFoodManage ||
-    canMembers ||
-    canRoles ||
-    canApiKeys ||
-    canDashboardManage;
+  const homeHref = useHomeDestination() ?? "/profile";
   const branding = useQuery(
     api.organization.getBranding,
     organization && isAuthenticated ? {} : "skip",
   );
   const logoUrl = organization?.logo;
   const wideLogoUrl = branding?.wideLogoUrl;
-  const homeHref = kiosk?.kioskModeEnabled
-    ? effectiveKioskHome(kiosk, featureLocked)
-    : featureLocked
-      ? "/count"
-        : canDashboard
-          ? "/dashboard"
-          : canWoltOrders
-            ? "/wolt-orders"
-          : canTransfersManage
-          ? "/transfers"
-          : canTransfersView
-            ? "/transfers/history"
-            : canGoodsReceipts
-              ? "/goods-receipts"
-            : canWasteRegister
-              ? "/waste"
-              : canWasteReport
-                ? "/waste/report"
-                : canOwnChecks
-                  ? "/own-checks"
-                  : canOwnChecksView
-                    ? "/own-checks/overview"
-                    : canOwnChecksExport
-                      ? "/own-checks/documentation"
-                      : canStaffFood
-                ? "/staff-food"
-                : canCountRegister
-                  ? "/count"
-                  : canCountStock
-                    ? "/count/stock"
-                    : canEmployeesSchedule
-                      ? "/employees"
-                      : canEmployeesDirectory
-                        ? "/employees/directory"
-                        : canOrder
-                          ? "/ordering"
-                        : canOrganization
-                          ? "/administration"
-                          : "/profile";
   const showWideLogo = state === "expanded" || isMobile;
 
   if (showWideLogo && branding === undefined) {
@@ -602,128 +559,15 @@ function NavigationList() {
   const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
-  const featureLocked = useContext(FeatureLockContext);
-  const kiosk = useKiosk();
-  const canDashboard = usePermission("dashboard.view");
-  const canOrder = usePermission("ordering.plan");
-  const canWoltOrders = usePermission("sales.viewDetail");
-  const canTransfersManage = usePermission("transfers.manage");
-  const canTransfersView = usePermission("transfers.view");
-  const canTransfers = canTransfersView || canTransfersManage;
-  const canGoodsReceipts = usePermission("goodsReceipts.register");
-  const canWasteRegister = usePermission("waste.register");
-  const canWasteReport = usePermission("waste.report");
-  const canWaste = canWasteRegister || canWasteReport;
-  const canOwnChecks = usePermission("ownChecks.perform");
-  const canOwnChecksView = usePermission("ownChecks.view");
-  const canOwnChecksExport = usePermission("ownChecks.export");
-  const canOwnChecksAccess = canOwnChecks || canOwnChecksView || canOwnChecksExport;
-  const canStaffFood = usePermission("staffFood.register");
-  const canCountRegister = usePermission("count.register");
-  const canCountStock = usePermission("count.viewStock");
-  const canCount = canCountRegister || canCountStock;
-  const canEmployeesSchedule = usePermission("employees.schedule");
-  const canEmployeesDirectory = usePermission("employees.directory");
-  const canEmployees = canEmployeesSchedule || canEmployeesDirectory;
-  const canCatalog = usePermission("catalog.manage");
-  const canLocations = usePermission("locations.manage");
-  const canOrganizationSettings = usePermission("organization.settings");
-  const canCountSettings = usePermission("count.settings");
-  const canWasteSettings = usePermission("waste.settings");
-  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
-  const canOwnChecksManage = usePermission("ownChecks.manage");
-  const canIntegrations = usePermission("integrations.manage");
-  const canStaffFoodManage = usePermission("staffFood.manage");
-  const canMembers = usePermission("members.manage");
-  const canRoles = usePermission("roles.manage");
-  const canApiKeys = usePermission("apiKeys.manage");
-  const canDashboardManage = usePermission("dashboard.manage");
-  const canOrganization =
-    canCatalog ||
-    canLocations ||
-    canOrganizationSettings ||
-    canCountSettings ||
-    canWasteSettings ||
-    canGoodsReceiptSettings ||
-    canOwnChecksManage ||
-    canIntegrations ||
-    canStaffFoodManage ||
-    canMembers ||
-    canRoles ||
-    canApiKeys ||
-    canDashboardManage;
+  const { navigation: visibleNavigation } = useAppNavigation();
   const itemOrder = useQuery(
     api.navigation.getOrder,
     organization.data && isAuthenticated ? {} : "skip",
   );
-  const woltEnabled = useQuery(
-    api.wolt.isEnabled,
-    organization.data && isAuthenticated && canWoltOrders ? {} : "skip",
-  );
-  const allNavigation = [
-    ...primaryNavigation,
-    employeesNavigation,
-    administrationNavigation,
-  ];
-  const orderedNavigation = normalizeSidebarOrder(itemOrder).flatMap((id) => {
-    const item = allNavigation.find((candidate) => candidate.id === id);
+  const navigation = normalizeSidebarOrder(itemOrder).flatMap((id) => {
+    const item = visibleNavigation.find((candidate) => candidate.id === id);
     return item ? [item] : [];
   });
-  const operationalNavigation = orderedNavigation.filter(
-    (item) => item.id !== "organization",
-  );
-  const kioskNavigation = kiosk?.kioskModeEnabled
-    ? operationalNavigation.flatMap((item) => {
-        if (featureLocked) {
-          if (item.id === "count") return [{ ...item, href: "/count" }];
-          if (item.id === "waste") return [{ ...item, href: "/waste" }];
-          return [];
-        }
-        const first = item.pages.find((page) =>
-          kiosk.settings?.enabledPages.includes(page),
-        );
-        return first
-          ? [{ ...item, href: kioskDestination(first as KioskDestinationId).route }]
-          : [];
-      })
-    : null;
-  const navigation = kioskNavigation ?? orderedNavigation
-    .filter((item) => {
-      if (item.id === "dashboard") return canDashboard && !featureLocked;
-      if (item.id === "ordering") return canOrder && !featureLocked;
-      if (item.id === "woltOrders") {
-        return canWoltOrders && woltEnabled === true && !featureLocked;
-      }
-      if (item.id === "transfers") return canTransfers && !featureLocked;
-      if (item.id === "goodsReceipts") {
-        return canGoodsReceipts && !featureLocked;
-      }
-      if (item.id === "waste") return canWaste;
-      if (item.id === "ownChecks") return canOwnChecksAccess;
-      if (item.id === "staffFood") return canStaffFood && !featureLocked;
-      if (item.id === "count") return canCount;
-      if (item.id === "employees") return canEmployees && !featureLocked;
-      if (item.id === "organization") return canOrganization;
-      return false;
-    })
-    .map((item) => {
-      if (item.id === "transfers" && !canTransfersManage) {
-        return { ...item, href: "/transfers/history" };
-      }
-      if (item.id === "waste" && !canWasteRegister) {
-        return { ...item, href: "/waste/report" };
-      }
-      if (item.id === "ownChecks" && !canOwnChecks) {
-        return { ...item, href: canOwnChecksView ? "/own-checks/overview" : "/own-checks/documentation" };
-      }
-      if (item.id === "count" && !canCountRegister) {
-        return { ...item, href: "/count/stock" };
-      }
-      if (item.id === "employees" && !canEmployeesSchedule) {
-        return { ...item, href: "/employees/directory" };
-      }
-      return item;
-    });
 
   return (
     <SidebarGroup>
@@ -731,9 +575,9 @@ function NavigationList() {
         <nav aria-label="Primær navigation">
           <SidebarMenu className="gap-2">
             {navigation.map((item) => {
-              const Icon = item.icon;
+              const Icon = navigationIcons[item.id];
               const active =
-                item === administrationNavigation
+                item.id === "organization"
                   ? pathname.startsWith("/administration")
                   : pathname === item.href ||
                     pathname.startsWith(`${item.href}/`);
@@ -802,41 +646,22 @@ function ProfileMenu({
 }) {
   const { data: session } = authClient.useSession();
   const kiosk = useKiosk();
-  const canCatalog = usePermission("catalog.manage");
-  const canLocations = usePermission("locations.manage");
-  const canOrganizationSettings = usePermission("organization.settings");
-  const canCountSettings = usePermission("count.settings");
-  const canWasteSettings = usePermission("waste.settings");
-  const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
-  const canIntegrations = usePermission("integrations.manage");
-  const canStaffFoodManage = usePermission("staffFood.manage");
-  const canOwnChecksManage = usePermission("ownChecks.manage");
-  const canMembers = usePermission("members.manage");
-  const canRoles = usePermission("roles.manage");
-  const canApiKeys = usePermission("apiKeys.manage");
-  const canDashboardManage = usePermission("dashboard.manage");
-  const canManageOrganization =
-    canCatalog ||
-    canLocations ||
-    canOrganizationSettings ||
-    canCountSettings ||
-    canWasteSettings ||
-    canGoodsReceiptSettings ||
-    canIntegrations ||
-    canStaffFoodManage ||
-    canOwnChecksManage ||
-    canMembers ||
-    canRoles ||
-    canApiKeys ||
-    canDashboardManage;
+  const access = useAccess();
+  const canManageOrganization = canOpenAdministration(
+    access?.permissions ?? [],
+  );
   const { isMobile, setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
   const user = session?.user;
   const displayName = user?.name || "Profil";
   const email = kiosk?.isKioskAccount
-    ? ((user as typeof user & { displayUsername?: string | null; username?: string | null })
-        ?.displayUsername ??
+    ? ((
+        user as typeof user & {
+          displayUsername?: string | null;
+          username?: string | null;
+        }
+      )?.displayUsername ??
       (user as typeof user & { username?: string | null })?.username ??
       "Kioskkonto")
     : user?.email || "Konto";
@@ -848,8 +673,7 @@ function ProfileMenu({
       .slice(0, 2)
       .toUpperCase() || "P";
   const accountPageActive =
-    pathname === "/profile" ||
-    pathname.startsWith("/administration");
+    pathname === "/profile" || pathname.startsWith("/administration");
   function goTo(href: string) {
     setOpenMobile(false);
     router.push(href);
@@ -995,7 +819,7 @@ function KioskModeControl() {
     setPending(true);
     try {
       await setMode({ enabled });
-      if (enabled) router.replace(effectiveKioskHome(kiosk, countLocked));
+      if (enabled) router.replace(kioskHome(kiosk, countLocked));
       router.refresh();
     } catch (error) {
       toast.error(
@@ -1011,8 +835,18 @@ function KioskModeControl() {
 
   if (!kiosk.kioskModeEnabled) {
     return (
-      <Button type="button" variant="outline" className="w-full" disabled={pending} onClick={() => void change(true)}>
-        {pending ? <Spinner data-icon="inline-start" /> : <MonitorIcon data-icon="inline-start" />}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        disabled={pending}
+        onClick={() => void change(true)}
+      >
+        {pending ? (
+          <Spinner data-icon="inline-start" />
+        ) : (
+          <MonitorIcon data-icon="inline-start" />
+        )}
         Aktivér kiosktilstand
       </Button>
     );
@@ -1034,18 +868,37 @@ function KioskModeControl() {
         </Field>
       </FieldLabel>
       <AlertDialog>
-        <AlertDialogTrigger render={<Button type="button" variant="outline" className="w-full" disabled={pending} />}>
+        <AlertDialogTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={pending}
+            />
+          }
+        >
           <MonitorIcon data-icon="inline-start" />
           Deaktivér kiosktilstand
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Deaktivér kiosktilstand?</AlertDialogTitle>
-            <AlertDialogDescription>Du får den normale brugerflade med de adgange, kontoens rolle tillader.</AlertDialogDescription>
+            <AlertDialogDescription>
+              Du får den normale brugerflade med de adgange, kontoens rolle
+              tillader.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel variant="default">Behold kiosktilstand</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => void change(false)}>Deaktivér kiosktilstand</AlertDialogAction>
+            <AlertDialogCancel variant="default">
+              Behold kiosktilstand
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => void change(false)}
+            >
+              Deaktivér kiosktilstand
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1053,15 +906,25 @@ function KioskModeControl() {
   );
 }
 
-function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
+function SidebarAccount({
+  signingOut,
+  onSignOut,
+}: {
+  signingOut: boolean;
+  onSignOut: () => void;
+}) {
   const kiosk = useKiosk();
   const access = useAccess();
   const kioskModeControl = <KioskModeControl />;
   const accountMenu = (
     <SidebarMenu className="gap-2">
-      <SidebarMenuItem><FeedbackDialog permissions={access?.permissions} /></SidebarMenuItem>
+      <SidebarMenuItem>
+        <FeedbackDialog permissions={access?.permissions} />
+      </SidebarMenuItem>
       {!kiosk?.kioskModeEnabled ? (
-        <SidebarMenuItem><ProfileMenu signingOut={signingOut} onSignOut={onSignOut} /></SidebarMenuItem>
+        <SidebarMenuItem>
+          <ProfileMenu signingOut={signingOut} onSignOut={onSignOut} />
+        </SidebarMenuItem>
       ) : null}
     </SidebarMenu>
   );
@@ -1074,7 +937,13 @@ function SidebarAccount({ signingOut, onSignOut }: { signingOut: boolean; onSign
   );
 }
 
-function MobileAccount({ signingOut, onSignOut }: { signingOut: boolean; onSignOut: () => void }) {
+function MobileAccount({
+  signingOut,
+  onSignOut,
+}: {
+  signingOut: boolean;
+  onSignOut: () => void;
+}) {
   const kiosk = useKiosk();
   const access = useAccess();
   return (
@@ -1242,19 +1111,6 @@ export function AppShell({
     };
   }, [router, signingOut]);
 
-  const shellless = [
-    "/login",
-    "/signup",
-    "/forgot-password",
-    "/reset-password",
-    "/verify-email",
-    "/invitation",
-    "/onboarding",
-    "/share",
-  ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
-
-  if (shellless) return children;
-
   const organizationRequired = pathname !== "/profile";
   const showAdministrationBack =
     pathname.startsWith("/administration/") &&
@@ -1267,8 +1123,10 @@ export function AppShell({
   const showOwnChecksHeader =
     pathname === "/own-checks" || pathname.startsWith("/own-checks/");
   const showStaffFoodHeader = pathname === "/staff-food";
-  const showEmployeesHeader = pathname === "/employees" || pathname.startsWith("/employees/");
-  const showTransfersHeader = pathname === "/transfers" || pathname.startsWith("/transfers/");
+  const showEmployeesHeader =
+    pathname === "/employees" || pathname.startsWith("/employees/");
+  const showTransfersHeader =
+    pathname === "/transfers" || pathname.startsWith("/transfers/");
   const showGoodsReceiptsHeader =
     pathname === "/goods-receipts" || pathname.startsWith("/goods-receipts/");
   const showDashboardHeader =
@@ -1302,103 +1160,86 @@ export function AppShell({
     <>
       <BrowserBranding />
       <OrganizationBoundary required={organizationRequired}>
-      <OrganizationTheme>
-        <AccessBoundary>
-          <FeatureLockBoundary>
-            <KioskBehavior>
-          <SidebarProvider
-          defaultOpen={defaultSidebarOpen}
-          style={
-            {
-              "--sidebar-width": "15.5rem",
-              "--sidebar-width-icon": "4rem",
-            } as CSSProperties
-          }
-        >
-          <Sidebar collapsible="icon">
-            <SidebarHeader className="h-24 items-center justify-center">
-              <OrganizationHome />
-            </SidebarHeader>
+        <OrganizationTheme>
+          <AccessBoundary>
+            <FeatureLockBoundary>
+              <KioskBehavior>
+                <AppPageHeaderProvider>
+                  <SidebarProvider
+                    defaultOpen={defaultSidebarOpen}
+                    style={
+                      {
+                        "--sidebar-width": "15.5rem",
+                        "--sidebar-width-icon": "4rem",
+                      } as CSSProperties
+                    }
+                  >
+                    <Sidebar collapsible="icon">
+                      <SidebarHeader className="h-24 items-center justify-center">
+                        <OrganizationHome />
+                      </SidebarHeader>
 
-            <SidebarContent>
-              <NavigationList />
-            </SidebarContent>
+                      <SidebarContent>
+                        <NavigationList />
+                      </SidebarContent>
 
-            <SidebarAccount signingOut={signingOut} onSignOut={() => setSigningOut(true)} />
-          </Sidebar>
+                      <SidebarAccount
+                        signingOut={signingOut}
+                        onSignOut={() => setSigningOut(true)}
+                      />
+                    </Sidebar>
 
-          <SidebarInset className="min-w-0">
-            <header
-              className={cn(
-                "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
-                showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
-              )}
-            >
-              <SidebarTrigger size="icon-lg" />
-              {showPageHeader ? (
-                <div
-                  id={
-                    showOrderingHeader
-                      ? "ordering-shell-header"
-                      : showCountHeader
-                      ? "count-shell-header"
-                      : showWasteHeader
-                        ? "waste-shell-header"
-                        : showOwnChecksHeader
-                          ? "own-checks-shell-header"
-                        : showStaffFoodHeader
-                          ? "staff-food-shell-header"
-                          : showEmployeesHeader
-                            ? "employees-shell-header"
-                            : showTransfersHeader
-                              ? "transfers-shell-header"
-                              : showGoodsReceiptsHeader
-                                ? "goods-receipts-shell-header"
-                              : showDashboardHeader
-                                ? "dashboard-shell-header"
-                              : "administration-shell-header"
-                  }
-                  className="hidden min-w-0 flex-1 md:block"
-                />
-              ) : null}
-              {showAdministrationBack ? (
-                <Button
-                  variant="outline"
-                  size="lg"
-                  render={<Link href="/administration" />}
-                  nativeButton={false}
-                >
-                  <ArrowLeftIcon data-icon="inline-start" />
-                  <span className="hidden sm:inline">
-                    Tilbage til administration
-                  </span>
-                  <span className="sm:hidden">Tilbage</span>
-                </Button>
-              ) : null}
-              <div className="flex flex-1 justify-center md:hidden">
-                <OrganizationHome />
-              </div>
-              <div className="md:hidden">
-                <MobileAccount signingOut={signingOut} onSignOut={() => setSigningOut(true)} />
-              </div>
-            </header>
+                    <SidebarInset className="min-w-0">
+                      <header
+                        className={cn(
+                          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
+                          showPageHeader && "md:h-24 md:pr-8 md:pl-4 lg:pr-12",
+                        )}
+                      >
+                        <SidebarTrigger size="icon-lg" />
+                        {showPageHeader ? <AppPageHeaderTarget /> : null}
+                        {showAdministrationBack ? (
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            render={<Link href="/administration" />}
+                            nativeButton={false}
+                          >
+                            <ArrowLeftIcon data-icon="inline-start" />
+                            <span className="hidden sm:inline">
+                              Tilbage til administration
+                            </span>
+                            <span className="sm:hidden">Tilbage</span>
+                          </Button>
+                        ) : null}
+                        <div className="flex flex-1 justify-center md:hidden">
+                          <OrganizationHome />
+                        </div>
+                        <div className="md:hidden">
+                          <MobileAccount
+                            signingOut={signingOut}
+                            onSignOut={() => setSigningOut(true)}
+                          />
+                        </div>
+                      </header>
 
-            <div
-              className={cn(
-                "flex-1",
-                showPageHeader
-                  ? "p-4"
-                  : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
-              )}
-            >
-              {children}
-            </div>
-          </SidebarInset>
-          </SidebarProvider>
-            </KioskBehavior>
-        </FeatureLockBoundary>
-        </AccessBoundary>
-      </OrganizationTheme>
+                      <div
+                        className={cn(
+                          "flex-1",
+                          showPageHeader
+                            ? "p-4"
+                            : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
+                        )}
+                      >
+                        {children}
+                      </div>
+                    </SidebarInset>
+                  </SidebarProvider>
+                </AppPageHeaderProvider>
+              </KioskBehavior>
+            </FeatureLockBoundary>
+          </AccessBoundary>
+        </OrganizationTheme>
       </OrganizationBoundary>
     </>
   );

@@ -1,20 +1,10 @@
+import { dateTimeFormatter, zonedTimestamp, DEFAULT_TIME_ZONE } from "../../lib/date";
 import { ConvexError } from "convex/values";
 
 export const ONLINE_POS_API_URL = "https://api.onlinepos.dk/api";
 const MAX_SALE_LINES = 20_000;
-const MAX_RAW_SALE_LINE_NODES = 1_000;
-const MAX_RAW_SALE_LINES_JSON_LENGTH = 500_000;
-const FALLBACK_TIME_ZONE = "Europe/Copenhagen";
 
 export type OnlinePosSettings = { token: string; companyId: number };
-
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
 
 export type OnlinePosProduct = {
   id: number;
@@ -42,46 +32,6 @@ export function unitPriceFromLineTotal(
   if (quantity === 0) return 0;
   const unitPrice = Math.round(lineTotal / quantity);
   return Object.is(unitPrice, -0) ? 0 : unitPrice;
-}
-
-const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
-
-function dateTimeFormatter(timeZone: string) {
-  const cached = dateTimeFormatters.get(timeZone);
-  if (cached) return cached;
-
-  let formatter: Intl.DateTimeFormat;
-  try {
-    formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    });
-  } catch {
-    const fallback = dateTimeFormatters.get(FALLBACK_TIME_ZONE);
-    if (fallback) {
-      dateTimeFormatters.set(timeZone, fallback);
-      return fallback;
-    }
-    formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: FALLBACK_TIME_ZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    });
-    dateTimeFormatters.set(FALLBACK_TIME_ZONE, formatter);
-  }
-  dateTimeFormatters.set(timeZone, formatter);
-  return formatter;
 }
 
 export function object(value: unknown): Record<string, unknown> | null {
@@ -119,31 +69,17 @@ export function saleTimestamp(
   const dateMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
   const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
   if (!dateMatch || !timeMatch) return null;
-  const desired = Date.UTC(
-    Number(dateMatch[3]),
-    Number(dateMatch[2]) - 1,
-    Number(dateMatch[1]),
-    Number(timeMatch[1]),
-    Number(timeMatch[2]),
-    Number(timeMatch[3] ?? 0),
-  );
-  const formatter = dateTimeFormatter(timeZone);
-  let timestamp = desired;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(
-      formatter.formatToParts(timestamp).map((part) => [part.type, part.value]),
-    );
-    const displayed = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute),
-      Number(parts.second),
-    );
-    timestamp += desired - displayed;
+  const local = new Date(Date.UTC(
+    Number(dateMatch[3]), Number(dateMatch[2]) - 1, Number(dateMatch[1]),
+    Number(timeMatch[1]), Number(timeMatch[2]), Number(timeMatch[3] ?? 0),
+  ));
+  let zone = timeZone;
+  try {
+    dateTimeFormatter("en", { timeZone: zone });
+  } catch {
+    zone = DEFAULT_TIME_ZONE;
   }
-  return timestamp;
+  return zonedTimestamp(local.toISOString().slice(0, 10), local.getUTCHours() * 60 + local.getUTCMinutes(), zone) + local.getUTCSeconds() * 1_000;
 }
 
 export async function requestOnlinePos(
@@ -222,73 +158,6 @@ export async function requestSales(
     throw new ConvexError("OnlinePOS returnerede en ugyldig salgsliste");
   }
   return payload.sales;
-}
-
-function truncateRawJson(
-  value: unknown,
-  state: { nodes: number },
-  depth = 0,
-): JsonValue {
-  state.nodes += 1;
-  if (state.nodes > MAX_RAW_SALE_LINE_NODES || depth > 20) {
-    throw new ConvexError("OnlinePOS returnerede en for stor rå salgsrespons");
-  }
-  if (value === null || typeof value === "boolean") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") return value.slice(0, 500);
-  if (Array.isArray(value)) {
-    return value.map((item) => truncateRawJson(item, state, depth + 1));
-  }
-
-  const record = object(value);
-  if (!record) {
-    throw new ConvexError("OnlinePOS returnerede en ugyldig rå salgslinje");
-  }
-  const result: { [key: string]: JsonValue } = {};
-  for (const [key, item] of Object.entries(record)) {
-    if (!key || key.startsWith("_") || key.startsWith("$")) {
-      throw new ConvexError("OnlinePOS returnerede en ugyldig rå salgslinje");
-    }
-    result[key] = truncateRawJson(item, state, depth + 1);
-  }
-  return result;
-}
-
-export async function requestRawSalesV20(
-  settings: OnlinePosSettings,
-  from: number,
-  to: number,
-): Promise<JsonValue[]> {
-  const payload = object(
-    await requestOnlinePos(
-      `/exportSales/v20/${Math.floor(from / 1000)}`,
-      settings,
-      { method: "GET", cache: "no-store" },
-    ),
-  );
-  if (!Array.isArray(payload?.data)) {
-    throw new ConvexError("OnlinePOS returnerede en ugyldig rå salgsliste");
-  }
-
-  // The dated endpoint includes later days; only display the selected day.
-  const lines = payload.data
-    .filter((value) => {
-      const datetime = string(object(value)?.datetime);
-      const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(datetime);
-      const timestamp = match
-        ? saleTimestamp(`${match[3]}.${match[2]}.${match[1]}`, match[4], FALLBACK_TIME_ZONE)
-        : null;
-      if (timestamp === null) {
-        throw new ConvexError("OnlinePOS returnerede en rå salgslinje med ugyldig dato");
-      }
-      return timestamp >= from && timestamp < to;
-    })
-    .slice(0, 5)
-    .map((line) => truncateRawJson(line, { nodes: 0 }));
-  if (JSON.stringify(lines).length > MAX_RAW_SALE_LINES_JSON_LENGTH) {
-    throw new ConvexError("OnlinePOS returnerede en for stor rå salgsrespons");
-  }
-  return lines;
 }
 
 export function parseSaleLines(

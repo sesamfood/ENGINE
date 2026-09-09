@@ -4,7 +4,7 @@ import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
-import { isTouchDevice } from "@/lib/touch-device"
+import { resolveOverlayFocus } from "@/lib/overlay-focus"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -55,14 +55,7 @@ function SheetContent({
       <SheetOverlay />
       <SheetPrimitive.Popup
         ref={popupRef}
-        initialFocus={(openType) => {
-          if (openType === "touch" || isTouchDevice()) {
-            return popupRef.current ?? false
-          }
-          if (typeof initialFocus === "function") return initialFocus(openType)
-          if (typeof initialFocus === "object") return initialFocus.current
-          return initialFocus ?? true
-        }}
+        initialFocus={(openType) => resolveOverlayFocus(openType, popupRef.current, initialFocus)}
         data-slot="sheet-content"
         data-side={side}
         className={cn(

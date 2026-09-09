@@ -39,7 +39,8 @@ import { dashboardDatasets } from "@/lib/dashboard/datasets";
 import type { CustomMetricSpec, DashboardRange, DashboardScope } from "@/lib/dashboard/types";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { CustomMetricBuilder, type CustomMetricDefinition } from "@/components/dashboard/custom-metric-builder";
+import { CustomMetricBuilder } from "@/components/dashboard/custom-metric-builder";
+import type { CustomMetricDefinition } from "@/components/dashboard/custom-metric-definition";
 
 function metricSummary(spec: CustomMetricSpec) {
   if (spec.kind === "single") {
@@ -57,7 +58,7 @@ export function CustomMetricLibrary() {
   const canManage = usePermission("dashboard.manage");
   const access = useAccess();
   const now = useDashboardNow();
-  const metrics = useQuery(api.customMetrics.list, canManage ? {} : "skip") as CustomMetricDefinition[] | undefined;
+  const metrics = useQuery(api.customMetrics.list, canManage ? {} : "skip");
   const removeMetric = useMutation(api.customMetrics.remove);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editingMetric, setEditingMetric] = useState<CustomMetricDefinition | null>(null);

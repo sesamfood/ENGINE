@@ -2,9 +2,9 @@
 
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { MessageSquarePlusIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import { MessageSquarePlusIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,8 +38,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { compressImage } from "@/lib/compress-image";
+import { uploadToStorage } from "@/lib/upload-to-storage";
+import { PhotoField } from "@/components/photo-field";
+import { compressImage, evidencePhotoOptions } from "@/lib/compress-image";
 import {
   accessibleFeedbackAreas,
   feedbackAreaForPath,
@@ -51,13 +52,6 @@ import {
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 4_000;
-const IMAGE_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/avif",
-]);
-
 function FeedbackForm({
   permissions,
   onDone,
@@ -67,7 +61,6 @@ function FeedbackForm({
 }) {
   const pathname = usePathname();
   const fieldId = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
   const areas = accessibleFeedbackAreas(permissions);
   const [area, setArea] = useState<FeedbackAreaId>(() =>
     feedbackAreaForPath(pathname, areas),
@@ -76,61 +69,20 @@ function FeedbackForm({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
-  const preview = useMemo(
-    () => (screenshot ? URL.createObjectURL(screenshot) : undefined),
-    [screenshot],
-  );
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const uploadUrl = useMutation(api.feedback.generateScreenshotUploadUrl);
   const submitFeedback = useMutation(api.feedback.submit);
 
-  useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview);
-    };
-  }, [preview]);
-
-  function pickScreenshot(file: File | undefined) {
-    if (!file) return;
-    if (!IMAGE_TYPES.has(file.type)) {
-      toast.error("Vælg et JPEG-, PNG-, WebP- eller AVIF-billede");
-      return;
-    }
-    setScreenshot(file);
-  }
-
-  function removeScreenshot() {
-    if (fileInput.current) fileInput.current.value = "";
-    setScreenshot(null);
-  }
-
   async function uploadScreenshot(file: File) {
-    const compressed = await compressImage(file, {
-      maxWidth: 2600,
-      maxHeight: 2600,
-      quality: 0.9,
-    });
+    const compressed = await compressImage(file, evidencePhotoOptions);
     if (compressed.size > MAX_FILE_SIZE) {
       throw new Error("Det komprimerede billede er stadig større end 10 MB");
     }
-    const url = await uploadUrl({});
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": compressed.type },
-      body: compressed,
+    return uploadToStorage({
+      uploadUrl: await uploadUrl({}),
+      file: compressed,
     });
-    if (!response.ok) throw new Error("Billedet kunne ikke uploades");
-    const result: unknown = await response.json();
-    if (
-      !result ||
-      typeof result !== "object" ||
-      !("storageId" in result) ||
-      typeof result.storageId !== "string"
-    ) {
-      throw new Error("Billedet kunne ikke uploades");
-    }
-    return result.storageId as Id<"_storage">;
   }
 
   async function send() {
@@ -156,7 +108,12 @@ function FeedbackForm({
       toast.success("Tak. Din feedback er sendt");
       onDone();
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Din feedback kunne ikke sendes. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          caught,
+          "Din feedback kunne ikke sendes. Prøv igen.",
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -266,52 +223,14 @@ function FeedbackForm({
             />
           </Field>
 
-          <Field>
-            <FieldLabel htmlFor={`${fieldId}-screenshot`}>
-              Skærmbillede
-            </FieldLabel>
-            <FieldDescription>
-              Valgfrit, men gør det nemmere at forstå.
-            </FieldDescription>
-            {preview ? (
-              <div
-                role="img"
-                aria-label="Forhåndsvisning af skærmbillede"
-                className="aspect-video w-full rounded-lg border bg-muted bg-contain bg-center bg-no-repeat"
-                style={{ backgroundImage: `url("${preview}")` }}
-              />
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                onClick={() => fileInput.current?.click()}
-              >
-                <UploadIcon data-icon="inline-start" />
-                {screenshot ? "Skift billede" : "Vælg billede"}
-              </Button>
-              {screenshot ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="min-h-11"
-                  onClick={removeScreenshot}
-                >
-                  <Trash2Icon data-icon="inline-start" />
-                  Fjern
-                </Button>
-              ) : null}
-            </div>
-            <Input
-              ref={fileInput}
-              id={`${fieldId}-screenshot`}
-              className="sr-only"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/avif"
-              onChange={(event) => pickScreenshot(event.target.files?.[0])}
-            />
-          </Field>
+          <PhotoField
+            label="Skærmbillede"
+            description="Valgfrit, men gør det nemmere at forstå."
+            file={screenshot}
+            onChange={setScreenshot}
+            camera={false}
+            disabled={submitting}
+          />
         </FieldGroup>
       </form>
 

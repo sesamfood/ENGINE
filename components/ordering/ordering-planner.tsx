@@ -1,5 +1,11 @@
 "use client";
 
+import { selectedLocationId } from "@/lib/location-preference";
+
+import { useLastDefined } from "@/lib/use-last-defined";
+
+import { AppPageHeader } from "@/components/app-page-header";
+
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   DownloadIcon,
@@ -9,7 +15,6 @@ import {
   ShoppingCartIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   useAccess,
@@ -21,12 +26,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -34,7 +34,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -88,12 +88,12 @@ function Planner() {
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const [selectedLocation, setSelectedLocation] =
     useState<Id<"locations"> | null>(null);
-  const locationId = isLocked
-    ? lockedId
-    : (locations.find((location) => location.id === selectedLocation)?.id ??
-      locations[0]?.id ??
-      null);
-  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
+  const locationId = selectedLocationId({
+    locations,
+    storedId: selectedLocation,
+    lockedId,
+    isLocked,
+  });
   const [asOf, setAsOf] = useState(currentMinute);
   const [coverageInput, setCoverageInput] = useState("7");
   const [bufferInput, setBufferInput] = useState("10");
@@ -102,7 +102,10 @@ function Planner() {
   const [exporting, setExporting] = useState(false);
   const convex = useConvex();
   const refreshEnvironment = useMutation(api.forecasts.requestRefresh);
-  const settings = useQuery(api.orderingSettings.getSettings, canPlan ? {} : "skip");
+  const settings = useQuery(
+    api.orderingSettings.getSettings,
+    canPlan ? {} : "skip",
+  );
   const includeRecipes = settings?.includeRecipes ?? false;
   const mounted = useRef(true);
 
@@ -118,12 +121,8 @@ function Planner() {
 
   useEffect(() => {
     mounted.current = true;
-    const frame = requestAnimationFrame(() =>
-      setHeaderTarget(document.getElementById("ordering-shell-header")),
-    );
     return () => {
       mounted.current = false;
-      cancelAnimationFrame(frame);
     };
   }, []);
 
@@ -131,21 +130,7 @@ function Planner() {
     api.ordering.getContext,
     canPlan && locationId ? { locationId, asOf } : "skip",
   );
-  const contextLocation = canPlan ? locationId : null;
-  const [lastContext, setLastContext] = useState({
-    locationId: contextLocation,
-    value: liveContext,
-  });
-  if (
-    lastContext.locationId !== contextLocation ||
-    (liveContext !== undefined && liveContext !== lastContext.value)
-  ) {
-    setLastContext({ locationId: contextLocation, value: liveContext });
-  }
-  // Keep the history subscriptions and editable rows during a clock refresh.
-  const context = liveContext ?? (
-    lastContext.locationId === contextLocation ? lastContext.value : undefined
-  );
+  const context = useLastDefined(liveContext, canPlan ? locationId : null);
   const products = useCompleteCatalog(
     api.ordering.listProducts,
     canPlan && locationId ? { locationId } : "skip",
@@ -314,11 +299,10 @@ function Planner() {
     (row) => row.quantity !== null && row.quantity > 0,
   );
   const invalidQuantity = rows.some((row) => row.quantity === null);
-  const visible = rows.filter(
-    (row) =>
-      `${row.name} ${row.category}`
-        .toLocaleLowerCase("da")
-        .includes(search.trim().toLocaleLowerCase("da")),
+  const visible = rows.filter((row) =>
+    `${row.name} ${row.category}`
+      .toLocaleLowerCase("da")
+      .includes(search.trim().toLocaleLowerCase("da")),
   );
 
   const header = (
@@ -457,8 +441,7 @@ function Planner() {
 
   return (
     <>
-      <header className="md:hidden">{header}</header>
-      {headerTarget ? createPortal(header, headerTarget) : null}
+      <AppPageHeader>{header}</AppPageHeader>
       {!canPlan ? (
         <Alert variant="destructive">
           <AlertTitle>Ingen adgang</AlertTitle>
@@ -534,19 +517,67 @@ function Planner() {
                     label="bestillingsforslag"
                     content={
                       <div className="flex max-w-sm flex-col gap-2">
-                        <p>Forslag bruger op til 90 dages produktforbrug. De seneste otte uger vægter i grundprognosen. Åbningstider og lukkedage medregnes; natåbent fordeles på kalenderdage. Vejr og helligdage læres særskilt fra hvert produkts mængder, når der er nok historik. Staff food og aktiv Waste fremskrives separat og lægges til. Waste kan indgå på lukkedage. Opskrifter i Staff food og Waste omregnes med de nuværende ingredienser. Waste skelner endnu ikke mellem forberedelsestab og undgåeligt spild. Buffer lægges til, og positiv lagerbeholdning trækkes fra. Indgående leverancer er ikke medregnet.</p>
+                        <p>
+                          Forslag bruger op til 90 dages produktforbrug. De
+                          seneste otte uger vægter i grundprognosen.
+                          Åbningstider og lukkedage medregnes; natåbent fordeles
+                          på kalenderdage. Vejr og helligdage læres særskilt fra
+                          hvert produkts mængder, når der er nok historik. Staff
+                          food og aktiv Waste fremskrives separat og lægges til.
+                          Waste kan indgå på lukkedage. Opskrifter i Staff food
+                          og Waste omregnes med de nuværende ingredienser. Waste
+                          skelner endnu ikke mellem forberedelsestab og
+                          undgåeligt spild. Buffer lægges til, og positiv
+                          lagerbeholdning trækkes fra. Indgående leverancer er
+                          ikke medregnet.
+                        </p>
                         {context?.warning ? <p>{context.warning}</p> : null}
-                        {operationalHistory.staffFood.unresolvedCount + operationalHistory.waste.unresolvedCount > 0 ? (
-                          <p>Nogle Staff food- eller Waste-registreringer mangler produkt- eller enhedskoblinger. Forslagene kan være for lave.</p>
+                        {operationalHistory.staffFood.unresolvedCount +
+                          operationalHistory.waste.unresolvedCount >
+                        0 ? (
+                          <p>
+                            Nogle Staff food- eller Waste-registreringer mangler
+                            produkt- eller enhedskoblinger. Forslagene kan være
+                            for lave.
+                          </p>
                         ) : null}
                         {history.unmappedQuantity > 0 ? (
-                          <p>{numberFormatter.format(history.unmappedQuantity)} solgte enheder mangler produkt- eller enhedskoblinger. Forslagene kan være for lave.</p>
+                          <p>
+                            {numberFormatter.format(history.unmappedQuantity)}{" "}
+                            solgte enheder mangler produkt- eller
+                            enhedskoblinger. Forslagene kan være for lave.
+                          </p>
                         ) : null}
                         {context ? <p>{context.environment.message}</p> : null}
                         <p>
-                          Vejr fra <a className="underline" href="https://openweathermap.org/" target="_blank" rel="noreferrer">OpenWeather</a>,
-                          bearbejdet til prognoser under <a className="underline" href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a>.
-                          Helligdage fra <a className="underline" href="https://nagerholidays.com/" target="_blank" rel="noreferrer">Nager.Holidays</a>.
+                          Vejr fra{" "}
+                          <a
+                            className="underline"
+                            href="https://openweathermap.org/"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            OpenWeather
+                          </a>
+                          , bearbejdet til prognoser under{" "}
+                          <a
+                            className="underline"
+                            href="https://creativecommons.org/licenses/by-sa/4.0/"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            CC BY-SA 4.0
+                          </a>
+                          . Helligdage fra{" "}
+                          <a
+                            className="underline"
+                            href="https://nagerholidays.com/"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Nager.Holidays
+                          </a>
+                          .
                         </p>
                       </div>
                     }
@@ -641,8 +672,13 @@ function Planner() {
                       <TableCell className="min-w-44 py-3 whitespace-normal">
                         <div className="flex items-center gap-3">
                           <Avatar className="size-14">
-                            <AvatarImage src={row.imageUrl ?? undefined} alt="" />
-                            <AvatarFallback><PackageOpenIcon className="size-6" /></AvatarFallback>
+                            <AvatarImage
+                              src={row.imageUrl ?? undefined}
+                              alt=""
+                            />
+                            <AvatarFallback>
+                              <PackageOpenIcon className="size-6" />
+                            </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
                             <div className="font-medium">{row.name}</div>
@@ -650,7 +686,9 @@ function Planner() {
                               {row.category} · {row.unitName}
                             </div>
                             {row.hasIngredients ? (
-                              <Badge variant="secondary">Har ingredienser</Badge>
+                              <Badge variant="secondary">
+                                Har ingredienser
+                              </Badge>
                             ) : null}
                           </div>
                         </div>
@@ -733,9 +771,9 @@ function Planner() {
               </p>
             ) : null}
             {planned.length > 500 ? (
-              <p className="w-full text-sm text-destructive">
+              <FieldError className="w-full">
                 Eksportér højst 500 produkter ad gangen.
-              </p>
+              </FieldError>
             ) : null}
           </div>
         </div>

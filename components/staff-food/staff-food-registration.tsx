@@ -1,25 +1,26 @@
 "use client";
 
-import { getUserErrorMessage } from "@/lib/user-errors";
-import { useMutation, useQuery } from "convex/react";
+import { dateTimeFormatter as sharedDateTimeFormatter } from "@/lib/date";
+
 import {
-  CheckIcon,
-  Clock3Icon,
-  ImageIcon,
-  MapPinIcon,
-  MinusIcon,
-  PlusIcon,
-  SearchIcon,
-  ShoppingBasketIcon,
-  UserRoundIcon,
-  UsersRoundIcon,
-  UtensilsIcon,
-} from "lucide-react";
-import Link from "next/link";
-import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { toast } from "sonner";
+  ProductCardMedia,
+  productGridClassName,
+} from "@/components/catalog/product-card-media";
+
+import { selectedLocationId } from "@/lib/location-preference";
+
+import { AppBottomBar } from "@/components/app-bottom-bar";
+
+import { AppPageHeader } from "@/components/app-page-header";
+
+import { EmployeeAvatar } from "@/components/employees/employee-avatar";
+
+import {
+  useKiosk,
+  useLocationAccess,
+  usePermission,
+} from "@/components/app-shell";
+import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -31,7 +32,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,26 +60,40 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { Input } from "@/components/ui/input";
-import { LocationField } from "@/components/location-field";
-import { Textarea } from "@/components/ui/textarea";
-import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
-import { useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { setCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
-import { setWasteLocation, useWasteLocation } from "@/lib/waste-prefs";
+import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
+import { useMutation, useQuery } from "convex/react";
+import {
+  CheckIcon,
+  Clock3Icon,
+  ImageIcon,
+  MapPinIcon,
+  MinusIcon,
+  PlusIcon,
+  SearchIcon,
+  ShoppingBasketIcon,
+  UserRoundIcon,
+  UsersRoundIcon,
+  UtensilsIcon,
+} from "lucide-react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type Picker = NonNullable<
   ReturnType<typeof useQuery<typeof api.staffFood.getPicker>>
@@ -94,15 +108,6 @@ type SessionState = NonNullable<
 >;
 type Product = SessionState["products"][number];
 
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 function formatDuration(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
@@ -111,28 +116,8 @@ function formatDuration(minutes: number) {
   return `${hours} t ${remainder} min`;
 }
 
-function EmployeeAvatar({
-  name,
-  imageUrl,
-  large = false,
-}: {
-  name: string;
-  imageUrl: string | null;
-  large?: boolean;
-}) {
-  return (
-    <Avatar
-      size={large ? "lg" : "default"}
-      className={large ? "size-12" : undefined}
-    >
-      {imageUrl ? <AvatarImage src={imageUrl} alt="" /> : null}
-      <AvatarFallback>{initials(name)}</AvatarFallback>
-    </Avatar>
-  );
-}
-
 function ShiftTime({ shift }: { shift: PickerShift }) {
-  const formatter = new Intl.DateTimeFormat("da-DK", {
+  const formatter = sharedDateTimeFormatter("da-DK", {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -237,8 +222,7 @@ function StaffFoodHeader({
             onValueChange={(value) => {
               if (!organizationId) return;
               onLocationChange();
-              setWasteLocation(organizationId, value);
-              setCountLocation(organizationId, value);
+              setRegistrationLocation(organizationId, value);
             }}
           />
         </Field>
@@ -248,15 +232,18 @@ function StaffFoodHeader({
 }
 
 export function StaffFoodRegistration() {
-  const sidebar = useSidebar();
   const organization = authClient.useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const kiosk = useKiosk();
-  const canRegister = usePermission("staffFood.register") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("staffFood.register"));
+  const canRegister =
+    usePermission("staffFood.register") ||
+    Boolean(
+      kiosk?.kioskModeEnabled &&
+      kiosk.settings?.enabledPages.includes("staffFood.register"),
+    );
   const [now, setNow] = useState(() => Date.now());
-  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const [sessionId, setSessionId] = useState<Id<"staffFoodSessions"> | null>(
     null,
   );
@@ -277,11 +264,12 @@ export function StaffFoodRegistration() {
   const register = useMutation(api.staffFood.register);
   const voidCheckout = useMutation(api.staffFood.voidCheckout);
 
-  const locationId = isLocked
-    ? lockedId
-    : locations?.some((location) => location.id === storedLocationId)
-      ? (storedLocationId as Id<"locations">)
-      : (locations?.[0]?.id ?? null);
+  const locationId = selectedLocationId({
+    locations,
+    storedId: storedLocationId,
+    lockedId,
+    isLocked,
+  });
   const queryNow = Math.floor(now / 300_000) * 300_000;
   const queriedPicker = useQuery(
     api.staffFood.getPicker,
@@ -296,7 +284,9 @@ export function StaffFoodRegistration() {
   );
   const searchResults = useLastDefined(
     queriedSearchResults,
-    canRegister && locationId && searchValue ? `${locationId}:${searchValue}` : null,
+    canRegister && locationId && searchValue
+      ? `${locationId}:${searchValue}`
+      : null,
   );
   const queriedState = useQuery(
     api.staffFood.getSessionState,
@@ -315,18 +305,10 @@ export function StaffFoodRegistration() {
   }, [search]);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setHeaderTarget(document.getElementById("staff-food-shell-header"));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
     if (!organizationId || !locations || isLocked) return;
     if (!locations.some((location) => location.id === storedLocationId)) {
       const fallback = locations[0]?.id ?? null;
-      setWasteLocation(organizationId, fallback);
-      setCountLocation(organizationId, fallback);
+      setRegistrationLocation(organizationId, fallback);
     }
   }, [isLocked, locations, organizationId, storedLocationId]);
 
@@ -374,7 +356,12 @@ export function StaffFoodRegistration() {
       setCategoryId("all");
       setSearch("");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Staff food kunne ikke registreres. Prøv igen.",
+        ),
+      );
     } finally {
       setStarting(false);
     }
@@ -407,7 +394,12 @@ export function StaffFoodRegistration() {
       setManualEmployee(null);
       setSearch("");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Staff food kunne ikke registreres. Prøv igen.",
+        ),
+      );
     } finally {
       setStarting(false);
     }
@@ -476,7 +468,12 @@ export function StaffFoodRegistration() {
         },
       });
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Staff food kunne ikke registreres. Prøv igen.",
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -493,7 +490,12 @@ export function StaffFoodRegistration() {
       setVoidCheckoutId(null);
       setVoidReason("");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Staff food kunne ikke registreres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Staff food kunne ikke registreres. Prøv igen.",
+        ),
+      );
     }
   }
 
@@ -522,7 +524,9 @@ export function StaffFoodRegistration() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
-        <AlertDescription>Du har ikke adgang til at registrere Staff food.</AlertDescription>
+        <AlertDescription>
+          Du har ikke adgang til at registrere Staff food.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -538,8 +542,7 @@ export function StaffFoodRegistration() {
 
   return (
     <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 pb-32 sm:pb-24">
-      <header className="md:hidden">{header}</header>
-      {headerTarget ? createPortal(header, headerTarget) : null}
+      <AppPageHeader>{header}</AppPageHeader>
 
       {!locations.length ? (
         <Empty className="min-h-80 border">
@@ -563,8 +566,8 @@ export function StaffFoodRegistration() {
             </EmptyMedia>
             <EmptyTitle>Staff food er ikke sat op endnu</EmptyTitle>
             <EmptyDescription>
-              En bruger med rollen Administrator skal først oprette en Staff food-regel
-              med vagtlængde, kategorier og produkter.
+              En bruger med rollen Administrator skal først oprette en Staff
+              food-regel med vagtlængde, kategorier og produkter.
             </EmptyDescription>
           </EmptyHeader>
           {canManage ? (
@@ -621,7 +624,8 @@ export function StaffFoodRegistration() {
                       const reserved = basketProducts
                         .filter(
                           ({ product }) =>
-                            product.allowanceCategoryId === allowance.categoryId,
+                            product.allowanceCategoryId ===
+                            allowance.categoryId,
                         )
                         .reduce((total, item) => total + item.quantity, 0);
                       return (
@@ -651,7 +655,8 @@ export function StaffFoodRegistration() {
                       const reserved = basketProducts
                         .filter(
                           ({ product }) =>
-                            product.allowanceCategoryId === allowance.categoryId,
+                            product.allowanceCategoryId ===
+                            allowance.categoryId,
                         )
                         .reduce((total, item) => total + item.quantity, 0);
                       const canAdd =
@@ -671,7 +676,7 @@ export function StaffFoodRegistration() {
                               tilbage
                             </span>
                           </div>
-                          <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+                          <div className={productGridClassName}>
                             {products.map((product) => {
                               const quantity = basket[product.id] ?? 0;
                               const unavailable = !canAdd && quantity === 0;
@@ -684,21 +689,16 @@ export function StaffFoodRegistration() {
                                   )}
                                 >
                                   <div className="relative">
-                                    {product.imageUrl ? (
-                                      <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
-                                        <Image
-                                          src={product.imageUrl}
-                                          alt={`Produktbillede af ${product.name}`}
-                                          fill
-                                          sizes="(max-width: 379px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
-                                          className="object-cover"
+                                    <ProductCardMedia
+                                      imageUrl={product.imageUrl}
+                                      alt={`Produktbillede af ${product.name}`}
+                                      fallback={
+                                        <ImageIcon
+                                          className="size-10 lg:size-12"
+                                          aria-hidden="true"
                                         />
-                                      </div>
-                                    ) : (
-                                      <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
-                                        <ImageIcon className="size-10 lg:size-12" />
-                                      </div>
-                                    )}
+                                      }
+                                    />
                                     <CardHeader className="py-2.5">
                                       <CardTitle className="truncate">
                                         {product.name}
@@ -774,16 +774,7 @@ export function StaffFoodRegistration() {
                   </Empty>
                 )}
               </div>
-              <div
-                className="fixed inset-x-0 bottom-0 z-10 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0"
-                style={{
-                  left: sidebar.isMobile
-                    ? 0
-                    : sidebar.state === "collapsed"
-                      ? "var(--sidebar-width-icon)"
-                      : "var(--sidebar-width)",
-                }}
-              >
+              <AppBottomBar>
                 <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 overflow-x-auto">
                     <ShoppingBasketIcon className="shrink-0" />
@@ -818,7 +809,7 @@ export function StaffFoodRegistration() {
                     Registrér Staff food
                   </Button>
                 </div>
-              </div>
+              </AppBottomBar>
               <Dialog
                 open={confirming}
                 onOpenChange={(open) => {
@@ -926,8 +917,8 @@ export function StaffFoodRegistration() {
                     {manualEmployee.displayName}
                   </CardTitle>
                   <CardDescription>
-                    Angiv vagtens samlede længde. Erstatningsvagten gælder resten
-                    af dagen på denne lokation.
+                    Angiv vagtens samlede længde. Erstatningsvagten gælder
+                    resten af dagen på denne lokation.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1070,13 +1061,17 @@ export function StaffFoodRegistration() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Fortryd Staff food-registrering?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Fortryd Staff food-registrering?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Lageret bliver ført tilbage. Skriv en begrundelse for ændringen.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Field>
-            <FieldLabel htmlFor="staff-food-void-reason">Begrundelse</FieldLabel>
+            <FieldLabel htmlFor="staff-food-void-reason">
+              Begrundelse
+            </FieldLabel>
             <Textarea
               id="staff-food-void-reason"
               value={voidReason}

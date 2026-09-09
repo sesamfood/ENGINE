@@ -1,20 +1,13 @@
 "use client";
 
+import {
+  ProductCardMedia,
+  productGridClassName,
+} from "@/components/catalog/product-card-media";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { getUserErrorMessage } from "@/lib/user-errors";
-import posthog from "posthog-js";
-import { useMutation, useQuery } from "convex/react";
-import {
-  ImageIcon,
-  PinIcon,
-  SearchIcon,
-  Trash2Icon,
-  Undo2Icon,
-} from "lucide-react";
-import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { usePermission } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -46,12 +39,12 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -64,9 +57,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { usePermission } from "@/components/app-shell";
 import { productSearchScore } from "@/lib/product-search";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
+import { useMutation, useQuery } from "convex/react";
+import {
+  ImageIcon,
+  PinIcon,
+  SearchIcon,
+  Trash2Icon,
+  Undo2Icon,
+} from "lucide-react";
+import Image from "next/image";
+import posthog from "posthog-js";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useWasteContext } from "./waste-header";
 
 type Catalog = NonNullable<
@@ -130,7 +135,10 @@ function WasteUndoControls({
   undoingIds: Id<"wasteRegistrations">[];
   dialogOpen: boolean;
   onDialogOpenChange: (open: boolean) => void;
-  onUndo: (items: UndoRegistration[], closeDialog?: boolean) => void | Promise<void>;
+  onUndo: (
+    items: UndoRegistration[],
+    closeDialog?: boolean,
+  ) => void | Promise<void>;
 }) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -179,8 +187,8 @@ function WasteUndoControls({
           <DialogHeader>
             <DialogTitle>Fortryd Waste-registreringer</DialogTitle>
             <DialogDescription>
-              Du kan fortryde én registrering eller annullere dem alle. Muligheden
-              forsvinder efter 30 sekunder.
+              Du kan fortryde én registrering eller annullere dem alle.
+              Muligheden forsvinder efter 30 sekunder.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
@@ -248,11 +256,21 @@ export function WasteRegistration() {
     api.waste.listProductViewStatePage,
     locationId ? { locationId } : "skip",
   );
-  const state = useMemo(() => viewSettings && productViewState ? {
-    settings: viewSettings.settings,
-    rankings: productViewState.flatMap((product) => product.ranking ? [product.ranking] : []),
-    configs: productViewState.flatMap((product) => product.config ? [product.config] : []),
-  } : undefined, [productViewState, viewSettings]);
+  const state = useMemo(
+    () =>
+      viewSettings && productViewState
+        ? {
+            settings: viewSettings.settings,
+            rankings: productViewState.flatMap((product) =>
+              product.ranking ? [product.ranking] : [],
+            ),
+            configs: productViewState.flatMap((product) =>
+              product.config ? [product.config] : [],
+            ),
+          }
+        : undefined,
+    [productViewState, viewSettings],
+  );
   const registerWaste = useMutation(api.waste.registerWaste);
   const undoWaste = useMutation(api.waste.undoWasteRegistration);
   const setPinned = useMutation(api.waste.setPinned);
@@ -282,17 +300,20 @@ export function WasteRegistration() {
         undoDialogOpen ? registration.reasonExpiresAt : registration.expiresAt,
       ),
     );
-    const timeout = window.setTimeout(() => {
-      const now = Date.now();
-      setUndoRegistrations((registrations) =>
-        registrations.filter(
-          (registration) =>
-            (undoDialogOpen
-              ? registration.reasonExpiresAt
-              : registration.expiresAt) > now,
-        ),
-      );
-    }, Math.max(0, nextExpiration - current) + 1);
+    const timeout = window.setTimeout(
+      () => {
+        const now = Date.now();
+        setUndoRegistrations((registrations) =>
+          registrations.filter(
+            (registration) =>
+              (undoDialogOpen
+                ? registration.reasonExpiresAt
+                : registration.expiresAt) > now,
+          ),
+        );
+      },
+      Math.max(0, nextExpiration - current) + 1,
+    );
     return () => window.clearTimeout(timeout);
   }, [hasUndoRegistrations, undoDialogOpen, undoRegistrations]);
 
@@ -433,7 +454,12 @@ export function WasteRegistration() {
       );
       if (source === "custom") setSelectedId(null);
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Waste-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      );
     }
   }
 
@@ -465,7 +491,10 @@ export function WasteRegistration() {
       const firstError = results.find((result) => result.status === "rejected");
       toast.error(
         failed.length === 1 && firstError?.status === "rejected"
-          ? getUserErrorMessage(firstError.reason, "Waste-handlingen kunne ikke gennemføres. Prøv igen.")
+          ? getUserErrorMessage(
+              firstError.reason,
+              "Waste-handlingen kunne ikke gennemføres. Prøv igen.",
+            )
           : `${failed.length} Waste-registreringer kunne ikke annulleres`,
       );
     }
@@ -482,7 +511,12 @@ export function WasteRegistration() {
         pinned: !configMap.get(product.id)?.pinnedAt,
       });
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Waste-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      );
     }
   }
 
@@ -505,7 +539,12 @@ export function WasteRegistration() {
       toast.success("Genvejene er gemt");
       setEditingShortcuts(false);
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Waste-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      );
     }
   }
 
@@ -581,7 +620,7 @@ export function WasteRegistration() {
       </InputGroup>
 
       {products.length ? (
-        <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+        <div className={productGridClassName}>
           {products.map((product) => {
             const config = configMap.get(product.id);
             const shortcuts = shortcutsFor(
@@ -598,21 +637,17 @@ export function WasteRegistration() {
                 )}
               >
                 <div className="relative">
-                  {product.imageUrl ? (
-                    <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
-                      <Image
-                        src={product.imageUrl}
-                        alt=""
-                        fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                        className="object-cover"
+                  <ProductCardMedia
+                    imageUrl={product.imageUrl}
+                    alt=""
+                    fallback={
+                      <ImageIcon
+                        className="size-10 lg:size-12"
+                        aria-hidden="true"
                       />
-                    </div>
-                  ) : (
-                    <div className="grid aspect-video w-full place-items-center bg-muted text-muted-foreground lg:aspect-[4/3]">
-                      <ImageIcon className="size-10 lg:size-12" />
-                    </div>
-                  )}
+                    }
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                  />
                   <CardHeader className="py-3 lg:py-4">
                     <div className="flex min-w-0 items-baseline gap-2">
                       <CardTitle className="min-w-0 flex-1 truncate">
@@ -804,7 +839,12 @@ export function WasteRegistration() {
                           setEditingShortcuts(false);
                           toast.success("Anbefalede mængder bruges igen");
                         } catch (error) {
-                          toast.error(getUserErrorMessage(error, "Waste-handlingen kunne ikke gennemføres. Prøv igen."));
+                          toast.error(
+                            getUserErrorMessage(
+                              error,
+                              "Waste-handlingen kunne ikke gennemføres. Prøv igen.",
+                            ),
+                          );
                         }
                       }}
                     >

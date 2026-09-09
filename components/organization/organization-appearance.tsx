@@ -1,5 +1,7 @@
 "use client";
 
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -28,11 +30,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Field,
-  FieldError,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -123,19 +121,11 @@ function LogoUploadCard({
       if (image.size > MAX_LOGO_SIZE) {
         throw new Error("Logoet kunne ikke komprimeres til under 2 MB");
       }
-      const uploadUrl = await generateUploadUrl({});
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": image.type },
-        body: image,
+      const storageId = await uploadToStorage({
+        uploadUrl: await generateUploadUrl({}),
+        file: image,
       });
-      if (!response.ok) throw new Error("Logoet kunne ikke uploades");
-
-      const upload = (await response.json()) as { storageId?: string };
-      if (!upload.storageId)
-        throw new Error("Uploaden returnerede ikke en fil");
-
-      await onUpload(upload.storageId as Id<"_storage">);
+      await onUpload(storageId);
       clearFile();
       toast.success(`${title} er opdateret`);
     } catch (uploadError) {
@@ -186,9 +176,7 @@ function LogoUploadCard({
           aria-label={`Vælg fil til ${title.toLocaleLowerCase("da")}`}
           disabled={saving}
           onClick={() => inputRef.current?.click()}
-          style={
-            wide ? { aspectRatio: imageAspectRatio ?? 4 } : undefined
-          }
+          style={wide ? { aspectRatio: imageAspectRatio ?? 4 } : undefined}
           className={cn(
             "relative overflow-hidden p-0",
             wide ? "h-auto w-full max-w-96 self-center" : "size-32",

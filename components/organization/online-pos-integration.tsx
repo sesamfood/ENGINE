@@ -1,16 +1,18 @@
 "use client";
 
+import { IntegrationCard } from "./integration-card";
+
+import type { FunctionReturnType } from "convex/server";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   useAction,
+  useConvex,
   useMutation,
   usePaginatedQuery,
   useQuery,
 } from "convex/react";
 import {
-  ChevronDownIcon,
   ChevronRightIcon,
-  ChevronUpIcon,
   CircleAlertIcon,
   CopyIcon,
   PlugIcon,
@@ -21,10 +23,9 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  CreatableCombobox,
-  type ComboboxOption,
-} from "@/components/catalog/creatable-combobox";
-import { getOnlinePosProductSuggestions } from "@/components/catalog/online-pos-product-suggestions";
+  OnlinePosProductSelect,
+  useOnlinePosProductOptions,
+} from "@/components/catalog/online-pos-product-select";
 import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
 import { OnlinePosStockSettings } from "@/components/organization/online-pos-stock-settings";
 import { OnlinePosOrderDetail } from "@/components/organization/online-pos-order-detail";
@@ -51,11 +52,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+
 import {
   Empty,
   EmptyDescription,
@@ -76,7 +73,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import {
   Table,
   TableBody,
@@ -90,6 +87,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { DEFAULT_CURRENCY } from "@/lib/dashboard/types";
+import { addDays, dateKey, DEFAULT_TIME_ZONE, zonedStart } from "@/lib/date";
 
 type OnlinePosProduct = {
   id: number;
@@ -116,57 +114,18 @@ const connectedAtFormatter = new Intl.DateTimeFormat("da-DK", {
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 const SYNC_DISABLED_REASON_ID = "online-pos-sales-sync-disabled-reason";
 
-function addCalendarDays(value: string, days: number) {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + days));
-  return date.toISOString().slice(0, 10);
-}
-
-function dateKeyInZone(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(timestamp);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function dateInput(daysAgo: number, timeZone = "Europe/Copenhagen") {
-  return addCalendarDays(dateKeyInZone(Date.now(), timeZone), -daysAgo);
-}
-
-// Local copy of convex/lib/dashboardMetrics.zonedStart — client cannot import that module.
-function zonedDayStart(value: string, timeZone: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  const target = Date.UTC(year, month - 1, day);
-  let guess = target;
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(
-      formatter.formatToParts(guess).map((part) => [part.type, part.value]),
-    );
-    const represented = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute),
-      Number(parts.second),
-    );
-    guess += target - represented;
+function salesDateRange(from: string, to: string, timeZone?: string) {
+  try {
+    if (timeZone) {
+      return {
+        from: zonedStart(from, timeZone),
+        to: zonedStart(addDays(to, 1), timeZone),
+      };
+    }
+  } catch {
+    // Incomplete dates keep the query disabled until the range is valid.
   }
-  return guess;
+  return { from: Number.NaN, to: Number.NaN };
 }
 
 function formatOre(revenue: number, currency = DEFAULT_CURRENCY) {
@@ -428,10 +387,12 @@ function ConnectionCard({
   );
 }
 
-function RawSalesResponse() {
-  const inspectRawSales = useAction(api.onlinePos.inspectRawSales);
-  const [date, setDate] = useState(() => dateInput(1));
-  const [lines, setLines] = useState<unknown[] | null>(null);
+function StoredSalesSample() {
+  const convex = useConvex();
+  const [date, setDate] = useState(() =>
+    addDays(dateKey(Date.now(), DEFAULT_TIME_ZONE), -1),
+  );
+  const [lines, setLines] = useState<FunctionReturnType<typeof api.sales.inspectStoredSales> | null>(null);
   const [loading, setLoading] = useState(false);
   const prettyJson = lines === null ? null : JSON.stringify(lines, null, 2);
 
@@ -442,7 +403,7 @@ function RawSalesResponse() {
     }
     setLoading(true);
     try {
-      const result: unknown[] = await inspectRawSales({ date });
+      const result = await convex.query(api.sales.inspectStoredSales, { date });
       setLines(result);
     } catch (error) {
       setLines(null);
@@ -456,10 +417,10 @@ function RawSalesResponse() {
     if (prettyJson === null) return;
     try {
       await navigator.clipboard.writeText(prettyJson);
-      toast.success("Salgsresponsen er kopieret");
+      toast.success("Salgslinjerne er kopieret");
     } catch {
       toast.error(
-        "Salgsresponsen kunne ikke kopieres. Markér teksten, og kopiér den manuelt.",
+        "Salgslinjerne kunne ikke kopieres. Markér teksten, og kopiér den manuelt.",
       );
     }
   }
@@ -467,9 +428,9 @@ function RawSalesResponse() {
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>Rå salgsrespons</CardTitle>
+        <CardTitle>Gemte salgslinjer</CardTitle>
         <CardDescription>
-          Hent de første fem rå salgslinjer fra OnlinePOS for én dag.
+          Vis op til fem gemte salgslinjer fra dagens første ordrer.
         </CardDescription>
         {prettyJson !== null ? (
           <CardAction>
@@ -477,7 +438,7 @@ function RawSalesResponse() {
               type="button"
               variant="outline"
               size="sm"
-              aria-label="Kopiér rå salgsrespons"
+              aria-label="Kopiér gemte salgslinjer"
               onClick={() => void copyResponse()}
             >
               <CopyIcon data-icon="inline-start" />
@@ -495,9 +456,9 @@ function RawSalesResponse() {
         >
           <FieldGroup>
             <Field orientation="responsive">
-              <FieldLabel htmlFor="online-pos-raw-sales-date">Dato</FieldLabel>
+              <FieldLabel htmlFor="stored-sales-date">Dato</FieldLabel>
               <Input
-                id="online-pos-raw-sales-date"
+                id="stored-sales-date"
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
@@ -531,50 +492,20 @@ function ProductMappings({
 }) {
   const mappingOptions = useQuery(api.onlinePos.listMappingOptions);
   const setMapping = useAction(api.onlinePos.setProductMapping);
-  const [savingProductId, setSavingProductId] = useState<Id<"products">>();
-  const comboboxOptions = useMemo(
-    () =>
-      (onlinePosProducts ?? []).map((product) => ({
-        value: String(product.id),
-        label: product.groupName
-          ? `${product.name} — ${product.groupName}`
-          : product.name,
-      })),
-    [onlinePosProducts],
+  const [savingProductIds, setSavingProductIds] = useState<Set<Id<"products">>>(
+    new Set(),
   );
-  const suggestionsByProductId = useMemo(() => {
-    const suggestions = new Map<
-      Id<"products">,
-      { exactMatch: boolean; options: ComboboxOption[] }
-    >();
-
-    for (const product of mappingOptions?.products ?? []) {
-      const { hasExactMatch, suggestions: matchingProducts } =
-        getOnlinePosProductSuggestions(onlinePosProducts ?? [], product.name);
-      suggestions.set(product.id, {
-        exactMatch: hasExactMatch,
-        options: matchingProducts.map((suggestion) => ({
-          value: String(suggestion.id),
-          label: suggestion.groupName
-            ? `${suggestion.name} — ${suggestion.groupName}`
-            : suggestion.name,
-        })),
-      });
-    }
-
-    return suggestions;
-  }, [mappingOptions?.products, onlinePosProducts]);
+  const options = useOnlinePosProductOptions(onlinePosProducts);
 
   async function changeMapping(
     productId: Id<"products">,
-    onlinePosProductId: string | null,
+    onlinePosProductId: number | null,
   ) {
-    setSavingProductId(productId);
+    setSavingProductIds((current) => new Set(current).add(productId));
     try {
       await setMapping({
         productId,
-        onlinePosProductId:
-          onlinePosProductId === null ? null : Number(onlinePosProductId),
+        onlinePosProductId,
       });
       toast.success(
         onlinePosProductId === null
@@ -584,7 +515,11 @@ function ProductMappings({
     } catch (error) {
       toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
-      setSavingProductId(undefined);
+      setSavingProductIds((current) => {
+        const next = new Set(current);
+        next.delete(productId);
+        return next;
+      });
     }
   }
 
@@ -649,33 +584,21 @@ function ProductMappings({
             </TableHeader>
             <TableBody>
               {mappingOptions.products.map((product) => {
-                const suggestions = suggestionsByProductId.get(product.id);
                 return (
                   <TableRow key={product.id}>
                     <TableCell className="font-medium">
                       {product.name}
                     </TableCell>
                     <TableCell>
-                      <CreatableCombobox
-                        options={comboboxOptions}
-                        suggestionLabel={
-                          suggestions?.exactMatch
-                            ? "Forslag med samme navn"
-                            : "Forslag ud fra produktnavnet"
-                        }
-                        suggestionOptions={suggestions?.options}
-                        value={
-                          product.onlinePosProductId === null
-                            ? null
-                            : String(product.onlinePosProductId)
-                        }
+                      <OnlinePosProductSelect
+                        options={options}
+                        productName={product.name}
+                        value={product.onlinePosProductId}
                         onValueChange={(value) =>
                           void changeMapping(product.id, value)
                         }
-                        placeholder="Søg efter OnlinePOS-produkt"
                         ariaLabel={`OnlinePOS-produkt for ${product.name}`}
-                        allowCreate={false}
-                        disabled={savingProductId === product.id}
+                        disabled={savingProductIds.has(product.id)}
                       />
                     </TableCell>
                   </TableRow>
@@ -703,9 +626,8 @@ function SalesList() {
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
   const [locationFilter, setLocationFilter] = useState<string>("all");
-  const [selectedOrderId, setSelectedOrderId] = useState<Id<"salesOrders"> | null>(
-    null,
-  );
+  const [selectedOrderId, setSelectedOrderId] =
+    useState<Id<"salesOrders"> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -715,16 +637,14 @@ function SalesList() {
   }, []);
 
   const timeZone = context?.timeZone;
-  const resolvedFromDate = fromDate ?? (timeZone ? dateInput(7, timeZone) : "");
-  const resolvedToDate = toDate ?? (timeZone ? dateInput(0, timeZone) : "");
-  const from =
-    timeZone && resolvedFromDate
-      ? zonedDayStart(resolvedFromDate, timeZone)
-      : Number.NaN;
-  const to =
-    timeZone && resolvedToDate
-      ? zonedDayStart(addCalendarDays(resolvedToDate, 1), timeZone)
-      : Number.NaN;
+  const today = timeZone ? dateKey(now, timeZone) : "";
+  const resolvedFromDate = fromDate ?? (today ? addDays(today, -7) : "");
+  const resolvedToDate = toDate ?? today;
+  const { from, to } = salesDateRange(
+    resolvedFromDate,
+    resolvedToDate,
+    timeZone,
+  );
   const rangeValid =
     Boolean(resolvedFromDate) &&
     Boolean(resolvedToDate) &&
@@ -735,10 +655,7 @@ function SalesList() {
     to - from <= MAX_SALES_RANGE_MS;
   const locationId =
     locationFilter === "all" ? null : (locationFilter as Id<"locations">);
-  const listArgs =
-    context && rangeValid
-      ? { locationId, from, to }
-      : "skip";
+  const listArgs = context && rangeValid ? { locationId, from, to } : "skip";
   const { results, status, loadMore } = usePaginatedQuery(
     api.sales.listOrders,
     listArgs,
@@ -805,7 +722,7 @@ function SalesList() {
   return (
     <>
       <Card className="max-w-6xl">
-      <CardHeader>
+        <CardHeader>
         <CardTitle>Ordrer fra OnlinePOS</CardTitle>
         <CardDescription>
           Vis synkroniserede ordrer for en periode på højst 31 dage. Datoerne er
@@ -835,8 +752,8 @@ function SalesList() {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        {!context.connected ? (
+        <CardContent className="flex flex-col gap-5">
+          {!context.connected ? (
           <Alert>
             <CircleAlertIcon />
             <AlertTitle>OnlinePOS er ikke forbundet</AlertTitle>
@@ -864,7 +781,7 @@ function SalesList() {
           </Alert>
         ) : null}
 
-        {cooldown && context.manualSyncRetryAt ? (
+          {cooldown && context.manualSyncRetryAt ? (
           <Alert id={SYNC_DISABLED_REASON_ID}>
             <CircleAlertIcon />
             <AlertTitle>Manuel synkronisering er midlertidigt begrænset</AlertTitle>
@@ -879,15 +796,15 @@ function SalesList() {
           </p>
         ) : null}
 
-        {context.locations.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {context.locations.map((location: SalesLocationContext) => (
-              <div
+          {context.locations.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {context.locations.map((location: SalesLocationContext) => (
+                <div
                 key={location.id}
                 className="flex flex-col gap-1 rounded-lg border px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
               >
-                <div className="min-w-0 flex flex-col gap-1">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{location.name}</span>
                     <Badge
                       variant={
@@ -897,30 +814,30 @@ function SalesList() {
                       {syncStateLabel(location.state)}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {location.lastSuccessAt
-                      ? `Senest synkroniseret ${connectedAtFormatter.format(location.lastSuccessAt)}`
-                      : "Endnu ikke synkroniseret"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {location.backfillThroughAt
-                      ? `Historik tilbage til ${connectedAtFormatter.format(location.backfillThroughAt)}`
-                      : "Historik er endnu ikke hentet"}
-                    {" · "}
-                    {location.syncedThroughAt
-                      ? `Aktuel til ${connectedAtFormatter.format(location.syncedThroughAt)}`
-                      : "Ingen aktuelle data"}
-                  </p>
-                  {location.lastError ? (
+                    <p className="text-sm text-muted-foreground">
+                      {location.lastSuccessAt
+                        ? `Senest synkroniseret ${connectedAtFormatter.format(location.lastSuccessAt)}`
+                        : "Endnu ikke synkroniseret"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {location.backfillThroughAt
+                        ? `Historik tilbage til ${connectedAtFormatter.format(location.backfillThroughAt)}`
+                        : "Historik er endnu ikke hentet"}
+                      {" · "}
+                      {location.syncedThroughAt
+                        ? `Aktuel til ${connectedAtFormatter.format(location.syncedThroughAt)}`
+                        : "Ingen aktuelle data"}
+                    </p>
+                    {location.lastError ? (
                     <p className="text-sm text-destructive">{location.lastError}</p>
                   ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
+              ))}
+            </div>
+          ) : null}
 
-        <FieldGroup className="grid sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
+          <FieldGroup className="grid sm:grid-cols-2 lg:grid-cols-3 lg:items-end">
           <Field>
             <FieldLabel htmlFor="online-pos-sales-location">Lokation</FieldLabel>
             <Select
@@ -970,7 +887,7 @@ function SalesList() {
           </Field>
         </FieldGroup>
 
-        {!rangeValid ? (
+          {!rangeValid ? (
           <Alert>
             <CircleAlertIcon />
             <AlertTitle>Ugyldig periode</AlertTitle>
@@ -980,8 +897,8 @@ function SalesList() {
             </AlertDescription>
           </Alert>
         ) : status === "LoadingFirstPage" ? (
-          <Skeleton className="h-72 w-full" />
-        ) : results.length === 0 ? (
+            <Skeleton className="h-72 w-full" />
+          ) : results.length === 0 ? (
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -1006,9 +923,9 @@ function SalesList() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <>
-            <Table>
-              <TableHeader>
+            <>
+              <Table>
+                <TableHeader>
                 <TableRow>
                   <TableHead>Tidspunkt</TableHead>
                   <TableHead>Lokation</TableHead>
@@ -1022,56 +939,58 @@ function SalesList() {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {results.map((order) => (
-                  <TableRow
+                <TableBody>
+                  {results.map((order) => (
+                    <TableRow
                     key={order.id}
                     className="cursor-pointer [&>td]:py-3"
                     onClick={() => setSelectedOrderId(order.id)}
                   >
-                    <TableCell>
+                      <TableCell>
                       {orderAtFormatter.format(order.occurredAt)}
                     </TableCell>
-                    <TableCell>{order.locationName}</TableCell>
-                    <TableCell>{order.orderNumber}</TableCell>
-                    <TableCell>{order.itemCount}</TableCell>
-                    <TableCell>{formatOre(order.revenue, order.currency)}</TableCell>
-                    <TableCell>{order.department || "—"}</TableCell>
-                    <TableCell>{order.paymentType || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="min-h-11"
-                        aria-label={`Åbn OnlinePOS-ordre ${order.orderNumber}`}
-                        onClick={(event) => {
+                      <TableCell>{order.locationName}</TableCell>
+                      <TableCell>{order.orderNumber}</TableCell>
+                      <TableCell>{order.itemCount}</TableCell>
+                      <TableCell>
+                        {formatOre(order.revenue, order.currency)}
+                      </TableCell>
+                      <TableCell>{order.department || "—"}</TableCell>
+                      <TableCell>{order.paymentType || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="min-h-11"
+                          aria-label={`Åbn OnlinePOS-ordre ${order.orderNumber}`}
+                          onClick={(event) => {
                           event.stopPropagation();
                           setSelectedOrderId(order.id);
                         }}
-                      >
-                        Åbn
-                        <ChevronRightIcon data-icon="inline-end" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {status === "CanLoadMore" ? (
+                        >
+                          Åbn
+                          <ChevronRightIcon data-icon="inline-end" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {status === "CanLoadMore" ? (
               <div className="flex justify-center">
                 <Button variant="outline" onClick={() => loadMore(50)}>
                   Vis flere
                 </Button>
               </div>
             ) : null}
-            {status === "LoadingMore" ? (
+              {status === "LoadingMore" ? (
               <div className="flex justify-center">
                 <Spinner />
               </div>
             ) : null}
-          </>
-        )}
-      </CardContent>
+            </>
+          )}
+        </CardContent>
       </Card>
       <OnlinePosOrderDetail
         orderId={selectedOrderId}
@@ -1156,125 +1075,88 @@ export function OnlinePosIntegration() {
   const integrationOpen = detailsOpen || setupOpen;
 
   return (
-    <Collapsible
+    <IntegrationCard
+      id="online-pos-integration"
+      title="OnlinePOS"
+      description={
+        <>
+          Masterforbindelsen henter produkter. De enkelte lokationsforbindelser
+          henter salg.
+        </>
+      }
+      connected={settings.connected}
+      checked={settings.connected ? settings.enabled : setupOpen}
       open={integrationOpen}
       onOpenChange={(open) => {
         setDetailsOpen(open);
         if (!open && !settings.connected) setSetupOpen(false);
       }}
+      onEnabledChange={(enabled) => void changeIntegrationEnabled(enabled)}
+      disabled={changingEnabled}
+      className="has-data-[slot=card-footer]:pb-(--card-spacing)"
     >
-      <Card className="max-w-6xl has-data-[slot=card-footer]:pb-(--card-spacing)">
-        <CardHeader>
-          <CardTitle>OnlinePOS</CardTitle>
-          <CardDescription>
-            Masterforbindelsen henter produkter. De enkelte lokationsforbindelser
-            henter salg.
-          </CardDescription>
-          <CardAction className="flex items-center gap-3">
-            <Field orientation="horizontal" className="w-auto">
-              <Switch
-                id="online-pos-integration-enabled"
-                aria-controls={
-                  settings.connected
-                    ? undefined
-                    : "online-pos-integration-settings"
-                }
-                aria-expanded={
-                  settings.connected ? undefined : integrationOpen
-                }
-                aria-label="Aktivér OnlinePOS-integration"
-                checked={settings.connected ? settings.enabled : setupOpen}
-                disabled={changingEnabled}
-                onCheckedChange={(enabled) =>
-                  void changeIntegrationEnabled(enabled)
-                }
-              />
-            </Field>
-            <CollapsibleTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={`${integrationOpen ? "Skjul" : "Vis"} OnlinePOS-indstillinger`}
-                />
-              }
-            >
-              {integrationOpen ? "Skjul" : "Vis"}
-              {integrationOpen ? (
-                <ChevronUpIcon data-icon="inline-end" />
-              ) : (
-                <ChevronDownIcon data-icon="inline-end" />
-              )}
-            </CollapsibleTrigger>
-          </CardAction>
-        </CardHeader>
-        <CollapsibleContent id="online-pos-integration-settings">
-          <CardContent>
-            {settings.enabled ? (
-              <Tabs
-                value={tab}
-                onValueChange={(value) => {
-                  setTab(value);
-                  if (
-                    value === "mappings" &&
-                    !onlinePosProducts &&
-                    !loadingProducts
-                  ) {
-                    void loadProducts();
-                  }
+      {settings.enabled ? (
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            setTab(value);
+            if (
+              value === "mappings" &&
+              !onlinePosProducts &&
+              !loadingProducts
+            ) {
+              void loadProducts();
+            }
+          }}
+          className="gap-5"
+        >
+          <TabsList
+            aria-label="OnlinePOS-sektioner"
+            className="w-full justify-start"
+          >
+            <TabsTrigger value="connection">Indstillinger</TabsTrigger>
+            <TabsTrigger value="mappings">Produktkoblinger</TabsTrigger>
+            <TabsTrigger value="sales">Salg</TabsTrigger>
+          </TabsList>
+          <TabsContent value="connection">
+            <div className="flex flex-col gap-5">
+              <ConnectionCard
+                settings={settings}
+                onDisconnected={() => {
+                  setSetupOpen(false);
+                  setTab("connection");
                 }}
-                className="gap-5"
-              >
-                <TabsList
-                  aria-label="OnlinePOS-sektioner"
-                  className="w-full justify-start"
-                >
-                  <TabsTrigger value="connection">Indstillinger</TabsTrigger>
-                  <TabsTrigger value="mappings">Produktkoblinger</TabsTrigger>
-                  <TabsTrigger value="sales">Salg</TabsTrigger>
-                </TabsList>
-                <TabsContent value="connection">
-                  <div className="flex flex-col gap-5">
-                    <ConnectionCard
-                      settings={settings}
-                      onDisconnected={() => {
-                        setSetupOpen(false);
-                        setTab("connection");
-                      }}
-                    />
-                    <RawSalesResponse />
-                    <OnlinePosStockSettings />
-                    <OnlinePosLocationConnections />
-                  </div>
-                </TabsContent>
-                <TabsContent value="mappings">
-                  <ProductMappings
-                    onlinePosProducts={onlinePosProducts}
-                    loading={loadingProducts}
-                    onReload={() => void loadProducts()}
-                  />
-                </TabsContent>
-                <TabsContent value="sales">
-                  <SalesList />
-                </TabsContent>
-              </Tabs>
-            ) : (
-              <div className="flex flex-col gap-5">
-                <ConnectionCard
-                  settings={settings}
-                  onDisconnected={() => {
-                    setSetupOpen(false);
-                    setTab("connection");
-                  }}
-                />
-                {settings.connected ? <RawSalesResponse /> : null}
-                <OnlinePosStockSettings />
-                <OnlinePosLocationConnections />
-              </div>
-            )}
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+              />
+              <StoredSalesSample />
+              <OnlinePosStockSettings />
+              <OnlinePosLocationConnections />
+            </div>
+          </TabsContent>
+          <TabsContent value="mappings">
+            <ProductMappings
+              onlinePosProducts={onlinePosProducts}
+              loading={loadingProducts}
+              onReload={() => void loadProducts()}
+            />
+          </TabsContent>
+          <TabsContent value="sales">
+            <SalesList />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <div className="flex flex-col gap-5">
+          <ConnectionCard
+            settings={settings}
+            onDisconnected={() => {
+              setSetupOpen(false);
+              setTab("connection");
+            }}
+          />
+          {settings.connected ? <StoredSalesSample /> : null}
+          <OnlinePosStockSettings />
+          <OnlinePosLocationConnections />
+        </div>
+      )}
+    </IntegrationCard>
   );
 }

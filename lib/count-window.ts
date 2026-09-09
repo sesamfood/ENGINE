@@ -1,4 +1,6 @@
-export const COUNT_TIME_ZONE = "Europe/Copenhagen";
+import { dateKey as dateKeyInZone, parseDateKey, zonedTimestamp, DEFAULT_TIME_ZONE } from "./date";
+
+export const COUNT_TIME_ZONE = DEFAULT_TIME_ZONE;
 export const MAX_SPECIAL_OPENING_DATES = 50;
 
 export type DailyOpeningHours = {
@@ -36,59 +38,6 @@ export const DEFAULT_COUNT_SCHEDULE: CountSchedule = {
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
-const zonedParts = new Intl.DateTimeFormat("en-CA", {
-  timeZone: COUNT_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
-
-function partsAt(timestamp: number) {
-  const parts = Object.fromEntries(
-    zonedParts
-      .formatToParts(timestamp)
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)]),
-  );
-  return {
-    year: parts.year,
-    month: parts.month,
-    day: parts.day,
-    hour: parts.hour,
-    minute: parts.minute,
-    second: parts.second,
-  };
-}
-
-function zonedTimestamp(date: Date, minuteOfDay: number) {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth();
-  const day = date.getUTCDate();
-  const hour = Math.floor(minuteOfDay / 60);
-  const minute = minuteOfDay % 60;
-  const target = Date.UTC(year, month, day, hour, minute);
-  let candidate = target;
-
-  for (let pass = 0; pass < 2; pass++) {
-    const actual = partsAt(candidate);
-    const actualAsUtc = Date.UTC(
-      actual.year,
-      actual.month - 1,
-      actual.day,
-      actual.hour,
-      actual.minute,
-      actual.second,
-    );
-    candidate += target - actualAsUtc;
-  }
-
-  return candidate;
-}
-
 function parsePeriodKey(periodKey: string) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(periodKey);
   if (!match) throw new Error("Perioden er ugyldig");
@@ -99,19 +48,8 @@ function dateKey(date: Date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
-function parseDateKey(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) throw new Error("Datoen er ugyldig");
-  const date = new Date(
-    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-  );
-  if (dateKey(date) !== value) throw new Error("Datoen er ugyldig");
-  return date;
-}
-
-function localDate(now: number) {
-  const parts = partsAt(now);
-  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+function localDate(now: number, timeZone: string) {
+  return parseDateKey(dateKeyInZone(now, timeZone));
 }
 
 function monthlyDate(year: number, month: number, day: number) {
@@ -211,6 +149,7 @@ function countWindowForDate(
   periodKey: string,
   weekly: WeeklyOpeningHours[] = DEFAULT_WEEKLY_OPENING_HOURS,
   specialOpeningHours: SpecialOpeningHours[] = [],
+  timeZone = DEFAULT_TIME_ZONE,
 ) {
   const specials = new Map(
     specialOpeningHours.map((hours) => [hours.date, hours]),
@@ -239,12 +178,14 @@ function countWindowForDate(
   return {
     periodKey,
     opensAt: zonedTimestamp(
-      lastOpenDay.date,
+      dateKey(lastOpenDay.date),
       lastOpenDay.hours.closeMinuteOfDay,
+      timeZone,
     ),
     closesAt: zonedTimestamp(
-      firstOpenDay.date,
+      dateKey(firstOpenDay.date),
       firstOpenDay.hours.openMinuteOfDay,
+      timeZone,
     ),
   };
 }
@@ -253,12 +194,14 @@ export function countWindow(
   key: string,
   weekly: WeeklyOpeningHours[] = DEFAULT_WEEKLY_OPENING_HOURS,
   specialOpeningHours: SpecialOpeningHours[] = [],
+  timeZone = DEFAULT_TIME_ZONE,
 ) {
   return countWindowForPeriod(
     key,
     DEFAULT_COUNT_SCHEDULE,
     weekly,
     specialOpeningHours,
+    timeZone,
   );
 }
 
@@ -267,6 +210,7 @@ export function countWindowForPeriod(
   schedule: CountSchedule,
   weekly: WeeklyOpeningHours[] = DEFAULT_WEEKLY_OPENING_HOURS,
   specialOpeningHours: SpecialOpeningHours[] = [],
+  timeZone = DEFAULT_TIME_ZONE,
 ) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(key)) {
     return countWindowForDate(
@@ -274,6 +218,7 @@ export function countWindowForPeriod(
       key,
       weekly,
       specialOpeningHours,
+      timeZone,
     );
   }
   const { year, month } = parsePeriodKey(key);
@@ -286,6 +231,7 @@ export function countWindowForPeriod(
     key,
     weekly,
     specialOpeningHours,
+    timeZone,
   );
 }
 
@@ -294,13 +240,15 @@ export function scheduledCountWindows(
   weekly: WeeklyOpeningHours[] = DEFAULT_WEEKLY_OPENING_HOURS,
   specialOpeningHours: SpecialOpeningHours[] = [],
   schedule: CountSchedule = DEFAULT_COUNT_SCHEDULE,
+  timeZone = DEFAULT_TIME_ZONE,
 ) {
-  let dueDate = scheduledDateAtOrBefore(localDate(now), schedule);
+  let dueDate = scheduledDateAtOrBefore(localDate(now, timeZone), schedule);
   let due = countWindowForDate(
     dueDate,
     periodKeyFor(dueDate, schedule),
     weekly,
     specialOpeningHours,
+    timeZone,
   );
 
   if (due.opensAt > now) {
@@ -310,6 +258,7 @@ export function scheduledCountWindows(
       periodKeyFor(dueDate, schedule),
       weekly,
       specialOpeningHours,
+      timeZone,
     );
   }
 
@@ -319,6 +268,7 @@ export function scheduledCountWindows(
     periodKeyFor(nextDate, schedule),
     weekly,
     specialOpeningHours,
+    timeZone,
   );
 
   return {

@@ -1,3 +1,4 @@
+import { resolveLocationCurrency as locationCurrency } from "./lib/masterData";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -9,12 +10,40 @@ import type { QueryCtx } from "./_generated/server";
 import { DEFAULT_CURRENCY } from "../lib/dashboard/types";
 import { mutation, query } from "./_generated/server";
 import {
+  requireAllLocationAccess,
   requireIntegrationManager,
   requireLocationAccess,
   resolveLocationFilter,
 } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
 import { resolveTimeZone } from "./lib/timeZone";
+import { addDays, zonedStart } from "../lib/date";
+import schema from "./schema";
+
+export const inspectStoredSales = query({
+  args: { date: v.string() },
+  returns: v.array(schema.doc("salesLines")),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    const timeZone = await resolveTimeZone(ctx, auth.organizationId);
+    let from: number;
+    let to: number;
+    try {
+      from = zonedStart(args.date, timeZone);
+      to = zonedStart(addDays(args.date, 1), timeZone);
+    } catch {
+      throw new ConvexError("Vælg en gyldig dato");
+    }
+    const orders = await ctx.db.query("salesOrders")
+      .withIndex("by_organizationId_and_occurredAt", (q) => q.eq("organizationId", auth.organizationId).gte("occurredAt", from).lt("occurredAt", to))
+      .take(5);
+    const lines = await Promise.all(orders.map((order) => ctx.db.query("salesLines")
+      .withIndex("by_organizationId_and_orderId", (q) => q.eq("organizationId", auth.organizationId).eq("orderId", order._id))
+      .take(5)));
+    return lines.flat().slice(0, 5);
+  },
+});
 
 const MAX_LOCATIONS = 200;
 const MAX_SALES_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
@@ -223,19 +252,6 @@ function groupMenuLines(
   }
 
   return groupedLines;
-}
-
-async function locationCurrency(
-  ctx: QueryCtx,
-  organizationId: string,
-  location: Doc<"locations">,
-) {
-  if (location.currency) return location.currency;
-  if (!location.marketId) return DEFAULT_CURRENCY;
-  const market = await ctx.db.get("markets", location.marketId);
-  return market?.organizationId === organizationId && market.currency
-    ? market.currency
-    : DEFAULT_CURRENCY;
 }
 
 export const getContext = query({

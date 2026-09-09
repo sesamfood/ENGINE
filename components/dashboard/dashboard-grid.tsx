@@ -37,7 +37,6 @@ import {
 import type { DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
 import type { YAxisValues } from "./y-axis-settings";
-import type { CustomMetricDefinition } from "./custom-metric-builder";
 
 const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
 
@@ -570,7 +569,7 @@ export function DashboardGrid({
   ) : content;
   const editingWidget = layout.find((widget) => widget.key === editingWidgetKey);
   const editingMetric = editingWidget?.metric.kind === "custom"
-    ? customMetricsById.get(String(editingWidget.metric.id)) as CustomMetricDefinition | undefined
+    ? customMetricsById.get(String(editingWidget.metric.id))
     : undefined;
 
   return (

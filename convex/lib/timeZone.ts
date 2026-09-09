@@ -1,9 +1,11 @@
+import { requireOrganizationLocation } from "./locations";
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
-export const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
+import { DEFAULT_TIME_ZONE } from "../../lib/date";
+export { DEFAULT_TIME_ZONE } from "../../lib/date";
 
 export async function scheduleLocationDayStartReroll(
   ctx: MutationCtx,
@@ -97,10 +99,7 @@ export async function resolveTimeZone(
   locationId?: Id<"locations">,
 ) {
   if (locationId) {
-    const location = await ctx.db.get("locations", locationId);
-    if (!location || location.organizationId !== organizationId) {
-      throw new ConvexError("Lokationen blev ikke fundet");
-    }
+    const location = await requireOrganizationLocation(ctx, organizationId, locationId);
     if (location.timeZone) return location.timeZone;
     if (location.marketId) {
       const market = await ctx.db.get("markets", location.marketId);

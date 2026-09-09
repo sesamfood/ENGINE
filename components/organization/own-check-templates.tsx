@@ -1,5 +1,7 @@
 "use client";
 
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import {
@@ -318,14 +320,10 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
         imageStorageId = imageSelection.storageId ?? null;
         if (!imageStorageId) {
           const image = await compressImage(imageSelection.file, { maxWidth: 1600, maxHeight: 1600, type: "image/webp", alwaysReencode: true });
-          const uploadUrl = await generateImageUploadUrl({});
-          const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": image.type }, body: image });
-          if (!response.ok) throw new Error("Billedet kunne ikke uploades. Prøv igen.");
-          const result: unknown = await response.json();
-          if (!result || typeof result !== "object" || !("storageId" in result) || typeof result.storageId !== "string") {
-            throw new Error("Billeduploaden kunne ikke bekræftes. Prøv igen.");
-          }
-          imageStorageId = result.storageId as Id<"_storage">;
+          imageStorageId = await uploadToStorage({
+            uploadUrl: await generateImageUploadUrl({}),
+            file: image,
+          });
           const uploadedStorageId = imageStorageId;
           setImageSelection((current) => current?.file === imageSelection.file ? { ...current, storageId: uploadedStorageId } : current);
         }

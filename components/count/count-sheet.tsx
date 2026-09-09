@@ -1,45 +1,23 @@
 "use client";
 
+import {
+  dateKey,
+  dateTimeFormatter as sharedDateTimeFormatter,
+} from "@/lib/date";
+
+import {
+  ProductCardMedia,
+  productGridClassName,
+} from "@/components/catalog/product-card-media";
+
+import { QuantityInput } from "@/components/quantity-input";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { getUserErrorMessage } from "@/lib/user-errors";
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  rectSortingStrategy,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import usePresence from "@convex-dev/presence/react";
-import { useConvex, useMutation, useQuery } from "convex/react";
-import {
-  BoxesIcon,
-  CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  DownloadIcon,
-  GripVerticalIcon,
-  ListRestartIcon,
-  LockKeyholeIcon,
-  MinusIcon,
-  PackageOpenIcon,
-  PlusIcon,
-  SearchIcon,
-  XIcon,
-} from "lucide-react";
-import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { usePermission } from "@/components/app-shell";
+import { CountNavigation } from "@/components/count/count-navigation";
+import { useCountState } from "@/components/count/count-state-provider";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +28,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,8 +38,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { CountNavigation } from "@/components/count/count-navigation";
-import { useCountState } from "@/components/count/count-state-provider";
 import {
   Dialog,
   DialogContent,
@@ -84,8 +59,6 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -97,6 +70,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Tooltip,
@@ -105,11 +79,47 @@ import {
 } from "@/components/ui/tooltip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { usePermission } from "@/components/app-shell";
 import { downloadCsv } from "@/lib/download-csv";
 import { productSearchScore } from "@/lib/product-search";
 import { useLastDefined } from "@/lib/use-last-defined";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
+import usePresence from "@convex-dev/presence/react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useConvex, useMutation, useQuery } from "convex/react";
+import {
+  BoxesIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  DownloadIcon,
+  GripVerticalIcon,
+  ListRestartIcon,
+  LockKeyholeIcon,
+  PackageOpenIcon,
+  PlusIcon,
+  SearchIcon,
+  XIcon,
+} from "lucide-react";
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 type CountUnit = {
   id: Id<"units">;
@@ -253,61 +263,6 @@ function UnavailableTooltip({
   );
 }
 
-function QuantityControl({
-  productName,
-  unitName,
-  quantity,
-  disabled,
-  onChange,
-}: {
-  productName: string;
-  unitName: string;
-  quantity: number;
-  disabled: boolean;
-  onChange: (quantity: number) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-lg"
-        className="size-11"
-        aria-label={`Reducér ${productName} i ${unitName}`}
-        disabled={disabled || quantity <= 0}
-        onClick={() => onChange(Math.max(0, quantity - 1))}
-      >
-        <MinusIcon />
-      </Button>
-      <Input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        step="any"
-        value={quantity}
-        disabled={disabled}
-        aria-label={`Mængde af ${productName} i ${unitName}`}
-        className="h-11 min-w-0 flex-1 text-center"
-        onChange={(event) => {
-          const next = Number(event.target.value);
-          if (Number.isFinite(next)) onChange(Math.max(0, next));
-        }}
-      />
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-lg"
-        className="size-11"
-        aria-label={`Forøg ${productName} i ${unitName}`}
-        disabled={disabled}
-        onClick={() => onChange(quantity + 1)}
-      >
-        <PlusIcon />
-      </Button>
-    </div>
-  );
-}
-
 function ProductCard({
   product,
   selectedUnitId,
@@ -381,24 +336,10 @@ function ProductCard({
         )}
       >
         <div className="relative">
-          {product.imageUrl ? (
-            <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
-              <Image
-                src={product.imageUrl}
-                alt={`Produktbillede af ${product.name}`}
-                fill
-                sizes="(max-width: 379px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
-                className="object-cover"
-              />
-            </div>
-          ) : (
-            <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
-              <PackageOpenIcon
-                className="size-10 lg:size-12"
-                aria-hidden="true"
-              />
-            </div>
-          )}
+          <ProductCardMedia
+            imageUrl={product.imageUrl}
+            alt={`Produktbillede af ${product.name}`}
+          />
           {editingOrder && dragHandle ? (
             <div className="absolute left-2 top-2">{dragHandle}</div>
           ) : null}
@@ -458,14 +399,15 @@ function ProductCard({
                 </Select>
               </UnavailableTooltip>
               <UnavailableTooltip reason={disabledReason}>
-                <QuantityControl
-                  productName={product.name}
-                  unitName={selectedUnit.name}
-                  quantity={quantityFor(selectedUnit)}
+                <QuantityInput
+                  label={`Mængde af ${product.name} i ${selectedUnit.name}`}
+                  value={quantityFor(selectedUnit)}
                   disabled={disabled}
-                  onChange={(quantity) =>
-                    onQuantityChange(selectedUnit, quantity)
-                  }
+                  onValueChange={(value) => {
+                    const quantity = Number(value.replace(",", "."));
+                    if (Number.isFinite(quantity))
+                      onQuantityChange(selectedUnit, Math.max(0, quantity));
+                  }}
                 />
               </UnavailableTooltip>
               {!editingOrder ? (
@@ -501,17 +443,18 @@ function ProductCard({
                   {unit.name}
                 </FieldLabel>
                 <div className="w-full @md/field-group:w-56">
-                  <QuantityControl
-                    productName={product.name}
-                    unitName={unit.name}
-                    quantity={draftQuantities[unit.id] ?? quantityFor(unit)}
+                  <QuantityInput
+                    label={`Mængde af ${product.name} i ${unit.name}`}
+                    value={draftQuantities[unit.id] ?? quantityFor(unit)}
                     disabled={disabled}
-                    onChange={(quantity) =>
-                      setDraftQuantities((current) => ({
-                        ...current,
-                        [unit.id]: quantity,
-                      }))
-                    }
+                    onValueChange={(value) => {
+                      const quantity = Number(value.replace(",", "."));
+                      if (Number.isFinite(quantity))
+                        setDraftQuantities((current) => ({
+                          ...current,
+                          [unit.id]: Math.max(0, quantity),
+                        }));
+                    }}
                   />
                 </div>
               </Field>
@@ -555,8 +498,7 @@ function SingleProductCounter({
   const disabled = Boolean(disabledReason);
   const previousDisabled = position <= 0;
   const isLastProduct = position >= productCount - 1;
-  const nextDisabled =
-    completionPending || (isLastProduct && !onComplete);
+  const nextDisabled = completionPending || (isLastProduct && !onComplete);
 
   function goToNext() {
     if (isLastProduct) {
@@ -633,14 +575,15 @@ function SingleProductCounter({
                     </FieldLabel>
                     <UnavailableTooltip reason={disabledReason}>
                       <div className="w-full @md/field-group:w-64">
-                        <QuantityControl
-                          productName={product.name}
-                          unitName={unit.name}
-                          quantity={quantityFor(unit)}
+                        <QuantityInput
+                          label={`Mængde af ${product.name} i ${unit.name}`}
+                          value={quantityFor(unit)}
                           disabled={disabled}
-                          onChange={(quantity) =>
-                            onQuantityChange(unit, quantity)
-                          }
+                          onValueChange={(value) => {
+                            const quantity = Number(value.replace(",", "."));
+                            if (Number.isFinite(quantity))
+                              onQuantityChange(unit, Math.max(0, quantity));
+                          }}
                         />
                       </div>
                     </UnavailableTooltip>
@@ -706,11 +649,7 @@ function SingleProductCounter({
 }
 
 type CountAreaStatusKind =
-  | "complete"
-  | "active"
-  | "paused"
-  | "empty"
-  | "notStarted";
+  "complete" | "active" | "paused" | "empty" | "notStarted";
 
 function CountAreaStatusBadge({
   kind,
@@ -763,11 +702,7 @@ function CountAreaStatusBadge({
   );
 }
 
-function CountAreaPresence({
-  countAreaId,
-}: {
-  countAreaId: Id<"countAreas">;
-}) {
+function CountAreaPresence({ countAreaId }: { countAreaId: Id<"countAreas"> }) {
   usePresence(api.presence, countAreaId, "counter", 10_000);
   return null;
 }
@@ -854,8 +789,7 @@ function CountAreaPicker({
                   ? "bg-success/5 ring-success/30"
                   : statusKind === "active"
                     ? "bg-info/5 ring-info/30"
-                    : statusKind === "paused" &&
-                      "bg-paused/5 ring-paused/30",
+                    : statusKind === "paused" && "bg-paused/5 ring-paused/30",
               )}
             >
               <CardHeader className="flex-1">
@@ -1207,7 +1141,7 @@ function SortableProduct({
 
 function CountSkeleton() {
   return (
-    <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+    <div className={productGridClassName}>
       {Array.from({ length: 8 }, (_, index) => (
         <Card key={index} className="gap-4 py-0">
           <Skeleton className="aspect-video w-full rounded-none lg:aspect-[4/3]" />
@@ -1443,12 +1377,7 @@ export function CountSheet() {
     quantity: number,
   ) {
     if (!locationId) return;
-    const key = quantityKey(
-      locationId,
-      activeCountAreaId,
-      product.id,
-      unit.id,
-    );
+    const key = quantityKey(locationId, activeCountAreaId, product.id, unit.id);
     setOverrides((current) => ({ ...current, [key]: quantity }));
     pendingValues.current.set(key, {
       locationId,
@@ -1463,7 +1392,12 @@ export function CountSheet() {
       key,
       window.setTimeout(() => {
         void persistQuantity(key).catch((error) =>
-          toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen.")),
+          toast.error(
+            getUserErrorMessage(
+              error,
+              "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+            ),
+          ),
         );
       }, 300),
     );
@@ -1570,7 +1504,12 @@ export function CountSheet() {
     setSingleProductSelection({ key: "", index: 0 });
     if (!locationId || lockedReason) return;
     void startCountArea({ locationId, countAreaId }).catch((error) =>
-      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen.")),
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      ),
     );
   }
 
@@ -1593,7 +1532,12 @@ export function CountSheet() {
   function advanceSingleProduct() {
     if (!singleProduct) return;
     void markProductCounted(singleProduct.id).catch((error) =>
-      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen.")),
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      ),
     );
     moveSingleProduct(1);
   }
@@ -1669,7 +1613,12 @@ export function CountSheet() {
       toast.success("Produktrækkefølgen er gemt");
       cancelEditingOrder();
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      );
     } finally {
       setSavingOrder(false);
     }
@@ -1705,7 +1654,12 @@ export function CountSheet() {
       returnToCountAreaPicker();
       toast.success("Området er markeret som færdigt");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      );
     } finally {
       setCompletingCountAreaId(null);
     }
@@ -1717,8 +1671,7 @@ export function CountSheet() {
   const quantityFor = (product: CountProduct, unit: CountUnit) =>
     overrides[
       quantityKey(locationId, activeCountAreaId, product.id, unit.id)
-    ] ??
-    unit.quantity;
+    ] ?? unit.quantity;
   const allQuantities = new Map(
     quantities?.map((row) => [
       quantityKey(locationId, row.countAreaId, row.productId, row.unitId),
@@ -1760,7 +1713,12 @@ export function CountSheet() {
       setConfirmOpen(false);
       toast.success("Count er registreret");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1810,13 +1768,12 @@ export function CountSheet() {
         toast.success("Der er ingen lagerafvigelser i denne Count");
         return;
       }
-      const registeredAt = new Intl.DateTimeFormat("da-DK", {
+      const registeredAt = sharedDateTimeFormatter("da-DK", {
         dateStyle: "short",
         timeStyle: "short",
+        timeZone: state.timeZone,
       }).format(report.submittedAt);
-      const fileDate = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Europe/Copenhagen",
-      }).format(report.submittedAt);
+      const fileDate = dateKey(report.submittedAt, state.timeZone);
       downloadCsv(
         `waste-rapport-${fileDate}.csv`,
         [
@@ -1846,7 +1803,12 @@ export function CountSheet() {
       );
       toast.success("Waste-rapporten er klar");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Count-handlingen kunne ikke gennemføres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-handlingen kunne ikke gennemføres. Prøv igen.",
+        ),
+      );
     } finally {
       setExporting(false);
     }
@@ -1900,9 +1862,7 @@ export function CountSheet() {
       {countAreaSelectionPending && countAreas ? (
         <CountAreaPicker
           countAreas={countAreas}
-          completedCountAreaIds={
-            state?.count?.completedCountAreaIds ?? []
-          }
+          completedCountAreaIds={state?.count?.completedCountAreaIds ?? []}
           countAreaProgress={state?.count?.countAreaProgress ?? []}
           activeCountAreaIds={activeCountAreaIds ?? []}
           onSelect={selectCountArea}
@@ -2096,9 +2056,7 @@ export function CountSheet() {
               }
               onPrevious={() => moveSingleProduct(-1)}
               onNext={advanceSingleProduct}
-              completionPending={
-                completingCountAreaId === activeCountAreaId
-              }
+              completionPending={completingCountAreaId === activeCountAreaId}
               onComplete={
                 countAreas && countAreas.length > 0
                   ? () => void finishCurrentCountArea()
@@ -2118,7 +2076,7 @@ export function CountSheet() {
                 items={displayedProducts.map((product) => product.id)}
                 strategy={rectSortingStrategy}
               >
-                <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+                <div className={productGridClassName}>
                   {displayedProducts.map((product, position) => {
                     const selectedUnitId =
                       selectedUnits[product.id] ?? product.defaultUnitId;

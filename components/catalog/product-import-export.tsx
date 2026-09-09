@@ -1,5 +1,7 @@
 "use client";
 
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -91,7 +93,9 @@ export function ProductImportExport({
         });
         products.push(...result.page);
         if (products.length > MAX_PRODUCTS) {
-          throw new Error(`Eksporten kan højst indeholde ${MAX_PRODUCTS.toLocaleString("da-DK")} produkter`);
+          throw new Error(
+            `Eksporten kan højst indeholde ${MAX_PRODUCTS.toLocaleString("da-DK")} produkter`,
+          );
         }
         cursor = result.continueCursor;
         done = result.isDone;
@@ -130,20 +134,13 @@ export function ProductImportExport({
   ) {
     const { archiveImageBlob } = await import("@/lib/product-archive");
     const image = archiveImageBlob(path, parsedArchive.files);
-    const uploadUrl = await generateUploadUrl({});
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": image.type },
-      body: image,
+    const storageId = await uploadToStorage({
+      uploadUrl: await generateUploadUrl({}),
+      file: image,
     });
-    if (!response.ok) throw new Error("Et produktbillede kunne ikke uploades");
-    const result = (await response.json()) as { storageId?: unknown };
-    if (typeof result.storageId !== "string") {
-      throw new Error("Billeduploaden returnerede et ugyldigt svar");
-    }
     await setProductImage({
       productId,
-      storageId: result.storageId as Id<"_storage">,
+      storageId,
     });
   }
 
@@ -277,7 +274,10 @@ export function ProductImportExport({
       toast.error(
         processedCount
           ? `${processedCount} produkter blev behandlet, før importen stoppede: ${getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen.")}`
-          : getUserErrorMessage(error, "Produktfilen kunne ikke behandles. Prøv igen."),
+          : getUserErrorMessage(
+              error,
+              "Produktfilen kunne ikke behandles. Prøv igen.",
+            ),
       );
     } finally {
       setProgress("");
@@ -324,11 +324,7 @@ export function ProductImportExport({
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem onClick={onToggleStatus}>
-              {status === "active" ? (
-                <ArchiveIcon />
-              ) : (
-                <ArchiveRestoreIcon />
-              )}
+              {status === "active" ? <ArchiveIcon /> : <ArchiveRestoreIcon />}
               {status === "active"
                 ? "Arkiverede produkter"
                 : "Aktive produkter"}

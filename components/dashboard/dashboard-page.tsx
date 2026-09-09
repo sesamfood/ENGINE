@@ -4,7 +4,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
-import { createPortal } from "react-dom";
+import { AppPageHeader } from "@/components/app-page-header";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -162,7 +162,6 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const [editing, setEditing] = useState(false);
   const [updatingData, setUpdatingData] = useState(false);
   const [manualNow, setManualNow] = useState(0);
-  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const [shareMounted, setShareMounted] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [emptyAddWidgetMounted, setEmptyAddWidgetMounted] = useState(false);
@@ -182,10 +181,6 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
     expectedUpdatedAt.current = next.updatedAt;
   }, [dashboardQuery]);
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setHeaderTarget(document.getElementById("dashboard-shell-header")));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
 
   useEffect(() => {
     if (dashboardsQuery?.dashboards.some((candidate) => String(candidate.id) === dashboardId)) {
@@ -342,8 +337,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
 
   return (
     <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
-      <header className="md:hidden">{title}</header>
-      {headerTarget && title ? createPortal(title, headerTarget) : null}
+      <AppPageHeader>{title}</AppPageHeader>
       <DashboardTabs
         key={dashboardList.map((candidate) => `${candidate.id}:${candidate.updatedAt}`).join("|")}
         dashboards={dashboardList}

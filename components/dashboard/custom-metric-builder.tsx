@@ -110,15 +110,7 @@ type BuilderDraft = {
   limit: string;
 };
 
-export type CustomMetricDefinition = {
-  id: Id<"customMetrics">;
-  name: string;
-  description: string | null;
-  spec: CustomMetricSpec;
-  sensitive: boolean;
-  usageCount: number;
-  updatedAt: number;
-};
+import type { CustomMetricDefinition } from "./custom-metric-definition";
 
 type CustomMetricBuilderProps = {
   open: boolean;

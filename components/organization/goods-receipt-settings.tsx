@@ -1,5 +1,7 @@
 "use client";
 
+import { SettingsSwitchField } from "./settings-switch-field";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
@@ -15,16 +17,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Field,
-  FieldContent,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { FieldGroup } from "@/components/ui/field";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import { api } from "@/convex/_generated/api";
 
 export function GoodsReceiptSettings() {
@@ -53,10 +50,8 @@ export function GoodsReceiptSettings() {
     return <Skeleton className="h-72 max-w-3xl" />;
   }
 
-  const photoEnabled =
-    photoDraft ?? settings.transferDeliveryNotePhotoEnabled;
-  const changed =
-    photoEnabled !== settings.transferDeliveryNotePhotoEnabled;
+  const photoEnabled = photoDraft ?? settings.transferDeliveryNotePhotoEnabled;
+  const changed = photoEnabled !== settings.transferDeliveryNotePhotoEnabled;
 
   async function save() {
     setSaving(true);
@@ -84,25 +79,18 @@ export function GoodsReceiptSettings() {
       </CardHeader>
       <CardContent>
         <FieldGroup>
-          <Field orientation="horizontal">
-            <FieldContent>
-              <div className="flex items-center gap-1">
-                <FieldLabel htmlFor="goods-receipt-transfer-photo">
-                  Transfer
-                </FieldLabel>
-                <HelpTooltip
-                  label="billede af følgeseddel for transfers"
-                  content="Viser et kamerafelt, når en transfer registreres som modtaget. Billedet er valgfrit."
-                />
-              </div>
-            </FieldContent>
-            <Switch
-              id="goods-receipt-transfer-photo"
-              aria-label="Tillad billede af følgeseddel for transfers"
-              checked={photoEnabled}
-              onCheckedChange={setPhotoDraft}
-            />
-          </Field>
+          <SettingsSwitchField
+            label="Transfer"
+            id="goods-receipt-transfer-photo"
+            aria-label="Tillad billede af følgeseddel for transfers"
+            checked={photoEnabled}
+            onCheckedChange={setPhotoDraft}
+            help={{
+              label: "billede af følgeseddel for transfers",
+              content:
+                "Viser et kamerafelt, når en transfer registreres som modtaget. Billedet er valgfrit.",
+            }}
+          />
         </FieldGroup>
       </CardContent>
       <CardFooter className="justify-end">

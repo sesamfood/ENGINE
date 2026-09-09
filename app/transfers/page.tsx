@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { createPortal } from "react-dom";
+import { AppPageHeader } from "@/components/app-page-header";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,11 +11,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
 
 const TransferForm = dynamic(
-  () => import("@/components/transfers/transfer-form").then((module) => module.TransferForm),
+  () =>
+    import("@/components/transfers/transfer-form").then(
+      (module) => module.TransferForm,
+    ),
   { loading: () => <Skeleton className="h-96 w-full" /> },
 );
 const TransferHistory = dynamic(
-  () => import("@/components/transfers/transfer-history").then((module) => module.TransferHistory),
+  () =>
+    import("@/components/transfers/transfer-history").then(
+      (module) => module.TransferHistory,
+    ),
   { loading: () => <Skeleton className="h-96 w-full" /> },
 );
 
@@ -66,40 +72,50 @@ function TransfersContent() {
   }
 
   return (
-    <Tabs value={selectedTab} onValueChange={(value) => router.push(value === "history" ? "/transfers/history" : "/transfers")}>
+    <Tabs
+      value={selectedTab}
+      onValueChange={(value) =>
+        router.push(value === "history" ? "/transfers/history" : "/transfers")
+      }
+    >
       {showSectionTabs ? (
         <TabsList
           aria-label="Transfersektioner"
           className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
         >
-          {showNew ? <TabsTrigger value="new" className="min-w-36 px-6">
-            Ny transfer
-          </TabsTrigger> : null}
-          {showHistory ? <TabsTrigger value="history" className="min-w-36 px-6">
-            Transferhistorik
-          </TabsTrigger> : null}
+          {showNew ? (
+            <TabsTrigger value="new" className="min-w-36 px-6">
+              Ny transfer
+            </TabsTrigger>
+          ) : null}
+          {showHistory ? (
+            <TabsTrigger value="history" className="min-w-36 px-6">
+              Transferhistorik
+            </TabsTrigger>
+          ) : null}
         </TabsList>
       ) : null}
-      {showNew && selectedTab === "new" ? <TabsContent value="new" className={showSectionTabs ? "pt-6" : undefined}>
-        <TransferForm />
-      </TabsContent> : null}
-      {showHistory && selectedTab === "history" ? <TabsContent value="history" className={showSectionTabs ? "pt-6" : undefined}>
-        <TransferHistory />
-      </TabsContent> : null}
+      {showNew && selectedTab === "new" ? (
+        <TabsContent
+          value="new"
+          className={showSectionTabs ? "pt-6" : undefined}
+        >
+          <TransferForm />
+        </TabsContent>
+      ) : null}
+      {showHistory && selectedTab === "history" ? (
+        <TabsContent
+          value="history"
+          className={showSectionTabs ? "pt-6" : undefined}
+        >
+          <TransferHistory />
+        </TabsContent>
+      ) : null}
     </Tabs>
   );
 }
 
 export default function TransfersPage() {
-  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setHeaderTarget(document.getElementById("transfers-shell-header"));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
       <p className="text-sm font-semibold uppercase tracking-widest text-primary">
@@ -113,8 +129,7 @@ export default function TransfersPage() {
 
   return (
     <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4">
-      <header className="md:hidden">{header}</header>
-      {headerTarget ? createPortal(header, headerTarget) : null}
+      <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <TransfersContent />
       </OrganizationAuthGate>

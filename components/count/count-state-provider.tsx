@@ -19,6 +19,7 @@ import {
 } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
 import { setCountLocation, useCountLocation } from "@/lib/count-prefs";
+import { selectedLocationId } from "@/lib/location-preference";
 import { useLastDefined } from "@/lib/use-last-defined";
 
 type CountState = FunctionReturnType<typeof api.count.getCountState>;
@@ -52,13 +53,14 @@ export function CountStateProvider({ children }: { children: ReactNode }) {
     usePermission("count.register") ||
     Boolean(
       kiosk?.kioskModeEnabled &&
-        kiosk.settings?.enabledPages.includes("count.register"),
+      kiosk.settings?.enabledPages.includes("count.register"),
     );
-  const locationId = isLocked
-    ? lockedId
-    : locations.some((location) => location.id === storedLocationId)
-      ? (storedLocationId as Id<"locations">)
-      : (locations[0]?.id ?? null);
+  const locationId = selectedLocationId({
+    locations,
+    storedId: storedLocationId,
+    lockedId,
+    isLocked,
+  });
 
   useEffect(() => {
     if (!organizationId || isLocked) return;
@@ -74,10 +76,7 @@ export function CountStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (pathname !== "/count") return;
-    const timeout = window.setTimeout(
-      () => setQueryNow(minuteTimestamp()),
-      0,
-    );
+    const timeout = window.setTimeout(() => setQueryNow(minuteTimestamp()), 0);
     return () => window.clearTimeout(timeout);
   }, [locationId, pathname]);
 
@@ -91,7 +90,11 @@ export function CountStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const nextTransitionAt = state?.nextTransitionAt;
-    if (pathname !== "/count" || nextTransitionAt === null || nextTransitionAt === undefined) {
+    if (
+      pathname !== "/count" ||
+      nextTransitionAt === null ||
+      nextTransitionAt === undefined
+    ) {
       return;
     }
     const refresh = () => setQueryNow(minuteTimestamp());

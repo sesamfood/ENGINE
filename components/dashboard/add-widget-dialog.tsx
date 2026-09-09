@@ -60,7 +60,7 @@ import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import type { CustomMetricDefinition } from "./custom-metric-builder";
+import type { CustomMetricDefinition } from "./custom-metric-definition";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 
 const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
@@ -112,7 +112,7 @@ export function AddWidgetDialog({
   const customMetrics = useQuery(
     api.customMetrics.list,
     open ? {} : "skip",
-  ) as CustomMetricDefinition[] | undefined;
+  );
   const sourceAvailability = useQuery(
     api.dashboard.salesSourceAvailability,
     open ? { scope } : "skip",

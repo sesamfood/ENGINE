@@ -1,5 +1,7 @@
 "use client";
 
+import type { FunctionReturnType } from "convex/server";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
@@ -66,13 +68,9 @@ import {
   type DataGranularity,
 } from "@/lib/auth-permissions";
 
-type RoleRow = {
-  role: string;
-  name: string;
-  isSystem: boolean;
-  granularity: DataGranularity;
-  permissions: string[];
-};
+type RoleRow = FunctionReturnType<
+  typeof api.access.listRolePermissions
+>[number];
 
 type Draft = Record<string, string[]>;
 
@@ -84,10 +82,7 @@ const granularityItems = [
 
 export function RolePermissions() {
   const allowed = usePermission("roles.manage");
-  const rows = useQuery(
-    api.access.listRolePermissions,
-    allowed ? {} : "skip",
-  ) as RoleRow[] | undefined;
+  const rows = useQuery(api.access.listRolePermissions, allowed ? {} : "skip");
   const ensureRoles = useMutation(api.access.ensureRoles);
   const createRole = useMutation(api.access.createRole);
   const deleteRole = useMutation(api.access.deleteRole);

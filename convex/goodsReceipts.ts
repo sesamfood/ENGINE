@@ -1,3 +1,4 @@
+import { activeProductUnit } from "./lib/productUnits";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { claimStorageForOrganization } from "./lib/storageOwnership";
 import { ConvexError, type Infer, v } from "convex/values";
@@ -193,19 +194,9 @@ async function resolveCatalogReceiptItems({
     pairKeys.add(pairKey);
 
     const product = await ctx.db.get("products", item.productId);
-    const productUnit =
-      product?.organizationId === organizationId && product.status === "active"
-        ? await ctx.db
-            .query("productUnits")
-            .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("productId", item.productId)
-                .eq("unitId", item.unitId),
-            )
-            .unique()
-        : null;
-    const unit = productUnit ? await ctx.db.get("units", item.unitId) : null;
+    const resolvedUnit = await activeProductUnit(ctx, organizationId, product, item.unitId);
+    const productUnit = resolvedUnit?.productUnit;
+    const unit = resolvedUnit?.unit;
     if (
       !product ||
       product.organizationId !== organizationId ||

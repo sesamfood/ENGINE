@@ -3,6 +3,7 @@
 import { BookOpenIcon, ClipboardCheckIcon, FileCheck2Icon, ListChecksIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useKiosk, usePermission } from "@/components/app-shell";
@@ -63,7 +64,7 @@ export function OwnChecksNavigation() {
   if (sectionCount <= 1) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0" style={{ left: sidebar.isMobile ? 0 : sidebar.state === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)" }}>
+    <AppBottomBar>
       <div className="mx-auto w-full max-w-[96rem]">
         <Tabs value={value} className="min-w-0" onValueChange={(next) => router.push(next === "today" ? "/own-checks" : next === "overview" ? "/own-checks/overview" : next === "guidance" ? "/own-checks/guidance" : "/own-checks/documentation", { scroll: false })}>
           <TabsList ref={tabsRef} variant="line" aria-label="Egenkontrolsektioner" className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden">
@@ -74,6 +75,6 @@ export function OwnChecksNavigation() {
           </TabsList>
         </Tabs>
       </div>
-    </div>
+    </AppBottomBar>
   );
 }

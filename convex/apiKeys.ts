@@ -1,10 +1,10 @@
+import { organizationRoleCatalog } from "./lib/roles";
 import { ConvexError, v } from "convex/values";
 import {
   isPermissionId,
   permissionCatalog,
   permissionsForRole,
   systemRoleKeys,
-  systemRoleNames,
 } from "../lib/auth-permissions";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -415,19 +415,8 @@ export const getAdminOptions = query({
     const auth = requireHumanPrincipal(
       await requirePermission(ctx, "apiKeys.manage"),
     );
-    const [roles, configuredRows, locations, operators] = await Promise.all([
-      ctx.db
-        .query("roles")
-        .withIndex("by_organizationId_and_key", (q) =>
-          q.eq("organizationId", auth.organizationId),
-        )
-        .collect(),
-      ctx.db
-        .query("rolePermissions")
-        .withIndex("by_organizationId_and_role", (q) =>
-          q.eq("organizationId", auth.organizationId),
-        )
-        .collect(),
+    const [{ catalog }, locations, operators] = await Promise.all([
+      organizationRoleCatalog(ctx, auth.organizationId),
       ctx.db
         .query("locations")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -441,16 +430,6 @@ export const getAdminOptions = query({
         )
         .take(200),
     ]);
-    const configured = new Map(
-      configuredRows.map((row) => [row.role, row.permissions] as const),
-    );
-    const byKey = new Map(roles.map((role) => [role.key, role] as const));
-    const roleKeys = [
-      ...systemRoleKeys,
-      ...roles
-        .filter((role) => !systemRoleKeys.includes(role.key as never))
-        .map((role) => role.key),
-    ];
     const grantablePermissions = new Set(
       [...auth.permissions].filter(
         (permission) =>
@@ -475,22 +454,10 @@ export const getAdminOptions = query({
       }
     }
     return {
-      roles: roleKeys
-        .map((key) => {
-          const role = byKey.get(key);
-          const granularity = role?.granularity ?? "detail";
-          return {
-            key,
-            name:
-              role?.name ??
-              systemRoleNames[key as keyof typeof systemRoleNames] ??
-              key,
-            granularity,
-            permissions: permissionsForRole(key, configured.get(key)).filter(
-              (permission) => grantablePermissions.has(permission),
-            ),
-          };
-        })
+      roles: catalog.map(({ key, name, granularity, permissions }) => ({
+        key, name, granularity,
+        permissions: permissions.filter((permission) => grantablePermissions.has(permission)),
+      }))
         .filter(
           (role) =>
             role.permissions.length > 0 &&

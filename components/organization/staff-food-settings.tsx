@@ -82,6 +82,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { LocationField } from "@/components/location-field";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { downloadCsv } from "@/lib/download-csv";
+import { addDays, dateKey, DEFAULT_TIME_ZONE, zonedStart } from "@/lib/date";
 import { productSearchScore } from "@/lib/product-search";
 
 type Settings = NonNullable<
@@ -118,90 +119,15 @@ type StaffFoodExportRow = {
   voidedAt: number | null;
 };
 
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
-
-function dateKeyInTimeZone(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(timestamp);
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function monthStartInTimeZone(timestamp: number, timeZone: string) {
-  return `${dateKeyInTimeZone(timestamp, timeZone).slice(0, 8)}01`;
-}
-
-function parseDateValue(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
+function exportDateRange(from: string, to: string, timeZone: string) {
+  try {
+    return {
+      startAt: zonedStart(from, timeZone),
+      endAt: zonedStart(addDays(to, 1), timeZone) - 1,
+    };
+  } catch {
+    return { startAt: Number.NaN, endAt: Number.NaN };
   }
-  return { year, month, day };
-}
-
-function zonedStart(value: string, timeZone: string) {
-  const parts = parseDateValue(value);
-  if (!parts) return Number.NaN;
-  const { year, month, day } = parts;
-  const target = Date.UTC(year, month - 1, day);
-  let guess = target;
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(
-      formatter.formatToParts(guess).map((part) => [part.type, part.value]),
-    );
-    const represented = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute),
-      Number(parts.second),
-    );
-    guess += target - represented;
-  }
-  return guess;
-}
-
-function zonedEnd(value: string, timeZone: string) {
-  const parts = parseDateValue(value);
-  if (!parts) return Number.NaN;
-  const { year, month, day } = parts;
-  const next = new Date(Date.UTC(year, month - 1, day + 1));
-  return (
-    zonedStart(
-      `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}`,
-      timeZone,
-    ) - 1
-  );
 }
 
 function formatDuration(minutes: number) {
@@ -388,10 +314,10 @@ export function StaffFoodSettings() {
   }
 
   const timeZone = settings?.timeZone ?? DEFAULT_TIME_ZONE;
-  const resolvedFrom = from ?? monthStartInTimeZone(todayTimestamp, timeZone);
-  const resolvedTo = to ?? dateKeyInTimeZone(todayTimestamp, timeZone);
-  const startAt = zonedStart(resolvedFrom, timeZone);
-  const endAt = zonedEnd(resolvedTo, timeZone);
+  const today = dateKey(todayTimestamp, timeZone);
+  const resolvedFrom = from ?? `${today.slice(0, 8)}01`;
+  const resolvedTo = to ?? today;
+  const { startAt, endAt } = exportDateRange(resolvedFrom, resolvedTo, timeZone);
   const rangeValid =
     Number.isFinite(startAt) &&
     Number.isFinite(endAt) &&

@@ -1,3 +1,5 @@
+import { parseDateKey } from "../../lib/date";
+import { requireCurrency } from "./masterData";
 import { ConvexError } from "convex/values";
 import {
   DEFAULT_WEEKLY_OPENING_HOURS,
@@ -236,15 +238,12 @@ function normalizeOpenedAt(value: number | null | undefined) {
 }
 
 function normalizeCurrency(value: string | null | undefined) {
-  if (!value) return undefined;
-  const currency = value.trim();
-  if (!/^[A-Z]{3}$/.test(currency)) {
-    fail(
-      "locationCurrencyInvalid",
-      "Valuta skal være en ISO 4217-kode med tre store bogstaver",
-    );
+  try {
+    return requireCurrency(value);
+  } catch (error) {
+    if (error instanceof ConvexError) fail("locationCurrencyInvalid", String(error.data));
+    throw error;
   }
-  return currency;
 }
 
 function normalizeTimeZone(value: string | null | undefined) {
@@ -336,16 +335,9 @@ function requireHours(hours: {
 }
 
 function requireDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) fail("openingHoursDateInvalid", "Datoen er ugyldig");
-  const date = new Date(
-    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-  );
-  if (
-    date.getUTCFullYear() !== Number(match[1]) ||
-    date.getUTCMonth() !== Number(match[2]) - 1 ||
-    date.getUTCDate() !== Number(match[3])
-  ) {
+  try {
+    parseDateKey(value);
+  } catch {
     fail("openingHoursDateInvalid", "Datoen er ugyldig");
   }
 }

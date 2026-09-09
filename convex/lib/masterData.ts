@@ -1,4 +1,7 @@
 import { ConvexError } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
+import { DEFAULT_CURRENCY } from "../../lib/dashboard/types";
 
 const MAX_NAME_LENGTH = 100;
 
@@ -24,4 +27,11 @@ export function requireCurrency(value: string | null | undefined) {
 
 export function optionalText(value: string | null | undefined) {
   return value?.trim() || undefined;
+}
+
+export async function resolveLocationCurrency(ctx: QueryCtx, organizationId: string, location: Doc<"locations">) {
+  if (location.currency) return location.currency;
+  if (!location.marketId) return DEFAULT_CURRENCY;
+  const market = await ctx.db.get("markets", location.marketId);
+  return market?.organizationId === organizationId && market.currency ? market.currency : DEFAULT_CURRENCY;
 }

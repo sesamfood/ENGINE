@@ -2318,9 +2318,9 @@ export default defineSchema({
     at: v.number(),
     actorUserId: v.string(),
     actorName: v.string(),
-  }).index("by_organizationId_and_entryId_and_revision", [
-    "organizationId", "entryId", "revision",
-  ]),
+  })
+    .index("by_organizationId_and_entryId_and_revision", ["organizationId", "entryId", "revision"])
+    .index("by_organizationId_and_entryId_and_at_and_revision", ["organizationId", "entryId", "at", "revision"]),
 
   ownCheckSettings: defineTable({
     organizationId: v.string(),

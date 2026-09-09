@@ -1,5 +1,7 @@
 "use node";
 
+import { escapeHtml, imageExtension as extension, emailErrorMessage } from "./lib/email";
+
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -10,33 +12,8 @@ const noticeKindValidator = v.union(
   v.literal("cancellation"),
 );
 
-function escapeHtml(value: string) {
-  return value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;",
-      })[character]!,
-  );
-}
-
 function cleanError(error: unknown) {
-  const message = error instanceof Error ? error.message : "Ukendt e-mailfejl";
-  return message.replace(/\s+/g, " ").trim().slice(0, 300);
-}
-
-function extension(contentType: string) {
-  return contentType === "image/jpeg"
-    ? "jpg"
-    : contentType === "image/png"
-      ? "png"
-      : contentType === "image/avif"
-        ? "avif"
-        : "webp";
+  return emailErrorMessage(error, "Ukendt e-mailfejl");
 }
 
 function renderTemplate(template: string, values: Record<string, string>) {

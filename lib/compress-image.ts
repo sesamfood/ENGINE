@@ -1,3 +1,9 @@
+export const evidencePhotoOptions = {
+  maxWidth: 2600,
+  maxHeight: 2600,
+  quality: 0.9,
+};
+
 type ImageCompressionOptions = {
   maxWidth: number;
   maxHeight: number;
@@ -22,15 +28,13 @@ export async function compressImage(
       imageOrientation: "from-image",
     });
   } catch {
-    throw new Error("Billedet kunne ikke læses. Brug et JPEG-, PNG- eller PDF-billede.");
+    throw new Error(
+      "Billedet kunne ikke læses. Brug et JPEG-, PNG- eller PDF-billede.",
+    );
   }
 
   try {
-    const scale = Math.min(
-      1,
-      maxWidth / image.width,
-      maxHeight / image.height,
-    );
+    const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.width * scale));
     canvas.height = Math.max(1, Math.round(image.height * scale));

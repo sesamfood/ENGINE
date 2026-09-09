@@ -1,5 +1,5 @@
+import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireLocationAccess, requireLocationManager } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
@@ -16,18 +16,6 @@ const configurationValidator = v.union(
     ingredientProductIds: v.array(v.id("products")),
   }),
 );
-
-async function requireLocation(
-  ctx: Parameters<typeof getLocationProductAccess>[0],
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const location = await ctx.db.get("locations", locationId);
-  if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Lokationen blev ikke fundet");
-  }
-  return location;
-}
 
 export const getConfiguration = query({
   args: { locationId: v.id("locations") },

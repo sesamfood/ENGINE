@@ -1,3 +1,4 @@
+import { requireApiKeyPrincipal, requirePageSize, restError } from "./lib";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -20,7 +21,7 @@ import {
   updateCategoryWithAuth,
   updateProductWithAuth,
 } from "../catalog";
-import { requireCatalogManager, type OrganizationAuth } from "../lib/auth";
+import { requireCatalogManager } from "../lib/auth";
 import {
   buildCategoryHierarchy,
   MAX_CATEGORIES_PER_ORGANIZATION,
@@ -32,7 +33,6 @@ import {
 import { runIdempotent } from "../lib/idempotency";
 import { requireRestApiMutation } from "./lib";
 
-const MAX_PAGE_SIZE = 100;
 const MAX_CHILD_ROWS = 200;
 
 const statusValidator = v.union(v.literal("active"), v.literal("archived"));
@@ -197,25 +197,6 @@ type IngredientInput = {
   unitId: Id<"units">;
   removable?: boolean;
 };
-
-function restError(code: string, message: string): never {
-  throw new ConvexError({ code, message });
-}
-
-function requireApiCatalogManager(auth: OrganizationAuth) {
-  if (auth.principalKind !== "apiKey" || !auth.apiKeyId) {
-    restError("api_key_required", "An API key is required for this operation.");
-  }
-}
-
-function requirePageSize(numItems: number) {
-  if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_PAGE_SIZE) {
-    restError(
-      "page_size_invalid",
-      "Page size must be an integer between 1 and 100.",
-    );
-  }
-}
 
 function normalizeId<Table extends "categories" | "units" | "products">(
   ctx: QueryCtx | MutationCtx,
@@ -697,7 +678,7 @@ export const listCategories = query({
   returns: paginationResultValidator(categoryValidator),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     requirePageSize(args.paginationOpts.numItems);
     const [result, hierarchy] = await Promise.all([
       ctx.db
@@ -724,7 +705,7 @@ export const getCategory = query({
   returns: v.union(categoryValidator, v.null()),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     const id = ctx.db.normalizeId("categories", args.id);
     const category = id ? await ctx.db.get("categories", id) : null;
     if (!category || category.organizationId !== auth.organizationId)
@@ -742,7 +723,7 @@ export const createCategory = mutation({
   returns: idempotentResponseValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -786,7 +767,7 @@ export const updateCategory = mutation({
   returns: categoryValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     const category = await findCategory(ctx, auth.organizationId, args.id);
     const parentCategoryId =
@@ -817,7 +798,7 @@ export const deleteCategory = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     const category = await findCategory(ctx, auth.organizationId, args.id);
     await safeCatalogMutation(() =>
@@ -832,7 +813,7 @@ export const listUnits = query({
   returns: paginationResultValidator(unitValidator),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     requirePageSize(args.paginationOpts.numItems);
     const result = await ctx.db
       .query("units")
@@ -854,7 +835,7 @@ export const getUnit = query({
   returns: v.union(unitValidator, v.null()),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     const id = ctx.db.normalizeId("units", args.id);
     const unit = id ? await ctx.db.get("units", id) : null;
     return unit && unit.organizationId === auth.organizationId
@@ -872,7 +853,7 @@ export const createUnit = mutation({
   returns: idempotentResponseValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -904,7 +885,7 @@ export const updateUnit = mutation({
   returns: unitValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     const unit = await findUnit(ctx, auth.organizationId, args.id);
     await safeCatalogMutation(() =>
@@ -924,7 +905,7 @@ export const deleteUnit = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     const unit = await findUnit(ctx, auth.organizationId, args.id);
     await safeCatalogMutation(() => deleteUnitWithAuth(ctx, auth, unit._id));
@@ -941,7 +922,7 @@ export const mergeUnits = mutation({
   returns: idempotentResponseValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -1005,7 +986,7 @@ export const listProducts = query({
   returns: paginationResultValidator(productValidator),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     requirePageSize(args.paginationOpts.numItems);
     const result = args.status
       ? await ctx.db
@@ -1038,7 +1019,7 @@ export const getProduct = query({
   returns: v.union(productValidator, v.null()),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     const id = ctx.db.normalizeId("products", args.id);
     const product = id ? await ctx.db.get("products", id) : null;
     return product && product.organizationId === auth.organizationId
@@ -1056,7 +1037,7 @@ export const createProduct = mutation({
   returns: idempotentResponseValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -1120,7 +1101,7 @@ export const updateProduct = mutation({
   returns: productValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     const product = await findProduct(ctx, auth.organizationId, args.id);
     requireProductVersion(product, args.expectedVersion);
@@ -1195,7 +1176,7 @@ export const archiveProduct = mutation({
   returns: idempotentResponseValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -1230,7 +1211,7 @@ export const restoreProduct = mutation({
   returns: idempotentResponseValidator,
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     return await runIdempotent(
       ctx,
@@ -1260,7 +1241,7 @@ export const deleteProduct = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    requireApiCatalogManager(auth);
+    requireApiKeyPrincipal(auth);
     await requireRestApiMutation(ctx, auth);
     const product = await findProduct(ctx, auth.organizationId, args.id);
     requireProductVersion(product, args.expectedVersion);

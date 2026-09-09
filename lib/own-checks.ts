@@ -1,7 +1,9 @@
+import { parseDateKey, addDays as addDateKey, zonedTimestamp, daysBetween as dateDifference } from "./date";
+export { addDays as addDateKey, dateKey as dateKeyInZone, zonedTimestamp } from "./date";
+
 export const MAX_RANGE_DAYS = 366;
 export const MAX_OCCURRENCES = 20_000;
 
-const DAY_IN_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_DUE_MINUTE = 23 * 60 + 59;
 
 export type OwnCheckControlType =
@@ -96,95 +98,6 @@ export type OwnCheckOccurrence = {
 };
 
 export type OwnCheckStatus = "notCompleted" | "completed" | "approved" | "deviation";
-
-const partsFormatters = new Map<string, Intl.DateTimeFormat>();
-
-function formatterFor(timeZone: string) {
-  let formatter = partsFormatters.get(timeZone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    });
-    partsFormatters.set(timeZone, formatter);
-  }
-  return formatter;
-}
-
-function partsAt(timestamp: number, timeZone: string) {
-  const parts = Object.fromEntries(
-    formatterFor(timeZone)
-      .formatToParts(timestamp)
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)]),
-  );
-  return {
-    year: parts.year,
-    month: parts.month,
-    day: parts.day,
-    hour: parts.hour,
-    minute: parts.minute,
-    second: parts.second,
-  };
-}
-
-function parseDateKey(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) throw new Error("Datoen er ugyldig");
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  const normalized = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-  if (normalized !== value) throw new Error("Datoen er ugyldig");
-  return date;
-}
-
-export function dateKeyInZone(timestamp: number, timeZone: string) {
-  const parts = partsAt(timestamp, timeZone);
-  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
-}
-
-export function zonedTimestamp(dateKey: string, minuteOfDay: number, timeZone: string) {
-  const date = parseDateKey(dateKey);
-  if (!Number.isInteger(minuteOfDay) || minuteOfDay < 0 || minuteOfDay > 1_439) {
-    throw new Error("Tidspunktet er ugyldigt");
-  }
-  const target = Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
-    Math.floor(minuteOfDay / 60),
-    minuteOfDay % 60,
-  );
-  let candidate = target;
-  for (let pass = 0; pass < 3; pass += 1) {
-    const actual = partsAt(candidate, timeZone);
-    const actualAsUtc = Date.UTC(
-      actual.year,
-      actual.month - 1,
-      actual.day,
-      actual.hour,
-      actual.minute,
-      actual.second,
-    );
-    candidate += target - actualAsUtc;
-  }
-  return candidate;
-}
-
-export function addDateKey(dateKey: string, days: number) {
-  const date = parseDateKey(dateKey);
-  date.setUTCDate(date.getUTCDate() + days);
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-}
-
-function dateDifference(fromDateKey: string, toDateKey: string) {
-  return (parseDateKey(toDateKey).getTime() - parseDateKey(fromDateKey).getTime()) / DAY_IN_MS;
-}
 
 function weekdayFor(dateKey: string) {
   return parseDateKey(dateKey).getUTCDay();

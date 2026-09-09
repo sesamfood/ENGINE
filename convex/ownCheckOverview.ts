@@ -1,3 +1,5 @@
+import { entrySummaryObjectValidator, attachmentValidator, revisionValidator, historyPageValidator, revisionBatch, detailRevisionDto, attachmentsForValues } from "./lib/ownCheckRecords";
+import { entrySummary } from "./lib/ownChecks";
 import {
   type FilterBuilder,
   type GenericTableInfo,
@@ -29,7 +31,7 @@ import {
   versionInput,
 } from "./lib/ownChecks";
 import { resolveLocationTimeZones, resolveTimeZone } from "./lib/timeZone";
-import { ownCheckControlTypeValidator, ownCheckFieldValidator, ownCheckNoteValidator, ownCheckValueValidator } from "./lib/ownCheckValidators";
+import { ownCheckControlTypeValidator, ownCheckFieldValidator } from "./lib/ownCheckValidators";
 import { addDateKey, ownCheckStatus, zonedTimestamp } from "../lib/own-checks";
 
 const MAX_OVERVIEW_PAGE_SIZE = 100;
@@ -73,64 +75,11 @@ const overviewEntriesPaginationValidator = v.object({
   truncated: v.boolean(),
 });
 
-const recordEntryValidator = v.object({
-  id: v.id("ownCheckEntries"),
-  organizationId: v.string(),
-  locationId: v.id("locations"),
-  locationName: v.string(),
-  templateId: v.id("ownCheckTemplates"),
-  templateVersionId: v.id("ownCheckTemplateVersions"),
-  templateVersion: v.number(),
-  name: v.string(),
-  controlType: ownCheckControlTypeValidator,
-  dueDateKey: v.string(),
-  dueAt: v.number(),
-  status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
-  hasDeviation: v.boolean(),
-  followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
-  compliant: v.boolean(),
-  values: v.array(ownCheckValueValidator),
-  note: v.union(v.string(), v.null()),
-  deviation: v.union(ownCheckNoteValidator, v.null()),
-  correctiveAction: v.union(ownCheckNoteValidator, v.null()),
-  performedAt: v.number(),
-  performedBy: v.string(),
-  performedByName: v.string(),
-  approvedAt: v.union(v.number(), v.null()),
-  approvedBy: v.union(v.string(), v.null()),
-  approvedByName: v.union(v.string(), v.null()),
-  revision: v.number(),
-  updatedAt: v.number(),
-});
-
-const attachmentValidator = v.object({
-  id: v.id("ownCheckAttachments"),
-  fieldKey: v.string(),
-  storageId: v.id("_storage"),
-  url: v.union(v.string(), v.null()),
-  contentType: v.string(),
-  fileSize: v.number(),
-  addedAtRevision: v.number(),
-  removedAtRevision: v.union(v.number(), v.null()),
-});
-
-const revisionValidator = v.object({
-  id: v.id("ownCheckEntryRevisions"),
-  revision: v.number(),
-  kind: v.union(v.literal("submitted"), v.literal("edited"), v.literal("deviationRecorded"), v.literal("correctiveActionRecorded"), v.literal("approved")),
-  values: v.array(ownCheckValueValidator),
-  status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
-  hasDeviation: v.boolean(),
-  followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
-  compliant: v.boolean(),
-  note: v.union(v.string(), v.null()),
-  deviation: v.union(ownCheckNoteValidator, v.null()),
-  correctiveAction: v.union(ownCheckNoteValidator, v.null()),
-  changes: v.array(v.object({ field: v.string(), label: v.string(), from: v.union(v.string(), v.null()), to: v.union(v.string(), v.null()) })),
-  reason: v.union(v.string(), v.null()),
-  at: v.number(),
-  actorUserId: v.string(),
-  actorName: v.string(),
+const recordEntryValidator = entrySummaryObjectValidator.extend({
+  organizationId: v.string(), locationId: v.id("locations"), locationName: v.string(),
+  templateId: v.id("ownCheckTemplates"), templateVersionId: v.id("ownCheckTemplateVersions"),
+  templateVersion: v.number(), name: v.string(), controlType: ownCheckControlTypeValidator,
+  dueDateKey: v.string(), dueAt: v.number(), updatedAt: v.number(),
 });
 
 const locationIdsValidator = v.optional(v.id("locations"));
@@ -463,7 +412,7 @@ export const getOverviewDateContext = query({
 
 export const getOwnCheckRecord = query({
   args: { entryId: v.id("ownCheckEntries") },
-  returns: v.union(v.object({ entry: recordEntryValidator, fields: v.array(ownCheckFieldValidator), description: v.string(), instructions: v.string(), imageUrl: v.union(v.string(), v.null()), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), timeZone: v.string() }), v.null()),
+  returns: v.union(v.object({ entry: recordEntryValidator, fields: v.array(ownCheckFieldValidator), description: v.string(), instructions: v.string(), imageUrl: v.union(v.string(), v.null()), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), historyNextRevision: v.union(v.number(), v.null()), timeZone: v.string() }), v.null()),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckViewer(ctx);
     const entry = await ctx.db.get("ownCheckEntries", args.entryId);
@@ -472,13 +421,11 @@ export const getOwnCheckRecord = query({
     const version = await ctx.db.get("ownCheckTemplateVersions", entry.templateVersionId);
     if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
     const timeZone = await resolveTimeZone(ctx, auth.organizationId, entry.locationId);
-    const [attachments, revisions] = await Promise.all([
-      ctx.db.query("ownCheckAttachments").withIndex("by_organizationId_and_entryId", (q) => q.eq("organizationId", auth.organizationId).eq("entryId", entry._id)).collect(),
-      ctx.db.query("ownCheckEntryRevisions").withIndex("by_organizationId_and_entryId_and_revision", (q) => q.eq("organizationId", auth.organizationId).eq("entryId", entry._id)).collect(),
-    ]);
+    const history = await revisionBatch(ctx, auth.organizationId, entry._id, 0, entry.revision);
+    const attachments = await attachmentsForValues(ctx, auth.organizationId, entry._id, [entry.values, ...history.revisions.map((revision) => revision.values)], entry.revision);
     return {
       entry: {
-        id: entry._id,
+        ...entrySummary(entry),
         organizationId: entry.organizationId,
         locationId: entry.locationId,
         locationName: entry.locationName,
@@ -489,56 +436,33 @@ export const getOwnCheckRecord = query({
         controlType: entry.controlType,
         dueDateKey: entry.dueDateKey,
         dueAt: entry.dueAt,
-        status: entry.status,
-        hasDeviation: entry.hasDeviation,
-        followUp: entry.followUp,
-        compliant: entry.compliant,
-        values: entry.values,
-        note: entry.note ?? null,
-        deviation: entry.deviation ?? null,
-        correctiveAction: entry.correctiveAction ?? null,
-        performedAt: entry.performedAt,
-        performedBy: entry.performedBy,
-        performedByName: entry.performedByName,
-        approvedAt: entry.approvedAt ?? null,
-        approvedBy: entry.approvedBy ?? null,
-        approvedByName: entry.approvedByName ?? null,
-        revision: entry.revision,
         updatedAt: entry.updatedAt,
       },
       fields: version.fields,
       description: version.description,
       instructions: version.instructions ?? "",
       imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
-      attachments: await Promise.all(attachments.map(async (attachment) => ({
-        id: attachment._id,
-        fieldKey: attachment.fieldKey,
-        storageId: attachment.storageId,
-        url: await ctx.storage.getUrl(attachment.storageId),
-        contentType: attachment.contentType,
-        fileSize: attachment.fileSize,
-        addedAtRevision: attachment.addedAtRevision,
-        removedAtRevision: attachment.removedAtRevision ?? null,
-      }))),
-      revisions: revisions.sort((a, b) => a.revision - b.revision).map((revision) => ({
-        id: revision._id,
-        revision: revision.revision,
-        kind: revision.kind,
-        values: revision.values,
-        status: revision.status,
-        hasDeviation: revision.hasDeviation,
-        followUp: revision.followUp,
-        compliant: revision.compliant,
-        note: revision.note ?? null,
-        deviation: revision.deviation ?? null,
-        correctiveAction: revision.correctiveAction ?? null,
-        changes: revision.changes,
-        reason: revision.reason ?? null,
-        at: revision.at,
-        actorUserId: revision.actorUserId,
-        actorName: revision.actorName,
-      })),
+      attachments,
+      revisions: history.revisions.map(detailRevisionDto),
+      historyNextRevision: history.nextRevision,
       timeZone,
+    };
+  },
+});
+
+export const listOwnCheckHistory = query({
+  args: { entryId: v.id("ownCheckEntries"), afterRevision: v.number() },
+  returns: historyPageValidator,
+  handler: async (ctx, args) => {
+    const auth = await requireOwnCheckViewer(ctx);
+    const entry = await ctx.db.get("ownCheckEntries", args.entryId);
+    if (!entry || entry.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrollen blev ikke fundet");
+    requireLocationAccess(auth, entry.locationId);
+    const history = await revisionBatch(ctx, auth.organizationId, entry._id, args.afterRevision, entry.revision);
+    return {
+      revisions: history.revisions.map(detailRevisionDto),
+      attachments: await attachmentsForValues(ctx, auth.organizationId, entry._id, history.revisions.map((revision) => revision.values), entry.revision),
+      nextRevision: history.nextRevision,
     };
   },
 });

@@ -1,5 +1,9 @@
 "use client";
 
+import { dateTimeFormatter as sharedDateTimeFormatter } from "@/lib/date";
+
+import { toDateTimeLocal, fromDateTimeLocal } from "@/lib/date";
+
 import { downloadCsv } from "@/lib/download-csv";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
@@ -38,7 +42,13 @@ import {
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
@@ -79,6 +89,7 @@ import {
 import {
   Field,
   FieldContent,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -142,43 +153,24 @@ function formatTemperature(value: number) {
   }).format(value);
 }
 
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function toDateInputValue(date: Date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function startOfDay(dateValue: string) {
-  const [year, month, day] = dateValue.split("-").map(Number);
-  return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
-}
-
-function endOfDay(dateValue: string) {
-  const [year, month, day] = dateValue.split("-").map(Number);
-  return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
-}
-
 function defaultFromDate() {
-  const now = new Date();
-  return toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1));
+  return `${toDateTimeLocal(Date.now()).slice(0, 8)}01`;
 }
 
 function defaultToDate() {
-  return toDateInputValue(new Date());
+  return toDateTimeLocal(Date.now()).slice(0, 10);
 }
 
-const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
+const dateTimeFormatter = sharedDateTimeFormatter("da-DK", {
   dateStyle: "short",
   timeStyle: "short",
 });
 
-const dateFormatter = new Intl.DateTimeFormat("da-DK", {
+const dateFormatter = sharedDateTimeFormatter("da-DK", {
   dateStyle: "short",
 });
 
-const timeFormatter = new Intl.DateTimeFormat("da-DK", {
+const timeFormatter = sharedDateTimeFormatter("da-DK", {
   timeStyle: "short",
 });
 
@@ -264,13 +256,12 @@ function normalizeExportPrefs(value: unknown): ExportPrefs {
     inDefaultUnit: false,
   };
   if (!value || typeof value !== "object") return defaults;
-  const rawOrder = "order" in value && Array.isArray(value.order)
-    ? value.order
-    : [];
+  const rawOrder =
+    "order" in value && Array.isArray(value.order) ? value.order : [];
   const knownOrder = rawOrder.filter(
-        (key): key is string =>
-          typeof key === "string" && exportColumnByKey.has(key),
-      );
+    (key): key is string =>
+      typeof key === "string" && exportColumnByKey.has(key),
+  );
   const order = [
     ...knownOrder,
     ...defaultColumnOrder.filter((key) => !knownOrder.includes(key)),
@@ -278,14 +269,15 @@ function normalizeExportPrefs(value: unknown): ExportPrefs {
   const hasSavedColumns =
     ("order" in value && Array.isArray(value.order)) ||
     ("enabled" in value && Array.isArray(value.enabled));
-  const enabledRaw = "enabled" in value && Array.isArray(value.enabled)
-    ? value.enabled.filter(
-        (key): key is string =>
-          typeof key === "string" && exportColumnByKey.has(key),
-      )
-    : hasSavedColumns
-      ? knownOrder
-      : order;
+  const enabledRaw =
+    "enabled" in value && Array.isArray(value.enabled)
+      ? value.enabled.filter(
+          (key): key is string =>
+            typeof key === "string" && exportColumnByKey.has(key),
+        )
+      : hasSavedColumns
+        ? knownOrder
+        : order;
   return {
     order,
     enabled: enabledRaw,
@@ -483,9 +475,7 @@ function ExportColumnRow({
         {...listeners}
         className={cn(
           "flex min-h-11 w-full touch-none items-center gap-2 rounded-lg border bg-background px-2 text-left shadow-sm transition-[box-shadow,border-color] duration-150 select-none",
-          dragActive
-            ? "cursor-grabbing"
-            : "cursor-grab active:cursor-grabbing",
+          dragActive ? "cursor-grabbing" : "cursor-grab active:cursor-grabbing",
           isDragging && "opacity-30",
           isOver &&
             !isDragging &&
@@ -784,8 +774,10 @@ export function TransferHistory() {
     setExportPrefs({ ...exportPrefs, ...patch });
   }
 
-  const parsedStartAt = fromDate ? startOfDay(fromDate) : NaN;
-  const parsedEndAt = toDate ? endOfDay(toDate) : NaN;
+  const parsedStartAt = fromDate ? fromDateTimeLocal(`${fromDate}T00:00`) : NaN;
+  const parsedEndAt = toDate
+    ? fromDateTimeLocal(`${toDate}T23:59:59.999`)
+    : NaN;
   const rangeError =
     !Number.isFinite(parsedStartAt) || !Number.isFinite(parsedEndAt)
       ? "Vælg både fra- og til-dato"
@@ -885,7 +877,12 @@ export function TransferHistory() {
       downloadTransfersCsv(rows, fromDate, toDate, selectedColumns);
       setIsExportOpen(false);
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Transferhistorikken kunne ikke opdateres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          caught,
+          "Transferhistorikken kunne ikke opdateres. Prøv igen.",
+        ),
+      );
     } finally {
       setIsExporting(false);
     }
@@ -906,7 +903,12 @@ export function TransferHistory() {
       setSelectedTransferId(null);
       setIsEditing(false);
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Transferhistorikken kunne ikke opdateres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          caught,
+          "Transferhistorikken kunne ikke opdateres. Prøv igen.",
+        ),
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -956,9 +958,7 @@ export function TransferHistory() {
       </div>
 
       {rangeError ? (
-        <p className="text-sm text-destructive" role="alert">
-          {rangeError}
-        </p>
+        <FieldError>{rangeError}</FieldError>
       ) : null}
 
       {!rangeError ? (
@@ -1037,16 +1037,16 @@ export function TransferHistory() {
                               aria-hidden="true"
                               className="size-4"
                             />
-                            <span className="sr-only">
-                              Temperaturafvigelse
-                            </span>
+                            <span className="sr-only">Temperaturafvigelse</span>
                           </TooltipTrigger>
                           <TooltipContent>
                             Transferen har en temperaturafvigelse
                           </TooltipContent>
                         </Tooltip>
                       ) : null}
-                      <span>{dateTimeFormatter.format(transfer.transferredAt)}</span>
+                      <span>
+                        {dateTimeFormatter.format(transfer.transferredAt)}
+                      </span>
                     </span>
                   </TableCell>
                   <TableCell>{transfer.fromLocationName}</TableCell>
@@ -1094,20 +1094,19 @@ export function TransferHistory() {
           <DialogHeader>
             <DialogTitle>Eksportér til CSV</DialogTitle>
             <DialogDescription>
-              {`Perioden ${dateFormatter.format(startOfDay(fromDate))} – ${dateFormatter.format(endOfDay(toDate))}`}
+              {`Perioden ${dateFormatter.format(fromDateTimeLocal(`${fromDate}T00:00`))} – ${dateFormatter.format(fromDateTimeLocal(`${toDate}T23:59:59.999`))}`}
             </DialogDescription>
           </DialogHeader>
 
           <FieldGroup>
             <FieldSet>
-              <FieldLegend
-                variant="label"
-                className="flex items-center gap-1"
-              >
+              <FieldLegend variant="label" className="flex items-center gap-1">
                 Kolonner
                 <HelpTooltip
                   label="Kolonner"
-                  content={'Træk kolonnerne for at ændre rækkefølgen. Flyt en kolonne til "Ikke med i eksporten" for at udelade den.'}
+                  content={
+                    'Træk kolonnerne for at ændre rækkefølgen. Flyt en kolonne til "Ikke med i eksporten" for at udelade den.'
+                  }
                 />
               </FieldLegend>
               <ExportColumnList
@@ -1118,10 +1117,7 @@ export function TransferHistory() {
             </FieldSet>
 
             <FieldSet>
-              <FieldLegend
-                variant="label"
-                className="flex items-center gap-1"
-              >
+              <FieldLegend variant="label" className="flex items-center gap-1">
                 Enheder
                 <HelpTooltip
                   label="Enheder"
@@ -1288,7 +1284,10 @@ export function TransferHistory() {
                                 {first.productName}
                               </span>
                               {hasDeviation ? (
-                                <Badge variant="outline" className="text-warning">
+                                <Badge
+                                  variant="outline"
+                                  className="text-warning"
+                                >
                                   <TriangleAlertIcon
                                     aria-hidden="true"
                                     data-icon="inline-start"
@@ -1306,11 +1305,20 @@ export function TransferHistory() {
                                 hasDeviation && "text-warning",
                               )}
                             >
-                              Temperatur: {measured === null ? "Ikke registreret" : `${formatTemperature(measured)} °C`} · Maks. temperatur: {maximum === null ? "Ikke angivet" : `${formatTemperature(maximum)} °C`}
-                              {hasDeviation && measured !== null && maximum !== null ? (
+                              Temperatur:{" "}
+                              {measured === null
+                                ? "Ikke registreret"
+                                : `${formatTemperature(measured)} °C`}{" "}
+                              · Maks. temperatur:{" "}
+                              {maximum === null
+                                ? "Ikke angivet"
+                                : `${formatTemperature(maximum)} °C`}
+                              {hasDeviation &&
+                              measured !== null &&
+                              maximum !== null ? (
                                 <span className="sr-only">
-                                  Målt temperatur {formatTemperature(measured)} °C,
-                                  maksimum {formatTemperature(maximum)} °C.
+                                  Målt temperatur {formatTemperature(measured)}{" "}
+                                  °C, maksimum {formatTemperature(maximum)} °C.
                                 </span>
                               ) : null}
                             </p>
@@ -1328,7 +1336,8 @@ export function TransferHistory() {
                             {transferDetail.receiptStatus === "registered" ? (
                               <TableCell className="text-right tabular-nums">
                                 {item.receivedQuantity ?? 0}
-                                {item.receivedUnitName && item.receivedUnitName !== item.unitName
+                                {item.receivedUnitName &&
+                                item.receivedUnitName !== item.unitName
                                   ? ` ${item.receivedUnitName}`
                                   : null}
                               </TableCell>
@@ -1389,8 +1398,8 @@ export function TransferHistory() {
           <AlertDialogHeader>
             <AlertDialogTitle>Slet transfer?</AlertDialogTitle>
             <AlertDialogDescription>
-              Transferen og alle dens produktlinjer slettes permanent. Handlingen
-              kan ikke fortrydes.
+              Transferen og alle dens produktlinjer slettes permanent.
+              Handlingen kan ikke fortrydes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

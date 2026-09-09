@@ -67,8 +67,12 @@ export function OnlinePosLocationConnections() {
   const disconnectLocation = useMutation(api.onlinePos.disconnectLocation);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [open, setOpen] = useState(false);
-  const [connectingId, setConnectingId] = useState<Id<"locations">>();
-  const [disconnectingId, setDisconnectingId] = useState<Id<"locations">>();
+  const [connectingIds, setConnectingIds] = useState<Set<Id<"locations">>>(
+    new Set(),
+  );
+  const [disconnectingIds, setDisconnectingIds] = useState<
+    Set<Id<"locations">>
+  >(new Set());
 
   if (!connections) {
     return <Skeleton className="h-96 w-full" />;
@@ -119,7 +123,7 @@ export function OnlinePosLocationConnections() {
       return;
     }
 
-    setConnectingId(location.id);
+    setConnectingIds((current) => new Set(current).add(location.id));
     try {
       await connectLocation({
         locationId: location.id,
@@ -131,12 +135,16 @@ export function OnlinePosLocationConnections() {
     } catch (error) {
       toast.error(getUserErrorMessage(error, "OnlinePOS-forbindelsen kunne ikke opdateres. Prøv igen."));
     } finally {
-      setConnectingId(undefined);
+      setConnectingIds((current) => {
+        const next = new Set(current);
+        next.delete(location.id);
+        return next;
+      });
     }
   }
 
   async function removeLocation(location: (typeof locations)[number]) {
-    setDisconnectingId(location.id);
+    setDisconnectingIds((current) => new Set(current).add(location.id));
     try {
       await disconnectLocation({ locationId: location.id });
       clearDraft(location.id);
@@ -144,7 +152,11 @@ export function OnlinePosLocationConnections() {
     } catch (error) {
       toast.error(getUserErrorMessage(error, "OnlinePOS-forbindelsen kunne ikke opdateres. Prøv igen."));
     } finally {
-      setDisconnectingId(undefined);
+      setDisconnectingIds((current) => {
+        const next = new Set(current);
+        next.delete(location.id);
+        return next;
+      });
     }
   }
 
@@ -194,8 +206,8 @@ export function OnlinePosLocationConnections() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {locations.map((location) => {
                   const draft = getDraft(location);
-                  const connecting = connectingId === location.id;
-                  const disconnecting = disconnectingId === location.id;
+                  const connecting = connectingIds.has(location.id);
+                  const disconnecting = disconnectingIds.has(location.id);
                   return (
                     <Card key={location.id} size="sm">
                       <CardHeader>

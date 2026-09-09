@@ -1,5 +1,7 @@
 "use client";
 
+import { SortableListRow } from "./sortable-list-row";
+
 import {
   closestCorners,
   DndContext,
@@ -15,10 +17,9 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+
 import { useMutation, useQuery } from "convex/react";
 import { GripVerticalIcon, ListOrderedIcon } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -38,10 +39,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useAccess, usePermission } from "@/components/app-shell";
-import {
-  sidebarItems,
-  type SidebarItemId,
-} from "@/lib/sidebar-navigation";
+import { sidebarItems, type SidebarItemId } from "@/lib/sidebar-navigation";
 import { cn } from "@/lib/utils";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
@@ -78,58 +76,6 @@ function SidebarDragPreview({ id }: { id: SidebarItemId }) {
       </span>
       <span className="min-w-0 flex-1 font-medium">{labels[id]}</span>
     </div>
-  );
-}
-
-function SidebarItemRow({
-  id,
-  dragActive,
-}: {
-  id: SidebarItemId;
-  dragActive: boolean;
-}) {
-  const {
-    attributes,
-    isDragging,
-    isOver,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id });
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 1 : undefined,
-      }}
-    >
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        {...attributes}
-        {...listeners}
-        className={cn(
-          "flex min-h-16 w-full touch-none items-center gap-3 rounded-xl border bg-background p-3 text-left shadow-sm transition-[box-shadow,border-color] duration-150 select-none",
-          dragActive ? "cursor-grabbing" : "cursor-grab active:cursor-grabbing",
-          isDragging && "opacity-30",
-          isOver &&
-            !isDragging &&
-            "border-primary bg-primary/5 ring-2 ring-primary/20",
-        )}
-        aria-label={`Flyt ${labels[id]}`}
-        aria-roledescription="menupunkt, der kan flyttes"
-      >
-        <span className="flex size-11 shrink-0 items-center justify-center text-muted-foreground">
-          <GripVerticalIcon aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1 font-medium">{labels[id]}</span>
-      </button>
-    </li>
   );
 }
 
@@ -199,10 +145,12 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
               aria-label="Rækkefølge i sidemenuen"
             >
               {itemOrder.map((id) => (
-                <SidebarItemRow
+                <SortableListRow
                   key={id}
                   id={id}
-                  dragActive={Boolean(activeId)}
+                  label={labels[id]}
+                  roleDescription="menupunkt, der kan flyttes"
+                  className="min-h-16 rounded-xl p-2 shadow-sm"
                 />
               ))}
             </ol>
@@ -218,8 +166,17 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
         </DndContext>
       </CardContent>
       <CardFooter className="justify-end">
-        <Button type="button" size="lg" disabled={saving} onClick={() => void save()}>
-          {saving ? <Spinner data-icon="inline-start" /> : <ListOrderedIcon data-icon="inline-start" />}
+        <Button
+          type="button"
+          size="lg"
+          disabled={saving}
+          onClick={() => void save()}
+        >
+          {saving ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <ListOrderedIcon data-icon="inline-start" />
+          )}
           Gem rækkefølge
         </Button>
       </CardFooter>

@@ -1,3 +1,4 @@
+import { organizationRoleCatalog } from "./lib/roles";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -60,7 +61,6 @@ import {
 import {
   hasPermission,
   systemRoleKeys,
-  systemRoleNames,
 } from "../lib/auth-permissions";
 import type { DataGranularity } from "../lib/auth-permissions";
 import { rateLimiter } from "./lib/rateLimits";
@@ -496,22 +496,8 @@ export const listRoleOptions = query({
   returns: v.array(v.object({ role: v.string(), name: v.string() })),
   handler: async (ctx) => {
     const auth = await requireDashboardManager(ctx);
-    const roles = await ctx.db
-      .query("roles")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .take(100);
-    const byKey = new Map(roles.map((role) => [role.key, role.name]));
-    return [
-      ...systemRoleKeys.map((role) => ({
-        role,
-        name: byKey.get(role) ?? systemRoleNames[role],
-      })),
-      ...roles
-        .filter((role) => !systemRoleKeys.includes(role.key as never))
-        .map((role) => ({ role: role.key, name: role.name })),
-    ];
+    const { catalog } = await organizationRoleCatalog(ctx, auth.organizationId);
+    return catalog.map(({ key, name }) => ({ role: key, name }));
   },
 });
 

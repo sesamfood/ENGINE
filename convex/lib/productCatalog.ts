@@ -1,5 +1,5 @@
 import type { PaginationOptions } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import {
@@ -44,29 +44,7 @@ export const activeProductCatalogValidator = v.object({
   ),
 });
 
-export type ActiveProductCatalogItem = {
-  id: Id<"products">;
-  name: string;
-  category: {
-    id: Id<"categories">;
-    name: string;
-    path: string;
-    parentCategoryId: Id<"categories"> | null;
-  };
-  categories: Array<{
-    id: Id<"categories">;
-    name: string;
-    path: string;
-    parentCategoryId: Id<"categories"> | null;
-  }>;
-  imageUrl: string | null;
-  defaultUnitId: Id<"units">;
-  units: Array<{
-    id: Id<"units">;
-    name: string;
-    factorToDefault: number;
-  }>;
-};
+export type ActiveProductCatalogItem = Infer<typeof activeProductCatalogValidator>;
 
 export function catalogPaginationOptions(
   options: PaginationOptions,

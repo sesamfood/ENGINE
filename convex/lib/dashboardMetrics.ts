@@ -1,3 +1,5 @@
+import { dateKey, addDays, daysBetween, zonedStart, DEFAULT_TIME_ZONE } from "../../lib/date";
+export { dateKey, zonedStart } from "../../lib/date";
 import { ConvexError } from "convex/values";
 import { resolveTimeZone } from "./timeZone";
 import { getForecastOpeningHours } from "./forecastOpeningHours";
@@ -25,7 +27,6 @@ import {
   type SummarySource,
 } from "./dashboardSummaries";
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 const MAX_ROWS = 5_000;
 const MAX_SUMMARY_ROWS_PER_SOURCE = MAX_ROWS;
 const MAX_SCOPE_LOCATIONS = 200;
@@ -117,63 +118,6 @@ type TimedValue = {
   locationId: Id<"locations">;
   value: number;
 };
-
-export function dateKey(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(timestamp);
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function addDays(value: string, days: number) {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + days));
-  return date.toISOString().slice(0, 10);
-}
-
-function daysBetween(from: string, to: string) {
-  return Math.round(
-    (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) /
-      DAY_MS,
-  );
-}
-
-export function zonedStart(value: string, timeZone: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  const target = Date.UTC(year, month - 1, day);
-  let guess = target;
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(
-      formatter.formatToParts(guess).map((part) => [part.type, part.value]),
-    );
-    const represented = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute),
-      Number(parts.second),
-    );
-    guess += target - represented;
-  }
-  return guess;
-}
 
 function validDate(value: string | undefined) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

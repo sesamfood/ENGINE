@@ -1,5 +1,7 @@
 "use client";
 
+import { SettingsSwitchField } from "./settings-switch-field";
+
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,10 +26,9 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 
 const dateFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "short",
@@ -73,53 +74,60 @@ export function OnlinePosStockSettings() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <FieldGroup>
-          <Field
-            orientation="horizontal"
-            data-disabled={
+          <SettingsSwitchField
+            label="Opdatér lageret fra salg"
+            id="online-pos-stock-sync"
+            checked={settings.enabled}
+            disabled={
               saving || !settings.canManage || !settings.integrationEnabled
             }
-          >
-            <div className="flex flex-1 items-center gap-1">
-              <FieldLabel htmlFor="online-pos-stock-sync">
-                Opdatér lageret fra salg
-              </FieldLabel>
-              <HelpTooltip
-                label="Lagersynkronisering fra OnlinePOS"
-                content="Salg hentes hvert 10. minut. Produkter med opskrifter reducerer ingrediensernes lager; andre Produkter reducerer deres egen beholdning. Tilvalg og fravalg bruger de eksisterende koblinger. Refunderinger fører mængden tilbage på lageret, medmindre du vælger at registrere dem som Waste. Deaktivering stopper nye opdateringer og bevarer tidligere lagerændringer."
-              />
-            </div>
-            <Switch
-              id="online-pos-stock-sync"
-              checked={settings.enabled}
+            onCheckedChange={(enabled) => {
+              if (enabled) {
+                setSinceCount(false);
+                setRefundsToWasteChoice(settings.refundsToWaste);
+                setOpen(true);
+              } else void save(false);
+            }}
+            help={{
+              label: "Lagersynkronisering fra OnlinePOS",
+              content:
+                "Salg hentes hvert 10. minut. Produkter med opskrifter reducerer ingrediensernes lager; andre Produkter reducerer deres egen beholdning. Tilvalg og fravalg bruger de eksisterende koblinger. Refunderinger fører mængden tilbage på lageret, medmindre du vælger at registrere dem som Waste. Deaktivering stopper nye opdateringer og bevarer tidligere lagerændringer.",
+            }}
+          />
+          {settings.enabled ? (
+            <SettingsSwitchField
+              label="Registrér refunderinger som Waste"
+              id="online-pos-refunds-waste"
+              checked={settings.refundsToWaste}
               disabled={
                 saving || !settings.canManage || !settings.integrationEnabled
               }
-              onCheckedChange={(enabled) => {
-                if (enabled) {
-                  setSinceCount(false);
-                  setRefundsToWasteChoice(settings.refundsToWaste);
-                  setOpen(true);
-                } else void save(false);
+              onCheckedChange={async (enabled) => {
+                setSaving(true);
+                try {
+                  await setRefundsToWaste({ enabled });
+                  toast.success(
+                    enabled
+                      ? "Nye refunderinger registreres som Waste"
+                      : "Nye refunderinger føres tilbage på lageret",
+                  );
+                } catch (error) {
+                  toast.error(
+                    getUserErrorMessage(
+                      error,
+                      "Indstillingen kunne ikke gemmes",
+                    ),
+                  );
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              help={{
+                label: "Refunderinger som Waste",
+                content:
+                  "Nye refunderinger, der synkroniseres, registreres automatisk som Waste. Maden føres derfor ikke tilbage på lageret. Opskrifter, tilvalg og fravalg bestemmer mængderne. Allerede behandlede refunderinger ændres ikke. Ret eventuelle fejl i OnlinePOS.",
               }}
             />
-          </Field>
-          {settings.enabled ? (
-            <Field orientation="horizontal" data-disabled={saving || !settings.canManage || !settings.integrationEnabled}>
-              <div className="flex flex-1 items-center gap-1">
-                <FieldLabel htmlFor="online-pos-refunds-waste">Registrér refunderinger som Waste</FieldLabel>
-                <HelpTooltip label="Refunderinger som Waste" content="Nye refunderinger, der synkroniseres, registreres automatisk som Waste. Maden føres derfor ikke tilbage på lageret. Opskrifter, tilvalg og fravalg bestemmer mængderne. Allerede behandlede refunderinger ændres ikke. Ret eventuelle fejl i OnlinePOS." />
-              </div>
-              <Switch id="online-pos-refunds-waste" checked={settings.refundsToWaste} disabled={saving || !settings.canManage || !settings.integrationEnabled}
-                onCheckedChange={async (enabled) => {
-                  setSaving(true);
-                  try {
-                    await setRefundsToWaste({ enabled });
-                    toast.success(enabled ? "Nye refunderinger registreres som Waste" : "Nye refunderinger føres tilbage på lageret");
-                  } catch (error) {
-                    toast.error(getUserErrorMessage(error, "Indstillingen kunne ikke gemmes"));
-                  } finally { setSaving(false); }
-                }} />
-            </Field>
           ) : null}
         </FieldGroup>
         {!settings.integrationEnabled ? (

@@ -1,5 +1,7 @@
 "use client";
 
+import { SettingsSwitchField } from "./settings-switch-field";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   TagsInputInput,
@@ -42,7 +44,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import { useAccess, usePermission } from "@/components/app-shell";
@@ -349,26 +351,19 @@ export function WasteSettings() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <div className="flex items-center gap-1">
-                  <FieldLabel htmlFor="waste-organization-history">
-                    Brug historik fra hele organisationen
-                  </FieldLabel>
-                  <HelpTooltip
-                    label="historik fra hele organisationen"
-                    content="Slå til for at beregne popularitet og anbefalede genveje ud fra Waste på tværs af alle lokationer. Slå fra for kun at bruge den valgte lokations historik."
-                  />
-                </div>
-              </FieldContent>
-              <Switch
-                id="waste-organization-history"
-                checked={historyScope === "organization"}
-                onCheckedChange={(checked) =>
-                  setHistoryScopeDraft(checked ? "organization" : "location")
-                }
-              />
-            </Field>
+            <SettingsSwitchField
+              label="Brug historik fra hele organisationen"
+              id="waste-organization-history"
+              checked={historyScope === "organization"}
+              onCheckedChange={(checked) =>
+                setHistoryScopeDraft(checked ? "organization" : "location")
+              }
+              help={{
+                label: "historik fra hele organisationen",
+                content:
+                  "Slå til for at beregne popularitet og anbefalede genveje ud fra Waste på tværs af alle lokationer. Slå fra for kun at bruge den valgte lokations historik.",
+              }}
+            />
           </FieldGroup>
         </CardContent>
         <CardFooter className="justify-end">
@@ -388,30 +383,18 @@ export function WasteSettings() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldLabel htmlFor="bad-delivery-deduct">
-                  Træk som standard fra lager
-                </FieldLabel>
-              </FieldContent>
-              <Switch
-                id="bad-delivery-deduct"
-                checked={deduct}
-                onCheckedChange={setDeductDraft}
-              />
-            </Field>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldLabel htmlFor="bad-delivery-show-choice">
-                  Vis valget ved registrering
-                </FieldLabel>
-              </FieldContent>
-              <Switch
-                id="bad-delivery-show-choice"
-                checked={showChoice}
-                onCheckedChange={setShowChoiceDraft}
-              />
-            </Field>
+            <SettingsSwitchField
+              label="Træk som standard fra lager"
+              id="bad-delivery-deduct"
+              checked={deduct}
+              onCheckedChange={setDeductDraft}
+            />
+            <SettingsSwitchField
+              label="Vis valget ved registrering"
+              id="bad-delivery-show-choice"
+              checked={showChoice}
+              onCheckedChange={setShowChoiceDraft}
+            />
             <Field>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="bad-delivery-subject">

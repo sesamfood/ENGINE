@@ -1,5 +1,6 @@
+import { requirePageSize, requireApiKeyPrincipal, restError } from "./lib";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import {
   DEFAULT_WEEKLY_OPENING_HOURS,
   MAX_SPECIAL_OPENING_DATES,
@@ -11,7 +12,6 @@ import {
   requireAllLocationAccess,
   requireLocationAccess,
   requireLocationManager,
-  type OrganizationAuth,
 } from "../lib/auth";
 import { runIdempotent } from "../lib/idempotency";
 import {
@@ -31,8 +31,6 @@ import {
   specialOpeningHoursValidator,
   weeklyOpeningHoursValidator,
 } from "../lib/openingHours";
-
-const MAX_PAGE_SIZE = 100;
 
 const ownershipTypeValidator = v.union(
   v.literal("owned"),
@@ -122,29 +120,10 @@ type LocationDto = {
 
 type LocationContext = QueryCtx | MutationCtx;
 
-function restError(code: string, message: string): never {
-  throw new ConvexError({ code, message });
-}
-
-function requireApiKeyPrincipal(auth: OrganizationAuth) {
-  if (auth.principalKind !== "apiKey" || !auth.apiKeyId) {
-    restError("api_key_required", "An API key is required for this operation.");
-  }
-}
-
 async function requireLocationApiKey(ctx: LocationContext) {
   const auth = await requireLocationManager(ctx);
   requireApiKeyPrincipal(auth);
   return auth;
-}
-
-function requirePageSize(numItems: number) {
-  if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_PAGE_SIZE) {
-    restError(
-      "page_size_invalid",
-      "Page size must be an integer between 1 and 100.",
-    );
-  }
 }
 
 function toLocationDto(location: Doc<"locations">): LocationDto {

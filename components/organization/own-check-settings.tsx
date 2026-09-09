@@ -1,5 +1,7 @@
 "use client";
 
+import { SettingsSwitchField } from "./settings-switch-field";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
@@ -17,23 +19,35 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import { api } from "@/convex/_generated/api";
 import { useAccess, usePermission } from "@/components/app-shell";
 
 export function OwnCheckSettings() {
   const access = useAccess();
   const canManage = usePermission("ownChecks.manage");
-  const settings = useQuery(api.ownCheckTemplates.getSettings, canManage ? {} : "skip");
+  const settings = useQuery(
+    api.ownCheckTemplates.getSettings,
+    canManage ? {} : "skip",
+  );
   const saveSettings = useMutation(api.ownCheckTemplates.saveSettings);
-  const [lateSubmissionDays, setLateSubmissionDays] = useState<number | null>(null);
+  const [lateSubmissionDays, setLateSubmissionDays] = useState<number | null>(
+    null,
+  );
   const [requireSecondPersonApproval, setRequireSecondPersonApproval] = useState<boolean | null>(null);
-  const [blockDuringCount, setBlockDuringCount] = useState<boolean | null>(null);
+  const [blockDuringCount, setBlockDuringCount] = useState<boolean | null>(
+    null,
+  );
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
@@ -52,7 +66,8 @@ export function OwnCheckSettings() {
   if (!settings) return <Skeleton className="h-80 w-full max-w-3xl" />;
 
   const days = lateSubmissionDays ?? settings.lateSubmissionDays;
-  const secondPerson = requireSecondPersonApproval ?? settings.requireSecondPersonApproval;
+  const secondPerson =
+    requireSecondPersonApproval ?? settings.requireSecondPersonApproval;
   const blockCount = blockDuringCount ?? settings.blockDuringCount;
 
   async function save() {
@@ -93,31 +108,35 @@ export function OwnCheckSettings() {
               </div>
               <Input id="own-check-late-days" type="number" min={0} max={30} value={days} onChange={(event) => setLateSubmissionDays(Number(event.target.value))} className="h-11 max-w-xs" />
             </Field>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <div className="flex items-center gap-1">
-                  <FieldLabel htmlFor="own-check-second-person">Godkendelse kræver en anden person</FieldLabel>
-                  <HelpTooltip label="Godkendelse kræver en anden person" content="Personen, der udførte kontrollen, kan ikke godkende den. Brugere med rettigheden til at administrere egenkontroller er undtaget." />
-                </div>
-              </FieldContent>
-              <Switch id="own-check-second-person" checked={secondPerson} onCheckedChange={setRequireSecondPersonApproval} />
-            </Field>
-            <Field orientation="horizontal" data-invalid={blockCount}>
-              <FieldContent>
-                <FieldLabel htmlFor="own-check-count-lock">Blokér egenkontrol under Count</FieldLabel>
-                <FieldDescription className={blockCount ? "text-destructive" : undefined}>
-                  Advarsel: Egenkontroller kan ikke udføres, mens en Count låser lokationen.
+            <SettingsSwitchField
+              label="Godkendelse kræver en anden person"
+              id="own-check-second-person"
+              checked={secondPerson}
+              onCheckedChange={setRequireSecondPersonApproval}
+              help={{
+                label: "Godkendelse kræver en anden person",
+                content:
+                  "Personen, der udførte kontrollen, kan ikke godkende den. Brugere med rettigheden til at administrere egenkontroller er undtaget.",
+              }}
+            />
+            <SettingsSwitchField
+              label="Blokér egenkontrol under Count"
+              id="own-check-count-lock"
+              checked={blockCount}
+              onCheckedChange={(checked) => {
+                if (checked && !blockCount) setConfirmBlock(true);
+                else setBlockDuringCount(checked);
+              }}
+              description={
+                <FieldDescription
+                  className={blockCount ? "text-destructive" : undefined}
+                >
+                  Advarsel: Egenkontroller kan ikke udføres, mens en Count låser
+                  lokationen.
                 </FieldDescription>
-              </FieldContent>
-              <Switch
-                id="own-check-count-lock"
-                checked={blockCount}
-                onCheckedChange={(checked) => {
-                  if (checked && !blockCount) setConfirmBlock(true);
-                  else setBlockDuringCount(checked);
-                }}
-              />
-            </Field>
+              }
+              invalid={blockCount}
+            />
             <Field>
               <FieldLabel htmlFor="own-check-settings-reason">Begrundelse for ændringer</FieldLabel>
               <FieldDescription>Begrund ændringen. Teksten gemmes i ændringshistorikken.</FieldDescription>

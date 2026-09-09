@@ -1,3 +1,4 @@
+import { entrySummaryValidator, attachmentRowsForValues } from "./lib/ownCheckRecords";
 import { claimStorageForOrganization } from "./lib/storageOwnership";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -40,7 +41,6 @@ import {
 import {
   ownCheckControlTypeValidator,
   ownCheckFieldValidator,
-  ownCheckNoteValidator,
   ownCheckValueValidator,
 } from "./lib/ownCheckValidators";
 import { recordAudit } from "./lib/audit";
@@ -56,28 +56,6 @@ const ownCheckStatusValidator = v.union(
   v.literal("completed"),
   v.literal("approved"),
   v.literal("deviation"),
-);
-
-const entrySummaryValidator = v.union(
-  v.object({
-    id: v.id("ownCheckEntries"),
-    status: v.union(v.literal("completed"), v.literal("deviation"), v.literal("approved")),
-    hasDeviation: v.boolean(),
-    followUp: v.union(v.literal("none"), v.literal("open"), v.literal("resolved")),
-    compliant: v.boolean(),
-    values: v.array(ownCheckValueValidator),
-    note: v.union(v.string(), v.null()),
-    deviation: v.union(ownCheckNoteValidator, v.null()),
-    correctiveAction: v.union(ownCheckNoteValidator, v.null()),
-    performedAt: v.number(),
-    performedBy: v.string(),
-    performedByName: v.string(),
-    approvedAt: v.union(v.number(), v.null()),
-    approvedBy: v.union(v.string(), v.null()),
-    approvedByName: v.union(v.string(), v.null()),
-    revision: v.number(),
-  }),
-  v.null(),
 );
 
 const planItemValidator = v.object({
@@ -317,7 +295,7 @@ async function validateValues(
     const existing = await ctx.db
       .query("ownCheckAttachments")
       .withIndex("by_storageId", (q) => q.eq("storageId", attachmentIds[index]))
-      .collect();
+      .take(2);
     if (existing.some((attachment) => attachment.removedAtRevision !== undefined)) {
       throw new ConvexError("Filen blev fjernet fra en tidligere rettelse. Upload filen igen");
     }
@@ -341,7 +319,7 @@ async function ensureAttachmentCanBeInserted(
   const existing = await ctx.db
     .query("ownCheckAttachments")
     .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
-    .collect();
+    .take(2);
   if (existing.some((attachment) => attachment.removedAtRevision !== undefined)) {
     throw new ConvexError("Filen blev fjernet fra en tidligere rettelse. Upload filen igen");
   }
@@ -540,7 +518,7 @@ export const editOwnCheck = mutation({
         : undefined;
     const nextStatus = hasDeviation ? "deviation" : "completed";
     const nextFollowUp = hasDeviation ? (nextCorrective ? "resolved" : "open") : "none";
-    const currentAttachments = await ctx.db.query("ownCheckAttachments").withIndex("by_organizationId_and_entryId", (q) => q.eq("organizationId", auth.organizationId).eq("entryId", entry._id)).collect();
+    const currentAttachments = await attachmentRowsForValues(ctx, auth.organizationId, entry._id, [entry.values]);
     const nextStorageIds = new Set(args.values.flatMap((value) => value.type === "attachment" ? value.storageIds : []));
     for (const attachment of currentAttachments) {
       if (attachment.removedAtRevision === undefined && !nextStorageIds.has(attachment.storageId)) {
@@ -637,4 +615,4 @@ export const approveOwnCheck = mutation({
   },
 });
 
-export { getOwnCheckRecord, listOwnCheckPlan, listOwnCheckEntries } from "./ownCheckOverview";
+export { getOwnCheckRecord, listOwnCheckHistory, listOwnCheckPlan, listOwnCheckEntries } from "./ownCheckOverview";

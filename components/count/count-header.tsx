@@ -2,26 +2,26 @@
 
 import { CheckCircle2Icon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { AppPageHeader } from "@/components/app-page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { LocationField } from "@/components/location-field";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCountState } from "@/components/count/count-state-provider";
 import { setCountLocation } from "@/lib/count-prefs";
+import { dateTimeFormatter } from "@/lib/date";
 
 const periodFormatter = new Intl.DateTimeFormat("da-DK", {
   month: "long",
   year: "numeric",
-  timeZone: "Europe/Copenhagen",
+  timeZone: "UTC",
 });
 
 const dateFormatter = new Intl.DateTimeFormat("da-DK", {
   day: "numeric",
   month: "long",
   year: "numeric",
-  timeZone: "Europe/Copenhagen",
+  timeZone: "UTC",
 });
 
 function formatPeriod(periodKey: string) {
@@ -41,9 +41,7 @@ function CountHeaderControls({
   lockedName,
 }: {
   locationId: Id<"locations"> | null;
-  locations:
-    | Array<{ id: Id<"locations">; name: string }>
-    | undefined;
+  locations: Array<{ id: Id<"locations">; name: string }> | undefined;
   organizationId: string | undefined;
   periodKey: string | undefined;
   isLocked: boolean;
@@ -86,25 +84,16 @@ function CountHeaderControls({
 
 export function CountHeader() {
   const pathname = usePathname();
-  const [desktopTarget, setDesktopTarget] = useState<HTMLElement | null>(null);
   const { organizationId, locations, isLocked, lockedName, locationId, state } =
     useCountState();
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setDesktopTarget(document.getElementById("count-shell-header"));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
   const submitted = state?.count?.status === "submitted";
-  const statusDescription =
-    state?.count?.submittedAt
-      ? `Registreret ${new Intl.DateTimeFormat("da-DK", { dateStyle: "short", timeStyle: "short" }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
-      : "Denne Count kan ikke ændres.";
+  const statusDescription = state?.count?.submittedAt
+    ? `Registreret ${dateTimeFormatter("da-DK", { dateStyle: "short", timeStyle: "short", timeZone: state.timeZone }).format(state.count.submittedAt)}${state.count.submittedByName ? ` af ${state.count.submittedByName}` : ""}.`
+    : "Denne Count kan ikke ændres.";
   return (
     <div className="flex flex-col gap-6">
-      <header className="md:hidden">
+      <AppPageHeader>
         <CountHeaderControls
           locationId={locationId}
           locations={locations}
@@ -113,20 +102,7 @@ export function CountHeader() {
           isLocked={isLocked}
           lockedName={lockedName}
         />
-      </header>
-      {desktopTarget
-        ? createPortal(
-            <CountHeaderControls
-              locationId={locationId}
-              locations={locations}
-              organizationId={organizationId}
-              periodKey={state?.periodKey}
-              isLocked={isLocked}
-              lockedName={lockedName}
-            />,
-            desktopTarget,
-          )
-        : null}
+      </AppPageHeader>
 
       {pathname === "/count" && submitted ? (
         <Alert className="md:-mt-5">

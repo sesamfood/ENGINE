@@ -1,12 +1,13 @@
+import { requireApiKeyPrincipal, requirePageSize, restError } from "./lib";
 import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { mutation, query } from "../_generated/server";
-import { requireLocationManager, type OrganizationAuth } from "../lib/auth";
+import { requireLocationManager } from "../lib/auth";
 import { runIdempotent } from "../lib/idempotency";
 import { requireRestApiMutation } from "./lib";
 import {
@@ -22,8 +23,6 @@ import {
   updateMarketWithAuth,
   updateOperatorWithAuth,
 } from "../masterData";
-
-const MAX_PAGE_SIZE = 100;
 
 const operatorStatusValidator = v.union(
   v.literal("active"),
@@ -114,10 +113,6 @@ type OperatorDto = {
   status: "active" | "inactive";
 };
 
-function restError(code: string, message: string): never {
-  throw new ConvexError({ code, message });
-}
-
 function restMasterDataError(error: MasterDataError): never {
   const prefix = {
     market: "market",
@@ -201,21 +196,6 @@ async function runMasterDataMutation<T>(run: () => Promise<T>): Promise<T> {
       return restMasterDataError(error);
     }
     throw error;
-  }
-}
-
-function requirePageSize(numItems: number) {
-  if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_PAGE_SIZE) {
-    restError(
-      "page_size_invalid",
-      "Page size must be an integer between 1 and 100.",
-    );
-  }
-}
-
-function requireApiKeyPrincipal(auth: OrganizationAuth) {
-  if (auth.principalKind !== "apiKey" || !auth.apiKeyId) {
-    restError("api_key_required", "An API key is required for this operation.");
   }
 }
 
