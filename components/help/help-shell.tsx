@@ -3,36 +3,27 @@ import { ArrowLeftIcon, BookOpenIcon, LayoutGridIcon } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { helpFeatures } from "@/components/help/help-features";
+import { HelpNavigationLink } from "@/components/help/help-navigation";
 
 function HelpNavigation() {
   return (
-    <aside className="sticky top-16 z-10 -mx-4 border-y bg-background px-4 py-2 lg:top-24 lg:mx-0 lg:self-start lg:border-0 lg:bg-transparent lg:p-0">
+    <aside className="sticky top-16 z-10 -mx-4 border-b bg-background px-4 py-2 lg:top-24 lg:mx-0 lg:mt-10 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto lg:border-0 lg:bg-transparent lg:p-0">
       <nav aria-label="Hjælpeemner" className="overflow-x-auto lg:overflow-visible">
         <ol className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
           <li>
-            <Link
-              href="/help"
-              className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 lg:w-full"
-            >
-              <span className="font-mono text-[0.65rem] text-muted-foreground/70">00</span>
+            <HelpNavigationLink href="/help">
               <LayoutGridIcon className="size-4 shrink-0" aria-hidden="true" />
               <span>Overblik</span>
-            </Link>
+            </HelpNavigationLink>
           </li>
           {helpFeatures.map((feature) => {
             const Icon = feature.icon;
             return (
               <li key={feature.slug}>
-                <Link
-                  href={`/help/${feature.slug}`}
-                  className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 lg:w-full"
-                >
-                  <span className="font-mono text-[0.65rem] text-muted-foreground/70">
-                    {feature.number}
-                  </span>
+                <HelpNavigationLink href={`/help/${feature.slug}`}>
                   <Icon className="size-4 shrink-0" aria-hidden="true" />
                   <span>{feature.label}</span>
-                </Link>
+                </HelpNavigationLink>
               </li>
             );
           })}
@@ -64,7 +55,7 @@ export function HelpShell({ children }: { children: ReactNode }) {
             <span>
               <span className="block text-sm font-semibold">Hjælp</span>
               <span className="hidden text-xs text-muted-foreground sm:block">
-                Guide til appen
+                Funktioner og opsætning
               </span>
             </span>
           </Link>
@@ -82,7 +73,7 @@ export function HelpShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-8 px-4 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:px-8">
+      <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-x-8 px-4 sm:px-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:px-8">
         <HelpNavigation />
         <div id="help-content" className="min-w-0">
           {children}

@@ -4,7 +4,7 @@ import { HelpIndex } from "@/components/help/help-index";
 export const metadata: Metadata = {
   title: "Hjælp | ENGINE",
   description:
-    "Visuel guide til Dashboard, Transfer, Waste, Count, Staff food, Egenkontrol og Administration.",
+    "Find opsætningsguider til appens funktioner med skærmbilleder, trin for trin-vejledning og tjek af indstillingerne.",
 };
 
 export default function HelpRoute() {

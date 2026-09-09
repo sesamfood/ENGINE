@@ -1,78 +1,70 @@
-import { ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, SettingsIcon } from "lucide-react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { helpFeatures } from "@/components/help/help-features";
-import { HelpOverviewVisual } from "@/components/help/help-visuals";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 
 export function HelpIndex() {
   return (
-    <div className="py-14 sm:py-20 lg:py-24">
-      <section className="flex flex-col gap-8">
-        <div className="grid gap-8 xl:grid-cols-[1fr_0.72fr] xl:items-end">
-          <div className="flex max-w-4xl flex-col gap-5">
-            <p className="text-sm font-semibold tracking-[0.16em] text-primary uppercase">
-              Brugerguide
-            </p>
-            <h1 className="text-5xl font-semibold tracking-[-0.045em] text-balance sm:text-6xl lg:text-7xl">
-              Sådan bruger du appen
-            </h1>
-          </div>
-          <div className="flex flex-col gap-4 xl:pb-1">
-            <p className="text-lg leading-8 text-muted-foreground">
-              Vælg en funktion. Hver side viser arbejdsgangen og de indstillinger,
-              der styrer den.
-            </p>
-            <p className="text-sm leading-6 text-muted-foreground">
-              Din rolle og organisationens opsætning bestemmer, hvilke funktioner
-              du ser i appen.
-            </p>
-          </div>
-        </div>
-        <HelpOverviewVisual />
-      </section>
+    <div className="flex flex-col gap-9 py-8 sm:gap-10 sm:py-12">
+      <header className="flex max-w-2xl flex-col gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+          Hjælp til funktioner og opsætning
+        </h1>
+        <p className="text-base leading-7 text-muted-foreground">
+          Vælg en funktion, og følg opsætningen trin for trin. Guiderne viser,
+          hvad du skal have klar, hvor du finder indstillingerne, og hvordan du
+          tjekker, at alt er klar til brug.
+        </p>
+      </header>
 
-      <section aria-labelledby="topics-title" className="mt-16 border-t pt-12 sm:mt-20 sm:pt-16">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">
-              Emner
-            </p>
-            <h2 id="topics-title" className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Vælg en funktion
-            </h2>
-          </div>
+      <Alert role="note" className="p-4">
+        <SettingsIcon aria-hidden="true" />
+        <AlertTitle>Skal du sætte organisationen op?</AlertTitle>
+        <AlertDescription className="flex flex-col items-start gap-2">
+          <p>Start med lokationer, brugere og rettigheder i Administration.</p>
+          <Link
+            href="/help/administration"
+            className="inline-flex min-h-11 items-center gap-2 rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            Se guiden til Administration
+            <ArrowRightIcon className="size-4" aria-hidden="true" />
+          </Link>
+        </AlertDescription>
+      </Alert>
+
+      <section aria-labelledby="topics-title">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 id="topics-title" className="text-xl font-semibold tracking-tight">
+            Vælg en funktion
+          </h2>
           <Badge variant="outline">{helpFeatures.length} guider</Badge>
         </div>
 
-        <div className="border-y divide-y">
+        <ul className="divide-y border-y">
           {helpFeatures.map((feature) => {
             const Icon = feature.icon;
             return (
-              <Link
-                key={feature.slug}
-                href={`/help/${feature.slug}`}
-                className="group grid min-h-28 gap-4 py-5 outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[3rem_3rem_minmax(12rem,0.55fr)_minmax(16rem,1fr)_auto] sm:items-center sm:px-4"
-              >
-                <span className="font-mono text-xs text-muted-foreground">
-                  {feature.number}
-                </span>
-                <span className="grid size-11 place-items-center rounded-xl bg-muted text-primary group-hover:bg-background">
-                  <Icon className="size-5" aria-hidden="true" />
-                </span>
-                <span className="text-lg font-semibold">{feature.label}</span>
-                <span className="text-sm leading-6 text-muted-foreground">
-                  {feature.summary}
-                </span>
-                <span className="flex items-center gap-3">
-                  <Badge variant="secondary">
-                    {feature.settings.length} indstillinger
-                  </Badge>
-                  <ArrowRightIcon className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" aria-hidden="true" />
-                </span>
-              </Link>
+              <li key={feature.slug}>
+                <Link
+                  href={`/help/${feature.slug}`}
+                  className="group grid min-h-24 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 py-5 outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 sm:items-center sm:px-3 xl:grid-cols-[1.25rem_minmax(9rem,0.4fr)_minmax(0,1fr)_auto]"
+                >
+                  <Icon className="mt-0.5 size-5 text-muted-foreground sm:mt-0" aria-hidden="true" />
+                  <span className="font-semibold">{feature.label}</span>
+                  <span className="col-start-2 row-start-2 text-sm leading-6 text-muted-foreground xl:col-start-3 xl:row-start-1">
+                    {feature.summary}
+                  </span>
+                  <ArrowRightIcon className="col-start-3 row-start-1 mt-1 size-4 text-muted-foreground sm:mt-0 xl:col-start-4" aria-hidden="true" />
+                </Link>
+              </li>
             );
           })}
-        </div>
+        </ul>
+        <p className="mt-5 text-sm leading-6 text-muted-foreground">
+          Din rolle og organisationens opsætning bestemmer, hvilke funktioner og
+          indstillinger du har adgang til.
+        </p>
       </section>
     </div>
   );
