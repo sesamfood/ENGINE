@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { ArrowLeftIcon, BookOpenIcon } from "lucide-react";
+import { ArrowLeftIcon } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { helpFeatures, helpPages } from "@/components/help/help-features";
@@ -71,9 +72,15 @@ export function HelpShell({ children }: { children: ReactNode }) {
             href="/help"
             className="flex min-h-11 items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <span className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <BookOpenIcon className="size-4" aria-hidden="true" />
-            </span>
+            <Image
+              src="/favicon.ico"
+              alt=""
+              width={36}
+              height={36}
+              unoptimized
+              loading="eager"
+              className="size-9 shrink-0 object-contain"
+            />
             <span>
               <span className="block text-sm font-semibold">Hjælp</span>
               <span className="hidden text-xs text-muted-foreground sm:block">
