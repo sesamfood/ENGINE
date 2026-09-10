@@ -1,13 +1,15 @@
 "use client";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { LocationAddressSearch } from "@/components/organization/location-address-search";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type OwnershipType = "owned" | "franchise" | "jointVenture" | "license";
 type LocationStatus = "planned" | "open" | "temporarilyClosed" | "closed";
@@ -52,7 +55,12 @@ const statusItems = [
 
 type Draft = {
   forecastEnabled: boolean;
-  forecastProfile: Doc<"locationForecasts">["profile"] | null;
+  googlePlaceId: string | null;
+  forecastSource: "manual" | "google";
+  forecastCountryCode: string;
+  forecastSubdivisionCode: string;
+  forecastLatitude: string;
+  forecastLongitude: string;
   marketId: Id<"markets"> | null;
   legalEntityId: Id<"legalEntities"> | null;
   operatorId: Id<"operators"> | null;
@@ -66,7 +74,12 @@ type Draft = {
 
 const emptyDraft: Draft = {
   forecastEnabled: false,
-  forecastProfile: null,
+  googlePlaceId: null,
+  forecastSource: "manual",
+  forecastCountryCode: "",
+  forecastSubdivisionCode: "",
+  forecastLatitude: "",
+  forecastLongitude: "",
   marketId: null,
   legalEntityId: null,
   operatorId: null,
@@ -82,7 +95,16 @@ function dateValue(timestamp: number | null) {
   return timestamp === null ? "" : new Date(timestamp).toISOString().slice(0, 10);
 }
 
-export function LocationDetails({
+export function LocationDetails(props: {
+  locationId: Id<"locations">;
+  locationName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return props.open ? <LocationDetailsDialog key={props.locationId} {...props} /> : null;
+}
+
+function LocationDetailsDialog({
   locationId,
   locationName,
   open,
@@ -106,28 +128,37 @@ export function LocationDetails({
     api.masterData.listOperators,
     open ? {} : "skip",
   );
-  const updateLocation = useMutation(api.locations.updateLocation);
+  const updateLocation = useAction(api.googlePlaces.saveLocation);
+  const [initialDetails, setInitialDetails] = useState<FunctionReturnType<typeof api.locations.getLocationDetails> | null>(null);
+  if (details && !initialDetails) setInitialDetails(details);
   const [editedDraft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
-  const draft = editedDraft ??
-    (details
+  const [selectingPlace, setSelectingPlace] = useState(false);
+  const [confirmedForecastChange, setConfirmedForecastChange] = useState(false);
+  const draft: Draft = editedDraft ??
+    (initialDetails
       ? {
-          forecastEnabled: details.forecastProfile !== null,
-          forecastProfile: details.forecastProfile,
-          marketId: details.marketId,
-          legalEntityId: details.legalEntityId,
-          operatorId: details.operatorId,
-          ownershipType: details.ownershipType,
-          conceptVersion: details.conceptVersion ?? "",
-          openedAt: dateValue(details.openedAt),
-          currency: details.currency ?? "",
-          timeZone: details.timeZone ?? "",
-          status: details.status,
+          forecastEnabled: initialDetails.forecastProfile !== null,
+          googlePlaceId: initialDetails.googlePlaceId,
+          forecastSource: initialDetails.forecastProfile && "source" in initialDetails.forecastProfile ? "google" : "manual",
+          forecastCountryCode: initialDetails.forecastProfile?.countryCode ?? "",
+          forecastSubdivisionCode: initialDetails.forecastProfile?.subdivisionCode ?? "",
+          forecastLatitude: initialDetails.forecastProfile && "latitude" in initialDetails.forecastProfile ? String(initialDetails.forecastProfile.latitude) : "",
+          forecastLongitude: initialDetails.forecastProfile && "longitude" in initialDetails.forecastProfile ? String(initialDetails.forecastProfile.longitude) : "",
+          marketId: initialDetails.marketId,
+          legalEntityId: initialDetails.legalEntityId,
+          operatorId: initialDetails.operatorId,
+          ownershipType: initialDetails.ownershipType,
+          conceptVersion: initialDetails.conceptVersion ?? "",
+          openedAt: dateValue(initialDetails.openedAt),
+          currency: initialDetails.currency ?? "",
+          timeZone: initialDetails.timeZone ?? "",
+          status: initialDetails.status,
         }
       : emptyDraft);
 
   const loading =
-    details === undefined ||
+    initialDetails === null ||
     markets === undefined ||
     legalEntities === undefined ||
     operators === undefined;
@@ -153,15 +184,61 @@ export function LocationDetails({
     })),
   ];
 
+  const originalProfile = initialDetails?.forecastProfile;
+  const originalGoogleForecast = !!originalProfile && "source" in originalProfile;
+  const forecastSourceChanged = !!originalProfile && draft.forecastEnabled
+    && originalGoogleForecast !== (draft.forecastSource === "google");
+  const googleForecastChanged = originalGoogleForecast
+    && (draft.googlePlaceId !== initialDetails?.googlePlaceId || !draft.forecastEnabled);
+  const needsForecastConfirmation = forecastSourceChanged || googleForecastChanged;
+
   async function save() {
-    if (draft.forecastEnabled && !draft.forecastProfile) {
-      toast.error("Søg efter og vælg en adresse til prognosen");
+    if (!initialDetails || saving || selectingPlace) return;
+    if (needsForecastConfirmation && !confirmedForecastChange) {
+      toast.error("Bekræft ændringen af prognosens sted");
       return;
+    }
+    let forecastProfile: Doc<"locationForecasts">["profile"] | null = null;
+    if (draft.forecastEnabled) {
+      const countryCode = draft.forecastCountryCode.trim().toUpperCase();
+      const subdivisionCode = draft.forecastSubdivisionCode.trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(countryCode)) {
+        toast.error("Angiv en landekode på 2 bogstaver til prognosen");
+        return;
+      }
+      if (subdivisionCode && !new RegExp(`^${countryCode}-[A-Z0-9]{1,3}$`).test(subdivisionCode)) {
+        toast.error("Angiv en regionskode, der starter med landekoden, for eksempel DK-84");
+        return;
+      }
+      const country = { countryCode, ...(subdivisionCode ? { subdivisionCode } : {}) };
+      if (draft.forecastSource === "google") {
+        if (!draft.googlePlaceId) {
+          toast.error("Vælg et Google-sted til prognosen");
+          return;
+        }
+        forecastProfile = { source: "google", ...country };
+      } else {
+        const latitude = Number(draft.forecastLatitude.replace(",", "."));
+        const longitude = Number(draft.forecastLongitude.replace(",", "."));
+        if (!draft.forecastLatitude.trim() || !draft.forecastLongitude.trim()
+          || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+          || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+          toast.error("Angiv gyldige koordinater til prognosen");
+          return;
+        }
+        const previous = initialDetails.forecastProfile;
+        const addressLabel = previous && "latitude" in previous
+          && previous.latitude === latitude && previous.longitude === longitude
+          ? previous.addressLabel : undefined;
+        forecastProfile = { latitude, longitude, ...country, ...(addressLabel ? { addressLabel } : {}) };
+      }
     }
     setSaving(true);
     try {
       await updateLocation({
-        forecastProfile: draft.forecastEnabled ? draft.forecastProfile : null,
+        forecastProfile,
+        googlePlaceId: draft.googlePlaceId,
+        expectedGooglePlaceId: initialDetails.googlePlaceId,
         locationId,
         marketId: draft.marketId,
         legalEntityId: draft.legalEntityId,
@@ -201,17 +278,99 @@ export function LocationDetails({
             ))}
           </div>
         ) : (
-          <FieldGroup>
-            <Field orientation="horizontal">
+          <FieldSet disabled={saving} className="gap-5">
+            <LocationAddressSearch
+              locationId={locationId}
+              value={draft.googlePlaceId}
+              countryCode={/^[A-Z]{2}$/.test(draft.forecastCountryCode) ? draft.forecastCountryCode : undefined}
+              configured={initialDetails?.googlePlacesConfigured ?? false}
+              disabled={saving}
+              onPendingChange={setSelectingPlace}
+              onChange={(googlePlaceId) => {
+                setConfirmedForecastChange(false);
+                setDraft((current) => {
+                  const latest = current ?? draft;
+                  return {
+                    ...latest,
+                    googlePlaceId,
+                    forecastEnabled: googlePlaceId === null && latest.forecastSource === "google" ? false : latest.forecastEnabled,
+                  };
+                });
+              }}
+            />
+            <Field orientation="horizontal" data-disabled={saving}>
               <FieldLabel htmlFor="location-forecast-enabled">Vejr og helligdage i prognoser</FieldLabel>
-              <HelpTooltip label="prognoser" content="Prognoser lærer af lokationens salg på tidligere dage med lignende vejr og helligdage. Koordinater og landekode deles med vejr- og kalenderudbyderne. Salgstal deles ikke." />
-              <Switch id="location-forecast-enabled" checked={draft.forecastEnabled}
-                onCheckedChange={(forecastEnabled) => setDraft({ ...draft, forecastEnabled })} />
+              <HelpTooltip label="prognoser" content="Prognoser lærer af lokationens salg på tidligere dage med lignende vejr og helligdage. Koordinater og landekode deles med vejr- og kalenderudbyderne. Salgstal deles ikke. Det tilknyttede Google-sted kan bruges til at finde koordinaterne." />
+              <Switch id="location-forecast-enabled" checked={draft.forecastEnabled} disabled={saving}
+                onCheckedChange={(forecastEnabled) => { setConfirmedForecastChange(false); setDraft({ ...draft, forecastEnabled }); }} />
             </Field>
             {draft.forecastEnabled && (
-              <LocationAddressSearch key={locationId} locationId={locationId}
-                value={draft.forecastProfile} disabled={saving}
-                onChange={(forecastProfile) => setDraft({ ...draft, forecastProfile })} />
+              <FieldSet disabled={saving}>
+                <Field>
+                  <FieldLabel id="location-forecast-source">Sted til prognoser</FieldLabel>
+                  <ToggleGroup
+                    aria-labelledby="location-forecast-source"
+                    variant="outline"
+                    value={[draft.forecastSource]}
+                    onValueChange={(values) => {
+                      const forecastSource = values[0];
+                      if (forecastSource !== "google" && forecastSource !== "manual") return;
+                      setConfirmedForecastChange(false);
+                      setDraft({ ...draft, forecastSource });
+                    }}
+                  >
+                    <ToggleGroupItem value="manual">Manuelle koordinater</ToggleGroupItem>
+                    <ToggleGroupItem value="google" disabled={!draft.googlePlaceId || !initialDetails?.googlePlacesConfigured}>Google-sted</ToggleGroupItem>
+                  </ToggleGroup>
+                  {originalProfile && "latitude" in originalProfile && draft.forecastSource === "manual" && (
+                    <FieldDescription>De eksisterende koordinater bruges fortsat. Vælg Google-sted for at skifte.</FieldDescription>
+                  )}
+                  {draft.forecastSource === "google" && <FieldDescription>Prognosen bruger koordinater fra det tilknyttede Google-sted.</FieldDescription>}
+                </Field>
+                {draft.forecastSource === "manual" && (
+                  <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="location-forecast-latitude">Breddegrad</FieldLabel>
+                      <Input id="location-forecast-latitude" inputMode="decimal" placeholder="55.6761"
+                        value={draft.forecastLatitude} onChange={(event) => setDraft({ ...draft, forecastLatitude: event.target.value })} />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="location-forecast-longitude">Længdegrad</FieldLabel>
+                      <Input id="location-forecast-longitude" inputMode="decimal" placeholder="12.5683"
+                        value={draft.forecastLongitude} onChange={(event) => setDraft({ ...draft, forecastLongitude: event.target.value })} />
+                    </Field>
+                  </FieldGroup>
+                )}
+                <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <div className="flex items-center gap-2">
+                      <FieldLabel htmlFor="location-forecast-country">Landekode</FieldLabel>
+                      <HelpTooltip label="landekode" content="Angiv landets ISO-kode på 2 bogstaver, for eksempel DK. Landet bruges til helligdage og angives uafhængigt af Google-stedet." />
+                    </div>
+                    <Input id="location-forecast-country" maxLength={2} placeholder="DK" autoComplete="off"
+                      value={draft.forecastCountryCode} onChange={(event) => setDraft({ ...draft, forecastCountryCode: event.target.value.toUpperCase() })} />
+                  </Field>
+                  <Field>
+                    <div className="flex items-center gap-2">
+                      <FieldLabel htmlFor="location-forecast-subdivision">Regionskode</FieldLabel>
+                      <HelpTooltip label="regionskode" content="Valgfri ISO-regionskode, for eksempel DK-84. Bruges, når en helligdag kun gælder i en del af landet. Lad feltet stå tomt for nationale helligdage." />
+                    </div>
+                    <Input id="location-forecast-subdivision" maxLength={6} placeholder="DK-84" autoComplete="off"
+                      value={draft.forecastSubdivisionCode} onChange={(event) => setDraft({ ...draft, forecastSubdivisionCode: event.target.value.toUpperCase() })} />
+                  </Field>
+                </FieldGroup>
+              </FieldSet>
+            )}
+            {needsForecastConfirmation && (
+              <Field orientation="horizontal" data-disabled={saving}>
+                <Checkbox id="location-confirm-forecast" checked={confirmedForecastChange} disabled={saving}
+                  onCheckedChange={setConfirmedForecastChange} />
+                <FieldLabel htmlFor="location-confirm-forecast">
+                  {draft.forecastEnabled
+                    ? "Jeg bekræfter, at prognosen skal bruge det nye sted. Vejr og helligdage genberegnes, når jeg gemmer."
+                    : "Jeg bekræfter, at vejr og helligdage skal slås fra for prognosen, når jeg gemmer."}
+                </FieldLabel>
+              </Field>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
@@ -415,7 +574,7 @@ export function LocationDetails({
                 </Select>
               </Field>
             </div>
-          </FieldGroup>
+          </FieldSet>
         )}
         <DialogFooter>
           <Button
@@ -425,7 +584,7 @@ export function LocationDetails({
           >
             Annullér
           </Button>
-          <Button disabled={loading || saving} onClick={save}>
+          <Button disabled={loading || saving || selectingPlace || (needsForecastConfirmation && !confirmedForecastChange)} onClick={save}>
             {saving ? <Spinner data-icon="inline-start" /> : null}
             Gem
           </Button>

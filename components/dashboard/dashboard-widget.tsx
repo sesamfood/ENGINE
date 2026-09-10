@@ -6,10 +6,14 @@ import type { DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetR
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { WidgetCard } from "./widget-card";
+import { LiveMetricContent } from "./live-metric-content";
+import type { LiveMetricState } from "./use-live-metrics";
 
 export function DashboardWidget({
   widget,
   result,
+  live,
+  onRefresh,
   error,
   metricLabel,
   tooltipLabel,
@@ -27,6 +31,8 @@ export function DashboardWidget({
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
+  live?: LiveMetricState;
+  onRefresh?: () => void;
   error?: string;
   metricLabel?: string;
   tooltipLabel?: string;
@@ -48,7 +54,9 @@ export function DashboardWidget({
   return (
     <WidgetCard
       widget={widget}
-      result={result ?? undefined}
+      result={live?.kind === "ready" ? live.data.result : result}
+      live={live}
+      onRefresh={onRefresh}
       metricLabel={metricLabel}
       range={range}
       editable={editable}
@@ -62,7 +70,7 @@ export function DashboardWidget({
       onResize={onResize}
       onRemove={onRemove}
     >
-      {error ? (
+      {live ? <LiveMetricContent widget={widget} state={live} compact={compact} /> : error ? (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       ) : result == null ? (
         <div className="flex h-full flex-col gap-3">

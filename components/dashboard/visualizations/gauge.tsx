@@ -1,8 +1,76 @@
-import type { CSSProperties } from "react";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
 import type { MetricResult } from "@/lib/dashboard/types";
+import { cn } from "@/lib/utils";
 import { formatMetricValue, total } from "./utils";
 
 export function GaugeVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
+  const scaleMax = result.scaleMax;
+  if (scaleMax !== undefined) {
+    if (result.series.length === 0) {
+      return (
+        <Empty className="h-full p-0">
+          <EmptyDescription>Ingen data</EmptyDescription>
+        </Empty>
+      );
+    }
+
+    const single = result.series.length === 1;
+    const formattedMax = formatMetricValue(scaleMax, result);
+    return (
+      <div
+        className={cn(
+          "@container h-full min-h-0 overflow-auto",
+          single ? "flex flex-col" : "grid auto-rows-max content-start gap-x-4 gap-y-3",
+          !single && (compact
+            ? "grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))]"
+            : "grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]"),
+        )}
+      >
+        {result.series.map((series) => {
+          const ratio = Math.max(0, Math.min(1, series.total / scaleMax));
+          const formattedValue = formatMetricValue(series.total, result);
+          return (
+            <figure
+              key={series.key}
+              className={cn(
+                "flex min-w-0 shrink-0 flex-col items-center gap-3 text-center",
+                (compact || !single) && "gap-2",
+                single && "my-auto",
+              )}
+            >
+              <div
+                className={cn(
+                  "grid shrink-0 place-items-center rounded-full p-2.5",
+                  compact ? "size-18 p-1.5" : single ? "size-[min(14rem,100cqw)]" : "size-20 p-2",
+                )}
+                role="meter"
+                aria-label={series.label}
+                aria-valuemin={0}
+                aria-valuemax={scaleMax}
+                aria-valuenow={series.total}
+                aria-valuetext={`${formattedValue} ud af ${formattedMax}`}
+                style={{ background: `conic-gradient(var(--primary) ${ratio * 360}deg, var(--muted) 0deg)` }}
+              >
+                <div className="flex size-full flex-col items-center justify-center gap-1 rounded-full bg-card">
+                  <p className={cn(
+                    "font-semibold leading-none tracking-tight tabular-nums",
+                    single && !compact ? "text-5xl" : "text-3xl",
+                  )}>
+                    {formattedValue}
+                  </p>
+                  <p className="text-sm text-muted-foreground">/ {formattedMax}</p>
+                </div>
+              </div>
+              <figcaption className={cn("max-w-full text-sm font-medium wrap-anywhere", compact && "text-xs")}>
+                {series.label}
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+    );
+  }
+
   const value = total(result);
   const numericValue = value ?? 0;
   const target = result.target ?? Math.max(numericValue, 1);
@@ -15,7 +83,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
         aria-valuemin={0}
         aria-valuemax={target}
         aria-valuenow={result.mixedCurrency ? undefined : numericValue}
-        style={{ background: `conic-gradient(var(--primary) ${ratio * 360}deg, var(--muted) 0deg)` } as CSSProperties}
+        style={{ background: `conic-gradient(var(--primary) ${ratio * 360}deg, var(--muted) 0deg)` }}
       >
         <div className="grid size-full place-items-center rounded-full bg-card text-center">
           <div>

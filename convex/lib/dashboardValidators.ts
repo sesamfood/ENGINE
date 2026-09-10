@@ -4,6 +4,7 @@ import { salesSourceValidator } from "./woltValidators";
 export { salesSourceValidator } from "./woltValidators";
 
 export const metricIdValidator = v.union(
+  v.literal("googleRating"),
   v.literal("wasteQuantity"),
   v.literal("wasteRegistrations"),
   v.literal("topWastedProducts"),
@@ -195,6 +196,7 @@ export const metricResultValidator = v.object({
     ),
   ),
   target: v.optional(v.number()),
+  scaleMax: v.optional(v.number()),
   truncated: v.optional(v.boolean()),
   currency: v.optional(v.string()),
   mixedCurrency: v.optional(v.boolean()),
@@ -208,6 +210,17 @@ export const metricResultValidator = v.object({
   ),
   headlineTotal: v.optional(v.number()),
   headlinePrevious: v.optional(v.union(v.number(), v.null())),
+});
+
+export const liveMetricResultValidator = v.object({
+  result: metricResultValidator,
+  retrievedAt: v.number(),
+  locations: v.array(v.object({
+    key: v.string(),
+    label: v.string(),
+    state: v.union(v.literal("ready"), v.literal("unlinked"), v.literal("unrated"), v.literal("reconnect"), v.literal("notConfigured"), v.literal("rateLimited"), v.literal("unavailable")),
+  })),
+  attributions: v.array(v.object({ provider: v.string(), providerUri: v.optional(v.string()) })),
 });
 
 export const metricRequestValidator = v.object({

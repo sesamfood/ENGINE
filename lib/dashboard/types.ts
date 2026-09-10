@@ -23,6 +23,7 @@ export const metricIds = [
   "salesOrderCount",
   "averageBasket",
   "woltCancellationRate",
+  "googleRating",
 ] as const;
 
 export const visualizationIds = [
@@ -121,6 +122,7 @@ export type MetricResult = {
   series: MetricSeries[];
   breakdown?: { key: string; label: string; value: number }[];
   target?: number;
+  scaleMax?: number;
   truncated?: boolean;
   currency?: string;
   mixedCurrency?: boolean;
@@ -134,6 +136,17 @@ export type MetricResult = {
   // summing series totals, which is wrong for averages in compare scope.
   headlineTotal?: number;
   headlinePrevious?: number | null;
+};
+
+export type LiveMetricResult = {
+  result: MetricResult;
+  retrievedAt: number;
+  locations: {
+    key: string;
+    label: string;
+    state: "ready" | "unlinked" | "unrated" | "reconnect" | "notConfigured" | "rateLimited" | "unavailable";
+  }[];
+  attributions: { provider: string; providerUri?: string }[];
 };
 
 export type WidgetInstance = {

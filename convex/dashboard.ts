@@ -37,7 +37,7 @@ import {
 } from "./lib/dashboardValidators";
 import {
   createMetricParamsResolver,
-  dashboardMetricComputers,
+  queryMetricComputer,
   resolveBuiltinSalesSource,
   resolveMetricParams,
   salesSourceProviders,
@@ -155,6 +155,7 @@ function canViewBuiltinMetric(
   salesSource?: SalesSource,
 ) {
   const definition = metricRegistry[metricId];
+  if (definition.live && auth.granularity !== "detail") return false;
   if (!definition.sensitive) return true;
   const usesWolt =
     definition.source === "wolt" ||
@@ -1296,7 +1297,7 @@ export const getMetric = query({
       },
     );
     return markScopeTruncated(
-      await dashboardMetricComputers[args.metricId](
+      await queryMetricComputer(args.metricId)(
         ctx,
         salesSource ? { ...params, salesSource } : params,
       ),
@@ -1389,7 +1390,7 @@ export const getMetrics = query({
           key: widget.key,
           result: markScopeTruncated(
             widget.metric.kind === "builtin"
-              ? await dashboardMetricComputers[widget.metric.id](
+              ? await queryMetricComputer(widget.metric.id)(
                   ctx,
                   salesSource ? { ...params, salesSource } : params,
                 )

@@ -18,7 +18,7 @@ import {
 } from "./lib/dashboardValidators";
 import {
   createMetricParamsResolver,
-  dashboardMetricComputers,
+  queryMetricComputer,
   resolveBuiltinSalesSource,
 } from "./lib/dashboardMetrics";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
@@ -341,7 +341,7 @@ export const getSharedMetrics = query({
           key: widget.key,
           result:
             widget.metric.kind === "builtin"
-              ? await dashboardMetricComputers[widget.metric.id](
+              ? await queryMetricComputer(widget.metric.id)(
                   ctx,
                   (() => {
                     const savedSalesSource = resolveBuiltinSalesSource(

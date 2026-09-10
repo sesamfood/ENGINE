@@ -36,6 +36,7 @@ import {
 } from "@/lib/dashboard/layout";
 import type { DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
+import { useLiveMetrics, type LiveMetricState } from "./use-live-metrics";
 import type { YAxisValues } from "./y-axis-settings";
 
 const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
@@ -72,6 +73,7 @@ function groupMetricBatches(
 ) {
   const groups = new Map<string, WidgetInstance[]>();
   for (const widget of widgets) {
+    if (widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].live) continue;
     const key = metricBatchKey(widget, defaultRange);
     groups.set(key, [...(groups.get(key) ?? []), widget]);
   }
@@ -251,6 +253,8 @@ function DraggableWidget({
   widget,
   sourceSize,
   result,
+  live,
+  onRefresh,
   metricLabel,
   tooltipLabel,
   range,
@@ -264,6 +268,8 @@ function DraggableWidget({
   widget: WidgetInstance;
   sourceSize: WidgetSize;
   result?: MetricResult | Error;
+  live?: LiveMetricState;
+  onRefresh?: () => void;
   metricLabel?: string;
   tooltipLabel?: string;
   range: DashboardRange;
@@ -302,6 +308,8 @@ function DraggableWidget({
       <DashboardWidget
         widget={widget}
         result={result instanceof Error ? undefined : result}
+        live={live}
+        onRefresh={onRefresh}
         error={result instanceof Error ? getUserErrorMessage(result, "Målingen kunne ikke indlæses. Prøv en kortere periode.") : undefined}
         metricLabel={metricLabel}
         tooltipLabel={tooltipLabel}
@@ -413,6 +421,7 @@ export function DashboardGrid({
     [range, widgets],
   );
   const metricResults = useMetricBatches(metricBatches, scope, range, now, publicAccess);
+  const liveMetrics = useLiveMetrics(widgets, scope, !publicAccess);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
@@ -510,6 +519,8 @@ export function DashboardGrid({
               widget={widget}
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
+              live={liveMetrics.byWidget.get(widget.key)}
+              onRefresh={() => liveMetrics.refresh(widget.key)}
               metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
               tooltipLabel={comparisonTooltipLabel(scope, metricResults.get(widget.key))}
               range={range}
