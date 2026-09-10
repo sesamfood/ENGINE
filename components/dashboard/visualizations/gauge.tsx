@@ -40,8 +40,8 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
             >
               <div
                 className={cn(
-                  "grid shrink-0 place-items-center rounded-full p-2.5",
-                  compact ? "size-18 p-1.5" : single ? "size-[min(14rem,100cqw)]" : "size-20 p-2",
+                  "shrink-0",
+                  compact ? "size-18" : single ? "size-[min(14rem,100cqw)]" : "size-20",
                 )}
                 role="meter"
                 aria-label={series.label}
@@ -49,17 +49,41 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
                 aria-valuemax={scaleMax}
                 aria-valuenow={series.total}
                 aria-valuetext={`${formattedValue} ud af ${formattedMax}`}
-                style={{ background: `conic-gradient(var(--primary) ${ratio * 360}deg, var(--muted) 0deg)` }}
               >
-                <div className="flex size-full flex-col items-center justify-center gap-1 rounded-full bg-card">
-                  <p className={cn(
-                    "font-semibold leading-none tracking-tight tabular-nums",
-                    single && !compact ? "text-5xl" : "text-3xl",
-                  )}>
+                <svg viewBox="0 0 100 112" className="size-full" aria-hidden="true">
+                  <path
+                    d="M 24.29 78.64 A 40 40 0 1 1 75.71 78.64"
+                    pathLength={100}
+                    fill="none"
+                    stroke="var(--muted)"
+                    strokeWidth={10}
+                    strokeLinecap="round"
+                  />
+                  {ratio > 0 ? (
+                    <path
+                      d="M 24.29 78.64 A 40 40 0 1 1 75.71 78.64"
+                      pathLength={100}
+                      fill="none"
+                      stroke="var(--success)"
+                      strokeWidth={10}
+                      strokeLinecap="round"
+                      strokeDasharray={`${ratio * 100} 100`}
+                    />
+                  ) : null}
+                  <text
+                    x={50}
+                    y={89}
+                    textAnchor="middle"
+                    fill="var(--foreground)"
+                    fontSize={24}
+                    className="font-semibold tracking-tight tabular-nums"
+                  >
                     {formattedValue}
-                  </p>
-                  <p className="text-sm text-muted-foreground">/ {formattedMax}</p>
-                </div>
+                  </text>
+                  <text x={50} y={107} textAnchor="middle" fill="var(--muted-foreground)" fontSize={15}>
+                    / {formattedMax}
+                  </text>
+                </svg>
               </div>
               <figcaption className={cn("max-w-full text-sm font-medium wrap-anywhere", compact && "text-xs")}>
                 {series.label}
