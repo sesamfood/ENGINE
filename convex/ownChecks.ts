@@ -41,6 +41,7 @@ import {
 import {
   ownCheckControlTypeValidator,
   ownCheckFieldValidator,
+  ownCheckProductTemperatureInputValidator,
   ownCheckValueValidator,
 } from "./lib/ownCheckValidators";
 import { recordAudit } from "./lib/audit";
@@ -309,6 +310,51 @@ async function validateValues(
   });
 }
 
+function validateControlTimes(startedAt: number, endedAt: number) {
+  if (!Number.isSafeInteger(startedAt) || !Number.isFinite(new Date(startedAt).getTime())) {
+    throw new ConvexError("Angiv et gyldigt starttidspunkt");
+  }
+  if (!Number.isSafeInteger(endedAt) || !Number.isFinite(new Date(endedAt).getTime())) {
+    throw new ConvexError("Angiv et gyldigt sluttidspunkt");
+  }
+  if (endedAt < startedAt) throw new ConvexError("Sluttidspunktet skal være efter eller lig med starttidspunktet");
+}
+
+async function validateProductTemperatures(
+  ctx: MutationCtx,
+  organizationId: string,
+  controlType: Doc<"ownCheckEntries">["controlType"],
+  readings: Array<{ productId: Id<"products">; temperatureCelsius: number }>,
+  previous: NonNullable<Doc<"ownCheckEntries">["productTemperatures"]> = [],
+) {
+  if (readings.length > 100) throw new ConvexError("Vælg højst 100 produkter");
+  if (readings.length && controlType !== "temperature") {
+    throw new ConvexError("Produkttemperaturer kan kun registreres ved temperaturkontrol");
+  }
+  const seen = new Set<Id<"products">>();
+  const snapshots = new Map(previous.map((reading) => [reading.productId, reading]));
+  return await Promise.all(readings.map(async (reading) => {
+    if (seen.has(reading.productId)) throw new ConvexError("Et produkt er valgt flere gange");
+    seen.add(reading.productId);
+    const temperature = reading.temperatureCelsius;
+    if (!Number.isFinite(temperature) || Math.abs(temperature) > 1_000_000_000 ||
+      Math.abs(temperature * 10 - Math.round(temperature * 10)) > 0.000001) {
+      throw new ConvexError("Angiv en gyldig temperatur med højst én decimal");
+    }
+    const snapshot = snapshots.get(reading.productId);
+    const product = await ctx.db.get("products", reading.productId);
+    if (product && product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    if (!snapshot && (!product || product.status !== "active")) {
+      throw new ConvexError("Vælg et aktivt produkt");
+    }
+    const productName = snapshot?.productName ?? product?.name;
+    if (!productName) throw new ConvexError("Produktet blev ikke fundet");
+    return { ...reading, productName };
+  }));
+}
+
 async function ensureAttachmentCanBeInserted(
   ctx: MutationCtx,
   organizationId: string,
@@ -338,6 +384,9 @@ export const submitOwnCheck = mutation({
     templateVersionId: v.optional(v.id("ownCheckTemplateVersions")),
     dueDateKey: v.string(),
     values: v.array(ownCheckValueValidator),
+    startedAt: v.number(),
+    endedAt: v.number(),
+    productTemperatures: v.optional(v.array(ownCheckProductTemperatureInputValidator)),
     note: v.optional(v.string()),
     deviationDescription: v.optional(v.string()),
     correctiveAction: v.optional(v.string()),
@@ -385,6 +434,8 @@ export const submitOwnCheck = mutation({
       .withIndex("by_org_location_template_dueDateKey", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).eq("templateId", args.templateId).eq("dueDateKey", args.dueDateKey))
       .unique();
     if (duplicate) throw new ConvexError("Egenkontrollen er allerede registreret");
+    validateControlTimes(args.startedAt, args.endedAt);
+    const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version.controlType, args.productTemperatures ?? []);
     await validateValues(ctx, auth.organizationId, version.fields, args.values);
     const compliance = evaluateCompliance(version.fields, args.values);
     const deviationDescription = optionalText(args.deviationDescription, "Afvigelsen");
@@ -417,6 +468,9 @@ export const submitOwnCheck = mutation({
       followUp,
       compliant: compliance.compliant,
       values: args.values,
+      startedAt: args.startedAt,
+      endedAt: args.endedAt,
+      productTemperatures,
       ...(note ? { note } : {}),
       ...(deviation ? { deviation } : {}),
       ...(corrective ? { correctiveAction: corrective } : {}),
@@ -452,6 +506,9 @@ export const submitOwnCheck = mutation({
       revision: 1,
       kind: "submitted",
       values: args.values,
+      startedAt: args.startedAt,
+      endedAt: args.endedAt,
+      productTemperatures,
       status,
       hasDeviation,
       followUp,
@@ -479,6 +536,9 @@ export const editOwnCheck = mutation({
   args: {
     entryId: v.id("ownCheckEntries"),
     values: v.array(ownCheckValueValidator),
+    startedAt: v.number(),
+    endedAt: v.number(),
+    productTemperatures: v.optional(v.array(ownCheckProductTemperatureInputValidator)),
     note: v.optional(v.string()),
     deviationDescription: v.optional(v.string()),
     correctiveAction: v.optional(v.string()),
@@ -494,6 +554,8 @@ export const editOwnCheck = mutation({
     if (entry.status === "approved") throw new ConvexError("En godkendt egenkontrol kan ikke rettes");
     const version = await ctx.db.get("ownCheckTemplateVersions", entry.templateVersionId);
     if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
+    validateControlTimes(args.startedAt, args.endedAt);
+    const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version.controlType, args.productTemperatures ?? entry.productTemperatures ?? [], entry.productTemperatures);
     await validateValues(ctx, auth.organizationId, version.fields, args.values, entry._id);
     const compliance = evaluateCompliance(version.fields, args.values);
     const requestedDeviation = args.deviationDescription === undefined ? undefined : optionalText(args.deviationDescription, "Afvigelsen");
@@ -538,6 +600,9 @@ export const editOwnCheck = mutation({
     }
     await appendRevision(ctx, human, entry, {
       values: args.values,
+      startedAt: args.startedAt,
+      endedAt: args.endedAt,
+      productTemperatures,
       status: nextStatus,
       hasDeviation,
       followUp: nextFollowUp,

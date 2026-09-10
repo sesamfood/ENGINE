@@ -25,7 +25,16 @@ import {
 } from "@/lib/own-checks";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { InstructionContent } from "./instruction-content";
+import {
+  initialOwnCheckExecution,
+  OwnCheckExecutionInputs,
+  validateOwnCheckExecution,
+} from "./own-check-execution-inputs";
 import { OwnCheckFieldInput } from "./own-check-field-input";
+import {
+  OwnCheckExecutionTimes,
+  OwnCheckProductTemperatures,
+} from "./own-check-results";
 import { useOwnCheckUpload } from "./use-own-check-upload";
 
 type TodayResult = NonNullable<
@@ -64,6 +73,12 @@ export function OwnCheckForm({
   const submit = useMutation(api.ownChecks.submitOwnCheck);
   const [values, setValues] = useState<OwnCheckValue[]>(
     () => item.entry?.values ?? [],
+  );
+  const [execution, setExecution] = useState(() =>
+    initialOwnCheckExecution(item.entry, timeZone),
+  );
+  const [executionErrors, setExecutionErrors] = useState<Record<string, string>>(
+    {},
   );
   const [deviationDescription, setDeviationDescription] = useState(
     () => item.entry?.deviation?.description ?? "",
@@ -118,6 +133,13 @@ export function OwnCheckForm({
 
   async function save() {
     if (readOnly || saving || uploading) return;
+    const validatedExecution = validateOwnCheckExecution(execution, timeZone);
+    if (!validatedExecution.valid) {
+      setExecutionErrors(validatedExecution.errors);
+      toast.error(Object.values(validatedExecution.errors)[0]);
+      return;
+    }
+    setExecutionErrors({});
     const invalidField = compliance.violations.find(
       (violation) => !deviationKeys.has(violation.key),
     );
@@ -141,6 +163,9 @@ export function OwnCheckForm({
         templateId: item.templateId,
         templateVersionId: item.templateVersionId,
         dueDateKey: item.dueDateKey,
+        startedAt: validatedExecution.startedAt,
+        endedAt: validatedExecution.endedAt,
+        productTemperatures: validatedExecution.productTemperatures,
         values: submitValues,
         ...(hasDeviation && deviationDescription.trim()
           ? { deviationDescription }
@@ -236,6 +261,29 @@ export function OwnCheckForm({
               </AlertDescription>
             </Alert>
           ) : null}
+          {item.entry ? (
+            <>
+              <OwnCheckExecutionTimes
+                startedAt={item.entry.startedAt}
+                endedAt={item.entry.endedAt}
+                timeZone={timeZone}
+              />
+              <OwnCheckProductTemperatures
+                productTemperatures={item.entry.productTemperatures}
+              />
+            </>
+          ) : (
+            <OwnCheckExecutionInputs
+              value={execution}
+              onChange={(next) => {
+                setExecution(next);
+                setExecutionErrors({});
+              }}
+              controlType={item.controlType}
+              disabled={readOnly || saving}
+              errors={executionErrors}
+            />
+          )}
           <FieldGroup>
             {item.fields.map((field) => {
               const value = valueFor(values, field.key);

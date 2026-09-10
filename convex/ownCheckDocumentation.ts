@@ -17,6 +17,7 @@ import {
   ownCheckControlTypeValidator,
   ownCheckFieldValidator,
   ownCheckNoteValidator,
+  ownCheckProductTemperatureValidator,
   ownCheckValueValidator,
 } from "./lib/ownCheckValidators";
 
@@ -30,6 +31,9 @@ const documentationRecordValidator = v.object({
   dueDateKey: v.string(),
   dueAt: v.number(),
   performedAt: v.number(),
+  startedAt: v.union(v.number(), v.null()),
+  endedAt: v.union(v.number(), v.null()),
+  productTemperatures: v.array(ownCheckProductTemperatureValidator),
   name: v.string(),
   controlType: ownCheckControlTypeValidator,
   status: ownCheckStatusValidator,
@@ -110,6 +114,8 @@ async function recordForDocumentation(ctx: QueryCtx, entry: Doc<"ownCheckEntries
   return {
     id: entry._id, locationName: entry.locationName, dueDateKey: entry.dueDateKey,
     dueAt: entry.dueAt, performedAt: entry.performedAt, name: entry.name,
+    startedAt: snapshot.startedAt ?? null, endedAt: snapshot.endedAt ?? null,
+    productTemperatures: snapshot.productTemperatures ?? [],
     controlType: entry.controlType, status: snapshot.status,
     hasDeviation: snapshot.hasDeviation, followUp: snapshot.followUp,
     performedByName: first.actorName, fields: version.fields, values: snapshot.values,

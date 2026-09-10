@@ -130,6 +130,11 @@ function csvRows(
   locationName: string,
 ) {
   const rows: string[][] = [];
+  const dateTime = new Intl.DateTimeFormat("da-DK", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone,
+  });
   for (const record of records) {
     const compliance = evaluateCompliance(record.fields, record.values);
     const violations = new Map(
@@ -142,41 +147,62 @@ function csvRows(
           `Revision ${revision.revision}: ${revision.reason ?? "uden begrundelse"}`,
       )
       .join(" | ");
+    const prefix = [
+      record.dueDateKey,
+      dateTime.format(record.performedAt),
+      record.startedAt === null ? "" : dateTime.format(record.startedAt),
+      record.endedAt === null ? "" : dateTime.format(record.endedAt),
+      record.name,
+      ownCheckControlTypeLabels[record.controlType],
+      record.locationName,
+      record.performedByName,
+    ];
+    const suffix = [
+      ownCheckStatusLabels[ownCheckStatus(record)],
+      record.deviation?.description ?? "",
+      record.correctiveAction?.description ?? "",
+      record.approvedByName ?? "",
+      revisions,
+    ];
     for (const value of record.values) {
       const field = record.fields.find(
         (candidate) => candidate.key === value.key,
       );
       if (!field) continue;
       rows.push([
-        record.dueDateKey,
-        new Intl.DateTimeFormat("da-DK", {
-          dateStyle: "short",
-          timeStyle: "short",
-          timeZone,
-        }).format(record.performedAt),
-        record.name,
-        ownCheckControlTypeLabels[record.controlType],
-        record.locationName,
-        record.performedByName,
+        ...prefix,
         field.label,
+        "",
         formatValue(field, value),
         ownCheckLimitText(field),
         violations.has(field.key) ? "Nej" : "Ja",
-        ownCheckStatusLabels[ownCheckStatus(record)],
-        record.deviation?.description ?? "",
-        record.correctiveAction?.description ?? "",
-        record.approvedByName ?? "",
-        revisions,
+        ...suffix,
       ]);
     }
+    for (const reading of record.productTemperatures) {
+      rows.push([
+        ...prefix,
+        "Temperatur",
+        reading.productName,
+        `${String(reading.temperatureCelsius).replace(".", ",")} °C`,
+        "",
+        "",
+        ...suffix,
+      ]);
+    }
+    if (record.values.length === 0 && record.productTemperatures.length === 0)
+      rows.push([...prefix, "", "", "", "", "", ...suffix]);
   }
   for (const item of missing)
     rows.push([
       item.dueDateKey,
       `Kl. ${new Intl.DateTimeFormat("da-DK", { hour: "2-digit", minute: "2-digit", timeZone }).format(item.dueAt)}`,
+      "",
+      "",
       item.name,
       ownCheckControlTypeLabels[item.controlType],
       locationName,
+      "",
       "",
       "",
       "",
@@ -618,11 +644,14 @@ export function InspectionDocumentation() {
       [
         "Dato",
         "Tidspunkt",
+        "Starttidspunkt",
+        "Sluttidspunkt",
         "Egenkontrol",
         "Kontroltype",
         "Lokation",
         "Udført af",
         "Felt",
+        "Produkt",
         "Værdi",
         "Grænse",
         "Inden for grænsen",

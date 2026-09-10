@@ -228,6 +228,9 @@ export function entrySummary(entry: Doc<"ownCheckEntries">) {
     followUp: entry.followUp,
     compliant: entry.compliant,
     values: entry.values,
+    startedAt: entry.startedAt ?? null,
+    endedAt: entry.endedAt ?? null,
+    productTemperatures: entry.productTemperatures ?? [],
     note: entry.note ?? null,
     deviation: entry.deviation ?? null,
     correctiveAction: entry.correctiveAction ?? null,
@@ -286,6 +289,9 @@ export function planItem(
 
 export type OwnCheckEntryState = {
   values: Doc<"ownCheckEntries">["values"];
+  startedAt?: number;
+  endedAt?: number;
+  productTemperatures?: Doc<"ownCheckEntries">["productTemperatures"];
   status: Doc<"ownCheckEntries">["status"];
   hasDeviation: boolean;
   followUp: Doc<"ownCheckEntries">["followUp"];
@@ -346,6 +352,32 @@ export async function appendRevision(
   const addChange = (field: string, label: string, from: string | null, to: string | null) => {
     if (from !== to) changes.push({ field, label, from, to });
   };
+  const startedAt = next.startedAt ?? entry.startedAt;
+  const endedAt = next.endedAt ?? entry.endedAt;
+  const productTemperatures = next.productTemperatures ?? entry.productTemperatures ?? [];
+  if (startedAt !== entry.startedAt || endedAt !== entry.endedAt) {
+    const timeZone = await resolveTimeZone(ctx, actor.organizationId, entry.locationId);
+    const formatter = new Intl.DateTimeFormat("da-DK", {
+      dateStyle: "medium", timeStyle: "short", timeZone,
+    });
+    const timeText = (value: number | undefined) => value === undefined ? null : formatter.format(value);
+    addChange("startedAt", "Starttidspunkt", timeText(entry.startedAt), timeText(startedAt));
+    addChange("endedAt", "Sluttidspunkt", timeText(entry.endedAt), timeText(endedAt));
+  }
+  const previousTemperatures = new Map((entry.productTemperatures ?? []).map((reading) => [reading.productId, reading]));
+  const nextTemperatures = new Map(productTemperatures.map((reading) => [reading.productId, reading]));
+  for (const productId of new Set([...previousTemperatures.keys(), ...nextTemperatures.keys()])) {
+    const from = previousTemperatures.get(productId);
+    const to = nextTemperatures.get(productId);
+    const productName = to?.productName ?? from?.productName;
+    if (!productName) continue;
+    addChange(
+      `productTemperature:${productId}`,
+      `${productName}, temperatur`,
+      from ? `${String(from.temperatureCelsius).replace(".", ",")} °C` : null,
+      to ? `${String(to.temperatureCelsius).replace(".", ",")} °C` : null,
+    );
+  }
   addChange(
     "status",
     "Status",
@@ -365,6 +397,9 @@ export async function appendRevision(
     revision,
     kind,
     values: next.values,
+    ...(startedAt === undefined ? {} : { startedAt }),
+    ...(endedAt === undefined ? {} : { endedAt }),
+    productTemperatures,
     status: next.status,
     hasDeviation: next.hasDeviation,
     followUp: next.followUp,
@@ -380,6 +415,9 @@ export async function appendRevision(
   });
   await ctx.db.patch("ownCheckEntries", entry._id, {
     values: next.values,
+    ...(startedAt === undefined ? {} : { startedAt }),
+    ...(endedAt === undefined ? {} : { endedAt }),
+    productTemperatures,
     status: next.status,
     hasDeviation: next.hasDeviation,
     followUp: next.followUp,

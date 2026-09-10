@@ -1,5 +1,6 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { AlertTriangleIcon, CheckCircle2Icon, FileIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,6 +20,62 @@ import {
   type OwnCheckValue,
 } from "@/lib/own-checks";
 import { ownCheckLimitText } from "@/lib/own-check-display";
+
+export function OwnCheckExecutionTimes({
+  startedAt,
+  endedAt,
+  timeZone,
+}: {
+  startedAt: number | null;
+  endedAt: number | null;
+  timeZone: string;
+}) {
+  const formatter = new Intl.DateTimeFormat("da-DK", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone,
+  });
+  return (
+    <dl className="grid gap-3 text-sm sm:grid-cols-2">
+      <div>
+        <dt className="text-muted-foreground">Starttidspunkt</dt>
+        <dd>{startedAt === null ? "Ikke registreret" : formatter.format(startedAt)}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Sluttidspunkt</dt>
+        <dd>{endedAt === null ? "Ikke registreret" : formatter.format(endedAt)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+export function OwnCheckProductTemperatures({
+  productTemperatures,
+}: {
+  productTemperatures: NonNullable<Doc<"ownCheckEntries">["productTemperatures"]>;
+}) {
+  if (productTemperatures.length === 0) return null;
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Produkt</TableHead>
+          <TableHead className="text-right">Temperatur</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {productTemperatures.map((reading) => (
+          <TableRow key={reading.productId}>
+            <TableCell className="whitespace-normal">{reading.productName}</TableCell>
+            <TableCell className="text-right">
+              {String(reading.temperatureCelsius).replace(".", ",")} °C
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 export function OwnCheckStatusBadge({ status }: { status: OwnCheckStatus }) {
   const variant =

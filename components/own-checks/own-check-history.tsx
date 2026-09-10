@@ -11,7 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { dateTimeFormatter } from "@/lib/date";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { OwnCheckAttachments } from "./own-check-results";
+import {
+  OwnCheckAttachments,
+  OwnCheckExecutionTimes,
+  OwnCheckProductTemperatures,
+} from "./own-check-results";
 
 type RecordResult = NonNullable<
   FunctionReturnType<typeof api.ownChecks.getOwnCheckRecord>
@@ -99,6 +103,16 @@ export function OwnCheckHistory({ record }: { record: RecordResult }) {
                   Begrundelse: {revision.reason}
                 </p>
               ) : null}
+              {revision.startedAt !== null || revision.endedAt !== null ? (
+                <OwnCheckExecutionTimes
+                  startedAt={revision.startedAt}
+                  endedAt={revision.endedAt}
+                  timeZone={record.timeZone}
+                />
+              ) : null}
+              <OwnCheckProductTemperatures
+                productTemperatures={revision.productTemperatures}
+              />
               {revision.changes.length ? (
                 <ul className="flex flex-col gap-1 text-sm">
                   {revision.changes.map((change) => (

@@ -6,6 +6,7 @@ import {
   type PDFImage,
   type PDFPage,
 } from "pdf-lib";
+import type { Doc } from "../convex/_generated/dataModel";
 import {
   evaluateCompliance,
   formatValue,
@@ -70,6 +71,9 @@ export type InspectionPdfRecord = {
   dueDateKey: string;
   dueAt: number;
   performedAt: number;
+  startedAt: number | null;
+  endedAt: number | null;
+  productTemperatures: NonNullable<Doc<"ownCheckEntries">["productTemperatures"]>;
   name: string;
   controlType: keyof typeof ownCheckControlTypeLabels;
   status: "completed" | "deviation" | "approved";
@@ -267,6 +271,8 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
       cursor -= 17;
       text(`${ownCheckControlTypeLabels[record.controlType]} · Planlagt kl. ${displayClock(record.dueAt, input.header.timeZone)} · Udført ${displayTime(record.performedAt, input.header.timeZone)} af ${record.performedByName}`, MARGIN, cursor, 8, regular, rgb(0.35, 0.35, 0.38));
       cursor -= 16;
+      paragraph(`Starttidspunkt: ${record.startedAt === null ? "Ikke registreret" : displayTime(record.startedAt, input.header.timeZone)} · Sluttidspunkt: ${record.endedAt === null ? "Ikke registreret" : displayTime(record.endedAt, input.header.timeZone)}`, 8, rgb(0.35, 0.35, 0.38));
+      ensure(15);
       text(`Status: ${ownCheckStatusLabels[record.status]}`, MARGIN, cursor, 9, bold, record.hasDeviation ? rgb(0.7, 0.08, 0.08) : rgb(0.15, 0.35, 0.2));
       cursor -= 15;
       const valueMap = new Map(record.values.map((value) => [value.key, value]));
@@ -282,11 +288,48 @@ export async function buildInspectionPdf(input: InspectionPdfInput) {
         text(violation ? "Uden for grænsen" : "Inden for grænsen", MARGIN + 420, cursor, 7, regular, violation ? rgb(0.7, 0.08, 0.08) : rgb(0.2, 0.4, 0.25));
         cursor -= 13;
       }
-      if (record.note) { text("Note", MARGIN, cursor, 8, bold); cursor -= 11; paragraph(record.note, 8); }
-      if (record.deviation) { text("Afvigelse", MARGIN, cursor, 8, bold, rgb(0.7, 0.08, 0.08)); cursor -= 11; paragraph(`${record.deviation.description} (${record.deviation.recordedByName}, ${displayTime(record.deviation.recordedAt, input.header.timeZone)})`, 8); }
-      if (record.correctiveAction) { text("Korrigerende handling", MARGIN, cursor, 8, bold); cursor -= 11; paragraph(`${record.correctiveAction.description} (${record.correctiveAction.recordedByName}, ${displayTime(record.correctiveAction.recordedAt, input.header.timeZone)})`, 8); }
-      if (record.approvedByName) { text(`Godkendt af ${record.approvedByName}`, MARGIN, cursor, 8, regular, rgb(0.35, 0.35, 0.38)); cursor -= 13; }
+      if (record.productTemperatures.length > 0) {
+        for (const [index, reading] of record.productTemperatures.entries()) {
+          const productLines = wrapText(regular, reading.productName, 8, 400);
+          const rowHeight = productLines.length * 11 + 5;
+          const showHeader = index === 0 || cursor - rowHeight < MARGIN + FOOTER_HEIGHT;
+          ensure(rowHeight + (showHeader ? 14 : 0));
+          if (showHeader) {
+            text("Produkt", MARGIN, cursor, 8, bold);
+            text("Temperatur", MARGIN + 420, cursor, 8, bold);
+            cursor -= 14;
+          }
+          text(`${String(reading.temperatureCelsius).replace(".", ",")} °C`, MARGIN + 420, cursor, 8);
+          for (const line of productLines) {
+            text(line, MARGIN, cursor, 8);
+            cursor -= 11;
+          }
+          cursor -= 5;
+        }
+      }
+      if (record.note) {
+        ensure(wrapText(regular, record.note, 8, CONTENT_WIDTH).length * 11 + 15);
+        text("Note", MARGIN, cursor, 8, bold);
+        cursor -= 11;
+        paragraph(record.note, 8);
+      }
+      if (record.deviation) {
+        const detail = `${record.deviation.description} (${record.deviation.recordedByName}, ${displayTime(record.deviation.recordedAt, input.header.timeZone)})`;
+        ensure(wrapText(regular, detail, 8, CONTENT_WIDTH).length * 11 + 15);
+        text("Afvigelse", MARGIN, cursor, 8, bold, rgb(0.7, 0.08, 0.08));
+        cursor -= 11;
+        paragraph(detail, 8);
+      }
+      if (record.correctiveAction) {
+        const detail = `${record.correctiveAction.description} (${record.correctiveAction.recordedByName}, ${displayTime(record.correctiveAction.recordedAt, input.header.timeZone)})`;
+        ensure(wrapText(regular, detail, 8, CONTENT_WIDTH).length * 11 + 15);
+        text("Korrigerende handling", MARGIN, cursor, 8, bold);
+        cursor -= 11;
+        paragraph(detail, 8);
+      }
+      if (record.approvedByName) { ensure(13); text(`Godkendt af ${record.approvedByName}`, MARGIN, cursor, 8, regular, rgb(0.35, 0.35, 0.38)); cursor -= 13; }
       if (record.revisions.length > 1) {
+        ensure(25);
         text("Revisionshistorik", MARGIN, cursor, 8, bold);
         cursor -= 11;
         for (const revision of record.revisions) {

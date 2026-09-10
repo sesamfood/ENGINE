@@ -3,6 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import {
   ownCheckNoteValidator,
+  ownCheckProductTemperatureValidator,
   ownCheckValueValidator,
 } from "./ownCheckValidators";
 
@@ -25,6 +26,9 @@ export const entrySummaryObjectValidator = v.object({
   deviation: v.union(ownCheckNoteValidator, v.null()),
   correctiveAction: v.union(ownCheckNoteValidator, v.null()),
   performedAt: v.number(),
+  startedAt: v.union(v.number(), v.null()),
+  endedAt: v.union(v.number(), v.null()),
+  productTemperatures: v.array(ownCheckProductTemperatureValidator),
   performedBy: v.string(),
   performedByName: v.string(),
   approvedAt: v.union(v.number(), v.null()),
@@ -60,6 +64,9 @@ export const revisionValidator = v.object({
     v.literal("approved"),
   ),
   values: v.array(ownCheckValueValidator),
+  startedAt: v.union(v.number(), v.null()),
+  endedAt: v.union(v.number(), v.null()),
+  productTemperatures: v.array(ownCheckProductTemperatureValidator),
   status: v.union(
     v.literal("completed"),
     v.literal("deviation"),
@@ -108,6 +115,9 @@ export function revisionDto(row: Doc<"ownCheckEntryRevisions">) {
     revision: row.revision,
     kind: row.kind,
     values: row.values,
+    startedAt: row.startedAt ?? null,
+    endedAt: row.endedAt ?? null,
+    productTemperatures: row.productTemperatures ?? [],
     status: row.status,
     hasDeviation: row.hasDeviation,
     followUp: row.followUp,
