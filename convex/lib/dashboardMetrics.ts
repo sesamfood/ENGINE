@@ -2475,7 +2475,7 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
   const now = params.now;
   const tomorrow = addDays(dateKey(now, params.timeZone), 1);
   const through = addDays(tomorrow, 7);
-  const forecasts = await Promise.all(
+  const selectedForecasts = await Promise.all(
     params.locations.map(async (location) => {
       const forecast = await ctx.db
         .query("locationForecasts")
@@ -2523,14 +2523,37 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
       return { forecast, points };
     }),
   );
-  if (!forecasts.length || !forecasts.every((forecast) => forecast !== null)) {
+  const forecasts = selectedForecasts.filter((forecast) => forecast !== null);
+  if (!forecasts.length) {
     return {
       unit: "currency",
       series: [],
       emptyMessage:
-        "Prognosen er ikke klar endnu. Tjek prognoseopsætningen i lokationens oplysninger, eller afvent opdaterede data for alle valgte lokationer.",
+        "Prognosen er ikke klar endnu. Tjek prognoseopsætningen i lokationens oplysninger, eller afvent opdaterede data.",
     };
   }
+  const availableIds = new Set(forecasts.map(({ forecast }) => forecast.locationId));
+  const partial = forecasts.length < params.locations.length;
+  const availableParams = {
+    ...params,
+    locations: params.locations.filter((location) => availableIds.has(location.id)),
+    scopeSelectsAllLocations: params.scopeSelectsAllLocations && !partial,
+    from: zonedStart(tomorrow, params.timeZone),
+    to: zonedStart(through, params.timeZone),
+    previousFrom: 0,
+    previousTo: 0,
+  };
+  const comparisonGroups = params.accessGranularity === "aggregate" ||
+    (partial && !params.compare && !params.comparisonGroups?.length)
+    ? [{
+        key: "all",
+        label: partial ? "Tilgængelige lokationer" : aggregateLocationLabel(params),
+        locationIds: [...availableIds],
+      }]
+    : params.comparisonGroups?.flatMap((group) => {
+        const locationIds = group.locationIds.filter((id) => availableIds.has(id));
+        return locationIds.length ? [{ ...group, locationIds }] : [];
+      });
   const result = seriesResult(
     "currency",
     forecasts.flatMap(({ forecast, points }) =>
@@ -2540,20 +2563,17 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
         value: point.value / 100,
       })),
     ),
-    {
-      ...params,
-      from: zonedStart(tomorrow, params.timeZone),
-      to: zonedStart(through, params.timeZone),
-      previousFrom: 0,
-      previousTo: 0,
-    },
-    currencyOptions(params),
-    params.comparisonGroups,
+    availableParams,
+    currencyOptions(availableParams),
+    comparisonGroups,
   );
   return {
     ...result,
+    ...(partial ? {
+      partialMessage: `Viser prognose for ${forecasts.length} af ${params.locations.length} lokationer`,
+    } : {}),
     series: result.series.map((series) => ({ ...series, previousTotal: null })),
-    truncated:
+    truncated: partial ||
       forecasts.some(
         ({ forecast, points }) =>
           !forecast.snapshot?.productMixApplied ||

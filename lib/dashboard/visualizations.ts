@@ -65,6 +65,25 @@ function withEmptyState(Visualization: ComponentType<VisualizationProps>) {
         ),
       );
     }
+    if (props.result.partialMessage !== undefined) {
+      return createElement(
+        "div",
+        { className: "flex h-full min-h-0 min-w-0 flex-col gap-1" },
+        createElement(
+          "div",
+          { className: "min-h-0 min-w-0 flex-1" },
+          createElement(Visualization, props),
+        ),
+        createElement(
+          "p",
+          {
+            role: "status",
+            className: "shrink-0 text-xs leading-tight text-muted-foreground wrap-anywhere",
+          },
+          props.result.partialMessage,
+        ),
+      );
+    }
     return createElement(Visualization, props);
   };
 }
