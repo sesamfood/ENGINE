@@ -72,3 +72,11 @@ export const ownCheckNoteValidator = v.object({
   recordedBy: v.string(),
   recordedByName: v.string(),
 });
+
+export const ownCheckProductTemperatureInputValidator = v.object({
+  productId: v.id("products"),
+  temperatureCelsius: v.number(),
+});
+
+export const ownCheckProductTemperatureValidator =
+  ownCheckProductTemperatureInputValidator.extend({ productName: v.string() });

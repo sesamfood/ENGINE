@@ -14,6 +14,8 @@ import {
 import { ownCheckControlTypeLabels, ownCheckStatus } from "@/lib/own-checks";
 import {
   OwnCheckAttachments,
+  OwnCheckExecutionTimes,
+  OwnCheckProductTemperatures,
   OwnCheckResultFields,
   OwnCheckStatusBadge,
 } from "./own-check-results";
@@ -149,6 +151,11 @@ export function InspectionReport({
                     <OwnCheckStatusBadge status={ownCheckStatus(record)} />
                   </CardHeader>
                   <CardContent className="flex flex-col gap-4">
+                    <OwnCheckExecutionTimes
+                      startedAt={record.startedAt}
+                      endedAt={record.endedAt}
+                      timeZone={header.timeZone}
+                    />
                     <OwnCheckResultFields
                       fields={record.fields}
                       values={record.values}
@@ -159,6 +166,9 @@ export function InspectionReport({
                           revision={record.revisions.at(-1)?.revision ?? 1}
                         />
                       )}
+                    />
+                    <OwnCheckProductTemperatures
+                      productTemperatures={record.productTemperatures}
                     />
                     {record.note ? (
                       <div>

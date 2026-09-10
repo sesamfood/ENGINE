@@ -40,9 +40,17 @@ import {
 } from "@/lib/own-checks";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { InstructionContent } from "./instruction-content";
+import {
+  initialOwnCheckExecution,
+  OwnCheckExecutionInputs,
+  validateOwnCheckExecution,
+  type OwnCheckExecutionDraft,
+} from "./own-check-execution-inputs";
 import { OwnCheckFieldInput } from "./own-check-field-input";
 import {
   OwnCheckAttachments,
+  OwnCheckExecutionTimes,
+  OwnCheckProductTemperatures,
   OwnCheckResultFields,
   OwnCheckStatusBadge,
 } from "./own-check-results";
@@ -93,6 +101,16 @@ export function OwnCheckRecord({
   const uploadUrl = useMutation(api.ownChecks.generateAttachmentUploadUrl);
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState<RecordValue[]>([]);
+  const [editExecution, setEditExecution] = useState<OwnCheckExecutionDraft>({
+    startedAtLocal: "",
+    endedAtLocal: "",
+    initialStartedAt: null,
+    initialEndedAt: null,
+    productTemperatures: [],
+  });
+  const [executionErrors, setExecutionErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [editNote, setEditNote] = useState("");
   const [editDeviation, setEditDeviation] = useState("");
   const [editCorrectiveAction, setEditCorrectiveAction] = useState("");
@@ -128,6 +146,10 @@ export function OwnCheckRecord({
     correctiveDraft ?? record.entry.correctiveAction?.description ?? "";
 
   function openEditor() {
+    setEditExecution(
+      initialOwnCheckExecution(currentRecord.entry, currentRecord.timeZone),
+    );
+    setExecutionErrors({});
     setEditValues(
       values.map((value) => ({
         ...value,
@@ -160,6 +182,16 @@ export function OwnCheckRecord({
 
   async function saveEdit() {
     if (saving || uploading) return;
+    const validatedExecution = validateOwnCheckExecution(
+      editExecution,
+      currentRecord.timeZone,
+    );
+    if (!validatedExecution.valid) {
+      setExecutionErrors(validatedExecution.errors);
+      toast.error(Object.values(validatedExecution.errors)[0]);
+      return;
+    }
+    setExecutionErrors({});
     if (!editReason.trim()) {
       toast.error("Skriv en begrundelse for rettelsen");
       return;
@@ -176,6 +208,9 @@ export function OwnCheckRecord({
         currentRecord.entry.correctiveAction?.description ?? "";
       await edit({
         entryId,
+        startedAt: validatedExecution.startedAt,
+        endedAt: validatedExecution.endedAt,
+        productTemperatures: validatedExecution.productTemperatures,
         values: editValues.map((value) =>
           value.type === "attachment"
             ? { ...value, storageIds: value.storageIds as Id<"_storage">[] }
@@ -308,7 +343,7 @@ export function OwnCheckRecord({
               {record.description || "Ingen yderligere beskrivelse."}
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-5">
             <OwnCheckResultFields
               fields={record.fields}
               values={values}
@@ -320,6 +355,9 @@ export function OwnCheckRecord({
                 />
               )}
             />
+            <OwnCheckProductTemperatures
+              productTemperatures={record.entry.productTemperatures}
+            />
           </CardContent>
         </Card>
         <div className="flex flex-col gap-4">
@@ -328,6 +366,11 @@ export function OwnCheckRecord({
               <CardTitle>Registrering</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 text-sm">
+              <OwnCheckExecutionTimes
+                startedAt={record.entry.startedAt}
+                endedAt={record.entry.endedAt}
+                timeZone={record.timeZone}
+              />
               <div className="flex justify-between gap-3">
                 <span className="text-muted-foreground">Registreret af</span>
                 <span className="text-right">
@@ -546,6 +589,16 @@ export function OwnCheckRecord({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
+            <OwnCheckExecutionInputs
+              value={editExecution}
+              onChange={(next) => {
+                setEditExecution(next);
+                setExecutionErrors({});
+              }}
+              productTemperaturesEnabled={record.productTemperaturesEnabled}
+              disabled={saving}
+              errors={executionErrors}
+            />
             {record.fields.map((field) => (
               <OwnCheckFieldInput
                 key={field.key}
