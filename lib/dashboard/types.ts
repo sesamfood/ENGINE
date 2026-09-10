@@ -87,6 +87,7 @@ export type CustomMetricQuerySpec = {
 export type CustomMetricDimensionFilter = {
   op: "in" | "notIn";
   values: string[];
+  namePatterns?: string[];
 };
 export type CustomMetricSpec =
   | {

@@ -49,9 +49,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  customMetricVisualizations,
   dashboardDatasets,
+  ratioMetricVisualizations,
   type DashboardDataset,
 } from "@/lib/dashboard/datasets";
+import { visualizationLabels } from "@/lib/dashboard/registry";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import type {
@@ -106,6 +109,7 @@ type BuilderDraft = {
   dimension: string;
   productFilterMode: ProductFilterMode;
   productFilterValues: string[];
+  productNameTerms: string[];
   bucket: "day" | "week" | "month";
   limit: string;
 };
@@ -120,6 +124,7 @@ type CustomMetricBuilderProps = {
   now: number;
   granularity?: DataGranularity;
   metric?: CustomMetricDefinition | null;
+  initialVisualization?: VisualizationId;
   mode?: "dashboard" | "library" | "widget";
   onSaved?: (metricId: Id<"customMetrics">) => void | Promise<void>;
 };
@@ -156,6 +161,7 @@ function initialDraft(metric?: CustomMetricDefinition | null): BuilderDraft {
       dimension: "",
       productFilterMode: "all",
       productFilterValues: [],
+      productNameTerms: [],
       bucket: "day" as const,
       limit: "10",
     };
@@ -174,6 +180,7 @@ function initialDraft(metric?: CustomMetricDefinition | null): BuilderDraft {
     dimension: spec.dimension ?? "",
     productFilterMode: spec.dimensionFilter?.op ?? "all",
     productFilterValues: spec.dimensionFilter?.values ?? [],
+    productNameTerms: spec.dimensionFilter?.namePatterns ?? [],
     bucket: spec.bucket,
     limit: String(spec.limit ?? 10),
   };
@@ -313,6 +320,8 @@ function queryValidation(query: QueryDraft, label: string) {
 function ProductFilterField({
   mode,
   values,
+  nameTerms,
+  nameFilterError,
   products,
   categories,
   topProductValues,
@@ -320,9 +329,12 @@ function ProductFilterField({
   truncated,
   onModeChange,
   onValuesChange,
+  onNameTermsChange,
 }: {
   mode: ProductFilterMode;
   values: string[];
+  nameTerms: string[];
+  nameFilterError: string | null;
   products: ProductOption[];
   categories: ProductCategory[];
   topProductValues: string[];
@@ -330,6 +342,7 @@ function ProductFilterField({
   truncated: boolean;
   onModeChange: (mode: ProductFilterMode) => void;
   onValuesChange: (values: string[]) => void;
+  onNameTermsChange: (nameTerms: string[]) => void;
 }) {
   return (
     <FieldSet className="gap-3">
@@ -357,8 +370,19 @@ function ProductFilterField({
         </ToggleGroup>
       </Field>
       {mode !== "all" ? (
-        <Field data-invalid={values.length === 0}>
-          <FieldLabel>Vælg produkter</FieldLabel>
+        <Field
+          data-invalid={
+            Boolean(nameFilterError) ||
+            (values.length === 0 && nameTerms.length === 0)
+          }
+        >
+          <div className="flex items-center gap-1">
+            <FieldLabel>Vælg produkter</FieldLabel>
+            <HelpTooltip
+              label="Produktvalg"
+              content={'Skriv tekst i søgefeltet, og vælg f.eks. Navn indeholder "Chicken". Navnefiltre gælder også nye produkter. Store og små bogstaver behandles ens. * behandles som almindelig tekst. Du kan vælge højst 50 navnefiltre på 200 tegn hver.'}
+            />
+          </div>
           {loading ? (
             <Skeleton className="h-11 w-full" />
           ) : (
@@ -367,20 +391,22 @@ function ProductFilterField({
               products={products}
               values={values}
               onValuesChange={onValuesChange}
+              nameFilter={{
+                values: nameTerms,
+                onValuesChange: onNameTermsChange,
+              }}
               topProductValues={topProductValues}
               ariaLabel="Vælg produkter til målingen"
             />
           )}
-          <FieldDescription>
-            Vælg en kategorilinje for at vælge eller fravælge alle produkter i
-            kategorien.{" "}
-            {mode === "in"
-              ? "Kun de valgte produkter vises."
-              : "De valgte produkter skjules."}
-            {truncated
-              ? " Produktlisten er afkortet, fordi målingen indeholder mange poster."
-              : ""}
-          </FieldDescription>
+          {truncated ? (
+            <FieldDescription>
+              Produktlisten er afkortet, fordi målingen indeholder mange poster.
+            </FieldDescription>
+          ) : null}
+          {nameFilterError ? (
+            <FieldDescription>{nameFilterError}</FieldDescription>
+          ) : null}
         </Field>
       ) : null}
     </FieldSet>
@@ -428,6 +454,7 @@ export function CustomMetricBuilder({
   now,
   granularity,
   metric,
+  initialVisualization = "kpi",
   mode = "dashboard",
   onSaved,
 }: CustomMetricBuilderProps) {
@@ -437,6 +464,8 @@ export function CustomMetricBuilder({
   const createMetric = useMutation(api.customMetrics.create);
   const updateMetric = useMutation(api.customMetrics.update);
   const [draft, setDraft] = useState(() => initialDraft(metric));
+  const [selectedVisualization, setSelectedVisualization] =
+    useState(initialVisualization);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<MetricResult | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -448,6 +477,27 @@ export function CustomMetricBuilder({
 
   const numeratorDefinition = dashboardDatasets[draft.numerator.dataset];
   const denominatorDefinition = dashboardDatasets[draft.denominator.dataset];
+  const previewVisualizations = (
+    draft.kind === "ratio"
+      ? ratioMetricVisualizations
+      : customMetricVisualizations
+  ).filter(
+    (value) =>
+      Boolean(draft.dimension) ||
+      (value !== "donut" && value !== "list" && value !== "table"),
+  );
+  const previewVisualization = previewVisualizations.includes(
+    selectedVisualization,
+  )
+    ? selectedVisualization
+    : "kpi";
+  const productNameTerms = draft.productNameTerms;
+  const productNameFilterError =
+    productNameTerms.length > 50
+      ? "Angiv højst 50 navnefiltre"
+      : productNameTerms.some((term) => term.length > 200)
+        ? "Hvert navnefilter må højst være 200 tegn"
+        : null;
   const dimensions = useMemo(
     () =>
       dimensionOptions(
@@ -515,12 +565,20 @@ export function CustomMetricBuilder({
     if (draft.dimension !== "product" || draft.productFilterMode === "all") {
       return baseSpec;
     }
-    if (draft.productFilterValues.length === 0) return null;
+    if (
+      productNameFilterError ||
+      (draft.productFilterValues.length === 0 && productNameTerms.length === 0)
+    ) {
+      return null;
+    }
     return {
       ...baseSpec,
       dimensionFilter: {
         op: draft.productFilterMode,
         values: draft.productFilterValues,
+        ...(productNameTerms.length
+          ? { namePatterns: productNameTerms }
+          : {}),
       },
     };
   }, [
@@ -528,6 +586,8 @@ export function CustomMetricBuilder({
     draft.dimension,
     draft.productFilterMode,
     draft.productFilterValues,
+    productNameFilterError,
+    productNameTerms,
   ]);
 
   const localValidationError = !draft.name.trim()
@@ -541,10 +601,12 @@ export function CustomMetricBuilder({
         (draft.kind === "ratio"
           ? queryValidation(draft.denominator, "Nævner")
           : null) ??
-        (draft.dimension === "product" &&
-        draft.productFilterMode !== "all" &&
-        draft.productFilterValues.length === 0
-          ? "Vælg mindst ét produkt"
+        (draft.dimension === "product" && draft.productFilterMode !== "all"
+          ? productNameFilterError ??
+            (draft.productFilterValues.length === 0 &&
+            productNameTerms.length === 0
+              ? "Vælg mindst ét produkt eller navnefilter"
+              : null)
           : null) ??
         (!spec ? "Kontrollér målingens felter og grænse" : null));
 
@@ -599,7 +661,7 @@ export function CustomMetricBuilder({
       void convex
         .query(api.customMetrics.preview, {
           spec,
-          visualization: "kpi",
+          visualization: previewVisualization,
           scope,
           range,
           now,
@@ -625,7 +687,7 @@ export function CustomMetricBuilder({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [convex, now, open, range, scope, spec]);
+  }, [convex, now, open, previewVisualization, range, scope, spec]);
 
   function updateQuery(
     which: "numerator" | "denominator",
@@ -658,6 +720,7 @@ export function CustomMetricBuilder({
             dimension: "",
             productFilterMode: "all",
             productFilterValues: [],
+            productNameTerms: [],
           };
     });
   }
@@ -921,6 +984,7 @@ export function CustomMetricBuilder({
                           dimension: "",
                           productFilterMode: "all",
                           productFilterValues: [],
+                          productNameTerms: [],
                         }));
                       }}
                       aria-label="Målingstype"
@@ -971,6 +1035,7 @@ export function CustomMetricBuilder({
                             : {
                                 productFilterMode: "all",
                                 productFilterValues: [],
+                                productNameTerms: [],
                               }),
                         }))
                       }
@@ -1026,6 +1091,8 @@ export function CustomMetricBuilder({
                     <ProductFilterField
                       mode={draft.productFilterMode}
                       values={draft.productFilterValues}
+                      nameTerms={draft.productNameTerms}
+                      nameFilterError={productNameFilterError}
                       products={productOptions?.products ?? []}
                       categories={productCategories ?? []}
                       topProductValues={productOptions?.topProductValues ?? []}
@@ -1048,6 +1115,12 @@ export function CustomMetricBuilder({
                           productFilterValues,
                         }))
                       }
+                      onNameTermsChange={(productNameTerms) =>
+                        setDraft((current) => ({
+                          ...current,
+                          productNameTerms,
+                        }))
+                      }
                     />
                   ) : null}
                 </FieldGroup>
@@ -1061,12 +1134,29 @@ export function CustomMetricBuilder({
                   Opdateres automatisk kort efter en ændring i målingen.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex flex-col gap-4">
+                <FieldGroup className="max-w-xs">
+                  <RegistrySelect
+                    id="custom-metric-preview-visualization"
+                    label="Visualisering"
+                    value={previewVisualization}
+                    options={previewVisualizations.map((value) => ({
+                      value,
+                      label: visualizationLabels[value],
+                    }))}
+                    onChange={(value) => {
+                      const next = previewVisualizations.find(
+                        (option) => option === value,
+                      );
+                      if (next) setSelectedVisualization(next);
+                    }}
+                  />
+                </FieldGroup>
                 <Preview
                   result={preview}
                   loading={previewLoading}
                   error={previewError}
-                  visualization="kpi"
+                  visualization={previewVisualization}
                 />
               </CardContent>
               {effectiveGranularity === "anonymous" ? (

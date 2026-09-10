@@ -245,7 +245,7 @@ export function WidgetCard({
     const columnGap = Number.parseFloat(gridStyle.columnGap) || 0;
     const rowGap = Number.parseFloat(gridStyle.rowGap) || 0;
     const cellWidth = (grid.clientWidth - columnGap * (columns - 1)) / columns;
-    const rowHeight = Number.parseFloat(gridStyle.gridAutoRows) || cellWidth;
+    const rowHeight = Number.parseFloat(gridStyle.gridAutoRows) || cellWidth * 0.8;
     const rect = card.getBoundingClientRect();
     resizeSession.current = {
       pointerId: event.pointerId,

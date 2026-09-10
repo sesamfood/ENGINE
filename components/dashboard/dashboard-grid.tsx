@@ -594,6 +594,7 @@ export function DashboardGrid({
           range={range}
           now={now}
           metric={editingMetric}
+          initialVisualization={editingWidget.visualization}
           mode="widget"
           onSaved={() => setEditingWidgetKey(null)}
         />

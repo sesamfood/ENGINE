@@ -86,6 +86,7 @@ export function TimeSeriesVisualization({
           axisLine={false}
         />
         <ChartTooltip
+          cursor={variant !== "bar"}
           content={
             <ChartTooltipContent
               tooltipTitle={tooltipLabel}

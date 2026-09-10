@@ -65,13 +65,13 @@
 @media (min-width: 40rem) {
   .dashboard-grid {
     --dashboard-visible-columns: 2;
-    grid-auto-rows: calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns));
+    grid-auto-rows: calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns) * 0.8);
   }
 }
 
 @media (min-width: 64rem) {
   .dashboard-grid {
-    --dashboard-visible-columns: 4;
+    --dashboard-visible-columns: 6;
   }
 }
 

@@ -102,6 +102,7 @@ const metricBucketValidator = v.union(
 const dimensionFilterValidator = v.object({
   op: v.union(v.literal("in"), v.literal("notIn")),
   values: v.array(v.string()),
+  namePatterns: v.optional(v.array(v.string())),
 });
 
 export const customMetricSpecValidator = v.union(
