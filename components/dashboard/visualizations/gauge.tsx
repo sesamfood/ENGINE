@@ -20,10 +20,10 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
       <div
         className={cn(
           "@container h-full min-h-0 overflow-auto",
-          single ? "flex flex-col" : "grid content-start gap-x-4 gap-y-3",
+          single ? "flex flex-col" : "grid auto-rows-max content-start gap-x-4 gap-y-3",
           !single && (compact
-            ? "auto-rows-[minmax(0,min(100%,7rem))] grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))]"
-            : "auto-rows-[minmax(0,min(100%,8rem))] grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]"),
+            ? "grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))]"
+            : "grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]"),
         )}
       >
         {result.series.map((series) => {
@@ -33,14 +33,14 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
             <figure
               key={series.key}
               className={cn(
-                "flex h-full min-h-0 min-w-0 flex-col items-center gap-3 text-center",
-                (compact || !single) && "gap-2",
-                single && "justify-center-safe",
+                "flex min-w-0 shrink-0 flex-col items-center gap-2 text-center",
+                (compact || !single) && "gap-1",
+                single && "my-auto",
               )}
             >
               <div
                 className={cn(
-                  "min-h-0 shrink",
+                  "shrink-0",
                   compact ? "size-18" : single ? "size-[min(14rem,100cqw)]" : "size-20",
                 )}
                 role="meter"
@@ -85,7 +85,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
                   </text>
                 </svg>
               </div>
-              <figcaption className={cn("max-w-full shrink-0 text-sm font-medium wrap-anywhere", compact && "text-xs")}>
+              <figcaption title={series.label} className="w-full shrink-0 truncate text-xs font-medium">
                 {series.label}
               </figcaption>
             </figure>

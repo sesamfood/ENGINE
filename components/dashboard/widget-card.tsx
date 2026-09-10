@@ -301,7 +301,7 @@ export function WidgetCard({
 
   return (
     <Card className={cn(
-      "relative h-full gap-2 overflow-hidden border-border/70 shadow-sm transition-[box-shadow,border-color] duration-150",
+      "relative h-full gap-2 overflow-hidden border-border/70 pb-2 shadow-sm transition-[box-shadow,border-color] duration-150",
       compactLive && "gap-1 pt-1",
       editable && "select-none",
       (resizing || resizeActive) && "border-primary shadow-md ring-2 ring-primary/20",
@@ -490,7 +490,7 @@ export function WidgetCard({
         </div>
         {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
       </CardHeader>
-      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", definition?.live && "pb-2", compactLive && "pb-1", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-8")}>
+      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-0", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-9")}>
         {salesSource === "combined" ? (
           <Alert className="mb-3">
             <CircleAlertIcon />
