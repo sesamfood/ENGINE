@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useConvex, useMutation, useQuery } from "convex/react";
@@ -138,10 +138,11 @@ export function AddWidgetDialog({
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
   const [previewResult, setPreviewResult] = useState<MetricResult>();
-  const livePreviewWidget: WidgetInstance = {
+  const livePreviewWidgets = useMemo<[WidgetInstance]>(() => [{
     key: "live-preview", metric: { kind: "builtin", id: metricId }, visualization, size,
-  };
-  const livePreview = useLiveMetrics([livePreviewWidget], scope, open && step === 2 && !customMetricId && Boolean(definition.live));
+  }], [metricId, visualization, size]);
+  const [livePreviewWidget] = livePreviewWidgets;
+  const livePreview = useLiveMetrics(livePreviewWidgets, scope, open && step === 2 && !customMetricId && Boolean(definition.live));
   const livePreviewState = livePreview.byWidget.get(livePreviewWidget.key);
   const salesSource = metricId === "woltCancellationRate"
     ? "wolt"
