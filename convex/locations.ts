@@ -1,10 +1,11 @@
 import { ConvexError, v } from "convex/values";
-import { forecastProfileValidator } from "./lib/forecastValidators";
+import { forecastConfigurationValidator } from "./lib/forecastValidators";
 import { setForecastProfile } from "./lib/forecastSettings";
 import { DEFAULT_WEEKLY_OPENING_HOURS, MAX_SPECIAL_OPENING_DATES } from "../lib/count-window";
 import { internal } from "./_generated/api";
 import {
   internalMutation,
+  env,
   mutation,
   query,
   type QueryCtx,
@@ -89,7 +90,9 @@ const locationStatusValidator = v.union(
 );
 
 const locationDetailsValidator = v.object({
-  forecastProfile: v.union(forecastProfileValidator, v.null()),
+  googlePlaceId: v.union(v.string(), v.null()),
+  googlePlacesConfigured: v.boolean(),
+  forecastProfile: v.union(forecastConfigurationValidator, v.null()),
   id: v.id("locations"),
   name: v.string(),
   marketId: v.union(v.id("markets"), v.null()),
@@ -241,6 +244,8 @@ export const getLocationDetails = query({
       q.eq("organizationId", organizationId).eq("locationId", location._id)).unique();
     return {
       forecastProfile: forecast?.profile ?? null,
+      googlePlaceId: location.googlePlaceId ?? null,
+      googlePlacesConfigured: Boolean(env.GOOGLE_PLACES_API_KEY?.trim()),
       id: location._id,
       name: location.name,
       marketId: location.marketId ?? null,
@@ -364,20 +369,22 @@ export const renameLocation = mutation({
   },
 });
 
+export const locationUpdateValidator = v.object({
+  forecastProfile: v.optional(v.union(forecastConfigurationValidator, v.null())),
+  locationId: v.id("locations"),
+  marketId: v.union(v.id("markets"), v.null()),
+  legalEntityId: v.union(v.id("legalEntities"), v.null()),
+  operatorId: v.union(v.id("operators"), v.null()),
+  ownershipType: v.union(ownershipTypeValidator, v.null()),
+  conceptVersion: v.union(v.string(), v.null()),
+  openedAt: v.union(v.number(), v.null()),
+  currency: v.union(v.string(), v.null()),
+  timeZone: v.union(v.string(), v.null()),
+  status: v.union(locationStatusValidator, v.null()),
+});
+
 export const updateLocation = mutation({
-  args: {
-    forecastProfile: v.optional(v.union(forecastProfileValidator, v.null())),
-    locationId: v.id("locations"),
-    marketId: v.union(v.id("markets"), v.null()),
-    legalEntityId: v.union(v.id("legalEntities"), v.null()),
-    operatorId: v.union(v.id("operators"), v.null()),
-    ownershipType: v.union(ownershipTypeValidator, v.null()),
-    conceptVersion: v.union(v.string(), v.null()),
-    openedAt: v.union(v.number(), v.null()),
-    currency: v.union(v.string(), v.null()),
-    timeZone: v.union(v.string(), v.null()),
-    status: v.union(locationStatusValidator, v.null()),
-  },
+  args: locationUpdateValidator.fields,
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireLocationManager(ctx);

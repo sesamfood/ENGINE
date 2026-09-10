@@ -6,6 +6,7 @@ import {
 } from "convex/server";
 import { internal } from "./_generated/api";
 import {
+  env,
   internalAction,
   internalMutation,
   internalQuery,
@@ -17,6 +18,8 @@ import schema from "./schema";
 import { requireLocationAccess, requirePermission } from "./lib/auth";
 import { resolveTimeZone } from "./lib/timeZone";
 import { fetchForecastConditions } from "./lib/forecastProviders";
+import { readGooglePoint } from "./lib/googlePlaces";
+import { rateLimiter } from "./lib/rateLimits";
 import {
   forecastConditionValidator,
   forecastSnapshotValidator,
@@ -432,6 +435,18 @@ export const fail = internalMutation({
   },
 });
 
+export const googleForecastPlace = internalQuery({
+  args: { forecastId: v.id("locationForecasts"), revision: v.number() },
+  returns: v.union(v.object({ placeId: v.string(), organizationId: v.string() }), v.null()),
+  handler: async (ctx, args) => {
+    const forecast = await ctx.db.get("locationForecasts", args.forecastId);
+    if (!forecast || forecast.revision !== args.revision || !("source" in forecast.profile)) return null;
+    const location = await ctx.db.get("locations", forecast.locationId);
+    if (!location || location.organizationId !== forecast.organizationId || !location.googlePlaceId) return null;
+    return { placeId: location.googlePlaceId, organizationId: location.organizationId };
+  },
+});
+
 export const refreshLocation = internalAction({
   args: { forecastId: v.id("locationForecasts") },
   returns: v.null(),
@@ -458,17 +473,32 @@ export const refreshLocation = internalAction({
         Array.from({ length: SALES_FORECAST_DAYS + 1 }, (_, index) =>
           shiftOrderDate(today, index - 1),
         ).every((date) => weatherDates.has(date));
-      const environment = reuseWeather ? {
+      let environment: Awaited<ReturnType<typeof fetchForecastConditions>> = {
         conditions: forecast.conditions,
         archiveThrough: forecast.archiveThrough,
         warning: forecast.weatherWarning ?? "",
-      } : await fetchForecastConditions({
-        profile: forecast.profile,
-        timeZone: forecast.timeZone,
-        today,
-        cached: forecast.conditions,
-        archiveThrough: forecast.archiveThrough,
-      });
+      };
+      if (!reuseWeather) {
+        let profile = forecast.profile;
+        if ("source" in profile) {
+          if (!env.GOOGLE_PLACES_API_KEY?.trim()) throw new Error("Google Places is not configured");
+          const connection = await ctx.runQuery(internal.forecasts.googleForecastPlace, { forecastId: args.forecastId, revision: forecast.revision });
+          if (!connection) throw new Error("Forecast location changed");
+          const organizationLimit = await rateLimiter.limit(ctx, "googlePlacesReadOrganization", { key: connection.organizationId });
+          if (!organizationLimit.ok) throw new Error("Forecast location limit reached");
+          const dailyLimit = await rateLimiter.limit(ctx, "googlePlacesDaily", { key: "deployment" });
+          if (!dailyLimit.ok) throw new Error("Forecast location limit reached");
+          const point = await readGooglePoint(connection.placeId);
+          profile = { ...point, countryCode: profile.countryCode, ...(profile.subdivisionCode ? { subdivisionCode: profile.subdivisionCode } : {}) };
+        }
+        environment = await fetchForecastConditions({
+          profile,
+          timeZone: forecast.timeZone,
+          today,
+          cached: forecast.conditions,
+          archiveThrough: forecast.archiveThrough,
+        });
+      }
       // Keep paid weather reads even when sales change before the forecast finishes.
       if (!reuseWeather) {
         const cached: boolean = await ctx.runMutation(

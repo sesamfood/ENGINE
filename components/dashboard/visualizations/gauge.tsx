@@ -1,8 +1,100 @@
-import type { CSSProperties } from "react";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
 import type { MetricResult } from "@/lib/dashboard/types";
+import { cn } from "@/lib/utils";
 import { formatMetricValue, total } from "./utils";
 
 export function GaugeVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
+  const scaleMax = result.scaleMax;
+  if (scaleMax !== undefined) {
+    if (result.series.length === 0) {
+      return (
+        <Empty className="h-full p-0">
+          <EmptyDescription>Ingen data</EmptyDescription>
+        </Empty>
+      );
+    }
+
+    const single = result.series.length === 1;
+    const formattedMax = formatMetricValue(scaleMax, result);
+    return (
+      <div
+        className={cn(
+          "@container h-full min-h-0 overflow-auto",
+          single ? "flex flex-col" : "grid auto-rows-max content-start gap-x-4 gap-y-3",
+          !single && (compact
+            ? "grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))]"
+            : "grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]"),
+        )}
+      >
+        {result.series.map((series) => {
+          const ratio = Math.max(0, Math.min(1, series.total / scaleMax));
+          const formattedValue = formatMetricValue(series.total, result);
+          return (
+            <figure
+              key={series.key}
+              className={cn(
+                "flex min-w-0 shrink-0 flex-col items-center gap-3 text-center",
+                (compact || !single) && "gap-2",
+                single && "my-auto",
+              )}
+            >
+              <div
+                className={cn(
+                  "shrink-0",
+                  compact ? "size-18" : single ? "size-[min(14rem,100cqw)]" : "size-20",
+                )}
+                role="meter"
+                aria-label={series.label}
+                aria-valuemin={0}
+                aria-valuemax={scaleMax}
+                aria-valuenow={series.total}
+                aria-valuetext={`${formattedValue} ud af ${formattedMax}`}
+              >
+                <svg viewBox="0 0 100 112" className="size-full" aria-hidden="true">
+                  <path
+                    d="M 24.29 78.64 A 40 40 0 1 1 75.71 78.64"
+                    pathLength={100}
+                    fill="none"
+                    stroke="var(--muted)"
+                    strokeWidth={10}
+                    strokeLinecap="round"
+                  />
+                  {ratio > 0 ? (
+                    <path
+                      d="M 24.29 78.64 A 40 40 0 1 1 75.71 78.64"
+                      pathLength={100}
+                      fill="none"
+                      stroke="var(--success)"
+                      strokeWidth={10}
+                      strokeLinecap="round"
+                      strokeDasharray={`${ratio * 100} 100`}
+                    />
+                  ) : null}
+                  <text
+                    x={50}
+                    y={67}
+                    textAnchor="middle"
+                    fill="var(--foreground)"
+                    fontSize={24}
+                    className="font-semibold tracking-tight tabular-nums"
+                  >
+                    {formattedValue}
+                  </text>
+                  <text x={50} y={85} textAnchor="middle" fill="var(--muted-foreground)" fontSize={15}>
+                    / {formattedMax}
+                  </text>
+                </svg>
+              </div>
+              <figcaption className={cn("max-w-full text-sm font-medium wrap-anywhere", compact && "text-xs")}>
+                {series.label}
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+    );
+  }
+
   const value = total(result);
   const numericValue = value ?? 0;
   const target = result.target ?? Math.max(numericValue, 1);
@@ -15,7 +107,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
         aria-valuemin={0}
         aria-valuemax={target}
         aria-valuenow={result.mixedCurrency ? undefined : numericValue}
-        style={{ background: `conic-gradient(var(--primary) ${ratio * 360}deg, var(--muted) 0deg)` } as CSSProperties}
+        style={{ background: `conic-gradient(var(--primary) ${ratio * 360}deg, var(--muted) 0deg)` }}
       >
         <div className="grid size-full place-items-center rounded-full bg-card text-center">
           <div>

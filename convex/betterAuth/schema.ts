@@ -3,6 +3,7 @@ import { tables } from "./generatedSchema";
 
 const schema = defineSchema({
   ...tables,
+  rateLimit: tables.rateLimit.index("by_lastRequest", ["lastRequest"]),
   organizationRole: tables.organizationRole.index("organizationId_role", [
     "organizationId",
     "role",

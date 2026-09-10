@@ -10,6 +10,15 @@ export const forecastProfileValidator = v.object({
   addressLabel: v.optional(v.string()),
 });
 
+export const forecastConfigurationValidator = v.union(
+  forecastProfileValidator,
+  v.object({
+    source: v.literal("google"),
+    countryCode: v.string(),
+    subdivisionCode: v.optional(v.string()),
+  }),
+);
+
 export const forecastConditionValidator = v.object({
   date: v.string(),
   temperature: v.union(v.number(), v.null()),
@@ -47,7 +56,7 @@ export const forecastSnapshotValidator = v.object({
 export const locationForecastValidator = v.object({
   organizationId: v.string(),
   locationId: v.id("locations"),
-  profile: forecastProfileValidator,
+  profile: forecastConfigurationValidator,
   timeZone: v.string(),
   revision: v.number(),
   conditions: v.array(forecastConditionValidator),

@@ -91,6 +91,16 @@ type MetricComputer = (
   params: DashboardMetricParams,
 ) => Promise<MetricResult>;
 
+type ExternalMetricComputer = { kind: "external"; provider: "googleMaps" };
+
+export function queryMetricComputer(metricId: MetricId): MetricComputer {
+  const computer = dashboardMetricComputers[metricId];
+  if (typeof computer !== "function") {
+    throw new ConvexError("Aktuelle målinger skal hentes via deres datakilde");
+  }
+  return computer;
+}
+
 export function salesSourceProviders(source: SalesSource): MetricSource[] {
   if (source === "combined") return ["onlinepos", "wolt"];
   return [source === "onlinePos" ? "onlinepos" : "wolt"];
@@ -2553,7 +2563,8 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
   };
 };
 
-export const dashboardMetricComputers: Record<MetricId, MetricComputer> = {
+export const dashboardMetricComputers: Record<MetricId, MetricComputer | ExternalMetricComputer> = {
+  googleRating: { kind: "external", provider: "googleMaps" },
   predictedSalesRevenue: withMetricMetadata("predictedSalesRevenue", predictedSalesRevenue),
   wasteQuantity: withMetricMetadata("wasteQuantity", wasteQuantity),
   wasteRegistrations: withMetricMetadata(

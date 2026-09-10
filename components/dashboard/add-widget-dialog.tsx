@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useConvex, useMutation, useQuery } from "convex/react";
@@ -44,6 +44,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLiveMetrics } from "./use-live-metrics";
+import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -100,7 +102,7 @@ export function AddWidgetDialog({
   const access = useAccess();
   const convex = useConvex();
   const available = metrics.filter(
-    (metric) => !metric.sensitive || canViewSensitive,
+    (metric) => (!metric.sensitive || canViewSensitive) && (!metric.live || access?.granularity === "detail"),
   );
   const categories = Array.from(new Set(available.map((metric) => metric.category))).map((category) => ({
     label: category,
@@ -136,6 +138,12 @@ export function AddWidgetDialog({
   const [yAxisMax, setYAxisMax] = useState<number>();
   const [yAxisValid, setYAxisValid] = useState(true);
   const [previewResult, setPreviewResult] = useState<MetricResult>();
+  const livePreviewWidgets = useMemo<[WidgetInstance]>(() => [{
+    key: "live-preview", metric: { kind: "builtin", id: metricId }, visualization, size,
+  }], [metricId, visualization, size]);
+  const [livePreviewWidget] = livePreviewWidgets;
+  const livePreview = useLiveMetrics(livePreviewWidgets, scope, open && step === 2 && !customMetricId && Boolean(definition.live));
+  const livePreviewState = livePreview.byWidget.get(livePreviewWidget.key);
   const salesSource = metricId === "woltCancellationRate"
     ? "wolt"
     : salesSourceOverride ?? (
@@ -144,7 +152,7 @@ export function AddWidgetDialog({
           : "onlinePos"
       );
   useEffect(() => {
-    if (!open || step !== 2 || (customMetricId && !customMetric)) return;
+    if (!open || step !== 2 || (customMetricId && !customMetric) || (!customMetricId && definition.live)) return;
     let active = true;
     const timer = window.setTimeout(() => {
       if (!active) return;
@@ -192,6 +200,7 @@ export function AddWidgetDialog({
     customMetric,
     customMetricId,
     definition.defaultVisualization,
+    definition.live,
     metricId,
     now,
     open,
@@ -562,7 +571,9 @@ export function AddWidgetDialog({
                             }
                           }}
                         >
-                          {previewResult ? (
+                          {livePreviewState ? (
+                            <LiveMetricContent widget={{ ...livePreviewWidget, visualization: visualizationId }} state={livePreviewState} compact />
+                          ) : previewResult ? (
                             <Visualization result={previewResult} />
                           ) : (
                             <Skeleton className="size-full" />
@@ -573,6 +584,7 @@ export function AddWidgetDialog({
                   })}
                 </ToggleGroup>
               )}
+              {!customMetricId && definition.live ? <MetricSourceAttribution widget={livePreviewWidget} data={livePreviewState?.kind === "ready" ? livePreviewState.data : undefined} /> : null}
             </div>
           ) : null}
 

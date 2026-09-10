@@ -54,6 +54,8 @@ import { salesSourceLabels, widgetSizes, type DashboardRange, type MetricResult,
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { previousTotal, total } from "./visualizations/utils";
+import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
+import type { LiveMetricState } from "./use-live-metrics";
 
 type ResizeSession = {
   pointerId: number;
@@ -162,6 +164,7 @@ function nearestSize(session: ResizeSession, clientX: number, clientY: number) {
 export function WidgetCard({
   widget,
   result,
+  live,
   metricLabel: customMetricLabel,
   range,
   editable,
@@ -178,6 +181,7 @@ export function WidgetCard({
 }: {
   widget: WidgetInstance;
   result?: MetricResult;
+  live?: LiveMetricState;
   metricLabel?: string;
   range?: DashboardRange;
   editable: boolean;
@@ -196,6 +200,10 @@ export function WidgetCard({
     ? metricRegistry[widget.metric.id]
     : undefined;
   const metricLabel = customMetricLabel ?? definition?.label ?? "Tilpasset måling";
+  const sourceSuffix = definition?.live ? ` (${definition.live.sourceLabel})` : "";
+  const hasSourceSuffix = Boolean(sourceSuffix) && metricLabel.endsWith(sourceSuffix);
+  const hasAttributions = live?.kind === "ready" && live.data.attributions.length > 0;
+  const compactLive = Boolean(definition?.live) && widgetSizeSpans[widget.size].rows === 1;
   const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
   const salesSource = definition && supportsSalesSource(definition.id)
     ? widget.options?.salesSource ?? defaultSalesSource(definition.id)
@@ -206,7 +214,7 @@ export function WidgetCard({
   const previous = result ? previousTotal(result) : null;
   const freshness = result?.freshness;
   const hasFreshness = Boolean(freshness);
-  const change = current !== null && previous !== null && previous !== 0
+  const change = !definition?.live && current !== null && previous !== null && previous !== 0
     ? ((current - previous) / Math.abs(previous)) * 100
     : null;
 
@@ -293,13 +301,19 @@ export function WidgetCard({
   return (
     <Card className={cn(
       "relative h-full gap-2 overflow-hidden border-border/70 shadow-sm transition-[box-shadow,border-color] duration-150",
+      compactLive && "gap-1 pt-1",
       editable && "select-none",
       (resizing || resizeActive) && "border-primary shadow-md ring-2 ring-primary/20",
     )}>
-      <CardHeader className="gap-0 pb-1">
+      <CardHeader className={cn("gap-0 pb-1", compactLive && "pb-0")}>
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <CardTitle className="min-w-0 flex-1 truncate text-base">{metricLabel}</CardTitle>
+            <CardTitle className={cn("min-w-0 flex-1 text-base", hasSourceSuffix ? "flex flex-wrap items-baseline gap-x-1" : "truncate")}>
+              {hasSourceSuffix ? <>
+                <span>{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
+                <span translate="no" className="text-sm font-normal whitespace-nowrap tracking-normal">{sourceSuffix.trimStart()}</span>
+              </> : metricLabel}
+            </CardTitle>
             {change !== null || result?.truncated || hasFreshness ? (
               <CardDescription className="flex min-w-0 max-w-full shrink-0 items-center gap-1 overflow-hidden">
                 {change !== null ? (
@@ -383,12 +397,13 @@ export function WidgetCard({
                                 }
                               }}
                             >
-                              {result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
+                              {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
                             </CardContent>
                           </ToggleGroupItem>
                         );
                       })}
                     </ToggleGroup>
+                    {definition?.live ? <MetricSourceAttribution widget={widget} data={live?.kind === "ready" ? live.data : undefined} /> : null}
                     {visualizationHasYAxis(widget.visualization) && onYAxisChange ? (
                       <div className="mt-4 flex flex-col gap-3 border-t pt-4">
                         <div>
@@ -440,7 +455,7 @@ export function WidgetCard({
                   </SelectContent>
                 </Select>
               ) : null}
-              <Select
+              {!definition?.live ? <Select
                 items={widgetRangeOptions}
                 value={widget.range ?? "board"}
                 onValueChange={(value) => onRangeChange?.(value === "board" ? undefined : value as WidgetRangePreset)}
@@ -453,15 +468,16 @@ export function WidgetCard({
                     {widgetRangeOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                   </SelectGroup>
                 </SelectContent>
-              </Select>
+              </Select> : null}
               <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
                 <MinusIcon />
               </Button>
             </div>
           ) : null}
         </div>
+        {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
       </CardHeader>
-      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", editable && "pb-8")}>
+      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", definition?.live && "pb-2", compactLive && "pb-1", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-8")}>
         {salesSource === "combined" ? (
           <Alert className="mb-3">
             <CircleAlertIcon />
@@ -471,7 +487,10 @@ export function WidgetCard({
             </AlertDescription>
           </Alert>
         ) : null}
-        {children}
+        {hasAttributions ? <>
+          <div className="min-h-0 flex-1">{children}</div>
+          <MetricSourceAttribution widget={widget} data={live.data} showSource={false} />
+        </> : children}
       </CardContent>
       {editable ? (
         <span

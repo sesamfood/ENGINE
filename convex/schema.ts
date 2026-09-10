@@ -1263,6 +1263,8 @@ export default defineSchema({
 
   locations: defineTable({
     organizationId: v.string(),
+    googlePlaceId: v.optional(v.string()),
+    googlePlaceVerifiedAt: v.optional(v.number()),
     name: v.string(),
     normalizedName: v.string(),
     countProductOrder: v.optional(v.array(v.id("products"))),

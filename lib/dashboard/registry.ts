@@ -7,7 +7,7 @@ import type {
   WidgetSize,
 } from "./types";
 
-export type MetricSource = "internal" | "onlinepos" | "wolt" | "workfeed";
+export type MetricSource = "internal" | "onlinepos" | "wolt" | "workfeed" | "googleMaps";
 
 export const salesSourceMetricIds = [
   "salesRevenue",
@@ -37,9 +37,33 @@ export type MetricDefinition = {
   defaultSize: WidgetSize;
   sensitive?: boolean;
   shareable?: boolean;
+  live?: {
+    currentLabel: string;
+    sourceLabel: string;
+    locationLimits: Partial<Record<VisualizationId, number>>;
+  };
 };
 
 const definitions = {
+  googleRating: {
+    id: "googleRating",
+    label: "Gæstescore (Google Maps)",
+    category: "Gæster",
+    description: "Aktuel Google-bedømmelse fra 1 til 5 for hver lokation.",
+    formula: "Googles aktuelle bedømmelse vises pr. lokation. Perioden påvirker ikke scoren. Der beregnes ingen samlet score eller ændring over tid.",
+    sourceTables: ["Google Maps"],
+    source: "googleMaps",
+    unit: "quantity",
+    visualizations: ["gauge", "list", "table"],
+    defaultVisualization: "gauge",
+    defaultSize: "2x2",
+    shareable: false,
+    live: {
+      currentLabel: "Aktuel bedømmelse",
+      sourceLabel: "Google Maps",
+      locationLimits: { gauge: 4, list: 10, table: 20 },
+    },
+  },
   predictedSalesRevenue: {
     id: "predictedSalesRevenue",
     label: "Forventet omsætning, næste 7 dage",
