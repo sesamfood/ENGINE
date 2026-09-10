@@ -117,6 +117,8 @@ export const permissionCatalog = [
       { id: "dashboard.manage", label: "Administrere dashboards" },
       { id: "dashboard.share", label: "Dele dashboard" },
       { id: "dashboard.viewSales", label: "Se salgstal" },
+      { id: "dashboard.viewFinancials", label: "Se månedsrapport og lønestimater" },
+      { id: "dashboard.manageBudgets", label: "Redigere månedsbudgetter" },
       { id: "sales.viewAggregate", label: "Se aggregerede salgstal" },
       { id: "sales.viewDetail", label: "Se detaljerede salgstal" },
     ],
@@ -180,6 +182,8 @@ export const defaultRolePermissions: Record<
       id !== "dashboard.share" &&
       id !== "dashboard.manage" &&
       id !== "dashboard.viewSales" &&
+      id !== "dashboard.viewFinancials" &&
+      id !== "dashboard.manageBudgets" &&
       id !== "sales.viewAggregate" &&
       id !== "sales.viewDetail",
   ),

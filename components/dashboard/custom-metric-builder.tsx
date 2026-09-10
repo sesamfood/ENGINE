@@ -106,6 +106,7 @@ type BuilderDraft = {
   dimension: string;
   productFilterMode: ProductFilterMode;
   productFilterValues: string[];
+  productNameTerms: string[];
   bucket: "day" | "week" | "month";
   limit: string;
 };
@@ -156,6 +157,7 @@ function initialDraft(metric?: CustomMetricDefinition | null): BuilderDraft {
       dimension: "",
       productFilterMode: "all",
       productFilterValues: [],
+      productNameTerms: [],
       bucket: "day" as const,
       limit: "10",
     };
@@ -174,6 +176,7 @@ function initialDraft(metric?: CustomMetricDefinition | null): BuilderDraft {
     dimension: spec.dimension ?? "",
     productFilterMode: spec.dimensionFilter?.op ?? "all",
     productFilterValues: spec.dimensionFilter?.values ?? [],
+    productNameTerms: spec.dimensionFilter?.namePatterns ?? [],
     bucket: spec.bucket,
     limit: String(spec.limit ?? 10),
   };
@@ -313,6 +316,7 @@ function queryValidation(query: QueryDraft, label: string) {
 function ProductFilterField({
   mode,
   values,
+  nameTerms,
   products,
   categories,
   topProductValues,
@@ -323,6 +327,7 @@ function ProductFilterField({
 }: {
   mode: ProductFilterMode;
   values: string[];
+  nameTerms: string[];
   products: ProductOption[];
   categories: ProductCategory[];
   topProductValues: string[];
@@ -357,7 +362,7 @@ function ProductFilterField({
         </ToggleGroup>
       </Field>
       {mode !== "all" ? (
-        <Field data-invalid={values.length === 0}>
+        <Field data-invalid={values.length === 0 && nameTerms.length === 0}>
           <FieldLabel>Vælg produkter</FieldLabel>
           {loading ? (
             <Skeleton className="h-11 w-full" />
@@ -381,6 +386,15 @@ function ProductFilterField({
               ? " Produktlisten er afkortet, fordi målingen indeholder mange poster."
               : ""}
           </FieldDescription>
+          {nameTerms.length > 0 ? (
+            <FieldDescription>
+              {mode === "in"
+                ? "Produkter med disse tekster i navnet medtages også: "
+                : "Produkter med disse tekster i navnet skjules også: "}
+              {nameTerms.map((term) => JSON.stringify(term)).join(", ")}. Store og
+              små bogstaver behandles ens. Navnefiltrene bevares, når du gemmer.
+            </FieldDescription>
+          ) : null}
         </Field>
       ) : null}
     </FieldSet>
@@ -515,12 +529,13 @@ export function CustomMetricBuilder({
     if (draft.dimension !== "product" || draft.productFilterMode === "all") {
       return baseSpec;
     }
-    if (draft.productFilterValues.length === 0) return null;
+    if (draft.productFilterValues.length === 0 && draft.productNameTerms.length === 0) return null;
     return {
       ...baseSpec,
       dimensionFilter: {
         op: draft.productFilterMode,
         values: draft.productFilterValues,
+        ...(draft.productNameTerms.length ? { namePatterns: draft.productNameTerms } : {}),
       },
     };
   }, [
@@ -528,6 +543,7 @@ export function CustomMetricBuilder({
     draft.dimension,
     draft.productFilterMode,
     draft.productFilterValues,
+    draft.productNameTerms,
   ]);
 
   const localValidationError = !draft.name.trim()
@@ -543,7 +559,8 @@ export function CustomMetricBuilder({
           : null) ??
         (draft.dimension === "product" &&
         draft.productFilterMode !== "all" &&
-        draft.productFilterValues.length === 0
+        draft.productFilterValues.length === 0 &&
+        draft.productNameTerms.length === 0
           ? "Vælg mindst ét produkt"
           : null) ??
         (!spec ? "Kontrollér målingens felter og grænse" : null));
@@ -658,6 +675,7 @@ export function CustomMetricBuilder({
             dimension: "",
             productFilterMode: "all",
             productFilterValues: [],
+            productNameTerms: [],
           };
     });
   }
@@ -921,6 +939,7 @@ export function CustomMetricBuilder({
                           dimension: "",
                           productFilterMode: "all",
                           productFilterValues: [],
+                          productNameTerms: [],
                         }));
                       }}
                       aria-label="Målingstype"
@@ -971,6 +990,7 @@ export function CustomMetricBuilder({
                             : {
                                 productFilterMode: "all",
                                 productFilterValues: [],
+                                productNameTerms: [],
                               }),
                         }))
                       }
@@ -1026,6 +1046,7 @@ export function CustomMetricBuilder({
                     <ProductFilterField
                       mode={draft.productFilterMode}
                       values={draft.productFilterValues}
+                      nameTerms={draft.productNameTerms}
                       products={productOptions?.products ?? []}
                       categories={productCategories ?? []}
                       topProductValues={productOptions?.topProductValues ?? []}

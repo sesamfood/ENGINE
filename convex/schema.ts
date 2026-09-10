@@ -422,10 +422,50 @@ export default defineSchema({
     orderCount: v.number(),
     itemCount: v.number(),
     updatedAt: v.number(),
+    financial: v.optional(v.object({
+      netRevenue: v.number(),
+      transactionCount: v.number(),
+      currency: v.string(),
+      timeZone: v.string(),
+      syncedAt: v.number(),
+      sourceKey: v.string(),
+      version: v.literal(1),
+    })),
   }).index("by_organizationId_and_locationId_and_dayStart", [
     "organizationId",
     "locationId",
     "dayStart",
+  ]),
+
+  onlinePosFinancialMonths: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    month: v.string(),
+    sourceKey: v.string(),
+    state: v.union(v.literal("queued"), v.literal("running"), v.literal("idle"), v.literal("error")),
+    runToken: v.optional(v.string()),
+    requestedThrough: v.string(),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+    snapshot: v.optional(v.object({
+      netRevenue: v.number(),
+      transactionCount: v.number(),
+      currency: v.string(),
+      timeZone: v.string(),
+      through: v.string(),
+      syncedAt: v.number(),
+      sourceKey: v.string(),
+      version: v.literal(1),
+      days: v.array(v.object({
+        date: v.string(),
+        netRevenue: v.number(),
+        transactionCount: v.number(),
+      })),
+    })),
+  }).index("by_organizationId_and_locationId_and_month", [
+    "organizationId",
+    "locationId",
+    "month",
   ]),
 
   woltIntegrations: defineTable({
@@ -778,6 +818,57 @@ export default defineSchema({
   })
     .index("by_organizationId_and_createdAt", ["organizationId", "createdAt"])
     .index("by_screenshotStorageId", ["screenshotStorageId"]),
+
+  workfeedLaborDaily: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    date: v.string(),
+    laborCostMinor: v.number(),
+    currency: v.string(),
+    sourceKey: v.string(),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId_and_date", [
+    "organizationId", "locationId", "date",
+  ]),
+
+  workfeedLaborSyncStatus: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    month: v.string(),
+    sourceKey: v.string(),
+    currency: v.string(),
+    timeZone: v.string(),
+    state: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("ready"),
+      v.literal("error"),
+    ),
+    runToken: v.string(),
+    requestedThrough: v.string(),
+    coveredThrough: v.optional(v.string()),
+    laborCostMinor: v.optional(v.number()),
+    lastAttemptAt: v.number(),
+    lastSuccessAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  }).index("by_organizationId_and_locationId_and_month", [
+    "organizationId", "locationId", "month",
+  ]),
+
+  monthlyKpiBudgets: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    month: v.string(),
+    currency: v.string(),
+    sales: v.union(v.number(), v.null()),
+    transactions: v.union(v.number(), v.null()),
+    labour: v.union(v.number(), v.null()),
+    revision: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.string(),
+  }).index("by_organizationId_and_locationId_and_month_and_revision", [
+    "organizationId", "locationId", "month", "revision",
+  ]),
 
   workfeedIntegrations: defineTable({
     organizationId: v.string(),
