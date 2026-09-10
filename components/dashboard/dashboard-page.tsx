@@ -3,6 +3,7 @@
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { LayoutDashboardIcon, PencilIcon, PlusIcon, RefreshCwIcon, SaveIcon, Share2Icon } from "lucide-react";
 import { AppPageHeader } from "@/components/app-page-header";
 import { useMutation, useQuery } from "convex/react";
@@ -81,6 +82,7 @@ function DashboardLanding() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canManage = usePermission("dashboard.manage");
+  const canViewFinancials = usePermission("dashboard.viewFinancials");
   const router = useRouter();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
   const initialize = useMutation(api.dashboard.initialize);
@@ -132,6 +134,9 @@ function DashboardLanding() {
           <EmptyTitle>Ingen dashboards</EmptyTitle>
           <EmptyDescription>Der er ikke oprettet et dashboard, du kan se.</EmptyDescription>
         </EmptyHeader>
+        {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
+          <EmptyContent><Button className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button></EmptyContent>
+        ) : null}
       </Empty>
     );
   }
@@ -141,6 +146,7 @@ function DashboardLanding() {
 function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
+  const canViewFinancials = usePermission("dashboard.viewFinancials");
   const canManage = usePermission("dashboard.manage");
   const canShare = usePermission("dashboard.share");
   const canManageIntegrations = usePermission("integrations.manage");
@@ -358,6 +364,9 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
         </div>
         <div className="flex flex-wrap gap-2">
+          {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
+            <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button>
+          ) : null}
           {canManageIntegrations ? (
             <Button type="button" size="lg" variant="outline" className="min-h-11" disabled={updatingData} onClick={() => void updateDashboardData()}>
               {updatingData ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}

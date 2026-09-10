@@ -235,6 +235,30 @@ export async function deleteLocationWithAuth(
         )
         .first(),
       ctx.db
+        .query("onlinePosFinancialMonths")
+        .withIndex("by_organizationId_and_locationId_and_month", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("workfeedLaborDaily")
+        .withIndex("by_organizationId_and_locationId_and_date", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("workfeedLaborSyncStatus")
+        .withIndex("by_organizationId_and_locationId_and_month", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("monthlyKpiBudgets")
+        .withIndex("by_organizationId_and_locationId_and_month_and_revision", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
         .query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId_and_locationId", (q) =>
           q.eq("organizationId", organizationId).eq("locationId", location._id),

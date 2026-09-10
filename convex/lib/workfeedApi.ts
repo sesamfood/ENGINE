@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { addDays, inclusiveDateRangeDays } from "../../lib/date";
 
 const API_URL =
   "https://europe-west1-production-eu-327a3.cloudfunctions.net/api";
@@ -252,6 +253,45 @@ export function parseShifts(payload: unknown): WorkfeedShift[] {
       },
     ];
   });
+}
+
+export function parseDepartmentStats(
+  payload: unknown,
+  { from, through }: { from: string; through: string },
+) {
+  const expectedDays = inclusiveDateRangeDays(from, through);
+  if (!Number.isInteger(expectedDays) || expectedDays < 1 || expectedDays > 31) {
+    throw new ConvexError("Workfeed-perioden skal være mellem 1 og 31 dage");
+  }
+  if (!Array.isArray(payload) || payload.length !== expectedDays) {
+    throw new ConvexError("Workfeed-løndata dækker ikke alle dage i perioden");
+  }
+  const seen = new Set<string>();
+  const rows = payload.map((value) => {
+    const row = object(value);
+    const date = row?.date;
+    const cost = row?.laborCost;
+    if (
+      typeof date !== "string" ||
+      typeof cost !== "number" ||
+      !Number.isFinite(cost)
+    ) {
+      throw new ConvexError("Workfeed returnerede ugyldige løndata");
+    }
+    // Treat the documented decimal amounts as major units; the app stores hundredths.
+    const laborCostMinor = Math.round(cost * 100);
+    if (!Number.isSafeInteger(laborCostMinor) || seen.has(date)) {
+      throw new ConvexError("Workfeed returnerede ugyldige eller gentagne løndata");
+    }
+    seen.add(date);
+    return { date, laborCostMinor };
+  });
+  for (let day = 0; day < expectedDays; day += 1) {
+    if (!seen.has(addDays(from, day))) {
+      throw new ConvexError("Workfeed-løndata dækker ikke alle dage i perioden");
+    }
+  }
+  return rows.sort((left, right) => left.date.localeCompare(right.date));
 }
 
 export function workfeedErrorMessage(error: unknown) {

@@ -108,4 +108,18 @@ crons.cron(
   { cursor: null },
 );
 
+crons.interval(
+  "refresh estimated Workfeed labour",
+  { hours: 6 },
+  internal.workfeedLabor.dispatchCurrent,
+  { cursor: null },
+);
+
+crons.interval(
+  "refresh OnlinePOS financial sales",
+  { hours: 6 },
+  internal.onlinePosFinancial.refreshRecentMonths,
+  { cursor: null },
+);
+
 export default crons;
