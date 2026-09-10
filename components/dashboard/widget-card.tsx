@@ -9,6 +9,7 @@ import {
   CircleCheckIcon,
   MinusIcon,
   PencilIcon,
+  Settings2Icon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -244,7 +245,7 @@ export function WidgetCard({
     const columnGap = Number.parseFloat(gridStyle.columnGap) || 0;
     const rowGap = Number.parseFloat(gridStyle.rowGap) || 0;
     const cellWidth = (grid.clientWidth - columnGap * (columns - 1)) / columns;
-    const rowHeight = Number.parseFloat(gridStyle.gridAutoRows) || 192;
+    const rowHeight = Number.parseFloat(gridStyle.gridAutoRows) || cellWidth * 0.8;
     const rect = card.getBoundingClientRect();
     resizeSession.current = {
       pointerId: event.pointerId,
@@ -300,22 +301,22 @@ export function WidgetCard({
 
   return (
     <Card className={cn(
-      "relative h-full gap-2 overflow-hidden border-border/70 shadow-sm transition-[box-shadow,border-color] duration-150",
+      "relative h-full gap-2 overflow-hidden border-border/70 pb-2 shadow-sm transition-[box-shadow,border-color] duration-150",
       compactLive && "gap-1 pt-1",
       editable && "select-none",
       (resizing || resizeActive) && "border-primary shadow-md ring-2 ring-primary/20",
     )}>
       <CardHeader className={cn("gap-0 pb-1", compactLive && "pb-0")}>
         <div className="flex min-w-0 items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <CardTitle className={cn("min-w-0 flex-1 text-base", hasSourceSuffix ? "flex flex-wrap items-baseline gap-x-1" : "truncate")}>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+            <CardTitle className={cn("min-w-0 flex-1 basis-28 text-base", hasSourceSuffix ? "flex flex-wrap items-baseline gap-x-1" : "truncate")}>
               {hasSourceSuffix ? <>
                 <span>{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
                 <span translate="no" className="text-sm font-normal whitespace-nowrap tracking-normal">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
             {change !== null || result?.truncated || hasFreshness ? (
-              <CardDescription className="flex min-w-0 max-w-full shrink-0 items-center gap-1 overflow-hidden">
+              <CardDescription className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center gap-1 overflow-hidden">
                 {change !== null ? (
                   <Tooltip>
                     <TooltipTrigger render={<span className="inline-flex min-w-0" />}>
@@ -341,143 +342,155 @@ export function WidgetCard({
             ) : null}
           </div>
           {editable ? (
-            <div data-dashboard-no-drag className="flex items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>
-              {availableVisualizations.length ? (
-                <Dialog open={visualizationOpen} onOpenChange={setVisualizationOpen}>
-                  <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${metricLabel}`} />}>
-                    <ChartNoAxesCombinedIcon />
-                  </DialogTrigger>
-                  <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
-                    <DialogHeader>
-                      <DialogTitle>Vælg visualisering</DialogTitle>
-                      <DialogDescription>Samme data vist med alle kompatible visualiseringer.</DialogDescription>
-                    </DialogHeader>
-                    <ToggleGroup
-                      value={[widget.visualization]}
-                      onValueChange={(values) => {
-                        const next = availableVisualizations.find((item) => item === values[0]);
-                        if (next) chooseVisualization(next);
-                      }}
-                      spacing={3}
-                      aria-label="Visualisering"
-                      className="grid w-full min-w-0 items-stretch gap-3 rounded-none md:grid-cols-2"
-                    >
-                      {availableVisualizations.map((visualization) => {
-                        const Visualization = visualizationRegistry[visualization];
-                        return (
-                          <ToggleGroupItem
-                            key={visualization}
-                            value={visualization}
-                            nativeButton={false}
-                            render={(props) => (
-                              <Card
-                                {...props}
-                                size="sm"
-                                data-size="sm"
-                                data-slot="card"
-                                className={cn(
-                                  "cursor-pointer outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
-                                  widget.visualization === visualization && "ring-2 ring-primary/30",
-                                )}
-                              />
-                            )}
+            <div data-dashboard-no-drag className="shrink-0" onPointerDown={(event) => event.stopPropagation()}>
+              <Popover>
+                <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${metricLabel}`} />}>
+                  <Settings2Icon />
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)]" onPointerDown={(event) => event.stopPropagation()}>
+                  <PopoverHeader>
+                    <PopoverTitle>Indstillinger for {metricLabel}</PopoverTitle>
+                  </PopoverHeader>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {availableVisualizations.length ? (
+                      <Dialog open={visualizationOpen} onOpenChange={setVisualizationOpen}>
+                        <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${metricLabel}`} />}>
+                          <ChartNoAxesCombinedIcon />
+                        </DialogTrigger>
+                        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
+                          <DialogHeader>
+                            <DialogTitle>Vælg visualisering</DialogTitle>
+                            <DialogDescription>Samme data vist med alle kompatible visualiseringer.</DialogDescription>
+                          </DialogHeader>
+                          <ToggleGroup
+                            value={[widget.visualization]}
+                            onValueChange={(values) => {
+                              const next = availableVisualizations.find((item) => item === values[0]);
+                              if (next) chooseVisualization(next);
+                            }}
+                            spacing={3}
+                            aria-label="Visualisering"
+                            className="grid w-full min-w-0 items-stretch gap-3 rounded-none md:grid-cols-2"
                           >
-                            <CardHeader>
-                              <CardTitle>{visualizationLabels[visualization]}</CardTitle>
-                            </CardHeader>
-                            <CardContent
-                              className="h-52 min-h-0 overflow-hidden"
-                              onKeyDown={(event) => {
-                                if (
-                                  ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) &&
-                                  event.target instanceof Element &&
-                                  event.target.closest('[role="application"]')
-                                ) {
-                                  event.stopPropagation();
-                                }
-                              }}
-                            >
-                              {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
-                            </CardContent>
-                          </ToggleGroupItem>
-                        );
-                      })}
-                    </ToggleGroup>
-                    {definition?.live ? <MetricSourceAttribution widget={widget} data={live?.kind === "ready" ? live.data : undefined} /> : null}
-                    {visualizationHasYAxis(widget.visualization) && onYAxisChange ? (
-                      <div className="mt-4 flex flex-col gap-3 border-t pt-4">
-                        <div>
-                          <h3 className="text-sm font-medium">Y-akse</h3>
-                          <p className="text-sm text-muted-foreground">Angiv grænser eller brug automatisk skala.</p>
-                        </div>
-                        <YAxisSettings
-                          idPrefix={`widget-${widget.key}-y-axis`}
-                          min={widget.options?.yAxisMin}
-                          max={widget.options?.yAxisMax}
-                          onChange={onYAxisChange}
-                        />
-                      </div>
+                            {availableVisualizations.map((visualization) => {
+                              const Visualization = visualizationRegistry[visualization];
+                              return (
+                                <ToggleGroupItem
+                                  key={visualization}
+                                  value={visualization}
+                                  nativeButton={false}
+                                  render={(props) => (
+                                    <Card
+                                      {...props}
+                                      size="sm"
+                                      data-size="sm"
+                                      data-slot="card"
+                                      className={cn(
+                                        "cursor-pointer outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
+                                        widget.visualization === visualization && "ring-2 ring-primary/30",
+                                      )}
+                                    />
+                                  )}
+                                >
+                                  <CardHeader>
+                                    <CardTitle>{visualizationLabels[visualization]}</CardTitle>
+                                  </CardHeader>
+                                  <CardContent
+                                    className="h-52 min-h-0 overflow-hidden"
+                                    onKeyDown={(event) => {
+                                      if (
+                                        ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) &&
+                                        event.target instanceof Element &&
+                                        event.target.closest('[role="application"]')
+                                      ) {
+                                        event.stopPropagation();
+                                      }
+                                    }}
+                                  >
+                                    {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
+                                  </CardContent>
+                                </ToggleGroupItem>
+                              );
+                            })}
+                          </ToggleGroup>
+                          {definition?.live ? <MetricSourceAttribution widget={widget} data={live?.kind === "ready" ? live.data : undefined} /> : null}
+                          {visualizationHasYAxis(widget.visualization) && onYAxisChange ? (
+                            <div className="mt-4 flex flex-col gap-3 border-t pt-4">
+                              <div>
+                                <h3 className="text-sm font-medium">Y-akse</h3>
+                                <p className="text-sm text-muted-foreground">Angiv grænser eller brug automatisk skala.</p>
+                              </div>
+                              <YAxisSettings
+                                idPrefix={`widget-${widget.key}-y-axis`}
+                                min={widget.options?.yAxisMin}
+                                max={widget.options?.yAxisMax}
+                                onChange={onYAxisChange}
+                              />
+                            </div>
+                          ) : null}
+                        </DialogContent>
+                      </Dialog>
                     ) : null}
-                  </DialogContent>
-                </Dialog>
-              ) : null}
-              {onEditCustomMetric ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-lg"
-                  className="size-11"
-                  aria-label={`Redigér ${metricLabel}`}
-                  onClick={onEditCustomMetric}
-                >
-                  <PencilIcon />
-                </Button>
-              ) : null}
-              {definition && supportsSalesSource(definition.id) && onSalesSourceChange ? (
-                <Select
-                  items={Object.entries(salesSourceLabels).map(([value, label]) => ({ value, label }))}
-                  value={salesSource ?? "onlinePos"}
-                  onValueChange={(value) => {
-                    if (value === "onlinePos" || value === "wolt" || value === "combined") {
-                      onSalesSourceChange(value);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-11 w-40" aria-label={`Salgskilde for ${metricLabel}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {Object.entries(salesSourceLabels).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              ) : null}
-              {!definition?.live ? <Select
-                items={widgetRangeOptions}
-                value={widget.range ?? "board"}
-                onValueChange={(value) => onRangeChange?.(value === "board" ? undefined : value as WidgetRangePreset)}
-              >
-                <SelectTrigger className="h-11 w-36" aria-label={`Periode for ${metricLabel}`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {widgetRangeOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-                  </SelectGroup>
-                </SelectContent>
-              </Select> : null}
-              <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
-                <MinusIcon />
-              </Button>
+                    {onEditCustomMetric ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-lg"
+                        className="size-11"
+                        aria-label={`Redigér ${metricLabel}`}
+                        onClick={onEditCustomMetric}
+                      >
+                        <PencilIcon />
+                      </Button>
+                    ) : null}
+                    {definition && supportsSalesSource(definition.id) && onSalesSourceChange ? (
+                      <Select
+                        items={Object.entries(salesSourceLabels).map(([value, label]) => ({ value, label }))}
+                        value={salesSource ?? "onlinePos"}
+                        onValueChange={(value) => {
+                          if (value === "onlinePos" || value === "wolt" || value === "combined") {
+                            onSalesSourceChange(value);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-11 w-40" aria-label={`Salgskilde for ${metricLabel}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {Object.entries(salesSourceLabels).map(([value, label]) => (
+                              <SelectItem key={value} value={value}>{label}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    ) : null}
+                    {!definition?.live ? <Select
+                      items={widgetRangeOptions}
+                      value={widget.range ?? "board"}
+                      onValueChange={(value) => onRangeChange?.(value === "board" ? undefined : value as WidgetRangePreset)}
+                    >
+                      <SelectTrigger className="h-11 w-36" aria-label={`Periode for ${metricLabel}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {widgetRangeOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select> : null}
+                    <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
+                      <MinusIcon />
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           ) : null}
         </div>
         {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
       </CardHeader>
-      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", definition?.live && "pb-2", compactLive && "pb-1", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-8")}>
+      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-0", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-9")}>
         {salesSource === "combined" ? (
           <Alert className="mb-3">
             <CircleAlertIcon />

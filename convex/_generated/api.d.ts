@@ -65,6 +65,7 @@ import type * as lib_locations from "../lib/locations.js";
 import type * as lib_masterData from "../lib/masterData.js";
 import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
 import type * as lib_onlinePosFinancialApi from "../lib/onlinePosFinancialApi.js";
+import type * as lib_openStreetMap from "../lib/openStreetMap.js";
 import type * as lib_openingHours from "../lib/openingHours.js";
 import type * as lib_organizationTheme from "../lib/organizationTheme.js";
 import type * as lib_ownCheckRecords from "../lib/ownCheckRecords.js";
@@ -192,6 +193,7 @@ declare const fullApi: ApiFromModules<{
   "lib/masterData": typeof lib_masterData;
   "lib/onlinePosApi": typeof lib_onlinePosApi;
   "lib/onlinePosFinancialApi": typeof lib_onlinePosFinancialApi;
+  "lib/openStreetMap": typeof lib_openStreetMap;
   "lib/openingHours": typeof lib_openingHours;
   "lib/organizationTheme": typeof lib_organizationTheme;
   "lib/ownCheckRecords": typeof lib_ownCheckRecords;

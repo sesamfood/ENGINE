@@ -22,12 +22,21 @@ type ProductOption = {
 };
 
 const UNCATEGORIZED_GROUP_VALUE = "__uncategorized__";
+const NAME_FILTER_PREFIX = "__product_name_contains__:";
+
+function nameFilterOption(text: string) {
+  return {
+    value: `${NAME_FILTER_PREFIX}${text}`,
+    label: `Navn indeholder "${text}"`,
+  };
+}
 
 export function ProductCategoryCombobox({
   categories,
   products,
   values,
   onValuesChange,
+  nameFilter,
   topProductValues = [],
   disabled = false,
   ariaLabel,
@@ -36,6 +45,10 @@ export function ProductCategoryCombobox({
   products: readonly ProductOption[];
   values: string[];
   onValuesChange: (values: string[]) => void;
+  nameFilter?: {
+    values: string[];
+    onValuesChange: (values: string[]) => void;
+  };
   topProductValues?: readonly string[];
   disabled?: boolean;
   ariaLabel: string;
@@ -119,12 +132,47 @@ export function ProductCategoryCombobox({
     }
     return { options, groups };
   }, [categories, products]);
+  const nameOptions = nameFilter?.values.map(nameFilterOption) ?? [];
 
   return (
     <CreatableMultiCombobox
-      options={options}
-      values={values}
-      onValuesChange={onValuesChange}
+      options={nameFilter ? [...options, ...nameOptions] : options}
+      values={
+        nameFilter
+          ? [...values, ...nameOptions.map((option) => option.value)]
+          : values
+      }
+      onValuesChange={(nextValues) => {
+        if (!nameFilter) {
+          onValuesChange(nextValues);
+          return;
+        }
+        onValuesChange(
+          nextValues.filter((value) => !value.startsWith(NAME_FILTER_PREFIX)),
+        );
+        nameFilter.onValuesChange(
+          nextValues
+            .filter((value) => value.startsWith(NAME_FILTER_PREFIX))
+            .map((value) => value.slice(NAME_FILTER_PREFIX.length)),
+        );
+      }}
+      getInputOption={
+        nameFilter
+          ? (input) => {
+              if (!input) return null;
+              const existing = nameFilter.values.find(
+                (value) =>
+                  value.toLocaleLowerCase("da") === input.toLocaleLowerCase("da"),
+              );
+              return {
+                ...nameFilterOption(existing ?? input),
+                disabled:
+                  input.length > 200 ||
+                  (!existing && nameFilter.values.length >= 50),
+              };
+            }
+          : undefined
+      }
       placeholder="Søg efter produkt eller kategori"
       allowCreate={false}
       preserveSearchOnSelect

@@ -20,11 +20,14 @@ import { resolveTimeZone } from "./lib/timeZone";
 import { fetchForecastConditions } from "./lib/forecastProviders";
 import { readGooglePoint } from "./lib/googlePlaces";
 import { rateLimiter } from "./lib/rateLimits";
+import { setForecastProfile } from "./lib/forecastSettings";
 import {
   forecastConditionValidator,
   forecastSnapshotValidator,
   forecastOpeningDayValidator,
+  forecastRegionValidator,
   FORECAST_WEATHER_PROVIDER,
+  usesGoogleForecastLocation,
 } from "./lib/forecastValidators";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { orderDate, shiftOrderDate } from "../lib/ordering-forecast";
@@ -139,9 +142,11 @@ export const claim = internalMutation({
     const changedZone = timeZone !== forecast.timeZone;
     const changedProvider =
       forecast.weatherProvider !== FORECAST_WEATHER_PROVIDER;
+    const changedProfile = !usesGoogleForecastLocation(forecast.profile);
     if (
       !changedZone &&
       !changedProvider &&
+      !changedProfile &&
       forecast.snapshot?.modelVersion === FORECAST_MODEL_VERSION &&
       forecast.updatedAt &&
       now - forecast.updatedAt < 10 * 60_000
@@ -149,8 +154,9 @@ export const claim = internalMutation({
       return null;
     const changes = {
       runStartedAt: now,
-      ...(changedZone || changedProvider
+      ...(changedZone || changedProvider || changedProfile
         ? {
+            profile: { source: "google" },
             timeZone,
             weatherProvider: FORECAST_WEATHER_PROVIDER,
             revision: forecast.revision + 1,
@@ -440,10 +446,28 @@ export const googleForecastPlace = internalQuery({
   returns: v.union(v.object({ placeId: v.string(), organizationId: v.string() }), v.null()),
   handler: async (ctx, args) => {
     const forecast = await ctx.db.get("locationForecasts", args.forecastId);
-    if (!forecast || forecast.revision !== args.revision || !("source" in forecast.profile)) return null;
+    if (!forecast || forecast.revision !== args.revision) return null;
     const location = await ctx.db.get("locations", forecast.locationId);
     if (!location || location.organizationId !== forecast.organizationId || !location.googlePlaceId) return null;
     return { placeId: location.googlePlaceId, organizationId: location.organizationId };
+  },
+});
+
+export const cacheRegion = internalMutation({
+  args: {
+    forecastId: v.id("locationForecasts"),
+    revision: v.number(),
+    region: forecastRegionValidator,
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const forecast = await ctx.db.get("locationForecasts", args.forecastId);
+    if (!forecast || forecast.revision !== args.revision) return false;
+    const location = await ctx.db.get("locations", forecast.locationId);
+    if (!location || location.organizationId !== forecast.organizationId ||
+      location.googlePlaceId !== args.region.googlePlaceId) return false;
+    await setForecastProfile(ctx, forecast.organizationId, forecast.locationId, { source: "google" }, false, args.region);
+    return true;
   },
 });
 
@@ -479,20 +503,20 @@ export const refreshLocation = internalAction({
         warning: forecast.weatherWarning ?? "",
       };
       if (!reuseWeather) {
-        let profile = forecast.profile;
-        if ("source" in profile) {
-          if (!env.GOOGLE_PLACES_API_KEY?.trim()) throw new Error("Google Places is not configured");
-          const connection = await ctx.runQuery(internal.forecasts.googleForecastPlace, { forecastId: args.forecastId, revision: forecast.revision });
-          if (!connection) throw new Error("Forecast location changed");
-          const organizationLimit = await rateLimiter.limit(ctx, "googlePlacesReadOrganization", { key: connection.organizationId });
-          if (!organizationLimit.ok) throw new Error("Forecast location limit reached");
-          const dailyLimit = await rateLimiter.limit(ctx, "googlePlacesDaily", { key: "deployment" });
-          if (!dailyLimit.ok) throw new Error("Forecast location limit reached");
-          const point = await readGooglePoint(connection.placeId);
-          profile = { ...point, countryCode: profile.countryCode, ...(profile.subdivisionCode ? { subdivisionCode: profile.subdivisionCode } : {}) };
-        }
+        if (!env.GOOGLE_PLACES_API_KEY?.trim()) throw new Error("Google Places is not configured");
+        const connection = await ctx.runQuery(internal.forecasts.googleForecastPlace, { forecastId: args.forecastId, revision: forecast.revision });
+        if (!connection) throw new Error("Forecast location changed");
+        const organizationLimit = await rateLimiter.limit(ctx, "googlePlacesReadOrganization", { key: connection.organizationId });
+        if (!organizationLimit.ok) throw new Error("Forecast location limit reached");
+        const dailyLimit = await rateLimiter.limit(ctx, "googlePlacesDaily", { key: "deployment" });
+        if (!dailyLimit.ok) throw new Error("Forecast location limit reached");
+        const point = await readGooglePoint(connection.placeId);
+        const region = forecast.region;
+        const subdivisionCode = region?.googlePlaceId === connection.placeId &&
+          region.latitude === point.latitude && region.longitude === point.longitude &&
+          region.countryCode === point.countryCode ? region.subdivisionCode : null;
         environment = await fetchForecastConditions({
-          profile,
+          profile: { ...point, ...(subdivisionCode ? { subdivisionCode } : {}) },
           timeZone: forecast.timeZone,
           today,
           cached: forecast.conditions,

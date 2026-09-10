@@ -1,6 +1,6 @@
 "use client";
 
-import { Cell, Pie, PieChart, type PieLabelRenderProps } from "recharts";
+import { Cell, Pie, PieChart } from "recharts";
 import {
   ChartContainer,
   ChartLegend,
@@ -19,25 +19,23 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
   const values = (result.breakdown ?? result.series.map((series) => ({ key: series.key, label: series.label, value: series.total }))).slice(0, 8);
   const config = Object.fromEntries(values.map((item, index) => [item.key, { label: item.label, color: `var(--chart-${(index % 5) + 1})` }])) satisfies ChartConfig;
   const data = values.map((item) => ({ ...item, fill: `var(--color-${item.key})` }));
-  const innerRadius = compact ? "54%" : "48%";
-  const outerRadius = compact ? "88%" : "76%";
-  function renderLabel({ index, x, y, textAnchor }: PieLabelRenderProps) {
-    const label = values[index]?.label;
-    if (!label) return null;
-    return (
-      <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="middle" fill="var(--foreground)" className="fill-foreground" fontSize={compact ? 11 : 10}>
-        {label}
-      </text>
-    );
-  }
   return (
     <ChartContainer config={config} className="h-full min-h-0 w-full aspect-auto">
       <PieChart accessibilityLayer>
         <ChartTooltip content={<ChartTooltipContent nameKey="key" tooltipTitle={tooltipLabel} hideLabel={!tooltipLabel} />} />
-        <Pie data={data} dataKey="value" nameKey="key" innerRadius={innerRadius} outerRadius={outerRadius} paddingAngle={2} isAnimationActive={false} label={renderLabel} labelLine={false}>
+        <Pie data={data} dataKey="value" nameKey="key" innerRadius="54%" outerRadius="88%" paddingAngle={2} isAnimationActive={false}>
           {data.map((item) => <Cell key={item.key} fill={item.fill} />)}
         </Pie>
-        {!compact ? <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-1" />} /> : null}
+        {!compact ? (
+          <ChartLegend
+            content={
+              <ChartLegendContent
+                nameKey="key"
+                className="max-h-16 flex-wrap gap-x-3 gap-y-1 overflow-x-hidden overflow-y-auto pt-2 [&>div]:min-w-0 [&>div]:max-w-full [&>div]:wrap-anywhere"
+              />
+            }
+          />
+        ) : null}
       </PieChart>
     </ChartContainer>
   );

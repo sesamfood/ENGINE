@@ -33,8 +33,8 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
             <figure
               key={series.key}
               className={cn(
-                "flex min-w-0 shrink-0 flex-col items-center gap-3 text-center",
-                (compact || !single) && "gap-2",
+                "flex min-w-0 shrink-0 flex-col items-center gap-2 text-center",
+                (compact || !single) && "gap-1",
                 single && "my-auto",
               )}
             >
@@ -85,7 +85,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
                   </text>
                 </svg>
               </div>
-              <figcaption className={cn("max-w-full text-sm font-medium wrap-anywhere", compact && "text-xs")}>
+              <figcaption title={series.label} className="w-full shrink-0 truncate text-xs font-medium">
                 {series.label}
               </figcaption>
             </figure>

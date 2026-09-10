@@ -356,7 +356,7 @@ export const sizeLabels: Record<WidgetSize, string> = {
   "1x2": "Høj",
   "2x1": "Bred",
   "2x2": "Stor",
-  "4x2": "Fuld bredde",
+  "4x2": "Ekstra bred",
 };
 
 export const defaultWidgets: WidgetInstance[] = [

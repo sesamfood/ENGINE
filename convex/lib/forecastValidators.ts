@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 
 export const FORECAST_WEATHER_PROVIDER = "openWeather";
 
@@ -14,10 +14,23 @@ export const forecastConfigurationValidator = v.union(
   forecastProfileValidator,
   v.object({
     source: v.literal("google"),
-    countryCode: v.string(),
+    countryCode: v.optional(v.string()),
     subdivisionCode: v.optional(v.string()),
   }),
 );
+
+export function usesGoogleForecastLocation(profile: Infer<typeof forecastConfigurationValidator>) {
+  return "source" in profile && profile.countryCode === undefined && profile.subdivisionCode === undefined;
+}
+
+export const forecastRegionValidator = v.object({
+  googlePlaceId: v.string(),
+  latitude: v.number(),
+  longitude: v.number(),
+  countryCode: v.string(),
+  subdivisionCode: v.union(v.string(), v.null()),
+  updatedAt: v.number(),
+});
 
 export const forecastConditionValidator = v.object({
   date: v.string(),
@@ -57,6 +70,7 @@ export const locationForecastValidator = v.object({
   organizationId: v.string(),
   locationId: v.id("locations"),
   profile: forecastConfigurationValidator,
+  region: v.optional(forecastRegionValidator),
   timeZone: v.string(),
   revision: v.number(),
   conditions: v.array(forecastConditionValidator),

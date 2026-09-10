@@ -121,6 +121,8 @@ export type MetricSeries = {
 export type MetricResult = {
   unit: MetricUnit;
   series: MetricSeries[];
+  emptyMessage?: string;
+  partialMessage?: string;
   breakdown?: { key: string; label: string; value: number }[];
   target?: number;
   scaleMax?: number;

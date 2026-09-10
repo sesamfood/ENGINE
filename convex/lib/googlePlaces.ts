@@ -32,6 +32,11 @@ const placeSchema = z.object({
   types: z.array(z.string().max(100)).max(100).optional(),
   rating: z.number().min(1).max(5).optional(),
   location: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).optional(),
+  postalAddress: z.object({ regionCode: z.string().max(10).optional() }).optional(),
+  addressComponents: z.array(z.object({
+    shortText: z.string().max(500).optional(),
+    types: z.array(z.string().max(100)).max(20).default([]),
+  })).max(100).optional(),
   attributions: z.array(attributionSchema).max(20).optional(),
 });
 const searchSchema = z.object({
@@ -130,7 +135,16 @@ export async function readGoogleRating(placeId: string) {
 }
 
 export async function readGooglePoint(placeId: string) {
-  const place = await readPlace(placeId, "id,location,movedPlaceId");
+  const place = await readPlace(placeId, "id,location,postalAddress.regionCode,addressComponents,movedPlaceId");
   if (!place.location) throw new GooglePlacesError("notFound");
-  return place.location;
+  const components = place.addressComponents ?? [];
+  const countryCode = [
+    place.postalAddress?.regionCode,
+    ...components.filter((component) => component.types.includes("country")).map((component) => component.shortText),
+  ].map((value) => value?.trim().toUpperCase()).find((value) => value && /^[A-Z]{2}$/.test(value));
+  if (!countryCode) throw new GooglePlacesError("unavailable");
+  return {
+    ...place.location,
+    countryCode,
+  };
 }

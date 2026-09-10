@@ -38,7 +38,7 @@ export function BarVisualization({
           <CartesianGrid horizontal={false} />
           <XAxis type="number" hide={compact} domain={domain} tickFormatter={(value) => formatMetricValue(Number(value), result)} />
           <YAxis hide={compact} dataKey="label" type="category" width={110} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-          <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
           <Bar dataKey="value" fill="var(--color-value)" radius={4} />
         </BarChart>
       </ChartContainer>

@@ -4,7 +4,9 @@ import { action, env, internalMutation, internalQuery, type ActionCtx } from "./
 import { requireHumanPrincipal, requireLocationAccess, requireLocationManager, requireDashboardViewer } from "./lib/auth";
 import { setForecastProfile } from "./lib/forecastSettings";
 import { updateLocationWithAuth, throwHumanLocationMutationError } from "./lib/locationMutations";
-import { GooglePlacesError, googlePlaceIdSchema, googleSessionTokenSchema, readGoogleDetails, searchGooglePlaces, verifyGooglePlace } from "./lib/googlePlaces";
+import { GooglePlacesError, googlePlaceIdSchema, googleSessionTokenSchema, readGoogleDetails, readGooglePoint, searchGooglePlaces, verifyGooglePlace } from "./lib/googlePlaces";
+import { readOpenStreetMapRegion } from "./lib/openStreetMap";
+import { forecastRegionValidator } from "./lib/forecastValidators";
 import { rateLimiter } from "./lib/rateLimits";
 import { locationUpdateValidator } from "./locations";
 
@@ -13,8 +15,8 @@ const contextValidator = v.object({
   userIdentifier: v.string(),
   googlePlaceId: v.union(v.string(), v.null()),
   googlePlaceVerifiedAt: v.union(v.number(), v.null()),
-  countryCode: v.optional(v.string()),
-  bias: v.optional(v.object({ latitude: v.number(), longitude: v.number() })),
+  forecastEnabled: v.boolean(),
+  region: v.union(forecastRegionValidator, v.null()),
 });
 
 export const locationContext = internalQuery({
@@ -33,9 +35,8 @@ export const locationContext = internalQuery({
       userIdentifier: auth.userIdentifier,
       googlePlaceId: location.googlePlaceId ?? null,
       googlePlaceVerifiedAt: location.googlePlaceVerifiedAt ?? null,
-      ...(forecast ? { countryCode: forecast.profile.countryCode } : {}),
-      ...(forecast && !("source" in forecast.profile)
-        ? { bias: { latitude: forecast.profile.latitude, longitude: forecast.profile.longitude } } : {}),
+      forecastEnabled: forecast !== null,
+      region: forecast?.region ?? null,
     };
   },
 });
@@ -66,7 +67,7 @@ export const search = action({
     const context = await ctx.runQuery(internal.googlePlaces.locationContext, { locationId: args.locationId });
     await limitRequests(ctx, context, true);
     try {
-      const results = await searchGooglePlaces({ query, sessionToken: args.sessionToken, countryCode: countryCode || context.countryCode, bias: context.bias });
+      const results = await searchGooglePlaces({ query, sessionToken: args.sessionToken, countryCode });
       const current = await ctx.runQuery(internal.googlePlaces.locationContext, { locationId: args.locationId });
       if (current.organizationId !== context.organizationId) throw new ConvexError("Organisationen er ændret. Start søgningen igen.");
       return results;
@@ -102,6 +103,8 @@ const saveValidator = locationUpdateValidator.extend({
   expectedGooglePlaceId: v.union(v.string(), v.null()),
 });
 
+const regionLookupWarning = "Lokationen er gemt, men regionskoden kunne ikke opdateres. Gem lokationsoplysningerne igen for at prøve igen.";
+
 export const markVerified = internalMutation({
   args: { organizationId: v.string(), locations: v.array(v.object({ locationId: v.id("locations"), placeId: v.string() })) },
   returns: v.null(),
@@ -121,7 +124,12 @@ export const markVerified = internalMutation({
 });
 
 export const commitLocation = internalMutation({
-  args: saveValidator.extend({ organizationId: v.string(), verifiedAt: v.union(v.number(), v.null()) }).fields,
+  args: saveValidator.extend({
+    organizationId: v.string(),
+    verifiedAt: v.union(v.number(), v.null()),
+    region: v.optional(v.union(forecastRegionValidator, v.null())),
+    expectedRegionUpdatedAt: v.union(v.number(), v.null()),
+  }).fields,
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireLocationManager(ctx));
@@ -140,8 +148,9 @@ export const commitLocation = internalMutation({
         .withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", location._id))
         .unique();
       const profile = args.forecastProfile === undefined ? current?.profile ?? null : args.forecastProfile;
-      if (args.forecastProfile !== undefined || (changed && profile && "source" in profile)) {
-        await setForecastProfile(ctx, auth.organizationId, location._id, profile, changed && profile !== null && "source" in profile);
+      const region = changed || (current?.region?.updatedAt ?? null) === args.expectedRegionUpdatedAt ? args.region : undefined;
+      if (args.forecastProfile !== undefined || (changed && profile) || args.region !== undefined) {
+        await setForecastProfile(ctx, auth.organizationId, location._id, args.googlePlaceId ? profile : null, changed && profile !== null, region);
       }
     } catch (error) { throwHumanLocationMutationError(error); }
     return null;
@@ -150,18 +159,55 @@ export const commitLocation = internalMutation({
 
 export const saveLocation = action({
   args: saveValidator.fields,
-  returns: v.null(),
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(internal.googlePlaces.locationContext, { locationId: args.locationId });
     if (context.googlePlaceId !== args.expectedGooglePlaceId) throw new ConvexError("Google-lokationen er ændret af en anden bruger. Åbn oplysningerne igen.");
     if (args.googlePlaceId !== null && !googlePlaceIdSchema.safeParse(args.googlePlaceId).success) throw new ConvexError("Vælg en gyldig Google-lokation");
     let verifiedAt = context.googlePlaceVerifiedAt;
-    if (args.googlePlaceId && args.googlePlaceId !== context.googlePlaceId) {
+    let region: Infer<typeof forecastRegionValidator> | null | undefined;
+    let warning: string | null = null;
+    const forecastEnabled = args.forecastProfile === undefined ? context.forecastEnabled : args.forecastProfile !== null;
+    const refreshRegion = args.googlePlaceId && forecastEnabled &&
+      (context.region?.googlePlaceId !== args.googlePlaceId || Date.now() - context.region.updatedAt > 30 * 24 * 3_600_000);
+    if (args.googlePlaceId && refreshRegion) {
+      let point: Awaited<ReturnType<typeof readGooglePoint>> | undefined;
+      try {
+        await limitRequests(ctx, context, false);
+        point = await readGooglePoint(args.googlePlaceId);
+        verifiedAt = Date.now();
+      } catch (error) {
+        if (args.googlePlaceId !== context.googlePlaceId) throwGoogleError(error);
+        warning = regionLookupWarning;
+      }
+      if (point) {
+        const previous = context.region;
+        region = previous?.googlePlaceId === args.googlePlaceId && previous.latitude === point.latitude &&
+          previous.longitude === point.longitude && previous.countryCode === point.countryCode ? previous : null;
+        try {
+          const limit = await rateLimiter.limit(ctx, "openStreetMapRegion", { key: "deployment" });
+          if (!limit.ok) throw new Error("Region lookup busy");
+          const subdivisionCode = await readOpenStreetMapRegion(point, {
+            baseUrl: env.NOMINATIM_URL?.trim() || "https://nominatim.openstreetmap.org",
+            userAgent: `DashboardForecasts/1.0 (+${env.CONVEX_SITE_URL})`,
+          });
+          region = { ...point, googlePlaceId: args.googlePlaceId, subdivisionCode, updatedAt: Date.now() };
+        } catch {
+          warning = regionLookupWarning;
+        }
+      }
+    } else if (args.googlePlaceId && args.googlePlaceId !== context.googlePlaceId) {
       await limitRequests(ctx, context, false);
       try { await verifyGooglePlace(args.googlePlaceId); } catch (error) { throwGoogleError(error); }
       verifiedAt = Date.now();
     }
-    await ctx.runMutation(internal.googlePlaces.commitLocation, { ...args, organizationId: context.organizationId, verifiedAt });
-    return null;
+    await ctx.runMutation(internal.googlePlaces.commitLocation, {
+      ...args,
+      organizationId: context.organizationId,
+      verifiedAt,
+      expectedRegionUpdatedAt: context.region?.updatedAt ?? null,
+      ...(region !== undefined ? { region } : {}),
+    });
+    return warning;
   },
 });

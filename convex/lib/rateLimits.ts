@@ -7,6 +7,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   googlePlacesReadUser: { kind: "token bucket", period: MINUTE, rate: 30, capacity: 30 },
   googlePlacesReadOrganization: { kind: "token bucket", period: MINUTE, rate: 300, capacity: 60 },
   googlePlacesDaily: { kind: "fixed window", period: 24 * 60 * MINUTE, rate: 10_000 },
+  openStreetMapRegion: { kind: "token bucket", period: 1000, rate: 1, capacity: 1 },
   manualWorkfeedSync: {
     kind: "fixed window",
     period: 5 * MINUTE,

@@ -21,6 +21,7 @@ import {
   forecastConditionValidator,
   forecastOpeningDayValidator,
   FORECAST_WEATHER_PROVIDER,
+  usesGoogleForecastLocation,
 } from "./lib/forecastValidators";
 
 async function requirePlanner(ctx: QueryCtx, locationId: Id<"locations">) {
@@ -186,6 +187,8 @@ export const getContext = query({
       .unique();
     const usable =
       forecast?.timeZone === timeZone &&
+      location.googlePlaceId &&
+      usesGoogleForecastLocation(forecast.profile) &&
       forecast.weatherProvider === FORECAST_WEATHER_PROVIDER &&
       forecast.weatherUpdatedAt &&
       args.asOf - forecast.weatherUpdatedAt < 26 * 3_600_000;

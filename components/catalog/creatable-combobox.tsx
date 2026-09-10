@@ -254,6 +254,7 @@ export function CreatableMultiCombobox({
   options,
   values,
   onValuesChange,
+  getInputOption,
   placeholder,
   allowCreate = false,
   preserveSearchOnSelect = false,
@@ -267,6 +268,7 @@ export function CreatableMultiCombobox({
   options: ComboboxOption[];
   values: string[];
   onValuesChange: (values: string[]) => void;
+  getInputOption?: (input: string) => ComboboxOption | null;
   placeholder: string;
   allowCreate?: boolean;
   preserveSearchOnSelect?: boolean;
@@ -282,8 +284,10 @@ export function CreatableMultiCombobox({
   const [inputValue, setInputValue] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightedValue, setHighlightedValue] = useState<string>();
+  const inputOption = getInputOption?.(inputValue.trim()) ?? null;
 
   function labelFor(value: string) {
+    if (inputOption?.value === value) return inputOption.label;
     return optionLabel(options, value);
   }
 
@@ -416,6 +420,7 @@ export function CreatableMultiCombobox({
     ]),
   );
   const itemValues = [
+    ...(inputOption ? [inputOption.value] : []),
     ...visibleSuggestionOptions.map((option) =>
       suggestionSelectionValue(option.value),
     ),
@@ -537,7 +542,14 @@ export function CreatableMultiCombobox({
             );
           }
         }
-        if (!preserveSearchOnSelect) setInputValue("");
+        if (
+          !preserveSearchOnSelect ||
+          (inputOption &&
+            nextValues.includes(inputOption.value) !==
+              selectedValueSet.has(inputOption.value))
+        ) {
+          setInputValue("");
+        }
         setHighlightedValue(undefined);
       }}
       disabled={disabled}
@@ -589,6 +601,22 @@ export function CreatableMultiCombobox({
       <ComboboxContent anchor={anchor}>
         <ComboboxEmpty>Ingen resultater fundet.</ComboboxEmpty>
         <ComboboxList ref={listRef}>
+          {inputOption ? (
+            <>
+              <ComboboxGroup>
+                <ComboboxItem
+                  value={inputOption.value}
+                  disabled={inputOption.disabled}
+                  className="min-h-10"
+                >
+                  {inputOption.label}
+                </ComboboxItem>
+              </ComboboxGroup>
+              {visibleSuggestionOptions.length > 0 || optionGroups.length > 0 ? (
+                <ComboboxSeparator />
+              ) : null}
+            </>
+          ) : null}
           {visibleSuggestionOptions.length > 0 ? (
             <>
               <ComboboxGroup>

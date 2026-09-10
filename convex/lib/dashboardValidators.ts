@@ -191,6 +191,8 @@ export const metricResultValidator = v.object({
     v.literal("hours"),
   ),
   series: v.array(metricSeriesValidator),
+  emptyMessage: v.optional(v.string()),
+  partialMessage: v.optional(v.string()),
   breakdown: v.optional(
     v.array(
       v.object({ key: v.string(), label: v.string(), value: v.number() }),

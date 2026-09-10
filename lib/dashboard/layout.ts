@@ -1,6 +1,6 @@
 import type { WidgetInstance, WidgetSize } from "./types";
 
-export const dashboardColumns = 4;
+export const dashboardColumns = 8;
 
 export const widgetSizeSpans: Record<WidgetSize, { columns: number; rows: number }> = {
   "1x1": { columns: 1, rows: 1 },
