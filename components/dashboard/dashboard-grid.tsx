@@ -60,6 +60,9 @@ function metricBatchKey(
   if (widget.metric.kind === "custom") {
     return `custom:${widget.key}`;
   }
+  if (widget.metric.id === "predictedSalesRevenue") {
+    return `${widget.metric.id}:${range}`;
+  }
   return `${range}:${metricRegistry[widget.metric.id].sourceTables[0]}:${widget.options?.salesSource ?? "onlinePos"}`;
 }
 
