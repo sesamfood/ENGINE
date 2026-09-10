@@ -168,5 +168,3 @@ type MetricResult = {
   truncated?: boolean;
 };
 ```
-
-See `docs/dashboard-widgets.md` for visualization, sizing, sharing, and data-domain rules.
