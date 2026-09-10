@@ -2,7 +2,7 @@ import { ConvexError, type Infer } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { forecastConfigurationValidator } from "./forecastValidators";
+import { forecastConfigurationValidator, forecastRegionValidator, usesGoogleForecastLocation } from "./forecastValidators";
 import { resolveTimeZone } from "./timeZone";
 
 export async function invalidateLocationForecast(
@@ -34,6 +34,7 @@ export async function setForecastProfile(
   locationId: Id<"locations">,
   profile: Infer<typeof forecastConfigurationValidator> | null,
   reset = false,
+  region?: Infer<typeof forecastRegionValidator> | null,
 ) {
   const current = await ctx.db
     .query("locationForecasts")
@@ -45,57 +46,29 @@ export async function setForecastProfile(
     if (current) await ctx.db.delete("locationForecasts", current._id);
     return;
   }
-  const countryCode = profile.countryCode.trim().toUpperCase();
-  const subdivisionCode =
-    profile.subdivisionCode?.trim().toUpperCase() || undefined;
-  if (
-    !/^[A-Z]{2}$/.test(countryCode) ||
-    (subdivisionCode &&
-      (!/^[A-Z]{2}-[A-Z0-9]{1,3}$/.test(subdivisionCode) ||
-        !subdivisionCode.startsWith(`${countryCode}-`)))
-  ) {
-    throw new ConvexError("Angiv en landekode på to bogstaver og eventuelt en ISO-regionskode");
+  const location = await ctx.db.get("locations", locationId);
+  if (!location || location.organizationId !== organizationId || !location.googlePlaceId) {
+    throw new ConvexError("Vælg et Google-sted til prognosen");
   }
-  let normalized: Infer<typeof forecastConfigurationValidator>;
-  if ("source" in profile) {
-    const location = await ctx.db.get("locations", locationId);
-    if (!location || location.organizationId !== organizationId || !location.googlePlaceId) {
-      throw new ConvexError("Vælg en Google-lokation til prognosen");
-    }
-    normalized = { source: "google", countryCode, ...(subdivisionCode ? { subdivisionCode } : {}) };
-  } else {
-    const addressLabel = profile.addressLabel?.trim() || undefined;
-    if (addressLabel && addressLabel.length > 500) {
-      throw new ConvexError("Adressen må højst indeholde 500 tegn");
-    }
-    if (!Number.isFinite(profile.latitude) || Math.abs(profile.latitude) > 90 ||
-      !Number.isFinite(profile.longitude) || Math.abs(profile.longitude) > 180) {
-      throw new ConvexError("Angiv gyldige koordinater");
-    }
-    normalized = {
-      latitude: profile.latitude,
-      longitude: profile.longitude,
-      countryCode,
-      ...(subdivisionCode ? { subdivisionCode } : {}),
-      ...(addressLabel ? { addressLabel } : {}),
-    };
-  }
+  const normalized: Infer<typeof forecastConfigurationValidator> = { source: "google" };
+  const nextRegion = region === undefined ? current?.region : region ?? undefined;
+  const linkedRegion = nextRegion?.googlePlaceId === location.googlePlaceId ? nextRegion : undefined;
+  const changedRegion = current?.region?.googlePlaceId !== linkedRegion?.googlePlaceId ||
+    current?.region?.latitude !== linkedRegion?.latitude ||
+    current?.region?.longitude !== linkedRegion?.longitude ||
+    current?.region?.countryCode !== linkedRegion?.countryCode ||
+    current?.region?.subdivisionCode !== linkedRegion?.subdivisionCode;
   const timeZone = await resolveTimeZone(ctx, organizationId, locationId);
-  const samePoint = current && (
-    "source" in normalized
-      ? "source" in current.profile
-      : !("source" in current.profile) && current.profile.latitude === normalized.latitude &&
-        current.profile.longitude === normalized.longitude
-  );
-  if (!reset && current && samePoint && current.profile.countryCode === countryCode &&
-    current.profile.subdivisionCode === subdivisionCode && current.timeZone === timeZone) {
-    await ctx.db.patch("locationForecasts", current._id, { profile: normalized });
+  if (!reset && !changedRegion && current && usesGoogleForecastLocation(current.profile) &&
+    current.timeZone === timeZone) {
+    await ctx.db.patch("locationForecasts", current._id, { profile: normalized, region: linkedRegion });
     return;
   }
   const value = {
     organizationId,
     locationId,
     profile: normalized,
+    ...(linkedRegion ? { region: linkedRegion } : {}),
     timeZone,
     revision: (current?.revision ?? 0) + 1,
     conditions: [],

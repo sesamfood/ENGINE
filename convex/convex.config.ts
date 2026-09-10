@@ -9,6 +9,7 @@ const app = defineApp({
   env: {
     GOOGLE_PLACES_API_KEY: v.optional(v.string()),
     OPENWEATHER_API_KEY: v.optional(v.string()),
+    NOMINATIM_URL: v.optional(v.string()),
     WOLT_CLIENT_ID: v.optional(v.string()),
     WOLT_CLIENT_SECRET: v.optional(v.string()),
     WOLT_WEBHOOK_SECRET: v.optional(v.string()),

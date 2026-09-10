@@ -536,7 +536,14 @@ export async function fetchForecastConditions({
           )
           .map((row) => row.date),
       );
-      return { year, dates };
+      const unresolvedDates = new Set(
+        !profile.subdivisionCode
+          ? rows
+              .filter((row) => row.holidayTypes.includes("Public") && !row.nationalHoliday)
+              .map((row) => row.date)
+          : [],
+      );
+      return { year, dates, unresolvedDates };
     }),
   );
   for (const result of holidays) {
@@ -547,8 +554,14 @@ export async function fetchForecastConditions({
       continue;
     }
     for (const condition of conditions.values()) {
-      if (condition.date.startsWith(String(result.value.year)))
-        condition.holiday = result.value.dates.has(condition.date);
+      if (condition.date.startsWith(String(result.value.year))) {
+        condition.holiday = result.value.dates.has(condition.date)
+          ? true
+          : result.value.unresolvedDates.has(condition.date) ? null : false;
+        if (condition.holiday === null) {
+          warnings.add("Regionskoden er ikke tilgængelig. Regionale helligdage indgår ikke i prognosen.");
+        }
+      }
     }
   }
   return {

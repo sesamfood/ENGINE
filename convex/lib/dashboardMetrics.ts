@@ -3,6 +3,7 @@ export { dateKey, zonedStart } from "../../lib/date";
 import { ConvexError } from "convex/values";
 import { resolveTimeZone } from "./timeZone";
 import { getForecastOpeningHours } from "./forecastOpeningHours";
+import { usesGoogleForecastLocation } from "./forecastValidators";
 import { FORECAST_MODEL_VERSION } from "../../lib/sales-forecast";
 import {
   DEFAULT_CURRENCY,
@@ -2508,6 +2509,8 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
         ) ?? [];
       if (
         !forecast ||
+        !storedLocation.googlePlaceId ||
+        !usesGoogleForecastLocation(forecast.profile) ||
         forecast.timeZone !== timeZone ||
         !forecast.updatedAt ||
         now - forecast.updatedAt > 26 * 3_600_000 ||

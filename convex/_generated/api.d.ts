@@ -64,6 +64,8 @@ import type * as lib_locationProducts from "../lib/locationProducts.js";
 import type * as lib_locations from "../lib/locations.js";
 import type * as lib_masterData from "../lib/masterData.js";
 import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
+import type * as lib_onlinePosFinancialApi from "../lib/onlinePosFinancialApi.js";
+import type * as lib_openStreetMap from "../lib/openStreetMap.js";
 import type * as lib_openingHours from "../lib/openingHours.js";
 import type * as lib_organizationTheme from "../lib/organizationTheme.js";
 import type * as lib_ownCheckRecords from "../lib/ownCheckRecords.js";
@@ -93,8 +95,10 @@ import type * as locationProducts from "../locationProducts.js";
 import type * as locations from "../locations.js";
 import type * as masterData from "../masterData.js";
 import type * as migrations from "../migrations.js";
+import type * as monthlyKpi from "../monthlyKpi.js";
 import type * as navigation from "../navigation.js";
 import type * as onlinePos from "../onlinePos.js";
+import type * as onlinePosFinancial from "../onlinePosFinancial.js";
 import type * as onlinePosMenus from "../onlinePosMenus.js";
 import type * as onlinePosStock from "../onlinePosStock.js";
 import type * as onlinePosSync from "../onlinePosSync.js";
@@ -122,6 +126,7 @@ import type * as wolt from "../wolt.js";
 import type * as woltHttp from "../woltHttp.js";
 import type * as woltSync from "../woltSync.js";
 import type * as workfeed from "../workfeed.js";
+import type * as workfeedLabor from "../workfeedLabor.js";
 import type * as workfeedSync from "../workfeedSync.js";
 
 import type {
@@ -187,6 +192,8 @@ declare const fullApi: ApiFromModules<{
   "lib/locations": typeof lib_locations;
   "lib/masterData": typeof lib_masterData;
   "lib/onlinePosApi": typeof lib_onlinePosApi;
+  "lib/onlinePosFinancialApi": typeof lib_onlinePosFinancialApi;
+  "lib/openStreetMap": typeof lib_openStreetMap;
   "lib/openingHours": typeof lib_openingHours;
   "lib/organizationTheme": typeof lib_organizationTheme;
   "lib/ownCheckRecords": typeof lib_ownCheckRecords;
@@ -216,8 +223,10 @@ declare const fullApi: ApiFromModules<{
   locations: typeof locations;
   masterData: typeof masterData;
   migrations: typeof migrations;
+  monthlyKpi: typeof monthlyKpi;
   navigation: typeof navigation;
   onlinePos: typeof onlinePos;
+  onlinePosFinancial: typeof onlinePosFinancial;
   onlinePosMenus: typeof onlinePosMenus;
   onlinePosStock: typeof onlinePosStock;
   onlinePosSync: typeof onlinePosSync;
@@ -245,6 +254,7 @@ declare const fullApi: ApiFromModules<{
   woltHttp: typeof woltHttp;
   woltSync: typeof woltSync;
   workfeed: typeof workfeed;
+  workfeedLabor: typeof workfeedLabor;
   workfeedSync: typeof workfeedSync;
 }>;
 

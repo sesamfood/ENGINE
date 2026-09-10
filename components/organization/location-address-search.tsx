@@ -31,7 +31,6 @@ export function LocationAddressSearch({
   onPendingChange,
   disabled,
   configured,
-  countryCode,
 }: {
   locationId: Id<"locations">;
   value: string | null;
@@ -39,7 +38,6 @@ export function LocationAddressSearch({
   onPendingChange: (pending: boolean) => void;
   disabled: boolean;
   configured: boolean;
-  countryCode?: string;
 }) {
   const searchPlaces = useAction(api.googlePlaces.search);
   const getDetails = useAction(api.googlePlaces.details);
@@ -85,7 +83,6 @@ export function LocationAddressSearch({
         locationId,
         query: query.trim(),
         sessionToken: sessionToken.current,
-        ...(countryCode ? { countryCode } : {}),
       }).then((places) => {
         if (!cancelled && version === requestVersion.current) setResults(places);
       }).catch((error) => {
@@ -97,7 +94,7 @@ export function LocationAddressSearch({
       });
     }, 300);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [countryCode, disabledSearch, locationId, open, query, searchPlaces]);
+  }, [disabledSearch, locationId, open, query, searchPlaces]);
 
   useEffect(() => () => {
     requestVersion.current += 1;
@@ -141,7 +138,7 @@ export function LocationAddressSearch({
       <Field data-invalid={!!error} data-disabled={disabledSearch}>
         <div className="flex items-center gap-2">
           <FieldLabel htmlFor="location-address-search">Google-sted</FieldLabel>
-          <HelpTooltip label="Google-sted" content="Søg efter lokationens virksomhedsnavn og adresse. Det valgte sted bruges til Google-bedømmelsen på dashboardet. Din søgning deles med Google. Tilknytningen gemmes først, når du vælger Gem." />
+          <HelpTooltip label="Google-sted" content="Søg efter lokationens virksomhedsnavn og adresse. Det valgte sted bruges til Google-bedømmelsen på dashboardet og til vejr og helligdage i prognoser, hvis de er slået til. Din søgning deles med Google. Tilknytningen gemmes først, når du vælger Gem." />
         </div>
         <Combobox
           items={results.map((result) => result.placeId)}
@@ -203,7 +200,7 @@ export function LocationAddressSearch({
         </Combobox>
         {error && <FieldError id="location-address-error">{error}</FieldError>}
         {selecting && <FieldDescription role="status" className="flex items-center gap-2"><Spinner /> Henter sted…</FieldDescription>}
-        {!configured && <FieldDescription>Google Places er ikke konfigureret. Du kan stadig redigere lokationens øvrige oplysninger og bruge manuelle koordinater til prognoser.</FieldDescription>}
+        {!configured && <FieldDescription>Google Places er ikke konfigureret. Du kan stadig redigere lokationens øvrige oplysninger.</FieldDescription>}
       </Field>
       {value && (
         <Field>

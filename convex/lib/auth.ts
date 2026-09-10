@@ -692,6 +692,25 @@ export async function requireDashboardManager(ctx: AuthContext) {
   return auth;
 }
 
+export async function requireFinancialReportViewer(ctx: AuthContext) {
+  const auth = await requireDashboardViewer(ctx);
+  if (!hasPermission(auth.role, auth.permissions, "dashboard.viewFinancials")) {
+    throw new ConvexError("Du har ikke adgang til månedsrapporten");
+  }
+  if (auth.granularity !== "detail") {
+    throw new ConvexError("Månedsrapporten kræver adgang til detaljerede data");
+  }
+  return auth;
+}
+
+export async function requireBudgetManager(ctx: AuthContext) {
+  const auth = requireHumanPrincipal(await requireFinancialReportViewer(ctx));
+  if (!hasPermission(auth.role, auth.permissions, "dashboard.manageBudgets")) {
+    throw new ConvexError("Du har ikke adgang til at redigere budgetter");
+  }
+  return auth;
+}
+
 export async function requireDashboardSharer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   if (
