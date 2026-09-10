@@ -73,11 +73,11 @@ type Step = 1 | 2 | 3;
 const stepLabels = ["Måling", "Visualisering", "Størrelse"] as const;
 
 const sizePreviewClasses: Record<WidgetSize, string> = {
-  "1x1": "h-14 w-20",
-  "1x2": "h-28 w-20",
-  "2x1": "h-14 w-40",
-  "2x2": "h-28 w-40",
-  "4x2": "h-28 w-full",
+  "1x1": "size-14",
+  "1x2": "h-28 w-14",
+  "2x1": "h-14 w-28",
+  "2x2": "size-28",
+  "4x2": "aspect-2/1 w-56 max-w-full",
 };
 
 export function AddWidgetDialog({

@@ -46,7 +46,7 @@ const sizeClasses: Record<WidgetSize, string> = {
   "1x2": "col-span-1 row-span-2",
   "2x1": "col-span-1 row-span-1 sm:col-span-2",
   "2x2": "col-span-1 row-span-2 sm:col-span-2",
-  "4x2": "col-span-1 row-span-2 sm:col-span-2 xl:col-span-4",
+  "4x2": "col-span-1 row-span-2 sm:col-span-2 lg:col-span-4",
 };
 
 const METRIC_BATCH_SIZE = 3;
@@ -213,7 +213,7 @@ function GridSlots({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none col-start-1 row-start-1 hidden grid-cols-4 auto-rows-[12rem] gap-4 xl:grid"
+      className="dashboard-grid pointer-events-none col-start-1 row-start-1 hidden xl:grid"
     >
       {Array.from({ length: rows * dashboardColumns }, (_, index) => {
         const column = index % dashboardColumns;
@@ -239,7 +239,7 @@ function DropFootprint({
   position: { column: number; row: number };
 }) {
   return (
-    <div className="pointer-events-none relative z-10 col-start-1 row-start-1 hidden grid-cols-4 auto-rows-[12rem] gap-4 xl:grid">
+    <div className="dashboard-grid pointer-events-none relative z-10 col-start-1 row-start-1 hidden xl:grid">
       <div
         aria-hidden="true"
         className="dashboard-grid-drop-preview rounded-xl border-2 border-primary bg-primary/15 shadow-sm ring-2 ring-primary/25"
@@ -492,12 +492,12 @@ export function DashboardGrid({
   }
 
   const content = (
-    <div className="grid">
+    <div className="@container/dashboard grid" style={{ "--dashboard-columns": dashboardColumns } as CSSProperties}>
       {editable ? <GridSlots rows={rows} activeWidget={activeWidget} /> : null}
       <div
         data-dashboard-grid
         className={cn(
-          "col-start-1 row-start-1 grid auto-rows-[12rem] grid-cols-1 grid-flow-dense gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:grid-flow-row",
+          "dashboard-grid col-start-1 row-start-1 grid grid-flow-dense xl:grid-flow-row",
           activeKey && "cursor-grabbing",
         )}
       >

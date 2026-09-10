@@ -55,7 +55,31 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+.dashboard-grid {
+  --dashboard-visible-columns: 1;
+  grid-template-columns: repeat(var(--dashboard-visible-columns), minmax(0, 1fr));
+  grid-auto-rows: 12rem;
+  gap: 1rem;
+}
+
+@media (min-width: 40rem) {
+  .dashboard-grid {
+    --dashboard-visible-columns: 2;
+    grid-auto-rows: calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns));
+  }
+}
+
+@media (min-width: 64rem) {
+  .dashboard-grid {
+    --dashboard-visible-columns: 4;
+  }
+}
+
 @media (min-width: 80rem) {
+  .dashboard-grid {
+    --dashboard-visible-columns: var(--dashboard-columns);
+  }
+
   .dashboard-grid-item {
     grid-column: var(--dashboard-column-start) / span var(--dashboard-column-span);
     grid-row: var(--dashboard-row-start) / span var(--dashboard-row-span);
