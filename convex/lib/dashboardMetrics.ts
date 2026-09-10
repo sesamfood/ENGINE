@@ -2464,8 +2464,13 @@ function withMetricMetadata(
 }
 
 const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
-  if (params.scopeTruncated)
-    throw new ConvexError("Vælg færre lokationer for at se en samlet prognose");
+  if (params.scopeTruncated) {
+    return {
+      unit: "currency",
+      series: [],
+      emptyMessage: "Vælg færre lokationer for at se en samlet prognose",
+    };
+  }
   const now = params.now;
   const tomorrow = addDays(dateKey(now, params.timeZone), 1);
   const through = addDays(tomorrow, 7);
@@ -2510,13 +2515,19 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
         forecast.snapshot?.modelVersion !== FORECAST_MODEL_VERSION ||
         forecast.snapshot.openingHoursKey !== opening.key
       ) {
-        throw new ConvexError(
-          "Prognosen er ikke klar for alle valgte lokationer. Aktivér vejr og helligdage i lokationens oplysninger, og afvent opdateret salgshistorik.",
-        );
+        return null;
       }
       return { forecast, points };
     }),
   );
+  if (!forecasts.length || !forecasts.every((forecast) => forecast !== null)) {
+    return {
+      unit: "currency",
+      series: [],
+      emptyMessage:
+        "Prognosen er ikke klar endnu. Tjek prognoseopsætningen i lokationens oplysninger, eller afvent opdaterede data for alle valgte lokationer.",
+    };
+  }
   const result = seriesResult(
     "currency",
     forecasts.flatMap(({ forecast, points }) =>
