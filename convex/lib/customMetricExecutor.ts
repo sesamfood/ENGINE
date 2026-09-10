@@ -122,10 +122,18 @@ function matchesFilters(
 
 function matchesDimensionFilter(
   key: string,
+  label: string,
   filter: CustomMetricDimensionFilter | undefined,
 ) {
   if (!filter) return true;
-  const included = filter.values.includes(key);
+  const name = label.toLocaleLowerCase("da");
+  const included =
+    filter.values.includes(key) ||
+    Boolean(
+      filter.namePatterns?.some((text) =>
+        name.includes(text.toLocaleLowerCase("da")),
+      ),
+    );
   return filter.op === "in" ? included : !included;
 }
 
@@ -1275,7 +1283,7 @@ async function singleResult(
     loaded = await loadRows(ctx, query, dimensionId, params);
   }
   const rows = loaded.rows.filter((row) =>
-    matchesDimensionFilter(row.dimensionKey, dimensionFilter),
+    matchesDimensionFilter(row.dimensionKey, row.dimensionLabel, dimensionFilter),
   );
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
@@ -1740,9 +1748,13 @@ export function validateCustomMetricSpec(
     }
   }
   if (spec.dimensionFilter) {
+    const patterns = spec.dimensionFilter.namePatterns ?? [];
     if (
       spec.dimension !== "product" ||
-      spec.dimensionFilter.values.length === 0 ||
+      (spec.dimensionFilter.values.length === 0 && patterns.length === 0) ||
+      patterns.length > 50 ||
+      new Set(patterns).size !== patterns.length ||
+      patterns.some((pattern) => !pattern.trim() || pattern.length > 200) ||
       spec.dimensionFilter.values.length > MAX_DIMENSION_FILTER_VALUES ||
       new Set(spec.dimensionFilter.values).size !==
         spec.dimensionFilter.values.length ||
