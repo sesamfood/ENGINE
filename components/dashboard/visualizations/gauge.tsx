@@ -72,7 +72,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
                   ) : null}
                   <text
                     x={50}
-                    y={89}
+                    y={67}
                     textAnchor="middle"
                     fill="var(--foreground)"
                     fontSize={24}
@@ -80,7 +80,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
                   >
                     {formattedValue}
                   </text>
-                  <text x={50} y={107} textAnchor="middle" fill="var(--muted-foreground)" fontSize={15}>
+                  <text x={50} y={85} textAnchor="middle" fill="var(--muted-foreground)" fontSize={15}>
                     / {formattedMax}
                   </text>
                 </svg>

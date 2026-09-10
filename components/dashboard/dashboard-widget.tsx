@@ -13,7 +13,6 @@ export function DashboardWidget({
   widget,
   result,
   live,
-  onRefresh,
   error,
   metricLabel,
   tooltipLabel,
@@ -32,7 +31,6 @@ export function DashboardWidget({
   widget: WidgetInstance;
   result?: MetricResult;
   live?: LiveMetricState;
-  onRefresh?: () => void;
   error?: string;
   metricLabel?: string;
   tooltipLabel?: string;
@@ -56,7 +54,6 @@ export function DashboardWidget({
       widget={widget}
       result={live?.kind === "ready" ? live.data.result : result}
       live={live}
-      onRefresh={onRefresh}
       metricLabel={metricLabel}
       range={range}
       editable={editable}

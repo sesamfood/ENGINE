@@ -63,12 +63,12 @@ export function LiveMetricContent({ widget, state, compact = false }: {
   );
 }
 
-export function MetricSourceAttribution({ widget, data }: { widget: WidgetInstance; data?: LiveMetricResult }) {
+export function MetricSourceAttribution({ widget, data, showSource = true }: { widget: WidgetInstance; data?: LiveMetricResult; showSource?: boolean }) {
   const source = widget.metric.kind === "builtin" ? metricRegistry[widget.metric.id].live : undefined;
-  if (!source) return null;
+  if (!source || (!showSource && !data?.attributions.length)) return null;
   return (
     <div translate="no" className="flex flex-wrap items-baseline gap-x-2 gap-y-1" data-dashboard-no-drag onPointerDown={(event) => event.stopPropagation()}>
-      <span className="text-xs font-normal whitespace-nowrap text-foreground">{source.sourceLabel}</span>
+      {showSource ? <span className="text-xs font-normal whitespace-nowrap text-foreground">{source.sourceLabel}</span> : null}
       {data?.attributions.map((attribution) => attribution.providerUri ? (
         <a key={`${attribution.provider}:${attribution.providerUri}`} href={attribution.providerUri} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground underline underline-offset-4">{attribution.provider}</a>
       ) : <span key={attribution.provider} className="text-xs text-muted-foreground">{attribution.provider}</span>)}

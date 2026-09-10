@@ -9,7 +9,6 @@ import {
   CircleCheckIcon,
   MinusIcon,
   PencilIcon,
-  RefreshCwIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
-  CardFooter,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -167,7 +165,6 @@ export function WidgetCard({
   widget,
   result,
   live,
-  onRefresh,
   metricLabel: customMetricLabel,
   range,
   editable,
@@ -185,7 +182,6 @@ export function WidgetCard({
   widget: WidgetInstance;
   result?: MetricResult;
   live?: LiveMetricState;
-  onRefresh?: () => void;
   metricLabel?: string;
   range?: DashboardRange;
   editable: boolean;
@@ -204,6 +200,9 @@ export function WidgetCard({
     ? metricRegistry[widget.metric.id]
     : undefined;
   const metricLabel = customMetricLabel ?? definition?.label ?? "Tilpasset måling";
+  const sourceSuffix = definition?.live ? ` (${definition.live.sourceLabel})` : "";
+  const hasSourceSuffix = Boolean(sourceSuffix) && metricLabel.endsWith(sourceSuffix);
+  const hasAttributions = live?.kind === "ready" && live.data.attributions.length > 0;
   const compactLive = Boolean(definition?.live) && widgetSizeSpans[widget.size].rows === 1;
   const availableVisualizations = definition?.visualizations ?? visualizations ?? [];
   const salesSource = definition && supportsSalesSource(definition.id)
@@ -309,7 +308,12 @@ export function WidgetCard({
       <CardHeader className={cn("gap-0 pb-1", compactLive && "pb-0")}>
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <CardTitle className="min-w-0 flex-1 truncate text-base">{metricLabel}</CardTitle>
+            <CardTitle className={cn("min-w-0 flex-1 text-base", hasSourceSuffix ? "flex flex-wrap items-baseline gap-x-1" : "truncate")}>
+              {hasSourceSuffix ? <>
+                <span>{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
+                <span translate="no" className="text-sm font-normal whitespace-nowrap tracking-normal">{sourceSuffix.trimStart()}</span>
+              </> : metricLabel}
+            </CardTitle>
             {change !== null || result?.truncated || hasFreshness ? (
               <CardDescription className="flex min-w-0 max-w-full shrink-0 items-center gap-1 overflow-hidden">
                 {change !== null ? (
@@ -336,11 +340,6 @@ export function WidgetCard({
               </CardDescription>
             ) : null}
           </div>
-          {definition?.live && onRefresh ? (
-            <Button type="button" variant="ghost" size="icon-lg" className="shrink-0" data-dashboard-no-drag aria-label={`Opdatér ${metricLabel}`} disabled={live?.kind === "loading"} onPointerDown={(event) => event.stopPropagation()} onClick={onRefresh}>
-              <RefreshCwIcon className={cn(live?.kind === "loading" && "animate-spin motion-reduce:animate-none")} />
-            </Button>
-          ) : null}
           {editable ? (
             <div data-dashboard-no-drag className="flex items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>
               {availableVisualizations.length ? (
@@ -478,7 +477,7 @@ export function WidgetCard({
         </div>
         {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
       </CardHeader>
-      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", definition?.live && "pb-2", compactLive && "pb-1", editable && !definition?.live && "pb-8")}>
+      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-4", definition?.live && "pb-2", compactLive && "pb-1", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-8")}>
         {salesSource === "combined" ? (
           <Alert className="mb-3">
             <CircleAlertIcon />
@@ -488,18 +487,11 @@ export function WidgetCard({
             </AlertDescription>
           </Alert>
         ) : null}
-        {children}
+        {hasAttributions ? <>
+          <div className="min-h-0 flex-1">{children}</div>
+          <MetricSourceAttribution widget={widget} data={live.data} showSource={false} />
+        </> : children}
       </CardContent>
-      {definition?.live ? (
-        <CardFooter className={cn("flex flex-wrap items-center justify-between gap-2 pt-0", compactLive && "gap-y-0 py-1", editable && "pr-11")}>
-          <MetricSourceAttribution widget={widget} data={live?.kind === "ready" ? live.data : undefined} />
-          {live?.kind === "ready" ? (
-            <time dateTime={new Date(live.data.retrievedAt).toISOString()} title={`Hentet ${new Intl.DateTimeFormat("da-DK", { dateStyle: "long", timeStyle: "short" }).format(live.data.retrievedAt)}`} className="text-xs whitespace-nowrap text-muted-foreground">
-              {compactLive ? "" : "Hentet "}{new Intl.DateTimeFormat("da-DK", compactLive ? { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" } : { dateStyle: "short", timeStyle: "short" }).format(live.data.retrievedAt)}
-            </time>
-          ) : null}
-        </CardFooter>
-      ) : null}
       {editable ? (
         <span
           data-dashboard-no-drag

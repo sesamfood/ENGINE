@@ -47,7 +47,7 @@ export type MetricDefinition = {
 const definitions = {
   googleRating: {
     id: "googleRating",
-    label: "Gæstescore",
+    label: "Gæstescore (Google Maps)",
     category: "Gæster",
     description: "Aktuel Google-bedømmelse fra 1 til 5 for hver lokation.",
     formula: "Googles aktuelle bedømmelse vises pr. lokation. Perioden påvirker ikke scoren. Der beregnes ingen samlet score eller ændring over tid.",

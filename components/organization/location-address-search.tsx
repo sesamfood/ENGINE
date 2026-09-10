@@ -53,6 +53,7 @@ export function LocationAddressSearch({
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const sessionToken = useRef<string | null>(null);
   const requestVersion = useRef(0);
+  const selectionVersion = useRef(0);
   const disabledSearch = disabled || !configured;
   const selectedDetails = selected?.placeId === value ? selected : null;
 
@@ -98,11 +99,15 @@ export function LocationAddressSearch({
     return () => { cancelled = true; clearTimeout(timer); };
   }, [countryCode, disabledSearch, locationId, open, query, searchPlaces]);
 
-  useEffect(() => () => { requestVersion.current += 1; }, []);
+  useEffect(() => () => {
+    requestVersion.current += 1;
+    selectionVersion.current += 1;
+  }, []);
 
   async function selectPlace(placeId: string) {
     if (disabledSearch || selecting) return;
-    const version = ++requestVersion.current;
+    requestVersion.current += 1;
+    const version = ++selectionVersion.current;
     const token = sessionToken.current;
     sessionToken.current = null;
     setOpen(false);
@@ -113,19 +118,21 @@ export function LocationAddressSearch({
     onPendingChange(true);
     try {
       const place = await getDetails({ locationId, placeId, ...(token ? { sessionToken: token } : {}) });
-      if (version !== requestVersion.current) return;
+      if (version !== selectionVersion.current) return;
       setSelected(place);
       setDetailsError(null);
       setQuery("");
       setResults([]);
       onChange(place.placeId);
     } catch (error) {
-      if (version === requestVersion.current) {
+      if (version === selectionVersion.current) {
         setError(getUserErrorMessage(error, "Stedet kunne ikke vælges. Prøv igen."));
       }
     } finally {
-      setSelecting(false);
-      onPendingChange(false);
+      if (version === selectionVersion.current) {
+        setSelecting(false);
+        onPendingChange(false);
+      }
     }
   }
 
@@ -145,7 +152,7 @@ export function LocationAddressSearch({
           disabled={disabledSearch || selecting}
           itemToStringLabel={(placeId) => results.find((result) => result.placeId === placeId)?.mainText ?? ""}
           onInputValueChange={(nextQuery, eventDetails) => {
-            if (eventDetails.reason !== "input-change" && eventDetails.reason !== "input-clear" && eventDetails.reason !== "clear-press") return;
+            if (eventDetails.reason !== "input-change" && eventDetails.reason !== "clear-press") return;
             requestVersion.current += 1;
             setQuery(nextQuery);
             setResults([]);

@@ -105,7 +105,7 @@ async function readLiveMetric(
 
 export function useLiveMetrics(widgets: WidgetInstance[], scope: DashboardScope, enabled = true) {
   const convex = useConvex();
-  const [refreshes, setRefreshes] = useState<Partial<Record<MetricId, number>>>({});
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const groups = useMemo(() => {
     const byMetric = new Map<MetricId, LiveGroup>();
     if (!enabled) return [];
@@ -120,6 +120,11 @@ export function useLiveMetrics(widgets: WidgetInstance[], scope: DashboardScope,
     }
     return [...byMetric.values()];
   }, [enabled, widgets]);
+  useEffect(() => {
+    if (!groups.length) return;
+    const timer = window.setInterval(() => setRefreshVersion((version) => version + 1), 24 * 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [groups.length]);
   const queries = useMemo(() => Object.fromEntries(groups.map((group): [string, RequestForQueries[string]] => [
     group.metricId,
     { query: api.dashboardLive.getContext, args: { metricId: group.metricId, scope } },
@@ -128,7 +133,7 @@ export function useLiveMetrics(widgets: WidgetInstance[], scope: DashboardScope,
   const [loaded, setLoaded] = useState<Record<string, LoadedMetric>>({});
   const requests = groups.map((group) => {
     const context = contexts[group.metricId];
-    const identityKey = JSON.stringify([group.metricId, context && !(context instanceof Error) ? [context.organizationId, context.userIdentifier] : null, refreshes[group.metricId] ?? 0]);
+    const identityKey = JSON.stringify([group.metricId, context && !(context instanceof Error) ? [context.organizationId, context.userIdentifier] : null, refreshVersion]);
     return { group, context, identityKey, key: JSON.stringify([group, context instanceof Error ? context.message : context, identityKey]) };
   });
   const requestKey = JSON.stringify(requests.map(({ key }) => key));
@@ -187,11 +192,5 @@ export function useLiveMetrics(widgets: WidgetInstance[], scope: DashboardScope,
       },
     });
   }
-  function refresh(widgetKey: string) {
-    const widget = widgets.find((item) => item.key === widgetKey);
-    if (widget?.metric.kind !== "builtin") return;
-    const metricId = widget.metric.id;
-    setRefreshes((current) => ({ ...current, [metricId]: (current[metricId] ?? 0) + 1 }));
-  }
-  return { byWidget, refresh };
+  return { byWidget };
 }

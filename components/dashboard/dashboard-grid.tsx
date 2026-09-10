@@ -254,7 +254,6 @@ function DraggableWidget({
   sourceSize,
   result,
   live,
-  onRefresh,
   metricLabel,
   tooltipLabel,
   range,
@@ -269,7 +268,6 @@ function DraggableWidget({
   sourceSize: WidgetSize;
   result?: MetricResult | Error;
   live?: LiveMetricState;
-  onRefresh?: () => void;
   metricLabel?: string;
   tooltipLabel?: string;
   range: DashboardRange;
@@ -309,7 +307,6 @@ function DraggableWidget({
         widget={widget}
         result={result instanceof Error ? undefined : result}
         live={live}
-        onRefresh={onRefresh}
         error={result instanceof Error ? getUserErrorMessage(result, "Målingen kunne ikke indlæses. Prøv en kortere periode.") : undefined}
         metricLabel={metricLabel}
         tooltipLabel={tooltipLabel}
@@ -520,7 +517,6 @@ export function DashboardGrid({
               sourceSize={source.size}
               result={metricResults.get(widget.key)}
               live={liveMetrics.byWidget.get(widget.key)}
-              onRefresh={() => liveMetrics.refresh(widget.key)}
               metricLabel={widget.metric.kind === "custom" ? customMetricLabels.get(String(widget.metric.id)) ?? "Tilpasset måling" : metricRegistry[widget.metric.id].label}
               tooltipLabel={comparisonTooltipLabel(scope, metricResults.get(widget.key))}
               range={range}
