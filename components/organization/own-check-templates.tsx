@@ -195,7 +195,6 @@ function FieldEditor({ draft, setDraft, disabled }: { draft: Draft; setDraft: Re
       <FieldDescription>Systemet opretter en fast nøgle til hvert felt. Nøglen gør det muligt at sammenligne registreringer over tid.</FieldDescription>
       {draft.controlType === "temperature" ? (
         <Field
-          orientation="horizontal"
           data-disabled={disabled}
           className="min-h-11"
         >
@@ -210,17 +209,19 @@ function FieldEditor({ draft, setDraft, disabled }: { draft: Draft; setDraft: Re
               />
             </div>
           </FieldContent>
-          <Switch
-            id="own-template-product-temperatures"
-            checked={draft.productTemperaturesEnabled}
-            onCheckedChange={(checked) =>
-              setDraft((current) => ({
-                ...current,
-                productTemperaturesEnabled: checked,
-              }))
-            }
-            disabled={disabled}
-          />
+          <div className="flex">
+            <Switch
+              id="own-template-product-temperatures"
+              checked={draft.productTemperaturesEnabled}
+              onCheckedChange={(checked) =>
+                setDraft((current) => ({
+                  ...current,
+                  productTemperaturesEnabled: checked,
+                }))
+              }
+              disabled={disabled}
+            />
+          </div>
         </Field>
       ) : null}
       <div className="flex flex-col gap-3">
