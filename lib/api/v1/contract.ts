@@ -437,12 +437,7 @@ export type ApiOperation<
   responseSchema: TResponse;
 };
 
-export function defineOperation<
-  TParams extends z.ZodType,
-  TQuery extends z.ZodType,
-  TBody extends z.ZodType,
-  TResponse extends z.ZodType,
->(operation: ApiOperation<TParams, TQuery, TBody, TResponse>) {
+export function defineOperation<const T extends ApiOperation>(operation: T) {
   return operation;
 }
 
@@ -1372,8 +1367,8 @@ export type OperationInput<T extends ApiOperation> = {
   params: z.output<T["paramsSchema"]>;
   query: z.output<T["querySchema"]>;
   body: z.output<T["bodySchema"]>;
-  idempotencyKey: string | null;
-  ifMatch: string | null;
+  idempotencyKey: T["idempotencyRequired"] extends true ? string : string | null;
+  ifMatch: T["ifMatchRequired"] extends true ? string : string | null;
   requestHash: string;
 };
 

@@ -1,20 +1,17 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
-import { createPortal } from "react-dom";
+import { selectedLocationId } from "@/lib/location-preference";
+
+import { AppPageHeader } from "@/components/app-page-header";
+
 import { useLocationAccess } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Field, FieldLabel } from "@/components/ui/field";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { setCountLocation } from "@/lib/count-prefs";
-import { setWasteLocation, useWasteLocation } from "@/lib/waste-prefs";
+import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
+import { usePathname, useRouter } from "next/navigation";
+import { createContext, useContext, useEffect } from "react";
 
 type GoodsReceiptContextValue = {
   locationId: Id<"locations"> | null;
@@ -79,27 +76,21 @@ export function GoodsReceiptHeader({
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
-  const [target, setTarget] = useState<HTMLElement | null>(null);
   const storedLocation = locations.find(
     (location) => location.id === storedLocationId,
   );
-  const locationId = isLocked
-    ? lockedId
-    : (storedLocation?.id ?? locations[0]?.id ?? null);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setTarget(document.getElementById("goods-receipts-shell-header"));
-    });
-    return () => window.clearTimeout(timer);
-  }, []);
+  const locationId = selectedLocationId({
+    locations,
+    storedId: storedLocationId,
+    lockedId,
+    isLocked,
+  });
 
   useEffect(() => {
     if (!organizationId || isLocked || !locations.length) return;
     if (!storedLocation) {
       const fallback = locations[0]?.id ?? null;
-      setWasteLocation(organizationId, fallback);
-      setCountLocation(organizationId, fallback);
+      setRegistrationLocation(organizationId, fallback);
     }
   }, [isLocked, locations, organizationId, storedLocation]);
 
@@ -107,8 +98,7 @@ export function GoodsReceiptHeader({
     if (!organizationId) return;
     const location = locations.find((item) => item.id === value);
     if (!location) return;
-    setWasteLocation(organizationId, location.id);
-    setCountLocation(organizationId, location.id);
+    setRegistrationLocation(organizationId, location.id);
     if (pathname !== "/goods-receipts") {
       router.push("/goods-receipts", { scroll: false });
     }
@@ -124,21 +114,9 @@ export function GoodsReceiptHeader({
 
   return (
     <GoodsReceiptContext.Provider value={{ locationId }}>
-      <header className="md:hidden">
-        <HeaderContent
-          controlId="goods-receipt-location-mobile"
-          {...headerProps}
-        />
-      </header>
-      {target
-        ? createPortal(
-            <HeaderContent
-              controlId="goods-receipt-location"
-              {...headerProps}
-            />,
-            target,
-          )
-        : null}
+      <AppPageHeader>
+        <HeaderContent controlId="goods-receipt-location" {...headerProps} />
+      </AppPageHeader>
       {children}
     </GoodsReceiptContext.Provider>
   );

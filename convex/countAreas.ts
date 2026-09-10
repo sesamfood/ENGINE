@@ -1,3 +1,4 @@
+import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -41,18 +42,6 @@ function normalizeName(value: string) {
     );
   }
   return { name, normalizedName: name.toLocaleLowerCase("da") };
-}
-
-async function requireLocation(
-  ctx: CountAreaContext,
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const location = await ctx.db.get("locations", locationId);
-  if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Lokationen blev ikke fundet");
-  }
-  return location;
 }
 
 async function getCurrentOpenCount(

@@ -1,3 +1,4 @@
+import { organizationRoleCatalog } from "./lib/roles";
 import { ConvexError, v } from "convex/values";
 import {
   dataGranularities,
@@ -186,23 +187,7 @@ async function assertManagementRoleRemains(
   override?:
     { role: string; permissions: readonly string[] } | { remove: string },
 ) {
-  const [roles, permissionRows] = await Promise.all([
-    ctx.db
-      .query("roles")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .collect(),
-    ctx.db
-      .query("rolePermissions")
-      .withIndex("by_organizationId_and_role", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .collect(),
-  ]);
-  const configured = new Map(
-    permissionRows.map((row) => [row.role, row.permissions] as const),
-  );
+  const { roles, permissionRows, configured } = await organizationRoleCatalog(ctx, organizationId);
   const roleKeys = new Set<string>([
     ...systemRoleKeys,
     ...roles.map((role) => role.key),
@@ -366,41 +351,8 @@ export const listRolePermissions = query({
   ),
   handler: async (ctx) => {
     const auth = await requirePermission(ctx, "roles.manage");
-    const [roles, permissionRows] = await Promise.all([
-      ctx.db
-        .query("roles")
-        .withIndex("by_organizationId_and_key", (q) =>
-          q.eq("organizationId", auth.organizationId),
-        )
-        .collect(),
-      ctx.db
-        .query("rolePermissions")
-        .withIndex("by_organizationId_and_role", (q) =>
-          q.eq("organizationId", auth.organizationId),
-        )
-        .collect(),
-    ]);
-    const byKey = new Map(roles.map((role) => [role.key, role]));
-    const byRole = new Map(
-      permissionRows.map((row) => [row.role, row.permissions]),
-    );
-    const systemRoles = systemRoleKeys.map((role) => ({
-      role,
-      name: byKey.get(role)?.name ?? systemRoleNames[role],
-      isSystem: true,
-      granularity: byKey.get(role)?.granularity ?? "detail",
-      permissions: [...permissionsForRole(role, byRole.get(role))],
-    }));
-    const customRoles = roles
-      .filter((role) => !systemRoleKeys.includes(role.key as never))
-      .map((role) => ({
-        role: role.key,
-        name: role.name,
-        isSystem: false,
-        granularity: role.granularity ?? "detail",
-        permissions: [...permissionsForRole(role.key, byRole.get(role.key))],
-      }));
-    return [...systemRoles, ...customRoles];
+    const { catalog } = await organizationRoleCatalog(ctx, auth.organizationId);
+    return catalog.map(({ key, ...role }) => ({ role: key, ...role }));
   },
 });
 
@@ -409,22 +361,8 @@ export const listRoles = query({
   returns: v.array(v.object({ key: v.string(), name: v.string() })),
   handler: async (ctx) => {
     const auth = await requireMemberManager(ctx);
-    const roles = await ctx.db
-      .query("roles")
-      .withIndex("by_organizationId_and_key", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .collect();
-    const byKey = new Map(roles.map((role) => [role.key, role.name]));
-    return [
-      ...systemRoleKeys.map((key) => ({
-        key,
-        name: byKey.get(key) ?? systemRoleNames[key],
-      })),
-      ...roles
-        .filter((role) => !systemRoleKeys.includes(role.key as never))
-        .map((role) => ({ key: role.key, name: role.name })),
-    ];
+    const { catalog } = await organizationRoleCatalog(ctx, auth.organizationId);
+    return catalog.map(({ key, name }) => ({ key, name }));
   },
 });
 

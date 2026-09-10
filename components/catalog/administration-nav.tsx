@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect } from "react";
+import { AppPageHeader } from "@/components/app-page-header";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermission } from "@/components/app-shell";
 
@@ -23,7 +23,11 @@ const catalogSections: CatalogSection[] = [
 
 const userSections = [
   { value: "users", label: "Brugere", permission: "members.manage" },
-  { value: "users/roles", label: "Roller og adgang", permission: "roles.manage" },
+  {
+    value: "users/roles",
+    label: "Roller og adgang",
+    permission: "roles.manage",
+  },
 ];
 
 const sectionTitles = [
@@ -53,7 +57,6 @@ export function AdministrationHeader() {
   const canManageRoles = usePermission("roles.manage");
   const canManageApiKeys = usePermission("apiKeys.manage");
   const canManageIntegrations = usePermission("integrations.manage");
-  const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const inCatalog = catalogSections.some((item) =>
     pathname.startsWith(`${administrationPath}/${item.value}`),
   );
@@ -79,9 +82,9 @@ export function AdministrationHeader() {
     ? "Produkter"
     : pathname === administrationPath
       ? "Administration"
-      : sectionTitles.find((item) =>
+      : (sectionTitles.find((item) =>
           pathname.startsWith(`${administrationPath}/${item.value}`),
-        )?.label ?? "Administration";
+        )?.label ?? "Administration");
 
   useEffect(() => {
     for (const item of catalogSections) {
@@ -113,13 +116,6 @@ export function AdministrationHeader() {
     }
   }, [canManageMembers, canManageRoles, inUsers, pathname, router]);
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setHeaderTarget(document.getElementById("administration-shell-header"));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
   if (onProductForm) return null;
 
   const header = (
@@ -137,8 +133,7 @@ export function AdministrationHeader() {
 
   return (
     <>
-      <header className="md:hidden">{header}</header>
-      {headerTarget ? createPortal(header, headerTarget) : null}
+      <AppPageHeader>{header}</AppPageHeader>
 
       {inCatalog ? (
         <Tabs

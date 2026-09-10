@@ -1,3 +1,4 @@
+import { addDays as addDateKey } from "../lib/date";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -124,13 +125,6 @@ function scopedLineIdsReady(
 ) {
   // Older rows may already say true; history coverage is the safe reset gate.
   return status.lineIdsScoped === true && backfillCoversHistory(status);
-}
-
-function addDateKey(value: string, days: number) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day + days))
-    .toISOString()
-    .slice(0, 10);
 }
 
 function orderExternalId(

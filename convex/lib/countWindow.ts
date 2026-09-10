@@ -1,3 +1,4 @@
+import { resolveTimeZone } from "./timeZone";
 import {
   countWindowForPeriod,
   DEFAULT_COUNT_SCHEDULE,
@@ -50,7 +51,8 @@ export async function getLocationCountWindow(
   location: Doc<"locations">,
   now: number,
 ) {
-  const [specials, settings] = await Promise.all([
+  const [timeZone, specials, settings] = await Promise.all([
+    resolveTimeZone(ctx, organizationId, location._id),
     ctx.db
       .query("locationSpecialOpeningHours")
       .withIndex("by_organizationId_and_locationId_and_date", (q) =>
@@ -85,6 +87,7 @@ export async function getLocationCountWindow(
     weekly,
     specials,
     configuration.countSchedule,
+    timeZone,
   );
   let window = windows.active;
   let hasOpenCount = false;
@@ -107,6 +110,7 @@ export async function getLocationCountWindow(
         configuration.countSchedule,
         weekly,
         specials,
+        timeZone,
       );
     }
   }
@@ -128,5 +132,5 @@ export async function getLocationCountWindow(
     if (dueCount?.status !== "submitted") window = windows.due;
   }
 
-  return { ...window, ...configuration };
+  return { ...window, ...configuration, timeZone };
 }

@@ -1,11 +1,20 @@
 "use client";
 
+import {
+  SortableListRow,
+  sortableListInstructions,
+} from "@/components/organization/sortable-list-row";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { CopyIcon, GripVerticalIcon, SaveIcon, SettingsIcon, Trash2Icon } from "lucide-react";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+
+import { CopyIcon, SaveIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -19,34 +28,19 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
-import { cn } from "@/lib/utils";
 
-type RoleOption = {
-  role: string;
-  name: string;
-};
-
-type SettingsChanges = Pick<DashboardRecord, "name" | "roleIds" | "defaultForRoleIds" | "defaultForLocationIds" | "isOrganizationDefault">;
+type SettingsChanges = Pick<
+  DashboardRecord,
+  | "name"
+  | "roleIds"
+  | "defaultForRoleIds"
+  | "defaultForLocationIds"
+  | "isOrganizationDefault"
+>;
 
 function toggleValue(values: string[], value: string, checked: boolean) {
   if (checked) return values.includes(value) ? values : [...values, value];
   return values.filter((candidate) => candidate !== value);
-}
-
-function SortableDashboardOrderItem({ dashboard }: { dashboard: DashboardRecord }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dashboard.id });
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("flex min-h-11 items-center gap-2 rounded-lg border px-3 touch-none cursor-grab active:cursor-grabbing", isDragging && "opacity-50")}
-      {...attributes}
-      {...listeners}
-    >
-      <GripVerticalIcon className="shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate font-medium">{dashboard.name}</span>
-    </div>
-  );
 }
 
 export function DashboardSettingsDialog({
@@ -70,8 +64,14 @@ export function DashboardSettingsDialog({
   onDuplicated: (dashboardId: Id<"dashboards">) => void;
   onDeleted: () => void;
 }) {
-  const rolesQuery = useQuery(api.dashboard.listRoleOptions, open ? {} : "skip");
-  const scopeOptions = useQuery(api.dashboard.listScopeOptions, open ? {} : "skip");
+  const rolesQuery = useQuery(
+    api.dashboard.listRoleOptions,
+    open ? {} : "skip",
+  );
+  const scopeOptions = useQuery(
+    api.dashboard.listScopeOptions,
+    open ? {} : "skip",
+  );
   const saveSettings = useMutation(api.dashboard.saveSettings);
   const duplicate = useMutation(api.dashboard.duplicate);
   const remove = useMutation(api.dashboard.remove);
@@ -80,7 +80,9 @@ export function DashboardSettingsDialog({
   const [defaultForRoleIds, setDefaultForRoleIds] = useState<string[]>(dashboard.defaultForRoleIds);
   const [defaultForLocationIds, setDefaultForLocationIds] = useState<Id<"locations">[]>(dashboard.defaultForLocationIds);
   const [isOrganizationDefault, setIsOrganizationDefault] = useState(dashboard.isOrganizationDefault);
-  const [duplicateName, setDuplicateName] = useState(`${dashboard.name} (kopi)`);
+  const [duplicateName, setDuplicateName] = useState(
+    `${dashboard.name} (kopi)`,
+  );
   const [pending, setPending] = useState(false);
   const [duplicatePending, setDuplicatePending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -90,7 +92,7 @@ export function DashboardSettingsDialog({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const roles = (rolesQuery ?? []) as RoleOption[];
+  const roles = rolesQuery ?? [];
   const locations = scopeOptions?.locations ?? [];
   const orderedDashboards = draftOrder.flatMap((dashboardId) => {
     const candidate = dashboards.find((dashboardItem) => String(dashboardItem.id) === dashboardId);
@@ -133,9 +135,7 @@ export function DashboardSettingsDialog({
       closeDialog();
       toast.success("Dashboardindstillingerne er gemt");
     } catch (error) {
-      toast.error(
-        getUserErrorMessage(error, "Dashboardet kunne ikke duplikeres. Prøv igen."),
-      );
+      toast.error(getUserErrorMessage(error, "Dashboardindstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
       setPending(false);
     }
@@ -149,7 +149,7 @@ export function DashboardSettingsDialog({
       onDuplicated(dashboardId);
     } catch (error) {
       toast.error(
-        getUserErrorMessage(error, "Dashboardet kunne ikke slettes. Prøv igen."),
+        getUserErrorMessage(error, "Dashboardet kunne ikke duplikeres. Prøv igen."),
       );
     } finally {
       setDuplicatePending(false);
@@ -165,7 +165,9 @@ export function DashboardSettingsDialog({
       toast.success("Dashboardet er slettet");
       onDeleted();
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Dashboardindstillingerne kunne ikke gemmes. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(error, "Dashboardet kunne ikke slettes. Prøv igen."),
+      );
     } finally {
       setPending(false);
     }
@@ -186,7 +188,13 @@ export function DashboardSettingsDialog({
     <>
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         {showTrigger ? (
-          <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${dashboard.name}`} />}>
+          <DialogTrigger
+            render={
+              <Button
+                type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${dashboard.name}`}
+              />
+            }
+          >
             <SettingsIcon />
           </DialogTrigger>
         ) : null}
@@ -198,22 +206,48 @@ export function DashboardSettingsDialog({
 
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor={`dashboard-name-${dashboard.id}`}>Navn</FieldLabel>
-              <Input id={`dashboard-name-${dashboard.id}`} value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
+              <FieldLabel htmlFor={`dashboard-name-${dashboard.id}`}>
+                Navn
+              </FieldLabel>
+              <Input
+                id={`dashboard-name-${dashboard.id}`}
+                value={name}
+                maxLength={100}
+                onChange={(event) => setName(event.target.value)}
+              />
             </Field>
 
             <FieldSet>
               <FieldLegend variant="label">Dashboardrækkefølge</FieldLegend>
-              <FieldDescription>Bestem rækkefølgen på dashboards i fanerne.</FieldDescription>
+              <FieldDescription>
+                Bestem rækkefølgen på dashboards i fanerne.
+              </FieldDescription>
               <DndContext
+                accessibility={{
+                  screenReaderInstructions: sortableListInstructions,
+                }}
                 sensors={reorderSensors}
                 collisionDetection={closestCenter}
                 onDragEnd={(event) => void reorderDashboards(event)}
               >
-                <SortableContext items={draftOrder} strategy={verticalListSortingStrategy}>
-                  <FieldGroup className="gap-2" aria-label="Dashboardrækkefølge">
-                    {orderedDashboards.map((candidate) => <SortableDashboardOrderItem key={candidate.id} dashboard={candidate} />)}
-                  </FieldGroup>
+                <SortableContext
+                  items={draftOrder}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ol
+                    className="flex flex-col gap-2"
+                    aria-label="Dashboardrækkefølge"
+                  >
+                    {orderedDashboards.map((candidate) => (
+                      <SortableListRow
+                        key={candidate.id}
+                        id={candidate.id}
+                        label={candidate.name}
+                        className="min-h-11 px-2 py-0"
+                        handleClassName="min-h-11"
+                      />
+                    ))}
+                  </ol>
                 </SortableContext>
               </DndContext>
             </FieldSet>
@@ -224,12 +258,21 @@ export function DashboardSettingsDialog({
               <FieldGroup className="gap-2">
                 {roles.map((role) => (
                   <Field key={role.role} orientation="horizontal">
-                    <Checkbox id={`dashboard-access-${dashboard.id}-${role.role}`} checked={roleIds.includes(role.role)} onCheckedChange={(checked) => setRoleIds((current) => {
+                    <Checkbox
+                      id={`dashboard-access-${dashboard.id}-${role.role}`}
+                      checked={roleIds.includes(role.role)}
+                      onCheckedChange={(checked) => setRoleIds((current) => {
                       const next = toggleValue(current, role.role, checked === true);
                       if (next.length > 0) setDefaultForRoleIds((defaults) => defaults.filter((candidate) => next.includes(candidate)));
                       return next;
-                    })} />
-                    <FieldLabel htmlFor={`dashboard-access-${dashboard.id}-${role.role}`} className="font-normal">{role.name}</FieldLabel>
+                    })}
+                    />
+                    <FieldLabel
+                      htmlFor={`dashboard-access-${dashboard.id}-${role.role}`}
+                      className="font-normal"
+                    >
+                      {role.name}
+                    </FieldLabel>
                   </Field>
                 ))}
               </FieldGroup>
@@ -237,14 +280,31 @@ export function DashboardSettingsDialog({
 
             <FieldSet>
               <FieldLegend variant="label">Standard for roller</FieldLegend>
-              <FieldDescription>Disse roller åbner dashboardet som standard.</FieldDescription>
+              <FieldDescription>
+                Disse roller åbner dashboardet som standard.
+              </FieldDescription>
               <FieldGroup className="gap-2">
                 {roles.map((role) => {
-                  const allowed = roleIds.length === 0 || roleIds.includes(role.role);
+                  const allowed =
+                    roleIds.length === 0 || roleIds.includes(role.role);
                   return (
-                    <Field key={role.role} orientation="horizontal" data-disabled={!allowed}>
-                      <Checkbox id={`dashboard-role-default-${dashboard.id}-${role.role}`} checked={defaultForRoleIds.includes(role.role)} disabled={!allowed} onCheckedChange={(checked) => setDefaultForRoleIds((current) => toggleValue(current, role.role, checked === true))} />
-                      <FieldLabel htmlFor={`dashboard-role-default-${dashboard.id}-${role.role}`} className="font-normal">{role.name}</FieldLabel>
+                    <Field
+                      key={role.role}
+                      orientation="horizontal"
+                      data-disabled={!allowed}
+                    >
+                      <Checkbox
+                        id={`dashboard-role-default-${dashboard.id}-${role.role}`}
+                        checked={defaultForRoleIds.includes(role.role)}
+                        disabled={!allowed}
+                        onCheckedChange={(checked) => setDefaultForRoleIds((current) => toggleValue(current, role.role, checked === true))}
+                      />
+                      <FieldLabel
+                        htmlFor={`dashboard-role-default-${dashboard.id}-${role.role}`}
+                        className="font-normal"
+                      >
+                        {role.name}
+                      </FieldLabel>
                     </Field>
                   );
                 })}
@@ -253,13 +313,24 @@ export function DashboardSettingsDialog({
 
             <FieldSet>
               <FieldLegend variant="label">Standard for lokationer</FieldLegend>
-              <FieldDescription>En lokation kan kun have ét standarddashboard.</FieldDescription>
+              <FieldDescription>
+                En lokation kan kun have ét standarddashboard.
+              </FieldDescription>
               <div className="max-h-44 overflow-y-auto rounded-lg border p-3">
                 <FieldGroup className="gap-2">
                   {locations.map((location) => (
                     <Field key={location.id} orientation="horizontal">
-                      <Checkbox id={`dashboard-location-default-${dashboard.id}-${location.id}`} checked={defaultForLocationIds.includes(location.id)} onCheckedChange={(checked) => setDefaultForLocationIds((current) => checked === true ? [...current, location.id] : current.filter((id) => id !== location.id))} />
-                      <FieldLabel htmlFor={`dashboard-location-default-${dashboard.id}-${location.id}`} className="font-normal">{location.name}</FieldLabel>
+                      <Checkbox
+                        id={`dashboard-location-default-${dashboard.id}-${location.id}`}
+                        checked={defaultForLocationIds.includes(location.id)}
+                        onCheckedChange={(checked) => setDefaultForLocationIds((current) => checked === true ? [...current, location.id] : current.filter((id) => id !== location.id))}
+                      />
+                      <FieldLabel
+                        htmlFor={`dashboard-location-default-${dashboard.id}-${location.id}`}
+                        className="font-normal"
+                      >
+                        {location.name}
+                      </FieldLabel>
                     </Field>
                   ))}
                 </FieldGroup>
@@ -267,16 +338,36 @@ export function DashboardSettingsDialog({
             </FieldSet>
 
             <Field orientation="horizontal">
-              <Switch id={`dashboard-organization-default-${dashboard.id}`} checked={isOrganizationDefault} onCheckedChange={setIsOrganizationDefault} />
-              <FieldLabel htmlFor={`dashboard-organization-default-${dashboard.id}`} className="font-normal">Standard for organisationen</FieldLabel>
+              <Switch
+                id={`dashboard-organization-default-${dashboard.id}`}
+                checked={isOrganizationDefault}
+                onCheckedChange={setIsOrganizationDefault}
+              />
+              <FieldLabel
+                htmlFor={`dashboard-organization-default-${dashboard.id}`}
+                className="font-normal"
+              >
+                Standard for organisationen
+              </FieldLabel>
             </Field>
 
             <Field>
-              <FieldLabel htmlFor={`dashboard-duplicate-name-${dashboard.id}`}>Duplikér</FieldLabel>
+              <FieldLabel htmlFor={`dashboard-duplicate-name-${dashboard.id}`}>
+                Duplikér
+              </FieldLabel>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Input id={`dashboard-duplicate-name-${dashboard.id}`} value={duplicateName} maxLength={100} onChange={(event) => setDuplicateName(event.target.value)} />
+                <Input
+                  id={`dashboard-duplicate-name-${dashboard.id}`}
+                  value={duplicateName}
+                  maxLength={100}
+                  onChange={(event) => setDuplicateName(event.target.value)}
+                />
                 <Button type="button" variant="outline" className="min-h-11 shrink-0" disabled={duplicatePending || !duplicateName.trim()} onClick={() => void duplicateDashboard()}>
-                  {duplicatePending ? <Spinner data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
+                  {duplicatePending ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : (
+                    <CopyIcon data-icon="inline-start" />
+                  )}
                   Duplikér
                 </Button>
               </div>
@@ -284,8 +375,16 @@ export function DashboardSettingsDialog({
           </FieldGroup>
 
           <DialogFooter>
-            <Button type="button" onClick={() => void save()} disabled={pending || !name.trim()}>
-              {pending ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
+            <Button
+              type="button"
+              onClick={() => void save()}
+              disabled={pending || !name.trim()}
+            >
+              {pending ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <SaveIcon data-icon="inline-start" />
+              )}
               Gem indstillinger
             </Button>
             <Button type="button" variant="destructive" onClick={() => setDeleteOpen(true)} disabled={pending}>

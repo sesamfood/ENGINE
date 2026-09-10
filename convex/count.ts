@@ -1,3 +1,5 @@
+import { parseDateKey } from "../lib/date";
+import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -63,6 +65,7 @@ const countSummaryValidator = v.object({
 });
 
 const countStateValidator = v.object({
+  timeZone: v.string(),
   periodKey: v.string(),
   opensAt: v.number(),
   closesAt: v.number(),
@@ -109,18 +112,6 @@ const reconciliationRowValidator = v.object({
 
 type CountContext = QueryCtx | MutationCtx;
 
-async function requireLocation(
-  ctx: CountContext,
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const location = await ctx.db.get("locations", locationId);
-  if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Lokationen blev ikke fundet");
-  }
-  return location;
-}
-
 function requireNow(now: number) {
   if (!Number.isFinite(now) || now <= 0) {
     throw new ConvexError("Tidspunktet er ugyldigt");
@@ -163,16 +154,9 @@ function requireCountSchedule(
   ) {
     throw new ConvexError("Intervallet skal være mellem 1 og 365 dage");
   }
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(schedule.anchorDate);
-  if (!match) throw new ConvexError("Første Count-dato er ugyldig");
-  const date = new Date(
-    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-  );
-  if (
-    date.getUTCFullYear() !== Number(match[1]) ||
-    date.getUTCMonth() !== Number(match[2]) - 1 ||
-    date.getUTCDate() !== Number(match[3])
-  ) {
+  try {
+    parseDateKey(schedule.anchorDate);
+  } catch {
     throw new ConvexError("Første Count-dato er ugyldig");
   }
 }
@@ -475,6 +459,7 @@ export const getCountState = query({
       : [];
 
     return {
+      timeZone: window.timeZone,
       periodKey,
       opensAt: window.opensAt,
       closesAt: window.closesAt,
@@ -1146,7 +1131,6 @@ export const listLocationStock = query({
     return await hydrateLocationStock(ctx, organizationId, products, stockByProductId);
   },
 });
-
 
 async function hydrateLocationStock(
   ctx: QueryCtx,

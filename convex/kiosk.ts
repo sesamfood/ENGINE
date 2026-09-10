@@ -1,3 +1,4 @@
+import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { ConvexError, v } from "convex/values";
 import { hasPermission } from "../lib/auth-permissions";
 import { kioskDestinations } from "../lib/kiosk";
@@ -102,18 +103,6 @@ async function requireKioskAccountManager(ctx: QueryCtx | MutationCtx) {
     throw new ConvexError("Du har ikke adgang til at administrere roller");
   }
   return auth;
-}
-
-async function requireLocation(
-  ctx: MutationCtx,
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const location = await ctx.db.get("locations", locationId);
-  if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Lokationen blev ikke fundet");
-  }
-  return location;
 }
 
 async function requireKioskMember(

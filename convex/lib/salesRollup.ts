@@ -1,4 +1,4 @@
-import { dateKey, zonedStart } from "./dashboardMetrics";
+import { dateKey, zonedStart } from "../../lib/date";
 
 export type SalesDelta = {
   revenue: number;

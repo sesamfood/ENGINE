@@ -4,6 +4,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { DashboardRange, RangePreset } from "@/lib/dashboard/types";
+import { dateKey, DEFAULT_TIME_ZONE } from "@/lib/date";
 
 const presets: Array<{ value: RangePreset; label: string }> = [
   { value: "today", label: "I dag" },
@@ -14,21 +15,6 @@ const presets: Array<{ value: RangePreset; label: string }> = [
   { value: "custom", label: "Brugerdefineret" },
 ];
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
-
-function today(timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(Date.now());
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
 export function RangeSelector({
   range,
   onChange,
@@ -38,11 +24,10 @@ export function RangeSelector({
   onChange: (range: DashboardRange) => void;
   timeZone?: string;
 }) {
-  const defaultDate = today(timeZone ?? DEFAULT_TIME_ZONE);
-
   function select(values: string[]) {
     const preset = values[0] as RangePreset | undefined;
     if (!preset) return;
+    const defaultDate = dateKey(Date.now(), timeZone ?? DEFAULT_TIME_ZONE);
     onChange(preset === "custom" ? { preset, from: range.from ?? defaultDate, to: range.to ?? defaultDate } : { preset });
   }
   return (

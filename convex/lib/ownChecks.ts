@@ -1,3 +1,5 @@
+export { requireOrganizationLocation as requireLocation } from "./locations";
+import { daysBetween } from "../../lib/date";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -22,14 +24,11 @@ const MAX_ARCHIVED_TEMPLATES = 2_000;
 type OwnCheckContext = QueryCtx | MutationCtx;
 
 export function dateKeyDifference(fromDateKey: string, toDateKey: string) {
-  const parse = (value: string) => {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-    if (!match) throw new ConvexError("Datoen er ugyldig");
-    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-    if (date.getUTCFullYear() !== Number(match[1]) || date.getUTCMonth() !== Number(match[2]) - 1 || date.getUTCDate() !== Number(match[3])) throw new ConvexError("Datoen er ugyldig");
-    return date.getTime();
-  };
-  return (parse(toDateKey) - parse(fromDateKey)) / (24 * 60 * 60 * 1_000);
+  try {
+    return daysBetween(fromDateKey, toDateKey);
+  } catch {
+    throw new ConvexError("Datoen er ugyldig");
+  }
 }
 
 export function versionInput(row: Doc<"ownCheckTemplateVersions">): OwnCheckTemplateVersionInput {
@@ -175,18 +174,6 @@ export async function ownCheckDateContext(
   return { timeZone, todayDateKey: dateKeyInZone(now, timeZone) };
 }
 
-export async function requireLocation(
-  ctx: OwnCheckContext,
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const location = await ctx.db.get("locations", locationId);
-  if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Lokationen blev ikke fundet");
-  }
-  return location;
-}
-
 export async function resolveLocationId(
   ctx: QueryCtx | MutationCtx,
   organizationId: string,
@@ -233,8 +220,7 @@ export function occurrenceKey(templateId: string, dueDateKey: string) {
   return `${templateId}:${dueDateKey}`;
 }
 
-export function entrySummary(entry: Doc<"ownCheckEntries"> | null) {
-  if (!entry) return null;
+export function entrySummary(entry: Doc<"ownCheckEntries">) {
   return {
     id: entry._id,
     status: entry.status,
@@ -294,7 +280,7 @@ export function planItem(
     startsAt: occurrence.startsAt,
     dueAt: occurrence.dueAt,
     status: ownCheckStatus(entry),
-    entry: entrySummary(entry),
+    entry: entry ? entrySummary(entry) : null,
   };
 }
 
@@ -353,8 +339,8 @@ export async function appendRevision(
   const newValues = new Map(next.values.map((value) => [value.key, value]));
   const changes: Array<{ field: string; label: string; from: string | null; to: string | null }> = [];
   for (const field of version.fields) {
-    const from = formatValue(field, oldValues.get(field.key) as never);
-    const to = formatValue(field, newValues.get(field.key) as never);
+    const from = formatValue(field, oldValues.get(field.key));
+    const to = formatValue(field, newValues.get(field.key));
     if (from !== to) changes.push({ field: field.key, label: field.label, from, to });
   }
   const addChange = (field: string, label: string, from: string | null, to: string | null) => {

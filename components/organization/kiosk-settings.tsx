@@ -1,7 +1,9 @@
 "use client";
 
+import { PasswordInput } from "@/components/ui/password-input";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { EyeIcon, EyeOffIcon, KeyRoundIcon, LogOutIcon, MonitorCogIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { KeyRoundIcon, LogOutIcon, MonitorCogIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -49,12 +51,6 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
-import {
   Select,
   SelectContent,
   SelectGroup,
@@ -82,25 +78,6 @@ const roles = Object.keys(roleLabels) as SystemOrganizationRole[];
 
 type Account = NonNullable<ReturnType<typeof useQuery<typeof api.kiosk.listAccounts>>>[number];
 
-function PasswordInput(props: React.ComponentProps<"input">) {
-  const [visible, setVisible] = useState(false);
-
-  return (
-    <InputGroup>
-      <InputGroupInput {...props} type={visible ? "text" : "password"} />
-      <InputGroupAddon align="inline-end">
-        <InputGroupButton
-          size="icon-xs"
-          aria-label={visible ? "Skjul adgangskode" : "Vis adgangskode"}
-          title={visible ? "Skjul adgangskode" : "Vis adgangskode"}
-          onClick={() => setVisible((current) => !current)}
-        >
-          {visible ? <EyeOffIcon /> : <EyeIcon />}
-        </InputGroupButton>
-      </InputGroupAddon>
-    </InputGroup>
-  );
-}
 
 function AccountDialog({
   account,

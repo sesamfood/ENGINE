@@ -1,5 +1,7 @@
 "use client";
 
+import { SettingsSwitchField } from "./settings-switch-field";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, useQuery } from "convex/react";
 import { Clock3Icon } from "lucide-react";
@@ -18,7 +20,6 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
@@ -35,11 +36,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
 import type { CountSchedule } from "@/lib/count-window";
+import { dateKey, DEFAULT_TIME_ZONE } from "@/lib/date";
 import type { SalesSource } from "@/lib/dashboard/types";
 
 const scheduleOptions = [
@@ -54,12 +56,6 @@ const monthlyDayOptions = [
     label: `${index + 1}. dag i måneden`,
   })),
 ];
-
-function today() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Copenhagen",
-  }).format(new Date());
-}
 
 const salesSourceOptions: Array<{ value: SalesSource; label: string }> = [
   { value: "onlinePos", label: "OnlinePOS" },
@@ -81,7 +77,10 @@ function salesSourceFromValue(value: string): SalesSource | null {
 export function CountSettings() {
   const access = useAccess();
   const canManage = usePermission("count.settings");
-  const settings = useQuery(api.count.getCountSettings, canManage ? {} : "skip");
+  const settings = useQuery(
+    api.count.getCountSettings,
+    canManage ? {} : "skip",
+  );
   const sourceSettings = useQuery(
     api.countSales.getSettings,
     canManage ? {} : "skip",
@@ -103,7 +102,9 @@ export function CountSettings() {
   const [draftSources, setDraftSources] = useState<Record<string, SalesSource>>(
     {},
   );
-  const [savingSource, setSavingSource] = useState<string | null>(null);
+  const [savingSources, setSavingSources] = useState<Set<Id<"locations">>>(
+    new Set(),
+  );
   const [saving, setSaving] = useState(false);
   const allowOutsideWindow =
     draftAllowOutsideWindow ?? settings?.allowOutsideWindow ?? false;
@@ -162,7 +163,7 @@ export function CountSettings() {
     locationId: Id<"locations">,
     salesSource: SalesSource,
   ) {
-    setSavingSource(locationId);
+    setSavingSources((current) => new Set(current).add(locationId));
     try {
       await saveSource({ locationId, salesSource });
       setDraftSources((current) => {
@@ -174,14 +175,18 @@ export function CountSettings() {
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Count-indstillingerne kunne ikke gemmes. Prøv igen."));
     } finally {
-      setSavingSource(null);
+      setSavingSources((current) => {
+        const next = new Set(current);
+        next.delete(locationId);
+        return next;
+      });
     }
   }
 
   return (
     <div className="flex flex-col gap-6 pb-10">
       <Card className="max-w-3xl">
-      <CardHeader>
+        <CardHeader>
         <div className="flex items-center gap-1">
           <CardTitle>Count-indstillinger</CardTitle>
           <HelpTooltip
@@ -190,68 +195,47 @@ export function CountSettings() {
           />
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        <FieldGroup>
-          <Field orientation="horizontal">
-            <FieldContent>
-              <div className="flex items-center gap-1">
-                <FieldLabel htmlFor="count-outside-window">
-                  Tillad Count uden for Count-vinduet
-                </FieldLabel>
-                <HelpTooltip
-                  label="Tillad Count uden for Count-vinduet"
-                  content="Medarbejdere kan registrere den aktuelle Count når som helst."
-                />
-              </div>
-            </FieldContent>
-            <Switch
+        <CardContent className="flex flex-col gap-6">
+          <FieldGroup>
+            <SettingsSwitchField
+              label="Tillad Count uden for Count-vinduet"
               id="count-outside-window"
               aria-label="Tillad Count uden for Count-vinduet"
               checked={allowOutsideWindow}
               onCheckedChange={setDraftAllowOutsideWindow}
+              help={{
+                label: "Tillad Count uden for Count-vinduet",
+                content:
+                  "Medarbejdere kan registrere den aktuelle Count når som helst.",
+              }}
             />
-          </Field>
-          <Field orientation="horizontal">
-            <FieldContent>
-              <div className="flex items-center gap-1">
-                <FieldLabel htmlFor="count-lock-other-features">
-                  Lås andre funktioner under Count
-                </FieldLabel>
-                <HelpTooltip
-                  label="Lås andre funktioner under Count"
-                  content="Når Count-vinduet åbner, låses alle andre sider end Count, Lager og Indstillinger for den valgte lokation. Låsen ophæves, når Count er registreret."
-                />
-              </div>
-            </FieldContent>
-            <Switch
+            <SettingsSwitchField
+              label="Lås andre funktioner under Count"
               id="count-lock-other-features"
               aria-label="Lås andre funktioner under Count"
               checked={lockOtherFeaturesDuringCount}
               onCheckedChange={setDraftLockOtherFeatures}
+              help={{
+                label: "Lås andre funktioner under Count",
+                content:
+                  "Når Count-vinduet åbner, låses alle andre sider end Count, Lager og Indstillinger for den valgte lokation. Låsen ophæves, når Count er registreret.",
+              }}
             />
-          </Field>
-          <Field orientation="horizontal">
-            <FieldContent>
-              <div className="flex items-center gap-1">
-                <FieldLabel htmlFor="count-required-before-opening">
-                  Kræv Count før åbning
-                </FieldLabel>
-                <HelpTooltip
-                  label="Kræv Count før åbning"
-                  content="En Count, der ikke er registreret ved åbningstid, forbliver åben, indtil den registreres."
-                />
-              </div>
-            </FieldContent>
-            <Switch
+            <SettingsSwitchField
+              label="Kræv Count før åbning"
               id="count-required-before-opening"
               aria-label="Kræv Count før åbning"
               checked={requireCountBeforeOpening}
               onCheckedChange={setDraftRequireCount}
+              help={{
+                label: "Kræv Count før åbning",
+                content:
+                  "En Count, der ikke er registreret ved åbningstid, forbliver åben, indtil den registreres.",
+              }}
             />
-          </Field>
-        </FieldGroup>
+          </FieldGroup>
 
-        <FieldGroup>
+          <FieldGroup>
           <Field>
             <FieldLabel htmlFor="count-schedule-type">Count-frekvens</FieldLabel>
             <Select
@@ -263,7 +247,7 @@ export function CountSettings() {
                     ? {
                         type: "interval",
                         intervalDays: 14,
-                        anchorDate: today(),
+                        anchorDate: dateKey(Date.now(), DEFAULT_TIME_ZONE),
                       }
                     : { type: "monthly", day: 0 },
                 )
@@ -356,7 +340,7 @@ export function CountSettings() {
           )}
         </FieldGroup>
 
-        <Alert>
+          <Alert>
           <Clock3Icon />
           <AlertTitle>Count-vinduet følger åbningstiderne</AlertTitle>
           <AlertDescription>
@@ -367,8 +351,8 @@ export function CountSettings() {
             Åbningstider og særlige datoer ændres under Lokationer.
           </AlertDescription>
         </Alert>
-      </CardContent>
-      <CardFooter className="justify-end">
+        </CardContent>
+        <CardFooter className="justify-end">
         <Button
           className="min-h-11"
           disabled={saving}
@@ -402,9 +386,11 @@ export function CountSettings() {
           ) : (
             sourceSettings.locations.map((location) => {
               const draftSource = draftSources[location.id];
-              const selectedSource = location.stockSyncEnabled ? "onlinePos" : draftSource ?? location.effectiveSource;
+              const selectedSource = location.stockSyncEnabled
+                ? "onlinePos"
+                : (draftSource ?? location.effectiveSource);
               const hasDraft = draftSource !== undefined;
-              const isSaving = savingSource === location.id;
+              const isSaving = savingSources.has(location.id);
               const onlinePosConnected = location.connected.onlinePos;
               const woltConnected = location.connected.wolt;
               return (
@@ -416,8 +402,11 @@ export function CountSettings() {
                     <div className="min-w-0">
                       <h3 className="truncate font-medium">{location.name}</h3>
                       <div className="flex flex-wrap gap-2 pt-1 text-sm">
-                        <Badge variant={onlinePosConnected ? "secondary" : "outline"}>
-                          OnlinePOS: {onlinePosConnected ? "Forbundet" : "Ikke forbundet"}
+                        <Badge
+                          variant={onlinePosConnected ? "secondary" : "outline"}
+                        >
+                          OnlinePOS:{" "}
+                          {onlinePosConnected ? "Forbundet" : "Ikke forbundet"}
                         </Badge>
                         <Badge variant={woltConnected ? "secondary" : "outline"}>
                           Wolt: {woltConnected ? "Klar" : "Ikke klar"}
@@ -425,13 +414,18 @@ export function CountSettings() {
                       </div>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {location.stockSyncEnabled ? "OnlinePOS bruges til lagersynkronisering" : location.savedSource
-                        ? `Gemt: ${salesSourceOptions.find((option) => option.value === location.savedSource)?.label ?? location.savedSource}`
-                        : "Standardvalg endnu ikke gemt"}
+                      {location.stockSyncEnabled
+                        ? "OnlinePOS bruges til lagersynkronisering"
+                        : location.savedSource
+                          ? `Gemt: ${salesSourceOptions.find((option) => option.value === location.savedSource)?.label ?? location.savedSource}`
+                          : "Standardvalg endnu ikke gemt"}
                     </div>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <Field className="min-w-0 flex-1" data-disabled={location.stockSyncEnabled}>
+                    <Field
+                      className="min-w-0 flex-1"
+                      data-disabled={location.stockSyncEnabled}
+                    >
                       <FieldLabel htmlFor={`count-sales-source-${location.id}`}>
                         Salgskilde
                       </FieldLabel>

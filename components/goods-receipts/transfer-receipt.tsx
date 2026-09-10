@@ -1,26 +1,21 @@
 "use client";
 
+import { dateTimeFormatter as sharedDateTimeFormatter } from "@/lib/date";
+
+import { QuantityInput } from "@/components/quantity-input";
+
+import { AppBottomBar } from "@/components/app-bottom-bar";
+
+import { ReceiptProductLine, type ReceiptLine } from "./receipt-product-line";
+
+import { PhotoField } from "@/components/photo-field";
+
+import { parseQuantity } from "@/lib/quantity-input";
+
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { getUserErrorMessage } from "@/lib/user-errors";
-import posthog from "posthog-js";
-import { useMutation, useQuery } from "convex/react";
-import {
-  ArrowLeftIcon,
-  CameraIcon,
-  CheckIcon,
-  MinusIcon,
-  PackageCheckIcon,
-  PackageIcon,
-  PlusIcon,
-  Trash2Icon,
-  XIcon,
-} from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import {
   CreatableCombobox,
@@ -44,7 +39,6 @@ import {
   CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -63,13 +57,6 @@ import {
   FieldLabel,
   FieldTitle,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -79,14 +66,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { compressImage } from "@/lib/compress-image";
+import { compressImage, evidencePhotoOptions } from "@/lib/compress-image";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
+import { useMutation, useQuery } from "convex/react";
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  PackageCheckIcon,
+  PackageIcon,
+} from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
+import { Fragment, useState } from "react";
+import { toast } from "sonner";
 
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_COMMENT_LENGTH = 500;
@@ -98,7 +98,7 @@ const ACCEPTED_PHOTO_TYPES = new Set([
   "image/avif",
 ]);
 
-const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
+const dateTimeFormatter = sharedDateTimeFormatter("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
 });
@@ -112,24 +112,6 @@ type ReceiptDetail = NonNullable<
 >;
 type PendingReceipt = Extract<ReceiptDetail, { kind: "pending" }>;
 type ReceiptItem = PendingReceipt["transfer"]["items"][number];
-type ReceiptProduct = PendingReceipt["products"][number];
-
-type AdditionalReceiptLine = {
-  key: string;
-  productId: Id<"products">;
-  productName: string;
-  imageUrl: string | null;
-  unitId: Id<"units">;
-  units: ReceiptProduct["units"];
-  quantity: string;
-};
-
-function parseQuantity(value: string) {
-  const normalized = value.trim().replace(",", ".");
-  if (!normalized || !/^\d+(?:\.\d+)?$/u.test(normalized)) return null;
-  const quantity = Number(normalized);
-  return Number.isFinite(quantity) ? quantity : null;
-}
 
 function normalizeQuantity(value: number) {
   return Math.round(value * 1e6) / 1e6;
@@ -147,19 +129,8 @@ function newAdditionalLineKey() {
   return `transfer-receipt-line-${crypto.randomUUID()}`;
 }
 
-function hasStorageId(value: unknown): value is { storageId: string } {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    "storageId" in value &&
-    typeof value.storageId === "string" &&
-    value.storageId.length > 0,
-  );
-}
-
 function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
   const router = useRouter();
-  const sidebar = useSidebar();
   const registerReceipt = useMutation(
     api.goodsReceipts.registerTransferReceipt,
   );
@@ -171,21 +142,12 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
     initialQuantities(transfer.items),
   );
   const [unitIds, setUnitIds] = useState(() => initialUnitIds(transfer.items));
-  const [additionalLines, setAdditionalLines] = useState<
-    AdditionalReceiptLine[]
-  >([]);
+  const [additionalLines, setAdditionalLines] = useState<ReceiptLine[]>([]);
   const [comment, setComment] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
 
   const received = transfer.items.map((item) => ({
     item,
@@ -371,14 +333,6 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
     });
   }
 
-  function adjustAdditionalLineQuantity(
-    line: AdditionalReceiptLine,
-    change: 1 | -1,
-  ) {
-    const current = parseQuantity(line.quantity) ?? 0;
-    setAdditionalLineQuantity(line.key, String(Math.max(1, current + change)));
-  }
-
   function removeAdditionalLine(lineKey: string) {
     setAdditionalLines((current) =>
       current.filter((line) => line.key !== lineKey),
@@ -435,26 +389,14 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
   }
 
   async function uploadPhoto(file: File) {
-    const compressed = await compressImage(file, {
-      maxWidth: 2600,
-      maxHeight: 2600,
-      quality: 0.9,
-    });
+    const compressed = await compressImage(file, evidencePhotoOptions);
     if (compressed.size > MAX_PHOTO_SIZE) {
       throw new Error("Det komprimerede billede er stadig større end 10 MB");
     }
-    const uploadUrl = await generatePhotoUploadUrl({});
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": compressed.type },
-      body: compressed,
+    return uploadToStorage({
+      uploadUrl: await generatePhotoUploadUrl({}),
+      file: compressed,
     });
-    if (!response.ok) throw new Error("Billedet kunne ikke uploades");
-    const result: unknown = await response.json();
-    if (!hasStorageId(result)) {
-      throw new Error("Billedet kunne ikke uploades");
-    }
-    return result.storageId as Id<"_storage">;
   }
 
   async function submit() {
@@ -547,63 +489,20 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Field data-invalid={Boolean(errors.photo)}>
-                  {previewUrl ? (
-                    <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-muted">
-                      <Image
-                        src={previewUrl}
-                        alt="Valgt billede af følgeseddel"
-                        fill
-                        unoptimized
-                        className="object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-lg bg-muted px-6 text-center text-muted-foreground">
-                      <CameraIcon className="size-8" aria-hidden="true" />
-                      <span className="text-sm">
-                        Kameraet åbner på enheder, der understøtter det.
-                      </span>
-                    </div>
-                  )}
-                  <FieldLabel htmlFor="goods-receipt-photo">
-                    Billede af følgeseddel
-                  </FieldLabel>
-                  <Input
-                    id="goods-receipt-photo"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/avif"
-                    capture="environment"
-                    aria-invalid={Boolean(errors.photo)}
-                    onChange={(event) => {
-                      const nextPhoto = event.target.files?.[0] ?? null;
-                      setPhoto(nextPhoto);
-                      setPreviewUrl(
-                        nextPhoto ? URL.createObjectURL(nextPhoto) : null,
-                      );
-                      setErrors((current) => {
-                        if (!current.photo) return current;
-                        const next = { ...current };
-                        delete next.photo;
-                        return next;
-                      });
-                    }}
-                  />
-                  <FieldError>{errors.photo}</FieldError>
-                  {photo ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setPhoto(null);
-                        setPreviewUrl(null);
-                      }}
-                    >
-                      <XIcon data-icon="inline-start" />
-                      Fjern billede
-                    </Button>
-                  ) : null}
-                </Field>
+                <PhotoField
+                  label="Billede af følgeseddel"
+                  file={photo}
+                  error={errors.photo}
+                  disabled={submitting}
+                  onChange={(file) => {
+                    setPhoto(file);
+                    setErrors((current) => {
+                      const next = { ...current };
+                      delete next.photo;
+                      return next;
+                    });
+                  }}
+                />
               </CardContent>
             </Card>
           ) : null}
@@ -828,65 +727,26 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                               >
                                 Modtaget mængde for {item.productName}
                               </FieldLabel>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon-lg"
-                                  className="size-11"
-                                  aria-label={`Reducér modtaget mængde for ${item.productName}`}
-                                  disabled={quantity !== null && quantity <= 0}
-                                  onClick={() =>
-                                    setQuantity(
-                                      item.id,
-                                      Math.max(0, (quantity ?? 0) - 1),
-                                    )
-                                  }
-                                >
-                                  <MinusIcon />
-                                </Button>
-                                <Input
-                                  id={`goods-receipt-quantity-${item.id}`}
-                                  type="number"
-                                  inputMode="decimal"
-                                  min={0}
-                                  max={maximum}
-                                  step="any"
-                                  value={quantities[item.id] ?? ""}
-                                  aria-invalid={Boolean(errors[item.id])}
-                                  className="h-11 w-24 text-center tabular-nums"
-                                  onChange={(event) => {
-                                    setQuantities((current) => ({
-                                      ...current,
-                                      [item.id]: event.target.value,
-                                    }));
-                                    setErrors((current) => {
-                                      if (!current[item.id]) return current;
-                                      const next = { ...current };
-                                      delete next[item.id];
-                                      return next;
-                                    });
-                                  }}
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon-lg"
-                                  className="size-11"
-                                  aria-label={`Øg modtaget mængde for ${item.productName}`}
-                                  disabled={
-                                    quantity !== null && quantity >= maximum
-                                  }
-                                  onClick={() =>
-                                    setQuantity(
-                                      item.id,
-                                      Math.min(maximum, (quantity ?? 0) + 1),
-                                    )
-                                  }
-                                >
-                                  <PlusIcon />
-                                </Button>
-                              </div>
+                              <QuantityInput
+                                id={`goods-receipt-quantity-${item.id}`}
+                                label={`Modtaget mængde for ${item.productName}`}
+                                value={quantities[item.id] ?? ""}
+                                min={0}
+                                max={maximum}
+                                invalid={Boolean(errors[item.id])}
+                                className="w-full sm:w-48"
+                                onValueChange={(value) => {
+                                  setQuantities((current) => ({
+                                    ...current,
+                                    [item.id]: value,
+                                  }));
+                                  setErrors((current) => {
+                                    const next = { ...current };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                }}
+                              />
                               <FieldError>{errors[item.id]}</FieldError>
                             </Field>
                             <Button
@@ -912,7 +772,6 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                   })}
 
                   {additionalLines.map((line, index) => {
-                    const quantity = parseQuantity(line.quantity);
                     const unavailableUnitIds = new Set([
                       ...transfer.items
                         .filter((item) => item.productId === line.productId)
@@ -928,141 +787,20 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                         )
                         .map((item) => item.unitId),
                     ]);
-                    const unitItems = line.units.map((unit) => ({
-                      value: unit.id,
-                      label: unit.name,
-                    }));
                     return (
                       <Fragment key={line.key}>
-                        <li className="grid gap-4 py-4 xl:grid-cols-[minmax(12rem,1fr)_minmax(9rem,0.45fr)_auto_auto] xl:items-start">
-                          <div className="flex min-w-0 items-center gap-3">
-                            {line.imageUrl ? (
-                              <Image
-                                src={line.imageUrl}
-                                alt=""
-                                width={48}
-                                height={48}
-                                className="size-12 rounded-lg object-cover"
-                              />
-                            ) : (
-                              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                                <PackageIcon
-                                  className="size-5"
-                                  aria-hidden="true"
-                                />
-                              </div>
-                            )}
-                            <div className="flex min-w-0 flex-col gap-1">
-                              <span className="truncate font-medium">
-                                {line.productName}
-                              </span>
-                              <Badge variant="secondary" className="w-fit">
-                                Tilføjet
-                              </Badge>
-                            </div>
-                          </div>
-
-                          <Field>
-                            <FieldLabel
-                              htmlFor={`${line.key}-unit`}
-                              className="sr-only"
-                            >
-                              Enhed for {line.productName}
-                            </FieldLabel>
-                            <Select
-                              items={unitItems}
-                              value={line.unitId}
-                              onValueChange={(value) =>
-                                setAdditionalLineUnit(line.key, value)
-                              }
-                            >
-                              <SelectTrigger
-                                id={`${line.key}-unit`}
-                                className="h-11! w-full"
-                              >
-                                <SelectValue placeholder="Vælg enhed" />
-                              </SelectTrigger>
-                              <SelectContent alignItemWithTrigger={false}>
-                                <SelectGroup>
-                                  {line.units.map((unit) => (
-                                    <SelectItem
-                                      key={unit.id}
-                                      value={unit.id}
-                                      disabled={
-                                        unit.id !== line.unitId &&
-                                        unavailableUnitIds.has(unit.id)
-                                      }
-                                    >
-                                      {unit.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-
-                          <Field data-invalid={Boolean(errors[line.key])}>
-                            <FieldLabel
-                              htmlFor={`${line.key}-quantity`}
-                              className="sr-only"
-                            >
-                              Mængde for {line.productName}
-                            </FieldLabel>
-                            <InputGroup className="h-11 w-full sm:w-40">
-                              <InputGroupInput
-                                id={`${line.key}-quantity`}
-                                type="text"
-                                inputMode="decimal"
-                                value={line.quantity}
-                                aria-invalid={Boolean(errors[line.key])}
-                                className="text-center tabular-nums"
-                                onChange={(event) =>
-                                  setAdditionalLineQuantity(
-                                    line.key,
-                                    event.target.value,
-                                  )
-                                }
-                              />
-                              <InputGroupAddon align="inline-start">
-                                <InputGroupButton
-                                  size="icon-sm"
-                                  className="size-10"
-                                  aria-label={`Reducér mængde for ${line.productName}`}
-                                  disabled={quantity !== null && quantity <= 1}
-                                  onClick={() =>
-                                    adjustAdditionalLineQuantity(line, -1)
-                                  }
-                                >
-                                  <MinusIcon data-icon="inline-start" />
-                                </InputGroupButton>
-                              </InputGroupAddon>
-                              <InputGroupAddon align="inline-end">
-                                <InputGroupButton
-                                  size="icon-sm"
-                                  className="size-10"
-                                  aria-label={`Øg mængde for ${line.productName}`}
-                                  onClick={() =>
-                                    adjustAdditionalLineQuantity(line, 1)
-                                  }
-                                >
-                                  <PlusIcon data-icon="inline-start" />
-                                </InputGroupButton>
-                              </InputGroupAddon>
-                            </InputGroup>
-                            <FieldError>{errors[line.key]}</FieldError>
-                          </Field>
-
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-lg"
-                            className="size-11"
-                            aria-label={`Fjern ${line.productName} i den valgte enhed`}
-                            onClick={() => removeAdditionalLine(line.key)}
-                          >
-                            <Trash2Icon data-icon="inline-start" />
-                          </Button>
-                        </li>
+                        <ReceiptProductLine
+                          line={line}
+                          unavailableUnitIds={unavailableUnitIds}
+                          onUnitChange={(unitId) =>
+                            setAdditionalLineUnit(line.key, unitId)
+                          }
+                          onQuantityChange={(quantity) =>
+                            setAdditionalLineQuantity(line.key, quantity)
+                          }
+                          onRemove={() => removeAdditionalLine(line.key)}
+                          error={errors[line.key]}
+                        />
                         {index < additionalLines.length - 1 ? (
                           <Separator />
                         ) : null}
@@ -1123,16 +861,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
               </CardContent>
             </Card>
 
-            <CardFooter
-              className="fixed inset-x-0 bottom-0 z-10 rounded-none bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0"
-              style={{
-                left: sidebar.isMobile
-                  ? 0
-                  : sidebar.state === "collapsed"
-                    ? "var(--sidebar-width-icon)"
-                    : "var(--sidebar-width)",
-              }}
-            >
+            <AppBottomBar>
               <div className="mx-auto flex w-full max-w-[96rem] justify-end">
                 <Button
                   type="submit"
@@ -1144,7 +873,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                   Registrér varemodtagelse
                 </Button>
               </div>
-            </CardFooter>
+            </AppBottomBar>
           </form>
         </main>
       </div>
@@ -1194,7 +923,9 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
   );
   const products = useCompleteCatalog(
     api.goodsReceipts.listCatalogPage,
-    receipt?.kind === "pending" ? { locationId: receipt.transfer.toLocationId } : "skip",
+    receipt?.kind === "pending"
+      ? { locationId: receipt.transfer.toLocationId }
+      : "skip",
   );
 
   if (!access) {
@@ -1220,7 +951,10 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
     );
   }
 
-  if (receipt === undefined || (receipt?.kind === "pending" && products === undefined)) {
+  if (
+    receipt === undefined ||
+    (receipt?.kind === "pending" && products === undefined)
+  ) {
     return (
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
         <Skeleton className="h-80 w-full" />
@@ -1281,5 +1015,10 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
     );
   }
 
-  return <TransferReceiptForm key={receipt.transfer.id} receipt={{ ...receipt, products: products ?? [] }} />;
+  return (
+    <TransferReceiptForm
+      key={receipt.transfer.id}
+      receipt={{ ...receipt, products: products ?? [] }}
+    />
+  );
 }

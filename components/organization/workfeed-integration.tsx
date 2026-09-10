@@ -1,5 +1,7 @@
 "use client";
 
+import { IntegrationCard } from "./integration-card";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
@@ -12,11 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,7 +62,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
@@ -270,7 +268,7 @@ function LocationMappings() {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
-  const [savingId, setSavingId] = useState<Id<"locations">>();
+  const [savingIds, setSavingIds] = useState<Set<Id<"locations">>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -311,7 +309,7 @@ function LocationMappings() {
       ...current,
       [location.id]: departmentId,
     }));
-    setSavingId(location.id);
+    setSavingIds((current) => new Set(current).add(location.id));
     try {
       await saveMapping({ locationId: location.id, departmentId });
       toast.success(`${location.name} er koblet til Workfeed`);
@@ -322,12 +320,16 @@ function LocationMappings() {
       }));
       toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
-      setSavingId(undefined);
+      setSavingIds((current) => {
+        const next = new Set(current);
+        next.delete(location.id);
+        return next;
+      });
     }
   }
 
   async function remove(location: Location) {
-    setSavingId(location.id);
+    setSavingIds((current) => new Set(current).add(location.id));
     try {
       await removeMapping({ locationId: location.id });
       setDrafts((current) => ({ ...current, [location.id]: "" }));
@@ -335,7 +337,11 @@ function LocationMappings() {
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
-      setSavingId(undefined);
+      setSavingIds((current) => {
+        const next = new Set(current);
+        next.delete(location.id);
+        return next;
+      });
     }
   }
 
@@ -428,7 +434,7 @@ function LocationMappings() {
                           ...(departments ?? []),
                         ]
                       : (departments ?? []);
-                  const saving = savingId === location.id;
+                  const saving = savingIds.has(location.id);
                   const connected = Boolean(value);
 
                   return (
@@ -596,68 +602,31 @@ export function WorkfeedIntegration() {
   const integrationOpen = detailsOpen || setupOpen;
 
   return (
-    <Collapsible
+    <IntegrationCard
+      id="workfeed-integration"
+      title="Workfeed"
+      description={
+        <>
+          Se dagens planlagte medarbejdere og antal medarbejdere på arbejde for
+          hver lokation.
+        </>
+      }
+      connected={settings.connected}
+      checked={settings.connected ? settings.enabled : setupOpen}
       open={integrationOpen}
       onOpenChange={(open) => {
         setDetailsOpen(open);
         if (!open && !settings.connected) setSetupOpen(false);
       }}
+      onEnabledChange={(enabled) => void changeIntegrationEnabled(enabled)}
+      disabled={changingEnabled}
+      contentClassName="flex flex-col gap-5 pb-4"
     >
-      <Card className="max-w-6xl">
-        <CardHeader>
-          <CardTitle>Workfeed</CardTitle>
-          <CardDescription>
-            Se dagens planlagte medarbejdere og antal medarbejdere på arbejde
-            for hver lokation.
-          </CardDescription>
-          <CardAction className="flex items-center gap-3">
-            <Field orientation="horizontal" className="w-auto">
-              <Switch
-                id="workfeed-integration-enabled"
-                aria-controls={
-                  settings.connected
-                    ? undefined
-                    : "workfeed-integration-settings"
-                }
-                aria-expanded={
-                  settings.connected ? undefined : integrationOpen
-                }
-                aria-label="Aktivér Workfeed-integration"
-                checked={settings.connected ? settings.enabled : setupOpen}
-                disabled={changingEnabled}
-                onCheckedChange={(enabled) =>
-                  void changeIntegrationEnabled(enabled)
-                }
-              />
-            </Field>
-            <CollapsibleTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={`${integrationOpen ? "Skjul" : "Vis"} Workfeed-indstillinger`}
-                />
-              }
-            >
-              {integrationOpen ? "Skjul" : "Vis"}
-              {integrationOpen ? (
-                <ChevronUpIcon data-icon="inline-end" />
-              ) : (
-                <ChevronDownIcon data-icon="inline-end" />
-              )}
-            </CollapsibleTrigger>
-          </CardAction>
-        </CardHeader>
-        <CollapsibleContent id="workfeed-integration-settings">
-          <CardContent className="flex flex-col gap-5 pb-4">
-            <ConnectionCard
-              settings={settings}
-              onDisconnected={() => setSetupOpen(false)}
-            />
-            {settings.connected ? <LocationMappings /> : null}
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+      <ConnectionCard
+        settings={settings}
+        onDisconnected={() => setSetupOpen(false)}
+      />
+      {settings.connected ? <LocationMappings /> : null}
+    </IntegrationCard>
   );
 }

@@ -1,12 +1,18 @@
 "use client";
 
+import { toDateTimeLocal, fromDateTimeLocal } from "@/lib/date";
+
+import { ProductUnitLine } from "@/components/product-unit-line";
+
+import { ProductLineGroup } from "@/components/product-line-group";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { getUserErrorMessage } from "@/lib/user-errors";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import posthog from "posthog-js";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useKiosk } from "@/components/app-shell";
+import {
+  CreatableCombobox,
+  type ComboboxOption,
+} from "@/components/catalog/creatable-combobox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,21 +23,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  MinusIcon,
-  PackageOpenIcon,
-  PlusIcon,
-  SaveIcon,
-  TriangleAlertIcon,
-  Trash2Icon,
-} from "lucide-react";
-import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
-import {
-  CreatableCombobox,
-  type ComboboxOption,
-} from "@/components/catalog/creatable-combobox";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,6 +31,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Empty } from "@/components/ui/empty";
 import {
   Field,
   FieldError,
@@ -47,20 +39,19 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { useKiosk } from "@/components/app-shell";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { productSearchScore } from "@/lib/product-search";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
+import { useConvex, useMutation, useQuery } from "convex/react";
+import { PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
+import posthog from "posthog-js";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type LocationOption = {
   id: Id<"locations">;
@@ -139,20 +130,6 @@ type ValidatedTemperatures = {
   deviations: TemperatureDeviationConfirmation[];
 };
 
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function toDatetimeLocalValue(ms: number) {
-  const date = new Date(ms);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function fromDatetimeLocalValue(value: string) {
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? ms : NaN;
-}
-
 function formatTemperature(value: number) {
   return new Intl.NumberFormat("da-DK", {
     maximumFractionDigits: 1,
@@ -223,8 +200,7 @@ export function TransferForm({
   const convex = useConvex();
   const { data: session } = authClient.useSession();
   const locations = useQuery(api.locations.listAllLocationOptions) as
-    | LocationOption[]
-    | undefined;
+    LocationOption[] | undefined;
   const kiosk = useKiosk();
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
   const [productSearch, setProductSearch] = useState("");
@@ -248,7 +224,7 @@ export function TransferForm({
   );
   const [comment, setComment] = useState(transfer?.comment ?? "");
   const [transferredAtLocal, setTransferredAtLocal] = useState(() =>
-    toDatetimeLocalValue(transfer?.transferredAt ?? Date.now()),
+    toDateTimeLocal(transfer?.transferredAt ?? Date.now()),
   );
   const [lines, setLines] = useState<TransferLine[]>(() =>
     (transfer?.items ?? []).map((item) => ({
@@ -273,14 +249,15 @@ export function TransferForm({
     validated: ValidatedTemperatures;
     deviations: TemperatureDeviationConfirmation[];
   } | null>(null);
-  const [isTemperatureDialogOpen, setIsTemperatureDialogOpen] =
-    useState(false);
+  const [isTemperatureDialogOpen, setIsTemperatureDialogOpen] = useState(false);
   const sessionUserId = session?.user.id;
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
 
   useEffect(() => {
     if (!transfer && kiosk?.isKioskAccount && kiosk.locationId) {
-      const timeout = window.setTimeout(() => setFromLocationId(kiosk.locationId));
+      const timeout = window.setTimeout(() =>
+        setFromLocationId(kiosk.locationId),
+      );
       return () => window.clearTimeout(timeout);
     }
   }, [kiosk?.isKioskAccount, kiosk?.locationId, transfer]);
@@ -349,7 +326,7 @@ export function TransferForm({
     setToLocationId(null);
     setResponsibleUserId(sessionUserId ?? null);
     setComment("");
-    setTransferredAtLocal(() => toDatetimeLocalValue(Date.now()));
+    setTransferredAtLocal(() => toDateTimeLocal(Date.now()));
     setLines([]);
     setProductToAdd(null);
     setErrors({});
@@ -424,7 +401,9 @@ export function TransferForm({
       addLine(product, unitId);
       setProductToAdd(null);
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."),
+      );
     } finally {
       setLoadingProductId(undefined);
     }
@@ -439,10 +418,9 @@ export function TransferForm({
     const results = await Promise.allSettled(
       productIds.map(async (productId) => ({
         productId,
-        product: await convex.query(
-          api.transfers.getTransferProductOption,
-          { productId },
-        ),
+        product: await convex.query(api.transfers.getTransferProductOption, {
+          productId,
+        }),
       })),
     );
     setTemperatureStates((current) => {
@@ -455,8 +433,7 @@ export function TransferForm({
         if (next === current) next = { ...current };
         next[key] = {
           ...temperature,
-          maxTemperatureCelsius:
-            result.value.product.maxTemperatureCelsius,
+          maxTemperatureCelsius: result.value.product.maxTemperatureCelsius,
         };
       }
       return next;
@@ -519,7 +496,9 @@ export function TransferForm({
       });
       if (!unit) toast.error("Produktet har ingen flere enheder");
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."),
+      );
     } finally {
       setLoadingProductId(undefined);
     }
@@ -543,15 +522,12 @@ export function TransferForm({
     const nextErrors: Record<string, string> = {};
     if (!fromLocationId) nextErrors.fromLocation = "Vælg afsenderlokation";
     if (!toLocationId) nextErrors.toLocation = "Vælg modtagerlokation";
-    if (
-      fromLocationId &&
-      toLocationId &&
-      fromLocationId === toLocationId
-    ) {
+    if (fromLocationId && toLocationId && fromLocationId === toLocationId) {
       nextErrors.toLocation = "Fra- og til-lokation skal være forskellige";
     }
-    if (!effectiveResponsibleUserId) nextErrors.responsible = "Vælg en ansvarlig";
-    const transferredAt = fromDatetimeLocalValue(transferredAtLocal);
+    if (!effectiveResponsibleUserId)
+      nextErrors.responsible = "Vælg en ansvarlig";
+    const transferredAt = fromDateTimeLocal(transferredAtLocal);
     if (!Number.isFinite(transferredAt)) {
       nextErrors.transferredAt = "Angiv et gyldigt tidspunkt";
     }
@@ -566,11 +542,12 @@ export function TransferForm({
       const product = group[0];
       if (!product) continue;
 
-      const state =
-        temperatureStates[temperatureStateKey(product.productId)] ?? {
-          value: "",
-          maxTemperatureCelsius: null,
-        };
+      const state = temperatureStates[
+        temperatureStateKey(product.productId)
+      ] ?? {
+        value: "",
+        maxTemperatureCelsius: null,
+      };
       const parsedTemperature = parseTemperatureInput(state.value);
       const errorKey = temperatureErrorKey(product.productId);
 
@@ -624,7 +601,7 @@ export function TransferForm({
         toLocationId: toLocationId as Id<"locations">,
         responsibleUserId: effectiveResponsibleUserId,
         comment: comment.trim() || undefined,
-        transferredAt: fromDatetimeLocalValue(transferredAtLocal),
+        transferredAt: fromDateTimeLocal(transferredAtLocal),
         items: lines.map((line) => ({
           productId: line.productId,
           unitId: line.unitId,
@@ -643,13 +620,18 @@ export function TransferForm({
         posthog.capture("transfer_updated", {
           item_count: lines.length,
           total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
-          has_temperature_deviations: Boolean(confirmedTemperatureDeviations?.length),
+          has_temperature_deviations: Boolean(
+            confirmedTemperatureDeviations?.length,
+          ),
         });
         toast.success("Transferen er opdateret");
         onSaved?.();
       } else {
         await createTransfer(payload);
-        if (confirmedTemperatureDeviations && confirmedTemperatureDeviations.length > 0) {
+        if (
+          confirmedTemperatureDeviations &&
+          confirmedTemperatureDeviations.length > 0
+        ) {
           posthog.capture("transfer_created_with_temperature_deviation", {
             item_count: lines.length,
             total_quantity: lines.reduce((sum, line) => sum + line.quantity, 0),
@@ -665,7 +647,9 @@ export function TransferForm({
         resetForm();
       }
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(caught, "Transferen kunne ikke gemmes. Prøv igen."),
+      );
       setTemperatureConfirmation(null);
       setIsTemperatureDialogOpen(false);
       await refreshNewProductMaximums();
@@ -676,7 +660,12 @@ export function TransferForm({
 
   async function save() {
     const validated = validate();
-    if (!validated || !fromLocationId || !toLocationId || !effectiveResponsibleUserId) {
+    if (
+      !validated ||
+      !fromLocationId ||
+      !toLocationId ||
+      !effectiveResponsibleUserId
+    ) {
       return;
     }
     if (validated.deviations.length > 0) {
@@ -766,9 +755,7 @@ export function TransferForm({
                   ariaLabel="Ansvarlig"
                   disabled={membersLoading}
                 />
-                <FieldError>
-                  {errors.responsible ?? membersError}
-                </FieldError>
+                <FieldError>{errors.responsible ?? membersError}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(errors.comment)}>
@@ -794,7 +781,9 @@ export function TransferForm({
                   id={`${inputIdPrefix}-at`}
                   type="datetime-local"
                   value={transferredAtLocal}
-                  onChange={(event) => setTransferredAtLocal(event.target.value)}
+                  onChange={(event) =>
+                    setTransferredAtLocal(event.target.value)
+                  }
                   className="h-11"
                   aria-invalid={Boolean(errors.transferredAt)}
                 />
@@ -809,8 +798,8 @@ export function TransferForm({
             <CardTitle>Produkter</CardTitle>
             <CardAction>
               <p className="text-sm text-muted-foreground">
-                {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"} ·{" "}
-                {totalQuantity} enheder i alt
+                {lineCount} {lineCount === 1 ? "produktlinje" : "produktlinjer"}{" "}
+                · {totalQuantity} enheder i alt
               </p>
             </CardAction>
           </CardHeader>
@@ -830,23 +819,24 @@ export function TransferForm({
             </Field>
 
             {lines.length === 0 ? (
-              <p className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
+              <Empty className="block w-auto min-w-auto flex-initial border p-5 text-start text-wrap text-sm text-muted-foreground">
                 Ingen produkter tilføjet endnu.
-              </p>
+              </Empty>
             ) : (
               <ul className="flex flex-col gap-3">
                 {lineGroups.map((group) => {
                   const product = group[0];
                   if (!product) return null;
                   const usedUnitIds = new Set(group.map((line) => line.unitId));
-                  const canAddUnit = product.units.some(
-                    (unit) => !usedUnitIds.has(unit.id),
-                  ) || !product.unitsLoaded;
-                  const productTemperature =
-                    temperatureStates[temperatureStateKey(product.productId)] ?? {
-                      value: "",
-                      maxTemperatureCelsius: null,
-                    };
+                  const canAddUnit =
+                    product.units.some((unit) => !usedUnitIds.has(unit.id)) ||
+                    !product.unitsLoaded;
+                  const productTemperature = temperatureStates[
+                    temperatureStateKey(product.productId)
+                  ] ?? {
+                    value: "",
+                    maxTemperatureCelsius: null,
+                  };
                   const parsedTemperature = parseTemperatureInput(
                     productTemperature.value,
                   );
@@ -868,48 +858,25 @@ export function TransferForm({
                     errors[temperatureErrorKey(product.productId)];
 
                   return (
-                    <li
+                    <ProductLineGroup
                       key={product.productId}
-                      className="flex flex-col gap-3 rounded-xl border p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        {product.imageUrl ? (
-                          <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
-                            <Image
-                              src={product.imageUrl}
-                              alt={`Produktbillede af ${product.productName}`}
-                              fill
-                              sizes="3.5rem"
-                              className="object-cover"
+                      productName={product.productName}
+                      imageUrl={product.imageUrl}
+                      status={
+                        hasTemperatureDeviation ? (
+                          <span className="inline-flex shrink-0 text-warning">
+                            <TriangleAlertIcon
+                              aria-hidden="true"
+                              className="size-4"
                             />
-                          </div>
-                        ) : (
-                          <div
-                            className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-                            aria-hidden="true"
-                          >
-                            <PackageOpenIcon className="size-6" />
-                          </div>
-                        )}
-
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <p className="min-w-0 flex-1 truncate font-medium">
-                            {product.productName}
-                          </p>
-                          {hasTemperatureDeviation ? (
-                            <span className="inline-flex shrink-0 text-warning">
-                              <TriangleAlertIcon
-                                aria-hidden="true"
-                                className="size-4"
-                              />
-                              <span className="sr-only">
-                                Temperaturafvigelse for {product.productName}
-                              </span>
+                            <span className="sr-only">
+                              Temperaturafvigelse for {product.productName}
                             </span>
-                          ) : null}
-                        </div>
-
-                        {canAddUnit ? (
+                          </span>
+                        ) : null
+                      }
+                      action={
+                        canAddUnit ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -924,9 +891,9 @@ export function TransferForm({
                             )}
                             Tilføj enhed
                           </Button>
-                        ) : null}
-                      </div>
-
+                        ) : null
+                      }
+                    >
                       <Field data-invalid={Boolean(temperatureError)}>
                         <FieldLabel htmlFor={temperatureId}>
                           <span className="flex items-center gap-1">
@@ -958,7 +925,9 @@ export function TransferForm({
                             }));
                             setErrors((current) => {
                               const next = { ...current };
-                              delete next[temperatureErrorKey(product.productId)];
+                              delete next[
+                                temperatureErrorKey(product.productId)
+                              ];
                               delete next.comment;
                               return next;
                             });
@@ -982,144 +951,47 @@ export function TransferForm({
 
                       <ul className="flex flex-col gap-2">
                         {group.map((line) => (
-                          <li
-                            key={line.key}
-                            className="grid gap-3 py-2 sm:grid-cols-[minmax(8rem,1fr)_auto_auto] sm:items-center"
-                          >
-                            <Field>
-                              <FieldLabel htmlFor={`${line.key}-unit`} className="sr-only">
-                                Enhed for {line.productName}
-                              </FieldLabel>
-                              <Select
-                                items={line.units.map((unit) => ({
-                                  value: unit.id,
-                                  label: unit.name,
-                                }))}
-                                value={line.unitId}
-                                onValueChange={(value) =>
-                                  setLines((current) =>
-                                    current.map((item) =>
-                                      item.key === line.key
-                                        ? {
-                                            ...item,
-                                            unitId: value as Id<"units">,
-                                          }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                <SelectTrigger id={`${line.key}-unit`} className="h-11! w-full">
-                                  <SelectValue placeholder="Vælg enhed" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {line.units.map((unit) => (
-                                      <SelectItem
-                                        key={unit.id}
-                                        value={unit.id}
-                                        disabled={
-                                          unit.id !== line.unitId &&
-                                          usedUnitIds.has(unit.id)
+                          <li key={line.key} className="py-2">
+                            <ProductUnitLine
+                              lineKey={line.key}
+                              productName={line.productName}
+                              units={line.units}
+                              unitId={line.unitId}
+                              unavailableUnitIds={usedUnitIds}
+                              quantity={line.quantity}
+                              integer
+                              onUnitChange={(unitId) =>
+                                setLines((current) =>
+                                  current.map((item) =>
+                                    item.key === line.key
+                                      ? { ...item, unitId }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              onQuantityChange={(value) => {
+                                const next = Number(value.replace(",", "."));
+                                if (!Number.isFinite(next)) return;
+                                setLines((current) =>
+                                  current.map((item) =>
+                                    item.key === line.key
+                                      ? {
+                                          ...item,
+                                          quantity: Math.max(
+                                            1,
+                                            Math.floor(next),
+                                          ),
                                         }
-                                      >
-                                        {unit.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                            </Field>
-
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon-lg"
-                                className="size-11"
-                                aria-label={`Reducér mængde for ${line.productName}`}
-                                disabled={line.quantity <= 1}
-                                onClick={() =>
-                                  setLines((current) =>
-                                    current.map((item) =>
-                                      item.key === line.key
-                                        ? {
-                                            ...item,
-                                            quantity: Math.max(
-                                              1,
-                                              item.quantity - 1,
-                                            ),
-                                          }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                <MinusIcon />
-                              </Button>
-                              <Input
-                                type="number"
-                                inputMode="numeric"
-                                min={1}
-                                step={1}
-                                value={line.quantity}
-                                aria-label={`Mængde for ${line.productName}`}
-                                className="h-11 w-16 text-center"
-                                onChange={(event) => {
-                                  const next = Number(event.target.value);
-                                  if (!Number.isFinite(next)) return;
-                                  setLines((current) =>
-                                    current.map((item) =>
-                                      item.key === line.key
-                                        ? {
-                                            ...item,
-                                            quantity: Math.max(
-                                              1,
-                                              Math.floor(next),
-                                            ),
-                                          }
-                                        : item,
-                                    ),
-                                  );
-                                }}
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon-lg"
-                                className="size-11"
-                                aria-label={`Øg mængde for ${line.productName}`}
-                                onClick={() =>
-                                  setLines((current) =>
-                                    current.map((item) =>
-                                      item.key === line.key
-                                        ? {
-                                            ...item,
-                                            quantity: item.quantity + 1,
-                                          }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                <PlusIcon />
-                              </Button>
-                            </div>
-
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-lg"
-                              className="size-11"
-                              aria-label={`Fjern ${line.productName} i den valgte enhed`}
-                              onClick={() => removeLine(line)}
-                            >
-                              <Trash2Icon />
-                            </Button>
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              onRemove={() => removeLine(line)}
+                            />
                           </li>
                         ))}
                       </ul>
-                    </li>
+                    </ProductLineGroup>
                   );
                 })}
               </ul>
@@ -1151,9 +1023,11 @@ export function TransferForm({
                 const product = lineGroups
                   .map((group) => group[0])
                   .find((line) => line?.productId === deviation.productId);
-                const measured = temperatureConfirmation.validated.temperatures.find(
-                  (temperature) => temperature.productId === deviation.productId,
-                )?.temperatureCelsius;
+                const measured =
+                  temperatureConfirmation.validated.temperatures.find(
+                    (temperature) =>
+                      temperature.productId === deviation.productId,
+                  )?.temperatureCelsius;
                 return (
                   <li
                     key={deviation.productId}
@@ -1163,8 +1037,12 @@ export function TransferForm({
                       {product?.productName ?? "Produkt"}
                     </span>
                     <span className="block text-muted-foreground">
-                      Målt: {measured === undefined ? "—" : formatTemperature(measured)} °C ·
-                      maksimum: {formatTemperature(deviation.maxTemperatureCelsius)} °C
+                      Målt:{" "}
+                      {measured === undefined
+                        ? "—"
+                        : formatTemperature(measured)}{" "}
+                      °C · maksimum:{" "}
+                      {formatTemperature(deviation.maxTemperatureCelsius)} °C
                     </span>
                   </li>
                 );

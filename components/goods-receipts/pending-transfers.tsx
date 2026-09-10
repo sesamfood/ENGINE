@@ -1,5 +1,7 @@
 "use client";
 
+import { dateTimeFormatter as sharedDateTimeFormatter } from "@/lib/date";
+
 import { useQuery } from "convex/react";
 import { ArrowRightIcon, PackageCheckIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
@@ -28,7 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("da-DK", {
+const dateTimeFormatter = sharedDateTimeFormatter("da-DK", {
   dateStyle: "medium",
   timeStyle: "short",
 });

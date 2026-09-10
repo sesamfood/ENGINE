@@ -1,5 +1,7 @@
 "use client";
 
+import type { FunctionReturnType } from "convex/server";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -66,15 +68,9 @@ import {
 
 type ProductStatus = "active" | "archived";
 const MAX_BULK_PRODUCT_SELECTION = 200;
-type CatalogProduct = {
-  id: Id<"products">;
-  name: string;
-  status: ProductStatus;
-  category: { id: Id<"categories">; name: string } | null;
-  categories: Array<{ id: Id<"categories">; name: string }>;
-  imageUrl: string | null;
-  deletesAt: number | null;
-};
+type CatalogProduct = FunctionReturnType<
+  typeof api.catalog.listProducts
+>["page"][number];
 
 type CategoryMenuOption = {
   id: Id<"categories">;
@@ -299,8 +295,9 @@ export function ProductCatalog() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Id<"products">[]>([]);
-  const [bulkCategoryId, setBulkCategoryId] =
-    useState<Id<"categories"> | null>(null);
+  const [bulkCategoryId, setBulkCategoryId] = useState<Id<"categories"> | null>(
+    null,
+  );
   const [isBulkCategoryDialogOpen, setIsBulkCategoryDialogOpen] =
     useState(false);
   const [isChangingCategory, setIsChangingCategory] = useState(false);
@@ -328,7 +325,11 @@ export function ProductCatalog() {
     { initialNumItems: 24 },
   );
 
-  const [requestedPage, setRequestedPage] = useState({ search: querySearch, status, count: 24 });
+  const [requestedPage, setRequestedPage] = useState({
+    search: querySearch,
+    status,
+    count: 24,
+  });
   const requestedResults = requestedPage.search === querySearch && requestedPage.status === status
     ? requestedPage.count
     : 24;
@@ -401,7 +402,7 @@ export function ProductCatalog() {
 
   const loading = paginationStatus === "LoadingFirstPage" ||
     (results.length === 0 && paginationStatus !== "Exhausted");
-  const currentResults = results as CatalogProduct[];
+  const currentResults = results;
 
   useEffect(() => {
     if (!loading) {

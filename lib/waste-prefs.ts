@@ -1,44 +1,19 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { setCountLocation } from "@/lib/count-prefs";
+import { createLocationPreference } from "./location-preference";
 
-const listeners = new Set<() => void>();
-const memory = new Map<string, string | null>();
+const preference = createLocationPreference(
+  "engine.waste.location",
+  "engine.count.location",
+);
+export const useWasteLocation = preference.useLocation;
+export const setWasteLocation = preference.set;
 
-function key(organizationId: string) {
-  return `engine.waste.location.${organizationId}`;
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function read(organizationId?: string) {
-  if (!organizationId) return null;
-  try {
-    const value =
-      window.localStorage.getItem(key(organizationId)) ??
-      window.localStorage.getItem(`engine.count.location.${organizationId}`);
-    memory.set(organizationId, value);
-    return value;
-  } catch {
-    return memory.get(organizationId) ?? null;
-  }
-}
-
-export function useWasteLocation(organizationId?: string) {
-  return useSyncExternalStore(subscribe, () => read(organizationId), () => null);
-}
-
-export function setWasteLocation(
+export function setRegistrationLocation(
   organizationId: string,
   locationId: string | null,
 ) {
-  memory.set(organizationId, locationId);
-  try {
-    if (locationId) window.localStorage.setItem(key(organizationId), locationId);
-    else window.localStorage.removeItem(key(organizationId));
-  } catch {}
-  for (const listener of listeners) listener();
+  setWasteLocation(organizationId, locationId);
+  setCountLocation(organizationId, locationId);
 }

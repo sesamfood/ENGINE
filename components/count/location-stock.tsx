@@ -2,13 +2,12 @@
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
+import { BoxesIcon, Grid2X2Icon, ListIcon } from "lucide-react";
 import {
-  BoxesIcon,
-  Grid2X2Icon,
-  ListIcon,
-  PackageOpenIcon,
-} from "lucide-react";
-import Image from "next/image";
+  ProductCardMedia,
+  productGridClassName,
+} from "@/components/catalog/product-card-media";
+import { useCountState } from "./count-state-provider";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -36,18 +35,11 @@ import {
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { useKiosk, useLocationAccess, usePermission } from "@/components/app-shell";
-import { authClient } from "@/lib/auth-client";
-import { useCountLocation } from "@/lib/count-prefs";
+import { useKiosk, usePermission } from "@/components/app-shell";
+import { dateTimeFormatter, DEFAULT_TIME_ZONE } from "@/lib/date";
 
 const quantityFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
-});
-
-const dateFormatter = new Intl.DateTimeFormat("da-DK", {
-  dateStyle: "short",
-  timeStyle: "short",
 });
 
 function formatStockQuantity(
@@ -81,17 +73,19 @@ function formatStockQuantity(
 
 export function LocationStock() {
   const [view, setView] = useState<"grid" | "detail">("grid");
-  const organization = authClient.useActiveOrganization();
-  const organizationId = organization.data?.id;
-  const storedLocationId = useCountLocation(organizationId);
-  const { locations, isLocked, lockedId } = useLocationAccess();
+  const { locations, locationId, state } = useCountState();
+  const dateFormatter = dateTimeFormatter("da-DK", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: state?.timeZone ?? DEFAULT_TIME_ZONE,
+  });
   const kiosk = useKiosk();
-  const canView = usePermission("count.viewStock") || Boolean(kiosk?.kioskModeEnabled && kiosk.settings?.enabledPages.includes("count.stock"));
-  const locationId = isLocked
-    ? lockedId
-    : locations?.some((location) => location.id === storedLocationId)
-      ? (storedLocationId as Id<"locations">)
-      : (locations?.[0]?.id ?? null);
+  const canView =
+    usePermission("count.viewStock") ||
+    Boolean(
+      kiosk?.kioskModeEnabled &&
+      kiosk.settings?.enabledPages.includes("count.stock"),
+    );
   const stock = useCompleteCatalog(
     api.count.listLocationStockPage,
     canView && locationId ? { locationId } : "skip",
@@ -101,14 +95,16 @@ export function LocationStock() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Ingen adgang</AlertTitle>
-        <AlertDescription>Du har ikke adgang til lagerbeholdningen.</AlertDescription>
+        <AlertDescription>
+          Du har ikke adgang til lagerbeholdningen.
+        </AlertDescription>
       </Alert>
     );
   }
 
   if (!locations || (locationId && !stock)) {
     return (
-      <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+      <div className={productGridClassName}>
         {Array.from({ length: 8 }, (_, index) => (
           <Card key={index} className="gap-4 py-0">
             <Skeleton className="aspect-video w-full rounded-none lg:aspect-[4/3]" />
@@ -180,30 +176,16 @@ export function LocationStock() {
       </div>
 
       {view === "grid" ? (
-        <div className="grid gap-3 min-[380px]:grid-cols-2 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 lg:gap-5 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
+        <div className={productGridClassName}>
           {stock?.map((row) => (
             <Card
               key={row.productId}
               className="h-full gap-0 py-0 [--card-spacing:--spacing(3)] lg:[--card-spacing:--spacing(4)]"
             >
-              {row.imageUrl ? (
-                <div className="relative aspect-video w-full overflow-hidden bg-muted lg:aspect-[4/3]">
-                  <Image
-                    src={row.imageUrl}
-                    alt={`Produktbillede af ${row.productName}`}
-                    fill
-                    sizes="(max-width: 379px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1199px) 25vw, (max-width: 1599px) 20vw, (max-width: 1919px) 16vw, (max-width: 2239px) 14vw, 12vw"
-                    className="object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground lg:aspect-[4/3]">
-                  <PackageOpenIcon
-                    className="size-10 lg:size-12"
-                    aria-hidden="true"
-                  />
-                </div>
-              )}
+              <ProductCardMedia
+                imageUrl={row.imageUrl}
+                alt={`Produktbillede af ${row.productName}`}
+              />
               <CardHeader className="py-3 lg:py-4">
                 <div className="flex min-w-0 items-baseline gap-2">
                   <CardTitle className="min-w-0 flex-1 truncate">

@@ -1,3 +1,4 @@
+import { dateKey as dateInTimeZone, parseDateKey } from "../lib/date";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -54,36 +55,15 @@ const employeeSummaryValidator = v.object({
 });
 
 function parseDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) throw new ConvexError("Ugestarten er ugyldig");
-  const date = new Date(
-    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-  );
-  if (
-    date.getUTCFullYear() !== Number(match[1]) ||
-    date.getUTCMonth() !== Number(match[2]) - 1 ||
-    date.getUTCDate() !== Number(match[3])
-  ) {
+  try {
+    return parseDateKey(value);
+  } catch {
     throw new ConvexError("Ugestarten er ugyldig");
   }
-  return date;
 }
 
 function dateValue(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function dateInTimeZone(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(timestamp);
-  const value = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${value.year}-${value.month}-${value.day}`;
 }
 
 async function hydrateEmployee(

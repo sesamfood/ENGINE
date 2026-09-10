@@ -1,3 +1,4 @@
+import { readLocation, requirePageSize, requireApiKeyPrincipal, restError } from "./lib";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -17,7 +18,6 @@ import { runIdempotent } from "../lib/idempotency";
 import { requestWorkfeedEmployeeSync } from "../lib/workfeedSyncRequest";
 import { requireRestApiMutation } from "./lib";
 
-const MAX_PAGE_SIZE = 100;
 const MAX_EMPLOYEE_LOCATIONS = 200;
 const MAX_RANGE_MS = 31 * 24 * 60 * 60 * 1_000;
 
@@ -52,16 +52,6 @@ const idempotentResponseValidator = v.object({
   replayed: v.boolean(),
 });
 
-function restError(code: string, message: string): never {
-  throw new ConvexError({ code, message });
-}
-
-function requireApiKeyPrincipal(auth: OrganizationAuth) {
-  if (auth.principalKind !== "apiKey" || !auth.apiKeyId) {
-    restError("api_key_required", "An API key is required for this operation.");
-  }
-}
-
 function requireDetailedData(auth: OrganizationAuth) {
   if (auth.granularity !== "detail") {
     restError(
@@ -85,15 +75,6 @@ async function requireScheduledShiftAccess(ctx: QueryCtx) {
   return auth;
 }
 
-function requirePageSize(numItems: number) {
-  if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_PAGE_SIZE) {
-    restError(
-      "page_size_invalid",
-      "Page size must be an integer between 1 and 100.",
-    );
-  }
-}
-
 function requireRange(from: number, to: number) {
   if (
     !Number.isFinite(from) ||
@@ -106,20 +87,6 @@ function requireRange(from: number, to: number) {
       "The shift range must be positive and no longer than 31 days.",
     );
   }
-}
-
-async function readLocation(
-  ctx: QueryCtx,
-  auth: OrganizationAuth,
-  publicId: string,
-) {
-  const id = ctx.db.normalizeId("locations", publicId);
-  const location = id ? await ctx.db.get("locations", id) : null;
-  if (!location || location.organizationId !== auth.organizationId) {
-    restError("location_not_found", "Location was not found.");
-  }
-  requireLocationAccess(auth, location._id);
-  return location;
 }
 
 function employeeSummaryDto(employee: Doc<"employees">) {

@@ -1,3 +1,5 @@
+import { activeProductUnit } from "./lib/productUnits";
+import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { claimStorageForOrganization } from "./lib/storageOwnership";
 import {
   paginationOptsValidator,
@@ -200,18 +202,6 @@ const noticePayloadValidator = v.object({
 });
 
 type ReadContext = QueryCtx | MutationCtx;
-
-async function requireLocation(
-  ctx: ReadContext,
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const location = await ctx.db.get("locations", locationId);
-  if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Lokationen blev ikke fundet");
-  }
-  return location;
-}
 
 async function settingsFor(ctx: ReadContext, organizationId: string) {
   const settings = await ctx.db
@@ -452,19 +442,12 @@ export const registerBadDelivery = mutation({
       ) {
         throw new ConvexError("Produktet blev ikke fundet");
       }
-      const [productUnit, unit, defaultUnit] = await Promise.all([
-        ctx.db
-          .query("productUnits")
-          .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("productId", product._id)
-              .eq("unitId", item.unitId),
-          )
-          .unique(),
-        ctx.db.get("units", item.unitId),
+      const [resolvedUnit, defaultUnit] = await Promise.all([
+        activeProductUnit(ctx, organizationId, product, item.unitId),
         ctx.db.get("units", product.defaultUnitId),
       ]);
+      const productUnit = resolvedUnit?.productUnit;
+      const unit = resolvedUnit?.unit;
       if (
         !productUnit ||
         !unit ||

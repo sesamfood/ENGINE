@@ -1,5 +1,7 @@
 "use client";
 
+import { SettingsSwitchField } from "./settings-switch-field";
+
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,15 +15,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Field,
-  FieldContent,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { FieldGroup } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -43,9 +40,9 @@ function Settings() {
     canManage ? {} : "skip",
   );
   const saveSettings = useMutation(api.orderingSettings.setSettings);
-  const [includeRecipesDraft, setIncludeRecipesDraft] = useState<boolean | null>(
-    null,
-  );
+  const [includeRecipesDraft, setIncludeRecipesDraft] = useState<
+    boolean | null
+  >(null);
   const [saving, setSaving] = useState(false);
 
   if (!access) return <Skeleton className="h-56 max-w-3xl" />;
@@ -91,19 +88,13 @@ function Settings() {
       </CardHeader>
       <CardContent>
         <FieldGroup>
-          <Field orientation="horizontal" data-disabled={saving}>
-            <FieldContent>
-              <FieldLabel htmlFor="ordering-include-recipes">
-                Medtag produkter med ingredienser
-              </FieldLabel>
-            </FieldContent>
-            <Switch
-              id="ordering-include-recipes"
-              checked={includeRecipes}
-              onCheckedChange={setIncludeRecipesDraft}
-              disabled={saving}
-            />
-          </Field>
+          <SettingsSwitchField
+            label="Medtag produkter med ingredienser"
+            id="ordering-include-recipes"
+            checked={includeRecipes}
+            onCheckedChange={setIncludeRecipesDraft}
+            disabled={saving}
+          />
         </FieldGroup>
       </CardContent>
       <CardFooter className="justify-end">

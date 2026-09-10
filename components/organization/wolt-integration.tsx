@@ -1,12 +1,12 @@
 "use client";
 
+import { IntegrationCard } from "./integration-card";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   CircleAlertIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   CloudOffIcon,
   ExternalLinkIcon,
   Link2Icon,
@@ -46,13 +46,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -64,7 +65,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -108,7 +109,8 @@ function ConnectionHealth({
   busy: boolean;
   onRetry: () => void;
 }) {
-  const canRetry = connection.state === "ready" && connection.deadLetterCount > 0;
+  const canRetry =
+    connection.state === "ready" && connection.deadLetterCount > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -164,7 +166,11 @@ function ConnectionHealth({
             title={!canRetry ? "Forbindelsen skal være klar" : undefined}
             onClick={onRetry}
           >
-            {busy ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
+            {busy ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RefreshCwIcon data-icon="inline-start" />
+            )}
             Prøv fejlede events igen
           </Button>
         ) : null}
@@ -205,9 +211,12 @@ function LocationHealthCard({
   onDisconnect: () => void;
   onRetry: () => void;
 }) {
-  const [partnerVenueDraft, setPartnerVenueDraft] = useState(location.partnerVenueId ?? "");
+  const [partnerVenueDraft, setPartnerVenueDraft] = useState(
+    location.partnerVenueId ?? "",
+  );
   const connection = location.connection;
-  const partnerChanged = partnerVenueDraft.trim() !== (location.partnerVenueId ?? "");
+  const partnerChanged =
+    partnerVenueDraft.trim() !== (location.partnerVenueId ?? "");
   const ssioBusy = busyKey === `ssio:${location.id}`;
   const partnerBusy = busyKey === `partner:${location.id}`;
   const removePartnerBusy = busyKey === `remove-partner:${location.id}`;
@@ -267,7 +276,11 @@ function LocationHealthCard({
                 disabled={!canUseWio || !partnerVenueDraft.trim() || !partnerChanged || partnerBusy}
                 onClick={() => onSavePartner(partnerVenueDraft.trim())}
               >
-                {partnerBusy ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
+                {partnerBusy ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <SaveIcon data-icon="inline-start" />
+                )}
                 Gem
               </Button>
             </div>
@@ -291,7 +304,11 @@ function LocationHealthCard({
             disabled={ssioBusy}
             onClick={onStartSsio}
           >
-            {ssioBusy ? <Spinner data-icon="inline-start" /> : <ExternalLinkIcon data-icon="inline-start" />}
+            {ssioBusy ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <ExternalLinkIcon data-icon="inline-start" />
+            )}
             {connection ? "Godkend SSIO igen" : "Start SSIO"}
           </Button>
           {location.partnerVenueId ? (
@@ -299,7 +316,11 @@ function LocationHealthCard({
               <AlertDialogTrigger
                 render={<Button type="button" variant="ghost" size="lg" className="min-h-11" disabled={removePartnerBusy} />}
               >
-                {removePartnerBusy ? <Spinner data-icon="inline-start" /> : <UnplugIcon data-icon="inline-start" />}
+                {removePartnerBusy ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <UnplugIcon data-icon="inline-start" />
+                )}
                 Fjern WIO-id
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -310,13 +331,17 @@ function LocationHealthCard({
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel disabled={removePartnerBusy}>Behold id</AlertDialogCancel>
+                  <AlertDialogCancel disabled={removePartnerBusy}>
+                    Behold id
+                  </AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
                     disabled={removePartnerBusy}
                     onClick={onRemovePartner}
                   >
-                    {removePartnerBusy ? <Spinner data-icon="inline-start" /> : null}
+                    {removePartnerBusy ? (
+                      <Spinner data-icon="inline-start" />
+                    ) : null}
                     Fjern id
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -328,7 +353,11 @@ function LocationHealthCard({
               <AlertDialogTrigger
                 render={<Button type="button" variant="ghost" size="lg" className="min-h-11" disabled={disconnectBusy} />}
               >
-                {disconnectBusy ? <Spinner data-icon="inline-start" /> : <UnplugIcon data-icon="inline-start" />}
+                {disconnectBusy ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <UnplugIcon data-icon="inline-start" />
+                )}
                 Afbryd forbindelse
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -339,13 +368,17 @@ function LocationHealthCard({
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel disabled={disconnectBusy}>Behold forbindelse</AlertDialogCancel>
+                  <AlertDialogCancel disabled={disconnectBusy}>
+                    Behold forbindelse
+                  </AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
                     disabled={disconnectBusy}
                     onClick={onDisconnect}
                   >
-                    {disconnectBusy ? <Spinner data-icon="inline-start" /> : null}
+                    {disconnectBusy ? (
+                      <Spinner data-icon="inline-start" />
+                    ) : null}
                     Afbryd forbindelse
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -433,7 +466,9 @@ function ObservedMappingRow({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <FieldGroup className="gap-3 sm:grid sm:grid-cols-2">
           <Field>
-            <FieldLabel htmlFor={`wolt-mapping-scope-${row.key}`}>Gælder for</FieldLabel>
+            <FieldLabel htmlFor={`wolt-mapping-scope-${row.key}`}>
+              Gælder for
+            </FieldLabel>
             {canUseWio ? (
               <Select
                 items={[
@@ -450,7 +485,10 @@ function ObservedMappingRow({
                 }}
                 disabled={saving}
               >
-                <SelectTrigger id={`wolt-mapping-scope-${row.key}`} className="h-11 w-full">
+                <SelectTrigger
+                  id={`wolt-mapping-scope-${row.key}`}
+                  className="h-11 w-full"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -503,7 +541,11 @@ function ObservedMappingRow({
             disabled={!selectedProductId || saving}
             onClick={onSave}
           >
-            {saving ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
+            {saving ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <SaveIcon data-icon="inline-start" />
+            )}
             Gem
           </Button>
           {currentMapping ? (
@@ -652,7 +694,8 @@ function ObservedItemMappings({
         ) : (
           <div className="flex flex-col gap-3">
             {observed.rows.map((row) => {
-              const selectedProductId = mappingDrafts[row.key] ?? row.mapping?.productId ?? null;
+              const selectedProductId =
+                mappingDrafts[row.key] ?? row.mapping?.productId ?? null;
               const defaultScope = row.mapping?.locationOverride || !canUseWio
                 ? row.locationId
                 : "all";
@@ -663,8 +706,13 @@ function ObservedItemMappings({
                   row={row}
                   selectedProductId={selectedProductId}
                   mappingScope={mappingScope}
-                  saving={savingKey === `mapping:${row.key}` || savingKey === `delete:${row.key}`}
-                  canDelete={canUseWio || Boolean(row.mapping?.locationOverride)}
+                  saving={
+                    savingKey === `mapping:${row.key}` ||
+                    savingKey === `delete:${row.key}`
+                  }
+                  canDelete={
+                    canUseWio || Boolean(row.mapping?.locationOverride)
+                  }
                   canUseWio={canUseWio}
                   products={products}
                   onScopeChange={(scope) => onScopeChange(row.key, scope)}
@@ -702,7 +750,10 @@ export function WoltIntegration() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const integrationOpen = detailsOpen || setupOpen;
-  const overview = useQuery(api.wolt.getIntegrationOverview, canManage ? {} : "skip");
+  const overview = useQuery(
+    api.wolt.getIntegrationOverview,
+    canManage ? {} : "skip",
+  );
   const observedLocationState = useState<Id<"locations"> | "all">("all");
   const observedLocationFilter = observedLocationState[0];
   const setObservedLocationFilter = observedLocationState[1];
@@ -718,7 +769,9 @@ export function WoltIntegration() {
   );
   const beginSsio = useAction(api.wolt.beginSsio);
   const setPartnerVenueMapping = useMutation(api.wolt.setPartnerVenueMapping);
-  const removePartnerVenueMapping = useMutation(api.wolt.removePartnerVenueMapping);
+  const removePartnerVenueMapping = useMutation(
+    api.wolt.removePartnerVenueMapping,
+  );
   const disconnectLocation = useMutation(api.wolt.disconnectLocation);
   const retryDeadLetters = useMutation(api.wolt.retryDeadLetters);
   const setEnabled = useMutation(api.wolt.setEnabled);
@@ -743,7 +796,9 @@ export function WoltIntegration() {
     }
     const next = new URLSearchParams(searchParams.toString());
     next.delete("wolt");
-    router.replace(next.size ? `${pathname}?${next}` : pathname, { scroll: false });
+    router.replace(next.size ? `${pathname}?${next}` : pathname, {
+      scroll: false,
+    });
   }, [pathname, router, searchParams]);
 
   async function changeIntegrationEnabled(enabled: boolean) {
@@ -780,7 +835,10 @@ export function WoltIntegration() {
     }
   }
 
-  async function savePartner(locationId: Id<"locations">, partnerVenueId: string) {
+  async function savePartner(
+    locationId: Id<"locations">,
+    partnerVenueId: string,
+  ) {
     setBusyKey(`partner:${locationId}`);
     try {
       const result = await setPartnerVenueMapping({ locationId, partnerVenueId });
@@ -906,130 +964,104 @@ export function WoltIntegration() {
   }
 
   return (
-    <Collapsible
+    <IntegrationCard
+      id="wolt-integration"
+      title="Wolt"
+      description={
+        <>Modtag Wolt-ordrer, og overvåg forbindelser pr. lokation.</>
+      }
+      connected={overview.connected}
+      checked={overview.connected ? overview.enabled : setupOpen}
       open={integrationOpen}
       onOpenChange={(open) => {
         setDetailsOpen(open);
         if (!open && !overview.connected) setSetupOpen(false);
       }}
+      onEnabledChange={(enabled) => void changeIntegrationEnabled(enabled)}
+      disabled={changingEnabled || (overview.connected && !overview.canUseWio)}
+      disabledReason={
+        overview.connected && !overview.canUseWio
+          ? "Kræver adgang til alle lokationer"
+          : undefined
+      }
+      contentClassName="flex flex-col gap-5"
     >
-      <Card className="max-w-6xl">
-        <CardHeader>
-          <CardTitle>Wolt</CardTitle>
-          <CardDescription>
-            Modtag Wolt-ordrer, og overvåg forbindelser pr. lokation.
-          </CardDescription>
-          <CardAction className="flex items-center gap-3">
-            <Field orientation="horizontal" className="w-auto">
-              <Switch
-                id="wolt-integration-enabled"
-                aria-controls={
-                  overview.connected ? undefined : "wolt-integration-settings"
-                }
-                aria-expanded={overview.connected ? undefined : integrationOpen}
-                aria-label="Aktivér Wolt-integration"
-                checked={overview.connected ? overview.enabled : setupOpen}
-                disabled={
-                  changingEnabled || (overview.connected && !overview.canUseWio)
-                }
-                title={
-                  overview.connected && !overview.canUseWio
-                    ? "Kræver adgang til alle lokationer"
-                    : undefined
-                }
-                onCheckedChange={(enabled) =>
-                  void changeIntegrationEnabled(enabled)
-                }
-              />
-            </Field>
-            <CollapsibleTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={`${integrationOpen ? "Skjul" : "Vis"} Wolt-indstillinger`}
-                />
-              }
-            >
-              {integrationOpen ? "Skjul" : "Vis"}
-              {integrationOpen ? (
-                <ChevronUpIcon data-icon="inline-end" />
-              ) : (
-                <ChevronDownIcon data-icon="inline-end" />
-              )}
-            </CollapsibleTrigger>
-          </CardAction>
-        </CardHeader>
-        <CollapsibleContent id="wolt-integration-settings">
-          <CardContent className="flex flex-col gap-5">
-            <div>
-              <Badge variant="outline">Kun læsning af ordredata</Badge>
-            </div>
-            {overview.limitReached ? (
-              <Alert>
-                <CircleAlertIcon aria-hidden="true" />
-                <AlertTitle>Visningen er begrænset</AlertTitle>
-                <AlertDescription>
-                  Der er flere Wolt-lokationer eller events end administrationsvisningen kan vise. Kontakt en administrator, før du foretager bulkændringer.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {!overview.canUseWio ? (
-              <Alert>
-                <CircleAlertIcon aria-hidden="true" />
-                <AlertTitle>WIO kræver adgang til alle lokationer</AlertTitle>
-                <AlertDescription>
-                  Du kan stadig forbinde en tilgængelig lokation med SSIO. WIO partner-venue-id’er kræver adgang til hele organisationen.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {overview.locations.length ? (
-              <div className="grid gap-5 xl:grid-cols-2">
-                {overview.locations.map((location) => (
-                  <LocationHealthCard
-                    key={`${location.id}:${location.partnerVenueId ?? ""}`}
-                    location={location}
-                    canUseWio={overview.canUseWio}
-                    busyKey={busyKey}
-                    onStartSsio={() => void startSsio(location.id)}
-                    onSavePartner={(partnerVenueId) => void savePartner(location.id, partnerVenueId)}
-                    onRemovePartner={() => void removePartner(location.id)}
-                    onDisconnect={() => void disconnect(location.id)}
-                    onRetry={() => void retry(location.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <Empty className="min-h-48">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon"><CloudOffIcon aria-hidden="true" /></EmptyMedia>
-                  <EmptyTitle>Ingen tilgængelige lokationer</EmptyTitle>
-                  <EmptyDescription>Der er ingen lokationer, du kan administrere Wolt for.</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-            <ObservedItemMappings
-              overview={overview}
-              observed={observed}
-              locationFilter={observedLocationFilter}
-              onLocationChange={setObservedLocationFilter}
-              mappingDrafts={mappingDrafts}
-              mappingScopes={mappingScopes}
-              products={products}
-              savingKey={busyKey}
+      <div>
+        <Badge variant="outline">Kun læsning af ordredata</Badge>
+      </div>
+      {overview.limitReached ? (
+        <Alert>
+          <CircleAlertIcon aria-hidden="true" />
+          <AlertTitle>Visningen er begrænset</AlertTitle>
+          <AlertDescription>
+            Der er flere Wolt-lokationer eller events end
+            administrationsvisningen kan vise. Kontakt en administrator, før du
+            foretager bulkændringer.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {!overview.canUseWio ? (
+        <Alert>
+          <CircleAlertIcon aria-hidden="true" />
+          <AlertTitle>WIO kræver adgang til alle lokationer</AlertTitle>
+          <AlertDescription>
+            Du kan stadig forbinde en tilgængelig lokation med SSIO. WIO
+            partner-venue-id’er kræver adgang til hele organisationen.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {overview.locations.length ? (
+        <div className="grid gap-5 xl:grid-cols-2">
+          {overview.locations.map((location) => (
+            <LocationHealthCard
+              key={`${location.id}:${location.partnerVenueId ?? ""}`}
+              location={location}
               canUseWio={overview.canUseWio}
-              onSelectProduct={(rowKey, productId) => {
-                setMappingDrafts((current) => ({ ...current, [rowKey]: productId }));
-              }}
-              onScopeChange={(rowKey, scope) => {
-                setMappingScopes((current) => ({ ...current, [rowKey]: scope }));
-              }}
-              onSave={(row, productId, scope) => void saveMapping(row, productId, scope)}
-              onDelete={(row) => void deleteMapping(row)}
+              busyKey={busyKey}
+              onStartSsio={() => void startSsio(location.id)}
+              onSavePartner={(partnerVenueId) =>
+                void savePartner(location.id, partnerVenueId)
+              }
+              onRemovePartner={() => void removePartner(location.id)}
+              onDisconnect={() => void disconnect(location.id)}
+              onRetry={() => void retry(location.id)}
             />
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+          ))}
+        </div>
+      ) : (
+        <Empty className="min-h-48">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <CloudOffIcon aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>Ingen tilgængelige lokationer</EmptyTitle>
+            <EmptyDescription>
+              Der er ingen lokationer, du kan administrere Wolt for.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+      <ObservedItemMappings
+        overview={overview}
+        observed={observed}
+        locationFilter={observedLocationFilter}
+        onLocationChange={setObservedLocationFilter}
+        mappingDrafts={mappingDrafts}
+        mappingScopes={mappingScopes}
+        products={products}
+        savingKey={busyKey}
+        canUseWio={overview.canUseWio}
+        onSelectProduct={(rowKey, productId) => {
+          setMappingDrafts((current) => ({ ...current, [rowKey]: productId }));
+        }}
+        onScopeChange={(rowKey, scope) => {
+          setMappingScopes((current) => ({ ...current, [rowKey]: scope }));
+        }}
+        onSave={(row, productId, scope) =>
+          void saveMapping(row, productId, scope)
+        }
+        onDelete={(row) => void deleteMapping(row)}
+      />
+    </IntegrationCard>
   );
 }

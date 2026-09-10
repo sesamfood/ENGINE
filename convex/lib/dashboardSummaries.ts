@@ -1,13 +1,11 @@
+import { dateKey, zonedStart, DEFAULT_TIME_ZONE } from "../../lib/date";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { DashboardSummarySource } from "../../lib/dashboard/summary-sources";
 
-const DEFAULT_TIME_ZONE = "Europe/Copenhagen";
 export const DASHBOARD_SUMMARY_VERSION = 2;
 const NUMERIC_TOLERANCE = 1e-9;
 const validTimeZones = new Map<string, string>();
-const dateFormatters = new Map<string, Intl.DateTimeFormat>();
-const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
 export type SummarySource = DashboardSummarySource;
 
@@ -44,38 +42,6 @@ function validTimeZone(timeZone: string | undefined) {
   }
 }
 
-function dateFormatter(timeZone: string) {
-  const normalizedTimeZone = validTimeZone(timeZone);
-  const cached = dateFormatters.get(normalizedTimeZone);
-  if (cached) return cached;
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: normalizedTimeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  dateFormatters.set(normalizedTimeZone, formatter);
-  return formatter;
-}
-
-function dateTimeFormatter(timeZone: string) {
-  const normalizedTimeZone = validTimeZone(timeZone);
-  const cached = dateTimeFormatters.get(normalizedTimeZone);
-  if (cached) return cached;
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: normalizedTimeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  dateTimeFormatters.set(normalizedTimeZone, formatter);
-  return formatter;
-}
-
 export async function dashboardSummaryTimeZone(
   ctx: QueryCtx | MutationCtx,
   organizationId: string,
@@ -87,36 +53,6 @@ export async function dashboardSummaryTimeZone(
     )
     .unique();
   return validTimeZone(settings?.timeZone);
-}
-
-function dateKey(timestamp: number, timeZone: string) {
-  const parts = dateFormatter(timeZone).formatToParts(timestamp);
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function zonedStart(value: string, timeZone: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  const target = Date.UTC(year, month - 1, day);
-  let guess = target;
-  const formatter = dateTimeFormatter(timeZone);
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(
-      formatter.formatToParts(guess).map((part) => [part.type, part.value]),
-    );
-    const represented = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute),
-      Number(parts.second),
-    );
-    guess += target - represented;
-  }
-  return guess;
 }
 
 function contribution(

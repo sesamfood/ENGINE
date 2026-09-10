@@ -1,5 +1,7 @@
 "use client";
 
+import type { FunctionReturnType } from "convex/server";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -73,15 +75,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-type Category = {
-  id: Id<"categories">;
-  name: string;
-  parentCategoryId: Id<"categories"> | null;
-  path: string;
-  depth: number;
-  inUse: boolean;
-  hasChildren: boolean;
-};
+type Category = FunctionReturnType<typeof api.catalog.listCategories>[number];
 
 type PlacementKind = "root" | "child" | "parent";
 type Editor =
@@ -101,8 +95,7 @@ const PLACEMENT_ITEMS = [
 ];
 
 export function CategoryManager() {
-  const categories = useQuery(api.catalog.listCategories) as
-    Category[] | undefined;
+  const categories = useQuery(api.catalog.listCategories);
   const createCategory = useMutation(api.catalog.createCategory);
   const updateCategory = useMutation(api.catalog.updateCategory);
   const deleteCategory = useMutation(api.catalog.deleteCategory);

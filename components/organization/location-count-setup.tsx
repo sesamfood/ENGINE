@@ -1,5 +1,7 @@
 "use client";
 
+import { SortableListRow } from "./sortable-list-row";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -17,13 +19,11 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+
 import { useMutation, useQuery } from "convex/react";
 import {
-  GripVerticalIcon,
   LayoutListIcon,
   ListOrderedIcon,
   MapIcon,
@@ -89,7 +89,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 
 type ProductId = Id<"products">;
 type ProductMode = "all" | "selected";
@@ -133,72 +132,34 @@ function SortableAreaProductRow({
   productName: string;
   onRemove: () => void;
 }) {
-  const {
-    attributes,
-    isDragging,
-    isOver,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: productId, disabled });
-
   return (
-    <li
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 1 : undefined,
-      }}
-      className={cn(
-        "flex min-h-14 items-center gap-2 rounded-lg border bg-background p-1 transition-[box-shadow,border-color] duration-150",
-        isDragging && "opacity-30",
-        isOver &&
-          !isDragging &&
-          "border-primary bg-primary/5 ring-2 ring-primary/20",
-      )}
-    >
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        className="flex min-h-12 min-w-0 flex-1 touch-none cursor-grab items-center gap-2 rounded-md px-1 py-0 text-left outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing disabled:pointer-events-none disabled:cursor-default disabled:opacity-50"
-        disabled={disabled}
-        {...attributes}
-        {...listeners}
-        aria-label={`Flyt ${productName}`}
-        aria-roledescription="Produkt, der kan flyttes"
-      >
-        <span className="flex size-11 shrink-0 items-center justify-center text-muted-foreground">
-          <GripVerticalIcon aria-hidden="true" />
-        </span>
-        <span className="w-6 shrink-0 text-center text-sm text-muted-foreground">
-          {position}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-medium">
-          {productName}
-        </span>
-      </button>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              className="size-11"
-              aria-label={`Fjern ${productName} fra ${areaName}`}
-              disabled={disabled}
-              onClick={onRemove}
-            />
-          }
-        >
-          <Trash2Icon />
-        </TooltipTrigger>
-        <TooltipContent>Fjern Produkt</TooltipContent>
-      </Tooltip>
-    </li>
+    <SortableListRow
+      id={productId}
+      label={productName}
+      disabled={disabled}
+      position={position}
+      roleDescription="Produkt, der kan flyttes"
+      actions={
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                className="size-11"
+                aria-label={`Fjern ${productName} fra ${areaName}`}
+                disabled={disabled}
+                onClick={onRemove}
+              />
+            }
+          >
+            <Trash2Icon />
+          </TooltipTrigger>
+          <TooltipContent>Fjern Produkt</TooltipContent>
+        </Tooltip>
+      }
+    />
   );
 }
 
@@ -239,7 +200,9 @@ export function LocationCountSetup({
     selectedProductIds: new Set(),
   }));
   const [savingProducts, setSavingProducts] = useState(false);
-  const [editingArea, setEditingArea] = useState<CountArea | "new" | null>(null);
+  const [editingArea, setEditingArea] = useState<CountArea | "new" | null>(
+    null,
+  );
   const [areaName, setAreaName] = useState("");
   const [areaError, setAreaError] = useState("");
   const [savingArea, setSavingArea] = useState(false);

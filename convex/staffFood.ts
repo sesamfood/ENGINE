@@ -1,3 +1,5 @@
+import { requireOrganizationLocation as requireLocation } from "./lib/locations";
+import { dateKey as dateInTimeZone } from "../lib/date";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -130,31 +132,6 @@ const registrationRowValidator = v.object({
 });
 
 type StaffFoodContext = QueryCtx | MutationCtx;
-
-async function requireLocation(
-  ctx: StaffFoodContext,
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const location = await ctx.db.get("locations", locationId);
-  if (!location || location.organizationId !== organizationId) {
-    throw new ConvexError("Lokationen blev ikke fundet");
-  }
-  return location;
-}
-
-function dateInTimeZone(timestamp: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(timestamp);
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${values.year}-${values.month}-${values.day}`;
-}
 
 function requireNow(now: number) {
   if (!Number.isFinite(now) || now <= 0) {

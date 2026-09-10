@@ -1,3 +1,4 @@
+import { escapeHtml } from "./email";
 import {
   defaultOrganizationTheme,
   getContrastRatio,
@@ -19,20 +20,6 @@ export type AuthEmailBranding = {
   theme: OrganizationTheme | null;
   wideLogoUrl: string | null;
 };
-
-function escapeHtml(value: string) {
-  return value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;",
-      })[character]!,
-  );
-}
 
 function createAuthEmail(
   options: AuthEmailOptions,

@@ -1,9 +1,11 @@
+import { readLocation as readRestLocation } from "./lib";
+import { resolveLocationCurrency as locationCurrency } from "../lib/masterData";
+import { requirePageSize, requireApiKeyPrincipal, restError } from "./lib";
 import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
-import { DEFAULT_CURRENCY } from "../../lib/dashboard/types";
+import { v } from "convex/values";
 import { hasPermission } from "../../lib/auth-permissions";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
@@ -14,7 +16,6 @@ import {
   type OrganizationAuth,
 } from "../lib/auth";
 
-const MAX_PAGE_SIZE = 100;
 const MAX_RANGE_MS = 31 * 24 * 60 * 60 * 1_000;
 
 const salesOrderValidator = v.object({
@@ -59,16 +60,6 @@ const salesDailyValidator = v.object({
   updatedAt: v.string(),
 });
 
-function restError(code: string, message: string): never {
-  throw new ConvexError({ code, message });
-}
-
-function requireApiKeyPrincipal(auth: OrganizationAuth) {
-  if (auth.principalKind !== "apiKey" || !auth.apiKeyId) {
-    restError("api_key_required", "An API key is required for this operation.");
-  }
-}
-
 async function requireSalesAccess(
   ctx: QueryCtx,
   kind: "aggregate" | "detail",
@@ -107,15 +98,6 @@ async function requireSalesAccess(
   return auth;
 }
 
-function requirePageSize(numItems: number) {
-  if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_PAGE_SIZE) {
-    restError(
-      "page_size_invalid",
-      "Page size must be an integer between 1 and 100.",
-    );
-  }
-}
-
 function requireRange(from: number, to: number) {
   if (
     !Number.isFinite(from) ||
@@ -130,30 +112,12 @@ function requireRange(from: number, to: number) {
   }
 }
 
-async function locationCurrency(
-  ctx: QueryCtx,
-  organizationId: string,
-  location: Doc<"locations">,
-) {
-  if (location.currency) return location.currency;
-  if (!location.marketId) return DEFAULT_CURRENCY;
-  const market = await ctx.db.get("markets", location.marketId);
-  return market?.organizationId === organizationId && market.currency
-    ? market.currency
-    : DEFAULT_CURRENCY;
-}
-
 async function readLocation(
   ctx: QueryCtx,
   auth: OrganizationAuth,
   publicId: string,
 ) {
-  const id = ctx.db.normalizeId("locations", publicId);
-  const location = id ? await ctx.db.get("locations", id) : null;
-  if (!location || location.organizationId !== auth.organizationId) {
-    restError("location_not_found", "Location was not found.");
-  }
-  requireLocationAccess(auth, location._id);
+  const location = await readRestLocation(ctx, auth, publicId);
   return {
     location,
     currency: await locationCurrency(ctx, auth.organizationId, location),

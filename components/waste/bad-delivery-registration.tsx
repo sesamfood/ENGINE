@@ -1,24 +1,15 @@
 "use client";
 
+import { ProductUnitLine } from "@/components/product-unit-line";
+
+import { ProductLineGroup } from "@/components/product-line-group";
+
+import { PhotoField } from "@/components/photo-field";
+
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { getUserErrorMessage } from "@/lib/user-errors";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { useConvex, useMutation, useQuery } from "convex/react";
-import {
-  CameraIcon,
-  FileImageIcon,
-  MinusIcon,
-  PackageOpenIcon,
-  PlusIcon,
-  Trash2Icon,
-  UploadIcon,
-} from "lucide-react";
-import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { toast } from "sonner";
 import {
   CreatableCombobox,
   type ComboboxOption,
@@ -56,15 +47,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -77,19 +59,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { compressImage } from "@/lib/compress-image";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { compressImage, evidencePhotoOptions } from "@/lib/compress-image";
 import { productSearchScore } from "@/lib/product-search";
+import { getUserErrorMessage } from "@/lib/user-errors";
+import { useConvex, useMutation, useQuery } from "convex/react";
+import { PackageOpenIcon, PlusIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { useWasteContext } from "./waste-header";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_QUANTITY = 1_000_000;
-const IMAGE_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/avif",
-]);
-
 type ProductOption = {
   id: Id<"products">;
   name: string;
@@ -112,140 +95,9 @@ type Line = {
   quantity: number;
 };
 
-function requirePhoto(file: File) {
-  if (!IMAGE_TYPES.has(file.type) || file.size > MAX_FILE_SIZE) {
-    throw new Error(
-      "Brug et JPEG-, PNG-, WebP- eller AVIF-billede på højst 10 MB",
-    );
-  }
-  return file;
-}
-
-function PhotoControl({
-  id,
-  label,
-  description,
-  file,
-  error,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  description: string;
-  file: File | null;
-  error?: string;
-  onChange: (file: File | null) => void;
-}) {
-  const camera = useRef<HTMLInputElement>(null);
-  const upload = useRef<HTMLInputElement>(null);
-  const preview = useMemo(() => (file ? URL.createObjectURL(file) : undefined), [file]);
-
-  useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview);
-    };
-  }, [preview]);
-
-  function selected(next?: File) {
-    if (!next) return;
-    try {
-      onChange(requirePhoto(next));
-    } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Den dårlige levering kunne ikke opdateres. Prøv igen."));
-    }
-  }
-
-  function remove() {
-    if (camera.current) camera.current.value = "";
-    if (upload.current) upload.current.value = "";
-    onChange(null);
-  }
-
-  return (
-    <Field data-invalid={Boolean(error)}>
-      <FieldLabel>{label}</FieldLabel>
-      <FieldDescription>{description}</FieldDescription>
-      <div
-        className="flex cursor-pointer flex-col gap-3 rounded-xl border p-3"
-        onClick={(event) => {
-          if ((event.target as HTMLElement).closest("button,input")) return;
-          camera.current?.click();
-        }}
-      >
-        {preview ? (
-          <div
-            role="img"
-            aria-label={`Forhåndsvisning af ${label.toLowerCase()}`}
-            className="aspect-video w-full rounded-lg bg-muted bg-contain bg-center bg-no-repeat"
-            style={{ backgroundImage: `url("${preview}")` }}
-          />
-        ) : (
-          <Empty className="min-h-40 border-0 p-4">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <FileImageIcon />
-              </EmptyMedia>
-              <EmptyTitle>Intet billede valgt</EmptyTitle>
-            </EmptyHeader>
-          </Empty>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            onClick={() => camera.current?.click()}
-          >
-            <CameraIcon data-icon="inline-start" />
-            Tag billede
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            onClick={() => upload.current?.click()}
-          >
-            <UploadIcon data-icon="inline-start" />
-            Upload billede
-          </Button>
-          {file ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="min-h-11"
-              onClick={remove}
-            >
-              <Trash2Icon data-icon="inline-start" />
-              Fjern
-            </Button>
-          ) : null}
-        </div>
-        <Input
-          ref={camera}
-          id={`${id}-camera`}
-          className="sr-only"
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif"
-          capture="environment"
-          onChange={(event) => selected(event.target.files?.[0])}
-        />
-        <Input
-          ref={upload}
-          id={`${id}-upload`}
-          className="sr-only"
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif"
-          onChange={(event) => selected(event.target.files?.[0])}
-        />
-      </div>
-      <FieldError>{error}</FieldError>
-    </Field>
-  );
-}
-
 export function BadDeliveryRegistration() {
   const convex = useConvex();
-  const { locationId, locations } = useWasteContext();
+  const { locationId, locations, setDraftState } = useWasteContext();
   const config = useQuery(
     api.badDeliveries.getRegistrationConfig,
     locationId ? { locationId } : "skip",
@@ -270,6 +122,18 @@ export function BadDeliveryRegistration() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const dirty =
+    lines.length > 0 ||
+    Boolean(
+      badProductsPhoto || deliveryNotePhoto || comment.trim() || deductDraft,
+    );
+  useEffect(() => {
+    setDraftState({ dirty, busy: submitting });
+  }, [dirty, submitting, setDraftState]);
+  useEffect(
+    () => () => setDraftState({ dirty: false, busy: false }),
+    [setDraftState],
+  );
   const [actionTarget, setActionTarget] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -360,7 +224,12 @@ export function BadDeliveryRegistration() {
       addLine(product, unitId);
       setProductToAdd(null);
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Den dårlige levering kunne ikke opdateres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          caught,
+          "Den dårlige levering kunne ikke opdateres. Prøv igen.",
+        ),
+      );
     } finally {
       setLoadingProductId(undefined);
     }
@@ -388,10 +257,13 @@ export function BadDeliveryRegistration() {
 
   function validate() {
     const next: Record<string, string> = {};
-    if (!badProductsPhoto) next.badProductsPhoto = "Tilføj et billede af produkterne";
-    if (!deliveryNotePhoto) next.deliveryNotePhoto = "Tilføj et billede af følgesedlen";
+    if (!badProductsPhoto)
+      next.badProductsPhoto = "Tilføj et billede af produkterne";
+    if (!deliveryNotePhoto)
+      next.deliveryNotePhoto = "Tilføj et billede af følgesedlen";
     if (!lines.length) next.items = "Tilføj mindst ét produkt";
-    if (lines.length > 200) next.items = "Der kan højst tilføjes 200 produktlinjer";
+    if (lines.length > 200)
+      next.items = "Der kan højst tilføjes 200 produktlinjer";
     if (
       lines.some(
         (line) =>
@@ -414,40 +286,18 @@ export function BadDeliveryRegistration() {
   }
 
   async function uploadPhoto(file: File) {
-    const compressed = await compressImage(file, {
-      maxWidth: 2600,
-      maxHeight: 2600,
-      quality: 0.9,
-    });
+    const compressed = await compressImage(file, evidencePhotoOptions);
     if (compressed.size > MAX_FILE_SIZE) {
       throw new Error("Det komprimerede billede er stadig større end 10 MB");
     }
-    const url = await uploadUrl({});
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": compressed.type },
-      body: compressed,
+    return uploadToStorage({
+      uploadUrl: await uploadUrl({}),
+      file: compressed,
     });
-    if (!response.ok) throw new Error("Billedet kunne ikke uploades");
-    const result: unknown = await response.json();
-    if (
-      !result ||
-      typeof result !== "object" ||
-      !("storageId" in result) ||
-      typeof result.storageId !== "string"
-    ) {
-      throw new Error("Billedet kunne ikke uploades");
-    }
-    return result.storageId as Id<"_storage">;
   }
 
   async function submit() {
-    if (
-      !validate() ||
-      !badProductsPhoto ||
-      !deliveryNotePhoto ||
-      !locationId
-    ) {
+    if (!validate() || !badProductsPhoto || !deliveryNotePhoto || !locationId) {
       setConfirming(false);
       return;
     }
@@ -480,16 +330,19 @@ export function BadDeliveryRegistration() {
       setSearch("");
       setConfirming(false);
       if (result.initialNoticeStatus === "pending") {
-        toast.success(
-          "Dårlig levering er registreret. Meddelelsen sendes nu.",
-        );
+        toast.success("Dårlig levering er registreret. Meddelelsen sendes nu.");
       } else {
         toast.warning(
           "Dårlig levering er registreret, men ingen e-mail blev sendt, fordi Til er tom.",
         );
       }
     } catch (caught) {
-      toast.error(getUserErrorMessage(caught, "Den dårlige levering kunne ikke opdateres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          caught,
+          "Den dårlige levering kunne ikke opdateres. Prøv igen.",
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -517,8 +370,8 @@ export function BadDeliveryRegistration() {
         </CardHeader>
         <CardContent>
           <FieldGroup className="grid gap-6 lg:grid-cols-2">
-            <PhotoControl
-              id="bad-products"
+            <PhotoField
+              maxFileSize={MAX_FILE_SIZE}
               label="Dårlige produkter"
               description="Tag eller upload et billede af de beskadigede eller dårlige produkter."
               file={badProductsPhoto}
@@ -528,8 +381,8 @@ export function BadDeliveryRegistration() {
                 clearError("badProductsPhoto");
               }}
             />
-            <PhotoControl
-              id="delivery-note"
+            <PhotoField
+              maxFileSize={MAX_FILE_SIZE}
               label="Følgeseddel"
               description="Tag eller upload et læsbart billede af følgesedlen."
               file={deliveryNotePhoto}
@@ -548,7 +401,8 @@ export function BadDeliveryRegistration() {
           <CardTitle>Produkter</CardTitle>
           <CardAction>
             <p className="text-sm text-muted-foreground">
-              {lines.length} {lines.length === 1 ? "produktlinje" : "produktlinjer"}
+              {lines.length}{" "}
+              {lines.length === 1 ? "produktlinje" : "produktlinjer"}
             </p>
           </CardAction>
         </CardHeader>
@@ -583,32 +437,16 @@ export function BadDeliveryRegistration() {
               {groups.map((group) => {
                 const product = group[0];
                 const used = new Set(group.map((line) => line.unitId));
-                const canAddUnit = product.units.some((unit) => !used.has(unit.id));
+                const canAddUnit = product.units.some(
+                  (unit) => !used.has(unit.id),
+                );
                 return (
-                  <li
+                  <ProductLineGroup
                     key={product.productId}
-                    className="flex flex-col gap-3 rounded-xl border p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      {product.imageUrl ? (
-                        <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
-                          <Image
-                            src={product.imageUrl}
-                            alt={`Produktbillede af ${product.productName}`}
-                            fill
-                            sizes="3.5rem"
-                            className="object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                          <PackageOpenIcon aria-hidden="true" />
-                        </div>
-                      )}
-                      <p className="min-w-0 flex-1 truncate font-medium">
-                        {product.productName}
-                      </p>
-                      {canAddUnit && lines.length < 200 ? (
+                    productName={product.productName}
+                    imageUrl={product.imageUrl}
+                    action={
+                      canAddUnit && lines.length < 200 ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -618,136 +456,51 @@ export function BadDeliveryRegistration() {
                           <PlusIcon data-icon="inline-start" />
                           Tilføj enhed
                         </Button>
-                      ) : null}
-                    </div>
+                      ) : null
+                    }
+                  >
                     <ul className="flex flex-col gap-2">
                       {group.map((line) => (
-                        <li
-                          key={line.key}
-                          className="grid gap-3 py-2 sm:grid-cols-[minmax(8rem,1fr)_auto_auto] sm:items-center"
-                        >
-                          <Field>
-                            <FieldLabel htmlFor={`${line.key}-unit`} className="sr-only">
-                              Enhed for {line.productName}
-                            </FieldLabel>
-                            <Select
-                              items={line.units.map((unit) => ({
-                                value: unit.id,
-                                label: unit.name,
-                              }))}
-                              value={line.unitId}
-                              onValueChange={(value) =>
-                                setLines((current) =>
-                                  current.map((item) =>
-                                    item.key === line.key
-                                      ? { ...item, unitId: value as Id<"units"> }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            >
-                              <SelectTrigger id={`${line.key}-unit`} className="h-11! w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {line.units.map((unit) => (
-                                    <SelectItem
-                                      key={unit.id}
-                                      value={unit.id}
-                                      disabled={
-                                        unit.id !== line.unitId && used.has(unit.id)
-                                      }
-                                    >
-                                      {unit.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon-lg"
-                              className="size-11"
-                              aria-label={`Reducér mængde for ${line.productName}`}
-                              disabled={line.quantity <= 1}
-                              onClick={() =>
-                                setLines((current) =>
-                                  current.map((item) =>
-                                    item.key === line.key
-                                      ? {
-                                          ...item,
-                                          quantity: Math.max(1, item.quantity - 1),
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            >
-                              <MinusIcon />
-                            </Button>
-                            <Input
-                              type="number"
-                              inputMode="decimal"
-                              min={0.000001}
-                              max={MAX_QUANTITY}
-                              step="any"
-                              value={line.quantity}
-                              aria-label={`Mængde for ${line.productName}`}
-                              className="h-11 w-24 text-center"
-                              onChange={(event) => {
-                                const quantity = Number(event.target.value);
-                                setLines((current) =>
-                                  current.map((item) =>
-                                    item.key === line.key
-                                      ? { ...item, quantity }
-                                      : item,
-                                  ),
-                                );
-                                clearError("items");
-                              }}
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon-lg"
-                              className="size-11"
-                              aria-label={`Øg mængde for ${line.productName}`}
-                              disabled={line.quantity >= MAX_QUANTITY}
-                              onClick={() =>
-                                setLines((current) =>
-                                  current.map((item) =>
-                                    item.key === line.key
-                                      ? { ...item, quantity: item.quantity + 1 }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            >
-                              <PlusIcon />
-                            </Button>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-lg"
-                            className="size-11"
-                            aria-label={`Fjern ${line.productName}`}
-                            onClick={() =>
+                        <li key={line.key} className="py-2">
+                          <ProductUnitLine
+                            lineKey={line.key}
+                            productName={line.productName}
+                            units={line.units}
+                            unitId={line.unitId}
+                            unavailableUnitIds={used}
+                            quantity={line.quantity}
+                            min={0.000001}
+                            max={MAX_QUANTITY}
+                            onUnitChange={(unitId) =>
+                              setLines((current) =>
+                                current.map((item) =>
+                                  item.key === line.key
+                                    ? { ...item, unitId }
+                                    : item,
+                                ),
+                              )
+                            }
+                            onQuantityChange={(value) => {
+                              const quantity = Number(value.replace(",", "."));
+                              setLines((current) =>
+                                current.map((item) =>
+                                  item.key === line.key
+                                    ? { ...item, quantity }
+                                    : item,
+                                ),
+                              );
+                              clearError("items");
+                            }}
+                            onRemove={() =>
                               setLines((current) =>
                                 current.filter((item) => item.key !== line.key),
                               )
                             }
-                          >
-                            <Trash2Icon />
-                          </Button>
+                          />
                         </li>
                       ))}
                     </ul>
-                  </li>
+                  </ProductLineGroup>
                 );
               })}
             </ul>

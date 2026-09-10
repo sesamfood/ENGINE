@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
   SelectContent,
@@ -60,7 +61,7 @@ import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import type { CustomMetricDefinition } from "./custom-metric-builder";
+import type { CustomMetricDefinition } from "./custom-metric-definition";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
 
 const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
@@ -112,7 +113,7 @@ export function AddWidgetDialog({
   const customMetrics = useQuery(
     api.customMetrics.list,
     open ? {} : "skip",
-  ) as CustomMetricDefinition[] | undefined;
+  );
   const sourceAvailability = useQuery(
     api.dashboard.salesSourceAvailability,
     open ? { scope } : "skip",
@@ -515,42 +516,62 @@ export function AddWidgetDialog({
                   <Skeleton className="h-56 w-full" />
                 </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <ToggleGroup
+                  value={[visualization]}
+                  onValueChange={(values) => {
+                    const next = availableVisualizations.find((item) => item === values[0]);
+                    if (next) selectVisualization(next);
+                  }}
+                  spacing={3}
+                  aria-label="Visualisering"
+                  className="grid w-full min-w-0 items-stretch gap-3 rounded-none sm:grid-cols-2"
+                >
                   {availableVisualizations.map((visualizationId) => {
                     const Visualization = visualizationRegistry[visualizationId];
                     const selected = visualization === visualizationId;
                     return (
-                      <Card
+                      <ToggleGroupItem
                         key={visualizationId}
-                        size="sm"
-                        role="button"
-                        tabIndex={0}
-                        aria-pressed={selected}
-                        className={cn(
-                          "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
-                          selected && "border-primary ring-2 ring-primary/25",
+                        value={visualizationId}
+                        nativeButton={false}
+                        render={(props) => (
+                          <Card
+                            {...props}
+                            size="sm"
+                            data-size="sm"
+                            data-slot="card"
+                            className={cn(
+                              "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
+                              selected && "border-primary ring-2 ring-primary/25",
+                            )}
+                          />
                         )}
-                        onClick={() => selectVisualization(visualizationId)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          selectVisualization(visualizationId);
-                        }}
                       >
                         <CardHeader>
                           <CardTitle>{visualizationLabels[visualizationId]}</CardTitle>
                         </CardHeader>
-                        <CardContent className="h-44 min-h-0 overflow-hidden">
+                        <CardContent
+                          className="h-44 min-h-0 overflow-hidden"
+                          onKeyDown={(event) => {
+                            if (
+                              ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) &&
+                              event.target instanceof Element &&
+                              event.target.closest('[role="application"]')
+                            ) {
+                              event.stopPropagation();
+                            }
+                          }}
+                        >
                           {previewResult ? (
                             <Visualization result={previewResult} />
                           ) : (
                             <Skeleton className="size-full" />
                           )}
                         </CardContent>
-                      </Card>
+                      </ToggleGroupItem>
                     );
                   })}
-                </div>
+                </ToggleGroup>
               )}
             </div>
           ) : null}
@@ -561,27 +582,36 @@ export function AddWidgetDialog({
                 <h2 className="text-sm font-medium">Hvor meget plads skal widgetten bruge?</h2>
                 <p className="text-sm text-muted-foreground">Størrelsen kan altid justeres fra widgettens hjørne.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ToggleGroup
+                value={[size]}
+                onValueChange={(values) => {
+                  const next = widgetSizes.find((item) => item === values[0]);
+                  if (next) setSize(next);
+                }}
+                spacing={3}
+                aria-label="Widgetstørrelse"
+                className="grid w-full min-w-0 items-stretch gap-3 rounded-none sm:grid-cols-2 lg:grid-cols-3"
+              >
                 {widgetSizes.map((nextSize) => {
                   const selected = size === nextSize;
                   const span = widgetSizeSpans[nextSize];
                   return (
-                    <Card
+                    <ToggleGroupItem
                       key={nextSize}
-                      size="sm"
-                      role="button"
-                      tabIndex={0}
-                      aria-pressed={selected}
-                      className={cn(
-                        "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
-                        selected && "border-primary ring-2 ring-primary/25",
+                      value={nextSize}
+                      nativeButton={false}
+                      render={(props) => (
+                        <Card
+                          {...props}
+                          size="sm"
+                          data-size="sm"
+                          data-slot="card"
+                          className={cn(
+                            "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
+                            selected && "border-primary ring-2 ring-primary/25",
+                          )}
+                        />
                       )}
-                      onClick={() => setSize(nextSize)}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        setSize(nextSize);
-                      }}
                     >
                       <CardHeader>
                         <CardTitle>{sizeLabels[nextSize]}</CardTitle>
@@ -590,10 +620,10 @@ export function AddWidgetDialog({
                       <CardContent className="flex h-36 items-center justify-center overflow-hidden">
                         <div className={cn("rounded-lg border-2 border-dashed border-primary/50 bg-primary/10", sizePreviewClasses[nextSize])} aria-hidden="true" />
                       </CardContent>
-                    </Card>
+                    </ToggleGroupItem>
                   );
                 })}
-              </div>
+              </ToggleGroup>
               {visualizationHasYAxis(visualization) ? (
                 <div className="flex flex-col gap-3 border-t pt-4">
                   <div>

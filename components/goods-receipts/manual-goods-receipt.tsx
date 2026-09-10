@@ -1,26 +1,19 @@
 "use client";
 
+import { toDateTimeLocal, fromDateTimeLocal } from "@/lib/date";
+
+import { AppBottomBar } from "@/components/app-bottom-bar";
+
+import { ReceiptProductLine, type ReceiptLine } from "./receipt-product-line";
+
+import { PhotoField } from "@/components/photo-field";
+
+import { parseQuantity } from "@/lib/quantity-input";
+
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { getUserErrorMessage } from "@/lib/user-errors";
-import posthog from "posthog-js";
-import { useMutation, useQuery } from "convex/react";
-import {
-  ArrowLeftIcon,
-  CameraIcon,
-  CheckIcon,
-  MinusIcon,
-  PackageCheckIcon,
-  PackageIcon,
-  PlusIcon,
-  Trash2Icon,
-  XIcon,
-} from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import {
   CreatableCombobox,
@@ -45,7 +38,6 @@ import {
   CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -64,29 +56,27 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useSidebar } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { compressImage } from "@/lib/compress-image";
+import { compressImage, evidencePhotoOptions } from "@/lib/compress-image";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
+import { useMutation, useQuery } from "convex/react";
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  PackageCheckIcon,
+  PackageIcon,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
+import { Fragment, useState } from "react";
+import { toast } from "sonner";
 
 const MAX_COMMENT_LENGTH = 500;
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
@@ -102,17 +92,6 @@ const ACCEPTED_PHOTO_TYPES = new Set([
 type ManualReceiptOptions = NonNullable<
   ReturnType<typeof useQuery<typeof api.goodsReceipts.getManualReceiptOptions>>
 >;
-type ManualReceiptProduct = ManualReceiptOptions["products"][number];
-
-type ReceiptLine = {
-  key: string;
-  productId: Id<"products">;
-  productName: string;
-  imageUrl: string | null;
-  unitId: Id<"units">;
-  units: ManualReceiptProduct["units"];
-  quantity: string;
-};
 
 type ReceiptItemInput = {
   productId: Id<"products">;
@@ -120,39 +99,8 @@ type ReceiptItemInput = {
   quantity: number;
 };
 
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function toDatetimeLocalValue(ms: number) {
-  const date = new Date(ms);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function fromDatetimeLocalValue(value: string) {
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? ms : NaN;
-}
-
-function parseQuantity(value: string) {
-  const normalized = value.trim().replace(",", ".");
-  if (!normalized || !/^\d+(?:\.\d+)?$/u.test(normalized)) return null;
-  const quantity = Number(normalized);
-  return Number.isFinite(quantity) ? quantity : null;
-}
-
 function newLineKey() {
   return `manual-receipt-line-${crypto.randomUUID()}`;
-}
-
-function hasStorageId(value: unknown): value is { storageId: string } {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    "storageId" in value &&
-    typeof value.storageId === "string" &&
-    value.storageId.length > 0,
-  );
 }
 
 function ManualGoodsReceiptForm({
@@ -163,27 +111,19 @@ function ManualGoodsReceiptForm({
   options: ManualReceiptOptions;
 }) {
   const router = useRouter();
-  const sidebar = useSidebar();
   const createReceipt = useMutation(api.goodsReceipts.createManualReceipt);
   const generatePhotoUploadUrl = useMutation(
     api.goodsReceipts.generateManualPhotoUploadUrl,
   );
   const [receivedAtLocal, setReceivedAtLocal] = useState(() =>
-    toDatetimeLocalValue(Date.now()),
+    toDateTimeLocal(Date.now()),
   );
   const [comment, setComment] = useState("");
   const [lines, setLines] = useState<ReceiptLine[]>([]);
   const [photo, setPhoto] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
 
   const productOptions: ComboboxOption[] = options.products
     .filter((product) => {
@@ -284,11 +224,6 @@ function ManualGoodsReceiptForm({
     });
   }
 
-  function adjustLineQuantity(line: ReceiptLine, change: 1 | -1) {
-    const current = parseQuantity(line.quantity) ?? 0;
-    setLineQuantity(line.key, String(Math.max(1, current + change)));
-  }
-
   function removeLine(lineKey: string) {
     setLines((current) => current.filter((line) => line.key !== lineKey));
     setErrors((current) => {
@@ -301,7 +236,6 @@ function ManualGoodsReceiptForm({
 
   function selectPhoto(nextPhoto: File | null) {
     setPhoto(nextPhoto);
-    setPreviewUrl(nextPhoto ? URL.createObjectURL(nextPhoto) : null);
     setErrors((current) => {
       if (!current.photo) return current;
       const next = { ...current };
@@ -312,7 +246,7 @@ function ManualGoodsReceiptForm({
 
   function validate() {
     const nextErrors: Record<string, string> = {};
-    const receivedAt = fromDatetimeLocalValue(receivedAtLocal);
+    const receivedAt = fromDateTimeLocal(receivedAtLocal);
     if (
       !Number.isFinite(receivedAt) ||
       receivedAt <= 0 ||
@@ -355,26 +289,14 @@ function ManualGoodsReceiptForm({
   }
 
   async function uploadPhoto(file: File) {
-    const compressed = await compressImage(file, {
-      maxWidth: 2600,
-      maxHeight: 2600,
-      quality: 0.9,
-    });
+    const compressed = await compressImage(file, evidencePhotoOptions);
     if (compressed.size > MAX_PHOTO_SIZE) {
       throw new Error("Det komprimerede billede er stadig større end 10 MB");
     }
-    const uploadUrl = await generatePhotoUploadUrl({});
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": compressed.type },
-      body: compressed,
+    return uploadToStorage({
+      uploadUrl: await generatePhotoUploadUrl({}),
+      file: compressed,
     });
-    if (!response.ok) throw new Error("Billedet kunne ikke uploades");
-    const result: unknown = await response.json();
-    if (!hasStorageId(result)) {
-      throw new Error("Billedet kunne ikke uploades");
-    }
-    return result.storageId as Id<"_storage">;
   }
 
   async function submit() {
@@ -435,52 +357,13 @@ function ManualGoodsReceiptForm({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Field data-invalid={Boolean(errors.photo)}>
-                <FieldLabel
-                  htmlFor="manual-goods-receipt-photo"
-                  className="block w-full cursor-pointer"
-                >
-                  {previewUrl ? (
-                    <div className="relative h-40 overflow-hidden rounded-lg bg-muted">
-                      <Image
-                        src={previewUrl}
-                        alt="Valgt billede af følgeseddel"
-                        fill
-                        unoptimized
-                        className="object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg bg-muted px-6 text-center text-muted-foreground">
-                      <CameraIcon className="size-8" aria-hidden="true" />
-                      <span className="font-medium text-foreground">
-                        Tag eller upload et billede
-                      </span>
-                    </div>
-                  )}
-                </FieldLabel>
-                <Input
-                  id="manual-goods-receipt-photo"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/avif"
-                  capture="environment"
-                  aria-invalid={Boolean(errors.photo)}
-                  onChange={(event) =>
-                    selectPhoto(event.target.files?.[0] ?? null)
-                  }
-                />
-                <FieldError>{errors.photo}</FieldError>
-                {photo ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => selectPhoto(null)}
-                  >
-                    <XIcon data-icon="inline-start" />
-                    Fjern billede
-                  </Button>
-                ) : null}
-              </Field>
+              <PhotoField
+                label="Billede af følgeseddel"
+                file={photo}
+                error={errors.photo}
+                onChange={selectPhoto}
+                disabled={submitting}
+              />
             </CardContent>
           </Card>
 
@@ -589,7 +472,6 @@ function ManualGoodsReceiptForm({
               ) : (
                 <ul>
                   {lines.map((line, index) => {
-                    const quantity = parseQuantity(line.quantity);
                     const unavailableUnitIds = new Set(
                       lines
                         .filter(
@@ -599,135 +481,21 @@ function ManualGoodsReceiptForm({
                         )
                         .map((item) => item.unitId),
                     );
-                    const unitItems = line.units.map((unit) => ({
-                      value: unit.id,
-                      label: unit.name,
-                    }));
 
                     return (
                       <Fragment key={line.key}>
-                        <li className="grid gap-4 py-4 xl:grid-cols-[minmax(12rem,1fr)_minmax(9rem,0.45fr)_auto_auto] xl:items-start">
-                          <div className="flex min-w-0 items-center gap-3">
-                            {line.imageUrl ? (
-                              <Image
-                                src={line.imageUrl}
-                                alt=""
-                                width={48}
-                                height={48}
-                                className="size-12 rounded-lg object-cover"
-                              />
-                            ) : (
-                              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                                <PackageIcon
-                                  className="size-5"
-                                  aria-hidden="true"
-                                />
-                              </div>
-                            )}
-                            <div className="flex min-w-0 flex-col gap-1">
-                              <span className="truncate font-medium">
-                                {line.productName}
-                              </span>
-                              <Badge variant="secondary" className="w-fit">
-                                Tilføjet
-                              </Badge>
-                            </div>
-                          </div>
-
-                          <Field>
-                            <FieldLabel
-                              htmlFor={`${line.key}-unit`}
-                              className="sr-only"
-                            >
-                              Enhed for {line.productName}
-                            </FieldLabel>
-                            <Select
-                              items={unitItems}
-                              value={line.unitId}
-                              onValueChange={(value) =>
-                                setLineUnit(line.key, value)
-                              }
-                            >
-                              <SelectTrigger
-                                id={`${line.key}-unit`}
-                                className="h-11! w-full"
-                              >
-                                <SelectValue placeholder="Vælg enhed" />
-                              </SelectTrigger>
-                              <SelectContent alignItemWithTrigger={false}>
-                                <SelectGroup>
-                                  {line.units.map((unit) => (
-                                    <SelectItem
-                                      key={unit.id}
-                                      value={unit.id}
-                                      disabled={
-                                        unit.id !== line.unitId &&
-                                        unavailableUnitIds.has(unit.id)
-                                      }
-                                    >
-                                      {unit.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-
-                          <Field data-invalid={Boolean(errors[line.key])}>
-                            <FieldLabel
-                              htmlFor={`${line.key}-quantity`}
-                              className="sr-only"
-                            >
-                              Mængde for {line.productName}
-                            </FieldLabel>
-                            <InputGroup className="h-11 w-full sm:w-40">
-                              <InputGroupInput
-                                id={`${line.key}-quantity`}
-                                type="text"
-                                inputMode="decimal"
-                                value={line.quantity}
-                                aria-invalid={Boolean(errors[line.key])}
-                                className="text-center tabular-nums"
-                                onChange={(event) =>
-                                  setLineQuantity(line.key, event.target.value)
-                                }
-                              />
-                              <InputGroupAddon align="inline-start">
-                                <InputGroupButton
-                                  size="icon-sm"
-                                  className="size-10"
-                                  aria-label={`Reducér mængde for ${line.productName}`}
-                                  disabled={quantity !== null && quantity <= 1}
-                                  onClick={() => adjustLineQuantity(line, -1)}
-                                >
-                                  <MinusIcon data-icon="inline-start" />
-                                </InputGroupButton>
-                              </InputGroupAddon>
-                              <InputGroupAddon align="inline-end">
-                                <InputGroupButton
-                                  size="icon-sm"
-                                  className="size-10"
-                                  aria-label={`Øg mængde for ${line.productName}`}
-                                  onClick={() => adjustLineQuantity(line, 1)}
-                                >
-                                  <PlusIcon data-icon="inline-start" />
-                                </InputGroupButton>
-                              </InputGroupAddon>
-                            </InputGroup>
-                            <FieldError>{errors[line.key]}</FieldError>
-                          </Field>
-
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-lg"
-                            className="size-11"
-                            aria-label={`Fjern ${line.productName} i den valgte enhed`}
-                            onClick={() => removeLine(line.key)}
-                          >
-                            <Trash2Icon data-icon="inline-start" />
-                          </Button>
-                        </li>
+                        <ReceiptProductLine
+                          line={line}
+                          unavailableUnitIds={unavailableUnitIds}
+                          onUnitChange={(unitId) =>
+                            setLineUnit(line.key, unitId)
+                          }
+                          onQuantityChange={(quantity) =>
+                            setLineQuantity(line.key, quantity)
+                          }
+                          onRemove={() => removeLine(line.key)}
+                          error={errors[line.key]}
+                        />
                         {index < lines.length - 1 ? <Separator /> : null}
                       </Fragment>
                     );
@@ -788,16 +556,7 @@ function ManualGoodsReceiptForm({
             </CardContent>
           </Card>
 
-          <CardFooter
-            className="fixed inset-x-0 bottom-0 z-10 rounded-none bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:right-0"
-            style={{
-              left: sidebar.isMobile
-                ? 0
-                : sidebar.state === "collapsed"
-                  ? "var(--sidebar-width-icon)"
-                  : "var(--sidebar-width)",
-            }}
-          >
+          <AppBottomBar>
             <div className="mx-auto flex w-full max-w-[96rem] justify-end">
               <Button
                 type="button"
@@ -810,7 +569,7 @@ function ManualGoodsReceiptForm({
                 Registrér varemodtagelse
               </Button>
             </div>
-          </CardFooter>
+          </AppBottomBar>
         </main>
       </div>
 
@@ -923,5 +682,10 @@ export function ManualGoodsReceipt() {
     );
   }
 
-  return <ManualGoodsReceiptForm locationId={locationId} options={{ ...options, products }} />;
+  return (
+    <ManualGoodsReceiptForm
+      locationId={locationId}
+      options={{ ...options, products }}
+    />
+  );
 }

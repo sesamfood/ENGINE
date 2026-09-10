@@ -1,5 +1,7 @@
 "use client";
 
+import { uploadToStorage } from "@/lib/upload-to-storage";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import {
@@ -36,6 +38,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -318,14 +321,10 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
         imageStorageId = imageSelection.storageId ?? null;
         if (!imageStorageId) {
           const image = await compressImage(imageSelection.file, { maxWidth: 1600, maxHeight: 1600, type: "image/webp", alwaysReencode: true });
-          const uploadUrl = await generateImageUploadUrl({});
-          const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": image.type }, body: image });
-          if (!response.ok) throw new Error("Billedet kunne ikke uploades. Prøv igen.");
-          const result: unknown = await response.json();
-          if (!result || typeof result !== "object" || !("storageId" in result) || typeof result.storageId !== "string") {
-            throw new Error("Billeduploaden kunne ikke bekræftes. Prøv igen.");
-          }
-          imageStorageId = result.storageId as Id<"_storage">;
+          imageStorageId = await uploadToStorage({
+            uploadUrl: await generateImageUploadUrl({}),
+            file: image,
+          });
           const uploadedStorageId = imageStorageId;
           setImageSelection((current) => current?.file === imageSelection.file ? { ...current, storageId: uploadedStorageId } : current);
         }
@@ -546,13 +545,13 @@ export function OwnCheckTemplates() {
         <CardContent className="flex flex-col gap-6">
           <section className="flex flex-col gap-3">
             <h3 className="font-medium">Aktive egenkontroller</h3>
-            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">Ingen aktive egenkontroller endnu.</div>}
+            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty className="block w-auto min-w-auto flex-initial border p-8 text-wrap text-muted-foreground">Ingen aktive egenkontroller endnu.</Empty>}
             {activeTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => activeTemplates.loadMore(50)}>Vis flere aktive</Button> : null}
             {activeTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere aktive egenkontroller…</div> : null}
           </section>
           {includeArchived ? <section className="flex flex-col gap-3">
             <h3 className="font-medium">Arkiverede egenkontroller</h3>
-            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">Ingen arkiverede egenkontroller endnu.</div>}
+            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty className="block w-auto min-w-auto flex-initial border p-8 text-wrap text-muted-foreground">Ingen arkiverede egenkontroller endnu.</Empty>}
             {archivedTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => archivedTemplates.loadMore(50)}>Vis flere arkiverede</Button> : null}
             {archivedTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere arkiverede egenkontroller…</div> : null}
           </section> : null}

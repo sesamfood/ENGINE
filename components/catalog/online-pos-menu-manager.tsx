@@ -29,6 +29,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Empty,
@@ -184,23 +185,20 @@ function MenuCard({
   }`;
 
   return (
-    <Card
-      size="sm"
-      role="button"
-      tabIndex={0}
+    <DialogTrigger
+      nativeButton={false}
+      render={
+        <Card
+          size="sm"
+          className="cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        />
+      }
       aria-label={
         hasUnmappedProducts
           ? `Redigér ${menu.name}. ${productCountLabel}. Nogle produkter mangler OnlinePOS-kobling.`
           : `Redigér ${menu.name}. ${productCountLabel}.`
       }
-      className="cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       onClick={() => onEdit(menu)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onEdit(menu);
-        }
-      }}
     >
       <CardHeader className="items-center">
         <CardTitle className="min-w-0 truncate">{menu.name}</CardTitle>
@@ -221,7 +219,7 @@ function MenuCard({
           </CardAction>
         ) : null}
       </CardHeader>
-    </Card>
+    </DialogTrigger>
   );
 }
 
@@ -575,86 +573,94 @@ export function OnlinePosMenuManager() {
 
   return (
     <div className="flex flex-col gap-7 pb-10">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex max-w-3xl flex-col gap-2">
-          <h2 className="text-2xl font-semibold tracking-tight">Menuer</h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Navngiv menuen, vælg det tilsvarende produkt i OnlinePOS, og vælg
-            dens primære og ekstra produkter fra produktkataloget. De
-            efterfølgende produktlinjer til 0 kr. samles under menuen via
-            produkternes OnlinePOS-koblinger.
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="lg"
-          className="min-h-11 px-4"
-          disabled={!menuData.enabled}
-          onClick={openCreate}
-        >
-          <PlusIcon data-icon="inline-start" />
-          Ny menu
-        </Button>
-      </div>
-
-      {!menuData.connected ? (
-        <Alert>
-          <CircleAlertIcon aria-hidden="true" />
-          <AlertTitle>OnlinePOS er ikke forbundet</AlertTitle>
-          <AlertDescription>
-            Forbind OnlinePOS under Administration → Integrationer for at
-            tilføje menuer.
-          </AlertDescription>
-        </Alert>
-      ) : !menuData.enabled ? (
-        <Alert>
-          <CircleAlertIcon aria-hidden="true" />
-          <AlertTitle>OnlinePOS-integrationen er slået fra</AlertTitle>
-          <AlertDescription>
-            Aktivér OnlinePOS under Administration → Integrationer for at
-            oprette eller redigere menuer.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {menuData.menus.length === 0 ? (
-        <Empty className="min-h-72 border">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <UtensilsIcon aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>Ingen menuer endnu</EmptyTitle>
-            <EmptyDescription>
-              Opret en menu og vælg dens primære og ekstra produkter fra
-              produktkataloget.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button
-              type="button"
-              className="min-h-11 px-4"
-              disabled={!menuData.enabled}
-              onClick={openCreate}
-            >
-              <PlusIcon data-icon="inline-start" />
-              Ny menu
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
-          {menuData.menus.map((menu) => (
-            <MenuCard key={menu.id} menu={menu} onEdit={openEdit} />
-          ))}
-        </div>
-      )}
-
       <Dialog
         open={editor !== null}
         onOpenChange={(open) => {
           if (!open) closeEditor();
         }}
       >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex max-w-3xl flex-col gap-2">
+            <h2 className="text-2xl font-semibold tracking-tight">Menuer</h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Navngiv menuen, vælg det tilsvarende produkt i OnlinePOS, og vælg
+              dens primære og ekstra produkter fra produktkataloget. De
+              efterfølgende produktlinjer til 0 kr. samles under menuen via
+              produkternes OnlinePOS-koblinger.
+            </p>
+          </div>
+          <DialogTrigger
+            render={
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-11 px-4 active:translate-y-px"
+              />
+            }
+            disabled={!menuData.enabled}
+            onClick={openCreate}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Ny menu
+          </DialogTrigger>
+        </div>
+
+        {!menuData.connected ? (
+          <Alert>
+            <CircleAlertIcon aria-hidden="true" />
+            <AlertTitle>OnlinePOS er ikke forbundet</AlertTitle>
+            <AlertDescription>
+              Forbind OnlinePOS under Administration → Integrationer for at
+              tilføje menuer.
+            </AlertDescription>
+          </Alert>
+        ) : !menuData.enabled ? (
+          <Alert>
+            <CircleAlertIcon aria-hidden="true" />
+            <AlertTitle>OnlinePOS-integrationen er slået fra</AlertTitle>
+            <AlertDescription>
+              Aktivér OnlinePOS under Administration → Integrationer for at
+              oprette eller redigere menuer.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {menuData.menus.length === 0 ? (
+          <Empty className="min-h-72 border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <UtensilsIcon aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>Ingen menuer endnu</EmptyTitle>
+              <EmptyDescription>
+                Opret en menu og vælg dens primære og ekstra produkter fra
+                produktkataloget.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <DialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    className="min-h-11 px-4 active:translate-y-px"
+                  />
+                }
+                disabled={!menuData.enabled}
+                onClick={openCreate}
+              >
+                <PlusIcon data-icon="inline-start" />
+                Ny menu
+              </DialogTrigger>
+            </EmptyContent>
+          </Empty>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+            {menuData.menus.map((menu) => (
+              <MenuCard key={menu.id} menu={menu} onEdit={openEdit} />
+            ))}
+          </div>
+        )}
+
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="mt-3">
