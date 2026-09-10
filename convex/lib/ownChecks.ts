@@ -23,6 +23,12 @@ const MAX_ARCHIVED_TEMPLATES = 2_000;
 
 type OwnCheckContext = QueryCtx | MutationCtx;
 
+export function allowsProductTemperatures(
+  version: Pick<Doc<"ownCheckTemplateVersions">, "controlType" | "productTemperaturesEnabled">,
+) {
+  return version.controlType === "temperature" && (version.productTemperaturesEnabled ?? true);
+}
+
 export function dateKeyDifference(fromDateKey: string, toDateKey: string) {
   try {
     return daysBetween(fromDateKey, toDateKey);
@@ -274,6 +280,7 @@ export function planItem(
     templateVersion: version.version,
     name: version.name,
     controlType: version.controlType,
+    productTemperaturesEnabled: allowsProductTemperatures(version),
     description: version.description,
     instructions: version.instructions ?? "",
     imageStorageId: version.imageStorageId ?? null,

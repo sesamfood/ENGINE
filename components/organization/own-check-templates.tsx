@@ -62,6 +62,7 @@ type Draft = {
   instructions: string;
   imageStorageId: Id<"_storage"> | null;
   controlType: OwnCheckControlType;
+  productTemperaturesEnabled: boolean;
   schedule: OwnCheckSchedule;
   startMinuteOfDay: number | undefined;
   dueMinuteOfDay: number | undefined;
@@ -115,6 +116,7 @@ function newDraft(): Draft {
     instructions: "",
     imageStorageId: null,
     controlType: "temperature",
+    productTemperaturesEnabled: true,
     schedule: { type: "daily" },
     startMinuteOfDay: undefined,
     dueMinuteOfDay: undefined,
@@ -133,6 +135,7 @@ function draftFromTemplate(template: Template): Draft {
     instructions: template.instructions ?? "",
     imageStorageId: template.imageStorageId ?? null,
     controlType: template.controlType,
+    productTemperaturesEnabled: template.productTemperaturesEnabled,
     schedule: template.schedule,
     startMinuteOfDay: template.startMinuteOfDay ?? undefined,
     dueMinuteOfDay: template.dueMinuteOfDay ?? undefined,
@@ -171,7 +174,7 @@ function updateFieldType(field: OwnCheckField, type: OwnCheckField["type"]): Own
   return { key: field.key, label: field.label, type, required: field.required, maxFiles: 1 };
 }
 
-function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispatch<React.SetStateAction<Draft>> }) {
+function FieldEditor({ draft, setDraft, disabled }: { draft: Draft; setDraft: React.Dispatch<React.SetStateAction<Draft>>; disabled: boolean }) {
   function patchField(index: number, patch: Partial<OwnCheckField>) {
     setDraft((current) => ({ ...current, fields: current.fields.map((field, itemIndex) => itemIndex === index ? { ...field, ...patch } as OwnCheckField : field) }));
   }
@@ -190,6 +193,36 @@ function FieldEditor({ draft, setDraft }: { draft: Draft; setDraft: React.Dispat
     <FieldSet>
       <FieldTitle>Felter</FieldTitle>
       <FieldDescription>Systemet opretter en fast nøgle til hvert felt. Nøglen gør det muligt at sammenligne registreringer over tid.</FieldDescription>
+      {draft.controlType === "temperature" ? (
+        <Field
+          orientation="horizontal"
+          data-disabled={disabled}
+          className="min-h-11"
+        >
+          <FieldContent>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="own-template-product-temperatures">
+                Produkttemperaturer
+              </FieldLabel>
+              <HelpTooltip
+                label="Produkttemperaturer"
+                content="Gør det muligt at tilføje produkter og registrere en temperatur for hvert produkt, når kontrollen udføres. Kontrollens øvrige felter udfyldes stadig."
+              />
+            </div>
+          </FieldContent>
+          <Switch
+            id="own-template-product-temperatures"
+            checked={draft.productTemperaturesEnabled}
+            onCheckedChange={(checked) =>
+              setDraft((current) => ({
+                ...current,
+                productTemperaturesEnabled: checked,
+              }))
+            }
+            disabled={disabled}
+          />
+        </Field>
+      ) : null}
       <div className="flex flex-col gap-3">
         {draft.fields.map((field, index) => (
           <div key={`${field.key}-${index}`} className="rounded-xl border p-3">
@@ -335,6 +368,8 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
         instructions: draft.instructions,
         imageStorageId,
         controlType: draft.controlType,
+        productTemperaturesEnabled:
+          draft.controlType === "temperature" && draft.productTemperaturesEnabled,
         schedule: draft.schedule,
         ...(draft.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: draft.startMinuteOfDay }),
         ...(draft.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: draft.dueMinuteOfDay }),
@@ -480,7 +515,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
               </ComboboxContent>
             </Combobox>
           </Field>
-          <FieldEditor draft={draft} setDraft={setDraft} />
+          <FieldEditor draft={draft} setDraft={setDraft} disabled={saving} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Annullér</Button>
             <Button type="submit" size="lg" disabled={saving}>{saving ? <Spinner data-icon="inline-start" /> : null}Gem egenkontrol</Button>

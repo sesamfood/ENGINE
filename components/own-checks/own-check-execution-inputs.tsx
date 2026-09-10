@@ -18,7 +18,6 @@ import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { dateKey, dateTimeFormatter, zonedTimestamp } from "@/lib/date";
-import type { OwnCheckControlType } from "@/lib/own-checks";
 import { productSearchScore } from "@/lib/product-search";
 
 type ProductTemperature = NonNullable<
@@ -155,13 +154,13 @@ export function validateOwnCheckExecution(
 export function OwnCheckExecutionInputs({
   value,
   onChange,
-  controlType,
+  productTemperaturesEnabled,
   disabled,
   errors,
 }: {
   value: OwnCheckExecutionDraft;
   onChange: (value: OwnCheckExecutionDraft) => void;
-  controlType: OwnCheckControlType;
+  productTemperaturesEnabled: boolean;
   disabled: boolean;
   errors: Record<string, string>;
 }) {
@@ -203,7 +202,7 @@ export function OwnCheckExecutionInputs({
           <FieldError>{errors.endedAt}</FieldError>
         </Field>
       </FieldGroup>
-      {controlType === "temperature" ? (
+      {productTemperaturesEnabled ? (
         <ProductTemperatureInputs
           value={value.productTemperatures}
           onChange={(productTemperatures) =>

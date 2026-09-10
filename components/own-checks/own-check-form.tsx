@@ -279,7 +279,7 @@ export function OwnCheckForm({
                 setExecution(next);
                 setExecutionErrors({});
               }}
-              controlType={item.controlType}
+              productTemperaturesEnabled={item.productTemperaturesEnabled}
               disabled={readOnly || saving}
               errors={executionErrors}
             />

@@ -2210,6 +2210,7 @@ export default defineSchema({
     instructions: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")),
     controlType: ownCheckControlTypeValidator,
+    productTemperaturesEnabled: v.optional(v.boolean()),
     schedule: ownCheckScheduleValidator,
     startMinuteOfDay: v.optional(v.number()),
     dueMinuteOfDay: v.optional(v.number()),

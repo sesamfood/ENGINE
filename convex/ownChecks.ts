@@ -19,6 +19,7 @@ import { rateLimiter } from "./lib/rateLimits";
 import { resolveTimeZone } from "./lib/timeZone";
 import {
   MAX_BACKLOG_OCCURRENCES,
+  allowsProductTemperatures,
   dateKeyDifference,
   entriesForDate,
   loadTemplateVersions,
@@ -65,6 +66,7 @@ const planItemValidator = v.object({
   templateVersion: v.number(),
   name: v.string(),
   controlType: ownCheckControlTypeValidator,
+  productTemperaturesEnabled: v.boolean(),
   description: v.string(),
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
@@ -323,13 +325,13 @@ function validateControlTimes(startedAt: number, endedAt: number) {
 async function validateProductTemperatures(
   ctx: MutationCtx,
   organizationId: string,
-  controlType: Doc<"ownCheckEntries">["controlType"],
+  version: Doc<"ownCheckTemplateVersions">,
   readings: Array<{ productId: Id<"products">; temperatureCelsius: number }>,
   previous: NonNullable<Doc<"ownCheckEntries">["productTemperatures"]> = [],
 ) {
   if (readings.length > 100) throw new ConvexError("Vælg højst 100 produkter");
-  if (readings.length && controlType !== "temperature") {
-    throw new ConvexError("Produkttemperaturer kan kun registreres ved temperaturkontrol");
+  if (readings.length && !allowsProductTemperatures(version)) {
+    throw new ConvexError("Produkttemperaturer er ikke aktiveret for denne kontrol");
   }
   const seen = new Set<Id<"products">>();
   const snapshots = new Map(previous.map((reading) => [reading.productId, reading]));
@@ -435,7 +437,7 @@ export const submitOwnCheck = mutation({
       .unique();
     if (duplicate) throw new ConvexError("Egenkontrollen er allerede registreret");
     validateControlTimes(args.startedAt, args.endedAt);
-    const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version.controlType, args.productTemperatures ?? []);
+    const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version, args.productTemperatures ?? []);
     await validateValues(ctx, auth.organizationId, version.fields, args.values);
     const compliance = evaluateCompliance(version.fields, args.values);
     const deviationDescription = optionalText(args.deviationDescription, "Afvigelsen");
@@ -555,7 +557,7 @@ export const editOwnCheck = mutation({
     const version = await ctx.db.get("ownCheckTemplateVersions", entry.templateVersionId);
     if (!version || version.organizationId !== auth.organizationId) throw new ConvexError("Egenkontrolversionen blev ikke fundet");
     validateControlTimes(args.startedAt, args.endedAt);
-    const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version.controlType, args.productTemperatures ?? entry.productTemperatures ?? [], entry.productTemperatures);
+    const productTemperatures = await validateProductTemperatures(ctx, auth.organizationId, version, args.productTemperatures ?? entry.productTemperatures ?? [], entry.productTemperatures);
     await validateValues(ctx, auth.organizationId, version.fields, args.values, entry._id);
     const compliance = evaluateCompliance(version.fields, args.values);
     const requestedDeviation = args.deviationDescription === undefined ? undefined : optionalText(args.deviationDescription, "Afvigelsen");

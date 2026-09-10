@@ -1,5 +1,5 @@
 import { entrySummaryObjectValidator, attachmentValidator, revisionValidator, historyPageValidator, revisionBatch, detailRevisionDto, attachmentsForValues } from "./lib/ownCheckRecords";
-import { entrySummary } from "./lib/ownChecks";
+import { allowsProductTemperatures, entrySummary } from "./lib/ownChecks";
 import {
   type FilterBuilder,
   type GenericTableInfo,
@@ -412,7 +412,7 @@ export const getOverviewDateContext = query({
 
 export const getOwnCheckRecord = query({
   args: { entryId: v.id("ownCheckEntries") },
-  returns: v.union(v.object({ entry: recordEntryValidator, fields: v.array(ownCheckFieldValidator), description: v.string(), instructions: v.string(), imageUrl: v.union(v.string(), v.null()), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), historyNextRevision: v.union(v.number(), v.null()), timeZone: v.string() }), v.null()),
+  returns: v.union(v.object({ entry: recordEntryValidator, productTemperaturesEnabled: v.boolean(), fields: v.array(ownCheckFieldValidator), description: v.string(), instructions: v.string(), imageUrl: v.union(v.string(), v.null()), attachments: v.array(attachmentValidator), revisions: v.array(revisionValidator), historyNextRevision: v.union(v.number(), v.null()), timeZone: v.string() }), v.null()),
   handler: async (ctx, args) => {
     const auth = await requireOwnCheckViewer(ctx);
     const entry = await ctx.db.get("ownCheckEntries", args.entryId);
@@ -439,6 +439,7 @@ export const getOwnCheckRecord = query({
         updatedAt: entry.updatedAt,
       },
       fields: version.fields,
+      productTemperaturesEnabled: allowsProductTemperatures(version),
       description: version.description,
       instructions: version.instructions ?? "",
       imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,

@@ -595,7 +595,7 @@ export function OwnCheckRecord({
                 setEditExecution(next);
                 setExecutionErrors({});
               }}
-              controlType={record.entry.controlType}
+              productTemperaturesEnabled={record.productTemperaturesEnabled}
               disabled={saving}
               errors={executionErrors}
             />

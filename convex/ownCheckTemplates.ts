@@ -21,7 +21,7 @@ import {
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { getOwnCheckConfiguration } from "./lib/ownCheckSettings";
 import { claimStorageForOrganization } from "./lib/storageOwnership";
-import { MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./lib/ownChecks";
+import { allowsProductTemperatures, MAX_TEMPLATE_VERSIONS, ownCheckDateContext, requireLocation } from "./lib/ownChecks";
 
 const MAX_ACTIVE_TEMPLATES = 200;
 const MAX_TEMPLATE_PAGE_SIZE = 100;
@@ -40,6 +40,7 @@ const versionFieldsValidator = v.object({
   instructions: v.optional(v.string()),
   imageStorageId: v.optional(v.union(v.id("_storage"), v.null())),
   controlType: ownCheckControlTypeValidator,
+  productTemperaturesEnabled: v.optional(v.boolean()),
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.optional(v.number()),
   dueMinuteOfDay: v.optional(v.number()),
@@ -62,6 +63,7 @@ const templateSummaryValidator = v.object({
   imageStorageId: v.union(v.id("_storage"), v.null()),
   imageUrl: v.union(v.string(), v.null()),
   controlType: ownCheckControlTypeValidator,
+  productTemperaturesEnabled: v.boolean(),
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
   dueMinuteOfDay: v.union(v.number(), v.null()),
@@ -82,6 +84,7 @@ const versionOutputValidator = v.object({
   instructions: v.string(),
   imageStorageId: v.union(v.id("_storage"), v.null()),
   controlType: ownCheckControlTypeValidator,
+  productTemperaturesEnabled: v.boolean(),
   schedule: ownCheckScheduleValidator,
   startMinuteOfDay: v.union(v.number(), v.null()),
   dueMinuteOfDay: v.union(v.number(), v.null()),
@@ -192,6 +195,7 @@ type VersionFields = {
   instructions?: string;
   imageStorageId?: Id<"_storage"> | null;
   controlType: Doc<"ownCheckTemplateVersions">["controlType"];
+  productTemperaturesEnabled?: boolean;
   schedule: Doc<"ownCheckTemplateVersions">["schedule"];
   startMinuteOfDay?: number;
   dueMinuteOfDay?: number;
@@ -249,7 +253,7 @@ async function validateVersionFields(
     if (!role) throw new ConvexError("Den ansvarlige rolle findes ikke");
   }
   const imageStorageId = await validateImage(ctx, organizationId, input.imageStorageId);
-  return { name, normalizedName, description, instructions, imageStorageId, responsibleRole };
+  return { name, normalizedName, description, instructions, imageStorageId, responsibleRole, productTemperaturesEnabled: allowsProductTemperatures(input) };
 }
 
 async function currentVersion(
@@ -275,6 +279,7 @@ function versionOutput(row: Doc<"ownCheckTemplateVersions">) {
     instructions: row.instructions ?? "",
     imageStorageId: row.imageStorageId ?? null,
     controlType: row.controlType,
+    productTemperaturesEnabled: allowsProductTemperatures(row),
     schedule: row.schedule,
     startMinuteOfDay: row.startMinuteOfDay ?? null,
     dueMinuteOfDay: row.dueMinuteOfDay ?? null,
@@ -308,6 +313,7 @@ async function summaryOutput(
     imageStorageId: version.imageStorageId ?? null,
     imageUrl: version.imageStorageId ? await ctx.storage.getUrl(version.imageStorageId) : null,
     controlType: version.controlType,
+    productTemperaturesEnabled: allowsProductTemperatures(version),
     schedule: version.schedule,
     startMinuteOfDay: version.startMinuteOfDay ?? null,
     dueMinuteOfDay: version.dueMinuteOfDay ?? null,
@@ -436,6 +442,7 @@ export const createTemplate = mutation({
       instructions: validated.instructions,
       ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
       controlType: args.controlType,
+      productTemperaturesEnabled: validated.productTemperaturesEnabled,
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
       ...(args.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: args.dueMinuteOfDay }),
@@ -469,6 +476,7 @@ export const updateTemplate = mutation({
     const current = await currentVersion(ctx, auth.organizationId, template._id, template.currentVersion);
     const validated = await validateVersionFields(ctx, auth.organizationId, {
       ...args,
+      productTemperaturesEnabled: args.productTemperaturesEnabled ?? current.productTemperaturesEnabled,
       instructions: args.instructions ?? current.instructions,
       imageStorageId: args.imageStorageId === undefined ? current.imageStorageId : args.imageStorageId,
     });
@@ -499,6 +507,7 @@ export const updateTemplate = mutation({
       instructions: validated.instructions,
       ...(validated.imageStorageId ? { imageStorageId: validated.imageStorageId } : {}),
       controlType: args.controlType,
+      productTemperaturesEnabled: validated.productTemperaturesEnabled,
       schedule: args.schedule,
       ...(args.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: args.startMinuteOfDay }),
       ...(args.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: args.dueMinuteOfDay }),
@@ -573,6 +582,7 @@ export const restoreTemplate = mutation({
       instructions: current.instructions ?? "",
       ...(imageStorageId ? { imageStorageId } : {}),
       controlType: current.controlType,
+      productTemperaturesEnabled: allowsProductTemperatures(current),
       schedule: current.schedule,
       ...(current.startMinuteOfDay === undefined ? {} : { startMinuteOfDay: current.startMinuteOfDay }),
       ...(current.dueMinuteOfDay === undefined ? {} : { dueMinuteOfDay: current.dueMinuteOfDay }),
