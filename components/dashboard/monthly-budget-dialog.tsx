@@ -12,59 +12,92 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 
 type Budget = FunctionReturnType<typeof api.monthlyKpi.getBudget>;
 type Locations = FunctionReturnType<typeof api.monthlyKpi.getContext>["locations"];
 
-function moneyDraft(value: number | null) {
+export function monthlyMoneyDraft(value: number | null) {
   if (value === null) return "";
-  return `${Math.floor(value / 100).toLocaleString("da-DK")},${String(value % 100).padStart(2, "0")}`;
+  const absolute = Math.abs(value);
+  return `${value < 0 ? "-" : ""}${Math.floor(absolute / 100).toLocaleString("da-DK")},${String(absolute % 100).padStart(2, "0")}`;
 }
 
-function parseBudgetValue(value: string, money: boolean) {
+export function parseMonthlyValue(value: string, kind: "money" | "signedMoney" | "count" | "score") {
   const trimmed = value.trim();
   if (!trimmed) return { value: null, error: null };
-  const valid = money
-    ? /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(trimmed)
-    : /^\d+$/.test(trimmed);
-  if (!valid) return { value: null, error: money ? "Angiv et positivt beløb eller 0. Brug komma som decimaltegn." : "Angiv et helt antal på 0 eller derover." };
-  const [whole, fraction = ""] = trimmed.replaceAll(".", "").split(",");
-  const parsed = money ? Number(whole) * 100 + Number(fraction.padEnd(2, "0")) : Number(whole);
+  if (kind === "score") {
+    const parsed = /^\d(?:,\d+)?$/.test(trimmed) ? Number(trimmed.replace(",", ".")) : NaN;
+    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 5
+      ? { value: parsed, error: null } : { value: null, error: "Angiv et mål mellem 1 og 5. Brug komma som decimaltegn." };
+  }
+  const unsigned = kind === "signedMoney" ? trimmed.replace(/^-/, "") : trimmed;
+  const valid = kind === "count" ? /^\d+$/.test(unsigned) : /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(unsigned);
+  if (!valid) return { value: null, error: kind === "count" ? "Angiv et helt antal på 0 eller derover." : "Angiv et beløb med højst to decimaler. Brug komma som decimaltegn." };
+  const [whole, fraction = ""] = unsigned.replaceAll(".", "").split(",");
+  const absolute = kind === "count" ? Number(whole) : Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  const parsed = kind === "signedMoney" && trimmed.startsWith("-") ? -absolute : absolute;
   if (!Number.isSafeInteger(parsed)) return { value: null, error: "Tallet er for stort." };
   return { value: parsed, error: null };
 }
 
+function budgetDraft(budget: Budget) {
+  return {
+    sales: monthlyMoneyDraft(budget.sales), transactions: budget.transactions?.toString() ?? "",
+    labour: monthlyMoneyDraft(budget.labour), cogs: monthlyMoneyDraft(budget.cogs),
+    waste: monthlyMoneyDraft(budget.waste), rent: monthlyMoneyDraft(budget.rent),
+    utilities: monthlyMoneyDraft(budget.utilities), other: monthlyMoneyDraft(budget.other),
+    guestScore: budget.guestScore?.toString().replace(".", ",") ?? "",
+  };
+}
+
+const budgetFields = [
+  { key: "sales", label: "Omsætning ekskl. moms", kind: "money" },
+  { key: "transactions", label: "Transaktioner", kind: "count" },
+  { key: "cogs", label: "Vareforbrug", kind: "money" },
+  { key: "labour", label: "Løn", kind: "money" },
+  { key: "waste", label: "Waste", kind: "money" },
+  { key: "rent", label: "Husleje", kind: "money" },
+  { key: "utilities", label: "Forbrug", kind: "money" },
+  { key: "other", label: "Øvrige driftsomkostninger", kind: "money" },
+  { key: "guestScore", label: "Guest Score-mål", kind: "score" },
+] as const;
+
 function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose }: {
-  budget: Budget;
-  month: string;
-  locationId: Id<"locations">;
-  saving: boolean;
-  onSavingChange: (value: boolean) => void;
-  onClose: () => void;
+  budget: Budget; month: string; locationId: Id<"locations">; saving: boolean;
+  onSavingChange: (value: boolean) => void; onClose: () => void;
 }) {
   const saveBudget = useMutation(api.monthlyKpi.saveBudget);
-  const [sales, setSales] = useState(() => moneyDraft(budget.sales));
-  const [transactions, setTransactions] = useState(() => budget.transactions?.toString() ?? "");
-  const [labour, setLabour] = useState(() => moneyDraft(budget.labour));
+  const [draft, setDraft] = useState(() => budgetDraft(budget));
+  const [sourceNote, setSourceNote] = useState(budget.sourceNote);
   const [revision, setRevision] = useState(budget.revision);
   const [currency, setCurrency] = useState(budget.currency);
   const [submitted, setSubmitted] = useState(false);
-  const parsedSales = parseBudgetValue(sales, true);
-  const parsedTransactions = parseBudgetValue(transactions, false);
-  const parsedLabour = parseBudgetValue(labour, true);
+  const parsed = {
+    sales: parseMonthlyValue(draft.sales, "money"), transactions: parseMonthlyValue(draft.transactions, "count"),
+    labour: parseMonthlyValue(draft.labour, "money"), cogs: parseMonthlyValue(draft.cogs, "money"),
+    waste: parseMonthlyValue(draft.waste, "money"), rent: parseMonthlyValue(draft.rent, "money"),
+    utilities: parseMonthlyValue(draft.utilities, "money"), other: parseMonthlyValue(draft.other, "money"),
+    guestScore: parseMonthlyValue(draft.guestScore, "score"),
+  };
+  const sourceError = !sourceNote.trim() || sourceNote.trim().length > 1000 ? "Angiv en kilde eller reference på højst 1.000 tegn." : null;
   const conflict = revision !== budget.revision || currency !== budget.currency;
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
-    if (saving || conflict || parsedSales.error || parsedTransactions.error || parsedLabour.error) return;
+    if (saving || conflict || sourceError || Object.values(parsed).some((value) => value.error)) return;
     onSavingChange(true);
     try {
-      await saveBudget({ month, locationId, sales: parsedSales.value, transactions: parsedTransactions.value, labour: parsedLabour.value, expectedRevision: revision, expectedCurrency: currency });
+      await saveBudget({ month, locationId, sales: parsed.sales.value, transactions: parsed.transactions.value,
+        labour: parsed.labour.value, cogs: parsed.cogs.value, waste: parsed.waste.value, rent: parsed.rent.value,
+        utilities: parsed.utilities.value, other: parsed.other.value, guestScore: parsed.guestScore.value,
+        sourceNote, expectedRevision: revision, expectedCurrency: currency });
       toast.success("Budgettet er gemt");
       onClose();
     } catch (error) {
@@ -82,39 +115,38 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
           <AlertDescription>
             <p>Budgettet eller lokationens valuta er ændret. Indlæs de nyeste værdier, før du redigerer videre.</p>
             <Button type="button" variant="outline" className="mt-2 min-h-11" onClick={() => {
-              setSales(moneyDraft(budget.sales));
-              setTransactions(budget.transactions?.toString() ?? "");
-              setLabour(moneyDraft(budget.labour));
-              setRevision(budget.revision);
-              setCurrency(budget.currency);
-              setSubmitted(false);
+              setDraft(budgetDraft(budget)); setSourceNote(budget.sourceNote);
+              setRevision(budget.revision); setCurrency(budget.currency); setSubmitted(false);
             }}>Indlæs nyeste budget</Button>
           </AlertDescription>
         </Alert>
       ) : null}
-      <FieldGroup>
-        <Field data-invalid={submitted && Boolean(parsedSales.error)}>
-          <FieldLabel htmlFor="monthly-budget-sales">Omsætning ekskl. moms ({budget.currency})</FieldLabel>
-          <Input id="monthly-budget-sales" className="h-11" inputMode="decimal" value={sales} onChange={(event) => setSales(event.target.value)} disabled={saving || conflict} aria-invalid={submitted && Boolean(parsedSales.error)} aria-describedby={submitted && parsedSales.error ? "monthly-budget-sales-error" : undefined} />
-          {submitted ? <FieldError id="monthly-budget-sales-error">{parsedSales.error}</FieldError> : null}
-        </Field>
-        <Field data-invalid={submitted && Boolean(parsedTransactions.error)}>
-          <FieldLabel htmlFor="monthly-budget-transactions">Transaktioner</FieldLabel>
-          <Input id="monthly-budget-transactions" className="h-11" inputMode="numeric" value={transactions} onChange={(event) => setTransactions(event.target.value)} disabled={saving || conflict} aria-invalid={submitted && Boolean(parsedTransactions.error)} aria-describedby={submitted && parsedTransactions.error ? "monthly-budget-transactions-error" : undefined} />
-          {submitted ? <FieldError id="monthly-budget-transactions-error">{parsedTransactions.error}</FieldError> : null}
-        </Field>
-        <Field data-invalid={submitted && Boolean(parsedLabour.error)}>
-          <FieldLabel htmlFor="monthly-budget-labour">Løn ({budget.currency})</FieldLabel>
-          <Input id="monthly-budget-labour" className="h-11" inputMode="decimal" value={labour} onChange={(event) => setLabour(event.target.value)} disabled={saving || conflict} aria-invalid={submitted && Boolean(parsedLabour.error)} aria-describedby={submitted && parsedLabour.error ? "monthly-budget-labour-error" : undefined} />
-          {submitted ? <FieldError id="monthly-budget-labour-error">{parsedLabour.error}</FieldError> : null}
-        </Field>
+      <FieldGroup className="grid gap-4 sm:grid-cols-2">
+        {budgetFields.map(({ key, label, kind }) => (
+          <Field key={key} data-invalid={submitted && Boolean(parsed[key].error)}>
+            <FieldLabel htmlFor={`monthly-budget-${key}`}>{label}{kind === "money" ? ` (${budget.currency})` : ""}</FieldLabel>
+            <Input id={`monthly-budget-${key}`} className="h-11" inputMode={kind === "count" ? "numeric" : "decimal"}
+              value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+              disabled={saving || conflict} aria-invalid={submitted && Boolean(parsed[key].error)}
+              aria-describedby={submitted && parsed[key].error ? `monthly-budget-${key}-error` : undefined} />
+            {submitted ? <FieldError id={`monthly-budget-${key}-error`}>{parsed[key].error}</FieldError> : null}
+          </Field>
+        ))}
       </FieldGroup>
-      <FieldDescription>Brug komma som decimaltegn. Et tomt felt betyder, at budgettet mangler. 0 er et budget på nul.</FieldDescription>
+      <Field data-invalid={submitted && Boolean(sourceError)}>
+        <div className="flex items-center gap-1">
+          <FieldLabel htmlFor="monthly-budget-source">Kilde eller reference</FieldLabel>
+          <HelpTooltip label="Budgettets kilde" content="Angiv det godkendte budget og eventuelle forudsætninger. Budgetbeløb valgt fra e-conomic hentes direkte og erstatter den pågældende manuelle budgetpost i rapporten." />
+        </div>
+        <Textarea id="monthly-budget-source" value={sourceNote} onChange={(event) => setSourceNote(event.target.value)} maxLength={1000}
+          disabled={saving || conflict} aria-invalid={submitted && Boolean(sourceError)} aria-describedby={submitted && sourceError ? "monthly-budget-source-error" : undefined} />
+        {submitted ? <FieldError id="monthly-budget-source-error">{sourceError}</FieldError> : null}
+      </Field>
+      <FieldDescription>Brug komma som decimaltegn. Et tomt felt betyder, at budgettet mangler. 0 er et budget på nul. Guest Score-målet gælder denne lokation.</FieldDescription>
       <DialogFooter>
         <Button type="button" variant="outline" className="min-h-11" disabled={saving} onClick={onClose}>Annullér</Button>
         <Button type="submit" className="min-h-11" disabled={saving || conflict}>
-          {saving ? <Spinner data-icon="inline-start" /> : null}
-          {saving ? "Gemmer" : "Gem budget"}
+          {saving ? <Spinner data-icon="inline-start" /> : null}{saving ? "Gemmer" : "Gem budget"}
         </Button>
       </DialogFooter>
     </form>
@@ -122,9 +154,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
 }
 
 export function MonthlyBudgetDialog({ month, locations, selectedLocationId }: {
-  month: string;
-  locations: Locations;
-  selectedLocationId: Id<"locations"> | null;
+  month: string; locations: Locations; selectedLocationId: Id<"locations"> | null;
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,10 +164,8 @@ export function MonthlyBudgetDialog({ month, locations, selectedLocationId }: {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!saving) setOpen(next); }}>
-      <DialogTrigger render={<Button variant="outline" className="min-h-11" />}>
-        <PencilIcon data-icon="inline-start" />Redigér budget
-      </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" showCloseButton={!saving}>
+      <DialogTrigger render={<Button variant="outline" className="min-h-11" />}><PencilIcon data-icon="inline-start" />Redigér budget</DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>Månedsbudget</DialogTitle>
           <DialogDescription>Budgettet gælder hele {new Date(`${month}-01T12:00:00Z`).toLocaleDateString("da-DK", { month: "long", year: "numeric", timeZone: "UTC" })}.</DialogDescription>

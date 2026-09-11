@@ -2,9 +2,16 @@ import { Empty, EmptyDescription } from "@/components/ui/empty";
 import type { MetricResult } from "@/lib/dashboard/types";
 import { cn } from "@/lib/utils";
 import { formatMetricValue, total } from "./utils";
+import { KpiVisualization } from "./kpi";
 
 export function GaugeVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
   const scaleMax = result.scaleMax;
+  const maximum = scaleMax ?? result.target;
+  const values = scaleMax === undefined ? [total(result)] : result.series.map((series) => series.total);
+  if (result.unit === "percent" && (maximum === undefined || maximum <= 0
+    || values.some((value) => value !== null && (value < 0 || value > maximum)))) {
+    return <KpiVisualization result={result} compact={compact} />;
+  }
   if (scaleMax !== undefined) {
     if (result.series.length === 0) {
       return (

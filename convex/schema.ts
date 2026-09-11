@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { economicApprovalItemValidator, economicMappingFields } from "./lib/economicValidators";
 import {
   forecastProfileValidator,
   locationForecastValidator,
@@ -863,9 +864,67 @@ export default defineSchema({
     sales: v.union(v.number(), v.null()),
     transactions: v.union(v.number(), v.null()),
     labour: v.union(v.number(), v.null()),
+    cogs: v.optional(v.union(v.number(), v.null())),
+    waste: v.optional(v.union(v.number(), v.null())),
+    rent: v.optional(v.union(v.number(), v.null())),
+    utilities: v.optional(v.union(v.number(), v.null())),
+    other: v.optional(v.union(v.number(), v.null())),
+    guestScore: v.optional(v.union(v.number(), v.null())),
+    sourceNote: v.optional(v.string()),
     revision: v.number(),
     updatedAt: v.number(),
     updatedBy: v.string(),
+  }).index("by_organizationId_and_locationId_and_month_and_revision", [
+    "organizationId", "locationId", "month", "revision",
+  ]),
+
+  monthlyKpiActuals: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    month: v.string(),
+    currency: v.string(),
+    cogs: v.union(v.number(), v.null()),
+    waste: v.union(v.number(), v.null()),
+    sourceNote: v.string(),
+    revision: v.number(),
+    approvedAt: v.number(),
+    approvedBy: v.string(),
+  }).index("by_organizationId_and_locationId_and_month_and_revision", [
+    "organizationId", "locationId", "month", "revision",
+  ]),
+
+  economicConnections: defineTable({
+    organizationId: v.string(),
+    agreementNumber: v.number(),
+    name: v.string(),
+    currency: v.string(),
+    encryptedToken: v.string(),
+    enabled: v.boolean(),
+    ...economicMappingFields,
+    revision: v.number(),
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_agreementNumber", ["organizationId", "agreementNumber"]),
+
+  economicLocationMappings: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("economicConnections"),
+    locationId: v.id("locations"),
+    dimensionKey: v.union(v.number(), v.null()),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"])
+    .index("by_connectionId", ["connectionId"]),
+
+  economicApprovals: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("economicConnections"),
+    locationId: v.id("locations"),
+    month: v.string(),
+    items: v.array(economicApprovalItemValidator),
+    sourceNote: v.string(),
+    revision: v.number(),
+    approvedAt: v.number(),
+    approvedBy: v.string(),
   }).index("by_organizationId_and_locationId_and_month_and_revision", [
     "organizationId", "locationId", "month", "revision",
   ]),

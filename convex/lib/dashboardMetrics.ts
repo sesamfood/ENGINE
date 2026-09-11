@@ -92,12 +92,12 @@ type MetricComputer = (
   params: DashboardMetricParams,
 ) => Promise<MetricResult>;
 
-type ExternalMetricComputer = { kind: "external"; provider: "googleMaps" };
+type ExternalMetricComputer = { kind: "external"; provider: "googleMaps" | "economic" };
 
 export function queryMetricComputer(metricId: MetricId): MetricComputer {
   const computer = dashboardMetricComputers[metricId];
   if (typeof computer !== "function") {
-    throw new ConvexError("Aktuelle målinger skal hentes via deres datakilde");
+    throw new ConvexError("Denne måling skal hentes via sin datakilde");
   }
   return computer;
 }
@@ -2598,6 +2598,14 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
 };
 
 export const dashboardMetricComputers: Record<MetricId, MetricComputer | ExternalMetricComputer> = {
+  cogsPercent: { kind: "external", provider: "economic" },
+  labourPercent: { kind: "external", provider: "economic" },
+  grossMarginPercent: { kind: "external", provider: "economic" },
+  wastePercent: { kind: "external", provider: "economic" },
+  rentPercent: { kind: "external", provider: "economic" },
+  utilitiesPercent: { kind: "external", provider: "economic" },
+  primeCostPercent: { kind: "external", provider: "economic" },
+  ebitdaPercent: { kind: "external", provider: "economic" },
   googleRating: { kind: "external", provider: "googleMaps" },
   predictedSalesRevenue: withMetricMetadata("predictedSalesRevenue", predictedSalesRevenue),
   wasteQuantity: withMetricMetadata("wasteQuantity", wasteQuantity),

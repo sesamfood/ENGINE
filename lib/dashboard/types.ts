@@ -24,6 +24,14 @@ export const metricIds = [
   "averageBasket",
   "woltCancellationRate",
   "googleRating",
+  "cogsPercent",
+  "labourPercent",
+  "grossMarginPercent",
+  "wastePercent",
+  "rentPercent",
+  "utilitiesPercent",
+  "primeCostPercent",
+  "ebitdaPercent",
 ] as const;
 
 export const visualizationIds = [
