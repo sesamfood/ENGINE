@@ -4,10 +4,11 @@ import type {
   SalesSource,
   VisualizationId,
   WidgetInstance,
+  WidgetRangePreset,
   WidgetSize,
 } from "./types";
 
-export type MetricSource = "internal" | "onlinepos" | "wolt" | "workfeed" | "googleMaps";
+export type MetricSource = "internal" | "onlinepos" | "wolt" | "workfeed" | "googleMaps" | "economic";
 
 export const salesSourceMetricIds = [
   "salesRevenue",
@@ -35,6 +36,7 @@ export type MetricDefinition = {
   visualizations: readonly VisualizationId[];
   defaultVisualization: VisualizationId;
   defaultSize: WidgetSize;
+  defaultRange?: WidgetRangePreset;
   sensitive?: boolean;
   shareable?: boolean;
   live?: {
@@ -44,7 +46,76 @@ export type MetricDefinition = {
   };
 };
 
+const financialDefaults = {
+  category: "Økonomi",
+  source: "economic",
+  sourceTables: ["e-conomic", "onlinePosFinancialMonths", "monthlyKpiActuals", "workfeedLaborDaily"],
+  unit: "percent",
+  visualizations: ["kpi", "gauge", "list", "table"],
+  defaultVisualization: "kpi",
+  defaultSize: "2x1",
+  defaultRange: "thisMonth",
+  sensitive: true,
+  shareable: false,
+} as const satisfies Partial<MetricDefinition>;
+
 const definitions = {
+  cogsPercent: {
+    ...financialDefaults,
+    id: "cogsPercent",
+    label: "Vareforbrug",
+    description: "Vareforbrug som andel af månedens nettoomsætning.",
+    formula: "Lagerreguleret vareforbrug ÷ nettoomsætning × 100. Bruger et manuelt godkendt beløb eller e-conomic-konti med bekræftet lagerregulering. Bogførte beløb er foreløbige, indtil måneden er godkendt.",
+  },
+  labourPercent: {
+    ...financialDefaults,
+    id: "labourPercent",
+    label: "Lønprocent",
+    description: "Lønomkostninger som andel af månedens nettoomsætning.",
+    formula: "Lønomkostninger ÷ nettoomsætning × 100. Godkendt bogført løn fra e-conomic erstatter Workfeeds estimat for den enkelte lokation og måned.",
+  },
+  grossMarginPercent: {
+    ...financialDefaults,
+    id: "grossMarginPercent",
+    label: "Bruttoavance",
+    description: "Nettoomsætning efter vareforbrug, vist i procent.",
+    formula: "(Nettoomsætning − vareforbrug) ÷ nettoomsætning × 100. Bruger samme vareforbrug og periode som månedsrapporten.",
+  },
+  wastePercent: {
+    ...financialDefaults,
+    id: "wastePercent",
+    label: "Waste-procent",
+    description: "Godkendt Waste-værdi som andel af månedens nettoomsætning.",
+    formula: "Godkendt Waste-værdi ÷ nettoomsætning × 100. Waste trækkes ikke fra EBITDA igen, når værdien allerede indgår i vareforbruget.",
+  },
+  rentPercent: {
+    ...financialDefaults,
+    id: "rentPercent",
+    label: "Huslejeprocent",
+    description: "Husleje som andel af månedens nettoomsætning.",
+    formula: "Husleje fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
+  },
+  utilitiesPercent: {
+    ...financialDefaults,
+    id: "utilitiesPercent",
+    label: "Forbrugsprocent",
+    description: "El, vand og varme som andel af månedens nettoomsætning.",
+    formula: "Forbrugsomkostninger fra de valgte e-conomic-konti ÷ nettoomsætning × 100.",
+  },
+  primeCostPercent: {
+    ...financialDefaults,
+    id: "primeCostPercent",
+    label: "Primære omkostninger",
+    description: "Vareforbrug og løn som andel af månedens nettoomsætning.",
+    formula: "(Vareforbrug + lønomkostninger) ÷ nettoomsætning × 100.",
+  },
+  ebitdaPercent: {
+    ...financialDefaults,
+    id: "ebitdaPercent",
+    label: "Lokationens EBITDA",
+    description: "Månedens resultat før renter, skat og afskrivninger, vist i procent.",
+    formula: "(Nettoomsætning − vareforbrug − løn − husleje − forbrug − øvrige driftsomkostninger) ÷ nettoomsætning × 100. Fællesomkostninger kræver en tilknytning til lokationen.",
+  },
   googleRating: {
     id: "googleRating",
     label: "Gæstescore (Google Maps)",

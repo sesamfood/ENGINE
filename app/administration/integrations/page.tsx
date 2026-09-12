@@ -1,3 +1,4 @@
+import { EconomicIntegration } from "@/components/organization/economic-integration";
 import { OnlinePosIntegration } from "@/components/organization/online-pos-integration";
 import { WoltIntegration } from "@/components/organization/wolt-integration";
 import { WorkfeedIntegration } from "@/components/organization/workfeed-integration";
@@ -7,6 +8,7 @@ export default function AdministrationIntegrationsPage() {
     <div className="flex flex-col gap-5 pb-10">
       <WorkfeedIntegration />
       <OnlinePosIntegration />
+      <EconomicIntegration />
       <WoltIntegration />
     </div>
   );

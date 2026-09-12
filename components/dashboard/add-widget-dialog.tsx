@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +46,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLiveMetrics } from "./use-live-metrics";
+import { useFinancialMetrics } from "./use-financial-metrics";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -102,7 +104,9 @@ export function AddWidgetDialog({
   const access = useAccess();
   const convex = useConvex();
   const available = metrics.filter(
-    (metric) => (!metric.sensitive || canViewSensitive) && (!metric.live || access?.granularity === "detail"),
+    (metric) => metric.source === "economic"
+      ? access?.granularity === "detail" && access.permissions.includes("dashboard.viewFinancials")
+      : (!metric.sensitive || canViewSensitive) && (!metric.live || access?.granularity === "detail"),
   );
   const categories = Array.from(new Set(available.map((metric) => metric.category))).map((category) => ({
     label: category,
@@ -140,10 +144,17 @@ export function AddWidgetDialog({
   const [previewResult, setPreviewResult] = useState<MetricResult>();
   const livePreviewWidgets = useMemo<[WidgetInstance]>(() => [{
     key: "live-preview", metric: { kind: "builtin", id: metricId }, visualization, size,
-  }], [metricId, visualization, size]);
+    range: definition.defaultRange,
+  }], [metricId, visualization, size, definition.defaultRange]);
   const [livePreviewWidget] = livePreviewWidgets;
   const livePreview = useLiveMetrics(livePreviewWidgets, scope, open && step === 2 && !customMetricId && Boolean(definition.live));
   const livePreviewState = livePreview.byWidget.get(livePreviewWidget.key);
+  const financialPreview = useFinancialMetrics(livePreviewWidgets, scope, range, now,
+    open && step === 2 && !customMetricId && definition.source === "economic");
+  const financialPreviewResult = financialPreview.get(livePreviewWidget.key);
+  const displayedPreview = !customMetricId && definition.source === "economic"
+    ? financialPreviewResult instanceof Error ? undefined : financialPreviewResult
+    : previewResult;
   const salesSource = metricId === "woltCancellationRate"
     ? "wolt"
     : salesSourceOverride ?? (
@@ -152,7 +163,7 @@ export function AddWidgetDialog({
           : "onlinePos"
       );
   useEffect(() => {
-    if (!open || step !== 2 || (customMetricId && !customMetric) || (!customMetricId && definition.live)) return;
+    if (!open || step !== 2 || (customMetricId && !customMetric) || (!customMetricId && (definition.live || definition.source === "economic"))) return;
     let active = true;
     const timer = window.setTimeout(() => {
       if (!active) return;
@@ -201,6 +212,7 @@ export function AddWidgetDialog({
     customMetricId,
     definition.defaultVisualization,
     definition.live,
+    definition.source,
     metricId,
     now,
     open,
@@ -257,6 +269,7 @@ export function AddWidgetDialog({
         : { kind: "builtin", id: metricId },
       visualization,
       size,
+      range: customMetric ? undefined : definition.defaultRange,
       options: Object.keys(options).length ? options : undefined,
     });
     setDialogOpen(false);
@@ -573,8 +586,10 @@ export function AddWidgetDialog({
                         >
                           {livePreviewState ? (
                             <LiveMetricContent widget={{ ...livePreviewWidget, visualization: visualizationId }} state={livePreviewState} compact />
-                          ) : previewResult ? (
-                            <Visualization result={previewResult} />
+                          ) : financialPreviewResult instanceof Error ? (
+                            <Alert variant="destructive"><AlertDescription>{financialPreviewResult.message}</AlertDescription></Alert>
+                          ) : displayedPreview ? (
+                            <Visualization result={displayedPreview} />
                           ) : (
                             <Skeleton className="size-full" />
                           )}
@@ -585,6 +600,7 @@ export function AddWidgetDialog({
                 </ToggleGroup>
               )}
               {!customMetricId && definition.live ? <MetricSourceAttribution widget={livePreviewWidget} data={livePreviewState?.kind === "ready" ? livePreviewState.data : undefined} /> : null}
+              {!customMetricId && definition.source === "economic" ? <p className="text-sm text-muted-foreground">Denne måned. Økonomital hentes ved indlæsning og følger samme beregninger som månedsrapporten.</p> : null}
             </div>
           ) : null}
 
