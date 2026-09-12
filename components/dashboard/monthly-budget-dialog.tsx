@@ -7,6 +7,7 @@ import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { economicBudgetComponents } from "@/lib/dashboard/monthly-kpi";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -68,12 +69,18 @@ const budgetFields = [
   { key: "guestScore", label: "Guest Score-mål", kind: "score" },
 ] as const;
 
+const budgetSources = [
+  { value: "manual", label: "Manuelt" },
+  { value: "economic", label: "e-conomic" },
+];
+
 function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose }: {
   budget: Budget; month: string; locationId: Id<"locations">; saving: boolean;
   onSavingChange: (value: boolean) => void; onClose: () => void;
 }) {
   const saveBudget = useMutation(api.monthlyKpi.saveBudget);
   const [draft, setDraft] = useState(() => budgetDraft(budget));
+  const [economicBudgetCategories, setEconomicBudgetCategories] = useState(budget.economicBudgetCategories);
   const [sourceNote, setSourceNote] = useState(budget.sourceNote);
   const [revision, setRevision] = useState(budget.revision);
   const [currency, setCurrency] = useState(budget.currency);
@@ -97,7 +104,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
       await saveBudget({ month, locationId, sales: parsed.sales.value, transactions: parsed.transactions.value,
         labour: parsed.labour.value, cogs: parsed.cogs.value, waste: parsed.waste.value, rent: parsed.rent.value,
         utilities: parsed.utilities.value, other: parsed.other.value, guestScore: parsed.guestScore.value,
-        sourceNote, expectedRevision: revision, expectedCurrency: currency });
+        economicBudgetCategories, sourceNote, expectedRevision: revision, expectedCurrency: currency });
       toast.success("Budgettet er gemt");
       onClose();
     } catch (error) {
@@ -116,22 +123,54 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
             <p>Budgettet eller lokationens valuta er ændret. Indlæs de nyeste værdier, før du redigerer videre.</p>
             <Button type="button" variant="outline" className="mt-2 min-h-11" onClick={() => {
               setDraft(budgetDraft(budget)); setSourceNote(budget.sourceNote);
+              setEconomicBudgetCategories(budget.economicBudgetCategories);
               setRevision(budget.revision); setCurrency(budget.currency); setSubmitted(false);
             }}>Indlæs nyeste budget</Button>
           </AlertDescription>
         </Alert>
       ) : null}
       <FieldGroup className="grid gap-4 sm:grid-cols-2">
-        {budgetFields.map(({ key, label, kind }) => (
-          <Field key={key} data-invalid={submitted && Boolean(parsed[key].error)}>
-            <FieldLabel htmlFor={`monthly-budget-${key}`}>{label}{kind === "money" ? ` (${budget.currency})` : ""}</FieldLabel>
-            <Input id={`monthly-budget-${key}`} className="h-11" inputMode={kind === "count" ? "numeric" : "decimal"}
-              value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
-              disabled={saving || conflict} aria-invalid={submitted && Boolean(parsed[key].error)}
-              aria-describedby={submitted && parsed[key].error ? `monthly-budget-${key}-error` : undefined} />
-            {submitted ? <FieldError id={`monthly-budget-${key}-error`}>{parsed[key].error}</FieldError> : null}
-          </Field>
-        ))}
+        {budgetFields.map(({ key, label, kind }) => {
+          const category = economicBudgetComponents.find((component) => component === key);
+          const usesEconomic = category !== undefined && economicBudgetCategories.includes(category);
+          const inputId = `monthly-budget-${key}`;
+          const sourceId = `${inputId}-source`;
+          const error = submitted ? parsed[key].error : null;
+          return (
+            <Field key={key} data-disabled={saving || conflict} data-invalid={Boolean(error)}>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor={usesEconomic ? sourceId : inputId}>{label}{kind === "money" ? ` (${budget.currency})` : ""}</FieldLabel>
+                {category ? <HelpTooltip label={`budgetkilde for ${label}`} content="e-conomic kræver en forbindelse med lokations- og kontotilknytning samt godkendte budgettal. Mangler der data, er budgetposten utilgængelig i rapporten. Manuelle beløb bevares, når du skifter kilde." /> : null}
+              </div>
+              {category ? (
+                <Select items={budgetSources} value={usesEconomic ? "economic" : "manual"} disabled={saving || conflict}
+                  onValueChange={(value) => {
+                    if (value === null) return;
+                    setEconomicBudgetCategories((current) => {
+                      const remaining = current.filter((component) => component !== category);
+                      return value === "economic" ? [...remaining, category] : remaining;
+                    });
+                  }}>
+                  <SelectTrigger id={sourceId} className="min-h-11 w-full" aria-label={`Budgetkilde for ${label}`}
+                    aria-invalid={usesEconomic && Boolean(error)}
+                    aria-describedby={usesEconomic && error ? `${inputId}-error` : undefined}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent><SelectGroup>{budgetSources.map((source) => (
+                    <SelectItem key={source.value} value={source.value} className="min-h-11">{source.label}</SelectItem>
+                  ))}</SelectGroup></SelectContent>
+                </Select>
+              ) : null}
+              {!usesEconomic ? (
+                <Input id={inputId} className="h-11" inputMode={kind === "count" ? "numeric" : "decimal"}
+                  value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                  disabled={saving || conflict} aria-invalid={Boolean(error)}
+                  aria-describedby={error ? `${inputId}-error` : undefined} />
+              ) : null}
+              {error ? <FieldError id={`${inputId}-error`}>{usesEconomic ? `${error} Vælg Manuelt for at rette beløbet.` : error}</FieldError> : null}
+            </Field>
+          );
+        })}
       </FieldGroup>
       <Field data-invalid={submitted && Boolean(sourceError)}>
         <div className="flex items-center gap-1">

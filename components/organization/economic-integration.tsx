@@ -51,8 +51,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
+import { authClient } from "@/lib/auth-client";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { IntegrationCard } from "./integration-card";
 
@@ -72,26 +72,32 @@ const categories = [
 ] satisfies Array<{ value: Category; label: string }>;
 
 function ConnectionForm({
+  organizationId,
   connection,
   onDone,
   onCancel,
 }: {
+  organizationId: string;
   connection?: Connection;
   onDone: () => void;
   onCancel?: () => void;
 }) {
   const connect = useAction(api.economic.connect);
+  const [appSecretToken, setAppSecretToken] = useState("");
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function save() {
-    if (!token.trim()) return;
+    if (!appSecretToken.trim() || !token.trim()) return;
     setSaving(true);
     try {
       await connect({
+        expectedOrganizationId: organizationId,
+        appSecretToken: appSecretToken.trim(),
         agreementGrantToken: token.trim(),
         ...(connection ? { connectionId: connection.id } : {}),
       });
+      setAppSecretToken("");
       setToken("");
       toast.success(
         connection ? "Forbindelsen er opdateret" : "e-conomic er forbundet",
@@ -114,18 +120,43 @@ function ConnectionForm({
       }}
       className="flex flex-col gap-4"
     >
-      <FieldGroup>
+      <FieldGroup className="grid md:grid-cols-2">
+        <Field data-disabled={saving}>
+          <div className="flex items-center gap-1">
+            <FieldLabel
+              htmlFor={`economic-app-token-${connection?.id ?? "new"}`}
+            >
+              App-nøgle
+            </FieldLabel>
+            <HelpTooltip
+              label="e-conomic-app-nøgle"
+              content="Indsæt organisationens AppSecretToken fra appen i e-conomic. Aftalenøglen skal være udstedt til samme app. Begge nøgler gemmes krypteret for organisationens aftale og vises ikke igen."
+            />
+          </div>
+          <Input
+            id={`economic-app-token-${connection?.id ?? "new"}`}
+            type="password"
+            value={appSecretToken}
+            onChange={(event) => setAppSecretToken(event.target.value)}
+            autoComplete="off"
+            placeholder="AppSecretToken"
+            maxLength={1000}
+            required
+            disabled={saving}
+            className="h-11"
+          />
+        </Field>
         <Field data-disabled={saving}>
           <div className="flex items-center gap-1">
             <FieldLabel htmlFor={`economic-token-${connection?.id ?? "new"}`}>
-              {connection ? "Ny adgangsnøgle" : "Adgangsnøgle"}
+              Aftalenøgle
             </FieldLabel>
             <HelpTooltip
-              label="e-conomic-adgangsnøgle"
+              label="e-conomic-aftalenøgle"
               content={
                 connection
-                  ? `Indsæt et AgreementGrantToken til aftale ${connection.agreementNumber}. En anden aftale skal tilføjes som en ny forbindelse. Nøglen gemmes kun på serveren og vises ikke igen.`
-                  : "Indsæt det AgreementGrantToken, du får, når du giver integrationen adgang til aftalen i e-conomic. Nøglen gemmes kun på serveren og vises ikke igen."
+                  ? `Indsæt organisationens AgreementGrantToken til aftale ${connection.agreementNumber}. En anden aftale skal tilføjes som en ny forbindelse. Nøglen gemmes krypteret og vises ikke igen.`
+                  : "Indsæt organisationens AgreementGrantToken fra godkendelsen af appens adgang til aftalen i e-conomic. Nøglen gemmes krypteret og vises ikke igen."
               }
             />
           </div>
@@ -136,6 +167,7 @@ function ConnectionForm({
             onChange={(event) => setToken(event.target.value)}
             autoComplete="off"
             placeholder="AgreementGrantToken"
+            maxLength={1000}
             required
             disabled={saving}
             className="h-11"
@@ -153,7 +185,10 @@ function ConnectionForm({
             Annullér
           </Button>
         ) : null}
-        <Button type="submit" disabled={saving || !token.trim()}>
+        <Button
+          type="submit"
+          disabled={saving || !appSecretToken.trim() || !token.trim()}
+        >
           {saving ? (
             <Spinner data-icon="inline-start" />
           ) : (
@@ -188,7 +223,6 @@ function MappingEditor({
   const [accountMappings, setAccountMappings] = useState<AccountDraft[]>(
     connection.accountMappings,
   );
-  const [budgetSource, setBudgetSource] = useState(connection.budgetSource);
   const [cogsStockAdjusted, setCogsStockAdjusted] = useState(
     connection.cogsStockAdjusted,
   );
@@ -244,7 +278,6 @@ function MappingEditor({
         dimensionNumber,
         accountMappings: accounts,
         locationMappings,
-        budgetSource,
         cogsStockAdjusted,
       });
       toast.success("Koblinger og beregningsgrundlag er gemt");
@@ -592,7 +625,7 @@ function MappingEditor({
             </Button>
             <HelpTooltip
               label="konti og nøgletal"
-              content="Hver konto kan indgå i ét nøgletal. Nettoomsætning fra e-conomic bruges til budget og afstemning. Rapportens omsætning hentes fortsat fra POS."
+              content="Hver konto kan indgå i ét nøgletal. Vælg Manuelt eller e-conomic for hvert budgettal i Månedsbudget. Budget fra e-conomic bruger disse konto- og lokationskoblinger. Rapportens omsætning hentes fortsat fra POS."
             />
           </div>
         </FieldGroup>
@@ -603,34 +636,6 @@ function MappingEditor({
       <FieldSet disabled={saving}>
         <FieldLegend>Beregningsgrundlag</FieldLegend>
         <FieldGroup>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel id={`economic-budget-${connection.id}`}>
-                Budget
-              </FieldLabel>
-              <HelpTooltip
-                label="budget"
-                content="Manuelt budget indtastes i månedsrapporten. Budget fra e-conomic bruger de valgte konti og samme lokationskoblinger som de bogførte beløb."
-              />
-            </div>
-            <ToggleGroup
-              aria-labelledby={`economic-budget-${connection.id}`}
-              variant="outline"
-              value={[budgetSource]}
-              onValueChange={(values) => {
-                const value = values[0];
-                if (value === "manual" || value === "economic")
-                  setBudgetSource(value);
-              }}
-            >
-              <ToggleGroupItem value="manual" className="h-11">
-                Manuelt
-              </ToggleGroupItem>
-              <ToggleGroupItem value="economic" className="h-11">
-                e-conomic
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </Field>
           <Field orientation="horizontal">
             <Checkbox
               id={`economic-cogs-${connection.id}`}
@@ -724,6 +729,7 @@ function AgreementCard({
   }
 
   async function edit() {
+    if (connection.requiresReconnect) return;
     setLoadingCatalog(true);
     try {
       const catalog = await getCatalog({ connectionId: connection.id });
@@ -748,19 +754,44 @@ function AgreementCard({
           Aftale {connection.agreementNumber} · {connection.currency}
         </CardDescription>
         <CardAction className="flex items-center gap-3">
-          <Badge variant={connection.enabled ? "default" : "secondary"}>
-            {connection.enabled ? "Aktiv" : "Deaktiveret"}
+          <Badge
+            variant={
+              connection.enabled && !connection.requiresReconnect
+                ? "default"
+                : "secondary"
+            }
+          >
+            {connection.requiresReconnect
+              ? "Forbind igen"
+              : connection.enabled
+                ? "Aktiv"
+                : "Deaktiveret"}
           </Badge>
           <Switch
             aria-label={`Aktivér aftale ${connection.agreementNumber}`}
-            checked={connection.enabled}
-            disabled={busy || reconnecting || loadingCatalog || editor !== null}
+            checked={connection.enabled && !connection.requiresReconnect}
+            disabled={
+              busy ||
+              reconnecting ||
+              loadingCatalog ||
+              editor !== null ||
+              connection.requiresReconnect
+            }
             onCheckedChange={(enabled) => void changeEnabled(enabled)}
           />
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {editor ? (
+        {connection.requiresReconnect && !reconnecting ? (
+          <Alert>
+            <AlertTitle>Organisationens adgangsnøgler mangler</AlertTitle>
+            <AlertDescription>
+              Vælg Opdatér forbindelse, og indtast organisationens app-nøgle og
+              aftalenøgle for at bruge aftalen igen.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {editor && !connection.requiresReconnect ? (
           <MappingEditor
             connection={editor.connection}
             catalog={editor.catalog}
@@ -769,6 +800,7 @@ function AgreementCard({
           />
         ) : reconnecting ? (
           <ConnectionForm
+            organizationId={settings.organizationId}
             connection={connection}
             onDone={() => setReconnecting(false)}
             onCancel={() => setReconnecting(false)}
@@ -788,7 +820,7 @@ function AgreementCard({
           </div>
         )}
       </CardContent>
-      {!editor && !reconnecting ? (
+      {(!editor || connection.requiresReconnect) && !reconnecting ? (
         <CardFooter className="flex-wrap justify-end gap-3">
           <AlertDialog>
             <AlertDialogTrigger
@@ -805,7 +837,7 @@ function AgreementCard({
                   Fjern aftale {connection.agreementNumber}?
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Adgangsnøglen og aftalens konto- og lokationskoblinger
+                  Begge adgangsnøgler og aftalens konto- og lokationskoblinger
                   slettes. Rapporten kan ikke længere hente beløb fra aftalen.
                 </AlertDialogDescription>
               </AlertDialogHeader>
@@ -830,7 +862,10 @@ function AgreementCard({
           >
             Opdatér forbindelse
           </Button>
-          <Button disabled={busy || loadingCatalog} onClick={() => void edit()}>
+          <Button
+            disabled={busy || loadingCatalog || connection.requiresReconnect}
+            onClick={() => void edit()}
+          >
             {loadingCatalog ? <Spinner data-icon="inline-start" /> : null}
             Redigér koblinger
           </Button>
@@ -841,6 +876,24 @@ function AgreementCard({
 }
 
 export function EconomicIntegration() {
+  const { data: session, isPending } = authClient.useSession();
+  const organizationId = session?.session.activeOrganizationId;
+  if (isPending || !organizationId) {
+    return <Skeleton className="h-72 w-full max-w-6xl" />;
+  }
+  return (
+    <OrganizationIntegration
+      key={`${organizationId}:${session.user.id}`}
+      organizationId={organizationId}
+    />
+  );
+}
+
+function OrganizationIntegration({
+  organizationId,
+}: {
+  organizationId: string;
+}) {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
   const canManageEconomic = canManage && access?.locationScope.all === true;
@@ -882,12 +935,19 @@ export function EconomicIntegration() {
     }
   }
 
-  if (!access || (canManageEconomic && !settings))
+  if (
+    !access ||
+    (canManageEconomic &&
+      (!settings || settings.organizationId !== organizationId))
+  )
     return <Skeleton className="h-72 w-full max-w-6xl" />;
   if (!canManageEconomic || !settings) return null;
 
   const connected = settings.connections.length > 0;
   const multiple = settings.connections.length > 1;
+  const requiresReconnect = settings.connections.some(
+    (connection) => connection.requiresReconnect,
+  );
 
   return (
     <IntegrationCard
@@ -897,28 +957,33 @@ export function EconomicIntegration() {
       connected={connected}
       checked={
         connected
-          ? settings.connections.some((connection) => connection.enabled)
+          ? settings.connections.some(
+              (connection) =>
+                connection.enabled && !connection.requiresReconnect,
+            )
           : open && settings.configured
       }
       open={open}
       onOpenChange={setOpen}
       onEnabledChange={(enabled) => void changeEnabled(enabled)}
-      disabled={busy || !settings.configured || multiple}
+      disabled={busy || !settings.configured || multiple || requiresReconnect}
       disabledReason={
         multiple
           ? "Aktivér eller deaktivér hver aftale nedenfor"
           : !settings.configured
-            ? "Integrationen skal først klargøres på serveren"
-            : undefined
+            ? "Sikker lagring af adgangsnøgler er ikke tilgængelig"
+            : requiresReconnect
+              ? "Opdatér forbindelse med organisationens adgangsnøgler"
+              : undefined
       }
       contentClassName="flex flex-col gap-5 pb-4"
     >
       {!settings.configured ? (
         <Alert>
-          <AlertTitle>e-conomic er ikke klargjort</AlertTitle>
+          <AlertTitle>Adgangsnøgler kan ikke gemmes sikkert endnu</AlertTitle>
           <AlertDescription>
-            Integrationen skal klargøres på serveren, før du kan forbinde en
-            aftale.
+            Kryptering af adgangsnøgler skal klargøres på serveren, før
+            organisationen kan forbinde en aftale.
           </AlertDescription>
         </Alert>
       ) : (
@@ -938,12 +1003,13 @@ export function EconomicIntegration() {
                 </CardTitle>
                 <CardDescription>
                   {connected
-                    ? "Forbind en ekstra aftale for en lokation eller et selskab."
-                    : "Forbind kædens aftale. Kobl derefter afdelinger eller dimensioner til lokationerne."}
+                    ? "Forbind en ekstra aftale med organisationens app-nøgle og aftalenøgle."
+                    : "Forbind kædens aftale med organisationens app-nøgle og aftalenøgle. Kobl derefter afdelinger eller dimensioner til lokationerne."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <ConnectionForm
+                  organizationId={organizationId}
                   onDone={() => setAdding(false)}
                   onCancel={connected ? () => setAdding(false) : undefined}
                 />

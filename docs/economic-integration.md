@@ -4,25 +4,33 @@ Connect one chain agreement by default, then map its department or dimension val
 
 ## Prepare the deployment
 
-1. Create an app in an [e-conomic developer agreement](https://www.e-conomic.com/developer/connect). Keep its `AppSecretToken` on the backend.
-2. Generate a random, 32-byte encryption key encoded as unpadded base64url. Store the key in your secret manager.
+1. Generate a random, 32-byte encryption key encoded as unpadded base64url. Store the key in your secret manager.
 
    ```bash
    openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'
    ```
 
-3. Set both variables on the intended Convex deployment. These commands prompt for the values.
+2. Set the encryption key on the intended Convex deployment. This command prompts for the value.
 
    ```bash
-   bunx convex env set ECONOMIC_APP_SECRET_TOKEN
    bunx convex env set ECONOMIC_ENCRYPTION_KEY
    ```
 
-   Use `--prod` only when configuring production. Frontend `.env.local` values do not configure the Convex backend. Keep the encryption key stable: changing it makes existing encrypted grants unreadable, so those agreements must be connected again.
+   Use `--prod` only when configuring production. Frontend `.env.local` values do not configure the Convex backend. Keep the encryption key stable. Changing it makes existing encrypted credentials unreadable, so those agreements must be connected again.
 
-4. Have an accounting user open the app's Installation URL while signed into the intended accounting agreement. Copy the resulting `AgreementGrantToken` into **Administration → Integrationer → e-conomic**. Repeat this grant step for each additional agreement. The app and accounting user need access to accounts, booked entries, accounting periods, and any budget or dimension data selected in the setup. [e-conomic's connection guide](https://www.e-conomic.com/developer/connect) describes the grant process.
+`ECONOMIC_ENCRYPTION_KEY` protects stored credentials. Each organization supplies its own e-conomic API authentication in the integration settings.
 
-The backend encrypts agreement grants with AES-GCM. Grants are never returned by settings queries. Managing connections requires `integrations.manage` and access to all locations.
+## Connect the organization's agreement
+
+1. Create the organization's app in an [e-conomic developer agreement](https://www.e-conomic.com/developer/connect), and obtain its `AppSecretToken`.
+2. Have an accounting user open that app's Installation URL while signed into the intended accounting agreement. Obtain the resulting `AgreementGrantToken`. It must be issued for the same app as the app secret.
+3. Open **Administration → Integrationer → e-conomic** in the intended organization. Enter the `AppSecretToken` in **App-nøgle** and the `AgreementGrantToken` in **Aftalenøgle**, then select **Forbind e-conomic**. Both fields are required and masked. For additional agreements, select **Tilføj aftale** and provide both tokens for that connection.
+
+The app and accounting user need access to accounts, booked entries, accounting periods, and any budget or dimension data selected in the setup. [e-conomic's connection guide](https://www.e-conomic.com/developer/connect) describes the grant process.
+
+The backend encrypts both tokens with AES-GCM on the organization-owned agreement connection. Settings queries never return either token. Managing connections requires `integrations.manage` and access to all locations. Switching organization or user clears unfinished credential fields. The server checks the form's organization before contacting e-conomic and checks it again before saving.
+
+Existing connections without their own app secret show **Forbind igen**. Select **Opdatér forbindelse** and supply the organization's two tokens for the same agreement. Location and account mappings remain saved; mapping edits become available after reconnecting.
 
 ## Map locations and accounts
 
@@ -36,9 +44,15 @@ Confirm **Vareforbruget er lagerreguleret og godkendt** only after checking stoc
 
 ## Choose and approve the monthly figures
 
-Select **Manuelt** for locally entered budgets, or **e-conomic** for live budget figures on the mapped accounts. e-conomic budgets use the same location allocation as actuals. Enter provider budgets within one calendar month. Figures spanning months remain unavailable; the integration does not invent a monthly split.
+Open **Redigér budget** in the monthly report and select the location. Choose **Manuelt** or **e-conomic** separately for each supported budget item. The choices apply to that location and month and are saved with the budget revision. Transactions, Waste and Guest Score targets remain manual. Choosing e-conomic preserves the manual amount but excludes it from the report. Missing or unapproved provider budgets stay unavailable.
+
+Months saved before source selection was introduced retain the connection's previous budget source until their budget is saved with explicit choices. Connection settings no longer change budget sources. New connections default to manual budgets.
+
+e-conomic budgets use the same location allocation as actuals. Enter provider budgets within one calendar month. Figures spanning months remain unavailable for their assigned locations; they do not block another location's monthly budget. The integration does not invent a monthly split.
 
 In the monthly report, select one location to approve reconciled e-conomic actuals or budgets. Supply a source reference. Approval refetches the figures and checks their fingerprints before saving. Changed amounts, source versions, or configuration invalidate the old approval. The database stores approval fingerprints and audit history, without a copy of the provider figures. e-conomic budgets require approval before use.
+
+An actual cost category without booked entries stays unavailable. A closed month can be explicitly approved as zero after reconciliation. Until then, missing expenses also keep dependent ratios and EBITDA unavailable. Supported, unapproved booked amounts remain provisional.
 
 Use **Godkend månedstal** for approved stock-adjusted COGS and recorded Waste. Waste is already part of COGS and is not deducted again in EBITDA. POS net revenue supplies the sales denominator; ledger sales accounts supply the e-conomic sales budget. Approved ledger payroll replaces the Workfeed labour estimate for each location and month.
 

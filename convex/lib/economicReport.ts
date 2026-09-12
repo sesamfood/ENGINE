@@ -1,12 +1,12 @@
 import { ConvexError, type Infer } from "convex/values";
-import { kpiCell, kpiMonthEnd, type MonthlyKpiCell, type MonthlyKpiInputs } from "../../lib/dashboard/monthly-kpi";
+import { economicBudgetComponents, kpiCell, kpiMonthEnd, type MonthlyKpiCell, type MonthlyKpiInputs } from "../../lib/dashboard/monthly-kpi";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { fetchEconomicReportData } from "./economicApi";
 import { economicFingerprint } from "./economicCrypto";
 import type { economicCategoryValidator } from "./economicValidators";
 
 export type EconomicCategory = Infer<typeof economicCategoryValidator>;
-export const economicCategories: EconomicCategory[] = ["sales", "cogs", "labour", "rent", "utilities", "other"];
+export const economicCategories: readonly EconomicCategory[] = economicBudgetComponents;
 export const economicCategoryLabels: Record<EconomicCategory, string> = {
   sales: "Nettoomsætning", cogs: "Vareforbrug", labour: "Løn", rent: "Husleje",
   utilities: "Forsyning", other: "Øvrige driftsomkostninger",
@@ -77,9 +77,7 @@ export function unavailableEconomicInputs(inputs: MonthlyKpiInputs, item: Econom
         period[category] = kpiCell(null, `${location.name}: ${reason}`, false, "e-conomic");
       }
     }
-    if (item.connection.budgetSource === "economic") {
-      for (const category of economicCategories) location.budget[category] = kpiCell(null, `${location.name}: ${reason}`, false, "e-conomic");
-    }
+    for (const category of location.economicBudgetCategories) location.budget[category] = kpiCell(null, `${location.name}: ${reason}`, false, "e-conomic");
   }
 }
 
@@ -124,14 +122,16 @@ export async function applyEconomicData(args: {
       return;
     }
     const unassigned = allocations === null || allocations.some((allocation) => allocation.percent > 0 && !knownDimensions.has(allocation.dimensionKey));
-    if (unassigned || incomplete) {
+    if (unassigned) {
       for (const location of selected) get(amounts, location.id, month, category).incomplete = true;
     }
     if (allocations === null) return;
-    for (const part of allocate(value, allocations)) {
+    for (const part of allocate(value, allocations.filter((allocation) => allocation.percent > 0))) {
       const locationId = knownDimensions.get(part.dimensionKey);
       if (!locationId || !selected.some((location) => location.id === locationId)) continue;
-      add(get(amounts, locationId, month, category), part.value, number, version);
+      const amount = get(amounts, locationId, month, category);
+      add(amount, part.value, number, version);
+      amount.incomplete ||= incomplete;
     }
   };
   for (const entry of data.entries) {
@@ -141,7 +141,7 @@ export async function applyEconomicData(args: {
     if (!category || category === "sales" || !period || entry.date > period.through) continue;
     distribute(actualAmounts, month, category, minorUnits(entry.amountInBaseCurrency), entry.entryNumber, entry.objectVersion, entry.allocations);
   }
-  if (connection.budgetSource === "economic") {
+  if (selected.some((location) => location.economicBudgetCategories.length > 0)) {
     for (const budget of data.budgets) {
       const category = categories.get(budget.accountNumber);
       if (!category || budget.fromDate > kpiMonthEnd(inputs.month) || budget.toDate < `${inputs.month}-01`) continue;
@@ -177,6 +177,7 @@ export async function applyEconomicData(args: {
         approved, approvalRevision: previous?.revision ?? 0, source });
     }
     if (!cogsReady) return kpiCell(null, `${location.name}: Lagerreguleret vareforbrug er ikke bekræftet`, false, source);
+    if (kind === "actual" && amount.references.length === 0 && !approved) return kpiCell(null, `${location.name}: Bogførte beløb eller et godkendt nulbeløb mangler`, false, source);
     if (kind === "budget" && !approved) return kpiCell(null, `${location.name}: Budgettet fra e-conomic afventer godkendelse`, false, source);
     const periodOpen = kind === "actual" && data.periods.some((period) => period.fromDate <= through && period.toDate >= monthStart && !period.isClosed);
     const reason = approved && isFullMonth ? null : periodOpen
@@ -198,9 +199,7 @@ export async function applyEconomicData(args: {
         }
       }
     }
-    if (connection.budgetSource === "economic") {
-      for (const category of economicCategories) location.budget[category] = await cell(location, inputs.month, category, "budget");
-    }
+    for (const category of location.economicBudgetCategories) location.budget[category] = await cell(location, inputs.month, category, "budget");
   }
   return candidates;
 }

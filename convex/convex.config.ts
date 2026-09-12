@@ -7,7 +7,6 @@ import betterAuth from "./betterAuth/convex.config";
 
 const app = defineApp({
   env: {
-    ECONOMIC_APP_SECRET_TOKEN: v.optional(v.string()),
     ECONOMIC_ENCRYPTION_KEY: v.optional(v.string()),
     GOOGLE_PLACES_API_KEY: v.optional(v.string()),
     OPENWEATHER_API_KEY: v.optional(v.string()),

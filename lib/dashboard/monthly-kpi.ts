@@ -25,6 +25,8 @@ export type MonthlyKpiRow = {
 export const monthlyKpiComponents = ["sales", "transactions", "labour", "cogs", "waste", "rent", "utilities", "other"] as const;
 export type MonthlyKpiComponent = typeof monthlyKpiComponents[number];
 export type MonthlyKpiAmounts = Record<MonthlyKpiComponent, MonthlyKpiCell>;
+export const economicBudgetComponents = ["sales", "cogs", "labour", "rent", "utilities", "other"] as const;
+export type EconomicBudgetComponent = typeof economicBudgetComponents[number];
 export type MonthlyKpiInputs = {
   organizationId: string;
   month: string;
@@ -37,6 +39,7 @@ export type MonthlyKpiInputs = {
     currency: string;
     periods: (MonthlyKpiAmounts & { month: string })[];
     budget: MonthlyKpiAmounts & { guestScore: MonthlyKpiCell };
+    economicBudgetCategories: EconomicBudgetComponent[];
   }[];
   updatedAt: number | null;
   revision: string;

@@ -1,5 +1,7 @@
 import { ConvexError } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 import { env } from "../_generated/server";
+import type { EconomicCredentials } from "./economicApi";
 
 const encoder = new TextEncoder();
 
@@ -17,12 +19,6 @@ async function encryptionKey() {
   const bytes = decode(env.ECONOMIC_ENCRYPTION_KEY?.trim() ?? "");
   if (bytes.length !== 32) throw new ConvexError("e-conomic-kryptering er ikke konfigureret korrekt");
   return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
-}
-
-export function economicAppSecret() {
-  const value = env.ECONOMIC_APP_SECRET_TOKEN?.trim();
-  if (!value) throw new ConvexError("e-conomic er ikke konfigureret på serveren");
-  return value;
 }
 
 export async function encryptEconomicToken(value: string) {
@@ -44,6 +40,17 @@ export async function decryptEconomicToken(value: string) {
   } catch {
     throw new ConvexError("e-conomic-forbindelsens nøgle kunne ikke læses");
   }
+}
+
+export async function decryptEconomicCredentials(connection: Pick<Doc<"economicConnections">, "encryptedToken" | "encryptedAppSecretToken">): Promise<EconomicCredentials> {
+  if (!connection.encryptedAppSecretToken) {
+    throw new ConvexError("Forbind e-conomic igen med organisationens appnøgle og aftalenøgle i Administration");
+  }
+  const [appSecretToken, agreementGrantToken] = await Promise.all([
+    decryptEconomicToken(connection.encryptedAppSecretToken),
+    decryptEconomicToken(connection.encryptedToken),
+  ]);
+  return { appSecretToken, agreementGrantToken };
 }
 
 export async function economicFingerprint(value: unknown) {

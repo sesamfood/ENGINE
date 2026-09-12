@@ -12,7 +12,7 @@ import schema from "./schema";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { requireBudgetManager, requireFinancialReportViewer, requireLocationAccess } from "./lib/auth";
 import { fetchEconomicReportData } from "./lib/economicApi";
-import { decryptEconomicToken, economicAppSecret, economicFingerprint } from "./lib/economicCrypto";
+import { decryptEconomicCredentials, economicFingerprint } from "./lib/economicCrypto";
 import { applyEconomicData, unavailableEconomicInputs, type EconomicApprovalCandidate } from "./lib/economicReport";
 import { economicApprovalItemValidator, economicCategoryValidator, economicLocationMappingValidator } from "./lib/economicValidators";
 import { monthlyKpiInputsValidator, monthlyKpiReportValidator } from "./lib/monthlyKpiValidators";
@@ -111,15 +111,16 @@ async function loadEconomicInputs(ctx: ActionCtx, args: ReportArgs & { expectedR
       try {
         if (Date.now() >= deadline) throw new ConvexError("Rapporten tog for lang tid. Vælg færre lokationer og prøv igen");
         if (!connection.accountMappings.length) throw new ConvexError("Konto- og lokationskoblinger skal færdiggøres i Administration");
+        const locationIds = new Set(item.mappings.map((mapping) => mapping.locationId));
+        const selectedLocations = inputs.locations.filter((location) => locationIds.has(location.id));
         const data = await fetchEconomicReportData({
-          credentials: { appSecretToken: economicAppSecret(), agreementGrantToken: await decryptEconomicToken(connection.encryptedToken) },
+          credentials: await decryptEconomicCredentials(connection),
           accountNumbers: connection.accountMappings.map((mapping) => mapping.accountNumber),
           fromDate: `${first.month}-01`, toDate: last.through,
           budgetFromDate: `${inputs.month}-01`, budgetToDate: kpiMonthEnd(inputs.month), deadlineAt: deadline,
-          dimensionNumber: connection.dimensionNumber, includeBudgets: connection.budgetSource === "economic",
+          dimensionNumber: connection.dimensionNumber, includeBudgets: selectedLocations.some((location) => location.economicBudgetCategories.length > 0),
         });
-        const locationIds = new Set(item.mappings.map((mapping) => mapping.locationId));
-        const isolated: MonthlyKpiInputs = { ...inputs, locations: structuredClone(inputs.locations.filter((location) => locationIds.has(location.id))) };
+        const isolated: MonthlyKpiInputs = { ...inputs, locations: structuredClone(selectedLocations) };
         const candidates = await applyEconomicData({ inputs: isolated, item, data, approvals: before.approvals });
         for (const location of isolated.locations) {
           const index = inputs.locations.findIndex((original) => original.id === location.id);

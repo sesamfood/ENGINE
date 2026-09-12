@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { economicApprovalItemValidator, economicMappingFields } from "./lib/economicValidators";
+import { economicApprovalItemValidator, economicCategoryValidator, economicMappingFields } from "./lib/economicValidators";
 import {
   forecastProfileValidator,
   locationForecastValidator,
@@ -870,6 +870,7 @@ export default defineSchema({
     utilities: v.optional(v.union(v.number(), v.null())),
     other: v.optional(v.union(v.number(), v.null())),
     guestScore: v.optional(v.union(v.number(), v.null())),
+    economicBudgetCategories: v.optional(v.array(economicCategoryValidator)),
     sourceNote: v.optional(v.string()),
     revision: v.number(),
     updatedAt: v.number(),
@@ -899,6 +900,7 @@ export default defineSchema({
     name: v.string(),
     currency: v.string(),
     encryptedToken: v.string(),
+    encryptedAppSecretToken: v.optional(v.string()),
     enabled: v.boolean(),
     ...economicMappingFields,
     revision: v.number(),
