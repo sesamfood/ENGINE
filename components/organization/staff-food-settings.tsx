@@ -236,7 +236,7 @@ export function StaffFoodSettings() {
     const items: {
       value: SettingsCategory["id"];
       label: string;
-      name: string;
+      path: string;
       depth: number;
     }[] = [];
     const visited = new Set<SettingsCategory["id"]>();
@@ -245,8 +245,8 @@ export function StaffFoodSettings() {
       visited.add(category.id);
       items.push({
         value: category.id,
-        label: categoryPaths.get(category.id) ?? category.name,
-        name: category.name,
+        label: category.name,
+        path: categoryPaths.get(category.id) ?? category.name,
         depth,
       });
       for (const child of childrenByParent.get(category.id) ?? []) {
@@ -802,8 +802,8 @@ export function StaffFoodSettings() {
                                   style={{
                                     paddingInlineStart: `${category.depth * 1.5 + 0.5}rem`,
                                   }}
-                                  title={category.label}
-                                  aria-label={category.label}
+                                  title={category.path}
+                                  aria-label={category.path}
                                   disabled={allowances.some(
                                     (item, allowanceIndex) =>
                                       allowanceIndex !== index &&
@@ -811,7 +811,7 @@ export function StaffFoodSettings() {
                                   )}
                                 >
                                   <FolderIcon aria-hidden="true" />
-                                  {category.name}
+                                  {category.label}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
