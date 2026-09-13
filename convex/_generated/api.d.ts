@@ -89,6 +89,7 @@ import type * as lib_resend from "../lib/resend.js";
 import type * as lib_roles from "../lib/roles.js";
 import type * as lib_salesRollup from "../lib/salesRollup.js";
 import type * as lib_salesStock from "../lib/salesStock.js";
+import type * as lib_staffFoodCategories from "../lib/staffFoodCategories.js";
 import type * as lib_stock from "../lib/stock.js";
 import type * as lib_storageOwnership from "../lib/storageOwnership.js";
 import type * as lib_timeZone from "../lib/timeZone.js";
@@ -226,6 +227,7 @@ declare const fullApi: ApiFromModules<{
   "lib/roles": typeof lib_roles;
   "lib/salesRollup": typeof lib_salesRollup;
   "lib/salesStock": typeof lib_salesStock;
+  "lib/staffFoodCategories": typeof lib_staffFoodCategories;
   "lib/stock": typeof lib_stock;
   "lib/storageOwnership": typeof lib_storageOwnership;
   "lib/timeZone": typeof lib_timeZone;

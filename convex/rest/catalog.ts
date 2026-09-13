@@ -31,6 +31,7 @@ import {
   MAX_PRODUCT_CATEGORIES,
 } from "../lib/productCategories";
 import { runIdempotent } from "../lib/idempotency";
+import { getStaffFoodCategoryIds } from "../lib/staffFoodCategories";
 import { requireRestApiMutation } from "./lib";
 
 const MAX_CHILD_ROWS = 200;
@@ -265,6 +266,7 @@ async function categoryDto(
   organizationId: string,
   category: Doc<"categories">,
   hierarchy?: Awaited<ReturnType<typeof categoriesForOrganization>>,
+  staffFoodCategories?: ReadonlySet<Id<"categories">>,
 ): Promise<CategoryDto> {
   const categories =
     hierarchy ?? (await categoriesForOrganization(ctx, organizationId));
@@ -275,30 +277,29 @@ async function categoryDto(
       "The category hierarchy is invalid and cannot be exposed.",
     );
   }
-  const [primaryProduct, productMembership, staffFoodAllowance] =
+  const [primaryProduct, productMembership, staffFoodCategoryIds] =
     await Promise.all([
-    ctx.db
-      .query("products")
-      .withIndex("by_organizationId_and_categoryId", (q) =>
-        q.eq("organizationId", organizationId).eq("categoryId", category._id),
-      )
-      .first(),
-    ctx.db
-      .query("productCategories")
-      .withIndex("by_organizationId_and_categoryId", (q) =>
-        q.eq("organizationId", organizationId).eq("categoryId", category._id),
-      )
-      .first(),
-    ctx.db
-      .query("staffFoodRuleAllowances")
-      .withIndex("by_organizationId_and_categoryId", (q) =>
-        q.eq("organizationId", organizationId).eq("categoryId", category._id),
-      )
-      .first(),
-  ]);
+      ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_categoryId", (q) =>
+          q.eq("organizationId", organizationId).eq("categoryId", category._id),
+        )
+        .first(),
+      ctx.db
+        .query("productCategories")
+        .withIndex("by_organizationId_and_categoryId", (q) =>
+          q.eq("organizationId", organizationId).eq("categoryId", category._id),
+        )
+        .first(),
+      staffFoodCategories ?? getStaffFoodCategoryIds(ctx, organizationId),
+    ]);
   return {
     ...current,
-    inUse: Boolean(primaryProduct || productMembership || staffFoodAllowance),
+    inUse: Boolean(
+      primaryProduct ||
+        productMembership ||
+        staffFoodCategoryIds.has(category._id),
+    ),
   };
 }
 
@@ -680,7 +681,7 @@ export const listCategories = query({
     const auth = await requireCatalogManager(ctx);
     requireApiKeyPrincipal(auth);
     requirePageSize(args.paginationOpts.numItems);
-    const [result, hierarchy] = await Promise.all([
+    const [result, hierarchy, staffFoodCategoryIds] = await Promise.all([
       ctx.db
         .query("categories")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -688,12 +689,19 @@ export const listCategories = query({
         )
         .paginate(args.paginationOpts),
       categoriesForOrganization(ctx, auth.organizationId),
+      getStaffFoodCategoryIds(ctx, auth.organizationId),
     ]);
     return {
       ...result,
       page: await Promise.all(
         result.page.map((category) =>
-          categoryDto(ctx, auth.organizationId, category, hierarchy),
+          categoryDto(
+            ctx,
+            auth.organizationId,
+            category,
+            hierarchy,
+            staffFoodCategoryIds,
+          ),
         ),
       ),
     };

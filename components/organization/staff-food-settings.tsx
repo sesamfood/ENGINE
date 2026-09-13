@@ -4,6 +4,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   DownloadIcon,
+  FolderIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
@@ -91,9 +92,10 @@ type Settings = NonNullable<
 type Tier = Settings["tiers"][number];
 type SettingsCategory = Settings["categories"][number];
 type AllowanceDraft = {
-  categoryId: string;
+  id: string;
+  categoryIds: Id<"categories">[];
   amount: string;
-  productIds: string[];
+  productIds: Id<"products">[];
 };
 type StaffFoodExportRow = {
   id: Id<"staffFoodRegistrations">;
@@ -138,9 +140,9 @@ function formatDuration(minutes: number) {
 
 function categoryTreeIds(
   categories: SettingsCategory[],
-  categoryId: SettingsCategory["id"],
+  categoryIds: SettingsCategory["id"][],
 ) {
-  const ids = new Set<SettingsCategory["id"]>([categoryId]);
+  const ids = new Set(categoryIds);
   let changed = true;
   while (changed) {
     changed = false;
@@ -170,7 +172,7 @@ export function StaffFoodSettings() {
   const [minimumHours, setMinimumHours] = useState("4");
   const [allowances, setAllowances] = useState<AllowanceDraft[]>([]);
   const [productSearches, setProductSearches] = useState<
-    Record<number, string>
+    Record<string, string>
   >({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Tier | null>(null);
@@ -213,11 +215,48 @@ export function StaffFoodSettings() {
     ];
   }, [settingsProducts]);
 
-  const categoryItems =
-    settings?.categories.map((category) => ({
-      value: category.id,
-      label: category.name,
-    })) ?? [];
+  const categoryItems = useMemo(() => {
+    const categories = [...(settings?.categories ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name, "da"),
+    );
+    const categoryIds = new Set(categories.map((category) => category.id));
+    const childrenByParent = new Map<
+      SettingsCategory["id"] | null,
+      SettingsCategory[]
+    >();
+    for (const category of categories) {
+      const parentId =
+        category.parentCategoryId && categoryIds.has(category.parentCategoryId)
+          ? category.parentCategoryId
+          : null;
+      const siblings = childrenByParent.get(parentId) ?? [];
+      siblings.push(category);
+      childrenByParent.set(parentId, siblings);
+    }
+    const items: {
+      value: SettingsCategory["id"];
+      label: string;
+      path: string;
+      depth: number;
+    }[] = [];
+    const visited = new Set<SettingsCategory["id"]>();
+    function visit(category: SettingsCategory, depth: number) {
+      if (visited.has(category.id)) return;
+      visited.add(category.id);
+      items.push({
+        value: category.id,
+        label: category.name,
+        path: categoryPaths.get(category.id) ?? category.name,
+        depth,
+      });
+      for (const child of childrenByParent.get(category.id) ?? []) {
+        visit(child, depth + 1);
+      }
+    }
+    for (const category of childrenByParent.get(null) ?? []) visit(category, 0);
+    for (const category of categories) visit(category, 0);
+    return items;
+  }, [settings?.categories, categoryPaths]);
   const minimumMinutes = Number(minimumHours) * 60;
   const minimumValid =
     Number.isFinite(minimumMinutes) &&
@@ -230,7 +269,8 @@ export function StaffFoodSettings() {
     setMinimumHours(String((tier?.minimumShiftMinutes ?? 240) / 60));
     setAllowances(
       tier?.allowances.map((allowance) => ({
-        categoryId: allowance.categoryId,
+        id: crypto.randomUUID(),
+        categoryIds: allowance.categoryIds ?? [allowance.categoryId],
         amount: String(allowance.amount),
         productIds: allowance.products.map((product) => product.id),
       })) ?? [],
@@ -248,15 +288,21 @@ export function StaffFoodSettings() {
   }
 
   function addAllowance() {
-    const used = new Set(allowances.map((allowance) => allowance.categoryId));
+    const used = new Set(allowances.flatMap((allowance) => allowance.categoryIds));
     const category = settings?.categories.find((item) => !used.has(item.id));
     if (!category) {
       toast.info("Alle kategorier er allerede tilføjet");
       return;
     }
+    const id = crypto.randomUUID();
     setAllowances((current) => [
       ...current,
-      { categoryId: category.id, amount: "1", productIds: [] },
+      {
+        id,
+        categoryIds: [category.id],
+        amount: "1",
+        productIds: [],
+      },
     ]);
   }
 
@@ -268,9 +314,9 @@ export function StaffFoodSettings() {
     }
     if (
       !allowances.length ||
-      allowances.some((item) => !item.productIds.length)
+      allowances.some((item) => !item.categoryIds.length || !item.productIds.length)
     ) {
-      toast.error("Tilføj mindst én kategori med mindst ét produkt");
+      toast.error("Vælg mindst én kategori og ét produkt i hver række");
       return;
     }
     if (
@@ -288,9 +334,10 @@ export function StaffFoodSettings() {
         ...(editingId ? { tierId: editingId } : {}),
         minimumShiftMinutes,
         allowances: allowances.map((allowance) => ({
-          categoryId: allowance.categoryId as Id<"categories">,
+          categoryId: allowance.categoryIds[0],
+          categoryIds: allowance.categoryIds,
           amount: Number(allowance.amount),
-          productIds: allowance.productIds as Id<"products">[],
+          productIds: allowance.productIds,
         })),
       });
       toast.success(editingId ? "Reglen er gemt" : "Reglen er oprettet");
@@ -423,8 +470,8 @@ export function StaffFoodSettings() {
             />
           </CardTitle>
           <CardDescription>
-            Angiv vagtlængden, den tilladte mængde i hver kategori og de produkter,
-            medarbejderen må vælge.
+            Angiv vagtlængden, den fælles mængde for hver kategorigruppe og de
+            produkter, medarbejderen må vælge.
           </CardDescription>
           <CardAction>
             <Button
@@ -446,8 +493,8 @@ export function StaffFoodSettings() {
                       Fra {formatDuration(tier.minimumShiftMinutes)} timer
                     </CardTitle>
                     <CardDescription>
-                      {tier.allowances.length} kategori
-                      {tier.allowances.length === 1 ? "" : "er"}
+                      {tier.allowances.length} kategorigruppe
+                      {tier.allowances.length === 1 ? "" : "r"}
                     </CardDescription>
                     <CardAction className="flex gap-2">
                       <Button
@@ -473,7 +520,7 @@ export function StaffFoodSettings() {
                   <CardContent className="flex flex-wrap gap-2">
                     {tier.allowances.map((allowance) => (
                       <Badge key={allowance.categoryId} variant="secondary">
-                        {allowance.amount} fra {allowance.categoryName} ·{" "}
+                        {allowance.amount} i alt fra {allowance.categoryName} ·{" "}
                         {allowance.products.length} produkter
                       </Badge>
                     ))}
@@ -629,27 +676,31 @@ export function StaffFoodSettings() {
 
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="font-medium">Kategori-regler</h3>
+                <h3 className="font-medium">Kategorigrupper</h3>
                 <p className="text-sm text-muted-foreground">
-                  Mængden deles mellem alle valgte produkter i kategorien.
+                  Antallet i hver række deles mellem alle valgte produkter på
+                  tværs af kategorierne.
                 </p>
               </div>
               <Button variant="outline" onClick={addAllowance}>
                 <PlusIcon data-icon="inline-start" />
-                Tilføj kategori
+                Tilføj kategorigruppe
               </Button>
             </div>
 
             {allowances.map((allowance, index) => {
-              const selectedCategory = settings.categories.find(
-                (category) => category.id === allowance.categoryId,
+              const categoryIds = categoryTreeIds(
+                settings.categories,
+                allowance.categoryIds,
               );
-              const categoryIds = selectedCategory
-                ? categoryTreeIds(settings.categories, selectedCategory.id)
-                : new Set<SettingsCategory["id"]>();
               const amount = Number(allowance.amount);
               const amountValid =
                 Number.isInteger(amount) && amount >= 1 && amount <= 20;
+              const otherProductIds = new Set(
+                allowances.flatMap((item, allowanceIndex) =>
+                  allowanceIndex === index ? [] : item.productIds,
+                ),
+              );
               const products = productCatalog.filter(
                 (product) =>
                   product.categoryIds.some((categoryId) =>
@@ -660,15 +711,18 @@ export function StaffFoodSettings() {
                     product.categoryIds
                       .map((categoryId) => categoryPaths.get(categoryId) ?? "")
                       .join(" · "),
-                    productSearches[index] ?? "",
+                    productSearches[allowance.id] ?? "",
                   ) !== null &&
                   (product.status === "active" ||
                     allowance.productIds.includes(product.id)),
               );
               const selectableProducts = products.filter(
-                (product) => product.status === "active",
+                (product) =>
+                  product.status === "active" &&
+                  (!otherProductIds.has(product.id) ||
+                    allowance.productIds.includes(product.id)),
               );
-              const selectableIds = new Set<string>(
+              const selectableIds = new Set(
                 selectableProducts.map((product) => product.id),
               );
               const selectedVisibleCount = selectableProducts.filter(
@@ -678,15 +732,15 @@ export function StaffFoodSettings() {
                 selectableProducts.length > 0 &&
                 selectedVisibleCount === selectableProducts.length;
               return (
-                <Card key={`${allowance.categoryId}:${index}`}>
+                <Card key={allowance.id}>
                   <CardHeader>
-                    <CardTitle>Kategori {index + 1}</CardTitle>
+                    <CardTitle>Kategorigruppe {index + 1}</CardTitle>
                     <CardAction>
                       <Button
                         size="icon-lg"
                         className="size-11"
                         variant="outline"
-                        aria-label="Fjern kategori"
+                        aria-label="Fjern kategorigruppe"
                         onClick={() =>
                           setAllowances((current) =>
                             current.filter(
@@ -701,44 +755,82 @@ export function StaffFoodSettings() {
                   </CardHeader>
                   <CardContent className="flex flex-col gap-5">
                     <FieldGroup className="grid sm:grid-cols-[minmax(0,1fr)_10rem]">
-                      <Field data-invalid={!amountValid}>
-                        <FieldLabel htmlFor={`staff-food-category-${index}`}>Kategori</FieldLabel>
+                      <Field data-invalid={!allowance.categoryIds.length}>
+                        <FieldLabel htmlFor={`staff-food-category-${index}`}>
+                          Kategorier
+                        </FieldLabel>
                         <Select
+                          multiple
                           items={categoryItems}
-                          value={allowance.categoryId}
-                          onValueChange={(value) =>
+                          value={allowance.categoryIds}
+                          onValueChange={(value) => {
+                            const nextCategoryIds = categoryTreeIds(
+                              settings.categories,
+                              value,
+                            );
                             updateAllowance(index, {
-                              categoryId: value as string,
-                              productIds: [],
-                            })
-                          }
+                              categoryIds: value,
+                              productIds: allowance.productIds.filter((id) =>
+                                productCatalog.some(
+                                  (product) =>
+                                    product.id === id &&
+                                    product.categoryIds.some((categoryId) =>
+                                      nextCategoryIds.has(categoryId),
+                                    ),
+                                ),
+                              ),
+                            });
+                          }}
                         >
-                          <SelectTrigger id={`staff-food-category-${index}`}>
-                            <SelectValue />
+                          <SelectTrigger
+                            id={`staff-food-category-${index}`}
+                            className="min-h-11 w-full min-w-0"
+                            aria-invalid={!allowance.categoryIds.length}
+                          >
+                            <SelectValue
+                              className="min-w-0 truncate"
+                              placeholder="Vælg kategorier"
+                            />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent alignItemWithTrigger={false}>
                             <SelectGroup>
-                              {settings.categories.map((category) => (
+                              {categoryItems.map((category) => (
                                 <SelectItem
-                                  key={category.id}
-                                  value={category.id}
+                                  key={category.value}
+                                  value={category.value}
+                                  className="min-h-11"
+                                  style={{
+                                    paddingInlineStart: `${category.depth * 1.5 + 0.5}rem`,
+                                  }}
+                                  title={category.path}
+                                  aria-label={category.path}
                                   disabled={allowances.some(
                                     (item, allowanceIndex) =>
                                       allowanceIndex !== index &&
-                                      item.categoryId === category.id,
+                                      item.categoryIds.includes(category.value),
                                   )}
                                 >
-                                  {category.name}
+                                  <FolderIcon aria-hidden="true" />
+                                  {category.label}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
                           </SelectContent>
                         </Select>
+                        {!allowance.categoryIds.length ? (
+                          <FieldError>Vælg mindst én kategori.</FieldError>
+                        ) : null}
                       </Field>
-                      <Field>
-                        <FieldLabel htmlFor={`staff-food-amount-${index}`}>
-                          Antal
-                        </FieldLabel>
+                      <Field data-invalid={!amountValid}>
+                        <div className="flex items-center gap-1">
+                          <FieldLabel htmlFor={`staff-food-amount-${index}`}>
+                            Antal
+                          </FieldLabel>
+                          <HelpTooltip
+                            label="Antal"
+                            content="Antallet er fælles for alle valgte kategorier i rækken."
+                          />
+                        </div>
                         <Input
                           id={`staff-food-amount-${index}`}
                           type="number"
@@ -746,6 +838,7 @@ export function StaffFoodSettings() {
                           max={20}
                           step={1}
                           value={allowance.amount}
+                          className="h-11"
                           aria-invalid={!amountValid}
                           onChange={(event) =>
                             updateAllowance(index, {
@@ -764,17 +857,21 @@ export function StaffFoodSettings() {
                     <FieldSet>
                       <FieldLegend>
                         Tilladte produkter ({allowance.productIds.length})
+                        <HelpTooltip
+                          label="Tilladte produkter"
+                          content="Et produkt kan kun være valgt i én kategorigruppe."
+                        />
                       </FieldLegend>
                       <InputGroup className="h-10">
                         <InputGroupInput
-                          value={productSearches[index] ?? ""}
+                          value={productSearches[allowance.id] ?? ""}
                           onChange={(event) =>
                             setProductSearches((current) => ({
                               ...current,
-                              [index]: event.target.value,
+                              [allowance.id]: event.target.value,
                             }))
                           }
-                          placeholder="Søg i kategorien"
+                          placeholder="Søg i kategorierne"
                           aria-label="Søg efter produkter"
                         />
                         <InputGroupAddon align="inline-start">
@@ -783,7 +880,7 @@ export function StaffFoodSettings() {
                       </InputGroup>
                       {products.length ? (
                         <div className="grid max-h-64 gap-2 overflow-y-auto rounded-lg border p-3 sm:grid-cols-2">
-                          <label className="col-span-full flex min-h-10 cursor-pointer items-center gap-3 border-b px-2 pb-2 font-medium">
+                          <label className="col-span-full flex min-h-11 cursor-pointer items-center gap-3 border-b px-2 pb-2 font-medium">
                             <Checkbox
                               checked={allVisibleSelected}
                               indeterminate={
@@ -814,13 +911,17 @@ export function StaffFoodSettings() {
                             const checked = allowance.productIds.includes(
                               product.id,
                             );
+                            const disabled =
+                              otherProductIds.has(product.id) && !checked;
                             return (
                               <label
                                 key={product.id}
-                                className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-muted/50"
+                                data-disabled={disabled || undefined}
+                                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-muted/50 data-disabled:cursor-not-allowed data-disabled:opacity-50"
                               >
                                 <Checkbox
                                   checked={checked}
+                                  disabled={disabled}
                                   onCheckedChange={(next) =>
                                     updateAllowance(index, {
                                       productIds: next
@@ -843,7 +944,7 @@ export function StaffFoodSettings() {
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
-                          Ingen produkter fundet i kategorien.
+                          Ingen produkter fundet i de valgte kategorier.
                         </p>
                       )}
                       {!allowance.productIds.length ? (
@@ -858,7 +959,7 @@ export function StaffFoodSettings() {
             {!allowances.length ? (
               <Empty className="min-h-44 border">
                 <EmptyHeader>
-                  <EmptyTitle>Tilføj en kategori</EmptyTitle>
+                  <EmptyTitle>Tilføj en kategorigruppe</EmptyTitle>
                   <EmptyDescription>
                     En regel skal have mindst én kategori og ét tilladt produkt.
                   </EmptyDescription>
@@ -870,7 +971,17 @@ export function StaffFoodSettings() {
             <Button variant="outline" onClick={() => setEditorOpen(false)}>
               Annullér
             </Button>
-            <Button disabled={saving} onClick={() => void save()}>
+            <Button
+              disabled={
+                saving ||
+                !allowances.length ||
+                allowances.some(
+                  (allowance) =>
+                    !allowance.categoryIds.length || !allowance.productIds.length,
+                )
+              }
+              onClick={() => void save()}
+            >
               {saving ? <Spinner data-icon="inline-start" /> : null}
               Gem regel
             </Button>
