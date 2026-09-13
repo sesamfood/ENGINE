@@ -71,7 +71,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Tooltip,
@@ -1178,7 +1177,6 @@ export function CountSheet() {
     index: number;
   }>({ key: "", index: 0 });
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [submitReason, setSubmitReason] = useState("");
   const [orderBuilderOpen, setOrderBuilderOpen] = useState(false);
   const [orderDraft, setOrderDraft] = useState<Id<"products">[] | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
@@ -1703,14 +1701,10 @@ export function CountSheet() {
 
   async function confirmSubmit() {
     if (!locationId) return;
-    if (!submitReason.trim()) {
-      toast.error("Angiv en begrundelse");
-      return;
-    }
     setSubmitting(true);
     try {
       await flushPending();
-      await submitCount({ locationId, reason: submitReason });
+      await submitCount({ locationId, reason: "Registrering af Count" });
       setConfirmOpen(false);
       toast.success("Count er registreret");
     } catch (error) {
@@ -2169,10 +2163,7 @@ export function CountSheet() {
                   size="lg"
                   className="min-h-11 shrink-0 px-4 sm:px-6"
                   disabled={Boolean(disabledReason) || submitting}
-                  onClick={() => {
-                    setSubmitReason("");
-                    setConfirmOpen(true);
-                  }}
+                  onClick={() => setConfirmOpen(true)}
                 >
                   {submitting ? <Spinner data-icon="inline-start" /> : null}
                   Registrér Count
@@ -2190,26 +2181,15 @@ export function CountSheet() {
             <AlertDialogDescription>
               Lageret overskrives for produkter med en angivet mængde. Andre
               produkter beholder deres nuværende lager. Denne Count kan ikke
-              rettes efter registrering. Skriv en begrundelse for
-              lagerafstemningen.
+              rettes efter registrering.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <Field>
-            <FieldLabel htmlFor="count-submit-reason">Begrundelse</FieldLabel>
-            <Textarea
-              id="count-submit-reason"
-              value={submitReason}
-              onChange={(event) => setSubmitReason(event.target.value)}
-              placeholder="Skriv, hvorfor Count registreres"
-              required
-            />
-          </Field>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={submitting}>
               Fortsæt Count
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={submitting || !submitReason.trim()}
+              disabled={submitting}
               onClick={() => void confirmSubmit()}
             >
               {submitting ? <Spinner data-icon="inline-start" /> : null}

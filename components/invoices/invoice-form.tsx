@@ -72,6 +72,44 @@ type InvoiceLine = {
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_LINES = 100;
 
+function rebalanceMenuGroup(
+  lines: InvoiceLine[],
+  selected: InvoiceLine,
+  quantity: number,
+  required: number,
+) {
+  const others = lines.filter(
+    (line) =>
+      line.menuId === selected.menuId &&
+      line.menuGroupId === selected.menuGroupId &&
+      line.key !== selected.key,
+  );
+  if (others.length >= required) return lines;
+  const selectedQuantity = others.length
+    ? Math.min(required - others.length, Math.max(1, Math.floor(quantity)))
+    : required;
+  const quantities = new Map([[selected.key, selectedQuantity]]);
+  let remaining = required - selectedQuantity;
+  for (let index = 0; index < others.length; index += 1) {
+    const line = others[index];
+    const next = Math.min(
+      Math.max(1, Math.floor(Number(line.quantity))),
+      remaining - (others.length - index - 1),
+    );
+    quantities.set(line.key, next);
+    remaining -= next;
+  }
+  const first = others[0];
+  if (first && remaining > 0)
+    quantities.set(first.key, (quantities.get(first.key) ?? 1) + remaining);
+  return lines.map((line) => {
+    const next = quantities.get(line.key);
+    return next === undefined || String(next) === line.quantity
+      ? line
+      : { ...line, quantity: String(next) };
+  });
+}
+
 export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   const convex = useConvex();
   const kiosk = useKiosk();
@@ -176,19 +214,24 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   }
   const pendingAutoChoices = useMemo(() => {
     let remaining = MAX_LINES - lines.length;
-    const pending: Array<(typeof autoChoices)[number] & { count: number }> = [];
+    const pending: typeof autoChoices = [];
     for (const choice of autoChoices) {
-      if (failedAutoChoices.keys.includes(choice.key) || remaining <= 0)
-        continue;
+      if (failedAutoChoices.keys.includes(choice.key)) continue;
       const selected = lines.filter(
         (line) =>
           line.menuId === choice.menu.id &&
           line.menuGroupId === choice.group.id,
-      ).length;
-      const missing = Math.max(0, choice.group.quantity - selected);
-      const count = Math.min(missing, remaining);
-      remaining -= count;
-      if (count) pending.push({ ...choice, count });
+      );
+      if (selected.some((line) => line.productId !== choice.productId))
+        continue;
+      if (
+        selected.length === 1 &&
+        Number(selected[0].quantity) === choice.group.quantity
+      )
+        continue;
+      if (!selected.length && remaining <= 0) continue;
+      remaining += selected.length - 1;
+      pending.push(choice);
     }
     return pending;
   }, [autoChoices, failedAutoChoices.keys, lines]);
@@ -211,10 +254,11 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
             productId: choice.productId,
           });
           if (!product) throw new Error("Produktet blev ikke fundet");
-          const unit =
-            product.units.find((unit) => unit.id === product.defaultUnitId) ??
-            product.units[0];
-          if (!unit) throw new Error("Produktet har ingen enheder");
+          const unit = product.units.find(
+            (unit) => unit.id === product.defaultUnitId,
+          );
+          if (!unit)
+            throw new Error("Produktets standardenhed er ikke tilgængelig");
           return { choice, product, unit };
         }),
       );
@@ -228,28 +272,33 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
             (line) =>
               line.menuId === choice.menu.id &&
               line.menuGroupId === choice.group.id,
-          ).length;
-          const count = Math.min(
-            choice.count,
-            choice.group.quantity - selected,
-            MAX_LINES - next.length,
           );
-          if (count <= 0) continue;
-          next = [
-            ...next,
-            ...Array.from({ length: count }, () => ({
-              key: crypto.randomUUID(),
-              productId: product.id,
-              productName: product.name,
-              imageUrl: product.imageUrl,
-              unitId: unit.id,
-              units: product.units,
-              quantity: "1",
-              menuId: choice.menu.id,
-              menuName: choice.menu.name,
-              menuGroupId: choice.group.id,
-            })),
-          ];
+          if (selected.some((line) => line.productId !== choice.productId))
+            continue;
+          if (!selected.length && next.length >= MAX_LINES) continue;
+          const first = selected[0];
+          const line: InvoiceLine = {
+            key: first?.key ?? crypto.randomUUID(),
+            productId: product.id,
+            productName: product.name,
+            imageUrl: product.imageUrl,
+            unitId: unit.id,
+            units: product.units,
+            quantity: String(choice.group.quantity),
+            menuId: choice.menu.id,
+            menuName: choice.menu.name,
+            menuGroupId: choice.group.id,
+          };
+          next = first
+            ? next.flatMap((item) =>
+                item.menuId === choice.menu.id &&
+                item.menuGroupId === choice.group.id
+                  ? item.key === first.key
+                    ? [line]
+                    : []
+                  : [item],
+              )
+            : [...next, line];
         }
         return next;
       });
@@ -327,6 +376,10 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     const menuGroup = menus
       ?.find((option) => option.id === menuId)
       ?.groups.find((group) => group.id === menuGroupId);
+    const groupLines = lines.filter(
+      (line) => line.menuId === menuId && line.menuGroupId === menuGroupId,
+    );
+    const replacesGroup = menuGroup?.quantity === 1 && groupLines.length > 0;
     if (
       !option ||
       adding.current ||
@@ -336,17 +389,19 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
         (!menu ||
           !menuGroup ||
           !menuGroup.productIds.includes(option.id) ||
-          lines.filter(
-            (line) =>
-              line.menuId === menuId && line.menuGroupId === menuGroupId,
-          ).length >= menuGroup.quantity)) ||
+          (!replacesGroup && groupLines.length >= menuGroup.quantity) ||
+          (groupLines.length === 1 &&
+            groupLines[0].productId === option.id &&
+            Number(groupLines[0].quantity) === menuGroup.quantity) ||
+          (menuGroup.quantity > 1 &&
+            groupLines.some((line) => line.productId === option.id)))) ||
       (menuId === undefined &&
         lines.some(
           (line) => line.productId === value && line.menuId === undefined,
         )) ||
       productAccess === undefined ||
       (allowedProductIds !== null && !allowedProductIds.has(option.id)) ||
-      lines.length >= MAX_LINES
+      (lines.length >= MAX_LINES && !replacesGroup)
     )
       return;
     adding.current = true;
@@ -358,27 +413,63 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       if (!product) throw new Error("Produktet blev ikke fundet");
       const unit =
         product.units.find((item) => item.id === product.defaultUnitId) ??
-        product.units[0];
-      if (!unit) throw new Error("Produktet har ingen enheder");
-      setLines((current) => [
-        ...current,
-        {
-          key: crypto.randomUUID(),
-          productId: product.id,
-          productName: product.name,
-          imageUrl: product.imageUrl,
-          unitId: unit.id,
-          units: product.units,
-          quantity: "1",
-          ...(menu && menuGroup
-            ? {
-                menuId: menu.id,
-                menuName: menu.name,
-                menuGroupId: menuGroup.id,
-              }
-            : {}),
-        },
-      ]);
+        (menu ? undefined : product.units[0]);
+      if (!unit)
+        throw new Error(
+          menu
+            ? "Produktets standardenhed er ikke tilgængelig"
+            : "Produktet har ingen enheder",
+        );
+      const newLine: InvoiceLine = {
+        key: crypto.randomUUID(),
+        productId: product.id,
+        productName: product.name,
+        imageUrl: product.imageUrl,
+        unitId: unit.id,
+        units: product.units,
+        quantity: "1",
+        ...(menu && menuGroup
+          ? { menuId: menu.id, menuName: menu.name, menuGroupId: menuGroup.id }
+          : {}),
+      };
+      setLines((current) => {
+        if (!menu || !menuGroup) {
+          if (
+            current.length >= MAX_LINES ||
+            current.some(
+              (line) => line.productId === product.id && !line.menuId,
+            )
+          )
+            return current;
+          return [...current, newLine];
+        }
+        const selected = current.filter(
+          (line) =>
+            line.menuId === menu.id && line.menuGroupId === menuGroup.id,
+        );
+        if (menuGroup.quantity === 1) {
+          if (!selected.length && current.length >= MAX_LINES) return current;
+          return [
+            ...current.filter(
+              (line) =>
+                line.menuId !== menu.id || line.menuGroupId !== menuGroup.id,
+            ),
+            newLine,
+          ];
+        }
+        if (
+          current.length >= MAX_LINES ||
+          selected.length >= menuGroup.quantity ||
+          selected.some((line) => line.productId === product.id)
+        )
+          return current;
+        return rebalanceMenuGroup(
+          [...current, newLine],
+          newLine,
+          selected.length ? 1 : menuGroup.quantity,
+          menuGroup.quantity,
+        );
+      });
       setProductSearch("");
       setPickerKey((key) => key + 1);
       setErrors({});
@@ -419,9 +510,11 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
         continue;
       }
       for (const group of currentMenu.groups) {
-        const selectedCount = lines.filter(
-          (line) => line.menuId === menu.id && line.menuGroupId === group.id,
-        ).length;
+        const selectedCount = lines
+          .filter(
+            (line) => line.menuId === menu.id && line.menuGroupId === group.id,
+          )
+          .reduce((sum, line) => sum + Number(line.quantity), 0);
         if (selectedCount !== group.quantity) {
           nextErrors[`menu:${menu.id}:${group.id}`] =
             `Vælg præcis ${group.quantity} ${group.quantity === 1 ? "produkt" : "produkter"} i ${group.title}`;
@@ -452,6 +545,8 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
           "Produktet er ikke tilgængeligt på den valgte lokation. Fjern produktlinjen eller vælg en anden lokation.";
       if (!Number.isFinite(quantity) || quantity <= 0)
         nextErrors[line.key] = "Mængden skal være større end 0";
+      else if (line.menuId && !Number.isInteger(quantity))
+        nextErrors[line.key] = "Mængden i en menu skal være et helt tal";
       return {
         productId: line.productId,
         unitId: line.unitId,
@@ -529,6 +624,95 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       saving.current = false;
       setIsSaving(false);
     }
+  }
+
+  function removeMenuProduct(line: InvoiceLine) {
+    if (saving.current || adding.current || autoAdding) return;
+    const required = menus
+      ?.find((menu) => menu.id === line.menuId)
+      ?.groups.find((group) => group.id === line.menuGroupId)?.quantity;
+    setLines((current) => {
+      const removed = current.find((item) => item.key === line.key);
+      const next = current.filter((item) => item.key !== line.key);
+      const first = next.find(
+        (item) =>
+          item.menuId === line.menuId && item.menuGroupId === line.menuGroupId,
+      );
+      return removed && first && required
+        ? rebalanceMenuGroup(
+            next,
+            first,
+            Number(first.quantity) + Number(removed.quantity),
+            required,
+          )
+        : next;
+    });
+  }
+
+  function renderMenuProduct(line: InvoiceLine) {
+    const selected = lines.filter(
+      (item) =>
+        item.menuId === line.menuId && item.menuGroupId === line.menuGroupId,
+    );
+    const required = menus
+      ?.find((menu) => menu.id === line.menuId)
+      ?.groups.find((group) => group.id === line.menuGroupId)?.quantity;
+    return (
+      <ProductLineGroup
+        key={line.key}
+        productName={line.productName}
+        imageUrl={line.imageUrl}
+        action={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            className="size-11"
+            aria-label={`Fjern ${line.productName} fra menuen`}
+            disabled={loadingProduct || autoAdding || isSaving}
+            onClick={() => removeMenuProduct(line)}
+          >
+            <Trash2Icon data-icon="inline-start" />
+          </Button>
+        }
+      >
+        <Field data-invalid={Boolean(errors[line.key])}>
+          <QuantityInput
+            id={`${line.key}-quantity`}
+            label={`Mængde for ${line.productName} pr. menu`}
+            value={Number(line.quantity)}
+            min={1}
+            max={Math.max(1, (required ?? 1) - selected.length + 1)}
+            integer
+            disabled={
+              !required ||
+              selected.length === 1 ||
+              selected.length > required ||
+              loadingProduct ||
+              autoAdding ||
+              isSaving
+            }
+            invalid={Boolean(errors[line.key])}
+            onValueChange={(value) => {
+              const quantity = Number(value.trim().replace(",", "."));
+              if (
+                !required ||
+                !Number.isFinite(quantity) ||
+                saving.current ||
+                adding.current ||
+                autoAdding
+              )
+                return;
+              setLines((current) =>
+                rebalanceMenuGroup(current, line, quantity, required),
+              );
+            }}
+            className="w-full sm:w-48"
+          />
+          <FieldError>{errors[line.key]}</FieldError>
+        </Field>
+      </ProductLineGroup>
+    );
   }
 
   function renderProductGroup(group: InvoiceLine[]) {
@@ -878,7 +1062,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                             </Field>
                           </FieldGroup>
                           <p className="text-sm text-muted-foreground">
-                            Produktmængderne nedenfor er pr. menu.
+                            Antallet af valg gælder pr. menu.
                           </p>
                           <FieldError>{menuError}</FieldError>
                           {(currentMenu?.groups ?? []).map((group) => {
@@ -894,7 +1078,30 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                 label: product.name,
                                 searchText: product.categoryPath,
                               }));
-                            const error = errors[`menu:${menu.id}:${group.id}`];
+                            const selectedQuantity = selectedLines.reduce(
+                              (sum, line) => sum + Number(line.quantity),
+                              0,
+                            );
+                            const soleSelected =
+                              selectedLines.length === 1 &&
+                              options.length === 1 &&
+                              selectedLines[0].productId === options[0].value &&
+                              selectedQuantity === group.quantity;
+                            const pickerOnly =
+                              group.quantity === 1 || soleSelected;
+                            const pickerOptions = pickerOnly
+                              ? options
+                              : options.filter(
+                                  (option) =>
+                                    !selectedLines.some(
+                                      (line) => line.productId === option.value,
+                                    ),
+                                );
+                            const error =
+                              errors[`menu:${menu.id}:${group.id}`] ??
+                              selectedLines
+                                .map((line) => errors[line.key])
+                                .find(Boolean);
                             return (
                               <div
                                 key={group.id}
@@ -905,21 +1112,42 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                     <FieldLabel className="flex flex-wrap items-center gap-2">
                                       {group.title}
                                       <Badge variant="secondary">
-                                        {selectedLines.length} af{" "}
-                                        {group.quantity} valgt
+                                        {selectedQuantity} af {group.quantity}{" "}
+                                        valgt
                                       </Badge>
                                     </FieldLabel>
                                     <CreatableCombobox
                                       key={`${menu.id}:${group.id}:${pickerKey}`}
-                                      options={options}
-                                      value={null}
-                                      onValueChange={(value) =>
-                                        void addProduct(
-                                          value,
-                                          menu.id,
-                                          group.id,
-                                        )
+                                      options={pickerOptions}
+                                      value={
+                                        pickerOnly
+                                          ? (selectedLines[0]?.productId ??
+                                            null)
+                                          : null
                                       }
+                                      onValueChange={(value) => {
+                                        if (value) {
+                                          void addProduct(
+                                            value,
+                                            menu.id,
+                                            group.id,
+                                          );
+                                        } else if (
+                                          pickerOnly &&
+                                          !soleSelected &&
+                                          !saving.current &&
+                                          !adding.current &&
+                                          !autoAdding
+                                        ) {
+                                          setLines((current) =>
+                                            current.filter(
+                                              (line) =>
+                                                line.menuId !== menu.id ||
+                                                line.menuGroupId !== group.id,
+                                            ),
+                                          );
+                                        }
+                                      }}
                                       placeholder="Søg efter produkt eller kategori"
                                       ariaLabel={`Vælg produkt til ${group.title} i ${menu.name}`}
                                       ariaInvalid={Boolean(error)}
@@ -929,18 +1157,23 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                         productAccess === undefined ||
                                         loadingProduct ||
                                         autoAdding ||
-                                        lines.length >= MAX_LINES ||
-                                        selectedLines.length >= group.quantity
+                                        soleSelected ||
+                                        (lines.length >= MAX_LINES &&
+                                          !(
+                                            group.quantity === 1 &&
+                                            selectedLines.length > 0
+                                          )) ||
+                                        (!pickerOnly &&
+                                          selectedLines.length >=
+                                            group.quantity)
                                       }
                                     />
                                     <FieldError>{error}</FieldError>
                                   </Field>
                                 </FieldGroup>
-                                {selectedLines.length > 0 ? (
+                                {!pickerOnly && selectedLines.length > 0 ? (
                                   <ul className="flex flex-col gap-3">
-                                    {selectedLines.map((line) =>
-                                      renderProductGroup([line]),
-                                    )}
+                                    {selectedLines.map(renderMenuProduct)}
                                   </ul>
                                 ) : null}
                               </div>
@@ -948,9 +1181,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                           })}
                           {ungroupedLines.length > 0 ? (
                             <ul className="flex flex-col gap-3">
-                              {ungroupedLines.map((line) =>
-                                renderProductGroup([line]),
-                              )}
+                              {ungroupedLines.map(renderMenuProduct)}
                             </ul>
                           ) : null}
                         </CardContent>

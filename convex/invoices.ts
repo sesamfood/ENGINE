@@ -286,6 +286,11 @@ export const create = mutation({
       }
       return existing._id;
     }
+    for (const item of args.items) {
+      if (item.menuId && !Number.isSafeInteger(item.quantity)) {
+        throw new ConvexError("Antallet af produktvalg skal være et helt tal");
+      }
+    }
     await requireOtherFeaturesUnlocked(ctx, organizationId, location._id);
     if (args.receiptStorageId) {
       await claimStorageForOrganization(
@@ -360,6 +365,11 @@ export const create = mutation({
             "Produktet findes ikke i den valgte produktgruppe",
           );
         }
+        if (unit._id !== product.defaultUnitId) {
+          throw new ConvexError(
+            "Menuens produktvalg skal bruge produktets standardenhed",
+          );
+        }
         selectedMenus.set(menu._id, groups);
         const menuQuantity = item.menuQuantity ?? 1;
         const previousQuantity = selectedMenuQuantities.get(menu._id);
@@ -417,9 +427,11 @@ export const create = mutation({
     }
     for (const [menuId, groups] of selectedMenus) {
       for (const group of groups) {
-        const selections = items.filter(
-          (item) => item.menuId === menuId && item.menuGroupId === group.id,
-        ).length;
+        const selections = items
+          .filter(
+            (item) => item.menuId === menuId && item.menuGroupId === group.id,
+          )
+          .reduce((total, item) => total + item.quantity, 0);
         if (selections !== group.quantity) {
           throw new ConvexError(
             `Vælg præcis ${group.quantity} produkter i gruppen ${group.title}`,
