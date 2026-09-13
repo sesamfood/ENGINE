@@ -129,6 +129,12 @@ export async function deleteLocationWithAuth(
   ] = await Promise.all([
     Promise.all([
       ctx.db
+        .query("invoices")
+        .withIndex("by_organizationId_and_locationId_and_soldAt", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
         .query("transfers")
         .withIndex("by_organizationId_and_fromLocationId", (q) =>
           q.eq("organizationId", organizationId).eq("fromLocationId", location._id),

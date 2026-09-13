@@ -19,6 +19,7 @@ import { rateLimiter } from "./lib/rateLimits";
 import { resolveTimeZone } from "./lib/timeZone";
 import { addDays, zonedStart } from "../lib/date";
 import schema from "./schema";
+import { menuGroups } from "./lib/menuGroups";
 
 export const inspectStoredSales = query({
   args: { date: v.string() },
@@ -99,7 +100,7 @@ const orderLineBaseValidator = v.object({
 
 const menuItemValidator = orderLineBaseValidator.extend({
   product: v.object({
-    kind: v.union(v.literal("primary"), v.literal("additional")),
+    groupTitle: v.string(),
     id: v.id("products"),
     name: v.string(),
   }),
@@ -211,6 +212,9 @@ function groupMenuLines(
     const menuProductById = new Map(
       menu.products.map((product) => [product.productId, product]),
     );
+    const groupTitleByProductId = new Map(menuGroups(menu).flatMap((group) =>
+      group.productIds.map((productId) => [productId, group.title] as const),
+    ));
     const menuItems = [];
     let nextIndex = index + 1;
     const menuProductFor = (candidate: Doc<"salesLines">) => {
@@ -232,7 +236,7 @@ function groupMenuLines(
       menuItems.push({
         ...mapOrderLine(candidate),
         product: {
-          kind: product.kind,
+          groupTitle: groupTitleByProductId.get(product.productId) ?? "Produkter",
           id: product.productId,
           name: product.name,
         },

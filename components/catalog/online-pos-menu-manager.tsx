@@ -49,6 +49,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -80,9 +81,6 @@ type ProductMappingOptions = NonNullable<
   FunctionReturnType<typeof api.onlinePos.listMappingOptions>
 >;
 type CatalogProductOption = ProductMappingOptions["products"][number];
-type CatalogCategoryOption = FunctionReturnType<
-  typeof api.catalog.listCategoryOptions
->[number];
 type MenuCatalogProduct = Pick<
   CatalogProductOption,
   "id" | "name" | "categoryIds"
@@ -93,8 +91,16 @@ type MenuCatalogProduct = Pick<
 };
 type MenuEditor =
   { kind: "create" } | { kind: "edit"; menu: OnlinePosMenu } | null;
+type MenuGroupDraft = Omit<
+  OnlinePosMenu["groups"][number],
+  "quantity" | "productIds"
+> & {
+  quantity: string;
+  productIds: string[];
+};
 
 const MAX_MENU_NAME_LENGTH = 100;
+const MAX_MENU_GROUPS = 20;
 
 function onlinePosProductLabel(product: OnlinePosProductOption) {
   return product.groupName
@@ -121,55 +127,6 @@ function resolveCatalogProductIds(
     productIds.push(productId);
   }
   return productIds;
-}
-
-function MenuProductPicker({
-  title,
-  description,
-  productAriaLabel,
-  categories,
-  products,
-  selectedProductIds,
-  onProductIdsChange,
-  disabled,
-}: {
-  title: string;
-  description: string;
-  productAriaLabel: string;
-  categories: CatalogCategoryOption[];
-  products: MenuCatalogProduct[];
-  selectedProductIds: string[];
-  onProductIdsChange: (productIds: string[]) => void;
-  disabled: boolean;
-}) {
-  return (
-    <FieldSet className="gap-4 rounded-xl border p-4">
-      <FieldLegend>{title}</FieldLegend>
-      <FieldDescription>{description}</FieldDescription>
-      <Field data-disabled={disabled}>
-        <FieldLabel>Produkter</FieldLabel>
-        <ProductCategoryCombobox
-          categories={categories}
-          products={products.map((product) => ({
-            value: product.value,
-            label: product.unavailableReason
-              ? `${product.name} · ${product.unavailableReason}`
-              : product.name,
-            categoryIds: product.categoryIds,
-            disabled: product.unavailableReason !== null,
-          }))}
-          values={selectedProductIds}
-          onValuesChange={onProductIdsChange}
-          disabled={disabled}
-          ariaLabel={productAriaLabel}
-        />
-        <FieldDescription>
-          Vælg en kategorilinje for at vælge eller fravælge alle produkter i
-          kategorien.
-        </FieldDescription>
-      </Field>
-    </FieldSet>
-  );
 }
 
 function MenuCard({
@@ -245,11 +202,7 @@ export function OnlinePosMenuManager() {
   const [selectedMenuProductId, setSelectedMenuProductId] = useState<
     string | null
   >(null);
-  const [selectedPrimaryProductIds, setSelectedPrimaryProductIds] = useState<
-    string[]
-  >([]);
-  const [selectedAdditionalProductIds, setSelectedAdditionalProductIds] =
-    useState<string[]>([]);
+  const [groups, setGroups] = useState<MenuGroupDraft[]>([]);
   const [onlinePosProductOptions, setOnlinePosProductOptions] = useState<
     OnlinePosProductOption[] | null
   >(null);
@@ -293,8 +246,9 @@ export function OnlinePosMenuManager() {
     setEditor({ kind: "create" });
     setMenuName("");
     setSelectedMenuProductId(null);
-    setSelectedPrimaryProductIds([]);
-    setSelectedAdditionalProductIds([]);
+    setGroups([
+      { id: crypto.randomUUID(), title: "", quantity: "1", productIds: [] },
+    ]);
     setFormError("");
     void loadOnlinePosProducts();
   }
@@ -304,15 +258,11 @@ export function OnlinePosMenuManager() {
     setEditor({ kind: "edit", menu });
     setMenuName(menu.name);
     setSelectedMenuProductId(String(menu.onlinePosProductId));
-    setSelectedPrimaryProductIds(
-      menu.products
-        .filter((product) => product.kind === "primary")
-        .map((product) => product.id),
-    );
-    setSelectedAdditionalProductIds(
-      menu.products
-        .filter((product) => product.kind === "additional")
-        .map((product) => product.id),
+    setGroups(
+      menu.groups.map((group) => ({
+        ...group,
+        quantity: String(group.quantity),
+      })),
     );
     setFormError("");
     if (menuData.enabled) void loadOnlinePosProducts();
@@ -321,6 +271,15 @@ export function OnlinePosMenuManager() {
   function closeEditor() {
     if (isSaving) return;
     setEditor(null);
+    setFormError("");
+  }
+
+  function updateGroup(id: string, changes: Partial<MenuGroupDraft>) {
+    setGroups((current) =>
+      current.map((group) =>
+        group.id === id ? { ...group, ...changes } : group,
+      ),
+    );
     setFormError("");
   }
 
@@ -333,15 +292,6 @@ export function OnlinePosMenuManager() {
       ...(mappingOptions?.products ?? []),
       ...(editor?.kind === "edit" ? editor.menu.products : []),
     ];
-    const primaryProductIds = resolveCatalogProductIds(
-      selectedPrimaryProductIds,
-      knownCatalogProducts,
-    );
-    const additionalProductIds = resolveCatalogProductIds(
-      selectedAdditionalProductIds,
-      knownCatalogProducts,
-    );
-
     if (!name) {
       setFormError("Giv menuen et navn.");
       return;
@@ -354,15 +304,45 @@ export function OnlinePosMenuManager() {
       setFormError("Vælg menuen fra OnlinePOS.");
       return;
     }
-    if (!primaryProductIds || !additionalProductIds) {
-      setFormError("Vælg kun produkter fra produktkataloget.");
+    if (!groups.length || groups.length > MAX_MENU_GROUPS) {
+      setFormError(`Tilføj mellem 1 og ${MAX_MENU_GROUPS} grupper.`);
       return;
     }
-    if (primaryProductIds.length === 0) {
-      setFormError("Vælg mindst ét primært produkt.");
+    const resolvedGroups = [];
+    for (const group of groups) {
+      const title = group.title.trim();
+      const quantity = Number(group.quantity);
+      const productIds = resolveCatalogProductIds(
+        group.productIds,
+        knownCatalogProducts,
+      );
+      if (!title || title.length > MAX_MENU_NAME_LENGTH) {
+        setFormError(
+          `Giv hver gruppe en titel på højst ${MAX_MENU_NAME_LENGTH} tegn.`,
+        );
+        return;
+      }
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+        setFormError(
+          "Antallet i hver gruppe skal være et helt tal mellem 1 og 100.",
+        );
+        return;
+      }
+      if (!productIds || productIds.length === 0) {
+        setFormError(
+          "Vælg mindst ét produkt fra produktkataloget i hver gruppe.",
+        );
+        return;
+      }
+      resolvedGroups.push({ id: group.id, title, quantity, productIds });
+    }
+    const productIds = resolvedGroups.flatMap((group) => group.productIds);
+    if (
+      resolvedGroups.reduce((total, group) => total + group.quantity, 0) > 100
+    ) {
+      setFormError("Menuen må højst have 100 valg på tværs af grupperne.");
       return;
     }
-    const productIds = [...primaryProductIds, ...additionalProductIds];
     if (productIds.length > 100) {
       setFormError("Vælg højst 100 produkter til menuen.");
       return;
@@ -379,8 +359,7 @@ export function OnlinePosMenuManager() {
         menuId: editor?.kind === "edit" ? editor.menu.id : null,
         name,
         onlinePosProductId: menuProductId,
-        primaryProductIds,
-        additionalProductIds,
+        groups: resolvedGroups,
       });
       toast.success(
         editor?.kind === "edit" ? "Menuen er opdateret" : "Menuen er oprettet",
@@ -508,31 +487,20 @@ export function OnlinePosMenuManager() {
       }
     }
   }
-  const selectedPrimaryProductIdSet = new Set(selectedPrimaryProductIds);
-  const selectedAdditionalProductIdSet = new Set(selectedAdditionalProductIds);
-  const primaryProducts = catalogProducts.map((product) => ({
-    ...product,
-    unavailableReason:
-      product.unavailableReason ??
-      (selectedAdditionalProductIdSet.has(product.value)
-        ? "Valgt som ekstra produkt"
-        : null),
-  }));
-  const additionalProducts = catalogProducts.map((product) => ({
-    ...product,
-    unavailableReason:
-      product.unavailableReason ??
-      (selectedPrimaryProductIdSet.has(product.value)
-        ? "Valgt som primært produkt"
-        : null),
-  }));
   const selectedMenuIsAvailable = menuProductOptions.some(
     (option) => option.value === selectedMenuProductId && !option.disabled,
   );
-  const selectedProductIds = [
-    ...selectedPrimaryProductIds,
-    ...selectedAdditionalProductIds,
-  ];
+  const selectedProductIds = groups.flatMap((group) => group.productIds);
+  const totalSelections = groups.reduce(
+    (total, group) => total + Number(group.quantity),
+    0,
+  );
+  const groupLimitError =
+    totalSelections > 100
+      ? "Menuen må højst have 100 valg på tværs af grupperne."
+      : selectedProductIds.length > 100
+        ? "Vælg højst 100 produkter til menuen."
+        : "";
   const selectedProductsAreAvailable = selectedProductIds.every((productId) =>
     catalogProducts.some(
       (product) =>
@@ -569,7 +537,19 @@ export function OnlinePosMenuManager() {
     selectedMenuIsAvailable &&
     selectedProductsAreAvailable &&
     selectedProductsAreUnique &&
-    selectedPrimaryProductIds.length > 0;
+    selectedProductIds.length <= 100 &&
+    groups.length > 0 &&
+    groups.length <= MAX_MENU_GROUPS &&
+    totalSelections <= 100 &&
+    groups.every(
+      (group) =>
+        group.title.trim().length > 0 &&
+        group.title.trim().length <= MAX_MENU_NAME_LENGTH &&
+        Number.isInteger(Number(group.quantity)) &&
+        Number(group.quantity) >= 1 &&
+        Number(group.quantity) <= 100 &&
+        group.productIds.length > 0,
+    );
 
   return (
     <div className="flex flex-col gap-7 pb-10">
@@ -584,9 +564,9 @@ export function OnlinePosMenuManager() {
             <h2 className="text-2xl font-semibold tracking-tight">Menuer</h2>
             <p className="text-sm leading-6 text-muted-foreground">
               Navngiv menuen, vælg det tilsvarende produkt i OnlinePOS, og vælg
-              dens primære og ekstra produkter fra produktkataloget. De
-              efterfølgende produktlinjer til 0 kr. samles under menuen via
-              produkternes OnlinePOS-koblinger.
+              dens produktgrupper fra produktkataloget. De efterfølgende
+              produktlinjer til 0 kr. samles under menuen via produkternes
+              OnlinePOS-koblinger.
             </p>
           </div>
           <DialogTrigger
@@ -633,8 +613,7 @@ export function OnlinePosMenuManager() {
               </EmptyMedia>
               <EmptyTitle>Ingen menuer endnu</EmptyTitle>
               <EmptyDescription>
-                Opret en menu og vælg dens primære og ekstra produkter fra
-                produktkataloget.
+                Opret en menu med produktgrupper fra produktkataloget.
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
@@ -667,8 +646,8 @@ export function OnlinePosMenuManager() {
               {editor?.kind === "edit" ? "Redigér menu" : "Ny menu"}
             </DialogTitle>
             <DialogDescription>
-              Giv menuen et navn, vælg den i OnlinePOS, og tilføj dens primære
-              og ekstra produkter fra produktkataloget.
+              Giv menuen et navn, vælg den i OnlinePOS, og tilføj grupper med
+              titel, antal og produkter fra produktkataloget.
             </DialogDescription>
           </DialogHeader>
 
@@ -777,32 +756,151 @@ export function OnlinePosMenuManager() {
                 ariaLabel="Menu i OnlinePOS"
               />
             </Field>
-            <MenuProductPicker
-              title="Primære produkter"
-              description="Produkter, der kan være menuens hovedprodukt."
-              productAriaLabel="Primære produkter i menuen"
-              categories={catalogCategories ?? []}
-              products={primaryProducts}
-              selectedProductIds={selectedPrimaryProductIds}
-              onProductIdsChange={(productIds) => {
-                setSelectedPrimaryProductIds(productIds);
+            {groups.map((group, index) => {
+              const quantity = Number(group.quantity);
+              const quantityValid =
+                Number.isInteger(quantity) && quantity >= 1 && quantity <= 100;
+              const groupProducts = catalogProducts.map((product) => {
+                const otherGroup = groups.find(
+                  (candidate) =>
+                    candidate.id !== group.id &&
+                    candidate.productIds.includes(product.value),
+                );
+                const unavailableReason =
+                  product.unavailableReason ??
+                  (otherGroup
+                    ? `Valgt i ${otherGroup.title.trim() || "en anden gruppe"}`
+                    : null);
+                return {
+                  value: product.value,
+                  label: unavailableReason
+                    ? `${product.name} · ${unavailableReason}`
+                    : product.name,
+                  categoryIds: product.categoryIds,
+                  disabled: unavailableReason !== null,
+                };
+              });
+              return (
+                <FieldSet
+                  key={group.id}
+                  className="gap-4 rounded-xl border p-4"
+                >
+                  <FieldLegend>Gruppe {index + 1}</FieldLegend>
+                  <FieldGroup className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+                    <Field data-disabled={productFieldDisabled}>
+                      <FieldLabel
+                        className="min-h-8"
+                        htmlFor={`menu-group-title-${group.id}`}
+                      >
+                        Titel
+                      </FieldLabel>
+                      <Input
+                        id={`menu-group-title-${group.id}`}
+                        value={group.title}
+                        maxLength={MAX_MENU_NAME_LENGTH}
+                        placeholder="Fx Hovedret"
+                        className="h-11"
+                        required
+                        disabled={productFieldDisabled}
+                        onChange={(event) =>
+                          updateGroup(group.id, { title: event.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field
+                      data-disabled={productFieldDisabled}
+                      data-invalid={!quantityValid}
+                    >
+                      <div className="flex min-h-8 items-center gap-1">
+                        <FieldLabel htmlFor={`menu-group-quantity-${group.id}`}>
+                          Antal valg
+                        </FieldLabel>
+                        <HelpTooltip
+                          label="Antal valg"
+                          content="Antallet af produkter, der skal vælges fra gruppen pr. menu."
+                        />
+                      </div>
+                      <Input
+                        id={`menu-group-quantity-${group.id}`}
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={group.quantity}
+                        className="h-11"
+                        required
+                        aria-invalid={!quantityValid}
+                        disabled={productFieldDisabled}
+                        onChange={(event) =>
+                          updateGroup(group.id, {
+                            quantity: event.target.value,
+                          })
+                        }
+                      />
+                      {!quantityValid ? (
+                        <FieldError>Vælg et helt tal fra 1 til 100.</FieldError>
+                      ) : null}
+                    </Field>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11 sm:mt-10"
+                      aria-label={`Fjern gruppe ${group.title.trim() || index + 1}`}
+                      disabled={productFieldDisabled || groups.length === 1}
+                      onClick={() => {
+                        setGroups((current) =>
+                          current.filter(
+                            (candidate) => candidate.id !== group.id,
+                          ),
+                        );
+                        setFormError("");
+                      }}
+                    >
+                      <Trash2Icon data-icon="inline-start" />
+                      Fjern gruppe
+                    </Button>
+                  </FieldGroup>
+                  <Field data-disabled={productFieldDisabled}>
+                    <FieldLabel>Produkter</FieldLabel>
+                    <ProductCategoryCombobox
+                      categories={catalogCategories ?? []}
+                      products={groupProducts}
+                      values={group.productIds}
+                      onValuesChange={(productIds) =>
+                        updateGroup(group.id, { productIds })
+                      }
+                      disabled={productFieldDisabled}
+                      ariaLabel={`Produkter i ${group.title.trim() || `gruppe ${index + 1}`}`}
+                    />
+                    <FieldDescription>
+                      Vælg en kategorilinje for at vælge eller fravælge alle
+                      produkter i kategorien.
+                    </FieldDescription>
+                  </Field>
+                </FieldSet>
+              );
+            })}
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 self-start"
+              disabled={
+                productFieldDisabled || groups.length >= MAX_MENU_GROUPS
+              }
+              onClick={() => {
+                const group = {
+                  id: crypto.randomUUID(),
+                  title: "",
+                  quantity: "1",
+                  productIds: [],
+                };
+                setGroups((current) => [...current, group]);
                 setFormError("");
               }}
-              disabled={productFieldDisabled}
-            />
-            <MenuProductPicker
-              title="Ekstra produkter"
-              description="Produkter, der kan følge med menuens hovedprodukt."
-              productAriaLabel="Ekstra produkter i menuen"
-              categories={catalogCategories ?? []}
-              products={additionalProducts}
-              selectedProductIds={selectedAdditionalProductIds}
-              onProductIdsChange={(productIds) => {
-                setSelectedAdditionalProductIds(productIds);
-                setFormError("");
-              }}
-              disabled={productFieldDisabled}
-            />
+            >
+              <PlusIcon data-icon="inline-start" />
+              Tilføj gruppe
+            </Button>
             {selectedOnlinePosProductId !== null &&
             unmappedSelectedProducts.length > 0 ? (
               <Alert>
@@ -819,7 +917,7 @@ export function OnlinePosMenuManager() {
                 </AlertDescription>
               </Alert>
             ) : null}
-            <FieldError>{formError}</FieldError>
+            <FieldError>{formError || groupLimitError}</FieldError>
           </FieldGroup>
 
           <DialogFooter>

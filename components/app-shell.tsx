@@ -10,6 +10,7 @@ import {
   CircleHelpIcon,
   LogOutIcon,
   LayoutDashboardIcon,
+  ReceiptTextIcon,
   RefreshCwIcon,
   SettingsIcon,
   MonitorIcon,
@@ -113,6 +114,7 @@ const navigationIcons = {
   woltOrders: ShoppingBagIcon,
   ordering: ShoppingCartIcon,
   transfers: ArrowRightLeftIcon,
+  invoices: ReceiptTextIcon,
   goodsReceipts: PackageCheckIcon,
   waste: Trash2Icon,
   ownChecks: ClipboardCheckIcon,
@@ -1127,6 +1129,8 @@ export function AppShell({
     pathname === "/employees" || pathname.startsWith("/employees/");
   const showTransfersHeader =
     pathname === "/transfers" || pathname.startsWith("/transfers/");
+  const showInvoicesHeader =
+    pathname === "/invoices" || pathname.startsWith("/invoices/");
   const showGoodsReceiptsHeader =
     pathname === "/goods-receipts" || pathname.startsWith("/goods-receipts/");
   const showDashboardHeader =
@@ -1141,6 +1145,7 @@ export function AppShell({
     showStaffFoodHeader ||
     showEmployeesHeader ||
     showTransfersHeader ||
+    showInvoicesHeader ||
     showGoodsReceiptsHeader ||
     showDashboardHeader ||
     showAdministrationHeader;

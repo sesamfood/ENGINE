@@ -97,7 +97,9 @@ export function CreatableCombobox({
     const query = inputValue.trim().toLocaleLowerCase("da");
     const matches = query
       ? options.filter((option) =>
-          option.label.toLocaleLowerCase("da").includes(query),
+          [option.label, option.searchText ?? ""].some((text) =>
+            text.toLocaleLowerCase("da").includes(query),
+          ),
         )
       : options;
     const exactMatch = options.some(

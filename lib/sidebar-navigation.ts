@@ -3,6 +3,7 @@ export const sidebarItems = [
   { id: "woltOrders", label: "Wolt-ordrer" },
   { id: "ordering", label: "Bestilling" },
   { id: "transfers", label: "Transfer" },
+  { id: "invoices", label: "Faktura" },
   { id: "goodsReceipts", label: "Varemodtagelse" },
   { id: "waste", label: "Waste" },
   { id: "ownChecks", label: "Egenkontrol" },
@@ -27,18 +28,25 @@ export function normalizeSidebarOrder(order?: readonly string[]) {
     (id) => !uniqueConfigured.includes(id),
   );
   const newlyAddedDashboard = missing.includes("dashboard") ? ["dashboard" as const] : [];
+  const addInvoicesAfterTransfers =
+    missing.includes("invoices") && configured.includes("transfers");
   const addGoodsReceiptsAfterTransfers =
     missing.includes("goodsReceipts") && configured.includes("transfers");
   return [
     ...newlyAddedDashboard,
-    ...uniqueConfigured.flatMap((id) =>
-      id === "transfers" && addGoodsReceiptsAfterTransfers
-        ? [id, "goodsReceipts" as const]
-        : [id],
-    ),
+    ...uniqueConfigured.flatMap((id) => [
+      id,
+      ...(id === "transfers" && addInvoicesAfterTransfers
+        ? ["invoices" as const]
+        : []),
+      ...(id === "transfers" && addGoodsReceiptsAfterTransfers
+        ? ["goodsReceipts" as const]
+        : []),
+    ]),
     ...missing.filter(
       (id) =>
         id !== "dashboard" &&
+        !(id === "invoices" && addInvoicesAfterTransfers) &&
         !(id === "goodsReceipts" && addGoodsReceiptsAfterTransfers),
     ),
   ];

@@ -6,6 +6,8 @@ import { action, internalMutation, mutation, query } from "./_generated/server";
 import { requireHumanPrincipal, requireIntegrationManager } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
 import { invalidateSalesStockMappings } from "./lib/salesStock";
+import { menuGroupInputValidator, menuGroups } from "./lib/menuGroups";
+import type { Infer } from "convex/values";
 import {
   requestProducts,
   type OnlinePosProduct,
@@ -18,6 +20,7 @@ const MAX_PRODUCT_MAPPINGS = 500;
 const MAX_ONLINE_POS_PRODUCTS = 2_000;
 const MAX_PRODUCT_NAME_LENGTH = 200;
 const MAX_MENU_NAME_LENGTH = 100;
+const MAX_MENU_GROUPS = 20;
 
 const onlinePosProductValidator = v.object({
   onlinePosProductId: v.number(),
@@ -26,7 +29,6 @@ const onlinePosProductValidator = v.object({
 });
 
 const menuProductValidator = v.object({
-  kind: v.union(v.literal("primary"), v.literal("additional")),
   id: v.id("products"),
   name: v.string(),
   mapped: v.boolean(),
@@ -38,6 +40,7 @@ const menuValidator = v.object({
   name: v.string(),
   onlinePosProductName: v.string(),
   groupName: v.string(),
+  groups: v.array(menuGroupInputValidator),
   products: v.array(menuProductValidator),
 });
 
@@ -89,24 +92,47 @@ function normalizeMenuName(value: string) {
   return name;
 }
 
-function validateMenuProductIds({
-  primaryProductIds,
-  additionalProductIds,
-}: {
-  primaryProductIds: Id<"products">[];
-  additionalProductIds: Id<"products">[];
-}) {
-  if (primaryProductIds.length === 0) {
-    throw new ConvexError("Vælg mindst ét primært produkt");
+function normalizeMenuGroups(groups: Infer<typeof menuGroupInputValidator>[]) {
+  if (groups.length === 0 || groups.length > MAX_MENU_GROUPS) {
+    throw new ConvexError("Tilføj mellem 1 og 20 produktgrupper");
   }
-  const productIds = [...primaryProductIds, ...additionalProductIds];
+  const ids = new Set<string>();
+  const normalized = groups.map((group) => {
+    if (!group.id.trim() || group.id.length > 100 || ids.has(group.id)) {
+      throw new ConvexError("Produktgruppen har et ugyldigt ID");
+    }
+    ids.add(group.id);
+    const title = group.title.trim().replace(/\s+/g, " ");
+    if (!title || title.length > 100) {
+      throw new ConvexError(
+        "Giv hver produktgruppe en titel på højst 100 tegn",
+      );
+    }
+    if (
+      !Number.isSafeInteger(group.quantity) ||
+      group.quantity < 1 ||
+      group.quantity > 100
+    ) {
+      throw new ConvexError(
+        "Antallet i en produktgruppe skal være et helt tal mellem 1 og 100",
+      );
+    }
+    if (group.productIds.length === 0) {
+      throw new ConvexError("Vælg mindst ét produkt i hver gruppe");
+    }
+    return { ...group, title };
+  });
+  const productIds = normalized.flatMap((group) => group.productIds);
+  if (normalized.reduce((total, group) => total + group.quantity, 0) > 100) {
+    throw new ConvexError("En menu må højst kræve 100 valg i alt");
+  }
   if (productIds.length > MAX_MENU_PRODUCTS) {
     throw new ConvexError("Vælg højst 100 produkter til menuen");
   }
   if (new Set(productIds).size !== productIds.length) {
     throw new ConvexError("Et produkt kan kun vælges én gang i menuen");
   }
-  return productIds;
+  return normalized;
 }
 
 async function enabledSettings(
@@ -176,8 +202,8 @@ export const list = query({
           name: menu.name,
           onlinePosProductName: menu.onlinePosProductName ?? menu.name,
           groupName: menu.groupName,
+          groups: menuGroups(menu),
           products: menu.products.map((product) => ({
-            kind: product.kind,
             id: product.productId,
             name: product.name,
             mapped: mappedProductIds.has(product.productId),
@@ -206,56 +232,50 @@ export const saveConfiguration = internalMutation({
     companyId: v.number(),
     name: v.string(),
     menuProduct: onlinePosProductValidator,
-    primaryProductIds: v.array(v.id("products")),
-    additionalProductIds: v.array(v.id("products")),
+    groups: v.array(menuGroupInputValidator),
     actorUserId: v.string(),
     actorName: v.string(),
   },
   returns: v.id("onlinePosMenus"),
   handler: async (ctx, args) => {
     const name = normalizeMenuName(args.name);
-    const productIds = validateMenuProductIds(args);
-    const [
-      integration,
-      current,
-      duplicateMenus,
-      menus,
-      products,
-      mappings,
-    ] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .unique(),
-      args.menuId === null
-        ? Promise.resolve(null)
-        : ctx.db.get("onlinePosMenus", args.menuId),
-      ctx.db
-        .query("onlinePosMenus")
-        .withIndex("by_organizationId_and_onlinePosProductId", (q) =>
-          q
-            .eq("organizationId", args.organizationId)
-            .eq("onlinePosProductId", args.menuProduct.onlinePosProductId),
-        )
-        .take(2),
-      ctx.db
-        .query("onlinePosMenus")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .take(MAX_MENUS + 1),
-      Promise.all(
-        productIds.map((productId) => ctx.db.get("products", productId)),
-      ),
-      ctx.db
-        .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .take(MAX_PRODUCT_MAPPINGS + 1),
-    ]);
+    const groups = normalizeMenuGroups(args.groups);
+    const productIds = groups.flatMap((group) => group.productIds);
+    const [integration, current, duplicateMenus, menus, products, mappings] =
+      await Promise.all([
+        ctx.db
+          .query("onlinePosIntegrations")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", args.organizationId),
+          )
+          .unique(),
+        args.menuId === null
+          ? Promise.resolve(null)
+          : ctx.db.get("onlinePosMenus", args.menuId),
+        ctx.db
+          .query("onlinePosMenus")
+          .withIndex("by_organizationId_and_onlinePosProductId", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("onlinePosProductId", args.menuProduct.onlinePosProductId),
+          )
+          .take(2),
+        ctx.db
+          .query("onlinePosMenus")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", args.organizationId),
+          )
+          .take(MAX_MENUS + 1),
+        Promise.all(
+          productIds.map((productId) => ctx.db.get("products", productId)),
+        ),
+        ctx.db
+          .query("onlinePosProductMappings")
+          .withIndex("by_organizationId", (q) =>
+            q.eq("organizationId", args.organizationId),
+          )
+          .take(MAX_PRODUCT_MAPPINGS + 1),
+      ]);
     if (
       !integration ||
       !integration.enabled ||
@@ -278,9 +298,13 @@ export const saveConfiguration = internalMutation({
     if (duplicateMenus.some((menu) => menu._id !== args.menuId)) {
       throw new ConvexError("OnlinePOS-produktet bruges allerede som menu");
     }
-    const primaryProductIds = new Set(args.primaryProductIds);
+    const groupByProductId = new Map(
+      groups.flatMap((group) =>
+        group.productIds.map((productId) => [productId, group.id] as const),
+      ),
+    );
     const menuProducts: Array<{
-      kind: "primary" | "additional";
+      groupId: string;
       productId: Id<"products">;
       name: string;
     }> = [];
@@ -288,8 +312,10 @@ export const saveConfiguration = internalMutation({
       if (!product || product.organizationId !== args.organizationId) {
         throw new ConvexError("Et af produkterne blev ikke fundet");
       }
+      const groupId = groupByProductId.get(product._id);
+      if (!groupId) throw new ConvexError("Produktgruppen blev ikke fundet");
       menuProducts.push({
-        kind: primaryProductIds.has(product._id) ? "primary" : "additional",
+        groupId,
         productId: product._id,
         name: product.name,
       });
@@ -323,6 +349,11 @@ export const saveConfiguration = internalMutation({
       name,
       onlinePosProductName: args.menuProduct.name,
       groupName: args.menuProduct.groupName,
+      groups: groups.map(({ id, title, quantity }) => ({
+        id,
+        title,
+        quantity,
+      })),
       products: menuProducts,
       updatedAt,
     };
@@ -337,7 +368,9 @@ export const saveConfiguration = internalMutation({
       !current ||
       current.onlinePosProductId !== values.onlinePosProductId ||
       current.products.length !== productIds.length ||
-      current.products.some((product) => !productIds.includes(product.productId))
+      current.products.some(
+        (product) => !productIds.includes(product.productId),
+      )
     ) {
       await ctx.db.patch(integration._id, {
         stockMappingRevision: (integration.stockMappingRevision ?? 0) + 1,
@@ -369,8 +402,7 @@ export const save = action({
     menuId: v.union(v.id("onlinePosMenus"), v.null()),
     name: v.string(),
     onlinePosProductId: v.number(),
-    primaryProductIds: v.array(v.id("products")),
-    additionalProductIds: v.array(v.id("products")),
+    groups: v.array(menuGroupInputValidator),
   },
   returns: v.id("onlinePosMenus"),
   handler: async (ctx, args): Promise<Id<"onlinePosMenus">> => {
@@ -382,7 +414,7 @@ export const save = action({
     ) {
       throw new ConvexError("Vælg et gyldigt OnlinePOS-produkt til menuen");
     }
-    validateMenuProductIds(args);
+    const groups = normalizeMenuGroups(args.groups);
 
     const connection = await enabledSettings(ctx, auth.organizationId);
     const onlinePosProducts = normalizeProducts(
@@ -411,8 +443,7 @@ export const save = action({
           name: menuProduct.name,
           groupName: menuProduct.groupName,
         },
-        primaryProductIds: args.primaryProductIds,
-        additionalProductIds: args.additionalProductIds,
+        groups,
         actorUserId: auth.userId,
         actorName: auth.userName,
       },
