@@ -31,6 +31,7 @@ import {
 } from "./lib/forecastValidators";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { orderDate, shiftOrderDate } from "../lib/ordering-forecast";
+import { zonedStart } from "../lib/date";
 import {
   forecastSalesMix,
   FORECAST_MODEL_VERSION,
@@ -298,9 +299,11 @@ const productSalesValidator = v.object({
 
 export const productSalesPage = internalQuery({
   args: {
-    forecastId: v.id("locationForecasts"),
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    timeZone: v.string(),
+    from: v.string(),
     today: v.string(),
-    salesRunToken: v.string(),
     paginationOpts: paginationOptsValidator,
   },
   returns: v.object({
@@ -308,24 +311,15 @@ export const productSalesPage = internalQuery({
     rowsRead: v.number(),
   }),
   handler: async (ctx, args) => {
-    const forecast = await ctx.db.get("locationForecasts", args.forecastId);
-    if (!forecast) throw new ConvexError("Prognosen er deaktiveret");
-    await requireUnchangedSales(ctx, forecast, args.salesRunToken);
-    const from = shiftOrderDate(args.today, -PRODUCT_FORECAST_HISTORY_DAYS);
+    // Stable history arguments keep weather refreshes from invalidating these reads.
     const result = await ctx.db
       .query("salesLines")
       .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
         q
-          .eq("organizationId", forecast.organizationId)
-          .eq("locationId", forecast.locationId)
-          .gte(
-            "occurredAt",
-            Date.parse(`${shiftOrderDate(from, -1)}T00:00:00Z`),
-          )
-          .lt(
-            "occurredAt",
-            Date.parse(`${shiftOrderDate(args.today, 1)}T00:00:00Z`),
-          ),
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId)
+          .gte("occurredAt", zonedStart(args.from, args.timeZone))
+          .lt("occurredAt", zonedStart(args.today, args.timeZone)),
       )
       .paginate({
         ...args.paginationOpts,
@@ -334,8 +328,7 @@ export const productSalesPage = internalQuery({
       });
     const daily = new Map<string, ProductDailySales>();
     for (const row of result.page) {
-      const date = orderDate(row.occurredAt, forecast.timeZone);
-      if (date < from || date >= args.today) continue;
+      const date = orderDate(row.occurredAt, args.timeZone);
       const key = JSON.stringify([row.source, row.externalProductId]);
       const bucket = JSON.stringify([key, date]);
       const current = daily.get(bucket) ?? {
@@ -538,16 +531,26 @@ export const refreshLocation = internalAction({
       const productSales = new Map<string, ProductDailySales>();
       let cursor: string | null = null;
       let rowsRead = 0;
+      const calibrationFrom = shiftOrderDate(today, -28);
+      const recentRevenue = training.observations
+        .filter((row) => row.date >= calibrationFrom && row.date < today)
+        .reduce((sum, row) => sum + row.value, 0);
       let productsComplete =
-        !training.warning && training.salesRunToken !== null;
-      if (!training.warning && training.salesRunToken !== null)
+        !training.warning && training.salesRunToken !== null && recentRevenue > 0;
+      const productHistoryFrom = [
+        shiftOrderDate(today, -PRODUCT_FORECAST_HISTORY_DAYS),
+        training.observations[0]?.date ?? today,
+      ].sort().at(-1)!;
+      if (productsComplete)
         for (let pageNumber = 0; ; pageNumber++) {
           const page: FunctionReturnType<
             typeof internal.forecasts.productSalesPage
           > = await ctx.runQuery(internal.forecasts.productSalesPage, {
-            ...args,
+            organizationId: forecast.organizationId,
+            locationId: forecast.locationId,
+            timeZone: forecast.timeZone,
+            from: productHistoryFrom,
             today,
-            salesRunToken: training.salesRunToken,
             paginationOpts: { cursor, numItems: 1000 },
           });
           rowsRead += page.rowsRead;

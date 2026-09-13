@@ -31,7 +31,6 @@ import {
 const MAX_ROWS = 5_000;
 const MAX_SUMMARY_ROWS_PER_SOURCE = MAX_ROWS;
 const MAX_SCOPE_LOCATIONS = 200;
-const MAX_LOCATION_QUERIES_PER_SOURCE = 8;
 const MAX_TRANSFER_DETAILS = 500;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const INTEGRATION_FRESHNESS_INTERVAL_MS = 26 * 60 * 60 * 1_000;
@@ -465,7 +464,10 @@ export async function resolveMetricParams(
     locations,
     scopeSelectsAllLocations: scope.locationIds === null,
     canUseOrganizationSummaryRange:
-      !allowedLocationScope || allowedLocationScope.all,
+      (scope.level === undefined || scope.level === "organization") &&
+      scope.locationIds === null &&
+      (!allowedLocationScope || allowedLocationScope.all) &&
+      !scopeTruncated,
     compare: scope.mode === "compare" && locations.length >= 2,
     comparisonGroups,
     anonymousLocations,
@@ -579,11 +581,7 @@ async function dashboardSummaryRows(
     if (!params.locations.length) {
       return { rows: [], truncated: false };
     }
-    const useOrganizationRange =
-      params.canUseOrganizationSummaryRange &&
-      (params.locations.length > MAX_LOCATION_QUERIES_PER_SOURCE ||
-        (params.scopeSelectsAllLocations && !params.scopeTruncated));
-    if (useOrganizationRange) {
+    if (params.canUseOrganizationSummaryRange) {
       const allRows = await ctx.db
         .query("dashboardDailySummaries")
         .withIndex("by_org_source_timeZone_dayStart", (q) =>
@@ -1074,22 +1072,34 @@ function currencyOptions(
   return { currency: [...currencies][0] ?? DEFAULT_CURRENCY };
 }
 
+async function readSelectedLocationRows<T>(
+  params: DashboardMetricParams,
+  read: (locationId: Id<"locations">, limit: number) => Promise<T[]>,
+) {
+  const rows: T[] = [];
+  for (const location of params.locations) {
+    const remaining = MAX_ROWS + 1 - rows.length;
+    if (remaining === 0) break;
+    rows.push(...await read(location.id, remaining));
+  }
+  return rows;
+}
+
 async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "waste", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const location = params.locations.length === 1 ? params.locations[0] : null;
-    const rows = location
-      ? await ctx.db
+    const rows = !params.canUseOrganizationSummaryRange || params.locations.length <= 1
+      ? await readSelectedLocationRows(params, (locationId, limit) => ctx.db
           .query("wasteRegistrations")
           .withIndex("by_org_location_status_time", (q) =>
             q
               .eq("organizationId", params.organizationId)
-              .eq("locationId", location.id)
+              .eq("locationId", locationId)
               .eq("status", "active")
               .gte("registeredAt", params.previousFrom)
               .lt("registeredAt", params.to),
           )
-          .take(MAX_ROWS + 1)
+          .take(limit))
       : await ctx.db
           .query("wasteRegistrations")
           .withIndex("by_org_status_time", (q) =>
@@ -1103,6 +1113,7 @@ async function wasteRows(ctx: QueryCtx, params: DashboardMetricParams) {
     return {
       rows: rows
         .filter((row) => selected.has(row.locationId))
+        .sort((left, right) => left.registeredAt - right.registeredAt || left._creationTime - right._creationTime)
         .slice(0, MAX_ROWS),
       truncated: rows.length > MAX_ROWS,
     };
@@ -1254,21 +1265,19 @@ const wasteByCategory: MetricComputer = async (ctx, params) => {
 async function badDeliveryRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "bad-deliveries", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const location = params.locations.length === 1 ? params.locations[0] : null;
-    const rows = location
-      ? await ctx.db
+    const rows = !params.canUseOrganizationSummaryRange || params.locations.length <= 1
+      ? await readSelectedLocationRows(params, (locationId, limit) => ctx.db
           .query("badDeliveries")
           .withIndex(
             "by_organizationId_and_locationId_and_registeredAt",
             (q) =>
               q
                 .eq("organizationId", params.organizationId)
-                .eq("locationId", location.id)
+                .eq("locationId", locationId)
                 .gte("registeredAt", params.previousFrom)
                 .lt("registeredAt", params.to),
           )
-          .filter((q) => q.eq(q.field("status"), "active"))
-          .take(MAX_ROWS + 1)
+          .take(limit))
       : await ctx.db
           .query("badDeliveries")
           .withIndex("by_organizationId_and_status_and_registeredAt", (q) =>
@@ -1281,7 +1290,8 @@ async function badDeliveryRows(ctx: QueryCtx, params: DashboardMetricParams) {
           .take(MAX_ROWS + 1);
     return {
       rows: rows
-        .filter((row) => selected.has(row.locationId))
+        .filter((row) => row.status === "active" && selected.has(row.locationId))
+        .sort((left, right) => left.registeredAt - right.registeredAt || left._creationTime - right._creationTime)
         .slice(0, MAX_ROWS),
       truncated: rows.length > MAX_ROWS,
     };
@@ -1416,44 +1426,36 @@ const openCounts: MetricComputer = async (ctx, params) => {
 async function transferRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "transfers", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const location = params.locations.length === 1 ? params.locations[0] : null;
-    const rows = location
-      ? await Promise.all([
-          ctx.db
+    const rows = !params.canUseOrganizationSummaryRange || params.locations.length <= 1
+      ? await readSelectedLocationRows(params, async (locationId, limit) => {
+          const sent = await ctx.db
             .query("transfers")
             .withIndex(
               "by_organizationId_and_fromLocationId_and_transferredAt",
               (q) =>
                 q
                   .eq("organizationId", params.organizationId)
-                  .eq("fromLocationId", location.id)
+                  .eq("fromLocationId", locationId)
                   .gte("transferredAt", params.previousFrom)
                   .lt("transferredAt", params.to),
             )
-            .take(MAX_ROWS + 1),
-          ctx.db
+            .take(limit);
+          const remaining = limit - sent.length;
+          if (remaining === 0) return sent;
+          const received = await ctx.db
             .query("transfers")
             .withIndex(
               "by_organizationId_and_toLocationId_and_transferredAt",
               (q) =>
                 q
                   .eq("organizationId", params.organizationId)
-                  .eq("toLocationId", location.id)
+                  .eq("toLocationId", locationId)
                   .gte("transferredAt", params.previousFrom)
                   .lt("transferredAt", params.to),
             )
-            .take(MAX_ROWS + 1),
-        ]).then(([sent, received]) =>
-          [
-            ...new Map(
-              [...sent, ...received].map((row) => [row._id, row]),
-            ).values(),
-          ].sort(
-            (left, right) =>
-              left.transferredAt - right.transferredAt ||
-              left._creationTime - right._creationTime,
-          ),
-        )
+            .take(remaining);
+          return [...sent, ...received];
+        })
       : await ctx.db
           .query("transfers")
           .withIndex("by_organizationId_and_transferredAt", (q) =>
@@ -1464,11 +1466,12 @@ async function transferRows(ctx: QueryCtx, params: DashboardMetricParams) {
           )
           .take(MAX_ROWS + 1);
     return {
-      rows: rows
+      rows: [...new Map(rows.map((row) => [row._id, row])).values()]
         .filter(
           (row) =>
             selected.has(row.fromLocationId) || selected.has(row.toLocationId),
         )
+        .sort((left, right) => left.transferredAt - right.transferredAt || left._creationTime - right._creationTime)
         .slice(0, MAX_ROWS),
       truncated: rows.length > MAX_ROWS,
     };
@@ -1606,21 +1609,19 @@ const topTransferredProducts: MetricComputer = async (ctx, params) => {
 async function staffFoodRows(ctx: QueryCtx, params: DashboardMetricParams) {
   return await cached(params, "staff-food", async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const location = params.locations.length === 1 ? params.locations[0] : null;
-    const rows = location
-      ? await ctx.db
+    const rows = !params.canUseOrganizationSummaryRange || params.locations.length <= 1
+      ? await readSelectedLocationRows(params, (locationId, limit) => ctx.db
           .query("staffFoodRegistrations")
           .withIndex(
             "by_organizationId_and_locationId_and_registeredAt",
             (q) =>
               q
                 .eq("organizationId", params.organizationId)
-                .eq("locationId", location.id)
+                .eq("locationId", locationId)
                 .gte("registeredAt", params.previousFrom)
                 .lt("registeredAt", params.to),
           )
-          .filter((q) => q.eq(q.field("status"), "active"))
-          .take(MAX_ROWS + 1)
+          .take(limit))
       : await ctx.db
           .query("staffFoodRegistrations")
           .withIndex("by_organizationId_and_registeredAt", (q) =>
@@ -1635,6 +1636,7 @@ async function staffFoodRows(ctx: QueryCtx, params: DashboardMetricParams) {
         .filter(
           (row) => row.status === "active" && selected.has(row.locationId),
         )
+        .sort((left, right) => left.registeredAt - right.registeredAt || left._creationTime - right._creationTime)
         .slice(0, MAX_ROWS),
       truncated: rows.length > MAX_ROWS,
     };
@@ -1707,20 +1709,19 @@ async function shiftRows(
 ) {
   return await cached(params, `shifts:${from}:${to}`, async () => {
     const selected = new Set(params.locations.map((location) => location.id));
-    const location = params.locations.length === 1 ? params.locations[0] : null;
-    const rows = location
-      ? await ctx.db
+    const rows = !params.canUseOrganizationSummaryRange || params.locations.length <= 1
+      ? await readSelectedLocationRows(params, (locationId, limit) => ctx.db
           .query("scheduledShifts")
           .withIndex(
             "by_organizationId_and_locationId_and_startsAt",
             (q) =>
               q
                 .eq("organizationId", params.organizationId)
-                .eq("locationId", location.id)
+                .eq("locationId", locationId)
                 .gte("startsAt", from)
                 .lt("startsAt", to),
           )
-          .take(MAX_ROWS + 1)
+          .take(limit))
       : await ctx.db
           .query("scheduledShifts")
           .withIndex("by_organizationId_and_startsAt", (q) =>
@@ -1733,6 +1734,7 @@ async function shiftRows(
     return {
       rows: rows
         .filter((row) => selected.has(row.locationId))
+        .sort((left, right) => left.startsAt - right.startsAt || left._creationTime - right._creationTime)
         .slice(0, MAX_ROWS),
       truncated: rows.length > MAX_ROWS,
     };

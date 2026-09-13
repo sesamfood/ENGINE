@@ -1,5 +1,6 @@
 import type {
   CustomMetricDatasetId,
+  CustomMetricSpec,
   MetricUnit,
   VisualizationId,
 } from "./types";
@@ -47,6 +48,16 @@ export const ratioMetricVisualizations: readonly VisualizationId[] = [
   "list",
   "table",
 ];
+
+export function canBatchCustomMetric(spec: CustomMetricSpec) {
+  if (spec.dimension !== undefined && spec.dimension !== "location") return false;
+  const queries = spec.kind === "single"
+    ? [spec.query]
+    : [spec.numerator, spec.denominator];
+  return queries.every((query) =>
+    query.dataset === "shifts" || query.dataset === "salesDaily",
+  );
+}
 
 export const dashboardDatasets: Record<
   CustomMetricDatasetId,

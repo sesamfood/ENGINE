@@ -35,6 +35,8 @@ const pageArgs = {
   salesToken: v.string(),
   activationAt: v.number(),
   salesRevision: v.optional(v.number()),
+  orderRevisionsVersion: v.optional(v.literal(1)),
+  afterRevision: v.optional(v.number()),
   mappingRevision: v.optional(v.number()),
   connectedAt: v.optional(v.number()),
   resetUnmapped: v.optional(v.boolean()),
@@ -100,6 +102,7 @@ export async function queueStockSync(
   const activationAt = settings.stockSyncStartedAt;
   const salesRevision = sales.stockRevision ?? 0;
   const mappingRevision = settings.stockMappingRevision ?? 0;
+  // Legacy orders need one complete scan before their missing revisions can be skipped.
   const firstRun =
     full ||
     previous?.activationAt !== activationAt ||
@@ -107,6 +110,8 @@ export async function queueStockSync(
     previous.connectionId !== connection._id ||
     previous.connectedAt !== connection.connectedAt ||
     previous.salesRevision === undefined ||
+    previous.orderRevisionsVersion !== 1 ||
+    (sales.stockFullSyncRevision ?? 0) > (previous.salesRevision ?? 0) ||
     previous.syncedThroughAt === undefined ||
     previous.mappingRevision !== mappingRevision;
   if (
@@ -182,6 +187,8 @@ export async function queueStockSync(
     salesToken: sales.runToken,
     activationAt: settings.stockSyncStartedAt,
     salesRevision,
+    orderRevisionsVersion: 1,
+    ...(firstRun ? {} : { afterRevision: previous.salesRevision }),
     mappingRevision,
     connectedAt: connection.connectedAt,
     resetUnmapped: firstRun,
@@ -371,6 +378,8 @@ export const applyPage = internalMutation({
     // Jobs scheduled before revision tracking leave the next sales sync to restart them.
     if (args.salesRevision === undefined || args.mappingRevision === undefined)
       return null;
+    if (args.afterRevision !== undefined && args.orderRevisionsVersion !== 1)
+      return null;
     const [settings, status, sales, location, connection] = await Promise.all([
       integration(ctx, args.organizationId),
       ctx.db
@@ -422,17 +431,29 @@ export const applyPage = internalMutation({
     let cursor: string;
     let unmappedQuantity = status.unmappedQuantity;
     if (args.phase === "orders") {
-      const page = await ctx.db
-        .query("salesOrders")
-        .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
-          q
-            .eq("organizationId", args.organizationId)
-            .eq("locationId", args.locationId)
-            .gte("occurredAt", args.from),
-        )
-        .paginate({ numItems: 5, cursor: args.cursor });
+      const orders =
+        args.afterRevision === undefined
+          ? ctx.db
+              .query("salesOrders")
+              .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+                q
+                  .eq("organizationId", args.organizationId)
+                  .eq("locationId", args.locationId)
+                  .gte("occurredAt", args.from),
+              )
+          : ctx.db
+              .query("salesOrders")
+              .withIndex("by_organizationId_and_locationId_and_stockRevision", (q) =>
+                q
+                  .eq("organizationId", args.organizationId)
+                  .eq("locationId", args.locationId)
+                  .gt("stockRevision", args.afterRevision)
+                  .lte("stockRevision", args.salesRevision),
+              );
+      const page = await orders.paginate({ numItems: 5, cursor: args.cursor });
       const resolve = createSalesStockResolver(ctx, args.organizationId);
       for (const order of page.page) {
+        if (order.occurredAt < args.from) continue;
         if (order.occurredAt < Date.now() - 400 * 86_400_000) continue;
         if (order.source !== "onlinePos") continue;
         const lines = await ctx.db
@@ -537,7 +558,8 @@ export const applyPage = internalMutation({
       cursor = page.continueCursor;
     }
     unmappedQuantity = normalizeStock(unmappedQuantity);
-    const complete = done && args.phase === "removed";
+    const complete =
+      done && (args.phase === "removed" || args.afterRevision !== undefined);
     const now = Date.now();
     await ctx.db.patch(status._id, {
       unmappedQuantity,
@@ -551,6 +573,9 @@ export const applyPage = internalMutation({
             syncedThroughAt: sales.syncedThroughAt,
             salesStatusId: sales._id,
             salesRevision: args.salesRevision,
+            ...(args.orderRevisionsVersion === 1
+              ? { orderRevisionsVersion: args.orderRevisionsVersion }
+              : {}),
             mappingRevision: args.mappingRevision,
             connectionId: connection._id,
             connectedAt: connection.connectedAt,

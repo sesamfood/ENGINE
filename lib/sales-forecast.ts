@@ -3,7 +3,7 @@ import type { ForecastOpeningDay } from "./forecast-opening-hours";
 
 export const SALES_FORECAST_HISTORY_DAYS = 400;
 export const SALES_FORECAST_DAYS = 28;
-export const FORECAST_MODEL_VERSION = 5;
+export const FORECAST_MODEL_VERSION = 6;
 export const PRODUCT_FORECAST_HISTORY_DAYS = 90;
 
 export type ForecastCondition = {
@@ -94,12 +94,20 @@ export function forecastSalesMix({
     groups.set(row.key, days);
   }
   const models = [];
+  const revenueAdjustments = new Set<string>();
   let missingPrice = false;
-  for (const days of groups.values()) {
+  for (const [key, days] of groups) {
     const positive = [...days.entries()]
       .filter(([, row]) => row.quantity > 0)
       .sort(([a], [b]) => a.localeCompare(b));
     if (!positive.length) continue;
+    if (
+      [...days.values()].every((row) => row.revenue <= 0) &&
+      positive.some(([, row]) => row.revenue < 0)
+    ) {
+      revenueAdjustments.add(key);
+      continue;
+    }
     let priceSum = 0;
     let quantitySum = 0;
     for (const [date, row] of positive) {
@@ -134,15 +142,16 @@ export function forecastSalesMix({
   const actualRevenue = observations
     .filter((row) => row.date >= calibrationFrom && row.date < today)
     .reduce((sum, row) => sum + row.value, 0);
-  const lineRevenue = [...groups.values()].reduce(
-    (sum, days) =>
-      sum +
-      [...days.entries()]
+  const lineRevenue = [...groups.entries()].reduce(
+    (sum, [key, days]) => {
+      if (revenueAdjustments.has(key)) return sum;
+      return sum + [...days.entries()]
         .filter(([date]) => date >= calibrationFrom)
-        .reduce((subtotal, [, row]) => subtotal + row.revenue, 0),
+        .reduce((subtotal, [, row]) => subtotal + row.revenue, 0);
+    },
     0,
   );
-  // Reconcile line prices with order-level discounts and charges in salesDaily.
+  // Net daily revenue retains adjustments excluded from product demand.
   const calibration = lineRevenue > 0 ? actualRevenue / lineRevenue : null;
   if (
     missingPrice ||

@@ -240,6 +240,7 @@ export default defineSchema({
     syncedThroughAt: v.optional(v.number()),
     salesStatusId: v.optional(v.id("onlinePosSyncStatus")),
     salesRevision: v.optional(v.number()),
+    orderRevisionsVersion: v.optional(v.literal(1)),
     mappingRevision: v.optional(v.number()),
     connectionId: v.optional(v.id("onlinePosLocationIntegrations")),
     connectedAt: v.optional(v.number()),
@@ -330,6 +331,7 @@ export default defineSchema({
     backfillThroughAt: v.optional(v.number()),
     stockRevision: v.optional(v.number()),
     stockChangedFrom: v.optional(v.number()),
+    stockFullSyncRevision: v.optional(v.number()),
     // Set before destroying a day during reconcile; cleared only on success.
     // Dispatcher retries this dayStart until the rebuild completes.
     pendingReconcileDayStart: v.optional(v.number()),
@@ -410,7 +412,13 @@ export default defineSchema({
     externalId: v.string(),
     externalClerkId: v.optional(v.string()),
     updatedAt: v.number(),
+    stockRevision: v.optional(v.number()),
   })
+    .index("by_organizationId_and_locationId_and_stockRevision", [
+      "organizationId",
+      "locationId",
+      "stockRevision",
+    ])
     .index("by_organizationId_and_locationId_and_occurredAt", [
       "organizationId",
       "locationId",

@@ -10,6 +10,7 @@ import {
   query,
 } from "./_generated/server";
 import { metricRegistry } from "../lib/dashboard/registry";
+import { canBatchCustomMetric } from "../lib/dashboard/datasets";
 import {
   dashboardConfigValidator,
   keyedMetricResultValidator,
@@ -20,6 +21,7 @@ import {
   createMetricParamsResolver,
   queryMetricComputer,
   resolveBuiltinSalesSource,
+  resolveDashboardRange,
 } from "./lib/dashboardMetrics";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
 import {
@@ -260,8 +262,6 @@ export const getSharedMetrics = query({
     const share = await requireShare(ctx, args.token, args.accessKey);
     if (
       args.widgets.length > MAX_METRIC_BATCH ||
-      (args.widgets.length > 1 &&
-        args.widgets.some((widget) => widget.metric.kind === "custom")) ||
       new Set(args.widgets.map((widget) => widget.key)).size !==
         args.widgets.length
     ) {
@@ -329,6 +329,43 @@ export const getSharedMetrics = query({
         salesDetailAllowed: share.salesDetailAllowed ?? true,
       },
     );
+    const customBatch = args.widgets.flatMap((widget) =>
+      widget.metric.kind === "custom"
+        ? [{
+            widget,
+            spec: share.customMetricSnapshots.find(
+              (snapshot) => snapshot.id === widget.metric.id,
+            )!.spec,
+          }]
+        : [],
+    );
+    const firstCustom = customBatch[0];
+    if (firstCustom && args.widgets.length > 1) {
+      if (
+        customBatch.length !== args.widgets.length ||
+        customBatch.some(({ spec }) => !canBatchCustomMetric(spec))
+      ) {
+        throw new ConvexError("Widgetgruppen er ugyldig");
+      }
+      const params = await resolveParams(
+        firstCustom.widget.range ? { preset: firstCustom.widget.range } : share.range,
+      );
+      for (const { widget } of customBatch) {
+        const range = resolveDashboardRange(
+          widget.range ? { preset: widget.range } : share.range,
+          params.timeZone,
+          args.now,
+        );
+        if (range.from !== params.from || range.to !== params.to) {
+          throw new ConvexError("Widgetgruppen er ugyldig");
+        }
+      }
+      const results = [];
+      for (const { widget, spec } of customBatch) {
+        results.push({ key: widget.key, result: await executeCustomMetric(ctx, spec, params) });
+      }
+      return results;
+    }
     return await Promise.all(
       args.widgets.map(async (widget) => {
         const savedWidget = share.widgets.find(

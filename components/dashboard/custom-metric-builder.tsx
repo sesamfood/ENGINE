@@ -661,7 +661,8 @@ export function CustomMetricBuilder({
       void convex
         .query(api.customMetrics.preview, {
           spec,
-          visualization: previewVisualization,
+          // Metric results are shared by all compatible visualizations.
+          visualization: "kpi",
           scope,
           range,
           now,
@@ -687,7 +688,7 @@ export function CustomMetricBuilder({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [convex, now, open, previewVisualization, range, scope, spec]);
+  }, [convex, now, open, range, scope, spec]);
 
   function updateQuery(
     which: "numerator" | "denominator",

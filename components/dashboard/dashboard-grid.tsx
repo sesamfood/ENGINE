@@ -23,7 +23,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
+import { canBatchCustomMetric, customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import { dashboardMetricUsesSummary } from "@/lib/dashboard/summary-sources";
 import {
@@ -34,7 +34,7 @@ import {
   widgetsOverlappingPosition,
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
-import type { DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { CustomMetricSpec, DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
 import { useLiveMetrics, type LiveMetricState } from "./use-live-metrics";
 import { useFinancialMetrics } from "./use-financial-metrics";
@@ -55,11 +55,14 @@ const METRIC_BATCH_SIZE = 3;
 function metricBatchKey(
   widget: WidgetInstance,
   defaultRange: DashboardRange,
+  customMetrics: ReadonlyMap<string, { spec: CustomMetricSpec }>,
 ) {
   const range = widget.range
     ? `${widget.range}::`
     : `${defaultRange.preset}:${defaultRange.from ?? ""}:${defaultRange.to ?? ""}`;
   if (widget.metric.kind === "custom") {
+    const spec = customMetrics.get(String(widget.metric.id))?.spec;
+    if (spec && canBatchCustomMetric(spec)) return `custom:daily:${range}`;
     return `custom:${widget.key}`;
   }
   if (widget.metric.id === "predictedSalesRevenue") {
@@ -71,11 +74,14 @@ function metricBatchKey(
 function groupMetricBatches(
   widgets: WidgetInstance[],
   defaultRange: DashboardRange,
+  customMetrics: ReadonlyMap<string, { spec: CustomMetricSpec }>,
+  customMetricsLoading: boolean,
 ) {
   const groups = new Map<string, WidgetInstance[]>();
   for (const widget of widgets) {
+    if (widget.metric.kind === "custom" && customMetricsLoading) continue;
     if (widget.metric.kind === "builtin" && (metricRegistry[widget.metric.id].live || metricRegistry[widget.metric.id].source === "economic")) continue;
-    const key = metricBatchKey(widget, defaultRange);
+    const key = metricBatchKey(widget, defaultRange, customMetrics);
     groups.set(key, [...(groups.get(key) ?? []), widget]);
   }
   const grouped = [...groups.values()];
@@ -101,21 +107,49 @@ function useMetricBatches(
 ) {
   const publicToken = publicAccess?.token;
   const publicAccessKey = publicAccess?.accessKey;
-  const queries = useMemo(() => Object.fromEntries(batches.map((widgets, index): [string, RequestForQueries[string]] => {
+  const [failedBatches, setFailedBatches] = useState<string[]>([]);
+  const groups = useMemo(() => batches.map((widgets) => {
     const requests = widgets.map(({ key, metric, visualization, range: widgetRange, options }) => ({
       key, metric, visualization, range: widgetRange,
       ...(options?.salesSource ? { salesSource: options.salesSource } : {}),
     }));
-    return [String(index), publicToken !== undefined && publicAccessKey !== undefined
+    const request: RequestForQueries[string] = publicToken !== undefined && publicAccessKey !== undefined
       ? { query: api.dashboardShare.getSharedMetrics, args: { token: publicToken, accessKey: publicAccessKey, widgets: requests, now } }
-      : { query: api.dashboard.getMetrics, args: { widgets: requests, scope, range, now } }];
-  })), [batches, scope, range, now, publicToken, publicAccessKey]);
+      : { query: api.dashboard.getMetrics, args: { widgets: requests, scope, range, now } };
+    return {
+      signature: JSON.stringify(request.args),
+      request,
+      widgets: requests,
+      canSplit: publicToken === undefined && widgets.length > 1 && widgets.every((widget) => widget.metric.kind === "custom"),
+    };
+  }), [batches, scope, range, now, publicToken, publicAccessKey]);
+  const requests = useMemo(() => groups.flatMap((group) =>
+    group.canSplit && failedBatches.includes(group.signature)
+      ? group.widgets.map((widget) => ({
+          signature: `${group.signature}:${widget.key}`,
+          request: { ...group.request, args: { ...group.request.args, widgets: [widget] } },
+          widgets: [widget],
+          canSplit: false,
+        }))
+      : [group],
+  ), [failedBatches, groups]);
+  const queries = useMemo(() => Object.fromEntries(requests.map(({ signature, request }) => [signature, request])), [requests]);
   const results: Record<string, { key: string; result: MetricResult }[] | Error | undefined> = useQueries(queries);
+  const failed = groups.flatMap((group) =>
+    group.canSplit && (failedBatches.includes(group.signature) || results[group.signature] instanceof Error)
+      ? [group.signature]
+      : [],
+  );
+  if (failed.length !== failedBatches.length || failed.some((signature, index) => signature !== failedBatches[index])) {
+    setFailedBatches(failed);
+  }
   const byWidget = new Map<string, MetricResult | Error>();
-  for (const [index, widgets] of batches.entries()) {
-    const result = results[String(index)];
+  for (const { signature, widgets, canSplit } of requests) {
+    const result = results[signature];
     if (result instanceof Error) {
-      for (const widget of widgets) byWidget.set(widget.key, result);
+      if (!canSplit) {
+        for (const widget of widgets) byWidget.set(widget.key, result);
+      }
     } else {
       for (const item of result ?? []) byWidget.set(item.key, item.result);
     }
@@ -414,9 +448,10 @@ export function DashboardGrid({
     () => new Map((customMetrics ?? []).map((metric) => [String(metric.id), metric] as const)),
     [customMetrics],
   );
+  const customMetricsLoading = !publicAccess && customMetrics === undefined;
   const metricBatches = useMemo(
-    () => groupMetricBatches(widgets, range),
-    [range, widgets],
+    () => groupMetricBatches(widgets, range, customMetricsById, customMetricsLoading),
+    [customMetricsById, customMetricsLoading, range, widgets],
   );
   const metricResults = useMetricBatches(metricBatches, scope, range, now, publicAccess);
   const financialMetrics = useFinancialMetrics(widgets, scope, range, now, !publicAccess);
