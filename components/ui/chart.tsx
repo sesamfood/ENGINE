@@ -3,6 +3,7 @@
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 
 import { cn } from "@/lib/utils"
 
@@ -25,6 +26,8 @@ export type ChartConfig = Record<
 
 type ChartContextProps = {
   config: ChartConfig
+  chartId: string
+  chartElement: HTMLDivElement | null
 }
 
 const ChartContext = React.createContext<ChartContextProps | null>(null)
@@ -45,6 +48,7 @@ function ChartContainer({
   children,
   config,
   initialDimension = INITIAL_DIMENSION,
+  ref,
   ...props
 }: React.ComponentProps<"div"> & {
   config: ChartConfig
@@ -58,10 +62,17 @@ function ChartContainer({
 }) {
   const uniqueId = React.useId()
   const chartId = `chart-${id ?? uniqueId.replace(/:/g, "")}`
+  const [chartElement, setChartElement] = React.useState<HTMLDivElement | null>(null)
+  const setChartRef = React.useCallback((element: HTMLDivElement | null) => {
+    setChartElement(element)
+    if (typeof ref === "function") return ref(element)
+    if (ref) ref.current = element
+  }, [ref])
 
   return (
-    <ChartContext.Provider value={{ config }}>
+    <ChartContext.Provider value={{ config, chartId, chartElement }}>
       <div
+        ref={setChartRef}
         data-slot="chart"
         data-chart={chartId}
         className={cn(
@@ -114,7 +125,57 @@ ${colorConfig
   )
 }
 
-const ChartTooltip = RechartsPrimitive.Tooltip
+function ChartTooltip(props: React.ComponentProps<typeof RechartsPrimitive.Tooltip>) {
+  const { chartElement, chartId } = useChart()
+  const coordinate = RechartsPrimitive.useActiveTooltipCoordinate()
+  const chartWidth = RechartsPrimitive.useChartWidth()
+  const chartHeight = RechartsPrimitive.useChartHeight()
+  const active = RechartsPrimitive.useIsTooltipActive()
+  const [portal, setPortal] = React.useState<HTMLDivElement | null>(null)
+  const x = props.position?.x ?? coordinate?.x ?? 0
+  const y = props.position?.y ?? coordinate?.y ?? 0
+  const anchor = React.useMemo(() => ({
+    contextElement: chartElement ?? undefined,
+    getBoundingClientRect() {
+      const wrapper = chartElement?.querySelector<HTMLElement>(".recharts-wrapper") ?? chartElement
+      const rect = wrapper?.getBoundingClientRect()
+      return new DOMRect(
+        (rect?.left ?? 0) + x * (rect?.width ?? 0) / Math.max(chartWidth ?? 1, 1),
+        (rect?.top ?? 0) + y * (rect?.height ?? 0) / Math.max(chartHeight ?? 1, 1),
+        0,
+        0,
+      )
+    },
+  }), [chartElement, chartWidth, chartHeight, x, y])
+
+  if (props.portal) return <RechartsPrimitive.Tooltip {...props} />
+
+  return (
+    <>
+      <RechartsPrimitive.Tooltip
+        {...props}
+        portal={portal}
+        wrapperStyle={{ pointerEvents: "none", ...props.wrapperStyle }}
+      />
+      <TooltipPrimitive.Root open={props.active ?? active}>
+        <TooltipPrimitive.Portal keepMounted>
+          <TooltipPrimitive.Positioner
+            anchor={anchor}
+            positionMethod="fixed"
+            side="right"
+            align="start"
+            sideOffset={typeof props.offset === "number" ? props.offset : props.offset?.x ?? 10}
+            alignOffset={typeof props.offset === "number" ? props.offset : props.offset?.y ?? 10}
+            collisionBoundary={[]}
+            className="pointer-events-none isolate z-50"
+          >
+            <TooltipPrimitive.Popup ref={setPortal} data-chart={chartId} />
+          </TooltipPrimitive.Positioner>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
+    </>
+  )
+}
 
 function ChartTooltipContent({
   active,

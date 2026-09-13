@@ -245,6 +245,7 @@ export function WidgetCard({
     if (!card || !grid) return;
     event.preventDefault();
     event.stopPropagation();
+    event.currentTarget.focus();
     const gridStyle = window.getComputedStyle(grid);
     const columns = Math.max(1, gridStyle.gridTemplateColumns.split(" ").filter(Boolean).length);
     const columnGap = Number.parseFloat(gridStyle.columnGap) || 0;
@@ -311,13 +312,13 @@ export function WidgetCard({
       editable && "select-none",
       (resizing || resizeActive) && "border-primary shadow-md ring-2 ring-primary/20",
     )}>
-      <CardHeader className={cn("gap-0 pb-1", compactLive && "pb-0")}>
+      <CardHeader className={cn("shrink-0 gap-0 pb-1", compactLive && "pb-0")}>
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-            <CardTitle className={cn("min-w-0 flex-1 basis-28 text-base", hasSourceSuffix ? "flex flex-wrap items-baseline gap-x-1" : "truncate")}>
+            <CardTitle title={metricLabel} className={cn("min-w-0 flex-1 basis-28 text-base", hasSourceSuffix ? "flex flex-wrap items-baseline gap-x-1" : "truncate")}>
               {hasSourceSuffix ? <>
-                <span>{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
-                <span translate="no" className="text-sm font-normal whitespace-nowrap tracking-normal">{sourceSuffix.trimStart()}</span>
+                <span className="max-w-full truncate">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
+                <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
             {change !== null || result?.truncated || hasFreshness ? (

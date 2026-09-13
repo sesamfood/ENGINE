@@ -8,6 +8,7 @@ import {
   Line,
   XAxis,
   YAxis,
+  useChartWidth,
 } from "recharts";
 import {
   ChartContainer,
@@ -16,7 +17,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import type { MetricResult } from "@/lib/dashboard/types";
+import { DEFAULT_CURRENCY, type MetricResult } from "@/lib/dashboard/types";
 import {
   chartDateTicks,
   chartModel,
@@ -34,6 +35,61 @@ export type TimeSeriesProps = {
   yAxisMin?: number;
   yAxisMax?: number;
 };
+
+function TimeSeriesAxes({
+  result,
+  compact,
+  domain,
+  ticks,
+}: {
+  result: MetricResult;
+  compact: boolean;
+  domain: ReturnType<typeof chartValueDomain>;
+  ticks: ReturnType<typeof chartDateTicks>;
+}) {
+  const chartWidth = useChartWidth() ?? 320;
+  const narrow = chartWidth < 240;
+  const numberFormat = new Intl.NumberFormat("da-DK", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+    ...(result.unit === "currency" && {
+      style: "currency",
+      currency: result.currency ?? DEFAULT_CURRENCY,
+      maximumFractionDigits: 0,
+    }),
+  });
+  const formatTick = (value: number) => {
+    if (!narrow) return formatMetricValue(value, result);
+    const label = numberFormat.format(value);
+    if (result.unit === "percent") return `${label} %`;
+    if (result.unit === "hours") return `${label} t`;
+    return label;
+  };
+  return (
+    <>
+      <XAxis
+        hide={compact}
+        dataKey="t"
+        ticks={ticks}
+        interval="preserveStartEnd"
+        tickFormatter={narrow ? (timestamp) => new Intl.DateTimeFormat("da-DK", { day: "numeric", month: "numeric" }).format(timestamp) : shortDate}
+        tickLine={false}
+        axisLine={false}
+        minTickGap={8}
+        tick={{ fontSize: narrow ? 10 : undefined }}
+      />
+      <YAxis
+        hide={compact}
+        width={Math.min(chartYAxisWidth(domain, result), chartWidth * 0.4)}
+        domain={domain}
+        tickFormatter={(value) => formatTick(Number(value))}
+        tickLine={false}
+        axisLine={false}
+        tick={{ fontSize: narrow ? 10 : undefined }}
+      />
+    </>
+  );
+}
 
 export function TimeSeriesVisualization({
   variant,
@@ -67,23 +123,11 @@ export function TimeSeriesVisualization({
         }
       >
         <CartesianGrid vertical={false} />
-        <XAxis
-          hide={compact}
-          dataKey="t"
-          ticks={chartDateTicks(model.data)}
-          interval="preserveStartEnd"
-          tickFormatter={shortDate}
-          tickLine={false}
-          axisLine={false}
-          minTickGap={8}
-        />
-        <YAxis
-          hide={compact}
-          width={chartYAxisWidth(domain, result)}
+        <TimeSeriesAxes
+          result={result}
+          compact={compact}
           domain={domain}
-          tickFormatter={(value) => formatMetricValue(Number(value), result)}
-          tickLine={false}
-          axisLine={false}
+          ticks={chartDateTicks(model.data)}
         />
         <ChartTooltip
           cursor={variant !== "bar"}
@@ -97,7 +141,11 @@ export function TimeSeriesVisualization({
           }
         />
         {!compact && result.series.length > 1 ? (
-          <ChartLegend content={<ChartLegendContent />} />
+          <ChartLegend
+            content={
+              <ChartLegendContent className="max-h-16 flex-wrap gap-x-3 gap-y-1 overflow-x-hidden overflow-y-auto pt-2 [&>div]:min-w-0 [&>div]:max-w-full [&>div]:wrap-anywhere" />
+            }
+          />
         ) : null}
         {model.keys.map((key) =>
           variant === "area" ? (

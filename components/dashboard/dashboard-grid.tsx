@@ -511,7 +511,7 @@ export function DashboardGrid({
             : undefined;
           const customVisualizations = customMetric
             ? (customMetric.spec.kind === "ratio" ? ratioMetricVisualizations : customMetricVisualizations)
-                .filter((value) => Boolean(customMetric.spec.dimension) || (value !== "list" && value !== "table"))
+                .filter((value) => Boolean(customMetric.spec.dimension) || (value !== "donut" && value !== "list" && value !== "table"))
             : undefined;
           return (
             <DraggableWidget

@@ -6,6 +6,7 @@ import { ListVisualization } from "@/components/dashboard/visualizations/list";
 import { TableVisualization } from "@/components/dashboard/visualizations/table";
 import { Empty, EmptyDescription } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import type { MetricResult, VisualizationId } from "./types";
 
 export type VisualizationProps = {
@@ -68,10 +69,10 @@ function withEmptyState(Visualization: ComponentType<VisualizationProps>) {
     if (props.result.partialMessage !== undefined) {
       return createElement(
         "div",
-        { className: "flex h-full min-h-0 min-w-0 flex-col gap-1" },
+        { className: "flex h-full min-h-0 min-w-0 flex-col gap-1 overflow-auto" },
         createElement(
           "div",
-          { className: "min-h-0 min-w-0 flex-1" },
+          { className: cn("min-h-32 min-w-0 flex-1", props.compact && "min-h-16") },
           createElement(Visualization, props),
         ),
         createElement(
