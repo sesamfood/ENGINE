@@ -13,19 +13,19 @@ import { formatMetricValue } from "./utils";
 export function TableVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
   const rows = result.breakdown ?? result.series.map((series) => ({ key: series.key, label: series.label, value: series.total }));
   return (
-    <div className="h-full min-h-0 overflow-auto">
-      <Table className={cn("w-full table-fixed", compact && "text-xs")}>
+    <div className="@container h-full min-h-0 overflow-auto">
+      <Table className={cn("w-full table-auto @max-[12rem]:text-xs @max-[12rem]:[&_th]:px-1 @max-[12rem]:[&_td]:px-1", compact && "text-xs")}>
         <TableHeader className={cn(compact && "sr-only")}>
           <TableRow>
             <TableHead>Navn</TableHead>
-            <TableHead className="text-right">Værdi</TableHead>
+            <TableHead className="w-px text-right">Værdi</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.slice(0, 20).map((row) => (
             <TableRow key={row.key}>
-              <TableCell className={cn("max-w-0 truncate font-medium", compact && "py-1.5")}>{row.label}</TableCell>
-              <TableCell className={cn("text-right tabular-nums", compact && "py-1.5")}>{formatMetricValue(row.value, result)}</TableCell>
+              <TableCell title={row.label} className={cn("max-w-0 truncate font-medium", compact && "py-1.5")}>{row.label}</TableCell>
+              <TableCell className={cn("w-px text-right whitespace-nowrap tabular-nums", compact && "py-1.5")}>{formatMetricValue(row.value, result)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

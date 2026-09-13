@@ -20,23 +20,19 @@ export function KpiVisualization({
 }) {
   const value = total(result);
   const label = formatMetricValue(value, result);
-  const fontSize = `clamp(1.5rem, ${24 / Math.max(label.length, 1)}rem, 3rem)`;
+  const fontSize = `clamp(1rem, ${160 / Math.max(label.length, 1)}cqw, 3rem)`;
   const visibleSeries = result.series.slice(0, compact ? 2 : 3);
   const hiddenSeries = result.series.length - visibleSeries.length;
   return (
-    <div className="flex h-full min-w-0 flex-col justify-end gap-2 overflow-hidden">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto [container-type:inline-size]">
       <p
-        className={
-          compact
-            ? "max-w-full truncate font-semibold leading-none tracking-tight tabular-nums"
-            : "max-w-full truncate font-semibold tracking-tight tabular-nums"
-        }
+        className="mt-auto shrink-0 whitespace-nowrap font-semibold leading-tight tracking-tight tabular-nums"
         style={{ fontSize }}
       >
         {label}
       </p>
       {result.series.length > 1 ? (
-        <div className="flex min-h-0 min-w-0 flex-col items-start gap-1 overflow-hidden text-xs text-muted-foreground">
+        <div className="flex min-w-0 shrink-0 flex-col items-start gap-1 text-xs text-muted-foreground">
           <div className="flex min-w-0 max-w-full flex-col gap-1 overflow-hidden">
             {visibleSeries.map((series) => (
               <div

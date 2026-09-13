@@ -1,11 +1,12 @@
 import type { MetricResult } from "@/lib/dashboard/types";
+import { cn } from "@/lib/utils";
 import { formatMetricValue } from "./utils";
 
 export function ListVisualization({ result, compact = false }: { result: MetricResult; compact?: boolean }) {
   const rows = result.breakdown ?? result.series.map((series) => ({ key: series.key, label: series.label, value: series.total }));
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1">
-      <ol className={compact ? "flex min-h-0 flex-1 flex-col gap-1 overflow-auto pr-1 text-xs" : "flex min-h-0 flex-1 flex-col gap-2 overflow-auto pr-1"}>
+    <div className="flex h-full min-h-0 flex-col gap-1 overflow-auto pr-1">
+      <ol className={cn("flex shrink-0 flex-col gap-2", compact && "gap-1 text-xs")}>
         {rows.slice(0, 10).map((row, index) => (
           <li key={row.key} className="flex items-center gap-3 text-sm">
             <span className="w-5 text-xs tabular-nums text-muted-foreground">{index + 1}</span>

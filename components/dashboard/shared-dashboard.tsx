@@ -165,7 +165,7 @@ function SharedDashboardContent({ token }: { token: string }) {
 
   return (
     <main className="min-h-screen bg-muted/25 px-4 py-8 sm:px-6 lg:px-10">
-      <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
+      <section className="mx-auto flex w-full max-w-[120rem] flex-col gap-6">
         <header className="flex flex-col gap-2">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary">Delt dashboard</p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{meta.name}</h1>

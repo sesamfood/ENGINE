@@ -65,7 +65,7 @@
 @media (min-width: 40rem) {
   .dashboard-grid {
     --dashboard-visible-columns: 2;
-    grid-auto-rows: calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns) * 0.8);
+    grid-auto-rows: max(12rem, calc((100cqw - (var(--dashboard-visible-columns) - 1) * 1rem) / var(--dashboard-visible-columns) * 0.8));
   }
 }
 
