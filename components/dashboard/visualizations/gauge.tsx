@@ -27,7 +27,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
       <div
         className={cn(
           "@container h-full min-h-0 overflow-auto",
-          single ? "flex flex-col" : "grid auto-rows-max content-start gap-x-4 gap-y-3",
+          single ? "flex flex-col" : "grid auto-rows-max content-center-safe gap-x-4 gap-y-3",
           !single && (compact
             ? "grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))]"
             : "grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]"),
