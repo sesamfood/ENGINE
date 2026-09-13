@@ -19,6 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
+import { metricRegistry } from "@/lib/dashboard/registry";
 import { rangePresets, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
@@ -281,11 +282,12 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       } catch {
         return;
       }
+      setManualNow(Date.now());
+      if (!canManageIntegrations) return;
       const result = await requestDataSync({
         dashboardId: dashboard.id,
         scope: currentScope,
       });
-      setManualNow(Date.now());
       const states = [result.onlinePos, result.workfeed].flatMap((source) =>
         source ? [source.state] : [],
       );
@@ -367,7 +369,8 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
             <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button>
           ) : null}
-          {canManageIntegrations ? (
+          {canManageIntegrations || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
+            && dashboard.widgets.some((widget) => widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].source === "economic")) ? (
             <Button type="button" size="lg" variant="outline" className="min-h-11" disabled={updatingData} onClick={() => void updateDashboardData()}>
               {updatingData ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
               {updatingData ? "Opdaterer" : "Opdatér"}

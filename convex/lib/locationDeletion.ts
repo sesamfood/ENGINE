@@ -259,6 +259,24 @@ export async function deleteLocationWithAuth(
         )
         .first(),
       ctx.db
+        .query("monthlyKpiActuals")
+        .withIndex("by_organizationId_and_locationId_and_month_and_revision", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("economicApprovals")
+        .withIndex("by_organizationId_and_locationId_and_month_and_revision", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
+        .query("economicLocationMappings")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
         .query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId_and_locationId", (q) =>
           q.eq("organizationId", organizationId).eq("locationId", location._id),

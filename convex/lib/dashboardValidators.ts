@@ -5,6 +5,14 @@ export { salesSourceValidator } from "./woltValidators";
 
 export const metricIdValidator = v.union(
   v.literal("googleRating"),
+  v.literal("cogsPercent"),
+  v.literal("labourPercent"),
+  v.literal("grossMarginPercent"),
+  v.literal("wastePercent"),
+  v.literal("rentPercent"),
+  v.literal("utilitiesPercent"),
+  v.literal("primeCostPercent"),
+  v.literal("ebitdaPercent"),
   v.literal("wasteQuantity"),
   v.literal("wasteRegistrations"),
   v.literal("topWastedProducts"),

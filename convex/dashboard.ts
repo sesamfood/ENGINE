@@ -155,6 +155,9 @@ function canViewBuiltinMetric(
   salesSource?: SalesSource,
 ) {
   const definition = metricRegistry[metricId];
+  if (definition.source === "economic") {
+    return auth.granularity === "detail" && hasPermission(auth.role, auth.permissions, "dashboard.viewFinancials");
+  }
   if (definition.live && auth.granularity !== "detail") return false;
   if (!definition.sensitive) return true;
   const usesWolt =

@@ -30,6 +30,7 @@ export function TableVisualization({ result, compact = false }: { result: Metric
           ))}
         </TableBody>
       </Table>
+      {rows.length > 20 ? <p role="status" className="py-1 text-xs text-muted-foreground">Viser 20 af {rows.length} grupper.</p> : null}
     </div>
   );
 }

@@ -200,6 +200,11 @@ export function WidgetCard({
   const definition = widget.metric.kind === "builtin"
     ? metricRegistry[widget.metric.id]
     : undefined;
+  const financial = definition?.source === "economic";
+  const financialRange = widget.range ? { preset: widget.range } : range;
+  const availableRangeOptions = financial
+    ? widgetRangeOptions.filter((option) => option.value === "board" || option.value === "thisMonth")
+    : widgetRangeOptions;
   const metricLabel = customMetricLabel ?? definition?.label ?? "Tilpasset måling";
   const sourceSuffix = definition?.live ? ` (${definition.live.sourceLabel})` : "";
   const hasSourceSuffix = Boolean(sourceSuffix) && metricLabel.endsWith(sourceSuffix);
@@ -211,15 +216,15 @@ export function WidgetCard({
     : definition?.id === "woltCancellationRate"
       ? "wolt" as const
       : undefined;
-  const current = result ? total(result) : null;
-  const previous = result ? previousTotal(result) : null;
+  const current = result && result.emptyMessage === undefined && result.series.length > 0 ? total(result) : null;
+  const previous = result && result.emptyMessage === undefined && result.series.length > 0 ? previousTotal(result) : null;
   const freshness = result?.freshness;
   const hasFreshness = Boolean(freshness);
-  const change = !definition?.live && current !== null && previous !== null && previous !== 0
-    ? ((current - previous) / Math.abs(previous)) * 100
+  const change = !definition?.live && current !== null && previous !== null && (financial || previous !== 0)
+    ? financial ? current - previous : ((current - previous) / Math.abs(previous)) * 100
     : null;
 
-  const comparisonLabel = range?.preset === "today"
+  const comparisonLabel = financial ? "den foregående måned" : range?.preset === "today"
     ? "i går"
     : range?.preset === "yesterday"
       ? "dagen før"
@@ -324,13 +329,13 @@ export function WidgetCard({
                         variant="secondary"
                         className={cn(
                           "max-w-full",
-                          change >= 0
+                          !financial && (change >= 0
                             ? "bg-primary/10 text-primary"
-                            : "bg-destructive/10 text-destructive",
+                            : "bg-destructive/10 text-destructive"),
                         )}
                       >
                         {change >= 0 ? <ArrowUpRightIcon /> : <ArrowDownRightIcon />}
-                        <span className="truncate">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} %</span>
+                        <span className="truncate">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} {financial ? "procentpoint" : "%"}</span>
                       </Badge>
                     </TooltipTrigger>
                     <TooltipContent>Sammenlignet med {comparisonLabel}</TooltipContent>
@@ -466,7 +471,7 @@ export function WidgetCard({
                       </Select>
                     ) : null}
                     {!definition?.live ? <Select
-                      items={widgetRangeOptions}
+                      items={availableRangeOptions}
                       value={widget.range ?? "board"}
                       onValueChange={(value) => onRangeChange?.(value === "board" ? undefined : value as WidgetRangePreset)}
                     >
@@ -475,7 +480,7 @@ export function WidgetCard({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          {widgetRangeOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                          {availableRangeOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                         </SelectGroup>
                       </SelectContent>
                     </Select> : null}
@@ -489,6 +494,8 @@ export function WidgetCard({
           ) : null}
         </div>
         {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
+        {financial ? <CardDescription>e-conomic · {financialRange?.preset === "thisMonth" ? "Denne måned"
+          : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
       </CardHeader>
       <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-0", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-9")}>
         {salesSource === "combined" ? (

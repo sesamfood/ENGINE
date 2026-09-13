@@ -37,6 +37,7 @@ import {
 import type { DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
 import { useLiveMetrics, type LiveMetricState } from "./use-live-metrics";
+import { useFinancialMetrics } from "./use-financial-metrics";
 import type { YAxisValues } from "./y-axis-settings";
 
 const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
@@ -73,7 +74,7 @@ function groupMetricBatches(
 ) {
   const groups = new Map<string, WidgetInstance[]>();
   for (const widget of widgets) {
-    if (widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].live) continue;
+    if (widget.metric.kind === "builtin" && (metricRegistry[widget.metric.id].live || metricRegistry[widget.metric.id].source === "economic")) continue;
     const key = metricBatchKey(widget, defaultRange);
     groups.set(key, [...(groups.get(key) ?? []), widget]);
   }
@@ -418,6 +419,8 @@ export function DashboardGrid({
     [range, widgets],
   );
   const metricResults = useMetricBatches(metricBatches, scope, range, now, publicAccess);
+  const financialMetrics = useFinancialMetrics(widgets, scope, range, now, !publicAccess);
+  for (const [key, result] of financialMetrics) metricResults.set(key, result);
   const liveMetrics = useLiveMetrics(widgets, scope, !publicAccess);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
