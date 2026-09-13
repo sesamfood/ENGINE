@@ -353,6 +353,41 @@ export default defineSchema({
       "locationId",
     ]),
 
+  invoices: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    title: v.string(),
+    soldAt: v.number(),
+    comment: v.optional(v.string()),
+    receiptStorageId: v.optional(v.id("_storage")),
+    registeredBy: v.string(),
+    registeredByName: v.string(),
+    itemCount: v.number(),
+    clientRequestId: v.string(),
+    requestPayload: v.string(),
+  })
+    .index("by_organizationId_and_soldAt", ["organizationId", "soldAt"])
+    .index("by_organizationId_and_locationId_and_soldAt", [
+      "organizationId", "locationId", "soldAt",
+    ])
+    .index("by_organizationId_and_registeredBy_and_clientRequestId", [
+      "organizationId", "registeredBy", "clientRequestId",
+    ])
+    .index("by_receiptStorageId", ["receiptStorageId"]),
+
+  invoiceItems: defineTable({
+    organizationId: v.string(),
+    invoiceId: v.id("invoices"),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitId: v.id("units"),
+    unitName: v.string(),
+    quantity: v.number(),
+    menuId: v.optional(v.id("onlinePosMenus")),
+    menuName: v.optional(v.string()),
+  }).index("by_organizationId_and_invoiceId", ["organizationId", "invoiceId"]),
+
   salesOrders: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),

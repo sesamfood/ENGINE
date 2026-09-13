@@ -91,6 +91,13 @@ export const permissionCatalog = [
     ],
   },
   {
+    group: "Faktura",
+    permissions: [
+      { id: "invoices.view", label: "Se registrerede kvitteringer" },
+      { id: "invoices.manage", label: "Registrere salg fra kvitteringer" },
+    ],
+  },
+  {
     group: "Varemodtagelse",
     permissions: [
       {

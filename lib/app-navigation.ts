@@ -33,6 +33,10 @@ const routes: Record<SidebarItemId, readonly Route[]> = {
     { href: "/transfers", permission: "transfers.manage" },
     { href: "/transfers/history", permission: "transfers.view" },
   ],
+  invoices: [
+    { href: "/invoices", permission: "invoices.manage" },
+    { href: "/invoices/history", permission: "invoices.view" },
+  ],
   goodsReceipts: [
     { href: "/goods-receipts", permission: "goodsReceipts.register" },
   ],
@@ -116,6 +120,7 @@ export function homeDestination(
     "dashboard",
     "woltOrders",
     "transfers",
+    "invoices",
     "goodsReceipts",
     "waste",
     "ownChecks",

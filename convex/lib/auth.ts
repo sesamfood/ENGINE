@@ -519,6 +519,20 @@ export async function requireGoodsReceiptRegistrar(ctx: AuthContext) {
   return auth;
 }
 
+export async function requireInvoiceManager(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "invoices.new",
+) {
+  return await requirePermission(ctx, "invoices.manage", page);
+}
+
+export async function requireInvoiceViewer(
+  ctx: AuthContext,
+  page: KioskDestinationId | readonly KioskDestinationId[] = "invoices.history",
+) {
+  return await requirePermission(ctx, "invoices.view", page);
+}
+
 export async function requireGoodsReceiptSettings(ctx: AuthContext) {
   const auth = await requirePermission(ctx, "goodsReceipts.settings");
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
