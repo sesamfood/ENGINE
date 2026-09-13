@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -24,20 +24,24 @@ export function LoginForm({
   deleted: boolean;
 }) {
   const router = useRouter();
-  const [error, setError] = useState<string>();
-  const [pending, setPending] = useState(false);
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, formAction, pending] = useActionState(submit, undefined);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(undefined);
-    setPending(true);
-
+  async function submit(
+    _previousError: string | undefined,
+    form: FormData,
+  ): Promise<string | undefined> {
     try {
-      const form = new FormData(event.currentTarget);
-      const identifier = String(form.get("identifier")).trim();
+      const enteredIdentifier = String(form.get("identifier"));
+      const password = String(form.get("password"));
+      // Preserve autofill and submissions captured before hydration on failure.
+      setIdentifier(enteredIdentifier);
+      setPassword(password);
+      const identifier = enteredIdentifier.trim();
       const destination = redirectTo;
       const credentials = {
-        password: String(form.get("password")),
+        password,
         callbackURL: `${window.location.origin}${destination}`,
       };
       const result = identifier.includes("@")
@@ -45,14 +49,11 @@ export function LoginForm({
         : await authClient.signIn.username({ username: identifier, ...credentials });
 
       if (result.error) {
-        setError(
-          result.error.code === "EMAIL_NOT_VERIFIED"
-            ? "Bekræft din e-mail, før du logger ind. Vi har sendt et nyt link."
-            : identifier.includes("@")
-              ? "E-mail eller adgangskode er forkert."
-              : "Brugernavn eller adgangskode er forkert. Har du glemt adgangskoden, skal du kontakte en bruger med rollen Administrator.",
-        );
-        return;
+        return result.error.code === "EMAIL_NOT_VERIFIED"
+          ? "Bekræft din e-mail, før du logger ind. Vi har sendt et nyt link."
+          : identifier.includes("@")
+            ? "E-mail eller adgangskode er forkert."
+            : "Brugernavn eller adgangskode er forkert. Har du glemt adgangskoden, skal du kontakte en bruger med rollen Administrator.";
       }
 
       const userId = result.data?.user?.id;
@@ -66,22 +67,12 @@ export function LoginForm({
       router.replace(destination);
       router.refresh();
     } catch {
-      setError(
-        "Login kunne ikke gennemføres. Kontrollér forbindelsen og prøv igen.",
-      );
-    } finally {
-      setPending(false);
+      return "Login kunne ikke gennemføres. Kontrollér forbindelsen og prøv igen.";
     }
   }
 
   return (
-    <form
-      action="/api/auth/sign-in/email"
-      method="post"
-      onSubmit={submit}
-      className="flex flex-col gap-5"
-    >
-      <input type="hidden" name="callbackURL" value={redirectTo} />
+    <form action={formAction} className="flex flex-col gap-5">
       {verified ? (
         <Alert>
           <AlertDescription>
@@ -101,7 +92,7 @@ export function LoginForm({
           <AlertDescription>Din konto er slettet.</AlertDescription>
         </Alert>
       ) : null}
-      {error ? (
+      {error && !pending ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -114,6 +105,8 @@ export function LoginForm({
             name="identifier"
             type="text"
             autoComplete="username"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
             required
           />
         </Field>
@@ -123,6 +116,8 @@ export function LoginForm({
             id="password"
             name="password"
             autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
             required
           />
         </Field>
