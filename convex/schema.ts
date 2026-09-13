@@ -1035,6 +1035,7 @@ export default defineSchema({
     organizationId: v.string(),
     tierId: v.id("staffFoodRuleTiers"),
     categoryId: v.id("categories"),
+    categoryIds: v.optional(v.array(v.id("categories"))),
     amount: v.number(),
   })
     .index("by_organizationId_and_tierId", ["organizationId", "tierId"])
