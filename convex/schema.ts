@@ -389,6 +389,7 @@ export default defineSchema({
     quantity: v.number(),
     menuId: v.optional(v.id("onlinePosMenus")),
     menuName: v.optional(v.string()),
+    menuInstanceId: v.optional(v.string()),
     menuGroupId: v.optional(v.string()),
     menuGroupTitle: v.optional(v.string()),
     menuQuantity: v.optional(v.number()),

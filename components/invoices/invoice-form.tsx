@@ -65,6 +65,7 @@ type InvoiceLine = {
   units: Array<{ id: Id<"units">; name: string }>;
   quantity: string;
   menuId?: Id<"onlinePosMenus">;
+  menuInstanceId?: string;
   menuGroupId?: string;
   menuName?: string;
 };
@@ -80,7 +81,7 @@ function rebalanceMenuGroup(
 ) {
   const others = lines.filter(
     (line) =>
-      line.menuId === selected.menuId &&
+      line.menuInstanceId === selected.menuInstanceId &&
       line.menuGroupId === selected.menuGroupId &&
       line.key !== selected.key,
   );
@@ -219,7 +220,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       if (failedAutoChoices.keys.includes(choice.key)) continue;
       const selected = lines.filter(
         (line) =>
-          line.menuId === choice.menu.id &&
+          line.menuInstanceId === choice.menu.key &&
           line.menuGroupId === choice.group.id,
       );
       if (selected.some((line) => line.productId !== choice.productId))
@@ -270,7 +271,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
           const { choice, product, unit } = result.value;
           const selected = next.filter(
             (line) =>
-              line.menuId === choice.menu.id &&
+              line.menuInstanceId === choice.menu.key &&
               line.menuGroupId === choice.group.id,
           );
           if (selected.some((line) => line.productId !== choice.productId))
@@ -286,12 +287,13 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
             units: product.units,
             quantity: String(choice.group.quantity),
             menuId: choice.menu.id,
+            menuInstanceId: choice.menu.key,
             menuName: choice.menu.name,
             menuGroupId: choice.group.id,
           };
           next = first
             ? next.flatMap((item) =>
-                item.menuId === choice.menu.id &&
+                item.menuInstanceId === choice.menu.key &&
                 item.menuGroupId === choice.group.id
                   ? item.key === first.key
                     ? [line]
@@ -332,7 +334,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   }, [autoScope, convex, pendingAutoChoices, loadingProduct, isSaving]);
   const addedProductIds = new Set(
     lines
-      .filter((line) => line.menuId === undefined)
+      .filter((line) => line.menuInstanceId === undefined)
       .map((line) => line.productId),
   );
   const productOptions = availableProducts
@@ -345,7 +347,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   const menuOptions = (menus ?? [])
     .filter(
       (menu) =>
-        !menuRows.some((row) => row.id === menu.id) &&
+        menuRows.length < MAX_LINES &&
         menu.name
           .toLocaleLowerCase("da")
           .includes(productSearch.trim().toLocaleLowerCase("da")) &&
@@ -357,7 +359,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   const lineGroups = Array.from(
     lines
       .reduce((groups, line) => {
-        const key = `${line.productId}:${line.menuId ?? ""}`;
+        const key = `${line.productId}:${line.menuInstanceId ?? ""}`;
         const group = groups.get(key);
         if (group) group.push(line);
         else groups.set(key, [line]);
@@ -368,16 +370,18 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
 
   async function addProduct(
     value: string | null,
-    menuId?: Id<"onlinePosMenus">,
+    menuInstanceId?: string,
     menuGroupId?: string,
   ) {
     const option = products?.find((product) => product.id === value);
-    const menu = menuRows.find((row) => row.id === menuId);
+    const menu = menuRows.find((row) => row.key === menuInstanceId);
     const menuGroup = menus
-      ?.find((option) => option.id === menuId)
+      ?.find((option) => option.id === menu?.id)
       ?.groups.find((group) => group.id === menuGroupId);
     const groupLines = lines.filter(
-      (line) => line.menuId === menuId && line.menuGroupId === menuGroupId,
+      (line) =>
+        line.menuInstanceId === menuInstanceId &&
+        line.menuGroupId === menuGroupId,
     );
     const replacesGroup = menuGroup?.quantity === 1 && groupLines.length > 0;
     if (
@@ -385,7 +389,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       adding.current ||
       saving.current ||
       autoAdding ||
-      (menuId !== undefined &&
+      (menuInstanceId !== undefined &&
         (!menu ||
           !menuGroup ||
           !menuGroup.productIds.includes(option.id) ||
@@ -395,9 +399,10 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
             Number(groupLines[0].quantity) === menuGroup.quantity) ||
           (menuGroup.quantity > 1 &&
             groupLines.some((line) => line.productId === option.id)))) ||
-      (menuId === undefined &&
+      (menuInstanceId === undefined &&
         lines.some(
-          (line) => line.productId === value && line.menuId === undefined,
+          (line) =>
+            line.productId === value && line.menuInstanceId === undefined,
         )) ||
       productAccess === undefined ||
       (allowedProductIds !== null && !allowedProductIds.has(option.id)) ||
@@ -429,7 +434,12 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
         units: product.units,
         quantity: "1",
         ...(menu && menuGroup
-          ? { menuId: menu.id, menuName: menu.name, menuGroupId: menuGroup.id }
+          ? {
+              menuId: menu.id,
+              menuInstanceId: menu.key,
+              menuName: menu.name,
+              menuGroupId: menuGroup.id,
+            }
           : {}),
       };
       setLines((current) => {
@@ -437,7 +447,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
           if (
             current.length >= MAX_LINES ||
             current.some(
-              (line) => line.productId === product.id && !line.menuId,
+              (line) => line.productId === product.id && !line.menuInstanceId,
             )
           )
             return current;
@@ -445,14 +455,16 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
         }
         const selected = current.filter(
           (line) =>
-            line.menuId === menu.id && line.menuGroupId === menuGroup.id,
+            line.menuInstanceId === menu.key &&
+            line.menuGroupId === menuGroup.id,
         );
         if (menuGroup.quantity === 1) {
           if (!selected.length && current.length >= MAX_LINES) return current;
           return [
             ...current.filter(
               (line) =>
-                line.menuId !== menu.id || line.menuGroupId !== menuGroup.id,
+                line.menuInstanceId !== menu.key ||
+                line.menuGroupId !== menuGroup.id,
             ),
             newLine,
           ];
@@ -500,23 +512,25 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     for (const menu of menuRows) {
       const quantity = Number(menu.quantity.trim().replace(",", "."));
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10_000) {
-        nextErrors[`menuQuantity:${menu.id}`] =
+        nextErrors[`menuQuantity:${menu.key}`] =
           "Angiv et helt antal menuer mellem 1 og 10.000";
       }
       const currentMenu = menus?.find((option) => option.id === menu.id);
       if (!currentMenu?.groups.length) {
-        nextErrors[`menu:${menu.id}`] =
+        nextErrors[`menu:${menu.key}`] =
           "Menuen har ingen tilgængelige grupper. Fjern menuen og vælg den igen.";
         continue;
       }
       for (const group of currentMenu.groups) {
         const selectedCount = lines
           .filter(
-            (line) => line.menuId === menu.id && line.menuGroupId === group.id,
+            (line) =>
+              line.menuInstanceId === menu.key &&
+              line.menuGroupId === group.id,
           )
           .reduce((sum, line) => sum + Number(line.quantity), 0);
         if (selectedCount !== group.quantity) {
-          nextErrors[`menu:${menu.id}:${group.id}`] =
+          nextErrors[`menu:${menu.key}:${group.id}`] =
             `Vælg præcis ${group.quantity} ${group.quantity === 1 ? "produkt" : "produkter"} i ${group.title}`;
         }
       }
@@ -528,10 +542,16 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     const items = lines.map((line) => {
       const quantity = Number(line.quantity.trim().replace(",", "."));
       if (line.menuId) {
+        const menuRow = menuRows.find(
+          (menu) => menu.key === line.menuInstanceId,
+        );
         const group = menus
           ?.find((menu) => menu.id === line.menuId)
           ?.groups.find((group) => group.id === line.menuGroupId);
-        if (!group?.productIds.includes(line.productId)) {
+        if (
+          menuRow?.id !== line.menuId ||
+          !group?.productIds.includes(line.productId)
+        ) {
           nextErrors[line.key] =
             "Produktvalget findes ikke længere i menuens gruppe. Fjern valget og vælg et produkt igen.";
         }
@@ -554,9 +574,10 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
         ...(line.menuId
           ? {
               menuId: line.menuId,
+              menuInstanceId: line.menuInstanceId,
               menuQuantity: Number(
                 menuRows
-                  .find((menu) => menu.id === line.menuId)
+                  .find((menu) => menu.key === line.menuInstanceId)
                   ?.quantity.trim()
                   .replace(",", "."),
               ),
@@ -636,7 +657,8 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       const next = current.filter((item) => item.key !== line.key);
       const first = next.find(
         (item) =>
-          item.menuId === line.menuId && item.menuGroupId === line.menuGroupId,
+          item.menuInstanceId === line.menuInstanceId &&
+          item.menuGroupId === line.menuGroupId,
       );
       return removed && first && required
         ? rebalanceMenuGroup(
@@ -649,10 +671,11 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     });
   }
 
-  function renderMenuProduct(line: InvoiceLine) {
+  function renderMenuProduct(line: InvoiceLine, menuLabel: string) {
     const selected = lines.filter(
       (item) =>
-        item.menuId === line.menuId && item.menuGroupId === line.menuGroupId,
+        item.menuInstanceId === line.menuInstanceId &&
+        item.menuGroupId === line.menuGroupId,
     );
     const required = menus
       ?.find((menu) => menu.id === line.menuId)
@@ -668,7 +691,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
             variant="ghost"
             size="icon-lg"
             className="size-11"
-            aria-label={`Fjern ${line.productName} fra menuen`}
+            aria-label={`Fjern ${line.productName} fra ${menuLabel}`}
             disabled={loadingProduct || autoAdding || isSaving}
             onClick={() => removeMenuProduct(line)}
           >
@@ -679,7 +702,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
         <Field data-invalid={Boolean(errors[line.key])}>
           <QuantityInput
             id={`${line.key}-quantity`}
-            label={`Mængde for ${line.productName} pr. menu`}
+            label={`Mængde for ${line.productName} pr. menu i ${menuLabel}`}
             value={Number(line.quantity)}
             min={1}
             max={Math.max(1, (required ?? 1) - selected.length + 1)}
@@ -722,11 +745,11 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     const nextUnit = product.units.find((unit) => !usedUnitIds.has(unit.id));
     return (
       <ProductLineGroup
-        key={product.menuId ? product.key : product.productId}
+        key={product.menuInstanceId ? product.key : product.productId}
         productName={product.productName}
         imageUrl={product.imageUrl}
         action={
-          nextUnit && !product.menuId ? (
+          nextUnit && !product.menuInstanceId ? (
             <Button
               type="button"
               variant="outline"
@@ -746,7 +769,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                       !current.some(
                         (line) =>
                           line.productId === product.productId &&
-                          line.menuId === product.menuId &&
+                          line.menuInstanceId === product.menuInstanceId &&
                           line.unitId === unit.id,
                       ),
                   );
@@ -926,11 +949,12 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                         saving.current ||
                         adding.current ||
                         autoAdding ||
-                        lines.length >= MAX_LINES
+                        lines.length >= MAX_LINES ||
+                        menuRows.length >= MAX_LINES
                       )
                         return;
                       setMenuRows((current) =>
-                        current.some((row) => row.id === menu.id)
+                        current.length >= MAX_LINES
                           ? current
                           : [
                               ...current,
@@ -976,14 +1000,15 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
             ) : (
               <ul className="flex flex-col gap-3">
                 {lineGroups
-                  .filter((group) => group[0]?.menuId === undefined)
+                  .filter((group) => group[0]?.menuInstanceId === undefined)
                   .map(renderProductGroup)}
-                {menuRows.map((menu) => {
+                {menuRows.map((menu, index) => {
+                  const menuLabel = `${menu.name}, menu ${index + 1}`;
                   const currentMenu = menus?.find(
                     (option) => option.id === menu.id,
                   );
                   const menuLines = lines.filter(
-                    (line) => line.menuId === menu.id,
+                    (line) => line.menuInstanceId === menu.key,
                   );
                   const ungroupedLines = menuLines.filter(
                     (line) =>
@@ -991,9 +1016,9 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                         (group) => group.id === line.menuGroupId,
                       ),
                   );
-                  const menuError = errors[`menu:${menu.id}`];
+                  const menuError = errors[`menu:${menu.key}`];
                   return (
-                    <li key={menu.id}>
+                    <li key={menu.key}>
                       <Card className="border">
                         <CardHeader>
                           <CardTitle className="flex flex-wrap items-center gap-2">
@@ -1006,16 +1031,16 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                               variant="ghost"
                               size="icon-lg"
                               className="size-11"
-                              aria-label={`Fjern menuen ${menu.name}`}
+                              aria-label={`Fjern ${menuLabel}`}
                               disabled={loadingProduct || isSaving}
                               onClick={() => {
                                 if (saving.current || adding.current) return;
                                 setMenuRows((current) =>
-                                  current.filter((row) => row.id !== menu.id),
+                                  current.filter((row) => row.key !== menu.key),
                                 );
                                 setLines((current) =>
                                   current.filter(
-                                    (line) => line.menuId !== menu.id,
+                                    (line) => line.menuInstanceId !== menu.key,
                                   ),
                                 );
                               }}
@@ -1028,7 +1053,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                           <FieldGroup>
                             <Field
                               data-invalid={Boolean(
-                                errors[`menuQuantity:${menu.id}`],
+                                errors[`menuQuantity:${menu.key}`],
                               )}
                             >
                               <FieldLabel htmlFor={`menu-quantity-${menu.key}`}>
@@ -1036,12 +1061,12 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                               </FieldLabel>
                               <QuantityInput
                                 id={`menu-quantity-${menu.key}`}
-                                label={`Mængde for ${menu.name}`}
+                                label={`Mængde for ${menuLabel}`}
                                 value={menu.quantity}
                                 onValueChange={(quantity) =>
                                   setMenuRows((current) =>
                                     current.map((row) =>
-                                      row.id === menu.id
+                                      row.key === menu.key
                                         ? { ...row, quantity }
                                         : row,
                                     ),
@@ -1051,13 +1076,13 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                 max={10_000}
                                 integer
                                 invalid={Boolean(
-                                  errors[`menuQuantity:${menu.id}`],
+                                  errors[`menuQuantity:${menu.key}`],
                                 )}
                                 disabled={isSaving}
                                 className="w-full sm:w-48"
                               />
                               <FieldError>
-                                {errors[`menuQuantity:${menu.id}`]}
+                                {errors[`menuQuantity:${menu.key}`]}
                               </FieldError>
                             </Field>
                           </FieldGroup>
@@ -1098,7 +1123,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                     ),
                                 );
                             const error =
-                              errors[`menu:${menu.id}:${group.id}`] ??
+                              errors[`menu:${menu.key}:${group.id}`] ??
                               selectedLines
                                 .map((line) => errors[line.key])
                                 .find(Boolean);
@@ -1117,7 +1142,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                       </Badge>
                                     </FieldLabel>
                                     <CreatableCombobox
-                                      key={`${menu.id}:${group.id}:${pickerKey}`}
+                                      key={`${menu.key}:${group.id}:${pickerKey}`}
                                       options={pickerOptions}
                                       value={
                                         pickerOnly
@@ -1129,7 +1154,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                         if (value) {
                                           void addProduct(
                                             value,
-                                            menu.id,
+                                            menu.key,
                                             group.id,
                                           );
                                         } else if (
@@ -1142,14 +1167,15 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                           setLines((current) =>
                                             current.filter(
                                               (line) =>
-                                                line.menuId !== menu.id ||
+                                                line.menuInstanceId !==
+                                                  menu.key ||
                                                 line.menuGroupId !== group.id,
                                             ),
                                           );
                                         }
                                       }}
                                       placeholder="Søg efter produkt eller kategori"
-                                      ariaLabel={`Vælg produkt til ${group.title} i ${menu.name}`}
+                                      ariaLabel={`Vælg produkt til ${group.title} i ${menuLabel}`}
                                       ariaInvalid={Boolean(error)}
                                       disabled={
                                         products === undefined ||
@@ -1173,7 +1199,9 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                 </FieldGroup>
                                 {!pickerOnly && selectedLines.length > 0 ? (
                                   <ul className="flex flex-col gap-3">
-                                    {selectedLines.map(renderMenuProduct)}
+                                    {selectedLines.map((line) =>
+                                      renderMenuProduct(line, menuLabel),
+                                    )}
                                   </ul>
                                 ) : null}
                               </div>
@@ -1181,7 +1209,9 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                           })}
                           {ungroupedLines.length > 0 ? (
                             <ul className="flex flex-col gap-3">
-                              {ungroupedLines.map(renderMenuProduct)}
+                              {ungroupedLines.map((line) =>
+                                renderMenuProduct(line, menuLabel),
+                              )}
                             </ul>
                           ) : null}
                         </CardContent>

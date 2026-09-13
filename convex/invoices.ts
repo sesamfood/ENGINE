@@ -41,6 +41,7 @@ const itemInputValidator = v.object({
   unitId: v.id("units"),
   quantity: v.number(),
   menuId: v.optional(v.id("onlinePosMenus")),
+  menuInstanceId: v.optional(v.string()),
   menuGroupId: v.optional(v.string()),
   menuQuantity: v.optional(v.number()),
 });
@@ -229,6 +230,16 @@ export const create = mutation({
       throw new ConvexError("Tilføj mellem 1 og 100 produktlinjer");
     }
     const items = args.items.map((item) => {
+      if (
+        item.menuInstanceId !== undefined &&
+        (!item.menuId ||
+          !item.menuInstanceId.trim() ||
+          item.menuInstanceId.length > 100)
+      ) {
+        throw new ConvexError(
+          "Menuvalget er ugyldigt. Fjern menuen og tilføj den igen.",
+        );
+      }
       if (item.menuGroupId !== undefined && !item.menuId) {
         throw new ConvexError("Vælg en menu til produktgruppen");
       }
@@ -255,6 +266,7 @@ export const create = mutation({
         unitId: item.unitId,
         quantity,
         menuId: item.menuId,
+        menuInstanceId: item.menuInstanceId,
         menuGroupId: item.menuGroupId,
         menuQuantity: item.menuQuantity,
       };
@@ -321,10 +333,14 @@ export const create = mutation({
     );
     const deductions = new Map<Id<"products">, number>();
     const selectedMenus = new Map<
-      Id<"onlinePosMenus">,
-      ReturnType<typeof menuGroups>
+      string,
+      {
+        menuId: Id<"onlinePosMenus">;
+        instanceId: string | undefined;
+        quantity: number;
+        groups: ReturnType<typeof menuGroups>;
+      }
     >();
-    const selectedMenuQuantities = new Map<Id<"onlinePosMenus">, number>();
     const resolvedItems: Array<
       Omit<Doc<"invoiceItems">, "_id" | "_creationTime" | "invoiceId">
     > = [];
@@ -370,9 +386,9 @@ export const create = mutation({
             "Menuens produktvalg skal bruge produktets standardenhed",
           );
         }
-        selectedMenus.set(menu._id, groups);
+        const menuKey = JSON.stringify([menu._id, item.menuInstanceId ?? null]);
         const menuQuantity = item.menuQuantity ?? 1;
-        const previousQuantity = selectedMenuQuantities.get(menu._id);
+        const previousQuantity = selectedMenus.get(menuKey)?.quantity;
         if (
           previousQuantity !== undefined &&
           previousQuantity !== menuQuantity
@@ -381,7 +397,12 @@ export const create = mutation({
             "Alle produktvalg i en menu skal have samme antal menuer",
           );
         }
-        selectedMenuQuantities.set(menu._id, menuQuantity);
+        selectedMenus.set(menuKey, {
+          menuId: menu._id,
+          instanceId: item.menuInstanceId,
+          quantity: menuQuantity,
+          groups,
+        });
       }
       const totalQuantity = normalizeStock(
         item.quantity * (item.menuQuantity ?? 1),
@@ -420,16 +441,20 @@ export const create = mutation({
         quantity: totalQuantity,
         menuId: menu?._id,
         menuName: menu?.name,
+        menuInstanceId: item.menuInstanceId,
         menuGroupId: group?.id,
         menuGroupTitle: group?.title,
         menuQuantity: menu ? (item.menuQuantity ?? 1) : undefined,
       });
     }
-    for (const [menuId, groups] of selectedMenus) {
-      for (const group of groups) {
+    for (const menu of selectedMenus.values()) {
+      for (const group of menu.groups) {
         const selections = items
           .filter(
-            (item) => item.menuId === menuId && item.menuGroupId === group.id,
+            (item) =>
+              item.menuId === menu.menuId &&
+              item.menuInstanceId === menu.instanceId &&
+              item.menuGroupId === group.id,
           )
           .reduce((total, item) => total + item.quantity, 0);
         if (selections !== group.quantity) {
@@ -538,6 +563,7 @@ export const get = query({
           unitName: v.string(),
           quantity: v.number(),
           menuName: v.union(v.string(), v.null()),
+          menuInstanceId: v.union(v.string(), v.null()),
           menuGroupTitle: v.union(v.string(), v.null()),
           menuQuantity: v.union(v.number(), v.null()),
         }),
@@ -575,6 +601,7 @@ export const get = query({
         unitName: item.unitName,
         quantity: item.quantity,
         menuName: item.menuName ?? null,
+        menuInstanceId: item.menuInstanceId ?? null,
         menuGroupTitle: item.menuGroupTitle ?? null,
         menuQuantity: item.menuQuantity ?? null,
       })),
