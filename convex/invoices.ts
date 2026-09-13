@@ -25,6 +25,7 @@ import {
   getStorageReferences,
 } from "./lib/storageOwnership";
 import { listScopedLocationOptions } from "./locations";
+import { menuGroupInputValidator, menuGroups } from "./lib/menuGroups";
 
 const MAX_ITEMS = 100;
 const MAX_PRODUCT_UNITS = 100;
@@ -40,6 +41,8 @@ const itemInputValidator = v.object({
   unitId: v.id("units"),
   quantity: v.number(),
   menuId: v.optional(v.id("onlinePosMenus")),
+  menuGroupId: v.optional(v.string()),
+  menuQuantity: v.optional(v.number()),
 });
 
 const listRowValidator = v.object({
@@ -74,11 +77,11 @@ export const listMenus = query({
     v.object({
       id: v.id("onlinePosMenus"),
       name: v.string(),
+      groups: v.array(menuGroupInputValidator),
       products: v.array(
         v.object({
           id: v.id("products"),
           name: v.string(),
-          kind: v.union(v.literal("primary"), v.literal("additional")),
         }),
       ),
     }),
@@ -96,10 +99,10 @@ export const listMenus = query({
       .map((menu) => ({
         id: menu._id,
         name: menu.name,
+        groups: menuGroups(menu),
         products: menu.products.map((product) => ({
           id: product.productId,
           name: product.name,
-          kind: product.kind,
         })),
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "da"));
@@ -226,6 +229,22 @@ export const create = mutation({
       throw new ConvexError("Tilføj mellem 1 og 100 produktlinjer");
     }
     const items = args.items.map((item) => {
+      if (item.menuGroupId !== undefined && !item.menuId) {
+        throw new ConvexError("Vælg en menu til produktgruppen");
+      }
+      if (item.menuQuantity !== undefined && !item.menuId) {
+        throw new ConvexError("Vælg en menu til antallet af menuer");
+      }
+      if (
+        item.menuQuantity !== undefined &&
+        (!Number.isSafeInteger(item.menuQuantity) ||
+          item.menuQuantity < 1 ||
+          item.menuQuantity > 10_000)
+      ) {
+        throw new ConvexError(
+          "Antallet af menuer skal være et helt tal mellem 1 og 10.000",
+        );
+      }
       if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
         throw new ConvexError("Mængden skal være større end nul");
       }
@@ -236,6 +255,8 @@ export const create = mutation({
         unitId: item.unitId,
         quantity,
         menuId: item.menuId,
+        menuGroupId: item.menuGroupId,
+        menuQuantity: item.menuQuantity,
       };
     });
     const requestPayload = JSON.stringify({
@@ -294,6 +315,11 @@ export const create = mutation({
       location._id,
     );
     const deductions = new Map<Id<"products">, number>();
+    const selectedMenus = new Map<
+      Id<"onlinePosMenus">,
+      ReturnType<typeof menuGroups>
+    >();
+    const selectedMenuQuantities = new Map<Id<"onlinePosMenus">, number>();
     const resolvedItems: Array<
       Omit<Doc<"invoiceItems">, "_id" | "_creationTime" | "invoiceId">
     > = [];
@@ -326,12 +352,39 @@ export const create = mutation({
       ) {
         throw new ConvexError("Produktet findes ikke i den valgte menu");
       }
+      const groups = menu ? menuGroups(menu) : [];
+      const group = groups.find((entry) => entry.id === item.menuGroupId);
+      if (menu) {
+        if (!group?.productIds.includes(product._id)) {
+          throw new ConvexError(
+            "Produktet findes ikke i den valgte produktgruppe",
+          );
+        }
+        selectedMenus.set(menu._id, groups);
+        const menuQuantity = item.menuQuantity ?? 1;
+        const previousQuantity = selectedMenuQuantities.get(menu._id);
+        if (
+          previousQuantity !== undefined &&
+          previousQuantity !== menuQuantity
+        ) {
+          throw new ConvexError(
+            "Alle produktvalg i en menu skal have samme antal menuer",
+          );
+        }
+        selectedMenuQuantities.set(menu._id, menuQuantity);
+      }
+      const totalQuantity = normalizeStock(
+        item.quantity * (item.menuQuantity ?? 1),
+      );
+      if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) {
+        throw new ConvexError("Produktets samlede mængde er ugyldig");
+      }
       const defaultQuantity = await toDefaultUnit(
         ctx,
         organizationId,
         product._id,
         unit._id,
-        item.quantity,
+        totalQuantity,
       );
       if (defaultQuantity === null || defaultQuantity <= 0) {
         throw new ConvexError("Produktet mangler en gyldig enhedsomregning");
@@ -354,10 +407,25 @@ export const create = mutation({
         productName: product.name,
         unitId: unit._id,
         unitName: unit.name,
-        quantity: item.quantity,
+        quantity: totalQuantity,
         menuId: menu?._id,
         menuName: menu?.name,
+        menuGroupId: group?.id,
+        menuGroupTitle: group?.title,
+        menuQuantity: menu ? (item.menuQuantity ?? 1) : undefined,
       });
+    }
+    for (const [menuId, groups] of selectedMenus) {
+      for (const group of groups) {
+        const selections = items.filter(
+          (item) => item.menuId === menuId && item.menuGroupId === group.id,
+        ).length;
+        if (selections !== group.quantity) {
+          throw new ConvexError(
+            `Vælg præcis ${group.quantity} produkter i gruppen ${group.title}`,
+          );
+        }
+      }
     }
     const invoiceId = await ctx.db.insert("invoices", {
       organizationId,
@@ -458,6 +526,8 @@ export const get = query({
           unitName: v.string(),
           quantity: v.number(),
           menuName: v.union(v.string(), v.null()),
+          menuGroupTitle: v.union(v.string(), v.null()),
+          menuQuantity: v.union(v.number(), v.null()),
         }),
       ),
     }),
@@ -493,6 +563,8 @@ export const get = query({
         unitName: item.unitName,
         quantity: item.quantity,
         menuName: item.menuName ?? null,
+        menuGroupTitle: item.menuGroupTitle ?? null,
+        menuQuantity: item.menuQuantity ?? null,
       })),
     };
   },

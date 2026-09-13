@@ -48,7 +48,7 @@ export function PhotoField({
   const id = useId();
   const cameraInput = useRef<HTMLInputElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
-  const preview = useRef<HTMLDivElement>(null);
+  const preview = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!file || !preview.current) return;
     const url = URL.createObjectURL(file);
@@ -80,25 +80,33 @@ export function PhotoField({
       <FieldLabel htmlFor={`${id}-upload-button`}>{label}</FieldLabel>
       {description ? <FieldDescription>{description}</FieldDescription> : null}
       {file ? (
-        <div
+        <Button
           ref={preview}
-          role="img"
-          aria-label={`Forhåndsvisning af ${label.toLocaleLowerCase("da")}`}
+          type="button"
+          variant="secondary"
+          disabled={disabled}
+          aria-label={`Skift billede: ${label}`}
+          onClick={() => uploadInput.current?.click()}
           className={cn(
-            "aspect-video w-full rounded-lg bg-muted bg-contain bg-center bg-no-repeat",
+            "aspect-video h-auto w-full rounded-lg bg-contain bg-center bg-no-repeat p-0",
             className,
           )}
         />
       ) : (
-        <div
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={disabled}
+          aria-label={`Vælg billede: ${label}`}
+          onClick={() => uploadInput.current?.click()}
           className={cn(
-            "flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-lg bg-muted text-muted-foreground",
+            "aspect-video h-auto w-full flex-col gap-3 rounded-lg p-0",
             className,
           )}
         >
           <FileImageIcon className="size-8" aria-hidden="true" />
-          <span className="text-sm">Intet billede valgt</span>
-        </div>
+          <span>Vælg billede</span>
+        </Button>
       )}
       <div className="flex flex-wrap gap-2">
         {camera ? (

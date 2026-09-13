@@ -46,6 +46,9 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { dateTimeFormatter } from "@/lib/date";
+import { authClient } from "@/lib/auth-client";
+import { selectedLocationId } from "@/lib/location-preference";
+import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 
 const dateFormatter = dateTimeFormatter("da-DK", {
   dateStyle: "short",
@@ -128,6 +131,10 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
                     {item.menuName ? (
                       <span className="text-xs text-muted-foreground">
                         {item.menuName}
+                        {item.menuQuantity
+                          ? ` × ${quantityFormatter.format(item.menuQuantity)}`
+                          : ""}
+                        {item.menuGroupTitle ? ` · ${item.menuGroupTitle}` : ""}
                       </span>
                     ) : null}
                   </div>
@@ -167,16 +174,18 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
 
 export function InvoiceHistory() {
   const kiosk = useKiosk();
+  const organization = authClient.useActiveOrganization();
+  const organizationId = organization.data?.id;
+  const storedLocationId = useWasteLocation(organizationId);
   const locations = useQuery(api.invoices.listLocations, { page: "history" });
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
-    null,
-  );
   const [selectedInvoiceId, setSelectedInvoiceId] =
     useState<Id<"invoices"> | null>(null);
-  const locationId =
-    kiosk?.isKioskAccount && kiosk.locationId
-      ? kiosk.locationId
-      : (selectedLocationId ?? locations?.[0]?.id);
+  const locationId = selectedLocationId({
+    locations: locations ?? [],
+    storedId: storedLocationId,
+    lockedId: kiosk?.locationId ?? null,
+    isLocked: Boolean(kiosk?.isKioskAccount),
+  });
   const location = locations?.find((option) => option.id === locationId);
   const { results, status, loadMore } = usePaginatedQuery(
     api.invoices.list,
@@ -199,7 +208,12 @@ export function InvoiceHistory() {
             }))}
             value={location?.id ?? null}
             onValueChange={(value) => {
-              setSelectedLocationId(value);
+              const nextLocation = locations?.find(
+                (option) => option.id === value,
+              );
+              if (organizationId && nextLocation) {
+                setRegistrationLocation(organizationId, nextLocation.id);
+              }
               setSelectedInvoiceId(null);
             }}
             placeholder="Vælg lokation"

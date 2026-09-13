@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { PlusIcon, SaveIcon } from "lucide-react";
+import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { useKiosk } from "@/components/app-shell";
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
 import { PhotoField } from "@/components/photo-field";
+import { QuantityInput } from "@/components/quantity-input";
 import { ProductLineGroup } from "@/components/product-line-group";
 import { ProductUnitLine } from "@/components/product-unit-line";
 import {
@@ -21,7 +23,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -42,7 +50,9 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { fromDateTimeLocal, toDateTimeLocal } from "@/lib/date";
-import { productSearchScore } from "@/lib/product-search";
+import { authClient } from "@/lib/auth-client";
+import { selectedLocationId } from "@/lib/location-preference";
+import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
@@ -55,15 +65,19 @@ type InvoiceLine = {
   units: Array<{ id: Id<"units">; name: string }>;
   quantity: string;
   menuId?: Id<"onlinePosMenus">;
+  menuGroupId?: string;
   menuName?: string;
 };
 
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_LINES = 100;
 
-export function InvoiceForm() {
+export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   const convex = useConvex();
   const kiosk = useKiosk();
+  const organization = authClient.useActiveOrganization();
+  const organizationId = organization.data?.id;
+  const storedLocationId = useWasteLocation(organizationId);
   const locations = useQuery(api.invoices.listLocations, { page: "new" });
   const menus = useQuery(api.invoices.listMenus, {});
   const products = useCompleteCatalog(
@@ -72,20 +86,28 @@ export function InvoiceForm() {
   );
   const createInvoice = useMutation(api.invoices.create);
   const generateUploadUrl = useMutation(api.invoices.generateUploadUrl);
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
-    null,
-  );
   const [title, setTitle] = useState("");
   const [soldAtLocal, setSoldAtLocal] = useState(() =>
     toDateTimeLocal(Date.now()),
   );
   const [comment, setComment] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [menuRows, setMenuRows] = useState<
+    Array<{
+      id: Id<"onlinePosMenus">;
+      name: string;
+      key: string;
+      quantity: string;
+    }>
+  >([]);
   const [productSearch, setProductSearch] = useState("");
   const [pickerKey, setPickerKey] = useState(0);
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [loadingProduct, setLoadingProduct] = useState(false);
+  const [failedAutoChoices, setFailedAutoChoices] = useState<{
+    scope: string;
+    keys: string[];
+  }>({ scope: "", keys: [] });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -96,10 +118,12 @@ export function InvoiceForm() {
     file: File;
     storageId: Id<"_storage">;
   } | null>(null);
-  const locationId =
-    kiosk?.isKioskAccount && kiosk.locationId
-      ? kiosk.locationId
-      : (selectedLocationId ?? locations?.[0]?.id ?? null);
+  const locationId = selectedLocationId({
+    locations: locations ?? [],
+    storedId: storedLocationId,
+    lockedId: kiosk?.locationId ?? null,
+    isLocked: Boolean(kiosk?.isKioskAccount),
+  });
   const location = locations?.find((option) => option.id === locationId);
   const productAccess = useQuery(
     api.invoices.getProductAccess,
@@ -107,28 +131,180 @@ export function InvoiceForm() {
   );
   const allowedProductIds =
     productAccess === null ? null : new Set(productAccess ?? []);
-  const selectedMenu = menus?.find((menu) => menu.id === menuId);
-  const menuProducts = selectedMenu
-    ? new Set(selectedMenu.products.map((product) => product.id))
-    : null;
+  const availableProducts = useMemo(() => {
+    const allowedIds =
+      productAccess === null ? null : new Set(productAccess ?? []);
+    return (products ?? []).filter(
+      (product) => !allowedIds || allowedIds.has(product.id),
+    );
+  }, [products, productAccess]);
+  const autoChoices = useMemo(
+    () =>
+      menuRows.flatMap((menu) =>
+        (menus?.find((option) => option.id === menu.id)?.groups ?? []).flatMap(
+          (group) => {
+            const options = availableProducts.filter((product) =>
+              group.productIds.includes(product.id),
+            );
+            const product = options.length === 1 ? options[0] : undefined;
+            return product
+              ? [
+                  {
+                    key: JSON.stringify([
+                      menu.key,
+                      group.id,
+                      group.quantity,
+                      product.id,
+                    ]),
+                    menu,
+                    group,
+                    productId: product.id,
+                  },
+                ]
+              : [];
+          },
+        ),
+      ),
+    [menuRows, menus, availableProducts],
+  );
+  const autoScope = JSON.stringify([
+    locationId,
+    autoChoices.map((choice) => choice.key),
+  ]);
+  if (failedAutoChoices.scope !== autoScope) {
+    setFailedAutoChoices({ scope: autoScope, keys: [] });
+  }
+  const pendingAutoChoices = useMemo(() => {
+    let remaining = MAX_LINES - lines.length;
+    const pending: Array<(typeof autoChoices)[number] & { count: number }> = [];
+    for (const choice of autoChoices) {
+      if (failedAutoChoices.keys.includes(choice.key) || remaining <= 0)
+        continue;
+      const selected = lines.filter(
+        (line) =>
+          line.menuId === choice.menu.id &&
+          line.menuGroupId === choice.group.id,
+      ).length;
+      const missing = Math.max(0, choice.group.quantity - selected);
+      const count = Math.min(missing, remaining);
+      remaining -= count;
+      if (count) pending.push({ ...choice, count });
+    }
+    return pending;
+  }, [autoChoices, failedAutoChoices.keys, lines]);
+  const autoAdding = pendingAutoChoices.length > 0;
+
+  useEffect(() => {
+    if (
+      !pendingAutoChoices.length ||
+      loadingProduct ||
+      isSaving ||
+      adding.current ||
+      saving.current
+    )
+      return;
+    let cancelled = false;
+    async function fillChoices() {
+      const results = await Promise.allSettled(
+        pendingAutoChoices.map(async (choice) => {
+          const product = await convex.query(api.invoices.getProductOption, {
+            productId: choice.productId,
+          });
+          if (!product) throw new Error("Produktet blev ikke fundet");
+          const unit =
+            product.units.find((unit) => unit.id === product.defaultUnitId) ??
+            product.units[0];
+          if (!unit) throw new Error("Produktet har ingen enheder");
+          return { choice, product, unit };
+        }),
+      );
+      if (cancelled) return;
+      setLines((current) => {
+        let next = current;
+        for (const result of results) {
+          if (result.status !== "fulfilled") continue;
+          const { choice, product, unit } = result.value;
+          const selected = next.filter(
+            (line) =>
+              line.menuId === choice.menu.id &&
+              line.menuGroupId === choice.group.id,
+          ).length;
+          const count = Math.min(
+            choice.count,
+            choice.group.quantity - selected,
+            MAX_LINES - next.length,
+          );
+          if (count <= 0) continue;
+          next = [
+            ...next,
+            ...Array.from({ length: count }, () => ({
+              key: crypto.randomUUID(),
+              productId: product.id,
+              productName: product.name,
+              imageUrl: product.imageUrl,
+              unitId: unit.id,
+              units: product.units,
+              quantity: "1",
+              menuId: choice.menu.id,
+              menuName: choice.menu.name,
+              menuGroupId: choice.group.id,
+            })),
+          ];
+        }
+        return next;
+      });
+      const failedKeys = pendingAutoChoices.flatMap((choice, index) =>
+        results[index]?.status === "rejected" ? [choice.key] : [],
+      );
+      if (failedKeys.length) {
+        setFailedAutoChoices((current) =>
+          current.scope === autoScope
+            ? {
+                scope: autoScope,
+                keys: [...new Set([...current.keys, ...failedKeys])],
+              }
+            : current,
+        );
+      }
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") {
+        toast.error(
+          getUserErrorMessage(
+            failed.reason,
+            "Menuens produkt kunne ikke tilføjes automatisk. Vælg produktet igen.",
+          ),
+        );
+      }
+    }
+    void fillChoices();
+    return () => {
+      cancelled = true;
+    };
+  }, [autoScope, convex, pendingAutoChoices, loadingProduct, isSaving]);
   const addedProductIds = new Set(
     lines
-      .filter((line) => line.menuId === selectedMenu?.id)
+      .filter((line) => line.menuId === undefined)
       .map((line) => line.productId),
   );
-  const productOptions = (products ?? [])
+  const productOptions = availableProducts
+    .filter((product) => !addedProductIds.has(product.id))
+    .map((product) => ({
+      value: product.id,
+      label: product.name,
+      searchText: product.categoryPath,
+    }));
+  const menuOptions = (menus ?? [])
     .filter(
-      (product) =>
-        !addedProductIds.has(product.id) &&
-        (!allowedProductIds || allowedProductIds.has(product.id)) &&
-        (!menuProducts || menuProducts.has(product.id)) &&
-        productSearchScore(
-          product.name,
-          product.categoryPath,
-          productSearch,
-        ) !== null,
+      (menu) =>
+        !menuRows.some((row) => row.id === menu.id) &&
+        menu.name
+          .toLocaleLowerCase("da")
+          .includes(productSearch.trim().toLocaleLowerCase("da")) &&
+        menu.products.some((product) =>
+          availableProducts.some((option) => option.id === product.id),
+        ),
     )
-    .map((product) => ({ value: product.id, label: product.name }));
+    .map((menu) => ({ value: `menu:${menu.id}`, label: menu.name }));
   const lineGroups = Array.from(
     lines
       .reduce((groups, line) => {
@@ -141,12 +317,33 @@ export function InvoiceForm() {
       .values(),
   );
 
-  async function addProduct(value: string | null) {
+  async function addProduct(
+    value: string | null,
+    menuId?: Id<"onlinePosMenus">,
+    menuGroupId?: string,
+  ) {
     const option = products?.find((product) => product.id === value);
+    const menu = menuRows.find((row) => row.id === menuId);
+    const menuGroup = menus
+      ?.find((option) => option.id === menuId)
+      ?.groups.find((group) => group.id === menuGroupId);
     if (
       !option ||
       adding.current ||
       saving.current ||
+      autoAdding ||
+      (menuId !== undefined &&
+        (!menu ||
+          !menuGroup ||
+          !menuGroup.productIds.includes(option.id) ||
+          lines.filter(
+            (line) =>
+              line.menuId === menuId && line.menuGroupId === menuGroupId,
+          ).length >= menuGroup.quantity)) ||
+      (menuId === undefined &&
+        lines.some(
+          (line) => line.productId === value && line.menuId === undefined,
+        )) ||
       productAccess === undefined ||
       (allowedProductIds !== null && !allowedProductIds.has(option.id)) ||
       lines.length >= MAX_LINES
@@ -173,8 +370,12 @@ export function InvoiceForm() {
           unitId: unit.id,
           units: product.units,
           quantity: "1",
-          ...(selectedMenu
-            ? { menuId: selectedMenu.id, menuName: selectedMenu.name }
+          ...(menu && menuGroup
+            ? {
+                menuId: menu.id,
+                menuName: menu.name,
+                menuGroupId: menuGroup.id,
+              }
             : {}),
         },
       ]);
@@ -191,7 +392,7 @@ export function InvoiceForm() {
     }
   }
 
-  function validate() {
+  function validate(now: number) {
     const nextErrors: Record<string, string> = {};
     const soldAt = fromDateTimeLocal(soldAtLocal);
     if (!location) nextErrors.location = "Vælg en lokation";
@@ -200,17 +401,48 @@ export function InvoiceForm() {
       nextErrors.title = "Titlen må højst være 200 tegn";
     if (!soldAtLocal || !Number.isFinite(soldAt) || soldAt <= 0)
       nextErrors.soldAt = "Vælg en gyldig dato";
-    else if (soldAt > Date.now() + 60_000)
+    else if (soldAt > now + 60_000)
       nextErrors.soldAt = "Datoen må ikke ligge i fremtiden";
     if (comment.trim().length > 2000)
       nextErrors.comment = "Kommentaren må højst være 2.000 tegn";
     if (!lines.length) nextErrors.items = "Tilføj mindst ét produkt";
+    for (const menu of menuRows) {
+      const quantity = Number(menu.quantity.trim().replace(",", "."));
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10_000) {
+        nextErrors[`menuQuantity:${menu.id}`] =
+          "Angiv et helt antal menuer mellem 1 og 10.000";
+      }
+      const currentMenu = menus?.find((option) => option.id === menu.id);
+      if (!currentMenu?.groups.length) {
+        nextErrors[`menu:${menu.id}`] =
+          "Menuen har ingen tilgængelige grupper. Fjern menuen og vælg den igen.";
+        continue;
+      }
+      for (const group of currentMenu.groups) {
+        const selectedCount = lines.filter(
+          (line) => line.menuId === menu.id && line.menuGroupId === group.id,
+        ).length;
+        if (selectedCount !== group.quantity) {
+          nextErrors[`menu:${menu.id}:${group.id}`] =
+            `Vælg præcis ${group.quantity} ${group.quantity === 1 ? "produkt" : "produkter"} i ${group.title}`;
+        }
+      }
+    }
     if (location && productAccess === undefined)
       nextErrors.items = "Vent, mens lokationens produkter hentes";
     if (lines.length > MAX_LINES)
       nextErrors.items = "Du kan højst tilføje 100 produktlinjer";
     const items = lines.map((line) => {
       const quantity = Number(line.quantity.trim().replace(",", "."));
+      if (line.menuId) {
+        const group = menus
+          ?.find((menu) => menu.id === line.menuId)
+          ?.groups.find((group) => group.id === line.menuGroupId);
+        if (!group?.productIds.includes(line.productId)) {
+          nextErrors[line.key] =
+            "Produktvalget findes ikke længere i menuens gruppe. Fjern valget og vælg et produkt igen.";
+        }
+      }
       if (
         productAccess !== undefined &&
         allowedProductIds &&
@@ -224,7 +456,18 @@ export function InvoiceForm() {
         productId: line.productId,
         unitId: line.unitId,
         quantity,
-        ...(line.menuId ? { menuId: line.menuId } : {}),
+        ...(line.menuId
+          ? {
+              menuId: line.menuId,
+              menuQuantity: Number(
+                menuRows
+                  .find((menu) => menu.id === line.menuId)
+                  ?.quantity.trim()
+                  .replace(",", "."),
+              ),
+            }
+          : {}),
+        ...(line.menuGroupId ? { menuGroupId: line.menuGroupId } : {}),
       };
     });
     setErrors(nextErrors);
@@ -233,9 +476,9 @@ export function InvoiceForm() {
       : null;
   }
 
-  async function save() {
+  async function save(now: number) {
     if (saving.current) return;
-    const validated = validate();
+    const validated = validate(now);
     if (!validated) {
       setConfirming(false);
       return;
@@ -263,11 +506,11 @@ export function InvoiceForm() {
         clientRequestId: clientRequestId.current,
       });
       setTitle("");
-      setSoldAtLocal(toDateTimeLocal(Date.now()));
+      setSoldAtLocal(toDateTimeLocal(now));
       setComment("");
       setPhoto(null);
       setLines([]);
-      setMenuId(null);
+      setMenuRows([]);
       setProductSearch("");
       setPickerKey((key) => key + 1);
       setErrors({});
@@ -286,6 +529,100 @@ export function InvoiceForm() {
       saving.current = false;
       setIsSaving(false);
     }
+  }
+
+  function renderProductGroup(group: InvoiceLine[]) {
+    const product = group[0];
+    if (!product) return null;
+    const usedUnitIds = new Set(group.map((line) => line.unitId));
+    const nextUnit = product.units.find((unit) => !usedUnitIds.has(unit.id));
+    return (
+      <ProductLineGroup
+        key={product.menuId ? product.key : product.productId}
+        productName={product.productName}
+        imageUrl={product.imageUrl}
+        action={
+          nextUnit && !product.menuId ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              disabled={
+                lines.length >= MAX_LINES ||
+                loadingProduct ||
+                autoAdding ||
+                productAccess === undefined
+              }
+              onClick={() => {
+                if (saving.current || adding.current || autoAdding) return;
+                setLines((current) => {
+                  if (current.length >= MAX_LINES) return current;
+                  const unit = product.units.find(
+                    (unit) =>
+                      !current.some(
+                        (line) =>
+                          line.productId === product.productId &&
+                          line.menuId === product.menuId &&
+                          line.unitId === unit.id,
+                      ),
+                  );
+                  return unit
+                    ? [
+                        ...current,
+                        {
+                          ...product,
+                          key: crypto.randomUUID(),
+                          unitId: unit.id,
+                          quantity: "1",
+                        },
+                      ]
+                    : current;
+                });
+              }}
+            >
+              <PlusIcon data-icon="inline-start" />
+              Tilføj enhed
+            </Button>
+          ) : null
+        }
+      >
+        <ul className="flex flex-col gap-2">
+          {group.map((line) => (
+            <li key={line.key} className="py-2">
+              <ProductUnitLine
+                lineKey={line.key}
+                productName={line.productName}
+                units={line.units}
+                unitId={line.unitId}
+                unavailableUnitIds={usedUnitIds}
+                quantity={line.quantity}
+                min={0}
+                error={errors[line.key]}
+                onUnitChange={(unitId) =>
+                  setLines((current) =>
+                    current.map((item) =>
+                      item.key === line.key ? { ...item, unitId } : item,
+                    ),
+                  )
+                }
+                onQuantityChange={(quantity) =>
+                  setLines((current) =>
+                    current.map((item) =>
+                      item.key === line.key ? { ...item, quantity } : item,
+                    ),
+                  )
+                }
+                onRemove={() =>
+                  setLines((current) =>
+                    current.filter((item) => item.key !== line.key),
+                  )
+                }
+              />
+            </li>
+          ))}
+        </ul>
+      </ProductLineGroup>
+    );
   }
 
   return (
@@ -308,7 +645,14 @@ export function InvoiceForm() {
                     label: option.name,
                   }))}
                   value={locationId}
-                  onValueChange={setSelectedLocationId}
+                  onValueChange={(value) => {
+                    const nextLocation = locations?.find(
+                      (option) => option.id === value,
+                    );
+                    if (organizationId && nextLocation) {
+                      setRegistrationLocation(organizationId, nextLocation.id);
+                    }
+                  }}
                   placeholder="Søg efter lokation"
                   ariaLabel="Lokation"
                   ariaInvalid={Boolean(errors.location)}
@@ -353,7 +697,7 @@ export function InvoiceForm() {
               </Field>
               <Field data-invalid={Boolean(errors.comment)}>
                 <FieldLabel htmlFor="invoice-comment">
-                  Kommentar, valgfri
+                  Kommentar (valgfri)
                 </FieldLabel>
                 <Textarea
                   id="invoice-comment"
@@ -381,59 +725,62 @@ export function InvoiceForm() {
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <FieldGroup>
-              <Field>
-                <div className="flex items-center gap-1">
-                  <FieldLabel>Menu, valgfri</FieldLabel>
-                  <HelpTooltip
-                    label="menu"
-                    content="Vælg en menu for at finde dens produkter. Tilføj de produkter og mængder, der fremgår af kvitteringen."
-                  />
-                </div>
-                <CreatableCombobox
-                  options={[
-                    { value: "all", label: "Alle produkter" },
-                    ...(menus ?? []).map((menu) => ({
-                      value: menu.id,
-                      label: menu.name,
-                    })),
-                  ]}
-                  value={menuId ?? "all"}
-                  onValueChange={(value) => {
-                    setMenuId(value === "all" ? null : value);
-                    setProductSearch("");
-                    setPickerKey((key) => key + 1);
-                  }}
-                  placeholder="Søg efter menu"
-                  ariaLabel="Menu"
-                  disabled={menus === undefined || loadingProduct}
-                />
-              </Field>
               <Field data-invalid={Boolean(errors.items)}>
-                <FieldLabel>Tilføj produkt</FieldLabel>
+                <FieldLabel>Tilføj produkt eller menu</FieldLabel>
                 <CreatableCombobox
                   key={pickerKey}
-                  options={productOptions}
+                  options={[...menuOptions, ...productOptions]}
+                  suggestionLabel="Menuer"
+                  suggestionOptions={menuOptions}
                   value={null}
-                  onValueChange={(value) => void addProduct(value)}
+                  onValueChange={(value) => {
+                    const menu = menus?.find(
+                      (option) => `menu:${option.id}` === value,
+                    );
+                    if (menu) {
+                      if (
+                        saving.current ||
+                        adding.current ||
+                        autoAdding ||
+                        lines.length >= MAX_LINES
+                      )
+                        return;
+                      setMenuRows((current) =>
+                        current.some((row) => row.id === menu.id)
+                          ? current
+                          : [
+                              ...current,
+                              {
+                                id: menu.id,
+                                name: menu.name,
+                                key: crypto.randomUUID(),
+                                quantity: "1",
+                              },
+                            ],
+                      );
+                      setProductSearch("");
+                      setPickerKey((key) => key + 1);
+                    } else {
+                      void addProduct(value);
+                    }
+                  }}
                   onInputValueChange={setProductSearch}
-                  placeholder={
-                    selectedMenu
-                      ? "Søg efter produkter i menuen"
-                      : "Søg efter produkter"
-                  }
-                  ariaLabel="Tilføj produkt"
+                  placeholder="Søg efter produkt, menu eller kategori"
+                  ariaLabel="Tilføj produkt eller menu"
                   ariaInvalid={Boolean(errors.items)}
                   disabled={
                     products === undefined ||
+                    menus === undefined ||
                     productAccess === undefined ||
                     loadingProduct ||
+                    autoAdding ||
                     lines.length >= MAX_LINES
                   }
                 />
                 <FieldError>{errors.items}</FieldError>
               </Field>
             </FieldGroup>
-            {lines.length === 0 ? (
+            {lines.length === 0 && menuRows.length === 0 ? (
               <Empty className="border p-5">
                 <EmptyHeader>
                   <EmptyTitle>Ingen produkter tilføjet</EmptyTitle>
@@ -444,90 +791,171 @@ export function InvoiceForm() {
               </Empty>
             ) : (
               <ul className="flex flex-col gap-3">
-                {lineGroups.map((group) => {
-                  const product = group[0];
-                  if (!product) return null;
-                  const usedUnitIds = new Set(group.map((line) => line.unitId));
-                  const nextUnit = product.units.find(
-                    (unit) => !usedUnitIds.has(unit.id),
+                {lineGroups
+                  .filter((group) => group[0]?.menuId === undefined)
+                  .map(renderProductGroup)}
+                {menuRows.map((menu) => {
+                  const currentMenu = menus?.find(
+                    (option) => option.id === menu.id,
                   );
+                  const menuLines = lines.filter(
+                    (line) => line.menuId === menu.id,
+                  );
+                  const ungroupedLines = menuLines.filter(
+                    (line) =>
+                      !currentMenu?.groups.some(
+                        (group) => group.id === line.menuGroupId,
+                      ),
+                  );
+                  const menuError = errors[`menu:${menu.id}`];
                   return (
-                    <ProductLineGroup
-                      key={`${product.productId}:${product.menuId ?? ""}`}
-                      productName={product.productName}
-                      imageUrl={product.imageUrl}
-                      action={
-                        nextUnit ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="min-h-11"
-                            disabled={
-                              lines.length >= MAX_LINES || loadingProduct
-                            }
-                            onClick={() =>
-                              setLines((current) => [
-                                ...current,
-                                {
-                                  ...product,
-                                  key: crypto.randomUUID(),
-                                  unitId: nextUnit.id,
-                                  quantity: "1",
-                                },
-                              ])
-                            }
-                          >
-                            <PlusIcon data-icon="inline-start" />
-                            Tilføj enhed
-                          </Button>
-                        ) : null
-                      }
-                    >
-                      {product.menuName ? (
-                        <Badge variant="secondary">{product.menuName}</Badge>
-                      ) : null}
-                      <ul className="flex flex-col gap-2">
-                        {group.map((line) => (
-                          <li key={line.key} className="py-2">
-                            <ProductUnitLine
-                              lineKey={line.key}
-                              productName={line.productName}
-                              units={line.units}
-                              unitId={line.unitId}
-                              unavailableUnitIds={usedUnitIds}
-                              quantity={line.quantity}
-                              min={0}
-                              error={errors[line.key]}
-                              onUnitChange={(unitId) =>
-                                setLines((current) =>
-                                  current.map((item) =>
-                                    item.key === line.key
-                                      ? { ...item, unitId }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              onQuantityChange={(quantity) =>
-                                setLines((current) =>
-                                  current.map((item) =>
-                                    item.key === line.key
-                                      ? { ...item, quantity }
-                                      : item,
-                                  ),
-                                )
-                              }
-                              onRemove={() =>
+                    <li key={menu.id}>
+                      <Card className="border">
+                        <CardHeader>
+                          <CardTitle className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">Menu</Badge>
+                            {menu.name}
+                          </CardTitle>
+                          <CardAction>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-lg"
+                              className="size-11"
+                              aria-label={`Fjern menuen ${menu.name}`}
+                              disabled={loadingProduct || isSaving}
+                              onClick={() => {
+                                if (saving.current || adding.current) return;
+                                setMenuRows((current) =>
+                                  current.filter((row) => row.id !== menu.id),
+                                );
                                 setLines((current) =>
                                   current.filter(
-                                    (item) => item.key !== line.key,
+                                    (line) => line.menuId !== menu.id,
                                   ),
-                                )
-                              }
-                            />
-                          </li>
-                        ))}
-                      </ul>
-                    </ProductLineGroup>
+                                );
+                              }}
+                            >
+                              <Trash2Icon data-icon="inline-start" />
+                            </Button>
+                          </CardAction>
+                        </CardHeader>
+                        <CardContent className="flex flex-col gap-5">
+                          <FieldGroup>
+                            <Field
+                              data-invalid={Boolean(
+                                errors[`menuQuantity:${menu.id}`],
+                              )}
+                            >
+                              <FieldLabel htmlFor={`menu-quantity-${menu.key}`}>
+                                Antal menuer
+                              </FieldLabel>
+                              <QuantityInput
+                                id={`menu-quantity-${menu.key}`}
+                                label={`Mængde for ${menu.name}`}
+                                value={menu.quantity}
+                                onValueChange={(quantity) =>
+                                  setMenuRows((current) =>
+                                    current.map((row) =>
+                                      row.id === menu.id
+                                        ? { ...row, quantity }
+                                        : row,
+                                    ),
+                                  )
+                                }
+                                min={1}
+                                max={10_000}
+                                integer
+                                invalid={Boolean(
+                                  errors[`menuQuantity:${menu.id}`],
+                                )}
+                                disabled={isSaving}
+                                className="w-full sm:w-48"
+                              />
+                              <FieldError>
+                                {errors[`menuQuantity:${menu.id}`]}
+                              </FieldError>
+                            </Field>
+                          </FieldGroup>
+                          <p className="text-sm text-muted-foreground">
+                            Produktmængderne nedenfor er pr. menu.
+                          </p>
+                          <FieldError>{menuError}</FieldError>
+                          {(currentMenu?.groups ?? []).map((group) => {
+                            const selectedLines = menuLines.filter(
+                              (line) => line.menuGroupId === group.id,
+                            );
+                            const options = availableProducts
+                              .filter((product) =>
+                                group.productIds.includes(product.id),
+                              )
+                              .map((product) => ({
+                                value: product.id,
+                                label: product.name,
+                                searchText: product.categoryPath,
+                              }));
+                            const error = errors[`menu:${menu.id}:${group.id}`];
+                            return (
+                              <div
+                                key={group.id}
+                                className="flex flex-col gap-3"
+                              >
+                                <FieldGroup>
+                                  <Field data-invalid={Boolean(error)}>
+                                    <FieldLabel className="flex flex-wrap items-center gap-2">
+                                      {group.title}
+                                      <Badge variant="secondary">
+                                        {selectedLines.length} af{" "}
+                                        {group.quantity} valgt
+                                      </Badge>
+                                    </FieldLabel>
+                                    <CreatableCombobox
+                                      key={`${menu.id}:${group.id}:${pickerKey}`}
+                                      options={options}
+                                      value={null}
+                                      onValueChange={(value) =>
+                                        void addProduct(
+                                          value,
+                                          menu.id,
+                                          group.id,
+                                        )
+                                      }
+                                      placeholder="Søg efter produkt eller kategori"
+                                      ariaLabel={`Vælg produkt til ${group.title} i ${menu.name}`}
+                                      ariaInvalid={Boolean(error)}
+                                      disabled={
+                                        products === undefined ||
+                                        menus === undefined ||
+                                        productAccess === undefined ||
+                                        loadingProduct ||
+                                        autoAdding ||
+                                        lines.length >= MAX_LINES ||
+                                        selectedLines.length >= group.quantity
+                                      }
+                                    />
+                                    <FieldError>{error}</FieldError>
+                                  </Field>
+                                </FieldGroup>
+                                {selectedLines.length > 0 ? (
+                                  <ul className="flex flex-col gap-3">
+                                    {selectedLines.map((line) =>
+                                      renderProductGroup([line]),
+                                    )}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                          {ungroupedLines.length > 0 ? (
+                            <ul className="flex flex-col gap-3">
+                              {ungroupedLines.map((line) =>
+                                renderProductGroup([line]),
+                              )}
+                            </ul>
+                          ) : null}
+                        </CardContent>
+                      </Card>
+                    </li>
                   );
                 })}
               </ul>
@@ -535,25 +963,34 @@ export function InvoiceForm() {
           </CardContent>
         </Card>
       </div>
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          className="min-h-12 w-full sm:w-auto"
-          disabled={
-            isSaving ||
-            loadingProduct ||
-            locations === undefined ||
-            products === undefined ||
-            productAccess === undefined
-          }
-          onClick={() => {
-            if (validate()) setConfirming(true);
-          }}
-        >
-          <SaveIcon data-icon="inline-start" />
-          Registrér kvittering
-        </Button>
-      </div>
+      <AppBottomBar>
+        <div className="mx-auto flex w-full max-w-[96rem] flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+          {navigation ? (
+            <div className="min-w-0" inert={isSaving}>
+              {navigation}
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            className="h-12 w-full sm:ml-auto sm:w-auto sm:min-w-52"
+            disabled={
+              isSaving ||
+              loadingProduct ||
+              autoAdding ||
+              locations === undefined ||
+              products === undefined ||
+              menus === undefined ||
+              productAccess === undefined
+            }
+            onClick={() => {
+              if (validate(Date.now())) setConfirming(true);
+            }}
+          >
+            <SaveIcon data-icon="inline-start" />
+            Registrér kvittering
+          </Button>
+        </div>
+      </AppBottomBar>
       <AlertDialog
         open={confirming}
         onOpenChange={(open) => {
@@ -572,7 +1009,10 @@ export function InvoiceForm() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSaving}>Annullér</AlertDialogCancel>
-            <AlertDialogAction disabled={isSaving} onClick={() => void save()}>
+            <AlertDialogAction
+              disabled={isSaving}
+              onClick={() => void save(Date.now())}
+            >
               {isSaving ? (
                 <Spinner data-icon="inline-start" />
               ) : (

@@ -183,16 +183,10 @@ function OrderDetailContent({
                                   {menuItem.product.name}
                                 </p>
                                 <Badge
-                                  variant={
-                                    menuItem.product.kind === "primary"
-                                      ? "secondary"
-                                      : "outline"
-                                  }
+                                  variant="secondary"
                                   className="shrink-0"
                                 >
-                                  {menuItem.product.kind === "primary"
-                                    ? "Primær"
-                                    : "Ekstra"}
+                                  {menuItem.product.groupTitle}
                                 </Badge>
                               </div>
                               <p

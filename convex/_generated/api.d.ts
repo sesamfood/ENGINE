@@ -70,6 +70,7 @@ import type * as lib_locationMutations from "../lib/locationMutations.js";
 import type * as lib_locationProducts from "../lib/locationProducts.js";
 import type * as lib_locations from "../lib/locations.js";
 import type * as lib_masterData from "../lib/masterData.js";
+import type * as lib_menuGroups from "../lib/menuGroups.js";
 import type * as lib_monthlyKpiValidators from "../lib/monthlyKpiValidators.js";
 import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
 import type * as lib_onlinePosFinancialApi from "../lib/onlinePosFinancialApi.js";
@@ -208,6 +209,7 @@ declare const fullApi: ApiFromModules<{
   "lib/locationProducts": typeof lib_locationProducts;
   "lib/locations": typeof lib_locations;
   "lib/masterData": typeof lib_masterData;
+  "lib/menuGroups": typeof lib_menuGroups;
   "lib/monthlyKpiValidators": typeof lib_monthlyKpiValidators;
   "lib/onlinePosApi": typeof lib_onlinePosApi;
   "lib/onlinePosFinancialApi": typeof lib_onlinePosFinancialApi;

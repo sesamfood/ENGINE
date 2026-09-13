@@ -10,6 +10,7 @@ import {
   weeklyOpeningHoursValidator,
 } from "./lib/openingHours";
 import { countScheduleValidator } from "./lib/countSettings";
+import { menuGroupValidator } from "./lib/menuGroups";
 import {
   ownCheckControlTypeValidator,
   ownCheckFieldValidator,
@@ -298,9 +299,11 @@ export default defineSchema({
     name: v.string(),
     onlinePosProductName: v.optional(v.string()),
     groupName: v.string(),
+    groups: v.optional(v.array(menuGroupValidator)),
     products: v.array(
       v.object({
-        kind: v.union(v.literal("primary"), v.literal("additional")),
+        kind: v.optional(v.union(v.literal("primary"), v.literal("additional"))),
+        groupId: v.optional(v.string()),
         productId: v.id("products"),
         name: v.string(),
       }),
@@ -386,6 +389,9 @@ export default defineSchema({
     quantity: v.number(),
     menuId: v.optional(v.id("onlinePosMenus")),
     menuName: v.optional(v.string()),
+    menuGroupId: v.optional(v.string()),
+    menuGroupTitle: v.optional(v.string()),
+    menuQuantity: v.optional(v.number()),
   }).index("by_organizationId_and_invoiceId", ["organizationId", "invoiceId"]),
 
   salesOrders: defineTable({

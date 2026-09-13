@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { AppPageHeader } from "@/components/app-page-header";
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -71,44 +72,47 @@ function InvoicesContent() {
     );
   }
 
+  const sectionTabs = showSectionTabs ? (
+    <TabsList
+      variant="line"
+      aria-label="Fakturasektioner"
+      className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
+    >
+      {showNew ? (
+        <TabsTrigger value="new" className="min-w-36 px-4">
+          Ny kvittering
+        </TabsTrigger>
+      ) : null}
+      {showHistory ? (
+        <TabsTrigger value="history" className="min-w-36 px-4">
+          Registrerede kvitteringer
+        </TabsTrigger>
+      ) : null}
+    </TabsList>
+  ) : null;
+
   return (
     <Tabs
       value={selectedTab}
       onValueChange={(value) =>
-        router.push(value === "history" ? "/invoices/history" : "/invoices")
+        router.push(value === "history" ? "/invoices/history" : "/invoices", {
+          scroll: false,
+        })
       }
     >
-      {showSectionTabs ? (
-        <TabsList
-          aria-label="Fakturasektioner"
-          className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
-        >
-          {showNew ? (
-            <TabsTrigger value="new" className="min-w-36 px-6">
-              Ny kvittering
-            </TabsTrigger>
-          ) : null}
-          {showHistory ? (
-            <TabsTrigger value="history" className="min-w-36 px-6">
-              Registrerede kvitteringer
-            </TabsTrigger>
-          ) : null}
-        </TabsList>
-      ) : null}
       {showNew && selectedTab === "new" ? (
-        <TabsContent
-          value="new"
-          className={showSectionTabs ? "pt-6" : undefined}
-        >
-          <InvoiceForm />
+        <TabsContent value="new">
+          <InvoiceForm navigation={sectionTabs} />
         </TabsContent>
       ) : null}
       {showHistory && selectedTab === "history" ? (
-        <TabsContent
-          value="history"
-          className={showSectionTabs ? "pt-6" : undefined}
-        >
+        <TabsContent value="history">
           <InvoiceHistory />
+          {sectionTabs ? (
+            <AppBottomBar>
+              <div className="mx-auto w-full max-w-[96rem]">{sectionTabs}</div>
+            </AppBottomBar>
+          ) : null}
         </TabsContent>
       ) : null}
     </Tabs>
@@ -128,7 +132,7 @@ export default function InvoicesPage() {
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4">
+    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:pb-[calc(6rem+env(safe-area-inset-bottom))]">
       <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <InvoicesContent />
