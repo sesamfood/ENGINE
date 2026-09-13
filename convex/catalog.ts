@@ -20,6 +20,7 @@ import {
   validateCategoryParentAssignment,
 } from "./lib/categoryHierarchy";
 import { normalizeStock } from "./lib/stock";
+import { getStaffFoodCategoryIds } from "./lib/staffFoodCategories";
 import { invalidateSalesStockMappings } from "./lib/salesStock";
 import { recordAudit } from "./lib/audit";
 import { claimStorageForOrganization, preserveStorageOwnership } from "./lib/storageOwnership";
@@ -1529,14 +1530,14 @@ export const listCategories = query({
   returns: v.array(managedCategoryValidator),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
-    const { hierarchy: categories } = await loadCategoryHierarchy(
-      ctx,
-      organizationId,
-    );
+    const [{ hierarchy: categories }, staffFoodCategoryIds] = await Promise.all([
+      loadCategoryHierarchy(ctx, organizationId),
+      getStaffFoodCategoryIds(ctx, organizationId),
+    ]);
 
     return await Promise.all(
       categories.map(async (category) => {
-        const [primaryProduct, productMembership, staffFoodAllowance] =
+        const [primaryProduct, productMembership] =
           await Promise.all([
             ctx.db
               .query("products")
@@ -1554,14 +1555,6 @@ export const listCategories = query({
                   .eq("categoryId", category.id),
               )
               .first(),
-            ctx.db
-              .query("staffFoodRuleAllowances")
-              .withIndex("by_organizationId_and_categoryId", (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("categoryId", category.id),
-              )
-              .first(),
           ]);
         return {
           id: category.id,
@@ -1570,7 +1563,9 @@ export const listCategories = query({
           path: category.path,
           depth: category.depth,
           inUse: Boolean(
-            primaryProduct || productMembership || staffFoodAllowance,
+            primaryProduct ||
+              productMembership ||
+              staffFoodCategoryIds.has(category.id),
           ),
           hasChildren: category.hasChildren,
         };
@@ -2645,7 +2640,7 @@ export async function deleteCategoryWithAuth(
   if (!category || category.organizationId !== organizationId) {
     throw new ConvexError("Kategorien blev ikke fundet");
   }
-  const [child, productMembership, primaryProduct, staffFoodAllowance] =
+  const [child, productMembership, primaryProduct, staffFoodCategoryIds] =
     await Promise.all([
       ctx.db
         .query("categories")
@@ -2671,20 +2666,13 @@ export async function deleteCategoryWithAuth(
             .eq("categoryId", category._id),
         )
         .first(),
-      ctx.db
-        .query("staffFoodRuleAllowances")
-        .withIndex("by_organizationId_and_categoryId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("categoryId", category._id),
-        )
-        .first(),
+      getStaffFoodCategoryIds(ctx, organizationId),
     ]);
   if (child) throw new ConvexError("Kategorien har underkategorier");
   if (primaryProduct || productMembership) {
     throw new ConvexError("Kategorien er stadig i brug");
   }
-  if (staffFoodAllowance) {
+  if (staffFoodCategoryIds.has(category._id)) {
     throw new ConvexError("Kategorien bruges stadig i Staff food");
   }
   await ctx.db.delete("categories", category._id);

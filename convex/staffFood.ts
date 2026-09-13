@@ -60,7 +60,7 @@ function categoryIncludes(
   return false;
 }
 
-async function productCategoryInTree(
+async function productCategoryInTrees(
   ctx: QueryCtx | MutationCtx,
   product: Pick<
     Doc<"products">,
@@ -70,12 +70,14 @@ async function productCategoryInTree(
     Id<"categories">,
     Pick<Doc<"categories">, "_id" | "parentCategoryId">
   >,
-  rootCategoryId: Id<"categories">,
+  rootCategoryIds: Id<"categories">[],
 ) {
   const categoryIds = await getProductCategoryIds(ctx, product);
   return (
     categoryIds.find((categoryId) =>
-      categoryIncludes(categories, rootCategoryId, categoryId),
+      rootCategoryIds.some((rootCategoryId) =>
+        categoryIncludes(categories, rootCategoryId, categoryId),
+      ),
     ) ?? null
   );
 }
@@ -92,6 +94,7 @@ const registrationStatusValidator = v.union(
 
 const allowanceInputValidator = v.object({
   categoryId: v.id("categories"),
+  categoryIds: v.optional(v.array(v.id("categories"))),
   amount: v.number(),
   productIds: v.array(v.id("products")),
 });
@@ -552,6 +555,7 @@ export const getSessionState = query({
     allowances: v.array(
       v.object({
         categoryId: v.id("categories"),
+        categoryIds: v.array(v.id("categories")),
         categoryName: v.string(),
         amount: v.number(),
         used: v.number(),
@@ -648,16 +652,15 @@ export const getSessionState = query({
     const categoriesById = new Map(
       categoryRows.map((category) => [category._id, category]),
     );
-    const categories = allowanceRows.map((allowance) =>
-      categoriesById.get(allowance.categoryId),
-    );
-    const allowances = allowanceRows.flatMap((allowance, index) => {
-      const category = categories[index];
-      if (!category || category.organizationId !== organizationId) return [];
+    const allowances = allowanceRows.flatMap((allowance) => {
+      const categoryIds = allowance.categoryIds ?? [allowance.categoryId];
+      const categories = categoryIds.map((id) => categoriesById.get(id));
+      if (categories.some((category) => !category)) return [];
       return [
         {
-          categoryId: category._id,
-          categoryName: category.name,
+          categoryId: allowance.categoryId,
+          categoryIds,
+          categoryName: categories.map((category) => category?.name).join(", "),
           amount: allowance.amount,
           used: 0,
           remaining: allowance.amount,
@@ -735,11 +738,11 @@ export const getSessionState = query({
             const product = productsById.get(row.productId);
             const categoryId =
               product && allowance
-                ? await productCategoryInTree(
+                ? await productCategoryInTrees(
                     ctx,
                     product,
                     categoriesById,
-                    allowance.categoryId,
+                    allowance.categoryIds,
                   )
                 : null;
             if (
@@ -775,7 +778,9 @@ export const getSessionState = query({
       const allowance =
         allowanceByProductId.get(row.productId) ??
         allowances.find((item) =>
-          categoryIncludes(categoriesById, item.categoryId, row.categoryId),
+          item.categoryIds.some((categoryId) =>
+            categoryIncludes(categoriesById, categoryId, row.categoryId),
+          ),
         );
       if (allowance) {
         used.set(
@@ -927,11 +932,11 @@ export const register = mutation({
       const allowance = allowedProducts.get(item.productId);
       const categoryId =
         product && allowance
-          ? await productCategoryInTree(
+          ? await productCategoryInTrees(
               ctx,
               product,
               categoriesById,
-              allowance.categoryId,
+              allowance.categoryIds ?? [allowance.categoryId],
             )
           : null;
       if (
@@ -961,7 +966,13 @@ export const register = mutation({
     const usedByAllowance = new Map<Id<"staffFoodRuleAllowances">, number>();
     for (const row of existing) {
       if (row.status !== "active") continue;
-      const allowance = allowedProducts.get(row.productId);
+      const allowance =
+        allowedProducts.get(row.productId) ??
+        allowanceRows.find((item) =>
+          (item.categoryIds ?? [item.categoryId]).some((categoryId) =>
+            categoryIncludes(categoriesById, categoryId, row.categoryId),
+          ),
+        );
       if (allowance) {
         usedByAllowance.set(
           allowance._id,
@@ -1147,6 +1158,7 @@ export const getSettings = query({
         allowances: v.array(
           v.object({
             categoryId: v.id("categories"),
+            categoryIds: v.array(v.id("categories")),
             categoryName: v.string(),
             amount: v.number(),
             products: v.array(
@@ -1237,8 +1249,9 @@ export const getSettings = query({
                     .eq("allowanceId", allowance._id),
                 )
                 .take(MAX_PRODUCTS_PER_TIER + 1);
-              const category = categoriesById.get(allowance.categoryId);
-              if (!category || category.organizationId !== organizationId) {
+              const categoryIds = allowance.categoryIds ?? [allowance.categoryId];
+              const categories = categoryIds.map((id) => categoriesById.get(id));
+              if (categories.some((category) => !category)) {
                 throw new ConvexError("Reglens kategori blev ikke fundet");
               }
               if (productRows.length > MAX_PRODUCTS_PER_TIER) {
@@ -1248,8 +1261,9 @@ export const getSettings = query({
                 productsById.get(row.productId),
               );
               return {
-                categoryId: category._id,
-                categoryName: category.name,
+                categoryId: allowance.categoryId,
+                categoryIds,
+                categoryName: categories.map((category) => category?.name).join(", "),
                 amount: allowance.amount,
                 products: allowedProducts.flatMap((product) =>
                   product?.organizationId === organizationId
@@ -1301,10 +1315,10 @@ export const saveTier = mutation({
     if (!args.allowances.length || args.allowances.length > MAX_ALLOWANCES) {
       throw new ConvexError("Tilføj mellem 1 og 20 kategori-regler");
     }
-    if (
-      new Set(args.allowances.map((allowance) => allowance.categoryId)).size !==
-      args.allowances.length
-    ) {
+    const selectedCategoryIds = args.allowances.flatMap(
+      (allowance) => allowance.categoryIds ?? [allowance.categoryId],
+    );
+    if (new Set(selectedCategoryIds).size !== selectedCategoryIds.length) {
       throw new ConvexError("En kategori må kun bruges én gang pr. regel");
     }
     const productCount = args.allowances.reduce(
@@ -1313,6 +1327,12 @@ export const saveTier = mutation({
     );
     if (productCount < 1 || productCount > MAX_PRODUCTS_PER_TIER) {
       throw new ConvexError("Vælg mellem 1 og 100 produkter pr. regel");
+    }
+    if (
+      new Set(args.allowances.flatMap((allowance) => allowance.productIds)).size !==
+      productCount
+    ) {
+      throw new ConvexError("Et produkt må kun bruges i én kategori-regel");
     }
     const categoryRows = await ctx.db
       .query("categories")
@@ -1327,6 +1347,15 @@ export const saveTier = mutation({
       categoryRows.map((category) => [category._id, category]),
     );
     for (const allowance of args.allowances) {
+      const categoryIds = allowance.categoryIds ?? [allowance.categoryId];
+      if (
+        !categoryIds.length ||
+        categoryIds.length > MAX_CATEGORIES_PER_ORGANIZATION ||
+        categoryIds[0] !== allowance.categoryId ||
+        categoryIds.some((id) => !categoriesById.has(id))
+      ) {
+        throw new ConvexError("Vælg gyldige kategorier til kategori-reglen");
+      }
       if (
         !Number.isInteger(allowance.amount) ||
         allowance.amount < 1 ||
@@ -1402,10 +1431,7 @@ export const saveTier = mutation({
       await ctx.db.delete(allowance._id);
     }
     for (const allowance of args.allowances) {
-      const category = categoriesById.get(allowance.categoryId);
-      if (!category || category.organizationId !== organizationId) {
-        throw new ConvexError("En kategori blev ikke fundet");
-      }
+      const categoryIds = allowance.categoryIds ?? [allowance.categoryId];
       const products = await Promise.all(
         allowance.productIds.map((productId) =>
           ctx.db.get("products", productId),
@@ -1415,11 +1441,11 @@ export const saveTier = mutation({
         products.map(async (product) =>
           product?.organizationId === organizationId
             ? Boolean(
-                await productCategoryInTree(
+                await productCategoryInTrees(
                   ctx,
                   product,
                   categoriesById,
-                  category._id,
+                  categoryIds,
                 ),
               )
             : false,
@@ -1427,13 +1453,14 @@ export const saveTier = mutation({
       );
       if (validProducts.some((valid) => !valid)) {
         throw new ConvexError(
-          "Et produkt tilhører ikke den valgte kategori eller dens underkategorier",
+          "Et produkt tilhører ikke de valgte kategorier eller deres underkategorier",
         );
       }
       const allowanceId = await ctx.db.insert("staffFoodRuleAllowances", {
         organizationId,
         tierId,
-        categoryId: category._id,
+        categoryId: allowance.categoryId,
+        categoryIds,
         amount: allowance.amount,
       });
       for (const productId of allowance.productIds) {
