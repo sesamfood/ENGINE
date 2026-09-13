@@ -917,7 +917,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                 <FieldError>{errors.comment}</FieldError>
               </Field>
               <PhotoField
-                label="Billede af kvittering, valgfrit"
+                label="Billede af kvittering (valgfrit)"
                 file={photo}
                 onChange={setPhoto}
                 maxFileSize={MAX_PHOTO_SIZE}
