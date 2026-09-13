@@ -1034,11 +1034,7 @@ export const listProductViewStatePage = query({
     return {
       ...result,
       page: await Promise.all(result.page.map(async (product) => {
-        const [organizationStat, locationStat, config] = await Promise.all([
-          ctx.db.query("wasteOrganizationProductStats")
-            .withIndex("by_org_product", (q) =>
-              q.eq("organizationId", organizationId).eq("productId", product._id),
-            ).unique(),
+        const [locationStat, config] = await Promise.all([
           settings.historyScope === "location"
             ? ctx.db.query("wasteProductStats")
                 .withIndex("by_org_location_product", (q) =>
@@ -1054,9 +1050,13 @@ export const listProductViewStatePage = query({
                 .eq("productId", product._id),
             ).unique(),
         ]);
-        const stat = locationStat && (
-          !organizationStat || countForPeriod(locationStat, settings.popularityPeriod) >= MIN_PRODUCT_HISTORY
-        ) ? locationStat : organizationStat;
+        const stat = locationStat &&
+          countForPeriod(locationStat, settings.popularityPeriod) >= MIN_PRODUCT_HISTORY
+          ? locationStat
+          : (await ctx.db.query("wasteOrganizationProductStats")
+              .withIndex("by_org_product", (q) =>
+                q.eq("organizationId", organizationId).eq("productId", product._id),
+              ).unique()) ?? locationStat;
         return {
           productId: product._id,
           ranking: stat && countForPeriod(stat, settings.popularityPeriod) > 0 ? {

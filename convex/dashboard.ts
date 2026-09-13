@@ -15,7 +15,7 @@ import {
   metricRegistry,
   type MetricSource,
 } from "../lib/dashboard/registry";
-import { dashboardDatasets } from "../lib/dashboard/datasets";
+import { canBatchCustomMetric, dashboardDatasets } from "../lib/dashboard/datasets";
 import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
 import type {
   DashboardConfig,
@@ -39,6 +39,7 @@ import {
   createMetricParamsResolver,
   queryMetricComputer,
   resolveBuiltinSalesSource,
+  resolveDashboardRange,
   resolveMetricParams,
   salesSourceProviders,
 } from "./lib/dashboardMetrics";
@@ -1323,8 +1324,6 @@ export const getMetrics = query({
     const { organizationId } = auth;
     if (
       args.widgets.length > MAX_METRIC_BATCH ||
-      (args.widgets.length > 1 &&
-        args.widgets.some((widget) => widget.metric.kind === "custom")) ||
       new Set(args.widgets.map((widget) => widget.key)).size !==
         args.widgets.length
     ) {
@@ -1380,6 +1379,44 @@ export const getMetrics = query({
         salesDetailAllowed: canViewDetailedSales(auth),
       },
     );
+    const customBatch = args.widgets.flatMap((widget) =>
+      widget.metric.kind === "custom"
+        ? [{ widget, spec: customMetrics.get(widget.metric.id)!.spec }]
+        : [],
+    );
+    const firstCustom = customBatch[0];
+    if (firstCustom && args.widgets.length > 1) {
+      if (
+        customBatch.length !== args.widgets.length ||
+        customBatch.some(({ spec }) => !canBatchCustomMetric(spec))
+      ) {
+        throw new ConvexError("Widgetgruppen er ugyldig");
+      }
+      const params = await resolveParams(
+        firstCustom.widget.range ? { preset: firstCustom.widget.range } : args.range,
+      );
+      for (const { widget } of customBatch) {
+        const range = resolveDashboardRange(
+          widget.range ? { preset: widget.range } : args.range,
+          params.timeZone,
+          args.now,
+        );
+        if (range.from !== params.from || range.to !== params.to) {
+          throw new ConvexError("Widgetgruppen er ugyldig");
+        }
+      }
+      const results = [];
+      for (const { widget, spec } of customBatch) {
+        results.push({
+          key: widget.key,
+          result: markScopeTruncated(
+            await executeCustomMetric(ctx, spec, params),
+            params.scopeTruncated,
+          ),
+        });
+      }
+      return results;
+    }
     return await Promise.all(
       args.widgets.map(async (widget) => {
         const params = await resolveParams(

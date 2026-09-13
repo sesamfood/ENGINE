@@ -268,11 +268,13 @@ async function markStockChanged(
   ctx: MutationCtx,
   status: Doc<"onlinePosSyncStatus">,
   from: number | undefined,
+  full = false,
 ) {
   if (from === undefined) return;
   await ctx.db.patch(status._id, {
     stockRevision: (status.stockRevision ?? 0) + 1,
     stockChangedFrom: Math.min(status.stockChangedFrom ?? from, from),
+    ...(full ? { stockFullSyncRevision: (status.stockRevision ?? 0) + 1 } : {}),
   });
 }
 
@@ -682,7 +684,10 @@ export const rerollLocationDayStartsPage = internalMutation({
           .unique();
         if (application) await ctx.db.patch(application._id, { dayStart });
       }
-      await ctx.db.patch(order._id, { dayStart });
+      await ctx.db.patch(order._id, {
+        dayStart,
+        stockRevision: (status.stockRevision ?? 0) + 1,
+      });
       stockChangedFrom = Math.min(
         stockChangedFrom ?? dayStart,
         order.dayStart,
@@ -690,7 +695,7 @@ export const rerollLocationDayStartsPage = internalMutation({
       );
       patched++;
     }
-    await markStockChanged(ctx, status, stockChangedFrom);
+    await markStockChanged(ctx, status, stockChangedFrom, true);
     if (!page.isDone) {
       await ctx.scheduler.runAfter(
         0,
@@ -1209,6 +1214,8 @@ export const ingestSalesBatch = internalMutation({
 
     const now = Date.now();
     const maybeEmptyOrders = new Map<Id<"salesOrders">, string>();
+    const stockChangedOrders = new Set<Id<"salesOrders">>();
+    let fullStockSync = false;
     let stockChangedFrom: number | undefined;
     for (const line of lines) {
       const dayStart = dayStartOf(line.occurredAt, timeZone);
@@ -1220,14 +1227,14 @@ export const ingestSalesBatch = internalMutation({
       );
       let order = orderCache.get(key) ?? null;
       const existingLine = existingLineDocs.get(line.externalId);
-      if (
+      const stockChanged =
         !existingLine ||
         existingLine.orderId !== order?._id ||
         existingLine.occurredAt !== line.occurredAt ||
         existingLine.externalProductId !== line.externalProductId ||
         existingLine.quantity !== line.quantity ||
-        existingLine.externalId !== line.externalId
-      ) {
+        existingLine.externalId !== line.externalId;
+      if (stockChanged) {
         stockChangedFrom = Math.min(
           stockChangedFrom ?? dayStart,
           dayStart,
@@ -1236,12 +1243,14 @@ export const ingestSalesBatch = internalMutation({
       }
 
       if (existingLine && existingLine.orderId !== order?._id) {
+        fullStockSync = true;
         const oldOrder = await ctx.db.get("salesOrders", existingLine.orderId);
         if (
           oldOrder &&
           oldOrder.organizationId === args.organizationId &&
           oldOrder.locationId === args.locationId
         ) {
+          stockChangedOrders.add(oldOrder._id);
           const nextRevenue = finiteSalesNumber(
             oldOrder.revenue - existingLine.revenue,
           );
@@ -1340,6 +1349,8 @@ export const ingestSalesBatch = internalMutation({
           order.occurredAt !== nextOccurredAt ||
           order.externalId !== externalId
         ) {
+          stockChangedOrders.add(order._id);
+          if (order.externalId !== externalId) fullStockSync = true;
           stockChangedFrom = Math.min(stockChangedFrom ?? dayStart, dayStart);
         }
         if (
@@ -1377,6 +1388,7 @@ export const ingestSalesBatch = internalMutation({
       if (!targetOrder) {
         throw new ConvexError("Salgsordren kunne ikke gemmes");
       }
+      if (stockChanged) stockChangedOrders.add(targetOrder._id);
 
       if (existingLine) {
         if (
@@ -1449,6 +1461,8 @@ export const ingestSalesBatch = internalMutation({
         .first();
       if (remainingLine) continue;
       await ctx.db.delete("salesOrders", orderId);
+      stockChangedOrders.delete(orderId);
+      fullStockSync = true;
       orderCache.set(key, null);
       knownOrderKeys.delete(key);
     }
@@ -1498,7 +1512,12 @@ export const ingestSalesBatch = internalMutation({
       }
     }
 
-    await markStockChanged(ctx, status, stockChangedFrom);
+    for (const orderId of stockChangedOrders) {
+      await ctx.db.patch(orderId, {
+        stockRevision: (status.stockRevision ?? 0) + 1,
+      });
+    }
+    await markStockChanged(ctx, status, stockChangedFrom, fullStockSync);
     return null;
   },
 });
@@ -1751,7 +1770,7 @@ export const deleteDayOrdersPage = internalMutation({
         break;
       }
     }
-    await markStockChanged(ctx, status, stockChangedFrom);
+    await markStockChanged(ctx, status, stockChangedFrom, true);
 
     return {
       active: true,
