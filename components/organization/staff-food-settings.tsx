@@ -4,6 +4,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   DownloadIcon,
+  FolderIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
@@ -214,11 +215,48 @@ export function StaffFoodSettings() {
     ];
   }, [settingsProducts]);
 
-  const categoryItems =
-    settings?.categories.map((category) => ({
-      value: category.id,
-      label: category.name,
-    })) ?? [];
+  const categoryItems = useMemo(() => {
+    const categories = [...(settings?.categories ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name, "da"),
+    );
+    const categoryIds = new Set(categories.map((category) => category.id));
+    const childrenByParent = new Map<
+      SettingsCategory["id"] | null,
+      SettingsCategory[]
+    >();
+    for (const category of categories) {
+      const parentId =
+        category.parentCategoryId && categoryIds.has(category.parentCategoryId)
+          ? category.parentCategoryId
+          : null;
+      const siblings = childrenByParent.get(parentId) ?? [];
+      siblings.push(category);
+      childrenByParent.set(parentId, siblings);
+    }
+    const items: {
+      value: SettingsCategory["id"];
+      label: string;
+      name: string;
+      depth: number;
+    }[] = [];
+    const visited = new Set<SettingsCategory["id"]>();
+    function visit(category: SettingsCategory, depth: number) {
+      if (visited.has(category.id)) return;
+      visited.add(category.id);
+      items.push({
+        value: category.id,
+        label: categoryPaths.get(category.id) ?? category.name,
+        name: category.name,
+        depth,
+      });
+      for (const child of childrenByParent.get(category.id) ?? []) {
+        visit(child, depth + 1);
+      }
+    }
+    for (const category of childrenByParent.get(null) ?? []) visit(category, 0);
+    for (const category of categories) visit(category, 0);
+    return items;
+  }, [settings?.categories, categoryPaths]);
   const minimumMinutes = Number(minimumHours) * 60;
   const minimumValid =
     Number.isFinite(minimumMinutes) &&
@@ -756,17 +794,23 @@ export function StaffFoodSettings() {
                           </SelectTrigger>
                           <SelectContent alignItemWithTrigger={false}>
                             <SelectGroup>
-                              {settings.categories.map((category) => (
+                              {categoryItems.map((category) => (
                                 <SelectItem
-                                  key={category.id}
-                                  value={category.id}
+                                  key={category.value}
+                                  value={category.value}
                                   className="min-h-11"
+                                  style={{
+                                    paddingInlineStart: `${category.depth * 1.5 + 0.5}rem`,
+                                  }}
+                                  title={category.label}
+                                  aria-label={category.label}
                                   disabled={allowances.some(
                                     (item, allowanceIndex) =>
                                       allowanceIndex !== index &&
-                                      item.categoryIds.includes(category.id),
+                                      item.categoryIds.includes(category.value),
                                   )}
                                 >
+                                  <FolderIcon aria-hidden="true" />
                                   {category.name}
                                 </SelectItem>
                               ))}
