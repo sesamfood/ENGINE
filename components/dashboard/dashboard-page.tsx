@@ -344,7 +344,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];
 
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
+    <section className="mx-auto flex w-full max-w-[120rem] flex-col gap-6">
       <AppPageHeader>{title}</AppPageHeader>
       <DashboardTabs
         key={dashboardList.map((candidate) => `${candidate.id}:${candidate.updatedAt}`).join("|")}
