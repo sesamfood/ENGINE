@@ -1,5 +1,7 @@
 "use client";
 
+import { OnlinePosMasterSelect } from "./online-pos-master-select";
+
 import { uploadToStorage } from "@/lib/upload-to-storage";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
@@ -174,12 +176,14 @@ function parseMaxTemperature(value: string) {
 
 function OnlinePosProductMappingField({
   productId,
+  integrationId,
   productName,
   mapping,
   onlinePosProducts,
   onRetry,
 }: {
   productId: Id<"products">;
+  integrationId: Id<"onlinePosIntegrations"> | undefined;
   productName: string;
   mapping: ProductMapping | null | undefined;
   onlinePosProducts: OnlinePosProduct[] | null | undefined;
@@ -196,6 +200,7 @@ function OnlinePosProductMappingField({
     try {
       await setProductMapping({
         productId,
+        integrationId,
         onlinePosProductId: value,
       });
       toast.success(
@@ -250,6 +255,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const canManageIntegrations = usePermission("integrations.manage");
+  const masterSettings = useQuery(
+    api.onlinePos.getSettings,
+    canManageIntegrations ? {} : "skip",
+  );
+  const [selectedMasterId, setSelectedMasterId] =
+    useState<Id<"onlinePosIntegrations"> | null>(null);
+  const selectedMaster =
+    masterSettings?.masters.find((master) => master.id === selectedMasterId) ??
+    masterSettings?.masters[0];
+  const integrationId = selectedMaster?.id;
   const returnHref = useMemo(() => {
     const params = new URLSearchParams();
     const search = searchParams.get("search");
@@ -266,27 +281,27 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const productMapping = useQuery(
     api.onlinePos.getProductMapping,
     canManageIntegrations && productId && product
-      ? { productId }
+      ? { productId, integrationId }
       : "skip",
   );
   const ingredientRemovalSettings = useQuery(
     api.onlinePos.getIngredientRemovalSettings,
     canManageIntegrations
       ? productId === undefined
-        ? {}
+        ? { integrationId }
         : product === undefined || product === null
           ? "skip"
-          : { productId }
+          : { productId, integrationId }
       : "skip",
   );
   const ingredientAdditionSettings = useQuery(
     api.onlinePos.getIngredientAdditionSettings,
     canManageIntegrations
       ? productId === undefined
-        ? {}
+        ? { integrationId }
         : product === undefined || product === null
           ? "skip"
-          : { productId }
+          : { productId, integrationId }
       : "skip",
   );
   const onlinePosSettingsReady =
@@ -464,7 +479,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   useEffect(() => {
     if (!shouldLoadOnlinePosProducts || onlinePosProducts !== undefined) return;
     let active = true;
-    void listProducts({})
+    void listProducts({ integrationId })
       .then((products) => {
         if (active) setOnlinePosProducts(products);
       })
@@ -475,6 +490,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       active = false;
     };
   }, [
+    integrationId,
     listProducts,
     onlinePosProducts,
     shouldLoadOnlinePosProducts,
@@ -937,6 +953,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         </div>
       </div>
 
+      {canManageIntegrations &&
+      masterSettings &&
+      masterSettings.masters.length > 0 ? (
+        <OnlinePosMasterSelect
+          masters={masterSettings.masters}
+          value={integrationId ?? null}
+          onValueChange={setSelectedMasterId}
+          disabled={isSaving || !onlinePosSettingsReady}
+        />
+      ) : null}
       <div className="grid gap-6 xl:items-start xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <Card>
           <CardHeader>
@@ -998,6 +1024,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
               {productId ? (
                 <OnlinePosProductMappingField
+                  integrationId={integrationId}
                   productId={productId}
                   productName={name}
                   mapping={productMapping}

@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings, getOnlinePosLocationMaster, onlinePosCatalogId } from "./lib/onlinePosConnections";
 import { ConvexError, type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -188,13 +189,11 @@ async function loadOnlinePos(
   to: number,
   omitSales = false,
 ): Promise<ProviderLoad<OnlinePosHealth>> {
+  const catalogMaster = await getOnlinePosLocationMaster(
+    ctx, report.organizationId, report.locationId,
+  );
   const [master, connection, status, mappings] = await Promise.all([
-    ctx.db
-      .query("onlinePosIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", report.organizationId),
-      )
-      .unique(),
+    getOnlinePosOrganizationSettings(ctx, report.organizationId),
     ctx.db
       .query("onlinePosLocationIntegrations")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -213,8 +212,9 @@ async function loadOnlinePos(
       .unique(),
     ctx.db
       .query("onlinePosProductMappings")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", report.organizationId),
+      .withIndex("by_organizationId_and_integrationId", (q) =>
+        q.eq("organizationId", report.organizationId)
+          .eq("integrationId", onlinePosCatalogId(catalogMaster)),
       )
       .take(MAX_MAPPINGS + 1),
   ]);
@@ -287,7 +287,7 @@ async function loadOnlinePos(
   }
 
   if (report.rows.some(row => row.onlinePosStockAccounting)) {
-    const resolve = createSalesStockResolver(ctx, report.organizationId);
+    const resolve = createSalesStockResolver(ctx, report.organizationId, catalogMaster?._id);
     let unmappedSalesQuantity = 0;
     for (const orderId of new Set(lines.filter(line => line.source === "onlinePos").map(line => line.orderId))) {
       const order = await ctx.db.get("salesOrders", orderId);
@@ -295,7 +295,10 @@ async function loadOnlinePos(
       const orderLines = await ctx.db.query("salesLines").withIndex("by_organizationId_and_orderId", q => q.eq("organizationId", report.organizationId).eq("orderId", orderId)).take(501);
       if (orderLines.length > 500) throw new ConvexError("En salgsordre har for mange linjer til Count-rapporten");
       const stored = connection ? await stockApplication(ctx, order, connection.companyId) : null;
-      const result = stored?.fingerprint === stockSalesFingerprint(orderLines) && stored.unmappedQuantity === 0
+      const result = stored?.fingerprint === stockSalesFingerprint(orderLines) &&
+        stored.integrationId === onlinePosCatalogId(catalogMaster) &&
+        stored.mappingRevision === (master?.stockMappingRevision ?? 0) &&
+        stored.unmappedQuantity === 0
         ? { entries: stored.entries, unmappedQuantity: 0 }
         : await resolve(orderLines);
       unmappedSalesQuantity += result.unmappedQuantity;
@@ -530,12 +533,7 @@ export const getSettings = query({
             q.eq("organizationId", organizationId),
           )
           .take(MAX_LOCATIONS + 1),
-        ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .unique(),
+        getOnlinePosOrganizationSettings(ctx, organizationId),
         ctx.db
           .query("onlinePosLocationIntegrations")
           .withIndex("by_organizationId", (q) =>
@@ -662,8 +660,7 @@ export const setSource = mutation({
     if (!location || location.organizationId !== auth.organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
     }
-    const master = await ctx.db.query("onlinePosIntegrations")
-      .withIndex("by_organizationId", q => q.eq("organizationId", auth.organizationId)).unique();
+    const master = await getOnlinePosOrganizationSettings(ctx, auth.organizationId);
     const connection = await ctx.db.query("onlinePosLocationIntegrations")
       .withIndex("by_organizationId_and_locationId", q => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId)).unique();
     if (master?.enabled && master.stockSyncEnabled && connection && args.salesSource !== "onlinePos") {
@@ -732,12 +729,7 @@ export const buildCountWasteReportData = internalQuery({
       report.locationId,
     );
     const [master, locationConnection, status, woltIntegration, woltConnection] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", report.organizationId),
-        )
-        .unique(),
+      getOnlinePosOrganizationSettings(ctx, report.organizationId),
       ctx.db
         .query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId_and_locationId", (q) =>

@@ -1,5 +1,8 @@
 "use client";
 
+import type { Id } from "@/convex/_generated/dataModel";
+import { OnlinePosMasterSelect } from "./online-pos-master-select";
+
 import { useAccess, usePermission } from "@/components/app-shell";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
 import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
@@ -180,14 +183,21 @@ function MenuCard({
   );
 }
 
-export function OnlinePosMenuManager() {
+function MasterMenuManager({
+  integrationId,
+}: {
+  integrationId: Id<"onlinePosIntegrations">;
+}) {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
   const [editor, setEditor] = useState<MenuEditor>(null);
-  const menuData = useQuery(api.onlinePosMenus.list, canManage ? {} : "skip");
+  const menuData = useQuery(
+    api.onlinePosMenus.list,
+    canManage ? { integrationId } : "skip",
+  );
   const mappingOptions = useQuery(
     api.onlinePos.listMappingOptions,
-    canManage && editor !== null ? {} : "skip",
+    canManage && editor !== null ? { integrationId } : "skip",
   );
   const catalogCategories = useQuery(
     api.catalog.listCategoryOptions,
@@ -228,7 +238,9 @@ export function OnlinePosMenuManager() {
     setLoadingOnlinePosProducts(true);
     setOnlinePosProductsError(null);
     try {
-      setOnlinePosProductOptions(await listOnlinePosProducts({}));
+      setOnlinePosProductOptions(
+        await listOnlinePosProducts({ integrationId }),
+      );
     } catch (error) {
       setOnlinePosProductsError(
         getUserErrorMessage(
@@ -356,6 +368,7 @@ export function OnlinePosMenuManager() {
     setFormError("");
     try {
       await saveMenu({
+        integrationId,
         menuId: editor?.kind === "edit" ? editor.menu.id : null,
         name,
         onlinePosProductId: menuProductId,
@@ -987,6 +1000,45 @@ export function OnlinePosMenuManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+export function OnlinePosMenuManager() {
+  const canManage = usePermission("integrations.manage");
+  const settings = useQuery(api.onlinePos.getSettings, canManage ? {} : "skip");
+  const [selectedId, setSelectedId] =
+    useState<Id<"onlinePosIntegrations"> | null>(null);
+  const master =
+    settings?.masters.find((master) => master.id === selectedId) ??
+    settings?.masters[0];
+  if (!canManage)
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Ingen adgang</AlertTitle>
+        <AlertDescription>
+          Du har ikke adgang til at administrere integrationer.
+        </AlertDescription>
+      </Alert>
+    );
+  if (!settings) return <Skeleton className="h-96 w-full" />;
+  return (
+    <div className="flex flex-col gap-5">
+      <OnlinePosMasterSelect
+        masters={settings.masters}
+        value={master?.id ?? null}
+        onValueChange={setSelectedId}
+      />
+      {master ? (
+        <MasterMenuManager key={master.id} integrationId={master.id} />
+      ) : (
+        <Alert>
+          <AlertTitle>OnlinePOS er ikke forbundet</AlertTitle>
+          <AlertDescription>
+            Opret en masterforbindelse under integrationer.
+          </AlertDescription>
+        </Alert>
+      )}
     </div>
   );
 }

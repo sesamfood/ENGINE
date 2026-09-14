@@ -1,4 +1,8 @@
 import {
+  getOnlinePosLocationMaster,
+  onlinePosCatalogId,
+} from "./lib/onlinePosConnections";
+import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
@@ -73,7 +77,7 @@ export const listLocations = query({
 });
 
 export const listMenus = query({
-  args: {},
+  args: { locationId: v.id("locations") },
   returns: v.array(
     v.object({
       id: v.id("onlinePosMenus"),
@@ -87,12 +91,22 @@ export const listMenus = query({
       ),
     }),
   ),
-  handler: async (ctx) => {
-    const { organizationId } = await requireInvoiceManager(ctx);
+  handler: async (ctx, args) => {
+    const auth = await requireInvoiceManager(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    await requireOrganizationLocation(ctx, organizationId, args.locationId);
+    const master = await getOnlinePosLocationMaster(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     const menus = await ctx.db
       .query("onlinePosMenus")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId),
+      .withIndex("by_organizationId_and_integrationId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("integrationId", onlinePosCatalogId(master)),
       )
       .take(101);
     if (menus.length > 100) throw new ConvexError("Der er for mange menuer");
@@ -332,6 +346,11 @@ export const create = mutation({
       location._id,
     );
     const deductions = new Map<Id<"products">, number>();
+    const master = await getOnlinePosLocationMaster(
+      ctx,
+      organizationId,
+      location._id,
+    );
     const selectedMenus = new Map<
       string,
       {
@@ -369,6 +388,7 @@ export const create = mutation({
         item.menuId &&
         (!menu ||
           menu.organizationId !== organizationId ||
+          menu.integrationId !== onlinePosCatalogId(master) ||
           !menu.products.some((entry) => entry.productId === product._id))
       ) {
         throw new ConvexError("Produktet findes ikke i den valgte menu");

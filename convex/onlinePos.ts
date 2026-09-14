@@ -1,3 +1,10 @@
+import {
+  getOnlinePosOrganizationSettings,
+  getOnlinePosMaster,
+  onlinePosCatalogId,
+  scopeLegacyOnlinePosCatalog,
+  MAX_MASTER_CONNECTIONS,
+} from "./lib/onlinePosConnections";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -22,6 +29,7 @@ import {
 } from "./lib/onlinePosApi";
 import { getProductCategoryIds } from "./lib/productCategories";
 import { recordAudit } from "./lib/audit";
+import { invalidateSalesStockMappings } from "./lib/salesStock";
 
 const MAX_LOCATIONS = 200;
 const MAX_PRODUCTS = 500;
@@ -93,7 +101,10 @@ function requireToken(token: string) {
   return trimmed;
 }
 
-async function requireConnectedSettings(ctx: ActionCtx): Promise<{
+async function requireConnectedSettings(
+  ctx: ActionCtx,
+  integrationId?: Id<"onlinePosIntegrations">,
+): Promise<{
   organizationId: string;
   settings: {
     integrationId: Id<"onlinePosIntegrations">;
@@ -110,6 +121,7 @@ async function requireConnectedSettings(ctx: ActionCtx): Promise<{
     enabled: boolean;
   } | null = await ctx.runQuery(internal.onlinePos.getPrivateSettings, {
     organizationId,
+    integrationId,
   });
   if (!settings) {
     throw new ConvexError("OnlinePOS er ikke forbundet");
@@ -120,6 +132,14 @@ async function requireConnectedSettings(ctx: ActionCtx): Promise<{
 export const getSettings = query({
   args: {},
   returns: v.object({
+    masters: v.array(
+      v.object({
+        id: v.id("onlinePosIntegrations"),
+        name: v.string(),
+        companyId: v.number(),
+        connectedAt: v.number(),
+      }),
+    ),
     connected: v.boolean(),
     enabled: v.boolean(),
     companyId: v.union(v.number(), v.null()),
@@ -128,18 +148,61 @@ export const getSettings = query({
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
     const { organizationId } = auth;
-    const settings = await ctx.db
+    const settings = await getOnlinePosOrganizationSettings(
+      ctx,
+      organizationId,
+    );
+    const masters = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", organizationId),
       )
-      .unique();
+      .take(MAX_MASTER_CONNECTIONS + 1);
+    if (masters.length > MAX_MASTER_CONNECTIONS)
+      throw new ConvexError("Der er for mange masterforbindelser");
     return {
+      masters: masters.map((master) => ({
+        id: master._id,
+        name: master.name ?? `Firma ${master.companyId}`,
+        companyId: master.companyId,
+        connectedAt: master.connectedAt,
+      })),
       connected: Boolean(settings),
       enabled: settings?.enabled ?? false,
       companyId: settings?.companyId ?? null,
       connectedAt: settings?.connectedAt ?? null,
     };
+  },
+});
+
+export const renameConnection = mutation({
+  args: {
+    integrationId: v.id("onlinePosIntegrations"),
+    name: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    requireHumanPrincipal(auth);
+    const master = await getOnlinePosMaster(
+      ctx,
+      auth.organizationId,
+      args.integrationId,
+    );
+    if (!master) throw new ConvexError("Masterforbindelsen blev ikke fundet");
+    const name = args.name.trim();
+    if (!name) throw new ConvexError("Indtast et navn på masterforbindelsen");
+    if (name.length > 100)
+      throw new ConvexError("Navnet må højst være 100 tegn");
+    await ctx.db.patch(master._id, { name, updatedAt: Date.now() });
+    await recordAudit(ctx, auth, {
+      action: "integration.renamed",
+      entityTable: "onlinePosIntegrations",
+      entityId: master._id,
+      summary: `OnlinePOS-masterforbindelsen blev omdøbt til ${name}`,
+    });
+    return null;
   },
 });
 
@@ -150,6 +213,7 @@ export const listLocationConnections = query({
       v.object({
         id: v.id("locations"),
         name: v.string(),
+        masterIntegrationId: v.union(v.id("onlinePosIntegrations"), v.null()),
         connected: v.boolean(),
         companyId: v.union(v.number(), v.null()),
         connectedAt: v.union(v.number(), v.null()),
@@ -160,6 +224,10 @@ export const listLocationConnections = query({
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
     const { organizationId } = auth;
+    const defaultMaster = await getOnlinePosOrganizationSettings(
+      ctx,
+      organizationId,
+    );
     const [locations, connections] = await Promise.all([
       ctx.db
         .query("locations")
@@ -188,6 +256,9 @@ export const listLocationConnections = query({
         return {
           id: location._id,
           name: location.name,
+          masterIntegrationId: connection
+            ? (connection.masterIntegrationId ?? defaultMaster?._id ?? null)
+            : null,
           connected: Boolean(connection),
           companyId: connection?.companyId ?? null,
           connectedAt: connection?.connectedAt ?? null,
@@ -199,15 +270,17 @@ export const listLocationConnections = query({
 });
 
 export const getPrivateSettings = internalQuery({
-  args: { organizationId: v.string() },
+  args: {
+    organizationId: v.string(),
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
+  },
   returns: privateSettingsValidator,
   handler: async (ctx, args) => {
-    const settings = await ctx.db
-      .query("onlinePosIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .unique();
+    const settings = await getOnlinePosMaster(
+      ctx,
+      args.organizationId,
+      args.integrationId,
+    );
     return settings
       ? {
           integrationId: settings._id,
@@ -236,69 +309,71 @@ export const getLocationName = internalQuery({
 export const saveConnection = internalMutation({
   args: {
     organizationId: v.string(),
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
+    name: v.optional(v.string()),
     token: v.string(),
     companyId: v.number(),
     actorUserId: v.string(),
     actorName: v.string(),
   },
-  returns: v.null(),
+  returns: v.id("onlinePosIntegrations"),
   handler: async (ctx, args) => {
-    const current = await ctx.db
+    await scopeLegacyOnlinePosCatalog(ctx, args.organizationId);
+    const masters = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", args.organizationId),
       )
-      .unique();
-    const now = Date.now();
-
+      .take(MAX_MASTER_CONNECTIONS + 1);
+    const current =
+      args.integrationId === undefined
+        ? null
+        : await getOnlinePosMaster(
+            ctx,
+            args.organizationId,
+            args.integrationId,
+          );
     if (current && current.companyId !== args.companyId) {
-      const [mappings, menus] = await Promise.all([
-        ctx.db
-          .query("onlinePosProductMappings")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId),
-          )
-          .take(MAX_PRODUCTS + 1),
-        ctx.db
-          .query("onlinePosMenus")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId),
-          )
-          .take(MAX_MENUS + 1),
-      ]);
-      if (mappings.length > MAX_PRODUCTS) {
-        throw new ConvexError("Der er for mange produktkoblinger");
-      }
-      if (menus.length > MAX_MENUS) {
-        throw new ConvexError("Der er for mange OnlinePOS-menuer");
-      }
-      for (const mapping of mappings) await ctx.db.delete(mapping._id);
-      for (const menu of menus) await ctx.db.delete(menu._id);
+      throw new ConvexError(
+        "Opret en ny masterforbindelse for at bruge et andet firma-id",
+      );
     }
-
-    const replaceConnection =
-      current !== null && current.companyId !== args.companyId;
-    if (replaceConnection) await ctx.db.delete(current._id);
-
+    if (!current && masters.length >= MAX_MASTER_CONNECTIONS)
+      throw new ConvexError("Der kan højst oprettes 20 masterforbindelser");
+    if (
+      masters.some(
+        (master) =>
+          master.companyId === args.companyId && master._id !== current?._id,
+      )
+    ) {
+      throw new ConvexError(
+        "Der findes allerede en masterforbindelse med dette firma-id",
+      );
+    }
+    const name =
+      args.name?.trim() || current?.name || `Firma ${args.companyId}`;
+    if (name.length > 100)
+      throw new ConvexError("Navnet må højst være 100 tegn");
+    const now = Date.now();
     const integrationId =
-      current === null || replaceConnection
-        ? await ctx.db.insert("onlinePosIntegrations", {
-            organizationId: args.organizationId,
-            token: args.token,
-            companyId: args.companyId,
-            enabled: true,
-            connectedAt: now,
-            updatedAt: now,
-          })
-        : current._id;
-    if (current && !replaceConnection) {
-      await ctx.db.patch(current._id, {
+      current?._id ??
+      (await ctx.db.insert("onlinePosIntegrations", {
+        organizationId: args.organizationId,
+        name,
         token: args.token,
-        enabled: true,
+        companyId: args.companyId,
+        enabled: masters[0]?.enabled ?? true,
+        catalogScoped: true,
+        connectedAt: now,
+        updatedAt: now,
+      }));
+    if (current)
+      await ctx.db.patch(current._id, {
+        name,
+        token: args.token,
         connectedAt: now,
         updatedAt: now,
       });
-    }
     await recordAudit(
       ctx,
       {
@@ -310,7 +385,7 @@ export const saveConnection = internalMutation({
         action: "integration.connected",
         entityTable: "onlinePosIntegrations",
         entityId: integrationId,
-        summary: "OnlinePOS-integrationen blev forbundet",
+        summary: `OnlinePOS-masterforbindelsen ${name} blev gemt`,
       },
     );
     await ctx.scheduler.runAfter(
@@ -318,7 +393,7 @@ export const saveConnection = internalMutation({
       internal.onlinePosSync.enqueueOrganizationSync,
       { organizationId: args.organizationId },
     );
-    return null;
+    return integrationId;
   },
 });
 
@@ -326,6 +401,7 @@ export const saveLocationConnection = internalMutation({
   args: {
     organizationId: v.string(),
     locationId: v.id("locations"),
+    masterIntegrationId: v.id("onlinePosIntegrations"),
     token: v.string(),
     companyId: v.number(),
     actorUserId: v.string(),
@@ -333,6 +409,12 @@ export const saveLocationConnection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await scopeLegacyOnlinePosCatalog(ctx, args.organizationId);
+    await getOnlinePosMaster(
+      ctx,
+      args.organizationId,
+      args.masterIntegrationId,
+    );
     const [location, current, reset] = await Promise.all([
       ctx.db.get("locations", args.locationId),
       ctx.db
@@ -355,12 +437,15 @@ export const saveLocationConnection = internalMutation({
     if (!location || location.organizationId !== args.organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
     }
+    if (current && current.masterIntegrationId !== args.masterIntegrationId)
+      await invalidateSalesStockMappings(ctx, args.organizationId);
     const now = Date.now();
     const connectionId = current
       ? current._id
       : await ctx.db.insert("onlinePosLocationIntegrations", {
           organizationId: args.organizationId,
           locationId: args.locationId,
+          masterIntegrationId: args.masterIntegrationId,
           token: args.token,
           companyId: args.companyId,
           connectedAt: now,
@@ -368,6 +453,7 @@ export const saveLocationConnection = internalMutation({
         });
     if (current) {
       await ctx.db.patch(current._id, {
+        masterIntegrationId: args.masterIntegrationId,
         token: args.token,
         companyId: args.companyId,
         connectedAt: now,
@@ -409,17 +495,22 @@ export const setEnabledInternal = internalMutation({
   args: { organizationId: v.string(), enabled: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const settings = await ctx.db
+    const settings = await getOnlinePosOrganizationSettings(
+      ctx,
+      args.organizationId,
+    );
+    if (!settings) throw new ConvexError("OnlinePOS er ikke forbundet");
+    const masters = await ctx.db
       .query("onlinePosIntegrations")
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", args.organizationId),
       )
-      .unique();
-    if (!settings) throw new ConvexError("OnlinePOS er ikke forbundet");
-    await ctx.db.patch(settings._id, {
-      enabled: args.enabled,
-      updatedAt: Date.now(),
-    });
+      .take(MAX_MASTER_CONNECTIONS);
+    for (const master of masters)
+      await ctx.db.patch(master._id, {
+        enabled: args.enabled,
+        updatedAt: Date.now(),
+      });
     if (args.enabled) {
       await ctx.scheduler.runAfter(
         0,
@@ -432,8 +523,16 @@ export const setEnabledInternal = internalMutation({
 });
 
 export const connect = action({
-  args: { token: v.string(), companyId: v.number() },
-  returns: v.object({ productCount: v.number() }),
+  args: {
+    token: v.string(),
+    companyId: v.number(),
+    name: v.optional(v.string()),
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
+  },
+  returns: v.object({
+    productCount: v.number(),
+    integrationId: v.id("onlinePosIntegrations"),
+  }),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     requireAllLocationAccess(auth);
@@ -445,20 +544,26 @@ export const connect = action({
       token,
       companyId: args.companyId,
     });
-    await ctx.runMutation(internal.onlinePos.saveConnection, {
-      organizationId,
-      token,
-      companyId: args.companyId,
-      actorUserId: human.userId,
-      actorName: userName,
-    });
-    return { productCount: products.length };
+    const integrationId: Id<"onlinePosIntegrations"> = await ctx.runMutation(
+      internal.onlinePos.saveConnection,
+      {
+        integrationId: args.integrationId,
+        name: args.name,
+        organizationId,
+        token,
+        companyId: args.companyId,
+        actorUserId: human.userId,
+        actorName: userName,
+      },
+    );
+    return { productCount: products.length, integrationId };
   },
 });
 
 export const connectLocation = action({
   args: {
     locationId: v.id("locations"),
+    masterIntegrationId: v.id("onlinePosIntegrations"),
     token: v.string(),
     companyId: v.number(),
   },
@@ -485,6 +590,7 @@ export const connectLocation = action({
     await ctx.runMutation(internal.onlinePos.saveLocationConnection, {
       organizationId,
       locationId: args.locationId,
+      masterIntegrationId: args.masterIntegrationId,
       token,
       companyId: args.companyId,
       actorUserId: human.userId,
@@ -510,7 +616,11 @@ export const setEnabled = action({
     });
     if (!settings) throw new ConvexError("OnlinePOS er ikke forbundet");
     if (args.enabled) {
-      await requestProducts(settings);
+      const masters = await ctx.runQuery(
+        internal.onlinePos.listPrivateMasters,
+        { organizationId },
+      );
+      for (const master of masters) await requestProducts(master);
     }
     await ctx.runMutation(internal.onlinePos.setEnabledInternal, {
       organizationId,
@@ -521,29 +631,34 @@ export const setEnabled = action({
 });
 
 export const disconnect = mutation({
-  args: {},
+  args: { integrationId: v.id("onlinePosIntegrations") },
   returns: v.null(),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     requireAllLocationAccess(auth);
     const { organizationId } = auth;
-    const [settings, mappings, menus, locationConnections] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+    await scopeLegacyOnlinePosCatalog(ctx, organizationId);
+    const settings = await getOnlinePosMaster(
+      ctx,
+      organizationId,
+      args.integrationId,
+    );
+    if (!settings) throw new ConvexError("Masterforbindelsen blev ikke fundet");
+    const [mappings, menus, connections, masters] = await Promise.all([
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("integrationId", settings._id),
         )
         .take(MAX_PRODUCTS + 1),
       ctx.db
         .query("onlinePosMenus")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("integrationId", settings._id),
         )
         .take(MAX_MENUS + 1),
       ctx.db
@@ -552,31 +667,106 @@ export const disconnect = mutation({
           q.eq("organizationId", organizationId),
         )
         .take(MAX_LOCATIONS + 1),
+      ctx.db
+        .query("onlinePosIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_MASTER_CONNECTIONS),
     ]);
-    if (mappings.length > MAX_PRODUCTS) {
-      throw new ConvexError("Der er for mange produktkoblinger");
+    if (
+      mappings.length > MAX_PRODUCTS ||
+      menus.length > MAX_MENUS ||
+      connections.length > MAX_LOCATIONS
+    )
+      throw new ConvexError("Der er for mange OnlinePOS-koblinger");
+    if (
+      connections.some(
+        (connection) => connection.masterIntegrationId === settings._id,
+      )
+    ) {
+      throw new ConvexError(
+        "Vælg en anden masterforbindelse for lokationerne, eller fjern deres forbindelse først",
+      );
     }
-    if (menus.length > MAX_MENUS) {
-      throw new ConvexError("Der er for mange OnlinePOS-menuer");
-    }
-    if (locationConnections.length > MAX_LOCATIONS) {
-      throw new ConvexError("Der er for mange OnlinePOS-lokationer");
-    }
-    for (const mapping of mappings) await ctx.db.delete(mapping._id);
-    for (const menu of menus) await ctx.db.delete(menu._id);
-    for (const connection of locationConnections) {
-      await ctx.db.delete(connection._id);
-      await beginLocationSalesReset(ctx, organizationId, connection.locationId);
-    }
-    if (settings) await ctx.db.delete(settings._id);
-    if (settings || locationConnections.length > 0) {
-      await recordAudit(ctx, auth, {
-        action: "integration.disconnected",
-        entityTable: "onlinePosIntegrations",
-        entityId: organizationId,
-        summary: "OnlinePOS-integrationen blev afbrudt",
+    for (const row of [...mappings, ...menus]) await ctx.db.delete(row._id);
+    if (masters[0]?._id === settings._id && masters[1]) {
+      await ctx.db.patch(masters[1]._id, {
+        stockSyncEnabled: settings.stockSyncEnabled,
+        stockRefundsToWaste: settings.stockRefundsToWaste,
+        stockSyncStartedAt: settings.stockSyncStartedAt,
+        stockSyncHistoryStartAt: settings.stockSyncHistoryStartAt,
+        stockSyncSinceLastCount: settings.stockSyncSinceLastCount,
+        stockMappingRevision: settings.stockMappingRevision,
       });
     }
+    await ctx.db.delete(settings._id);
+    await recordAudit(ctx, auth, {
+      action: "integration.disconnected",
+      entityTable: "onlinePosIntegrations",
+      entityId: settings._id,
+      summary: `OnlinePOS-masterforbindelsen ${settings.name ?? settings.companyId} blev fjernet`,
+    });
+    return null;
+  },
+});
+
+export const listPrivateMasters = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.array(v.object({ token: v.string(), companyId: v.number() })),
+  handler: async (ctx, args) => {
+    const masters = await ctx.db
+      .query("onlinePosIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .take(MAX_MASTER_CONNECTIONS);
+    return masters.map(({ token, companyId }) => ({ token, companyId }));
+  },
+});
+
+export const setLocationMaster = mutation({
+  args: {
+    locationId: v.id("locations"),
+    integrationId: v.id("onlinePosIntegrations"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    requireLocationAccess(auth, args.locationId);
+    const location = await ctx.db.get("locations", args.locationId);
+    if (!location || location.organizationId !== auth.organizationId)
+      throw new ConvexError("Lokationen blev ikke fundet");
+    await scopeLegacyOnlinePosCatalog(ctx, auth.organizationId);
+    await getOnlinePosMaster(ctx, auth.organizationId, args.integrationId);
+    const connection = await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q
+          .eq("organizationId", auth.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .unique();
+    if (!connection)
+      throw new ConvexError("Forbind lokationen til OnlinePOS først");
+    if (connection.masterIntegrationId === args.integrationId) return null;
+    await ctx.db.patch(connection._id, {
+      masterIntegrationId: args.integrationId,
+      updatedAt: Date.now(),
+    });
+    await invalidateSalesStockMappings(ctx, auth.organizationId);
+    await recordAudit(ctx, auth, {
+      action: "integration.locationConnected",
+      entityTable: "onlinePosLocationIntegrations",
+      entityId: connection._id,
+      locationId: args.locationId,
+      summary: "Lokationens OnlinePOS-masterforbindelse blev ændret",
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.onlinePosSync.enqueueLocationSync,
+      { organizationId: auth.organizationId, locationId: args.locationId },
+    );
     return null;
   },
 });
@@ -616,34 +806,42 @@ export const disconnectLocation = mutation({
 });
 
 export const listProducts = action({
-  args: {},
+  args: { integrationId: v.optional(v.id("onlinePosIntegrations")) },
   returns: v.array(onlinePosProductValidator),
-  handler: async (ctx): Promise<OnlinePosProduct[]> => {
-    const { settings } = await requireConnectedSettings(ctx);
+  handler: async (ctx, args): Promise<OnlinePosProduct[]> => {
+    const { settings } = await requireConnectedSettings(
+      ctx,
+      args.integrationId,
+    );
     return requestProducts(settings);
   },
 });
 
 export const getProductMapping = query({
-  args: { productId: v.id("products") },
+  args: {
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
+    productId: v.id("products"),
+  },
   returns: v.union(
     v.object({ onlinePosProductId: v.union(v.number(), v.null()) }),
     v.null(),
   ),
   handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
-    const [settings, product, mapping] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+    const settings = await getOnlinePosMaster(
+      ctx,
+      organizationId,
+      args.integrationId,
+    );
+    const [product, mapping] = await Promise.all([
       ctx.db.get("products", args.productId),
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId_and_productId", (q) =>
-          q.eq("organizationId", organizationId).eq("productId", args.productId),
+        .withIndex("by_organizationId_and_integrationId_and_productId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("integrationId", onlinePosCatalogId(settings))
+            .eq("productId", args.productId),
         )
         .unique(),
     ]);
@@ -656,7 +854,10 @@ export const getProductMapping = query({
 });
 
 export const getIngredientRemovalSettings = query({
-  args: { productId: v.optional(v.id("products")) },
+  args: {
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
+    productId: v.optional(v.id("products")),
+  },
   returns: v.object({
     connected: v.boolean(),
     enabled: v.boolean(),
@@ -667,12 +868,7 @@ export const getIngredientRemovalSettings = query({
     const { organizationId } = await requireIntegrationManager(ctx);
     const productId = args.productId;
     const [settings, product, ingredients] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+      getOnlinePosMaster(ctx, organizationId, args.integrationId),
       productId === undefined
         ? Promise.resolve(null)
         : ctx.db.get("products", productId),
@@ -704,26 +900,33 @@ export const getIngredientRemovalSettings = query({
       mappings:
         settings === null
           ? []
-          : ingredients.flatMap((ingredient) =>
-              ingredient.removable === true &&
-              ingredient.onlinePosRemovalProductId !== undefined &&
-              ingredient.onlinePosRemovalIntegrationId === settings._id &&
-              ingredient.onlinePosRemovalCompanyId === settings.companyId
+          : ingredients.flatMap((ingredient) => {
+              const id =
+                ingredient.onlinePosRemovalMappings?.find(
+                  (mapping) => mapping.integrationId === settings._id,
+                )?.onlinePosProductId ??
+                (ingredient.onlinePosRemovalIntegrationId === settings._id &&
+                ingredient.onlinePosRemovalCompanyId === settings.companyId
+                  ? ingredient.onlinePosRemovalProductId
+                  : undefined);
+              return ingredient.removable === true && id !== undefined
                 ? [
                     {
                       ingredientProductId: ingredient.ingredientProductId,
-                      onlinePosProductId:
-                        ingredient.onlinePosRemovalProductId,
+                      onlinePosProductId: id,
                     },
                   ]
-                : [],
-            ),
+                : [];
+            }),
     };
   },
 });
 
 export const getIngredientAdditionSettings = query({
-  args: { productId: v.optional(v.id("products")) },
+  args: {
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
+    productId: v.optional(v.id("products")),
+  },
   returns: v.object({
     connected: v.boolean(),
     enabled: v.boolean(),
@@ -734,12 +937,7 @@ export const getIngredientAdditionSettings = query({
     const { organizationId } = await requireIntegrationManager(ctx);
     const productId = args.productId;
     const [settings, product, additions] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+      getOnlinePosMaster(ctx, organizationId, args.integrationId),
       productId === undefined
         ? Promise.resolve(null)
         : ctx.db.get("products", productId),
@@ -773,24 +971,30 @@ export const getIngredientAdditionSettings = query({
       mappings:
         settings === null
           ? []
-          : additions.flatMap((addition) =>
-              addition.onlinePosAdditionProductId !== undefined &&
-              addition.onlinePosAdditionIntegrationId === settings._id &&
-              addition.onlinePosAdditionCompanyId === settings.companyId
+          : additions.flatMap((addition) => {
+              const id =
+                addition.onlinePosAdditionMappings?.find(
+                  (mapping) => mapping.integrationId === settings._id,
+                )?.onlinePosProductId ??
+                (addition.onlinePosAdditionIntegrationId === settings._id &&
+                addition.onlinePosAdditionCompanyId === settings.companyId
+                  ? addition.onlinePosAdditionProductId
+                  : undefined);
+              return id !== undefined
                 ? [
                     {
                       ingredientProductId: addition.ingredientProductId,
-                      onlinePosProductId: addition.onlinePosAdditionProductId,
+                      onlinePosProductId: id,
                     },
                   ]
-                : [],
-            ),
+                : [];
+            }),
     };
   },
 });
 
 export const listMappingOptions = query({
-  args: {},
+  args: { integrationId: v.optional(v.id("onlinePosIntegrations")) },
   returns: v.union(
     v.object({
       products: v.array(
@@ -805,14 +1009,13 @@ export const listMappingOptions = query({
     }),
     v.null(),
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
-    const settings = await ctx.db
-      .query("onlinePosIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .unique();
+    const settings = await getOnlinePosMaster(
+      ctx,
+      organizationId,
+      args.integrationId,
+    );
     if (!settings) return null;
 
     const [products, mappings] = await Promise.all([
@@ -824,8 +1027,10 @@ export const listMappingOptions = query({
         .take(MAX_PRODUCTS + 1),
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("integrationId", onlinePosCatalogId(settings)),
         )
         .take(MAX_PRODUCTS),
     ]);
@@ -852,32 +1057,35 @@ export const listMappingOptions = query({
 
 export const saveProductMapping = internalMutation({
   args: {
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
     organizationId: v.string(),
     productId: v.id("products"),
     onlinePosProductId: v.union(v.number(), v.null()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const [settings, product, current, mappings] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .unique(),
+    const settings = await getOnlinePosMaster(
+      ctx,
+      args.organizationId,
+      args.integrationId,
+    );
+    const [product, current, mappings] = await Promise.all([
       ctx.db.get("products", args.productId),
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId_and_productId", (q) =>
+        .withIndex("by_organizationId_and_integrationId_and_productId", (q) =>
           q
             .eq("organizationId", args.organizationId)
+            .eq("integrationId", onlinePosCatalogId(settings))
             .eq("productId", args.productId),
         )
         .unique(),
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("integrationId", onlinePosCatalogId(settings)),
         )
         .take(MAX_PRODUCTS + 1),
     ]);
@@ -894,7 +1102,12 @@ export const saveProductMapping = internalMutation({
     ) {
       throw new ConvexError("OnlinePOS-produktet er ugyldigt");
     }
-    if (mappings.length > MAX_PRODUCTS) {
+    if (
+      mappings.length > MAX_PRODUCTS ||
+      (!current &&
+        args.onlinePosProductId !== null &&
+        mappings.length === MAX_PRODUCTS)
+    ) {
       throw new ConvexError("Der er for mange produktkoblinger");
     }
     const onlinePosProductId = args.onlinePosProductId;
@@ -904,10 +1117,11 @@ export const saveProductMapping = internalMutation({
         : await ctx.db
             .query("onlinePosProductMappings")
             .withIndex(
-              "by_organizationId_and_onlinePosProductId",
+              "by_organizationId_and_integrationId_and_onlinePosProductId",
               (q) =>
                 q
                   .eq("organizationId", args.organizationId)
+                  .eq("integrationId", onlinePosCatalogId(settings))
                   .eq("onlinePosProductId", onlinePosProductId),
             )
             .take(MAX_PRODUCTS + 1);
@@ -937,14 +1151,13 @@ export const saveProductMapping = internalMutation({
     } else {
       await ctx.db.insert("onlinePosProductMappings", {
         organizationId: args.organizationId,
+        integrationId: onlinePosCatalogId(settings),
         productId: args.productId,
         onlinePosProductId: args.onlinePosProductId,
       });
     }
     if ((current?.onlinePosProductId ?? null) !== args.onlinePosProductId) {
-      await ctx.db.patch(settings._id, {
-        stockMappingRevision: (settings.stockMappingRevision ?? 0) + 1,
-      });
+      await invalidateSalesStockMappings(ctx, args.organizationId);
     }
     return null;
   },
@@ -970,12 +1183,7 @@ export const saveIngredientRemovalMappings = internalMutation({
       throw new ConvexError("Hver ingrediens kan kun kobles én gang");
     }
     const [settings, product, ingredients] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .unique(),
+      getOnlinePosMaster(ctx, args.organizationId, args.integrationId),
       ctx.db.get("products", args.productId),
       ctx.db
         .query("productIngredients")
@@ -1026,45 +1234,48 @@ export const saveIngredientRemovalMappings = internalMutation({
         mapping.onlinePosProductId,
       ]),
     );
+    const activeMasters = await ctx.db.query("onlinePosIntegrations")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", args.organizationId))
+      .take(MAX_MASTER_CONNECTIONS);
+    const activeMasterIds = new Set(activeMasters.map((master) => master._id));
     let changed = false;
     for (const ingredient of ingredients) {
       const onlinePosProductId = mappingsByIngredientProductId.get(
         ingredient.ingredientProductId,
       );
-      if (onlinePosProductId === undefined) {
-        if (
-          ingredient.onlinePosRemovalProductId !== undefined ||
-          ingredient.onlinePosRemovalIntegrationId !== undefined ||
-          ingredient.onlinePosRemovalCompanyId !== undefined
-        ) {
-          await ctx.db.patch("productIngredients", ingredient._id, {
-            onlinePosRemovalProductId: undefined,
-            onlinePosRemovalIntegrationId: undefined,
-            onlinePosRemovalCompanyId: undefined,
-          });
-          changed = true;
-        }
-        continue;
-      }
-      if (
-        ingredient.onlinePosRemovalProductId === onlinePosProductId &&
-        ingredient.onlinePosRemovalIntegrationId === args.integrationId &&
-        ingredient.onlinePosRemovalCompanyId === args.companyId
-      ) {
-        continue;
-      }
-      await ctx.db.patch("productIngredients", ingredient._id, {
-        onlinePosRemovalProductId: onlinePosProductId,
-        onlinePosRemovalIntegrationId: args.integrationId,
-        onlinePosRemovalCompanyId: args.companyId,
+      const existing =
+        ingredient.onlinePosRemovalMappings ??
+        (ingredient.onlinePosRemovalIntegrationId !== undefined &&
+        ingredient.onlinePosRemovalProductId !== undefined
+          ? [
+              {
+                integrationId: ingredient.onlinePosRemovalIntegrationId,
+                onlinePosProductId: ingredient.onlinePosRemovalProductId,
+              },
+            ]
+          : []);
+      const previous = existing.find(
+        (mapping) => mapping.integrationId === args.integrationId,
+      )?.onlinePosProductId;
+      if (previous === onlinePosProductId) continue;
+      const next = existing.filter(
+        (mapping) => mapping.integrationId !== args.integrationId && activeMasterIds.has(mapping.integrationId),
+      );
+      if (onlinePosProductId !== undefined)
+        next.push({ integrationId: args.integrationId, onlinePosProductId });
+      if (next.length > MAX_MASTER_CONNECTIONS)
+        throw new ConvexError(
+          "Der er for mange masterforbindelser til ingrediensen",
+        );
+      await ctx.db.patch(ingredient._id, {
+        onlinePosRemovalMappings: next,
+        onlinePosRemovalProductId: undefined,
+        onlinePosRemovalIntegrationId: undefined,
+        onlinePosRemovalCompanyId: undefined,
       });
       changed = true;
     }
-    if (changed) {
-      await ctx.db.patch(settings._id, {
-        stockMappingRevision: (settings.stockMappingRevision ?? 0) + 1,
-      });
-    }
+    if (changed) await invalidateSalesStockMappings(ctx, args.organizationId);
     return null;
   },
 });
@@ -1095,7 +1306,10 @@ export const setIngredientRemovalMappings = action({
       }
     }
 
-    const { organizationId, settings } = await requireConnectedSettings(ctx);
+    const { organizationId, settings } = await requireConnectedSettings(
+      ctx,
+      args.expectedIntegrationId,
+    );
     if (
       args.expectedIntegrationId !== undefined &&
       settings.integrationId !== args.expectedIntegrationId
@@ -1156,12 +1370,7 @@ export const saveIngredientAdditionMappings = internalMutation({
       throw new ConvexError("Hver ingrediens kan kun kobles én gang");
     }
     const [settings, product, additions] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", args.organizationId),
-        )
-        .unique(),
+      getOnlinePosMaster(ctx, args.organizationId, args.integrationId),
       ctx.db.get("products", args.productId),
       ctx.db
         .query("productIngredientAdditions")
@@ -1211,45 +1420,48 @@ export const saveIngredientAdditionMappings = internalMutation({
         mapping.onlinePosProductId,
       ]),
     );
+    const activeMasters = await ctx.db.query("onlinePosIntegrations")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", args.organizationId))
+      .take(MAX_MASTER_CONNECTIONS);
+    const activeMasterIds = new Set(activeMasters.map((master) => master._id));
     let changed = false;
     for (const addition of additions) {
       const onlinePosProductId = mappingsByIngredientProductId.get(
         addition.ingredientProductId,
       );
-      if (onlinePosProductId === undefined) {
-        if (
-          addition.onlinePosAdditionProductId !== undefined ||
-          addition.onlinePosAdditionIntegrationId !== undefined ||
-          addition.onlinePosAdditionCompanyId !== undefined
-        ) {
-          await ctx.db.patch("productIngredientAdditions", addition._id, {
-            onlinePosAdditionProductId: undefined,
-            onlinePosAdditionIntegrationId: undefined,
-            onlinePosAdditionCompanyId: undefined,
-          });
-          changed = true;
-        }
-        continue;
-      }
-      if (
-        addition.onlinePosAdditionProductId === onlinePosProductId &&
-        addition.onlinePosAdditionIntegrationId === args.integrationId &&
-        addition.onlinePosAdditionCompanyId === args.companyId
-      ) {
-        continue;
-      }
-      await ctx.db.patch("productIngredientAdditions", addition._id, {
-        onlinePosAdditionProductId: onlinePosProductId,
-        onlinePosAdditionIntegrationId: args.integrationId,
-        onlinePosAdditionCompanyId: args.companyId,
+      const existing =
+        addition.onlinePosAdditionMappings ??
+        (addition.onlinePosAdditionIntegrationId !== undefined &&
+        addition.onlinePosAdditionProductId !== undefined
+          ? [
+              {
+                integrationId: addition.onlinePosAdditionIntegrationId,
+                onlinePosProductId: addition.onlinePosAdditionProductId,
+              },
+            ]
+          : []);
+      const previous = existing.find(
+        (mapping) => mapping.integrationId === args.integrationId,
+      )?.onlinePosProductId;
+      if (previous === onlinePosProductId) continue;
+      const next = existing.filter(
+        (mapping) => mapping.integrationId !== args.integrationId && activeMasterIds.has(mapping.integrationId),
+      );
+      if (onlinePosProductId !== undefined)
+        next.push({ integrationId: args.integrationId, onlinePosProductId });
+      if (next.length > MAX_MASTER_CONNECTIONS)
+        throw new ConvexError(
+          "Der er for mange masterforbindelser til ingrediensen",
+        );
+      await ctx.db.patch(addition._id, {
+        onlinePosAdditionMappings: next,
+        onlinePosAdditionProductId: undefined,
+        onlinePosAdditionIntegrationId: undefined,
+        onlinePosAdditionCompanyId: undefined,
       });
       changed = true;
     }
-    if (changed) {
-      await ctx.db.patch(settings._id, {
-        stockMappingRevision: (settings.stockMappingRevision ?? 0) + 1,
-      });
-    }
+    if (changed) await invalidateSalesStockMappings(ctx, args.organizationId);
     return null;
   },
 });
@@ -1282,7 +1494,10 @@ export const setIngredientAdditionMappings = action({
       }
     }
 
-    const { organizationId, settings } = await requireConnectedSettings(ctx);
+    const { organizationId, settings } = await requireConnectedSettings(
+      ctx,
+      args.expectedIntegrationId,
+    );
     if (settings.integrationId !== args.expectedIntegrationId) {
       throw new ConvexError(
         "OnlinePOS-forbindelsen blev ændret. Opdatér produktlisten og prøv igen.",
@@ -1320,12 +1535,16 @@ export const setIngredientAdditionMappings = action({
 
 export const setProductMapping = action({
   args: {
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
     productId: v.id("products"),
     onlinePosProductId: v.union(v.number(), v.null()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { organizationId, settings } = await requireConnectedSettings(ctx);
+    const { organizationId, settings } = await requireConnectedSettings(
+      ctx,
+      args.integrationId,
+    );
 
     if (args.onlinePosProductId !== null) {
       const products = await requestProducts(settings);
@@ -1338,6 +1557,7 @@ export const setProductMapping = action({
 
     await ctx.runMutation(internal.onlinePos.saveProductMapping, {
       organizationId,
+      integrationId: settings.integrationId,
       productId: args.productId,
       onlinePosProductId: args.onlinePosProductId,
     });

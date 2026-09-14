@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings } from "./onlinePosConnections";
 import { dateKey, addDays, daysBetween, zonedStart, DEFAULT_TIME_ZONE } from "../../lib/date";
 export { dateKey, zonedStart } from "../../lib/date";
 import { ConvexError } from "convex/values";
@@ -771,12 +772,7 @@ async function onlinePosHealth(
 ): Promise<ProviderHealth[]> {
   return await cached(params, "health:onlinepos", async () => {
     const [master, connections, statuses] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", params.organizationId),
-        )
-        .unique(),
+      getOnlinePosOrganizationSettings(ctx, params.organizationId),
       Promise.all(
         params.locations.map((location) =>
           ctx.db

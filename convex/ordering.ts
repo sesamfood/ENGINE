@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -162,12 +163,7 @@ export const getContext = query({
             .eq("locationId", args.locationId),
         )
         .unique(),
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+      getOnlinePosOrganizationSettings(ctx, organizationId),
       ctx.db
         .query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId_and_locationId", (q) =>

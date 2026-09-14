@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -39,7 +40,7 @@ async function financialContext(ctx: QueryCtx, args: LocationArgs): Promise<
     return { ready: false, reason: "Lokationen blev ikke fundet" };
   }
   const [master, connection, reset, sync, timeZone, currency] = await Promise.all([
-    ctx.db.query("onlinePosIntegrations").withIndex("by_organizationId", (q) => q.eq("organizationId", args.organizationId)).unique(),
+    getOnlinePosOrganizationSettings(ctx, args.organizationId),
     ctx.db.query("onlinePosLocationIntegrations").withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", args.organizationId).eq("locationId", args.locationId)).unique(),
     ctx.db.query("onlinePosSalesResets").withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", args.organizationId).eq("locationId", args.locationId)).unique(),
     ctx.db.query("onlinePosSyncStatus").withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", args.organizationId).eq("locationId", args.locationId)).unique(),

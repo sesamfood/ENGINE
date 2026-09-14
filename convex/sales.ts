@@ -1,3 +1,8 @@
+import {
+  getOnlinePosOrganizationSettings,
+  getOnlinePosLocationMaster,
+  onlinePosCatalogId,
+} from "./lib/onlinePosConnections";
 import { resolveLocationCurrency as locationCurrency } from "./lib/masterData";
 import {
   paginationOptsValidator,
@@ -282,12 +287,7 @@ export const getContext = query({
     ] = await Promise.all([
       resolveTimeZone(ctx, organizationId),
       scheduleSettings(ctx, organizationId),
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+      getOnlinePosOrganizationSettings(ctx, organizationId),
       ctx.db
         .query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId", (q) =>
@@ -363,12 +363,10 @@ export const requestSync = mutation({
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     const { organizationId } = auth;
-    const integration = await ctx.db
-      .query("onlinePosIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .unique();
+    const integration = await getOnlinePosOrganizationSettings(
+      ctx,
+      organizationId,
+    );
     if (!integration) {
       throw new ConvexError("OnlinePOS er ikke forbundet");
     }
@@ -567,6 +565,11 @@ export const getOrder = query({
     }
 
     requireLocationAccess(auth, order.locationId);
+    const master = await getOnlinePosLocationMaster(
+      ctx,
+      auth.organizationId,
+      order.locationId,
+    );
     const [location, lines, menus, mappings] = await Promise.all([
       ctx.db.get("locations", order.locationId),
       ctx.db
@@ -580,14 +583,18 @@ export const getOrder = query({
         .take(MAX_ORDER_LINES + 1),
       ctx.db
         .query("onlinePosMenus")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", auth.organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", auth.organizationId)
+            .eq("integrationId", onlinePosCatalogId(master)),
         )
         .take(MAX_ONLINE_POS_MENUS + 1),
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", auth.organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", auth.organizationId)
+            .eq("integrationId", onlinePosCatalogId(master)),
         )
         .take(MAX_ONLINE_POS_PRODUCT_MAPPINGS + 1),
     ]);
