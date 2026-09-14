@@ -1,4 +1,6 @@
-import { getOnlinePosOrganizationSettings, getOnlinePosLocationMaster, onlinePosCatalogId } from "./lib/onlinePosConnections";
+import { salesSourceValidator } from "./lib/salesSources";
+import { getIntegrationState, isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
+import { getOnlinePosOrganizationSettings, getOnlinePosLocationMaster, onlinePosCatalogId } from "./integrations/onlinepos/lib/connections";
 import { ConvexError, type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -9,13 +11,12 @@ import {
   countCombinedWarning,
   resolveCountSalesSource,
 } from "./lib/countSalesSource";
-import { resolveWoltMapping } from "./lib/woltMappings";
+import { resolveWoltMapping } from "./integrations/wolt/lib/mappings";
 import { normalizeStock, toDefaultUnit } from "./lib/stock";
 import { createSalesStockResolver, stockApplication, stockSalesFingerprint } from "./lib/salesStock";
 import {
-  salesSourceValidator,
   woltConnectionStateValidator,
-} from "./lib/woltValidators";
+} from "./integrations/wolt/lib/validators";
 
 const MAX_LOCATIONS = 200;
 const MAX_MAPPINGS = 500;
@@ -189,6 +190,10 @@ async function loadOnlinePos(
   to: number,
   omitSales = false,
 ): Promise<ProviderLoad<OnlinePosHealth>> {
+  if (!await isIntegrationEnabled(ctx, report.organizationId, "onlinepos")) return {
+    health: { connected: false, usable: false, covered: false, state: null, reason: "Salgsdata er ikke tilgængelige", lastSuccessAt: null, syncedThroughAt: null, backfillThroughAt: null, freshnessAt: null },
+    salesByProduct: new Map(), unmappedSalesQuantity: 0,
+  };
   const catalogMaster = await getOnlinePosLocationMaster(
     ctx, report.organizationId, report.locationId,
   );
@@ -369,6 +374,10 @@ async function loadWolt(
   to: number,
   omitSales = false,
 ): Promise<ProviderLoad<WoltHealth>> {
+  if (!await isIntegrationEnabled(ctx, report.organizationId, "wolt")) return {
+    health: { connected: false, usable: false, covered: false, state: null, reason: "Salgsdata er ikke tilgængelige", activatedAt: null, lastWebhookAt: null, lastSuccessAt: null, freshnessAt: null },
+    salesByProduct: new Map(), unmappedSalesQuantity: 0,
+  };
   const [connection, mappings, pendingEvent, processingEvent, deadLetterEvent] =
     await Promise.all([
       ctx.db
@@ -468,6 +477,13 @@ async function loadWolt(
   return { health, salesByProduct, unmappedSalesQuantity };
 }
 
+function availableSource(source: SalesSource | null, integrations: { onlinepos: boolean; wolt: boolean }) {
+  if (source === "onlinePos" && !integrations.onlinepos) return null;
+  if (source === "wolt" && !integrations.wolt) return null;
+  if (source === "combined" && (!integrations.onlinepos || !integrations.wolt)) return null;
+  return source;
+}
+
 function healthWarnings(
   source: SalesSource,
   health: SourceHealth,
@@ -525,6 +541,7 @@ export const getSettings = query({
   handler: async (ctx) => {
     const auth = await requirePermission(ctx, "count.settings");
     const { organizationId } = auth;
+    const integrations = await getIntegrationState(ctx, organizationId);
     const [locations, master, locationConnections, statuses, woltIntegration, woltConnections, saved] =
       await Promise.all([
         ctx.db
@@ -599,9 +616,9 @@ export const getSettings = query({
         const locationConnection = locationConnectionById.get(location._id);
         const status = statusByLocationId.get(location._id);
         const wolt = woltByLocationId.get(location._id);
-        const onlinePosConnected = master?.enabled === true && Boolean(locationConnection);
+        const onlinePosConnected = integrations.onlinepos && master?.enabled === true && Boolean(locationConnection);
         const woltConnected =
-          woltIntegration?.enabled !== false && wolt?.state === "ready";
+          integrations.wolt && woltIntegration?.enabled !== false && wolt?.state === "ready";
         const historyStart = status?.backfillThroughAt ?? status?.syncedThroughAt ?? null;
         const onlinePosHealth: OnlinePosHealth = {
           connected: onlinePosConnected,
@@ -625,7 +642,7 @@ export const getSettings = query({
           lastSuccessAt: wolt?.lastSuccessAt ?? null,
           freshnessAt: wolt?.lastSuccessAt ?? wolt?.lastWebhookAt ?? null,
         };
-        const savedSource = savedByLocationId.get(location._id)?.salesSource ?? null;
+        const savedSource = availableSource(savedByLocationId.get(location._id)?.salesSource ?? null, integrations);
         return {
           id: location._id,
           name: location.name,
@@ -660,6 +677,8 @@ export const setSource = mutation({
     if (!location || location.organizationId !== auth.organizationId) {
       throw new ConvexError("Lokationen blev ikke fundet");
     }
+    if (args.salesSource !== "wolt") await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
+    if (args.salesSource !== "onlinePos") await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const master = await getOnlinePosOrganizationSettings(ctx, auth.organizationId);
     const connection = await ctx.db.query("onlinePosLocationIntegrations")
       .withIndex("by_organizationId_and_locationId", q => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId)).unique();
@@ -728,6 +747,7 @@ export const buildCountWasteReportData = internalQuery({
       report.organizationId,
       report.locationId,
     );
+    const integrations = await getIntegrationState(ctx, report.organizationId);
     const [master, locationConnection, status, woltIntegration, woltConnection] = await Promise.all([
       getOnlinePosOrganizationSettings(ctx, report.organizationId),
       ctx.db
@@ -761,11 +781,11 @@ export const buildCountWasteReportData = internalQuery({
         )
         .unique(),
     ]);
-    const onlinePosConnected = master?.enabled === true && Boolean(locationConnection);
+    const onlinePosConnected = integrations.onlinepos && master?.enabled === true && Boolean(locationConnection);
     const woltConnected =
-      woltIntegration?.enabled !== false && woltConnection?.state === "ready";
+      integrations.wolt && woltIntegration?.enabled !== false && woltConnection?.state === "ready";
     const selectedSource = report.rows.some(row => row.onlinePosStockAccounting) ? "onlinePos" : resolveCountSalesSource(
-      saved?.salesSource ?? null,
+      availableSource(saved?.salesSource ?? null, integrations),
       onlinePosConnected,
       woltConnected,
     );
@@ -817,6 +837,8 @@ export const buildCountWasteReportData = internalQuery({
     const warnings = healthWarnings(selectedSource, sourceHealth);
     const salesOmittedReason = combined.salesIncluded
       ? null
+      : availableSource(selectedSource, integrations) === null
+        ? "Salgsdata er ikke tilgængelige"
       : warnings.length > 0
         ? warnings.join("; ")
         : "salg fra den valgte kilde dækker ikke count-perioden";

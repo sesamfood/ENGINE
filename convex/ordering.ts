@@ -1,4 +1,4 @@
-import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
+import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/connections";
 import {
   paginationOptsValidator,
   paginationResultValidator,

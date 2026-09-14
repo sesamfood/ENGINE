@@ -94,7 +94,7 @@ function ActualsForm({ actuals, month, locationId, saving, onSavingChange, onClo
             <Field data-invalid={submitted && Boolean(parsedCogs.error)}>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="monthly-actuals-cogs">Vareforbrug ({currency})</FieldLabel>
-                <HelpTooltip label="Godkendt vareforbrug" content="Brug det lagerregulerede vareforbrug for hele måneden. Indkøb alene er ikke vareforbrug. Beløbet bruges som manuelt grundlag, når godkendt vareforbrug fra e-conomic mangler." />
+                <HelpTooltip label="Godkendt vareforbrug" content="Brug det lagerregulerede vareforbrug for hele måneden. Indkøb alene er ikke vareforbrug. Beløbet bruges som manuelt grundlag i månedsrapporten." />
               </div>
               <Input id="monthly-actuals-cogs" className="h-11" inputMode="text" value={cogs} onChange={(event) => setCogs(event.target.value)}
                 disabled={saving || conflict || !actuals.canApprove} aria-invalid={submitted && Boolean(parsedCogs.error)} aria-describedby={submitted && parsedCogs.error ? "monthly-actuals-cogs-error" : undefined} />

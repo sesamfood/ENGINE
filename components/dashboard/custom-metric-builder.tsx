@@ -1,5 +1,8 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+import { metricSourceAvailable } from "@/integrations/dashboard";
+
 import { useEffect, useMemo, useState } from "react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useConvex, useMutation, useQuery } from "convex/react";
@@ -266,8 +269,8 @@ function RegistrySelect({
   );
 }
 
-function datasetOptions() {
-  return (Object.values(dashboardDatasets) as DashboardDataset[]).map(
+function datasetOptions(integrations: ReturnType<typeof useIntegrations>) {
+  return (Object.values(dashboardDatasets) as DashboardDataset[]).filter((dataset) => metricSourceAvailable(dataset.source, integrations)).map(
     (dataset) => ({
       value: dataset.id,
       label: dataset.label,
@@ -462,6 +465,7 @@ export function CustomMetricBuilder({
   const effectiveGranularity = granularity ?? access?.granularity;
   const convex = useConvex();
   const createMetric = useMutation(api.customMetrics.create);
+  const integrations = useIntegrations();
   const updateMetric = useMutation(api.customMetrics.update);
   const [draft, setDraft] = useState(() => initialDraft(metric));
   const [selectedVisualization, setSelectedVisualization] =
@@ -477,6 +481,8 @@ export function CustomMetricBuilder({
 
   const numeratorDefinition = dashboardDatasets[draft.numerator.dataset];
   const denominatorDefinition = dashboardDatasets[draft.denominator.dataset];
+  const datasetsAvailable = metricSourceAvailable(numeratorDefinition.source, integrations)
+    && (draft.kind !== "ratio" || metricSourceAvailable(denominatorDefinition.source, integrations));
   const previewVisualizations = (
     draft.kind === "ratio"
       ? ratioMetricVisualizations
@@ -755,6 +761,7 @@ export function CustomMetricBuilder({
   }
 
   async function save() {
+    if (!datasetsAvailable) return;
     if (!spec || localValidationError) {
       toast.error(localValidationError ?? "Kontrollér målingens felter");
       return;
@@ -808,7 +815,7 @@ export function CustomMetricBuilder({
                 id={`${which}-dataset`}
                 label="Datasæt"
                 value={query.dataset}
-                options={datasetOptions()}
+                options={datasetOptions(integrations)}
                 onChange={(value) => chooseDataset(which, value)}
               />
               <RegistrySelect
@@ -904,7 +911,7 @@ export function CustomMetricBuilder({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && datasetsAvailable} onOpenChange={onOpenChange}>
       <DialogContent className="grid max-h-[calc(100vh-2rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>

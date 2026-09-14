@@ -638,6 +638,11 @@ test("operatørscope begrænser lokationer, spild og optællinger, men ikke tran
     await seedLocations(t, org._id);
   const { operatorId, emptyOperatorId, allowedCountId, foreignCountId } =
     await t.run(async (ctx) => {
+      for (const integration of ["onlinepos", "workfeed"] as const) {
+        await ctx.db.insert("integrationSettings", {
+          organizationId: org._id, integration, enabled: true, updatedAt: now,
+        });
+      }
       const operatorId = await ctx.db.insert("operators", {
         organizationId: org._id,
         name: "Norddrift",

@@ -16,7 +16,7 @@ export type HelpPage = {
   parents: { href: string; label: string }[];
 };
 
-function flattenGuides(
+export function flattenGuides(
   feature: HelpFeature,
   guides: HelpGuide[],
   baseHref: string,

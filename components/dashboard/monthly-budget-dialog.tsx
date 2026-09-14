@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -78,6 +80,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
   budget: Budget; month: string; locationId: Id<"locations">; saving: boolean;
   onSavingChange: (value: boolean) => void; onClose: () => void;
 }) {
+  const integrations = useIntegrations();
   const saveBudget = useMutation(api.monthlyKpi.saveBudget);
   const [draft, setDraft] = useState(() => budgetDraft(budget));
   const [economicBudgetCategories, setEconomicBudgetCategories] = useState(budget.economicBudgetCategories);
@@ -98,13 +101,13 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
-    if (saving || conflict || sourceError || Object.values(parsed).some((value) => value.error)) return;
+    if (!integrations || saving || conflict || sourceError || Object.values(parsed).some((value) => value.error)) return;
     onSavingChange(true);
     try {
       await saveBudget({ month, locationId, sales: parsed.sales.value, transactions: parsed.transactions.value,
         labour: parsed.labour.value, cogs: parsed.cogs.value, waste: parsed.waste.value, rent: parsed.rent.value,
         utilities: parsed.utilities.value, other: parsed.other.value, guestScore: parsed.guestScore.value,
-        economicBudgetCategories, sourceNote, expectedRevision: revision, expectedCurrency: currency });
+        economicBudgetCategories: integrations?.economic ? economicBudgetCategories : [], sourceNote, expectedRevision: revision, expectedCurrency: currency });
       toast.success("Budgettet er gemt");
       onClose();
     } catch (error) {
@@ -113,6 +116,8 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
       onSavingChange(false);
     }
   }
+
+  if (!integrations) return <Skeleton className="h-72 w-full" />;
 
   return (
     <form className="flex flex-col gap-5" noValidate onSubmit={(event) => void save(event)}>
@@ -132,7 +137,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
       <FieldGroup className="grid gap-4 sm:grid-cols-2">
         {budgetFields.map(({ key, label, kind }) => {
           const category = economicBudgetComponents.find((component) => component === key);
-          const usesEconomic = category !== undefined && economicBudgetCategories.includes(category);
+          const usesEconomic = integrations?.economic && category !== undefined && economicBudgetCategories.includes(category);
           const inputId = `monthly-budget-${key}`;
           const sourceId = `${inputId}-source`;
           const error = submitted ? parsed[key].error : null;
@@ -140,9 +145,9 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
             <Field key={key} data-disabled={saving || conflict} data-invalid={Boolean(error)}>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor={usesEconomic ? sourceId : inputId}>{label}{kind === "money" ? ` (${budget.currency})` : ""}</FieldLabel>
-                {category ? <HelpTooltip label={`budgetkilde for ${label}`} content="e-conomic kræver en forbindelse med lokations- og kontotilknytning samt godkendte budgettal. Mangler der data, er budgetposten utilgængelig i rapporten. Manuelle beløb bevares, når du skifter kilde." /> : null}
+                {integrations?.economic && category ? <HelpTooltip label={`budgetkilde for ${label}`} content="e-conomic kræver en forbindelse med lokations- og kontotilknytning samt godkendte budgettal. Mangler der data, er budgetposten utilgængelig i rapporten. Manuelle beløb bevares, når du skifter kilde." /> : null}
               </div>
-              {category ? (
+              {integrations?.economic && category ? (
                 <Select items={budgetSources} value={usesEconomic ? "economic" : "manual"} disabled={saving || conflict}
                   onValueChange={(value) => {
                     if (value === null) return;
@@ -175,7 +180,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
       <Field data-invalid={submitted && Boolean(sourceError)}>
         <div className="flex items-center gap-1">
           <FieldLabel htmlFor="monthly-budget-source">Kilde eller reference</FieldLabel>
-          <HelpTooltip label="Budgettets kilde" content="Angiv det godkendte budget og eventuelle forudsætninger. Budgetbeløb valgt fra e-conomic hentes direkte og erstatter den pågældende manuelle budgetpost i rapporten." />
+          <HelpTooltip label="Budgettets kilde" content="Angiv det godkendte budget og eventuelle forudsætninger." />
         </div>
         <Textarea id="monthly-budget-source" value={sourceNote} onChange={(event) => setSourceNote(event.target.value)} maxLength={1000}
           disabled={saving || conflict} aria-invalid={submitted && Boolean(sourceError)} aria-describedby={submitted && sourceError ? "monthly-budget-source-error" : undefined} />

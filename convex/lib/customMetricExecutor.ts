@@ -1,7 +1,7 @@
 import {
   getOnlinePosLocationMaster,
   onlinePosCatalogId,
-} from "./onlinePosConnections";
+} from "../integrations/onlinepos/lib/connections";
 import { ConvexError } from "convex/values";
 import type {
   DocumentByInfo,
@@ -29,7 +29,7 @@ import {
   type DashboardMetricParams,
 } from "./dashboardMetrics";
 import { MAX_PRODUCT_CATEGORIES } from "./productCategories";
-import { resolveWoltMapping } from "./woltMappings";
+import { resolveWoltMapping } from "../integrations/wolt/lib/mappings";
 
 const MAX_ROWS = 5_000;
 const MAX_TRANSFER_DETAILS = 500;

@@ -2,7 +2,7 @@ import {
   getOnlinePosOrganizationSettings,
   getOnlinePosMaster,
   onlinePosCatalogId,
-} from "./onlinePosConnections";
+} from "../integrations/onlinepos/lib/connections";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

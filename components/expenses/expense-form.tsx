@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { FileTextIcon, SaveIcon, UploadCloudIcon, XIcon } from "lucide-react";
@@ -68,7 +70,8 @@ export function ExpenseForm({
   const options = useQuery(api.expenses.getFormOptions, {});
   const createExpense = useMutation(api.expenses.create);
   const getUploadUrl = useMutation(api.expenses.getUploadUrl);
-  const canExport = usePermission("expenses.exportEconomic");
+  const integrations = useIntegrations();
+  const canExport = usePermission("expenses.exportEconomic") && integrations?.economic === true;
   const storedLocationId = useWasteLocation(organizationId);
   const locations =
     options?.organizationId === organizationId ? options.locations : undefined;
@@ -109,7 +112,7 @@ export function ExpenseForm({
   const categoryMapped = Boolean(
     categoryId && location?.economicCategoryIds.includes(categoryId),
   );
-  const shouldExport = Boolean(location?.economicConfigured && sendToEconomic);
+  const shouldExport = Boolean(integrations?.economic && location?.economicConfigured && sendToEconomic);
   const exportValid = !shouldExport || (exportAvailable && categoryMapped);
   const amountValid =
     netAmount !== null && netAmount > 0 && netAmount <= 1_000_000_000;
@@ -311,7 +314,7 @@ export function ExpenseForm({
                         (option) => option.id === value,
                       );
                       if (
-                        sendToEconomic &&
+                        integrations?.economic && sendToEconomic &&
                         (!nextLocation?.economicAvailable ||
                           !categoryId ||
                           !nextLocation.economicCategoryIds.includes(
@@ -342,7 +345,7 @@ export function ExpenseForm({
                       );
                       setCategoryId(next?.id ?? null);
                       if (
-                        sendToEconomic &&
+                        integrations?.economic && sendToEconomic &&
                         (!next ||
                           !location?.economicCategoryIds.includes(next.id))
                       ) {
@@ -628,7 +631,7 @@ export function ExpenseForm({
                   </TableBody>
                 </Table>
               </div>
-              {location?.economicConfigured && (exportAvailable || sendToEconomic) ? (
+              {integrations?.economic && location?.economicConfigured && (exportAvailable || sendToEconomic) ? (
                 <FieldGroup>
                   <Field
                     orientation="horizontal"

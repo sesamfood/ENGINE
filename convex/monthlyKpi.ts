@@ -1,3 +1,4 @@
+import { isIntegrationEnabled } from "./integrations/state";
 import { ConvexError, v } from "convex/values";
 import { hasPermission } from "../lib/auth-permissions";
 import {
@@ -12,7 +13,7 @@ import {
   requireLocationAccess, type OrganizationAuth,
 } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
-import { economicCategoryValidator } from "./lib/economicValidators";
+import { economicCategoryValidator } from "./integrations/economic/lib/validators";
 import { requireOrganizationLocation } from "./lib/locations";
 import { resolveLocationCurrency } from "./lib/masterData";
 import { rateLimiter } from "./lib/rateLimits";
@@ -21,8 +22,8 @@ import {
   nullableKpiNumber as nullableNumber,
 } from "./lib/monthlyKpiValidators";
 import { resolveTimeZone } from "./lib/timeZone";
-import { queueFinancialRange, readFinancialMonths } from "./onlinePosFinancial";
-import { queueLaborMonth, readLaborMonths } from "./workfeedLabor";
+import { queueFinancialRange, readFinancialMonths } from "./integrations/onlinepos/financial";
+import { queueLaborMonth, readLaborMonths } from "./integrations/workfeed/labor";
 
 const locationIdsValidator = v.union(v.array(v.id("locations")), v.null());
 function requireMonth(month: string) {
@@ -59,6 +60,7 @@ async function latestBudget(ctx: QueryCtx, organizationId: string, locationId: I
 }
 
 async function readBudgetCategories(ctx: QueryCtx, organizationId: string, locationId: Id<"locations">, saved: EconomicBudgetComponent[] | undefined): Promise<EconomicBudgetComponent[]> {
+  if (!await isIntegrationEnabled(ctx, organizationId, "economic")) return [];
   if (saved !== undefined) return saved;
   const mapping = await ctx.db.query("economicLocationMappings")
     .withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId)).unique();
@@ -129,12 +131,12 @@ export async function readInputs(ctx: QueryCtx, args: { month: string; locationI
         month: request.month,
         sales: sourceCell(sales[index].netRevenue, sales[index].reason, sales[index].currency, "POS"),
         transactions: sourceCell(sales[index].transactionCount, sales[index].reason, sales[index].currency, "POS", false, false, false),
-        labour: sourceCell(labour[index].amount, labour[index].reason, labour[index].currency, "Workfeed", true),
+        labour: sourceCell(labour[index].amount, labour[index].reason, labour[index].currency, "Løndata", true),
         cogs: sourceCell(actual?.cogs ?? null, "Godkendt, lagerreguleret vareforbrug mangler", actual?.currency ?? null, manualSource, false, true),
         waste: sourceCell(actual?.waste ?? null, "Godkendt registreret Waste-beløb mangler", actual?.currency ?? null, manualSource, false, true),
-        rent: kpiCell(null, "Husleje fra e-conomic mangler", false, "e-conomic"),
-        utilities: kpiCell(null, "Forbrug fra e-conomic mangler", false, "e-conomic"),
-        other: kpiCell(null, "Øvrige driftsomkostninger fra e-conomic mangler", false, "e-conomic"),
+        rent: kpiCell(null, "Husleje mangler", false, "Regnskab"),
+        utilities: kpiCell(null, "Forbrug mangler", false, "Regnskab"),
+        other: kpiCell(null, "Øvrige driftsomkostninger mangler", false, "Regnskab"),
       };
     });
     const budgetSource = budget ? `Manuelt budget: ${location.name}, ${month}, revision ${budget.revision}` : "Manuelt budget";
@@ -239,7 +241,9 @@ export const saveBudget = mutation({
       organizationId: auth.organizationId, locationId: args.locationId, month: args.month, currency, sourceNote,
       sales: args.sales, transactions: args.transactions, labour: args.labour, cogs: args.cogs,
       waste: args.waste, rent: args.rent, utilities: args.utilities, other: args.other, guestScore: args.guestScore,
-      economicBudgetCategories: economicBudgetComponents.filter((category) => args.economicBudgetCategories.includes(category)),
+      economicBudgetCategories: await isIntegrationEnabled(ctx, auth.organizationId, "economic")
+        ? economicBudgetComponents.filter((category) => args.economicBudgetCategories.includes(category))
+        : previous?.economicBudgetCategories ?? [],
       revision: args.expectedRevision + 1, updatedAt: Date.now(), updatedBy: auth.userId,
     });
     await recordAudit(ctx, auth, { action: "monthlyKpi.budgetSaved", entityTable: "monthlyKpiBudgets", entityId: id,

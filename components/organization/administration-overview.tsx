@@ -109,7 +109,7 @@ const categories: AdministrationCategory[] = [
     sections: [
       {
         title: "Produkter",
-        description: "Administrér produkter, menuer, kategorier og enheder.",
+        description: "Administrér produkter, kategorier og enheder.",
         href: "/administration/products",
         icon: PackageIcon,
         permissions: ["catalog.manage"],
@@ -137,7 +137,7 @@ const categories: AdministrationCategory[] = [
       },
       {
         title: "Udgift",
-        description: "Vælg e-mailmodtagere og konti til e-conomic.",
+        description: "Vælg e-mailmodtagere og opsæt udgifter.",
         href: "/administration/expenses",
         icon: WalletIcon,
         permissions: ["expenses.settings", "organization.settings"],

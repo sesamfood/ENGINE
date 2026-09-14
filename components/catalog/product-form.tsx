@@ -1,6 +1,8 @@
 "use client";
 
-import { OnlinePosMasterSelect } from "./online-pos-master-select";
+import { useIntegrations } from "@/integrations/use-integrations";
+
+import { OnlinePosMasterSelect } from "@/integrations/onlinepos/client";
 
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { ExpiryField } from "@/components/catalog/expiry-field";
@@ -29,7 +31,7 @@ import { usePermission } from "@/components/app-shell";
 import {
   OnlinePosProductSelect,
   useOnlinePosProductOptions,
-} from "@/components/catalog/online-pos-product-select";
+} from "@/integrations/onlinepos/client";
 import {
   CreatableCombobox,
   CreatableMultiCombobox,
@@ -256,7 +258,8 @@ function FormLoading() {
 export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const canManageIntegrations = usePermission("integrations.manage");
+  const integrations = useIntegrations();
+  const canManageIntegrations = usePermission("integrations.manage") && integrations?.onlinepos === true;
   const masterSettings = useQuery(
     api.onlinePos.getSettings,
     canManageIntegrations ? {} : "skip",
@@ -307,11 +310,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       : "skip",
   );
   const onlinePosSettingsReady =
-    !canManageIntegrations ||
+    integrations !== undefined && (!canManageIntegrations ||
     (ingredientRemovalSettings !== undefined &&
       ingredientAdditionSettings !== undefined &&
       ingredientRemovalSettings.integrationId ===
-        ingredientAdditionSettings.integrationId);
+        ingredientAdditionSettings.integrationId));
   const onlinePosIntegrationId =
     canManageIntegrations && onlinePosSettingsReady
       ? ingredientRemovalSettings?.integrationId

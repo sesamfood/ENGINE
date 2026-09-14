@@ -1,3 +1,5 @@
+"use client";
+
 import { Fragment } from "react";
 import Link from "next/link";
 import { ArrowRightIcon, ArrowUpRightIcon } from "lucide-react";
@@ -17,16 +19,17 @@ import {
 } from "@/components/ui/breadcrumb";
 import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { HelpPage } from "./help-features";
+import { useVisibleHelp } from "./use-visible-help";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { HelpScreenshot } from "./help-screenshot";
 import { HelpPagination } from "./help-pagination";
 import { HelpGuideList } from "./help-guide-list";
 
-export function HelpGuidePage({
-  page: { feature, guide, href, parents },
-}: {
-  page: HelpPage;
-}) {
+export function HelpGuidePage({ href }: { href: string }) {
+  const { pages } = useVisibleHelp();
+  const page = pages.find((item) => item.href === href);
+  if (!page) return <Empty><EmptyHeader><EmptyTitle>Siden er ikke tilgængelig</EmptyTitle></EmptyHeader></Empty>;
+  const { feature, guide, parents } = page;
   const isOverview = guide.slug === "overblik";
   const childGuides = isOverview
     ? feature.guides.filter((item) => item.slug !== "overblik")

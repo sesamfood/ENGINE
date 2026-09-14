@@ -1,5 +1,8 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+import { salesSourceOptions } from "@/integrations/dashboard";
+
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import {
   ArrowDownRightIcon,
@@ -51,7 +54,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { defaultSalesSource, metricRegistry, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
-import { salesSourceLabels, widgetSizes, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
+import { widgetSizes, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { previousTotal, total } from "./visualizations/utils";
@@ -200,6 +203,8 @@ export function WidgetCard({
   const definition = widget.metric.kind === "builtin"
     ? metricRegistry[widget.metric.id]
     : undefined;
+  const integrations = useIntegrations();
+  const sources = salesSourceOptions(integrations);
   const financial = definition?.source === "economic";
   const financialRange = widget.range ? { preset: widget.range } : range;
   const availableRangeOptions = financial
@@ -451,8 +456,8 @@ export function WidgetCard({
                     ) : null}
                     {definition && supportsSalesSource(definition.id) && onSalesSourceChange ? (
                       <Select
-                        items={Object.entries(salesSourceLabels).map(([value, label]) => ({ value, label }))}
-                        value={salesSource ?? "onlinePos"}
+                        items={sources}
+                        value={sources.some((source) => source.value === salesSource) ? salesSource : "onlinePos"}
                         onValueChange={(value) => {
                           if (value === "onlinePos" || value === "wolt" || value === "combined") {
                             onSalesSourceChange(value);
@@ -464,7 +469,7 @@ export function WidgetCard({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {Object.entries(salesSourceLabels).map(([value, label]) => (
+                            {sources.map(({ value, label }) => (
                               <SelectItem key={value} value={value}>{label}</SelectItem>
                             ))}
                           </SelectGroup>
@@ -495,16 +500,16 @@ export function WidgetCard({
           ) : null}
         </div>
         {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
-        {financial ? <CardDescription>e-conomic · {financialRange?.preset === "thisMonth" ? "Denne måned"
+        {financial ? <CardDescription>Månedsrapport · {financialRange?.preset === "thisMonth" ? "Denne måned"
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
       </CardHeader>
       <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-0", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-9")}>
-        {salesSource === "combined" ? (
+        {integrations?.wolt && salesSource === "combined" ? (
           <Alert className="mb-3">
             <CircleAlertIcon />
             <AlertTitle>Mulige dubletter</AlertTitle>
             <AlertDescription>
-              Kombinerede OnlinePOS- og Wolt-data kan indeholde de samme ordrer.
+              Kombinerede salgskilder kan indeholde de samme ordrer.
             </AlertDescription>
           </Alert>
         ) : null}

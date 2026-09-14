@@ -1735,7 +1735,7 @@ export function CountSheet() {
       }
       if (report.unmappedSalesQuantity > 0) {
         toast.warning(
-          `Wolt-salg på ${String(report.unmappedSalesQuantity).replace(".", ",")} enheder kunne ikke kobles til et Produkt.`,
+          `Salg på ${String(report.unmappedSalesQuantity).replace(".", ",")} enheder kunne ikke kobles til et Produkt.`,
         );
       }
       const selectedHealth =

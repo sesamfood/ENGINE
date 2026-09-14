@@ -9,6 +9,7 @@ import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
   requireEmployeeViewer,
+  requireHumanPrincipal,
   requireKioskDestination,
   requireLocationAccess,
   requireNormalOrganization,
@@ -21,7 +22,9 @@ import {
   resolveTimeZone,
   scheduleLocationDayStartReroll,
 } from "./lib/timeZone";
-import { requestWorkfeedEmployeeSync } from "./lib/workfeedSyncRequest";
+import { requestWorkfeedEmployeeSync } from "./integrations/workfeed/lib/syncRequest";
+import { recordAudit } from "./lib/audit";
+import { requireOrganizationLocation } from "./lib/locations";
 
 const MAX_WEEK_SHIFTS = 2_000;
 const MAX_LOCATION_EMPLOYEES = 500;
@@ -48,6 +51,9 @@ const syncStateValidator = v.union(
 
 const employeeSummaryValidator = v.object({
   id: v.id("employees"),
+  firstName: v.string(),
+  lastName: v.string(),
+  managedLocally: v.boolean(),
   displayName: v.string(),
   imageUrl: v.union(v.string(), v.null()),
   active: v.boolean(),
@@ -84,6 +90,9 @@ async function hydrateEmployee(
   );
   return {
     id: employee._id,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    managedLocally: employee.managedLocally === true,
     displayName: employee.displayName,
     imageUrl: employee.imageUrl,
     active: employee.active,
@@ -391,6 +400,46 @@ export const listDirectory = query({
       }),
     );
     return { ...result, page: page.filter((employee) => employee !== null) };
+  },
+});
+
+export const saveManual = mutation({
+  args: {
+    employeeId: v.optional(v.id("employees")),
+    locationId: v.id("locations"),
+    firstName: v.string(),
+    lastName: v.string(),
+    active: v.boolean(),
+  },
+  returns: v.id("employees"),
+  handler: async (ctx, args) => {
+    const auth = requireHumanPrincipal(await requireOrganizationAdmin(ctx));
+    requireLocationAccess(auth, args.locationId);
+    await requireOrganizationLocation(ctx, auth.organizationId, args.locationId);
+    const firstName = args.firstName.trim();
+    const lastName = args.lastName.trim();
+    if (!firstName || firstName.length > 100 || lastName.length > 100) {
+      throw new ConvexError("Angiv et fornavn og højst 100 tegn pr. navn");
+    }
+    const current = args.employeeId ? await ctx.db.get("employees", args.employeeId) : null;
+    if (args.employeeId && (!current || current.organizationId !== auth.organizationId || !current.managedLocally)) {
+      throw new ConvexError("Medarbejderen kan ikke redigeres her");
+    }
+    if (current) {
+      const assignments = await ctx.db.query("employeeLocationAssignments")
+        .withIndex("by_organizationId_and_employeeId", (q) => q.eq("organizationId", auth.organizationId).eq("employeeId", current._id)).take(MAX_ASSIGNMENTS + 1);
+      if (assignments.length > MAX_ASSIGNMENTS) throw new ConvexError("Medarbejderen har for mange lokationer");
+      for (const assignment of assignments) requireLocationAccess(auth, assignment.locationId);
+    }
+    const displayName = [firstName, lastName].filter(Boolean).join(" ");
+    const fields = { firstName, lastName, displayName, normalizedName: displayName.toLocaleLowerCase("da"), active: args.active, updatedAt: Date.now() };
+    const employeeId = current?._id ?? await ctx.db.insert("employees", { organizationId: auth.organizationId, managedLocally: true, imageUrl: null, ...fields });
+    if (current) await ctx.db.patch(current._id, fields);
+    const assignment = await ctx.db.query("employeeLocationAssignments")
+      .withIndex("by_organizationId_and_locationId_and_employeeId", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId).eq("employeeId", employeeId)).unique();
+    if (!assignment) await ctx.db.insert("employeeLocationAssignments", { organizationId: auth.organizationId, employeeId, locationId: args.locationId, updatedAt: fields.updatedAt });
+    await recordAudit(ctx, auth, { action: current ? "employee.updated" : "employee.created", entityTable: "employees", entityId: employeeId, locationId: args.locationId, summary: `${current ? "Opdaterede" : "Oprettede"} medarbejderen ${displayName}` });
+    return employeeId;
   },
 });
 

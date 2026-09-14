@@ -1,10 +1,13 @@
+"use client";
+
 import { ArrowRightIcon } from "lucide-react";
 import Link from "next/link";
-import { helpFeatures, helpPages } from "./help-features";
+import { useVisibleHelp } from "./use-visible-help";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
 export function HelpIndex() {
+  const { features: helpFeatures, pages: helpPages } = useVisibleHelp();
   return (
     <div className="flex max-w-5xl flex-col gap-10 py-8 sm:gap-12 sm:py-12">
       <header className="flex max-w-2xl flex-col items-start gap-4">

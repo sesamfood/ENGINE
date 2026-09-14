@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 import { authComponent, createAuth } from "./auth";
-import { oauthCallback, webhook, wioOnboarding } from "./woltHttp";
+import { oauthCallback, webhook, wioOnboarding } from "./integrations/wolt/http";
 
 const http = httpRouter();
 

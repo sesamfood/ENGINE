@@ -1,5 +1,8 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+import { widgetAvailable } from "@/integrations/dashboard";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -145,12 +148,13 @@ function DashboardLanding() {
 }
 
 function DashboardContent({ dashboardId }: { dashboardId: string }) {
+  const integrations = useIntegrations();
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
   const canManage = usePermission("dashboard.manage");
   const canShare = usePermission("dashboard.share");
-  const canManageIntegrations = usePermission("integrations.manage");
+  const canManageIntegrations = usePermission("integrations.manage") && Boolean(integrations?.onlinepos || integrations?.workfeed);
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
   const canViewDetailedSales = usePermission("sales.viewDetail");
@@ -341,6 +345,8 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
     return canView ? <Skeleton className="h-96" /> : <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
   }
   if (!dashboard || !currentScope || !currentRange || dashboardsQuery === undefined || locations === undefined) return <Skeleton className="h-96 w-full" />;
+  const visibleWidgets = dashboard.widgets.filter((widget) => widgetAvailable(widget, integrations));
+  const hiddenWidgets = dashboard.widgets.filter((widget) => !visibleWidgets.includes(widget));
   const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];
 
   return (
@@ -415,8 +421,8 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           ) : null}
         </div>
       </div>
-      {dashboard.widgets.length ? (
-        <DashboardGrid widgets={dashboard.widgets} scope={currentScope} range={currentRange} now={now} editable={canManage && editing} onChange={commitWidgets} />
+      {visibleWidgets.length ? (
+        <DashboardGrid widgets={visibleWidgets} scope={currentScope} range={currentRange} now={now} editable={canManage && editing} onChange={(widgets) => commitWidgets([...widgets, ...hiddenWidgets])} />
       ) : (
         <Empty className="min-h-80 border">
           <EmptyHeader>
