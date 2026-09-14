@@ -1,6 +1,6 @@
 "use client";
 
-import { OnlinePosMasterSelect } from "@/components/catalog/online-pos-master-select";
+import { OnlinePosMasterSelect } from "./online-pos-master-select";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {

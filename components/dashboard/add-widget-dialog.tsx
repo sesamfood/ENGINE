@@ -1,5 +1,8 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+import { customMetricAvailable, metricSourceAvailable, salesSourceOptions } from "@/integrations/dashboard";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
@@ -63,7 +66,7 @@ import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/das
 import { metricRegistry, metrics, sizeLabels, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
-import { salesSourceLabels, widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import type { CustomMetricDefinition } from "./custom-metric-definition";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
@@ -101,9 +104,11 @@ export function AddWidgetDialog({
   onOpenChange?: (open: boolean) => void;
   showTrigger?: boolean;
 }) {
+  const integrations = useIntegrations();
+  const sources = salesSourceOptions(integrations);
   const access = useAccess();
   const convex = useConvex();
-  const available = metrics.filter(
+  const available = metrics.filter((metric) => metricSourceAvailable(metric.source, integrations)).filter(
     (metric) => metric.source === "economic"
       ? access?.granularity === "detail" && access.permissions.includes("dashboard.viewFinancials")
       : (!metric.sensitive || canViewSensitive) && (!metric.live || access?.granularity === "detail"),
@@ -116,10 +121,11 @@ export function AddWidgetDialog({
   const open = controlledOpen ?? internalOpen;
   const previousOpen = useRef(open);
   const skipNextControlledOpenReset = useRef(false);
-  const customMetrics = useQuery(
+  const allCustomMetrics = useQuery(
     api.customMetrics.list,
     open ? {} : "skip",
   );
+  const customMetrics = allCustomMetrics?.filter((metric) => customMetricAvailable(metric.spec, integrations));
   const sourceAvailability = useQuery(
     api.dashboard.salesSourceAvailability,
     open ? { scope } : "skip",
@@ -136,6 +142,7 @@ export function AddWidgetDialog({
   const definition = metricRegistry[metricId];
   const customMetric = customMetrics?.find((metric) => metric.id === customMetricId);
   const customMetricPending = Boolean(customMetricId && !customMetric);
+  const selectedMetricAvailable = customMetricId ? Boolean(customMetric) : available.some((metric) => metric.id === metricId);
   const [visualization, setVisualization] = useState<VisualizationId>(definition.defaultVisualization);
   const [size, setSize] = useState<WidgetSize>(definition.defaultSize);
   const [yAxisMin, setYAxisMin] = useState<number | undefined>(0);
@@ -147,7 +154,7 @@ export function AddWidgetDialog({
     range: definition.defaultRange,
   }], [metricId, visualization, size, definition.defaultRange]);
   const [livePreviewWidget] = livePreviewWidgets;
-  const livePreview = useLiveMetrics(livePreviewWidgets, scope, open && step === 2 && !customMetricId && Boolean(definition.live));
+  const livePreview = useLiveMetrics(livePreviewWidgets, scope, open && selectedMetricAvailable && step === 2 && !customMetricId && Boolean(definition.live));
   const livePreviewState = livePreview.byWidget.get(livePreviewWidget.key);
   const financialPreview = useFinancialMetrics(livePreviewWidgets, scope, range, now,
     open && step === 2 && !customMetricId && definition.source === "economic");
@@ -157,13 +164,13 @@ export function AddWidgetDialog({
     : previewResult;
   const salesSource = metricId === "woltCancellationRate"
     ? "wolt"
-    : salesSourceOverride ?? (
-        sourceAvailability && !sourceAvailability.onlinePos && sourceAvailability.wolt
+    : (salesSourceOverride && sources.some((source) => source.value === salesSourceOverride) ? salesSourceOverride : undefined) ?? (
+        integrations?.wolt && sourceAvailability && !sourceAvailability.onlinePos && sourceAvailability.wolt
           ? "wolt"
           : "onlinePos"
       );
   useEffect(() => {
-    if (!open || step !== 2 || (customMetricId && !customMetric) || (!customMetricId && (definition.live || definition.source === "economic"))) return;
+    if (!open || !selectedMetricAvailable || step !== 2 || (customMetricId && !customMetric) || (!customMetricId && (definition.live || definition.source === "economic"))) return;
     let active = true;
     const timer = window.setTimeout(() => {
       if (!active) return;
@@ -218,6 +225,7 @@ export function AddWidgetDialog({
     open,
     range,
     salesSource,
+    selectedMetricAvailable,
     scope,
     step,
   ]);
@@ -255,6 +263,7 @@ export function AddWidgetDialog({
   }
 
   function add() {
+    if (!selectedMetricAvailable) return;
     const options = {
       ...(yAxisMin !== undefined ? { yAxisMin } : {}),
       ...(yAxisMax !== undefined ? { yAxisMax } : {}),
@@ -374,7 +383,7 @@ export function AddWidgetDialog({
         </Tabs>
 
         <div className="min-h-0 overflow-y-auto p-1">
-          {step === 1 ? (
+          {step === 1 || !selectedMetricAvailable ? (
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div>
                 <h2 className="text-sm font-medium">Hvad vil du følge?</h2>
@@ -395,7 +404,7 @@ export function AddWidgetDialog({
                         return (
                           <CommandItem
                             key={metric.id}
-                            value={`${metric.label} ${metric.description} ${metric.formula} ${metric.sourceTables.join(" ")}`}
+                            value={`${metric.label} ${metric.description}`}
                             onSelect={() => selectMetric(metric.id)}
                             aria-selected={selected}
                             className={cn(
@@ -407,10 +416,10 @@ export function AddWidgetDialog({
                               <p className="font-medium">{metric.label}</p>
                               <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>
                               <p className="mt-2 text-xs">
-                                <span className="font-medium">Formel:</span> {metric.formula}
+                                <span className="font-medium">Formel:</span> {metric.id === "cogsPercent" ? "Lagerreguleret vareforbrug ÷ nettoomsætning × 100." : metric.id === "labourPercent" ? "Lønomkostninger ÷ nettoomsætning × 100." : metric.formula}
                               </p>
                               <p className="mt-1 text-xs text-muted-foreground">
-                                <span className="font-medium text-foreground">Datakilder:</span> {metric.sourceTables.join(", ")}
+                                <span className="font-medium text-foreground">Datakilder:</span> {metric.source === "economic" ? "Månedsrapport" : metric.sourceTables.join(", ")}
                               </p>
                             </div>
                           </CommandItem>
@@ -492,7 +501,7 @@ export function AddWidgetDialog({
             </div>
           ) : null}
 
-          {step === 2 ? (
+          {step === 2 && selectedMetricAvailable ? (
             <div className="flex min-h-full flex-col gap-3">
               <div>
                 <h2 className="text-sm font-medium">Hvordan skal {(customMetric?.name ?? (customMetricId ? "målingen" : definition.label)).toLowerCase()} vises?</h2>
@@ -505,7 +514,7 @@ export function AddWidgetDialog({
                     <p className="text-xs text-muted-foreground">Vælg hvilke ordredata widgetten skal bruge.</p>
                   </div>
                   <Select
-                    items={Object.entries(salesSourceLabels).map(([value, label]) => ({ value, label }))}
+                    items={sources}
                     value={salesSource}
                     onValueChange={(value) => {
                       if (value === "onlinePos" || value === "wolt" || value === "combined") {
@@ -519,7 +528,7 @@ export function AddWidgetDialog({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {Object.entries(salesSourceLabels).map(([value, label]) => (
+                        {sources.map(({ value, label }) => (
                           <SelectItem key={value} value={value}>{label}</SelectItem>
                         ))}
                       </SelectGroup>
@@ -604,7 +613,7 @@ export function AddWidgetDialog({
             </div>
           ) : null}
 
-          {step === 3 ? (
+          {step === 3 && selectedMetricAvailable ? (
             <div className="flex min-h-full flex-col gap-3">
               <div>
                 <h2 className="text-sm font-medium">Hvor meget plads skal widgetten bruge?</h2>
@@ -679,16 +688,16 @@ export function AddWidgetDialog({
             {step === 1 ? "Annullér" : <><ChevronLeftIcon data-icon="inline-start" /> Tilbage</>}
           </Button>
           {step < 3 ? (
-            <Button type="button" disabled={customMetricPending} onClick={() => setStep((current) => (current + 1) as Step)}>
+            <Button type="button" disabled={customMetricPending || !selectedMetricAvailable} onClick={() => setStep((current) => (current + 1) as Step)}>
               Næste <ChevronRightIcon data-icon="inline-end" />
             </Button>
           ) : (
-            <Button type="button" onClick={add} disabled={!yAxisValid}>Tilføj widget</Button>
+            <Button type="button" onClick={add} disabled={!yAxisValid || !selectedMetricAvailable}>Tilføj widget</Button>
           )}
         </DialogFooter>
       </DialogContent>
       </Dialog>
-      {builderOpen ? (
+      {builderOpen && (!builderMetric || customMetricAvailable(builderMetric.spec, integrations)) ? (
         <CustomMetricBuilder
           key={`${builderOpen ? "open" : "closed"}:${builderMetric?.id ?? "new"}:${builderMetric?.updatedAt ?? ""}`}
           open
@@ -714,7 +723,7 @@ export function AddWidgetDialog({
           }}
         />
       ) : null}
-      <AlertDialog open={Boolean(deletingMetric)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleting) setDeletingMetric(null); }}>
+      <AlertDialog open={Boolean(deletingMetric && customMetricAvailable(deletingMetric.spec, integrations))} onOpenChange={(nextOpen) => { if (!nextOpen && !deleting) setDeletingMetric(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Slet tilpasset måling?</AlertDialogTitle>

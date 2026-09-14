@@ -1,6 +1,5 @@
 "use client";
 
-import { IntegrationCard } from "./integration-card";
 import { WoltCredentials } from "./wolt-credentials";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
@@ -74,11 +73,11 @@ import {
   formatWoltDateTime,
   woltHealthLabel,
   woltHealthVariant,
-} from "@/components/wolt/wolt-format";
+} from "./wolt-format";
 import type {
   WoltIntegrationOverview,
   WoltObservedItem,
-} from "@/components/wolt/wolt-types";
+} from "./wolt-types";
 
 type WoltLocation = WoltIntegrationOverview["locations"][number];
 type ProductOption = { id: Id<"products">; name: string };
@@ -754,9 +753,6 @@ export function WoltIntegration() {
   const callbackHandled = useRef(false);
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  const integrationOpen = detailsOpen || setupOpen;
   const overview = useQuery(
     api.wolt.getIntegrationOverview,
     canManage ? {} : "skip",
@@ -770,13 +766,13 @@ export function WoltIntegration() {
   const setObservedLocationFilter = observedLocationState[1];
   const observed = useQuery(
     api.wolt.listObservedItems,
-    canManage && integrationOpen
+    canManage
       ? { locationId: observedLocationFilter === "all" ? null : observedLocationFilter }
       : "skip",
   );
   const products = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
-    canManage && integrationOpen ? {} : "skip",
+    canManage ? {} : "skip",
   );
   const beginSsio = useAction(api.wolt.beginSsio);
   const setPartnerVenueMapping = useMutation(api.wolt.setPartnerVenueMapping);
@@ -785,10 +781,8 @@ export function WoltIntegration() {
   );
   const disconnectLocation = useMutation(api.wolt.disconnectLocation);
   const retryDeadLetters = useMutation(api.wolt.retryDeadLetters);
-  const setEnabled = useMutation(api.wolt.setEnabled);
   const saveProductMapping = useMutation(api.wolt.saveProductMapping);
   const deleteProductMapping = useMutation(api.wolt.deleteProductMapping);
-  const [changingEnabled, setChangingEnabled] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, Id<"products"> | undefined>>({});
   const [mappingScopes, setMappingScopes] = useState<Record<string, Id<"locations"> | "all" | undefined>>({});
@@ -799,7 +793,6 @@ export function WoltIntegration() {
       return;
     }
     callbackHandled.current = true;
-    setDetailsOpen(true);
     if (result === "processing") {
       toast.success("Wolt-godkendelsen behandles. Status opdateres automatisk.");
     } else {
@@ -811,29 +804,6 @@ export function WoltIntegration() {
       scroll: false,
     });
   }, [pathname, router, searchParams]);
-
-  async function changeIntegrationEnabled(enabled: boolean) {
-    if (!overview?.connected) {
-      setSetupOpen(enabled);
-      return;
-    }
-
-    setChangingEnabled(true);
-    try {
-      await setEnabled({ enabled });
-      setDetailsOpen(false);
-      setSetupOpen(false);
-      toast.success(
-        enabled
-          ? "Wolt-integrationen er aktiveret"
-          : "Wolt-integrationen er deaktiveret",
-      );
-    } catch (error) {
-      toast.error(getUserErrorMessage(error, "Wolt-integrationen kunne ikke opdateres. Prøv igen."));
-    } finally {
-      setChangingEnabled(false);
-    }
-  }
 
   async function startSsio(locationId: Id<"locations">) {
     if (!credentialSettings?.configured) {
@@ -979,28 +949,7 @@ export function WoltIntegration() {
   }
 
   return (
-    <IntegrationCard
-      id="wolt-integration"
-      title="Wolt"
-      description={
-        <>Modtag Wolt-ordrer, og overvåg forbindelser pr. lokation.</>
-      }
-      connected={overview.connected}
-      checked={overview.connected ? overview.enabled : setupOpen}
-      open={integrationOpen}
-      onOpenChange={(open) => {
-        setDetailsOpen(open);
-        if (!open && !overview.connected) setSetupOpen(false);
-      }}
-      onEnabledChange={(enabled) => void changeIntegrationEnabled(enabled)}
-      disabled={changingEnabled || (overview.connected && !overview.canUseWio)}
-      disabledReason={
-        overview.connected && !overview.canUseWio
-          ? "Kræver adgang til alle lokationer"
-          : undefined
-      }
-      contentClassName="flex flex-col gap-5"
-    >
+    <div className="flex flex-col gap-5">
       <div>
         <Badge variant="outline">Kun læsning af ordredata</Badge>
       </div>
@@ -1086,6 +1035,6 @@ export function WoltIntegration() {
         }
         onDelete={(row) => void deleteMapping(row)}
       />
-    </IntegrationCard>
+    </div>
   );
 }

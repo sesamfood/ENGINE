@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { SettingsSwitchField } from "./settings-switch-field";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -75,6 +77,11 @@ function salesSourceFromValue(value: string): SalesSource | null {
 }
 
 export function CountSettings() {
+  const integrations = useIntegrations();
+  const availableSources = salesSourceOptions.filter((option) =>
+    option.value === "combined" ? integrations?.onlinepos && integrations?.wolt
+    : option.value === "onlinePos" ? integrations?.onlinepos : integrations?.wolt,
+  );
   const access = useAccess();
   const canManage = usePermission("count.settings");
   const settings = useQuery(
@@ -83,7 +90,7 @@ export function CountSettings() {
   );
   const sourceSettings = useQuery(
     api.countSales.getSettings,
-    canManage ? {} : "skip",
+    canManage && availableSources.length > 0 ? {} : "skip",
   );
   const saveSettings = useMutation(api.count.setCountSettings);
   const saveSource = useMutation(api.countSales.setSource);
@@ -364,13 +371,12 @@ export function CountSettings() {
       </CardFooter>
       </Card>
 
-      <Card className="max-w-3xl">
+      {availableSources.length > 0 ? <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle>Salgskilde til Count</CardTitle>
           <CardDescription>
             Vælg, hvilken salgskilde der skal bruges i Waste-rapporten for hver
-            lokation. Uden en gemt indstilling vælger Count OnlinePOS først og
-            Wolt, hvis OnlinePOS ikke er forbundet.
+            lokation. Vælg blandt organisationens aktiverede salgskilder.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -386,9 +392,9 @@ export function CountSettings() {
           ) : (
             sourceSettings.locations.map((location) => {
               const draftSource = draftSources[location.id];
-              const selectedSource = location.stockSyncEnabled
-                ? "onlinePos"
-                : (draftSource ?? location.effectiveSource);
+              const stockSyncEnabled = Boolean(integrations?.onlinepos && location.stockSyncEnabled);
+              const requestedSource = stockSyncEnabled ? "onlinePos" : (draftSource ?? location.effectiveSource);
+              const selectedSource = availableSources.find((option) => option.value === requestedSource)?.value ?? availableSources[0].value;
               const hasDraft = draftSource !== undefined;
               const isSaving = savingSources.has(location.id);
               const onlinePosConnected = location.connected.onlinePos;
@@ -402,36 +408,36 @@ export function CountSettings() {
                     <div className="min-w-0">
                       <h3 className="truncate font-medium">{location.name}</h3>
                       <div className="flex flex-wrap gap-2 pt-1 text-sm">
-                        <Badge
+                        {integrations?.onlinepos ? <Badge
                           variant={onlinePosConnected ? "secondary" : "outline"}
                         >
                           OnlinePOS:{" "}
                           {onlinePosConnected ? "Forbundet" : "Ikke forbundet"}
-                        </Badge>
-                        <Badge variant={woltConnected ? "secondary" : "outline"}>
+                        </Badge> : null}
+                        {integrations?.wolt ? <Badge variant={woltConnected ? "secondary" : "outline"}>
                           Wolt: {woltConnected ? "Klar" : "Ikke klar"}
-                        </Badge>
+                        </Badge> : null}
                       </div>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {location.stockSyncEnabled
+                      {stockSyncEnabled
                         ? "OnlinePOS bruges til lagersynkronisering"
                         : location.savedSource
-                          ? `Gemt: ${salesSourceOptions.find((option) => option.value === location.savedSource)?.label ?? location.savedSource}`
+                          ? `Gemt: ${availableSources.find((option) => option.value === location.savedSource)?.label ?? "Tidligere salgskilde"}`
                           : "Standardvalg endnu ikke gemt"}
                     </div>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <Field
                       className="min-w-0 flex-1"
-                      data-disabled={location.stockSyncEnabled}
+                      data-disabled={stockSyncEnabled}
                     >
                       <FieldLabel htmlFor={`count-sales-source-${location.id}`}>
                         Salgskilde
                       </FieldLabel>
                       <Select
-                        disabled={location.stockSyncEnabled}
-                        items={salesSourceOptions}
+                        disabled={stockSyncEnabled}
+                        items={availableSources}
                         value={selectedSource}
                         onValueChange={(value) => {
                           const source = value
@@ -453,7 +459,7 @@ export function CountSettings() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {salesSourceOptions.map((option) => (
+                            {availableSources.map((option) => (
                               <SelectItem key={option.value} value={option.value}>
                                 {option.label}
                               </SelectItem>
@@ -465,7 +471,7 @@ export function CountSettings() {
                     <Button
                       type="button"
                       className="min-h-11 sm:shrink-0"
-                      disabled={location.stockSyncEnabled || !hasDraft || isSaving}
+                      disabled={stockSyncEnabled || !hasDraft || isSaving}
                       onClick={() => void saveLocationSource(location.id, selectedSource)}
                     >
                       {isSaving ? <Spinner data-icon="inline-start" /> : null}
@@ -486,7 +492,7 @@ export function CountSettings() {
             })
           )}
         </CardContent>
-      </Card>
+      </Card> : null}
     </div>
   );
 }

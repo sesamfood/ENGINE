@@ -1,6 +1,5 @@
 "use client";
 
-import { IntegrationCard } from "./integration-card";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -93,10 +92,8 @@ const connectedAtFormatter = new Intl.DateTimeFormat("da-DK", {
 
 function ConnectionCard({
   settings,
-  onDisconnected,
 }: {
   settings: Settings;
-  onDisconnected: () => void;
 }) {
   const connect = useAction(api.workfeed.connect);
   const disconnect = useMutation(api.workfeed.disconnect);
@@ -137,7 +134,6 @@ function ConnectionCard({
       await disconnect({});
       setCompanyIdDraft("");
       setApiKey("");
-      onDisconnected();
       toast.success("Workfeed-integrationen er fjernet");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
@@ -555,33 +551,6 @@ export function WorkfeedIntegration() {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
   const settings = useQuery(api.workfeed.getSettings, canManage ? {} : "skip");
-  const setEnabled = useAction(api.workfeed.setEnabled);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  const [changingEnabled, setChangingEnabled] = useState(false);
-
-  async function changeIntegrationEnabled(enabled: boolean) {
-    if (!settings?.connected) {
-      setSetupOpen(enabled);
-      return;
-    }
-
-    setChangingEnabled(true);
-    try {
-      await setEnabled({ enabled });
-      setDetailsOpen(false);
-      toast.success(
-        enabled
-          ? "Workfeed-integrationen er aktiveret"
-          : "Workfeed-integrationen er deaktiveret",
-      );
-    } catch (error) {
-      toast.error(getUserErrorMessage(error, "Workfeed-integrationen kunne ikke opdateres. Prøv igen."));
-    } finally {
-      setChangingEnabled(false);
-    }
-  }
-
   if (!access) {
     return <Skeleton className="h-72 w-full max-w-6xl" />;
   }
@@ -599,34 +568,10 @@ export function WorkfeedIntegration() {
 
   if (!settings) return <Skeleton className="h-72 w-full max-w-6xl" />;
 
-  const integrationOpen = detailsOpen || setupOpen;
-
   return (
-    <IntegrationCard
-      id="workfeed-integration"
-      title="Workfeed"
-      description={
-        <>
-          Se dagens planlagte medarbejdere og antal medarbejdere på arbejde for
-          hver lokation.
-        </>
-      }
-      connected={settings.connected}
-      checked={settings.connected ? settings.enabled : setupOpen}
-      open={integrationOpen}
-      onOpenChange={(open) => {
-        setDetailsOpen(open);
-        if (!open && !settings.connected) setSetupOpen(false);
-      }}
-      onEnabledChange={(enabled) => void changeIntegrationEnabled(enabled)}
-      disabled={changingEnabled}
-      contentClassName="flex flex-col gap-5 pb-4"
-    >
-      <ConnectionCard
-        settings={settings}
-        onDisconnected={() => setSetupOpen(false)}
-      />
+    <div className="flex flex-col gap-5">
+      <ConnectionCard settings={settings} />
       {settings.connected ? <LocationMappings /> : null}
-    </IntegrationCard>
+    </div>
   );
 }

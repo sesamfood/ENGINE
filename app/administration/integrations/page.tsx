@@ -1,15 +1,11 @@
-import { EconomicIntegration } from "@/components/organization/economic-integration";
-import { OnlinePosIntegration } from "@/components/organization/online-pos-integration";
-import { WoltIntegration } from "@/components/organization/wolt-integration";
-import { WorkfeedIntegration } from "@/components/organization/workfeed-integration";
+import { Suspense } from "react";
+import { IntegrationOverview } from "@/components/integrations/integration-overview";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AdministrationIntegrationsPage() {
   return (
-    <div className="flex flex-col gap-5 pb-10">
-      <WorkfeedIntegration />
-      <OnlinePosIntegration />
-      <EconomicIntegration />
-      <WoltIntegration />
-    </div>
+    <Suspense fallback={<Skeleton className="h-72 w-full max-w-6xl" />}>
+      <IntegrationOverview />
+    </Suspense>
   );
 }

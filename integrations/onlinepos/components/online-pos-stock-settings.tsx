@@ -1,6 +1,6 @@
 "use client";
 
-import { SettingsSwitchField } from "./settings-switch-field";
+import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";

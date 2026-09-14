@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppPageHeader } from "@/components/app-page-header";
@@ -62,7 +64,8 @@ export function AdministrationHeader() {
   const canManageMembers = usePermission("members.manage");
   const canManageRoles = usePermission("roles.manage");
   const canManageApiKeys = usePermission("apiKeys.manage");
-  const canManageIntegrations = usePermission("integrations.manage");
+  const integrations = useIntegrations();
+  const canManageIntegrations = usePermission("integrations.manage") && integrations?.onlinepos === true;
   const inCatalog = catalogSections.some((item) =>
     pathname.startsWith(`${administrationPath}/${item.value}`),
   );

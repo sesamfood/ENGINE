@@ -1,5 +1,8 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+import { customMetricAvailable } from "@/integrations/dashboard";
+
 import { useState } from "react";
 import { ChartNoAxesCombinedIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -58,7 +61,9 @@ export function CustomMetricLibrary() {
   const canManage = usePermission("dashboard.manage");
   const access = useAccess();
   const now = useDashboardNow();
-  const metrics = useQuery(api.customMetrics.list, canManage ? {} : "skip");
+  const integrations = useIntegrations();
+  const allMetrics = useQuery(api.customMetrics.list, canManage ? {} : "skip");
+  const metrics = allMetrics?.filter((metric) => customMetricAvailable(metric.spec, integrations));
   const removeMetric = useMutation(api.customMetrics.remove);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editingMetric, setEditingMetric] = useState<CustomMetricDefinition | null>(null);
@@ -167,7 +172,7 @@ export function CustomMetricLibrary() {
 
       <CustomMetricBuilder
         key={`${builderOpen ? "open" : "closed"}:${editingMetric?.id ?? "new"}:${editingMetric?.updatedAt ?? ""}`}
-        open={builderOpen}
+        open={builderOpen && (!editingMetric || customMetricAvailable(editingMetric.spec, integrations))}
         onOpenChange={(open) => {
           setBuilderOpen(open);
           if (!open) setEditingMetric(null);
@@ -180,7 +185,7 @@ export function CustomMetricLibrary() {
         mode="library"
       />
 
-      <AlertDialog open={Boolean(deletingMetric)} onOpenChange={(open) => { if (!open && !deleting) setDeletingMetric(null); }}>
+      <AlertDialog open={Boolean(deletingMetric && customMetricAvailable(deletingMetric.spec, integrations))} onOpenChange={(open) => { if (!open && !deleting) setDeletingMetric(null); }}>
         <AlertDialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Slet tilpasset måling?</AlertDialogTitle>

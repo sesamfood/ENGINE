@@ -1,9 +1,11 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { ArrowLeftIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
-import { helpFeatures, helpPages } from "@/components/help/help-features";
+import { useVisibleHelp } from "./use-visible-help";
 import {
   HelpNavigation,
   type NavigationGuide,
@@ -26,6 +28,7 @@ function navigationGuides(
 }
 
 export function HelpShell({ children }: { children: ReactNode }) {
+  const { features: helpFeatures, pages: helpPages } = useVisibleHelp();
   const searchDocuments = helpPages.map(({ feature, guide, href, parents }) => ({
     href,
     feature: [feature.label, ...parents.map((parent) => parent.label)].join(" · "),

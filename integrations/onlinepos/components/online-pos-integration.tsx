@@ -1,7 +1,6 @@
 "use client";
 
-import { IntegrationCard } from "./integration-card";
-import { OnlinePosMasterSelect } from "@/components/catalog/online-pos-master-select";
+import { OnlinePosMasterSelect } from "./online-pos-master-select";
 
 import type { FunctionReturnType } from "convex/server";
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -27,10 +26,10 @@ import { toast } from "sonner";
 import {
   OnlinePosProductSelect,
   useOnlinePosProductOptions,
-} from "@/components/catalog/online-pos-product-select";
-import { OnlinePosLocationConnections } from "@/components/organization/online-pos-location-connections";
-import { OnlinePosStockSettings } from "@/components/organization/online-pos-stock-settings";
-import { OnlinePosOrderDetail } from "@/components/organization/online-pos-order-detail";
+} from "./online-pos-product-select";
+import { OnlinePosLocationConnections } from "./online-pos-location-connections";
+import { OnlinePosStockSettings } from "./online-pos-stock-settings";
+import { OnlinePosOrderDetail } from "./online-pos-order-detail";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -1211,34 +1210,7 @@ export function OnlinePosIntegration() {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
   const settings = useQuery(api.onlinePos.getSettings, canManage ? {} : "skip");
-  const setEnabled = useAction(api.onlinePos.setEnabled);
   const [tab, setTab] = useState("connection");
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
-  const [changingEnabled, setChangingEnabled] = useState(false);
-  async function changeIntegrationEnabled(enabled: boolean) {
-    if (!settings?.connected) {
-      setSetupOpen(enabled);
-      if (!enabled) setTab("connection");
-      return;
-    }
-
-    setChangingEnabled(true);
-    try {
-      await setEnabled({ enabled });
-      setDetailsOpen(false);
-      if (!enabled) setTab("connection");
-      toast.success(
-        enabled
-          ? "OnlinePOS-integrationen er aktiveret"
-          : "OnlinePOS-integrationen er deaktiveret",
-      );
-    } catch (error) {
-      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
-    } finally {
-      setChangingEnabled(false);
-    }
-  }
 
   if (!access) {
     return <Skeleton className="h-96 w-full max-w-3xl" />;
@@ -1259,29 +1231,8 @@ export function OnlinePosIntegration() {
     return <Skeleton className="h-96 w-full max-w-3xl" />;
   }
 
-  const integrationOpen = detailsOpen || setupOpen;
-
   return (
-    <IntegrationCard
-      id="online-pos-integration"
-      title="OnlinePOS"
-      description={
-        <>
-          Masterforbindelserne henter produkter. De enkelte
-          lokationsforbindelser henter salg.
-        </>
-      }
-      connected={settings.connected}
-      checked={settings.connected ? settings.enabled : setupOpen}
-      open={integrationOpen}
-      onOpenChange={(open) => {
-        setDetailsOpen(open);
-        if (!open && !settings.connected) setSetupOpen(false);
-      }}
-      onEnabledChange={(enabled) => void changeIntegrationEnabled(enabled)}
-      disabled={changingEnabled}
-      className="has-data-[slot=card-footer]:pb-(--card-spacing)"
-    >
+    <div>
       {settings.enabled ? (
         <Tabs value={tab} onValueChange={setTab} className="gap-5">
           <TabsList
@@ -1315,6 +1266,6 @@ export function OnlinePosIntegration() {
           <OnlinePosLocationConnections />
         </div>
       )}
-    </IntegrationCard>
+    </div>
   );
 }

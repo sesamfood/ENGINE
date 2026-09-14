@@ -54,7 +54,6 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { IntegrationCard } from "./integration-card";
 
 type Settings = FunctionReturnType<typeof api.economic.getSettings>;
 type Connection = Settings["connections"][number];
@@ -901,39 +900,7 @@ function OrganizationIntegration({
     api.economic.getSettings,
     canManageEconomic ? {} : "skip",
   );
-  const setEnabled = useMutation(api.economic.setEnabled);
-  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  async function changeEnabled(enabled: boolean) {
-    if (!settings?.connections.length) {
-      setOpen(enabled);
-      return;
-    }
-    const connection = settings.connections[0];
-    if (settings.connections.length !== 1 || !connection) return;
-    setBusy(true);
-    try {
-      await setEnabled({
-        connectionId: connection.id,
-        expectedRevision: connection.revision,
-        enabled,
-      });
-      toast.success(
-        enabled ? "e-conomic er aktiveret" : "e-conomic er deaktiveret",
-      );
-    } catch (error) {
-      toast.error(
-        getUserErrorMessage(
-          error,
-          "e-conomic kunne ikke opdateres. Prøv igen.",
-        ),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
 
   if (
     !access ||
@@ -944,87 +911,43 @@ function OrganizationIntegration({
   if (!canManageEconomic || !settings) return null;
 
   const connected = settings.connections.length > 0;
-  const multiple = settings.connections.length > 1;
-  const requiresReconnect = settings.connections.some(
-    (connection) => connection.requiresReconnect,
-  );
-
   return (
-    <IntegrationCard
-      id="economic-integration"
-      title="e-conomic"
-      description="Hent bogførte omkostninger og budget til månedsrapporten. Beløbene hentes, når rapporten åbnes eller opdateres."
-      connected={connected}
-      checked={
-        connected
-          ? settings.connections.some(
-              (connection) =>
-                connection.enabled && !connection.requiresReconnect,
-            )
-          : open && settings.configured
-      }
-      open={open}
-      onOpenChange={setOpen}
-      onEnabledChange={(enabled) => void changeEnabled(enabled)}
-      disabled={busy || !settings.configured || multiple || requiresReconnect}
-      disabledReason={
-        multiple
-          ? "Aktivér eller deaktivér hver aftale nedenfor"
-          : !settings.configured
-            ? "Sikker lagring af adgangsnøgler er ikke tilgængelig"
-            : requiresReconnect
-              ? "Opdatér forbindelse med organisationens adgangsnøgler"
-              : undefined
-      }
-      contentClassName="flex flex-col gap-5 pb-4"
-    >
-      {!settings.configured ? (
-        <Alert>
-          <AlertTitle>Adgangsnøgler kan ikke gemmes sikkert endnu</AlertTitle>
-          <AlertDescription>
-            Kryptering af adgangsnøgler skal klargøres på serveren, før
-            organisationen kan forbinde en aftale.
-          </AlertDescription>
-        </Alert>
-      ) : (
-        <>
-          {settings.connections.map((connection) => (
-            <AgreementCard
-              key={connection.id}
-              connection={connection}
-              settings={settings}
+    <div className="flex flex-col gap-5">
+      {settings.connections.map((connection) => (
+        <AgreementCard
+          key={connection.id}
+          connection={connection}
+          settings={settings}
+        />
+      ))}
+      {!connected || adding ? (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>
+              {connected ? "Tilføj aftale" : "Forbind aftale"}
+            </CardTitle>
+            <CardDescription>
+              {connected
+                ? "Forbind en ekstra aftale med organisationens app-nøgle og aftalenøgle."
+                : "Forbind kædens aftale med organisationens app-nøgle og aftalenøgle. Kobl derefter afdelinger eller dimensioner til lokationerne."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ConnectionForm
+              organizationId={organizationId}
+              onDone={() => setAdding(false)}
+              onCancel={connected ? () => setAdding(false) : undefined}
             />
-          ))}
-          {!connected || adding ? (
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>
-                  {connected ? "Tilføj aftale" : "Forbind aftale"}
-                </CardTitle>
-                <CardDescription>
-                  {connected
-                    ? "Forbind en ekstra aftale med organisationens app-nøgle og aftalenøgle."
-                    : "Forbind kædens aftale med organisationens app-nøgle og aftalenøgle. Kobl derefter afdelinger eller dimensioner til lokationerne."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ConnectionForm
-                  organizationId={organizationId}
-                  onDone={() => setAdding(false)}
-                  onCancel={connected ? () => setAdding(false) : undefined}
-                />
-              </CardContent>
-            </Card>
-          ) : (
-            <div>
-              <Button variant="outline" onClick={() => setAdding(true)}>
-                <PlusIcon data-icon="inline-start" />
-                Tilføj aftale
-              </Button>
-            </div>
-          )}
-        </>
+          </CardContent>
+        </Card>
+      ) : (
+        <div>
+          <Button variant="outline" onClick={() => setAdding(true)}>
+            <PlusIcon data-icon="inline-start" />
+            Tilføj aftale
+          </Button>
+        </div>
       )}
-    </IntegrationCard>
+    </div>
   );
 }

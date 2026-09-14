@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { SortableListRow } from "./sortable-list-row";
 
 import {
@@ -80,6 +82,7 @@ function SidebarDragPreview({ id }: { id: SidebarItemId }) {
 }
 
 function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
+  const integrations = useIntegrations();
   const saveOrder = useMutation(api.navigation.saveOrder);
   const [itemOrder, setItemOrder] = useState(initialOrder);
   const [activeId, setActiveId] = useState<SidebarItemId | null>(null);
@@ -90,6 +93,8 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
+
+  const visibleOrder = itemOrder.filter((id) => id !== "woltOrders" || integrations?.wolt);
 
   async function save() {
     setSaving(true);
@@ -134,7 +139,7 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
           }}
         >
           <SortableContext
-            items={itemOrder}
+            items={visibleOrder}
             strategy={verticalListSortingStrategy}
           >
             <ol
@@ -144,7 +149,7 @@ function SidebarOrderForm({ initialOrder }: { initialOrder: SidebarItemId[] }) {
               )}
               aria-label="Rækkefølge i sidemenuen"
             >
-              {itemOrder.map((id) => (
+              {visibleOrder.map((id) => (
                 <SortableListRow
                   key={id}
                   id={id}

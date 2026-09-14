@@ -9,7 +9,7 @@ import {
 import {
   getOnlinePosProductSuggestions,
   type OnlinePosProductSuggestion,
-} from "@/components/catalog/online-pos-product-suggestions";
+} from "./online-pos-product-suggestions";
 import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
