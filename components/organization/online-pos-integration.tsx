@@ -1,6 +1,7 @@
 "use client";
 
 import { IntegrationCard } from "./integration-card";
+import { OnlinePosMasterSelect } from "@/components/catalog/online-pos-master-select";
 
 import type { FunctionReturnType } from "convex/server";
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -15,12 +16,13 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CopyIcon,
+  PencilIcon,
   PlugIcon,
   RefreshCwIcon,
   ShoppingBasketIcon,
   UnplugIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   OnlinePosProductSelect,
@@ -177,16 +179,23 @@ function periodHasSyncedData(
 function ConnectionCard({
   settings,
   onDisconnected,
+  onConnected,
 }: {
   settings: {
+    id: Id<"onlinePosIntegrations"> | null;
+    name: string;
     connected: boolean;
     enabled: boolean;
     companyId: number | null;
     connectedAt: number | null;
   };
   onDisconnected: () => void;
+  onConnected: () => void;
 }) {
+  const fieldId = useId();
+  const [name, setName] = useState(settings.name);
   const connect = useAction(api.onlinePos.connect);
+  const renameConnection = useMutation(api.onlinePos.renameConnection);
   const disconnect = useMutation(api.onlinePos.disconnect);
   const [companyIdDraft, setCompanyIdDraft] = useState<string | null>(null);
   const [token, setToken] = useState("");
@@ -201,20 +210,33 @@ function ConnectionCard({
       toast.error("Indtast et gyldigt firma-id");
       return;
     }
-    if (!token.trim()) {
+    if (!token.trim() && !settings.id) {
       toast.error("Indtast dit OnlinePOS-token");
       return;
     }
 
     setConnecting(true);
     try {
-      const result = await connect({ companyId: parsedCompanyId, token });
+      if (settings.id && !token.trim()) {
+        await renameConnection({ integrationId: settings.id, name });
+        toast.success("Masterforbindelsens navn er gemt");
+      } else {
+        const result = await connect({
+          companyId: parsedCompanyId,
+          token,
+          name,
+          integrationId: settings.id ?? undefined,
+        });
+        toast.success(
+          settings.connected
+            ? "Masterforbindelsen er opdateret"
+            : `Masterforbindelsen er oprettet. ${result.productCount} produkter blev fundet.`,
+        );
+      }
       setToken("");
       setCompanyIdDraft(null);
       setEditingConnection(false);
-      toast.success(
-        `Masterforbindelsen er oprettet. ${result.productCount} produkter blev fundet.`,
-      );
+      onConnected();
     } catch (error) {
       toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
@@ -225,12 +247,13 @@ function ConnectionCard({
   async function removeConnection() {
     setDisconnecting(true);
     try {
-      await disconnect({});
+      if (!settings.id) return;
+      await disconnect({ integrationId: settings.id });
       setCompanyIdDraft("");
       setToken("");
       setEditingConnection(false);
       onDisconnected();
-      toast.success("OnlinePOS-integrationen er fjernet");
+      toast.success("Masterforbindelsen er fjernet");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
@@ -242,7 +265,9 @@ function ConnectionCard({
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-1">
-          Masterforbindelse
+          {settings.connected
+            ? `${settings.name} · ${settings.companyId}`
+            : "Ny masterforbindelse"}
           <HelpTooltip
             label="OnlinePOS-masterforbindelsen"
             content="Masterkontoen henter produkter til produktkoblinger. Salg hentes separat via hver lokations forbindelse."
@@ -261,10 +286,20 @@ function ConnectionCard({
       <CardContent className="flex flex-col gap-6">
         {!settings.connected || editingConnection ? (
           <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor={`${fieldId}-name`}>Navn</FieldLabel>
+              <Input
+                id={`${fieldId}-name`}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={100}
+                placeholder="Navn på masterforbindelsen"
+              />
+            </Field>
             {!settings.connected ? (
               <Field>
                 <div className="flex items-center gap-1">
-                  <FieldLabel htmlFor="online-pos-company-id">
+                  <FieldLabel htmlFor={`${fieldId}-company-id`}>
                     Masterkontoens firma-id
                   </FieldLabel>
                   <HelpTooltip
@@ -273,7 +308,7 @@ function ConnectionCard({
                   />
                 </div>
                 <Input
-                  id="online-pos-company-id"
+                  id={`${fieldId}-company-id`}
                   type="number"
                   inputMode="numeric"
                   min={1}
@@ -286,8 +321,8 @@ function ConnectionCard({
             ) : null}
             <Field>
               <div className="flex items-center gap-1">
-                <FieldLabel htmlFor="online-pos-token">
-                  {settings.connected ? "Nyt token til masterkontoen" : "Masterkontoens token"}
+                <FieldLabel htmlFor={`${fieldId}-token`}>
+                  {settings.connected ? "Nyt token til masterkontoen (valgfrit)" : "Masterkontoens token"}
                 </FieldLabel>
                 <HelpTooltip
                   label="Masterkontoens token"
@@ -295,14 +330,14 @@ function ConnectionCard({
                 />
               </div>
               <Input
-                id="online-pos-token"
+                id={`${fieldId}-token`}
                 type="password"
                 autoComplete="off"
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
                 placeholder={
                   settings.connected
-                    ? "Indtast nyt token"
+                    ? "Behold det nuværende token"
                     : "Token fra OnlinePOS"
                 }
                 className="h-11"
@@ -328,12 +363,11 @@ function ConnectionCard({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Fjern forbindelsen til OnlinePOS?
-                </AlertDialogTitle>
+                <AlertDialogTitle>Fjern masterforbindelsen?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Masterkontoens token, alle lokationstokens og alle produktkoblinger
-                  slettes permanent. Handlingen kan ikke fortrydes.
+                  Masterforbindelsens token, produktkoblinger og menuer slettes
+                  permanent. Lokationer skal først flyttes til en anden
+                  masterforbindelse. Handlingen kan ikke fortrydes.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -353,9 +387,14 @@ function ConnectionCard({
           </AlertDialog>
         ) : null}
         {settings.connected && !editingConnection ? (
-          <Button onClick={() => setEditingConnection(true)}>
-            <RefreshCwIcon data-icon="inline-start" />
-            Skift token
+          <Button
+            onClick={() => {
+              setName(settings.name);
+              setEditingConnection(true);
+            }}
+          >
+            <PencilIcon data-icon="inline-start" />
+            Redigér forbindelse
           </Button>
         ) : (
           <>
@@ -364,6 +403,7 @@ function ConnectionCard({
                 variant="outline"
                 disabled={connecting}
                 onClick={() => {
+                  setName(settings.name);
                   setCompanyIdDraft(null);
                   setToken("");
                   setEditingConnection(false);
@@ -378,12 +418,83 @@ function ConnectionCard({
               ) : (
                 <PlugIcon data-icon="inline-start" />
               )}
-              {settings.connected ? "Gem nyt token" : "Forbind master"}
+              {settings.connected ? "Gem ændringer" : "Forbind master"}
             </Button>
           </>
         )}
       </CardFooter>
     </Card>
+  );
+}
+
+function MasterConnections({
+  settings,
+}: {
+  settings: FunctionReturnType<typeof api.onlinePos.getSettings>;
+}) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <div className="flex flex-col gap-5">
+      {settings.masters.map((master) => (
+        <ConnectionCard
+          key={master.id}
+          settings={{ ...master, connected: true, enabled: settings.enabled }}
+          onConnected={() => setAdding(false)}
+          onDisconnected={() => setAdding(false)}
+        />
+      ))}
+      {adding || settings.masters.length === 0 ? (
+        <ConnectionCard
+          settings={{
+            id: null,
+            name: "",
+            companyId: null,
+            connectedAt: null,
+            connected: false,
+            enabled: false,
+          }}
+          onConnected={() => setAdding(false)}
+          onDisconnected={() => setAdding(false)}
+        />
+      ) : (
+        <Button
+          variant="outline"
+          onClick={() => setAdding(true)}
+          disabled={settings.masters.length >= 20}
+        >
+          Tilføj masterforbindelse
+        </Button>
+      )}
+      {adding ? (
+        <Button variant="ghost" onClick={() => setAdding(false)}>
+          Annullér
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function MasterProductMappings({
+  settings,
+}: {
+  settings: FunctionReturnType<typeof api.onlinePos.getSettings>;
+}) {
+  const [selectedId, setSelectedId] =
+    useState<Id<"onlinePosIntegrations"> | null>(null);
+  const master =
+    settings.masters.find((master) => master.id === selectedId) ??
+    settings.masters[0];
+  return (
+    <div className="flex flex-col gap-5">
+      <OnlinePosMasterSelect
+        masters={settings.masters}
+        value={master?.id ?? null}
+        onValueChange={setSelectedId}
+      />
+      {master ? (
+        <ProductMappings key={master.id} integrationId={master.id} />
+      ) : null}
+    </div>
   );
 }
 
@@ -482,15 +593,48 @@ function StoredSalesSample() {
 }
 
 function ProductMappings({
-  onlinePosProducts,
-  loading,
-  onReload,
+  integrationId,
 }: {
-  onlinePosProducts: OnlinePosProduct[] | null;
-  loading: boolean;
-  onReload: () => void;
+  integrationId: Id<"onlinePosIntegrations">;
 }) {
-  const mappingOptions = useQuery(api.onlinePos.listMappingOptions);
+  const categoryFilterId = useId();
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const categories = useQuery(api.catalog.listCategoryOptions);
+  const mappingOptions = useQuery(api.onlinePos.listMappingOptions, {
+    integrationId,
+  });
+  const listProducts = useAction(api.onlinePos.listProducts);
+  const [onlinePosProducts, setOnlinePosProducts] = useState<
+    OnlinePosProduct[] | null
+  >(null);
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+  const onReload = () => {
+    setLoading(true);
+    setReload((value) => value + 1);
+  };
+  useEffect(() => {
+    let active = true;
+    void listProducts({ integrationId })
+      .then((products) => {
+        if (active) setOnlinePosProducts(products);
+      })
+      .catch((error) => {
+        if (active)
+          toast.error(
+            getUserErrorMessage(
+              error,
+              "OnlinePOS-produkterne kunne ikke hentes. Prøv igen.",
+            ),
+          );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [integrationId, listProducts, reload]);
   const setMapping = useAction(api.onlinePos.setProductMapping);
   const [savingProductIds, setSavingProductIds] = useState<Set<Id<"products">>>(
     new Set(),
@@ -504,6 +648,7 @@ function ProductMappings({
     setSavingProductIds((current) => new Set(current).add(productId));
     try {
       await setMapping({
+        integrationId,
         productId,
         onlinePosProductId,
       });
@@ -523,12 +668,40 @@ function ProductMappings({
     }
   }
 
-  if (!mappingOptions || (loading && !onlinePosProducts)) {
-    return <Skeleton className="h-96 w-full max-w-5xl" />;
+  if (!mappingOptions || !categories || (loading && !onlinePosProducts)) {
+    return <Skeleton className="h-96 w-full" />;
   }
 
+  const categoryItems = [
+    { value: "all", label: "Alle kategorier" },
+    ...categories.map((category) => ({
+      value: category.id,
+      label: category.path,
+    })),
+  ];
+  const selectedCategory = categories.find(
+    (category) => category.id === categoryFilter,
+  );
+  const categoriesById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  const filteredProducts = selectedCategory
+    ? mappingOptions.products.filter((product) =>
+        product.categoryIds.some((categoryId) => {
+          let category = categoriesById.get(categoryId);
+          while (category) {
+            if (category.id === selectedCategory.id) return true;
+            category = category.parentCategoryId
+              ? categoriesById.get(category.parentCategoryId)
+              : undefined;
+          }
+          return false;
+        }),
+      )
+    : mappingOptions.products;
+
   return (
-    <Card className="max-w-5xl">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
@@ -552,6 +725,29 @@ function ProductMappings({
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <FieldGroup>
+          <Field className="max-w-sm">
+            <FieldLabel htmlFor={categoryFilterId}>Kategori</FieldLabel>
+            <Select
+              items={categoryItems}
+              value={selectedCategory?.id ?? "all"}
+              onValueChange={(value) => setCategoryFilter(value ?? "all")}
+            >
+              <SelectTrigger id={categoryFilterId} className="h-11 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {categoryItems.map((category) => (
+                    <SelectItem key={category.value} value={category.value}>
+                      {category.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
         {mappingOptions.limitReached ? (
           <Alert>
             <CircleAlertIcon />
@@ -574,6 +770,15 @@ function ProductMappings({
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
+        ) : filteredProducts.length === 0 ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>Ingen produkter i kategorien</EmptyTitle>
+              <EmptyDescription>
+                Vælg en anden kategori, eller vis alle kategorier.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : onlinePosProducts ? (
           <Table>
             <TableHeader>
@@ -583,7 +788,7 @@ function ProductMappings({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mappingOptions.products.map((product) => {
+              {filteredProducts.map((product) => {
                 return (
                   <TableRow key={product.id}>
                     <TableCell className="font-medium">
@@ -1006,29 +1211,11 @@ export function OnlinePosIntegration() {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
   const settings = useQuery(api.onlinePos.getSettings, canManage ? {} : "skip");
-  const listOnlinePosProducts = useAction(api.onlinePos.listProducts);
   const setEnabled = useAction(api.onlinePos.setEnabled);
   const [tab, setTab] = useState("connection");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [changingEnabled, setChangingEnabled] = useState(false);
-  const [onlinePosProducts, setOnlinePosProducts] = useState<
-    OnlinePosProduct[] | null
-  >(null);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-
-  async function loadProducts() {
-    setLoadingProducts(true);
-    try {
-      setOnlinePosProducts(await listOnlinePosProducts({}));
-    } catch (error) {
-      setOnlinePosProducts(null);
-      toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
-    } finally {
-      setLoadingProducts(false);
-    }
-  }
-
   async function changeIntegrationEnabled(enabled: boolean) {
     if (!settings?.connected) {
       setSetupOpen(enabled);
@@ -1080,8 +1267,8 @@ export function OnlinePosIntegration() {
       title="OnlinePOS"
       description={
         <>
-          Masterforbindelsen henter produkter. De enkelte lokationsforbindelser
-          henter salg.
+          Masterforbindelserne henter produkter. De enkelte
+          lokationsforbindelser henter salg.
         </>
       }
       connected={settings.connected}
@@ -1096,20 +1283,7 @@ export function OnlinePosIntegration() {
       className="has-data-[slot=card-footer]:pb-(--card-spacing)"
     >
       {settings.enabled ? (
-        <Tabs
-          value={tab}
-          onValueChange={(value) => {
-            setTab(value);
-            if (
-              value === "mappings" &&
-              !onlinePosProducts &&
-              !loadingProducts
-            ) {
-              void loadProducts();
-            }
-          }}
-          className="gap-5"
-        >
+        <Tabs value={tab} onValueChange={setTab} className="gap-5">
           <TabsList
             aria-label="OnlinePOS-sektioner"
             className="w-full justify-start"
@@ -1120,24 +1294,14 @@ export function OnlinePosIntegration() {
           </TabsList>
           <TabsContent value="connection">
             <div className="flex flex-col gap-5">
-              <ConnectionCard
-                settings={settings}
-                onDisconnected={() => {
-                  setSetupOpen(false);
-                  setTab("connection");
-                }}
-              />
+              <MasterConnections settings={settings} />
               <StoredSalesSample />
               <OnlinePosStockSettings />
               <OnlinePosLocationConnections />
             </div>
           </TabsContent>
           <TabsContent value="mappings">
-            <ProductMappings
-              onlinePosProducts={onlinePosProducts}
-              loading={loadingProducts}
-              onReload={() => void loadProducts()}
-            />
+            <MasterProductMappings settings={settings} />
           </TabsContent>
           <TabsContent value="sales">
             <SalesList />
@@ -1145,13 +1309,7 @@ export function OnlinePosIntegration() {
         </Tabs>
       ) : (
         <div className="flex flex-col gap-5">
-          <ConnectionCard
-            settings={settings}
-            onDisconnected={() => {
-              setSetupOpen(false);
-              setTab("connection");
-            }}
-          />
+          <MasterConnections settings={settings} />
           {settings.connected ? <StoredSalesSample /> : null}
           <OnlinePosStockSettings />
           <OnlinePosLocationConnections />

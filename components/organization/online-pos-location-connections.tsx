@@ -1,5 +1,6 @@
 "use client";
 
+import { OnlinePosMasterSelect } from "@/components/catalog/online-pos-master-select";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
@@ -52,6 +53,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
 type Draft = {
+  masterIntegrationId: Id<"onlinePosIntegrations"> | null;
   companyId: string;
   token: string;
 };
@@ -62,6 +64,8 @@ const connectedAtFormatter = new Intl.DateTimeFormat("da-DK", {
 });
 
 export function OnlinePosLocationConnections() {
+  const settings = useQuery(api.onlinePos.getSettings);
+  const setLocationMaster = useMutation(api.onlinePos.setLocationMaster);
   const connections = useQuery(api.onlinePos.listLocationConnections);
   const connectLocation = useAction(api.onlinePos.connectLocation);
   const disconnectLocation = useMutation(api.onlinePos.disconnectLocation);
@@ -74,7 +78,7 @@ export function OnlinePosLocationConnections() {
     Set<Id<"locations">>
   >(new Set());
 
-  if (!connections) {
+  if (!connections || !settings) {
     return <Skeleton className="h-96 w-full" />;
   }
   const { locations } = connections;
@@ -82,6 +86,8 @@ export function OnlinePosLocationConnections() {
   function getDraft(location: (typeof locations)[number]) {
     return (
       drafts[location.id] ?? {
+        masterIntegrationId:
+          location.masterIntegrationId ?? settings?.masters[0]?.id ?? null,
         companyId: String(location.companyId ?? ""),
         token: "",
       }
@@ -93,6 +99,8 @@ export function OnlinePosLocationConnections() {
     if (!location) return;
     setDrafts((current) => {
       const draft = current[locationId] ?? {
+        masterIntegrationId:
+          location.masterIntegrationId ?? settings?.masters[0]?.id ?? null,
         companyId: String(location.companyId ?? ""),
         token: "",
       };
@@ -113,6 +121,10 @@ export function OnlinePosLocationConnections() {
 
   async function saveLocation(location: (typeof locations)[number]) {
     const draft = getDraft(location);
+    if (!draft.masterIntegrationId) {
+      toast.error("Vælg en masterforbindelse");
+      return;
+    }
     const companyId = Number(draft.companyId);
     if (!Number.isSafeInteger(companyId) || companyId <= 0) {
       toast.error(`Indtast et gyldigt firma-id for ${location.name}`);
@@ -127,6 +139,7 @@ export function OnlinePosLocationConnections() {
     try {
       await connectLocation({
         locationId: location.id,
+        masterIntegrationId: draft.masterIntegrationId,
         companyId,
         token: draft.token,
       });
@@ -134,6 +147,45 @@ export function OnlinePosLocationConnections() {
       toast.success(`${location.name} er forbundet med OnlinePOS`);
     } catch (error) {
       toast.error(getUserErrorMessage(error, "OnlinePOS-forbindelsen kunne ikke opdateres. Prøv igen."));
+    } finally {
+      setConnectingIds((current) => {
+        const next = new Set(current);
+        next.delete(location.id);
+        return next;
+      });
+    }
+  }
+
+  async function changeMaster(
+    location: (typeof locations)[number],
+    integrationId: Id<"onlinePosIntegrations">,
+  ) {
+    if (!location.connected) {
+      updateDraft(location.id, { masterIntegrationId: integrationId });
+      return;
+    }
+    setConnectingIds((current) => new Set(current).add(location.id));
+    try {
+      await setLocationMaster({ locationId: location.id, integrationId });
+      setDrafts((current) =>
+        current[location.id]
+          ? {
+              ...current,
+              [location.id]: {
+                ...current[location.id],
+                masterIntegrationId: integrationId,
+              },
+            }
+          : current,
+      );
+      toast.success(`Masterforbindelsen for ${location.name} er gemt`);
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Masterforbindelsen kunne ikke gemmes. Prøv igen.",
+        ),
+      );
     } finally {
       setConnectingIds((current) => {
         const next = new Set(current);
@@ -226,6 +278,14 @@ export function OnlinePosLocationConnections() {
                       </CardHeader>
                       <CardContent className="flex flex-col gap-4">
                         <FieldGroup className="grid sm:grid-cols-2">
+                          <OnlinePosMasterSelect
+                            masters={settings.masters}
+                            value={draft.masterIntegrationId}
+                            onValueChange={(value) =>
+                              void changeMaster(location, value)
+                            }
+                            disabled={connecting || disconnecting}
+                          />
                           <Field>
                             <div className="flex items-center gap-1">
                               <FieldLabel

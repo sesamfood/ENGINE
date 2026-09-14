@@ -195,6 +195,8 @@ export default defineSchema({
 
   onlinePosIntegrations: defineTable({
     organizationId: v.string(),
+    name: v.optional(v.string()),
+    catalogScoped: v.optional(v.boolean()),
     token: v.string(),
     companyId: v.number(),
     enabled: v.boolean(),
@@ -210,6 +212,7 @@ export default defineSchema({
 
   onlinePosLocationIntegrations: defineTable({
     organizationId: v.string(),
+    masterIntegrationId: v.optional(v.id("onlinePosIntegrations")),
     locationId: v.id("locations"),
     token: v.string(),
     companyId: v.number(),
@@ -251,6 +254,8 @@ export default defineSchema({
 
   salesStockApplications: defineTable({
     organizationId: v.string(),
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
+    mappingRevision: v.optional(v.number()),
     locationId: v.id("locations"),
     source: v.literal("onlinePos"),
     connectionId: v.id("onlinePosLocationIntegrations"),
@@ -285,11 +290,26 @@ export default defineSchema({
 
   onlinePosProductMappings: defineTable({
     organizationId: v.string(),
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
     productId: v.id("products"),
     onlinePosProductId: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_integrationId", [
+      "organizationId",
+      "integrationId",
+    ])
+    .index("by_organizationId_and_integrationId_and_onlinePosProductId", [
+      "organizationId",
+      "integrationId",
+      "onlinePosProductId",
+    ])
     .index("by_organizationId_and_productId", ["organizationId", "productId"])
+    .index("by_organizationId_and_integrationId_and_productId", [
+      "organizationId",
+      "integrationId",
+      "productId",
+    ])
     .index("by_organizationId_and_onlinePosProductId", [
       "organizationId",
       "onlinePosProductId",
@@ -297,6 +317,7 @@ export default defineSchema({
 
   onlinePosMenus: defineTable({
     organizationId: v.string(),
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
     onlinePosProductId: v.number(),
     name: v.string(),
     onlinePosProductName: v.optional(v.string()),
@@ -313,6 +334,15 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
+    .index("by_organizationId_and_integrationId", [
+      "organizationId",
+      "integrationId",
+    ])
+    .index("by_organizationId_and_integrationId_and_onlinePosProductId", [
+      "organizationId",
+      "integrationId",
+      "onlinePosProductId",
+    ])
     .index("by_organizationId_and_onlinePosProductId", [
       "organizationId",
       "onlinePosProductId",
@@ -1419,6 +1449,14 @@ export default defineSchema({
     unitId: v.id("units"),
     removable: v.optional(v.boolean()),
     onlinePosRemovalProductId: v.optional(v.number()),
+    onlinePosRemovalMappings: v.optional(
+      v.array(
+        v.object({
+          integrationId: v.id("onlinePosIntegrations"),
+          onlinePosProductId: v.number(),
+        }),
+      ),
+    ),
     // Bind provider ids to the connection that validated them.
     onlinePosRemovalIntegrationId: v.optional(v.id("onlinePosIntegrations")),
     onlinePosRemovalCompanyId: v.optional(v.number()),
@@ -1446,6 +1484,14 @@ export default defineSchema({
     quantity: v.optional(v.number()),
     unitId: v.optional(v.id("units")),
     onlinePosAdditionProductId: v.optional(v.number()),
+    onlinePosAdditionMappings: v.optional(
+      v.array(
+        v.object({
+          integrationId: v.id("onlinePosIntegrations"),
+          onlinePosProductId: v.number(),
+        }),
+      ),
+    ),
     // Bind provider ids to the connection that validated them.
     onlinePosAdditionIntegrationId: v.optional(v.id("onlinePosIntegrations")),
     onlinePosAdditionCompanyId: v.optional(v.number()),

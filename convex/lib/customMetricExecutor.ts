@@ -1,3 +1,7 @@
+import {
+  getOnlinePosLocationMaster,
+  onlinePosCatalogId,
+} from "./onlinePosConnections";
 import { ConvexError } from "convex/values";
 import type {
   DocumentByInfo,
@@ -1063,33 +1067,49 @@ async function salesLineRows(
   const locationNames = new Map(
     params.locations.map((location) => [location.id, location.name]),
   );
-  const mappings =
-    dimensionId === "product"
-      ? await cached(
-          params,
-          `custom-onlinepos-mappings:${params.organizationId}`,
-          () =>
-            takeRows(
-              ctx,
-              ctx.db
-                .query("onlinePosProductMappings")
-                .withIndex("by_organizationId", (q) =>
-                  q.eq("organizationId", params.organizationId),
-                ),
-              MAX_PRODUCT_OPTIONS + 1,
-            ),
-        )
-      : [];
-  const productIdByOnlinePosId = new Map(
-    mappings
-      .slice(0, MAX_PRODUCT_OPTIONS)
-      .map((mapping) => [
-        String(mapping.onlinePosProductId),
-        mapping.productId,
-      ]),
-  );
+  const catalogByLocation = new Map<
+    Id<"locations">,
+    Id<"onlinePosIntegrations"> | undefined
+  >();
+  const productIdByOnlinePosId = new Map<string, Id<"products">>();
+  let mappingsTruncated = false;
+  if (dimensionId === "product") {
+    for (const location of params.locations) {
+      const master = await cached(
+        params,
+        `custom-onlinepos-master:${location.id}`,
+        () =>
+          getOnlinePosLocationMaster(ctx, params.organizationId, location.id),
+      );
+      const catalogId = onlinePosCatalogId(master);
+      catalogByLocation.set(location.id, catalogId);
+      const mappings = await cached(
+        params,
+        `custom-onlinepos-mappings:${catalogId ?? "legacy"}`,
+        () =>
+          takeRows(
+            ctx,
+            ctx.db
+              .query("onlinePosProductMappings")
+              .withIndex("by_organizationId_and_integrationId", (q) =>
+                q
+                  .eq("organizationId", params.organizationId)
+                  .eq("integrationId", catalogId),
+              ),
+            MAX_PRODUCT_OPTIONS + 1,
+          ),
+      );
+      mappingsTruncated ||= mappings.length > MAX_PRODUCT_OPTIONS;
+      for (const mapping of mappings.slice(0, MAX_PRODUCT_OPTIONS)) {
+        productIdByOnlinePosId.set(
+          `${catalogId ?? "legacy"}:${mapping.onlinePosProductId}`,
+          mapping.productId,
+        );
+      }
+    }
+  }
   return {
-    truncated: result.truncated || mappings.length > MAX_PRODUCT_OPTIONS,
+    truncated: result.truncated || mappingsTruncated,
     rows: result.rows.flatMap((row) => {
       if (!matchesFilters({ product: row.externalProductId }, spec.filters)) {
         return [];
@@ -1097,8 +1117,10 @@ async function salesLineRows(
       const selected = dimension(dimensionId, {
         product: {
           key:
-            productIdByOnlinePosId.get(row.externalProductId) ??
-            row.externalProductId,
+            productIdByOnlinePosId.get(
+              `${catalogByLocation.get(row.locationId) ?? "legacy"}:${row.externalProductId}`,
+            ) ??
+            `${catalogByLocation.get(row.locationId) ?? "legacy"}:${row.externalProductId}`,
           label: row.productName,
         },
         location: {

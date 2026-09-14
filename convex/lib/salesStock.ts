@@ -1,3 +1,8 @@
+import {
+  getOnlinePosOrganizationSettings,
+  getOnlinePosMaster,
+  onlinePosCatalogId,
+} from "./onlinePosConnections";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -31,10 +36,10 @@ export async function invalidateSalesStockMappings(
   ctx: MutationCtx,
   organizationId: string,
 ) {
-  const integration = await ctx.db
-    .query("onlinePosIntegrations")
-    .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
-    .unique();
+  const integration = await getOnlinePosOrganizationSettings(
+    ctx,
+    organizationId,
+  );
   if (integration) {
     await ctx.db.patch(integration._id, {
       stockMappingRevision: (integration.stockMappingRevision ?? 0) + 1,
@@ -42,7 +47,11 @@ export async function invalidateSalesStockMappings(
   }
 }
 
-export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
+export function createSalesStockResolver(
+  ctx: ReadCtx,
+  organizationId: string,
+  integrationId?: Id<"onlinePosIntegrations">,
+) {
   const { expand, recipe } = createProductStockResolver(ctx, organizationId);
   const additions = new Map<
     Id<"products">,
@@ -51,9 +60,10 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
   const mapped = new Map<string, Id<"products"> | null>();
   const menus = new Map<string, Doc<"onlinePosMenus"> | null>();
   let fullCatalogLoaded = false;
-  let integration: Promise<Doc<"onlinePosIntegrations"> | null> | undefined;
+  let integration: ReturnType<typeof getOnlinePosMaster> | undefined;
 
   async function loadCatalog(externalId: string) {
+    const settings = await (integration ??= getOnlinePosMaster(ctx, organizationId, integrationId));
     if (mapped.has(externalId)) return;
     const onlinePosProductId = Number(externalId);
     if (
@@ -67,18 +77,24 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
     const [mappings, menu] = await Promise.all([
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId_and_onlinePosProductId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("onlinePosProductId", onlinePosProductId),
+        .withIndex(
+          "by_organizationId_and_integrationId_and_onlinePosProductId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("integrationId", onlinePosCatalogId(settings))
+              .eq("onlinePosProductId", onlinePosProductId),
         )
         .take(2),
       ctx.db
         .query("onlinePosMenus")
-        .withIndex("by_organizationId_and_onlinePosProductId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("onlinePosProductId", onlinePosProductId),
+        .withIndex(
+          "by_organizationId_and_integrationId_and_onlinePosProductId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("integrationId", onlinePosCatalogId(settings))
+              .eq("onlinePosProductId", onlinePosProductId),
         )
         .first(),
     ]);
@@ -91,6 +107,7 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
   return async (
     lines: SaleLine[],
   ): Promise<{ entries: StockSale[]; unmappedQuantity: number }> => {
+    const settings = await (integration ??= getOnlinePosMaster(ctx, organizationId, integrationId));
     if (!fullCatalogLoaded) {
       const missingIds = [
         ...new Set(lines.map((line) => line.externalProductId)),
@@ -100,14 +117,18 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
         const [allMappings, allMenus] = await Promise.all([
           ctx.db
             .query("onlinePosProductMappings")
-            .withIndex("by_organizationId", (q) =>
-              q.eq("organizationId", organizationId),
+            .withIndex("by_organizationId_and_integrationId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("integrationId", onlinePosCatalogId(settings)),
             )
             .take(501),
           ctx.db
             .query("onlinePosMenus")
-            .withIndex("by_organizationId", (q) =>
-              q.eq("organizationId", organizationId),
+            .withIndex("by_organizationId_and_integrationId", (q) =>
+              q
+                .eq("organizationId", organizationId)
+                .eq("integrationId", onlinePosCatalogId(settings)),
             )
             .take(101),
         ]);
@@ -140,14 +161,6 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
         return id && !menus.get(line.externalProductId) ? [id] : [];
       }),
     );
-    const settings = soldIds.size
-      ? await (integration ??= ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .unique())
-      : null;
     const modifiers = new Map<
       string,
       Array<{
@@ -178,14 +191,17 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
     }
     for (const id of soldIds) {
       for (const ingredient of await recipe(id)) {
-        if (
-          ingredient.removable &&
-          ingredient.onlinePosRemovalProductId !== undefined &&
-          settings &&
-          ingredient.onlinePosRemovalIntegrationId === settings._id &&
-          ingredient.onlinePosRemovalCompanyId === settings.companyId
-        ) {
-          addModifier(ingredient.onlinePosRemovalProductId, {
+        const removalId = settings
+          ? (ingredient.onlinePosRemovalMappings?.find(
+              (mapping) => mapping.integrationId === settings._id,
+            )?.onlinePosProductId ??
+            (ingredient.onlinePosRemovalIntegrationId === settings._id &&
+            ingredient.onlinePosRemovalCompanyId === settings.companyId
+              ? ingredient.onlinePosRemovalProductId
+              : undefined))
+          : undefined;
+        if (ingredient.removable && removalId !== undefined) {
+          addModifier(removalId, {
             productId: ingredient.ingredientProductId,
             quantity: -ingredient.quantity,
             unitId: ingredient.unitId,
@@ -207,21 +223,24 @@ export function createSalesStockResolver(ctx: ReadCtx, organizationId: string) {
         additions.set(id, rows);
       }
       for (const row of rows) {
+        const additionId = settings
+          ? (row.onlinePosAdditionMappings?.find(
+              (mapping) => mapping.integrationId === settings._id,
+            )?.onlinePosProductId ??
+            (row.onlinePosAdditionIntegrationId === settings._id &&
+            row.onlinePosAdditionCompanyId === settings.companyId
+              ? row.onlinePosAdditionProductId
+              : undefined))
+          : undefined;
         if (
-          row.onlinePosAdditionProductId !== undefined &&
-          lines.some(
-            (line) =>
-              line.externalProductId === String(row.onlinePosAdditionProductId),
-          ) &&
-          settings &&
-          row.onlinePosAdditionIntegrationId === settings._id &&
-          row.onlinePosAdditionCompanyId === settings.companyId
+          additionId !== undefined &&
+          lines.some((line) => line.externalProductId === String(additionId))
         ) {
           if (row.quantity === undefined || row.unitId === undefined)
             throw new ConvexError(
               "Et OnlinePOS-tilvalg mangler mængde eller enhed",
             );
-          addModifier(row.onlinePosAdditionProductId, {
+          addModifier(additionId, {
             productId: row.ingredientProductId,
             quantity: row.quantity,
             unitId: row.unitId,

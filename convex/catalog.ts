@@ -712,6 +712,10 @@ async function replaceProductIngredients(
       quantity: row.quantity,
       unitId: row.unitId,
       removable,
+      onlinePosRemovalMappings:
+        removable && current?.removable
+          ? current.onlinePosRemovalMappings
+          : undefined,
       ...(keepOnlinePosRemovalMapping
         ? {
             onlinePosRemovalProductId: current.onlinePosRemovalProductId,
@@ -766,6 +770,7 @@ async function replaceProductIngredientAdditions(
       ingredientProductId: row.productId,
       quantity: row.quantity,
       unitId: row.unitId,
+      onlinePosAdditionMappings: current?.onlinePosAdditionMappings,
       ...(keepOnlinePosAdditionMapping
         ? {
             onlinePosAdditionProductId: current.onlinePosAdditionProductId,

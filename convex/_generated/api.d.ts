@@ -75,6 +75,7 @@ import type * as lib_masterData from "../lib/masterData.js";
 import type * as lib_menuGroups from "../lib/menuGroups.js";
 import type * as lib_monthlyKpiValidators from "../lib/monthlyKpiValidators.js";
 import type * as lib_onlinePosApi from "../lib/onlinePosApi.js";
+import type * as lib_onlinePosConnections from "../lib/onlinePosConnections.js";
 import type * as lib_onlinePosFinancialApi from "../lib/onlinePosFinancialApi.js";
 import type * as lib_openStreetMap from "../lib/openStreetMap.js";
 import type * as lib_openingHours from "../lib/openingHours.js";
@@ -216,6 +217,7 @@ declare const fullApi: ApiFromModules<{
   "lib/menuGroups": typeof lib_menuGroups;
   "lib/monthlyKpiValidators": typeof lib_monthlyKpiValidators;
   "lib/onlinePosApi": typeof lib_onlinePosApi;
+  "lib/onlinePosConnections": typeof lib_onlinePosConnections;
   "lib/onlinePosFinancialApi": typeof lib_onlinePosFinancialApi;
   "lib/openStreetMap": typeof lib_openStreetMap;
   "lib/openingHours": typeof lib_openingHours;
