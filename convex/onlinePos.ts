@@ -1,3 +1,4 @@
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import {
   getOnlinePosOrganizationSettings,
   getOnlinePosMaster,
@@ -6,7 +7,7 @@ import {
   MAX_MASTER_CONNECTIONS,
 } from "./lib/onlinePosConnections";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx } from "./_generated/server";
 import {
@@ -114,6 +115,7 @@ async function requireConnectedSettings(
   };
 }> {
   const { organizationId } = await requireIntegrationManager(ctx);
+  await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
   const settings: {
     integrationId: Id<"onlinePosIntegrations">;
     token: string;
@@ -147,6 +149,7 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     const { organizationId } = auth;
     const settings = await getOnlinePosOrganizationSettings(
       ctx,
@@ -183,6 +186,7 @@ export const renameConnection = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     requireAllLocationAccess(auth);
     requireHumanPrincipal(auth);
     const master = await getOnlinePosMaster(
@@ -223,6 +227,7 @@ export const listLocationConnections = query({
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     const { organizationId } = auth;
     const defaultMaster = await getOnlinePosOrganizationSettings(
       ctx,
@@ -276,6 +281,7 @@ export const getPrivateSettings = internalQuery({
   },
   returns: privateSettingsValidator,
   handler: async (ctx, args) => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "onlinepos")) return null;
     const settings = await getOnlinePosMaster(
       ctx,
       args.organizationId,
@@ -318,6 +324,7 @@ export const saveConnection = internalMutation({
   },
   returns: v.id("onlinePosIntegrations"),
   handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "onlinepos");
     await scopeLegacyOnlinePosCatalog(ctx, args.organizationId);
     const masters = await ctx.db
       .query("onlinePosIntegrations")
@@ -409,6 +416,7 @@ export const saveLocationConnection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "onlinepos");
     await scopeLegacyOnlinePosCatalog(ctx, args.organizationId);
     await getOnlinePosMaster(
       ctx,
@@ -535,6 +543,7 @@ export const connect = action({
   }),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     requireAllLocationAccess(auth);
     const human = requireHumanPrincipal(auth);
     const { organizationId, userName } = auth;
@@ -570,6 +579,7 @@ export const connectLocation = action({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     const human = requireHumanPrincipal(auth);
     const { organizationId, userName } = auth;
     requireLocationAccess(auth, args.locationId);
@@ -603,31 +613,7 @@ export const connectLocation = action({
 export const setEnabled = action({
   args: { enabled: v.boolean() },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireIntegrationManager(ctx);
-    requireAllLocationAccess(auth);
-    const { organizationId } = auth;
-    const settings: {
-      token: string;
-      companyId: number;
-      enabled: boolean;
-    } | null = await ctx.runQuery(internal.onlinePos.getPrivateSettings, {
-      organizationId,
-    });
-    if (!settings) throw new ConvexError("OnlinePOS er ikke forbundet");
-    if (args.enabled) {
-      const masters = await ctx.runQuery(
-        internal.onlinePos.listPrivateMasters,
-        { organizationId },
-      );
-      for (const master of masters) await requestProducts(master);
-    }
-    await ctx.runMutation(internal.onlinePos.setEnabledInternal, {
-      organizationId,
-      enabled: args.enabled,
-    });
-    return null;
-  },
+  handler: async (ctx, args): Promise<null> => ctx.runMutation(api.integrations.setEnabled, { integration: "onlinepos", enabled: args.enabled }),
 });
 
 export const disconnect = mutation({
@@ -635,6 +621,7 @@ export const disconnect = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     requireAllLocationAccess(auth);
     const { organizationId } = auth;
     await scopeLegacyOnlinePosCatalog(ctx, organizationId);
@@ -733,6 +720,7 @@ export const setLocationMaster = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     requireLocationAccess(auth, args.locationId);
     const location = await ctx.db.get("locations", args.locationId);
     if (!location || location.organizationId !== auth.organizationId)
@@ -776,6 +764,7 @@ export const disconnectLocation = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
     const { organizationId } = auth;
     requireLocationAccess(auth, args.locationId);
     const [location, connection] = await Promise.all([
@@ -828,6 +817,7 @@ export const getProductMapping = query({
   ),
   handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
+  await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
     const settings = await getOnlinePosMaster(
       ctx,
       organizationId,
@@ -866,6 +856,7 @@ export const getIngredientRemovalSettings = query({
   }),
   handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
+  await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
     const productId = args.productId;
     const [settings, product, ingredients] = await Promise.all([
       getOnlinePosMaster(ctx, organizationId, args.integrationId),
@@ -935,6 +926,7 @@ export const getIngredientAdditionSettings = query({
   }),
   handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
+  await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
     const productId = args.productId;
     const [settings, product, additions] = await Promise.all([
       getOnlinePosMaster(ctx, organizationId, args.integrationId),
@@ -1011,6 +1003,7 @@ export const listMappingOptions = query({
   ),
   handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
+  await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
     const settings = await getOnlinePosMaster(
       ctx,
       organizationId,

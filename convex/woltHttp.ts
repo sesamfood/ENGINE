@@ -49,7 +49,7 @@ export const webhook = httpAction(async (ctx, request) => {
       venueId: envelope.venueId,
     });
     if (!organizationId) return response(401, "Unknown venue");
-    const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+    const credentials = await ctx.runMutation(internal.woltCredentials.getForOrganization, {
       organizationId,
     });
     if (!credentials) return response(503, "Webhook is not configured");
@@ -71,7 +71,7 @@ export const webhook = httpAction(async (ctx, request) => {
 });
 
 export const oauthCallback = httpAction(async (ctx, request) => {
-  const destination = new URL("/administration/integrations", woltAppUrl());
+  const destination = new URL("/administration/integrations/wolt", woltAppUrl());
   try {
     const url = new URL(request.url);
     const code = url.searchParams.get("code")?.trim();
@@ -86,11 +86,12 @@ export const oauthCallback = httpAction(async (ctx, request) => {
       now,
     });
     if (!organizationId) throw new Error("Forbindelseslinket er udløbet eller allerede brugt");
+    const key = await ctx.runMutation(internal.integrations.credentials.ensureKey, { organizationId });
     const result = await ctx.runMutation(internal.woltSync.consumeOAuthCallback, {
       organizationId,
       stateHash,
       authorizationCodeHash: await hashWoltState(code),
-      authorizationCodeCiphertext: await encryptWoltSecret(code, organizationId),
+      authorizationCodeCiphertext: await encryptWoltSecret(code, organizationId, key),
       now,
     });
     const redirect = new URL(result.returnPath, woltAppUrl());
@@ -117,7 +118,7 @@ export const wioOnboarding = httpAction(async (ctx, request) => {
       partnerVenueId: payload.partnerVenueId,
     });
     if (!organizationId) return response(401, "Unknown partner venue");
-    const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+    const credentials = await ctx.runMutation(internal.woltCredentials.getForOrganization, {
       organizationId,
     });
     if (!credentials?.wioApiKey) return response(503, "Onboarding is not configured");
@@ -128,11 +129,12 @@ export const wioOnboarding = httpAction(async (ctx, request) => {
     if (!woltWioRedirectUris(credentials.wioRedirectUris).has(payload.redirectUri)) {
       return response(400, "Invalid redirect URL");
     }
+    const key = await ctx.runMutation(internal.integrations.credentials.ensureKey, { organizationId });
     await ctx.runMutation(internal.woltSync.acceptWioOnboarding, {
       organizationId,
       partnerVenueId: payload.partnerVenueId,
       authorizationCodeHash: await hashWoltState(payload.authorizationCode),
-      authorizationCodeCiphertext: await encryptWoltSecret(payload.authorizationCode, organizationId),
+      authorizationCodeCiphertext: await encryptWoltSecret(payload.authorizationCode, organizationId, key),
       redirectUri: payload.redirectUri,
       now: Date.now(),
     });

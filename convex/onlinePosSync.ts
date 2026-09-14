@@ -1,3 +1,4 @@
+import { isIntegrationEnabled } from "./integrations/state";
 import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import { addDays as addDateKey } from "../lib/date";
 import { ConvexError, v } from "convex/values";
@@ -281,7 +282,7 @@ async function markStockChanged(
 
 async function isMasterEnabled(ctx: MutationCtx, organizationId: string) {
   const settings = await getOnlinePosOrganizationSettings(ctx, organizationId);
-  return settings?.enabled === true;
+  return settings?.enabled === true && await isIntegrationEnabled(ctx, organizationId, "onlinepos");
 }
 
 async function startSync(
@@ -439,6 +440,7 @@ export const getLocationSyncContext = internalQuery({
   },
   returns: syncContextValidator,
   handler: async (ctx, args): Promise<SyncContext | null> => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "onlinepos")) return null;
     const [location, master, connection, status, reset, timeZone] =
       await Promise.all([
         ctx.db.get("locations", args.locationId),

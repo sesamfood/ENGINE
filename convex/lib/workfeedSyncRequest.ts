@@ -1,3 +1,4 @@
+import { isIntegrationEnabled } from "../integrations/state";
 import { internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
 import { rateLimiter } from "./rateLimits";
@@ -26,7 +27,7 @@ export async function requestWorkfeedEmployeeSync(
       )
       .unique(),
   ]);
-  if (!integration?.enabled) {
+  if (!integration?.enabled || !await isIntegrationEnabled(ctx, organizationId, "workfeed")) {
     return { accepted: false, state: "unavailable", retryAt: null };
   }
   if (status?.state === "queued" || status?.state === "running") {

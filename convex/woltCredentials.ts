@@ -1,11 +1,13 @@
 import { ConvexError, v } from "convex/values";
-import { env, internalQuery, mutation, query } from "./_generated/server";
+import { env, internalMutation, mutation, query } from "./_generated/server";
 import {
   requireAllLocationAccess,
   requireHumanPrincipal,
   requireIntegrationManager,
 } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
+import { ensureOrganizationCredentialKey } from "./integrations/credentials";
 import {
   decryptWoltSecret,
   encryptWoltSecret,
@@ -35,6 +37,7 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const integration = await ctx.db
       .query("woltIntegrations")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId))
@@ -85,6 +88,7 @@ export const save = mutation({
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
     requireAllLocationAccess(auth);
     const { organizationId } = auth;
+    await requireIntegrationEnabled(ctx, organizationId, "wolt");
     const clientId = args.clientId.trim();
     if (!clientId || clientId.length > 200) {
       throw new ConvexError("Client-id skal være mellem 1 og 200 tegn");
@@ -136,11 +140,12 @@ export const save = mutation({
         throw new ConvexError("Vent på, at den igangværende Wolt-opsætning afsluttes eller udløber, før du ændrer client-id eller miljø");
       }
     }
+    const key = await ensureOrganizationCredentialKey(ctx, organizationId);
     const clientSecretCiphertext = clientSecret
-      ? await encryptWoltSecret(clientSecret, organizationId)
+      ? await encryptWoltSecret(clientSecret, organizationId, key)
       : previous?.clientSecretCiphertext;
     const webhookSecretCiphertext = webhookSecret
-      ? await encryptWoltSecret(webhookSecret, organizationId)
+      ? await encryptWoltSecret(webhookSecret, organizationId, key)
       : previous?.webhookSecretCiphertext;
     if (!clientSecretCiphertext || !webhookSecretCiphertext) {
       throw new ConvexError("Organisationens Wolt-nøgler mangler");
@@ -151,7 +156,7 @@ export const save = mutation({
       clientSecretCiphertext,
       webhookSecretCiphertext,
       wioApiKeyCiphertext: wioApiKey
-        ? await encryptWoltSecret(wioApiKey, organizationId)
+        ? await encryptWoltSecret(wioApiKey, organizationId, key)
         : previous?.wioApiKeyCiphertext,
       wioRedirectUris,
     };
@@ -159,15 +164,15 @@ export const save = mutation({
     const integrationId = current?._id ?? await ctx.db.insert("woltIntegrations", {
       organizationId,
       credentials,
-      enabled: false,
+      enabled: true,
       updatedAt,
     });
     if (current) await ctx.db.patch("woltIntegrations", integrationId, { credentials, updatedAt });
     for (const connection of connections) {
       if (
         connection.state !== "disabled" && connection.state !== "reauthorizationRequired" &&
-        (!connection.accessTokenCiphertext.startsWith("v2.") ||
-          !connection.refreshTokenCiphertext.startsWith("v2."))
+        (!/^v[23]\./.test(connection.accessTokenCiphertext) ||
+          !/^v[23]\./.test(connection.refreshTokenCiphertext))
       ) {
         await ctx.db.patch("woltVenueConnections", connection._id, {
           state: "reauthorizationRequired",
@@ -186,25 +191,38 @@ export const save = mutation({
   },
 });
 
-export const getForOrganization = internalQuery({
+export const getForOrganization = internalMutation({
   args: { organizationId: v.string() },
   returns: v.union(woltCredentialsValidator, v.null()),
   handler: async (ctx, { organizationId }) => {
+    if (!await isIntegrationEnabled(ctx, organizationId, "wolt")) return null;
     const integration = await ctx.db
       .query("woltIntegrations")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
       .unique();
     const credentials = integration?.credentials;
     if (!credentials) return null;
-    return {
+    const key = await ensureOrganizationCredentialKey(ctx, organizationId);
+    const decrypted = {
       environment: credentials.environment,
       clientId: credentials.clientId,
-      clientSecret: await decryptWoltSecret(credentials.clientSecretCiphertext, organizationId),
-      webhookSecret: await decryptWoltSecret(credentials.webhookSecretCiphertext, organizationId),
+      clientSecret: await decryptWoltSecret(credentials.clientSecretCiphertext, organizationId, key),
+      webhookSecret: await decryptWoltSecret(credentials.webhookSecretCiphertext, organizationId, key),
       wioApiKey: credentials.wioApiKeyCiphertext
-        ? await decryptWoltSecret(credentials.wioApiKeyCiphertext, organizationId)
+        ? await decryptWoltSecret(credentials.wioApiKeyCiphertext, organizationId, key)
         : null,
       wioRedirectUris: credentials.wioRedirectUris,
     };
+    if (!credentials.clientSecretCiphertext.startsWith("v3.") ||
+      !credentials.webhookSecretCiphertext.startsWith("v3.") ||
+      (credentials.wioApiKeyCiphertext && !credentials.wioApiKeyCiphertext.startsWith("v3."))) {
+      await ctx.db.patch(integration._id, { credentials: {
+        ...credentials,
+        clientSecretCiphertext: await encryptWoltSecret(decrypted.clientSecret, organizationId, key),
+        webhookSecretCiphertext: await encryptWoltSecret(decrypted.webhookSecret, organizationId, key),
+        wioApiKeyCiphertext: decrypted.wioApiKey ? await encryptWoltSecret(decrypted.wioApiKey, organizationId, key) : undefined,
+      } });
+    }
+    return decrypted;
   },
 });

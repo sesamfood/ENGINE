@@ -1,3 +1,4 @@
+import { isIntegrationEnabled } from "./integrations/state";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -278,7 +279,7 @@ async function startSync(
       q.eq("organizationId", organizationId),
     )
     .unique();
-  if (!settings?.enabled) return false;
+  if (!settings?.enabled || !await isIntegrationEnabled(ctx, organizationId, "workfeed")) return false;
 
   const status = await ctx.db
     .query("workfeedSyncStatus")
@@ -362,7 +363,7 @@ export const getEmployeeSyncContext = internalQuery({
         q.eq("organizationId", args.organizationId),
       )
       .unique();
-    if (!settings?.enabled) return null;
+    if (!settings?.enabled || !await isIntegrationEnabled(ctx, args.organizationId, "workfeed")) return null;
     const locations = await ctx.db
       .query("workfeedLocationMappings")
       .withIndex("by_organizationId", (q) =>
@@ -463,7 +464,7 @@ export const getShiftSyncContext = internalQuery({
         )
         .take(MAX_ROLES + 1),
     ]);
-    if (!settings?.enabled || settings.companyId !== args.companyId) return null;
+    if (!settings?.enabled || settings.companyId !== args.companyId || !await isIntegrationEnabled(ctx, args.organizationId, "workfeed")) return null;
     if (
       locations.length > MAX_LOCATIONS ||
       roles.length > MAX_ROLES
@@ -500,7 +501,7 @@ export const getShiftRequestSettings = internalQuery({
         q.eq("organizationId", args.organizationId),
       )
       .unique();
-    if (!settings?.enabled) return null;
+    if (!settings?.enabled || !await isIntegrationEnabled(ctx, args.organizationId, "workfeed")) return null;
     return {
       apiKey: settings.apiKey,
       companyId: settings.companyId,

@@ -5,7 +5,8 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import {
@@ -171,9 +172,9 @@ export const getIntegrationOverview = query({
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const { organizationId } = auth;
     const [
-      integration,
       locations,
       connections,
       partnerMappings,
@@ -181,12 +182,6 @@ export const getIntegrationOverview = query({
       processing,
       deadLetters,
     ] = await Promise.all([
-      ctx.db
-        .query("woltIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
       ctx.db
         .query("locations")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -243,7 +238,7 @@ export const getIntegrationOverview = query({
       .some((connection) => connection.state !== "disabled");
     return {
       connected,
-      enabled: connected && Boolean(integration?.credentials) && (integration?.enabled ?? true),
+      enabled: await isIntegrationEnabled(ctx, organizationId, "wolt"),
       canUseWio: auth.locationScope.all,
       limitReached:
         locations.length > MAX_LOCATIONS ||
@@ -279,79 +274,23 @@ export const isEnabled = query({
   returns: v.boolean(),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
-    const [integration, connections] = await Promise.all([
-      ctx.db
-        .query("woltIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
-      ctx.db
-        .query("woltVenueConnections")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .take(MAX_LOCATIONS + 1),
-    ]);
-    const connected = connections
-      .slice(0, MAX_LOCATIONS)
-      .some((connection) => connection.state !== "disabled");
-    return connected && Boolean(integration?.credentials) && (integration?.enabled ?? true);
+    return isIntegrationEnabled(ctx, organizationId, "wolt");
   },
 });
 
 export const setEnabled = mutation({
   args: { enabled: v.boolean() },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
-    requireAllLocationAccess(auth);
-    const connections = await ctx.db
-      .query("woltVenueConnections")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .take(MAX_LOCATIONS + 1);
-    if (
-      !connections
-        .slice(0, MAX_LOCATIONS)
-        .some((connection) => connection.state !== "disabled")
-    ) {
-      throw new ConvexError("Wolt er ikke forbundet");
-    }
-    const integration = await ctx.db
-      .query("woltIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .unique();
-    if (!integration?.credentials) {
-      throw new ConvexError("Gem organisationens Wolt-nøgler, før du aktiverer integrationen");
-    }
-    const now = Date.now();
-    const integrationId = integration._id;
-    await ctx.db.patch(integration._id, {
-      enabled: args.enabled,
-      updatedAt: now,
-    });
-    await recordAudit(ctx, auth, {
-      action: args.enabled
-        ? "wolt.integration.enabled"
-        : "wolt.integration.disabled",
-      entityTable: "woltIntegrations",
-      entityId: integrationId,
-      summary: args.enabled
-        ? "Aktiverede Wolt-integrationen"
-        : "Deaktiverede Wolt-integrationen",
-    });
-    return null;
-  },
+  handler: async (ctx, args): Promise<null> => ctx.runMutation(api.integrations.setEnabled, {
+    integration: "wolt", enabled: args.enabled,
+  }),
 });
 
 export const getLocationForOnboarding = internalQuery({
   args: { organizationId: v.string(), locationId: v.id("locations") },
   returns: v.union(v.object({ name: v.string() }), v.null()),
   handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "wolt");
     const location = await ctx.db.get("locations", args.locationId);
     return location?.organizationId === args.organizationId ? { name: location.name } : null;
   },
@@ -372,6 +311,7 @@ export const storeOAuthState = internalMutation({
   },
   returns: v.id("woltOAuthStates"),
   handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "wolt");
     requireLocation(await ctx.db.get("locations", args.locationId), args.organizationId);
     const integration = await ctx.db.query("woltIntegrations")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", args.organizationId))
@@ -421,7 +361,7 @@ export const beginSsio = action({
       locationId: args.locationId,
     });
     if (!location) throw new ConvexError("Lokationen blev ikke fundet");
-    const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+    const credentials = await ctx.runMutation(internal.woltCredentials.getForOrganization, {
       organizationId: auth.organizationId,
     });
     if (!credentials) {
@@ -438,7 +378,7 @@ export const beginSsio = action({
       userName: auth.userName,
       stateHash: await hashWoltState(state),
       redirectUri,
-      returnPath: "/administration/integrations",
+      returnPath: "/administration/integrations/wolt",
       now: Date.now(),
     });
     const url = new URL(woltEndpoints(credentials.environment).ssio);
@@ -455,6 +395,7 @@ export const setPartnerVenueMapping = mutation({
   returns: v.object({ adoptedOnboardingEvents: v.number() }),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     requireAllLocationAccess(auth);
     requireLocation(await ctx.db.get("locations", args.locationId), auth.organizationId);
     const partnerVenueId = boundedText(args.partnerVenueId, "Partner-venue-id", 200);
@@ -531,6 +472,7 @@ export const removePartnerVenueMapping = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     requireAllLocationAccess(auth);
     requireLocation(await ctx.db.get("locations", args.locationId), auth.organizationId);
     const mapping = await ctx.db
@@ -556,6 +498,7 @@ export const disconnectLocation = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     requireLocationAccess(auth, args.locationId);
     requireLocation(await ctx.db.get("locations", args.locationId), auth.organizationId);
     const connection = await ctx.db
@@ -577,29 +520,6 @@ export const disconnectLocation = mutation({
         updatedAt: Date.now(),
       });
     }
-    const connections = await ctx.db
-      .query("woltVenueConnections")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .take(MAX_LOCATIONS + 1);
-    const stillConnected = connections
-      .slice(0, MAX_LOCATIONS)
-      .some((item) => item.state !== "disabled");
-    if (!stillConnected) {
-      const integration = await ctx.db
-        .query("woltIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", auth.organizationId),
-        )
-        .unique();
-      if (integration?.enabled) {
-        await ctx.db.patch(integration._id, {
-          enabled: false,
-          updatedAt: Date.now(),
-        });
-      }
-    }
     await recordAudit(ctx, auth, {
       action: "wolt.connection.disconnected",
       entityTable: "locations",
@@ -616,6 +536,7 @@ export const retryDeadLetters = mutation({
   returns: v.number(),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     requireLocationAccess(auth, args.locationId);
     requireLocation(await ctx.db.get("locations", args.locationId), auth.organizationId);
     const connection = await ctx.db
@@ -669,6 +590,7 @@ export const saveProductMapping = mutation({
   returns: v.id("woltProductMappings"),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     if (args.locationId === null) requireAllLocationAccess(auth);
     else {
       requireLocationAccess(auth, args.locationId);
@@ -726,6 +648,7 @@ export const deleteProductMapping = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const mapping = await ctx.db.get("woltProductMappings", args.mappingId);
     if (!mapping || mapping.organizationId !== auth.organizationId) {
       throw new ConvexError("Koblingen blev ikke fundet");
@@ -774,6 +697,7 @@ export const listObservedItems = query({
   }),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     if (args.locationId !== null) {
       requireLocationAccess(auth, args.locationId);
       requireLocation(await ctx.db.get("locations", args.locationId), auth.organizationId);
@@ -925,6 +849,7 @@ export const listOrders = query({
   returns: paginationResultValidator(orderSummaryValidator),
   handler: async (ctx, args) => {
     const auth = await requireSalesDetailViewer(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     requireOrderRange(args.from, args.to);
     requirePageSize(args.paginationOpts.numItems);
     if (args.locationId !== null) {
@@ -1066,6 +991,7 @@ export const getOrder = query({
   ),
   handler: async (ctx, args) => {
     const auth = await requireSalesDetailViewer(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const order = await ctx.db.get("woltOrders", args.orderId);
     if (!order || order.organizationId !== auth.organizationId) return null;
     requireLocationAccess(auth, order.locationId);
@@ -1159,6 +1085,7 @@ export const getOrderLocations = query({
   returns: v.array(v.object({ id: v.id("locations"), name: v.string() })),
   handler: async (ctx) => {
     const auth = await requireSalesDetailViewer(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const filter = resolveLocationFilter(auth);
     const locations = await ctx.db
       .query("locations")
@@ -1189,6 +1116,7 @@ export const getOrderSourceHealth = query({
   }),
   handler: async (ctx) => {
     const auth = await requireSalesDetailViewer(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const [locationRows, connectionRows] = await Promise.all([
       ctx.db
         .query("locations")

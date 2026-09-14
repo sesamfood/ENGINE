@@ -1,3 +1,4 @@
+import { isIntegrationEnabled } from "./integrations/state";
 import { ConvexError, v } from "convex/values";
 import { hasPermission } from "../lib/auth-permissions";
 import {
@@ -59,6 +60,7 @@ async function latestBudget(ctx: QueryCtx, organizationId: string, locationId: I
 }
 
 async function readBudgetCategories(ctx: QueryCtx, organizationId: string, locationId: Id<"locations">, saved: EconomicBudgetComponent[] | undefined): Promise<EconomicBudgetComponent[]> {
+  if (!await isIntegrationEnabled(ctx, organizationId, "economic")) return [];
   if (saved !== undefined) return saved;
   const mapping = await ctx.db.query("economicLocationMappings")
     .withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId)).unique();
@@ -129,12 +131,12 @@ export async function readInputs(ctx: QueryCtx, args: { month: string; locationI
         month: request.month,
         sales: sourceCell(sales[index].netRevenue, sales[index].reason, sales[index].currency, "POS"),
         transactions: sourceCell(sales[index].transactionCount, sales[index].reason, sales[index].currency, "POS", false, false, false),
-        labour: sourceCell(labour[index].amount, labour[index].reason, labour[index].currency, "Workfeed", true),
+        labour: sourceCell(labour[index].amount, labour[index].reason, labour[index].currency, "Løndata", true),
         cogs: sourceCell(actual?.cogs ?? null, "Godkendt, lagerreguleret vareforbrug mangler", actual?.currency ?? null, manualSource, false, true),
         waste: sourceCell(actual?.waste ?? null, "Godkendt registreret Waste-beløb mangler", actual?.currency ?? null, manualSource, false, true),
-        rent: kpiCell(null, "Husleje fra e-conomic mangler", false, "e-conomic"),
-        utilities: kpiCell(null, "Forbrug fra e-conomic mangler", false, "e-conomic"),
-        other: kpiCell(null, "Øvrige driftsomkostninger fra e-conomic mangler", false, "e-conomic"),
+        rent: kpiCell(null, "Husleje mangler", false, "Regnskab"),
+        utilities: kpiCell(null, "Forbrug mangler", false, "Regnskab"),
+        other: kpiCell(null, "Øvrige driftsomkostninger mangler", false, "Regnskab"),
       };
     });
     const budgetSource = budget ? `Manuelt budget: ${location.name}, ${month}, revision ${budget.revision}` : "Manuelt budget";

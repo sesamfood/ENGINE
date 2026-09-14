@@ -1,3 +1,4 @@
+import { isIntegrationEnabled } from "./integrations/state";
 import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
@@ -35,6 +36,7 @@ export type FinancialMonthResult = {
 async function financialContext(ctx: QueryCtx, args: LocationArgs): Promise<
   { ready: true; value: FinancialContext } | { ready: false; reason: string }
 > {
+  if (!await isIntegrationEnabled(ctx, args.organizationId, "onlinepos")) return { ready: false, reason: "Der er ingen salgsdata for perioden" };
   const location = await ctx.db.get("locations", args.locationId);
   if (!location || location.organizationId !== args.organizationId) {
     return { ready: false, reason: "Lokationen blev ikke fundet" };

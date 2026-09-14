@@ -4,7 +4,6 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { decryptEconomicCredentials } from "./lib/economicCrypto";
 import {
   attachExpenseDimension, attachExpenseReceipt, createExpenseDraft,
   ExpenseEconomicError, prepareExpenseExport, readExpenseDraft, validateExpenseReceipt,
@@ -31,7 +30,7 @@ export const exportExpense = internalAction({
         if (!blob) throw new ExpenseEconomicError("Bilaget blev ikke fundet. Kontrollér udgiftens dokumentation.");
         receipt = await validateExpenseReceipt(blob);
       }
-      const credentials = await decryptEconomicCredentials(connection);
+      const credentials = await ctx.runMutation(internal.economic.getCredentials, { organizationId: connection.organizationId, connectionId: connection._id });
       const accountingYear = await prepareExpenseExport(credentials, expense, mapping);
       if (entryNumber === undefined) {
         creationStarted = true;

@@ -1,4 +1,5 @@
 import { env } from "../_generated/server";
+import { decryptCredential, encryptCredential } from "../integrations/credentials";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -145,18 +146,13 @@ export async function hashWoltState(value: string) {
   return bytesToHex(new Uint8Array(digest));
 }
 
-export async function encryptWoltSecret(value: string, organizationId: string) {
+export async function encryptWoltSecret(value: string, organizationId: string, key: string) {
   if (!value || value.length > 8_000) throw new Error("Hemmeligheden er ugyldig");
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: nonce, additionalData: encoder.encode(organizationId) },
-    await encryptionKey(organizationId),
-    encoder.encode(value),
-  );
-  return `${ENCRYPTION_VERSION}.${bytesToBase64Url(nonce)}.${bytesToBase64Url(new Uint8Array(ciphertext))}`;
+  return encryptCredential(value, organizationId, key);
 }
 
-export async function decryptWoltSecret(value: string, organizationId: string) {
+export async function decryptWoltSecret(value: string, organizationId: string, key: string | null) {
+  if (value.startsWith("v3.")) return decryptCredential(value, organizationId, key);
   const [version, nonceValue, ciphertextValue, extra] = value.split(".");
   if (version === "v1") {
     throw new Error("Wolt-forbindelsen bruger gamle nøgler. Tilslut Wolt igen under organisationens integrationer.");

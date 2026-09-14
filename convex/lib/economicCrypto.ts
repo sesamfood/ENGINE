@@ -2,13 +2,7 @@ import { ConvexError } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import { env } from "../_generated/server";
 import type { EconomicCredentials } from "./economicApi";
-
-const encoder = new TextEncoder();
-
-function encode(bytes: Uint8Array) {
-  return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))
-    .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-}
+import { decryptCredential } from "../integrations/credentials";
 
 function decode(value: string) {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new ConvexError("e-conomic-nøglen er ugyldig");
@@ -21,13 +15,8 @@ async function encryptionKey() {
   return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
-export async function encryptEconomicToken(value: string) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await encryptionKey(), encoder.encode(value));
-  return `v1.${encode(iv)}.${encode(new Uint8Array(ciphertext))}`;
-}
-
-export async function decryptEconomicToken(value: string) {
+export async function decryptEconomicToken(value: string, organizationId: string, key: string | null) {
+  if (value.startsWith("v3.")) return decryptCredential(value, organizationId, key);
   const [version, iv, ciphertext, extra] = value.split(".");
   if (version !== "v1" || !iv || !ciphertext || extra !== undefined) {
     throw new ConvexError("e-conomic-forbindelsen skal oprettes igen");
@@ -42,18 +31,18 @@ export async function decryptEconomicToken(value: string) {
   }
 }
 
-export async function decryptEconomicCredentials(connection: Pick<Doc<"economicConnections">, "encryptedToken" | "encryptedAppSecretToken">): Promise<EconomicCredentials> {
+export async function decryptEconomicCredentials(connection: Pick<Doc<"economicConnections">, "organizationId" | "encryptedToken" | "encryptedAppSecretToken">, key: string | null): Promise<EconomicCredentials> {
   if (!connection.encryptedAppSecretToken) {
     throw new ConvexError("Forbind e-conomic igen med organisationens appnøgle og aftalenøgle i Administration");
   }
   const [appSecretToken, agreementGrantToken] = await Promise.all([
-    decryptEconomicToken(connection.encryptedAppSecretToken),
-    decryptEconomicToken(connection.encryptedToken),
+    decryptEconomicToken(connection.encryptedAppSecretToken, connection.organizationId, key),
+    decryptEconomicToken(connection.encryptedToken, connection.organizationId, key),
   ]);
   return { appSecretToken, agreementGrantToken };
 }
 
 export async function economicFingerprint(value: unknown) {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(JSON.stringify(value)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

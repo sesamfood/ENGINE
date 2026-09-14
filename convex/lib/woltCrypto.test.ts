@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   decryptWoltSecret,
   encryptWoltSecret,
@@ -7,27 +7,22 @@ import {
   woltWioRedirectUris,
 } from "./woltCrypto";
 
+const credentialKey = btoa("01234567890123456789012345678901");
 const webhookSecret = "organization-webhook-secret-with-enough-bytes";
 
 function hex(bytes: Uint8Array) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-beforeEach(() => {
-  vi.stubEnv("BETTER_AUTH_SECRET", "test-auth-secret-with-enough-entropy-for-encryption");
-});
-
-afterEach(() => vi.unstubAllEnvs());
-
 describe("Wolt-kryptering", () => {
   test("krypterer med ny nonce og kan kun dekryptere for samme organisation", async () => {
-    const first = await encryptWoltSecret("hemmelig", "organization-1");
-    const second = await encryptWoltSecret("hemmelig", "organization-1");
-    expect(first).toMatch(/^v2\./);
+    const first = await encryptWoltSecret("hemmelig", "organization-1", credentialKey);
+    const second = await encryptWoltSecret("hemmelig", "organization-1", credentialKey);
+    expect(first).toMatch(/^v3\./);
     expect(first).not.toBe(second);
-    await expect(decryptWoltSecret(first, "organization-1")).resolves.toBe("hemmelig");
-    await expect(decryptWoltSecret(first, "organization-2")).rejects.toThrow();
-    await expect(decryptWoltSecret(first.replace(/^v2/, "v1"), "organization-1"))
+    await expect(decryptWoltSecret(first, "organization-1", credentialKey)).resolves.toBe("hemmelig");
+    await expect(decryptWoltSecret(first, "organization-2", credentialKey)).rejects.toThrow();
+    await expect(decryptWoltSecret(first.replace(/^v3/, "v1"), "organization-1", credentialKey))
       .rejects.toThrow("Tilslut Wolt igen");
   });
 

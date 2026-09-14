@@ -43,6 +43,11 @@ import {
 } from "./lib/woltValidators";
 
 export default defineSchema({
+  integrationSecrets: defineTable({
+    organizationId: v.string(),
+    key: v.string(),
+  }).index("by_organizationId", ["organizationId"]),
+
   expenseSettings: defineTable({
     organizationId: v.string(),
     to: v.array(v.string()),
@@ -209,6 +214,13 @@ export default defineSchema({
     .index("by_organizationId", ["organizationId"])
     .index("by_logoStorageId", ["logoStorageId"])
     .index("by_wideLogoStorageId", ["wideLogoStorageId"]),
+
+  integrationSettings: defineTable({
+    organizationId: v.string(),
+    integration: v.union(v.literal("workfeed"), v.literal("onlinepos"), v.literal("economic"), v.literal("wolt")),
+    enabled: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_integration", ["organizationId", "integration"]),
 
   organizationSyncActivity: defineTable({
     organizationId: v.string(),

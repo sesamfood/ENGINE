@@ -1,3 +1,4 @@
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import {
   getOnlinePosLocationMaster,
   onlinePosCatalogId,
@@ -96,6 +97,7 @@ export const listMenus = query({
     const { organizationId } = auth;
     requireLocationAccess(auth, args.locationId);
     await requireOrganizationLocation(ctx, organizationId, args.locationId);
+    if (!await isIntegrationEnabled(ctx, organizationId, "onlinepos")) return [];
     const master = await getOnlinePosLocationMaster(
       ctx,
       organizationId,
@@ -351,6 +353,7 @@ export const create = mutation({
       organizationId,
       location._id,
     );
+    if (items.some((item) => item.menuId)) await requireIntegrationEnabled(ctx, organizationId, "onlinepos");
     const selectedMenus = new Map<
       string,
       {

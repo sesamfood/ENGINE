@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import type { Id, TableNames } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx } from "./_generated/server";
 import {
@@ -158,6 +159,7 @@ export const getWebhookOrganization = internalQuery({
       .take(2);
     if (connections.length !== 1) return null;
     const connection = connections[0];
+    if (!await isIntegrationEnabled(ctx, connection.organizationId, "wolt")) return null;
     const location = await ctx.db.get("locations", connection.locationId);
     return location?.organizationId === connection.organizationId
       ? connection.organizationId
@@ -174,6 +176,7 @@ export const getOAuthOrganization = internalQuery({
       .withIndex("by_stateHash", (q) => q.eq("stateHash", args.stateHash))
       .unique();
     if (!state || state.consumedAt !== undefined || state.expiresAt <= args.now) return null;
+    if (!await isIntegrationEnabled(ctx, state.organizationId, "wolt")) return null;
     const location = await ctx.db.get("locations", state.locationId);
     return location?.organizationId === state.organizationId ? state.organizationId : null;
   },
@@ -189,6 +192,7 @@ export const getWioOrganization = internalQuery({
       .take(2);
     if (mappings.length !== 1) return null;
     const mapping = mappings[0];
+    if (!await isIntegrationEnabled(ctx, mapping.organizationId, "wolt")) return null;
     const location = await ctx.db.get("locations", mapping.locationId);
     return location?.organizationId === mapping.organizationId ? mapping.organizationId : null;
   },
@@ -203,6 +207,7 @@ export const acceptWebhook = internalMutation({
   returns: inboxResultValidator,
   handler: async (ctx, args) => {
     const { envelope } = args;
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "wolt")) return { kind: "disabled" as const };
     const connections = await ctx.db
       .query("woltVenueConnections")
       .withIndex("by_venueId", (q) => q.eq("venueId", envelope.venueId))
@@ -241,16 +246,6 @@ export const acceptWebhook = internalMutation({
       return { kind: "quarantined" as const };
     }
 
-    const integration = await ctx.db
-      .query("woltIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", connection.organizationId),
-      )
-      .unique();
-    if (integration?.enabled === false) {
-      return { kind: "disabled" as const };
-    }
-
     const eventId = await ctx.db.insert("woltWebhookEvents", {
       ...envelope,
       organizationId: connection.organizationId,
@@ -281,6 +276,7 @@ export const consumeOAuthCallback = internalMutation({
   },
   returns: v.object({ returnPath: v.string() }),
   handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "wolt");
     const state = await ctx.db
       .query("woltOAuthStates")
       .withIndex("by_stateHash", (q) => q.eq("stateHash", args.stateHash))
@@ -331,6 +327,7 @@ export const acceptWioOnboarding = internalMutation({
   },
   returns: inboxResultValidator,
   handler: async (ctx, args) => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "wolt")) return { kind: "disabled" as const };
     const mappings = await ctx.db
       .query("woltPartnerVenueMappings")
       .withIndex("by_partnerVenueId", (q) => q.eq("partnerVenueId", args.partnerVenueId))
@@ -393,6 +390,10 @@ export const claimOnboardingEvent = internalMutation({
     ) {
       return null;
     }
+    if (!await isIntegrationEnabled(ctx, event.organizationId, "wolt")) {
+      await ctx.db.patch(event._id, { state: "deadLetter", authorizationCodeCiphertext: "", lastError: "Integrationen er deaktiveret", updatedAt: args.now });
+      return null;
+    }
     if (event.expiresAt <= args.now || event.attemptCount >= MAX_ATTEMPTS) {
       await ctx.db.patch(event._id, {
         state: "deadLetter",
@@ -448,6 +449,10 @@ export const completeOnboardingEvent = internalMutation({
   handler: async (ctx, args) => {
     const event = await ctx.db.get("woltOnboardingEvents", args.onboardingEventId);
     if (!event || event.state !== "processing" || event.runToken !== args.runToken) return false;
+    if (!await isIntegrationEnabled(ctx, event.organizationId, "wolt")) {
+      await ctx.db.patch(event._id, { state: "deadLetter", runToken: undefined, authorizationCodeCiphertext: "", lastError: "Integrationen er deaktiveret", updatedAt: args.now });
+      return false;
+    }
     const conflicts = await ctx.db
       .query("woltVenueConnections")
       .withIndex("by_venueId", (q) => q.eq("venueId", args.venueId))
@@ -499,24 +504,6 @@ export const completeOnboardingEvent = internalMutation({
         ...connection,
       });
     }
-    const integration = await ctx.db
-      .query("woltIntegrations")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", event.organizationId),
-      )
-      .unique();
-    if (!integration) {
-      await ctx.db.insert("woltIntegrations", {
-        organizationId: event.organizationId,
-        enabled: true,
-        updatedAt: args.now,
-      });
-    } else if (!integration.enabled) {
-      await ctx.db.patch(integration._id, {
-        enabled: true,
-        updatedAt: args.now,
-      });
-    }
     const adopted = await adoptWebhookQuarantineRows(
       ctx,
       event.organizationId,
@@ -549,6 +536,7 @@ export const adoptWebhookQuarantine = internalMutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "wolt")) return 0;
     const connection = await ctx.db
       .query("woltVenueConnections")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -621,19 +609,20 @@ export const processOnboardingEvent = internalAction({
     });
     if (!claim) return null;
     try {
-      const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+      const credentials = await ctx.runMutation(internal.woltCredentials.getForOrganization, {
         organizationId: claim.organizationId,
       });
       if (!credentials) throw new WoltProviderError("Organisationens Wolt-nøgler mangler", false);
-      const code = await decryptWoltSecret(claim.authorizationCodeCiphertext, claim.organizationId);
+      const key = await ctx.runMutation(internal.integrations.credentials.ensureKey, { organizationId: claim.organizationId });
+      const code = await decryptWoltSecret(claim.authorizationCodeCiphertext, claim.organizationId, key);
       const tokens = await exchangeWoltAuthorizationCode(code, claim.redirectUri, credentials);
       const now = Date.now();
       await ctx.runMutation(internal.woltSync.completeOnboardingEvent, {
         onboardingEventId: claim.onboardingEventId,
         runToken,
         venueId: tokens.venueId,
-        accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken, claim.organizationId),
-        refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken, claim.organizationId),
+        accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken, claim.organizationId, key),
+        refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken, claim.organizationId, key),
         accessTokenExpiresAt: now + tokens.accessExpiresIn * 1_000,
         refreshTokenExpiresAt: now + tokens.refreshExpiresIn * 1_000,
         now,
@@ -658,6 +647,10 @@ export const claimWebhookEvent = internalMutation({
   handler: async (ctx, args) => {
     const event = await ctx.db.get("woltWebhookEvents", args.eventId);
     if (!event || event.state !== "pending" || event.nextAttemptAt > args.now) return null;
+    if (!await isIntegrationEnabled(ctx, event.organizationId, "wolt")) {
+      await ctx.db.patch(event._id, { state: "deadLetter", lastError: "Integrationen er deaktiveret" });
+      return null;
+    }
     if (event.attemptCount >= MAX_ATTEMPTS) {
       await ctx.db.patch(event._id, {
         state: "deadLetter",
@@ -711,6 +704,7 @@ export const acquireRefreshLease = internalMutation({
   },
   returns: refreshLeaseValidator,
   handler: async (ctx, args) => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "wolt")) return { kind: "unavailable" as const };
     const connection = await ctx.db
       .query("woltVenueConnections")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -763,6 +757,7 @@ export const commitRefresh = internalMutation({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "wolt")) return false;
     const connection = await ctx.db
       .query("woltVenueConnections")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -899,9 +894,10 @@ type AccessContext = {
 };
 
 async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
+  const key = await ctx.runMutation(internal.integrations.credentials.ensureKey, { organizationId: connection.organizationId });
   if (
-    !connection.accessTokenCiphertext.startsWith("v2.") ||
-    !connection.refreshTokenCiphertext.startsWith("v2.")
+    !/^v[23]\./.test(connection.accessTokenCiphertext) ||
+    !/^v[23]\./.test(connection.refreshTokenCiphertext)
   ) {
     const message = "Wolt-forbindelsen skal godkendes igen med organisationens Wolt-nøgler";
     await ctx.runMutation(internal.woltSync.requireReauthorization, {
@@ -913,13 +909,13 @@ async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
     });
     throw new WoltProviderError(message, false);
   }
-  const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+  const credentials = await ctx.runMutation(internal.woltCredentials.getForOrganization, {
     organizationId: connection.organizationId,
   });
   if (!credentials) throw new WoltProviderError("Organisationens Wolt-nøgler mangler", false);
   if (connection.accessTokenExpiresAt > Date.now() + ACCESS_TOKEN_SKEW_MS) {
     return {
-      accessToken: await decryptWoltSecret(connection.accessTokenCiphertext, connection.organizationId),
+      accessToken: await decryptWoltSecret(connection.accessTokenCiphertext, connection.organizationId, key),
       environment: credentials.environment,
     };
   }
@@ -940,7 +936,7 @@ async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
   let rotated = false;
   try {
     const tokens = await refreshWoltTokens(
-      await decryptWoltSecret(lease.refreshTokenCiphertext, connection.organizationId),
+      await decryptWoltSecret(lease.refreshTokenCiphertext, connection.organizationId, key),
       credentials,
     );
     rotated = true;
@@ -954,8 +950,8 @@ async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
       leaseId,
       expectedTokenVersion: lease.tokenVersion,
       venueId: lease.venueId,
-      accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken, connection.organizationId),
-      refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken, connection.organizationId),
+      accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken, connection.organizationId, key),
+      refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken, connection.organizationId, key),
       accessTokenExpiresAt: now + tokens.accessExpiresIn * 1_000,
       refreshTokenExpiresAt: now + tokens.refreshExpiresIn * 1_000,
       now,
@@ -1072,6 +1068,10 @@ export const applyOrderSnapshot = internalMutation({
   handler: async (ctx, args) => {
     const event = await ctx.db.get("woltWebhookEvents", args.eventId);
     if (!event || event.state !== "processing" || event.runToken !== args.runToken) return "ignored";
+    if (!await isIntegrationEnabled(ctx, event.organizationId, "wolt")) {
+      await ctx.db.patch(event._id, { state: "deadLetter", runToken: undefined, lastError: "Integrationen er deaktiveret" });
+      return "ignored";
+    }
     if (event.orderId !== args.snapshot.woltOrderId || event.venueId !== args.snapshot.venueId) {
       throw new Error("Webhook og ordre tilhører ikke samme Wolt-ressource");
     }
@@ -1423,6 +1423,7 @@ export const getConnectionForRefresh = internalQuery({
   handler: async (ctx, args) => {
     const connection = await ctx.db.get("woltVenueConnections", args.connectionId);
     if (!connection || connection.state !== "ready") return null;
+    if (!await isIntegrationEnabled(ctx, connection.organizationId, "wolt")) return null;
     return {
       organizationId: connection.organizationId,
       locationId: connection.locationId,
@@ -1458,23 +1459,25 @@ export const refreshConnection = internalAction({
 });
 
 export const dispatchTokenMaintenance = internalMutation({
-  args: {},
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
   returns: v.number(),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const refreshBefore = Date.now() + ACCESS_TOKEN_SKEW_MS;
-    const connections = await ctx.db
+    const page = await ctx.db
       .query("woltVenueConnections")
       .withIndex("by_state_and_accessTokenExpiresAt", (q) =>
         q.eq("state", "ready").lte("accessTokenExpiresAt", refreshBefore),
       )
-      .take(25);
+      .paginate({ cursor: args.cursor ?? null, numItems: 25 });
+    const connections = page.page;
     for (const connection of connections) {
+      if (!await isIntegrationEnabled(ctx, connection.organizationId, "wolt")) continue;
       await ctx.scheduler.runAfter(0, internal.woltSync.refreshConnection, {
         connectionId: connection._id,
       });
     }
-    if (connections.length === 25) {
-      await ctx.scheduler.runAfter(60_000, internal.woltSync.dispatchTokenMaintenance, {});
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(60_000, internal.woltSync.dispatchTokenMaintenance, { cursor: page.continueCursor });
     }
     return connections.length;
   },

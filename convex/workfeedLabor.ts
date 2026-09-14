@@ -1,3 +1,4 @@
+import { isIntegrationEnabled } from "./integrations/state";
 import { ConvexError, v, type Infer } from "convex/values";
 import { addDays, dateKey, parseDateKey } from "../lib/date";
 import { internal } from "./_generated/api";
@@ -79,6 +80,7 @@ async function currentSource(
   organizationId: string,
   locationId: Id<"locations">,
 ): Promise<SourceResult> {
+  if (!await isIntegrationEnabled(ctx, organizationId, "workfeed")) return { kind: "unavailable", reason: "Der er ingen løndata for perioden" };
   const [integration, mapping, location] = await Promise.all([
     ctx.db.query("workfeedIntegrations")
       .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))

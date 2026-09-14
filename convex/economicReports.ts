@@ -9,10 +9,11 @@ import type { Id } from "./_generated/dataModel";
 import { action, internalMutation, internalQuery, query, type ActionCtx, type QueryCtx } from "./_generated/server";
 import { readInputs } from "./monthlyKpi";
 import schema from "./schema";
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import { requireBudgetManager, requireFinancialReportViewer, requireLocationAccess } from "./lib/auth";
 import { fetchEconomicReportData } from "./lib/economicApi";
-import { decryptEconomicCredentials, economicFingerprint } from "./lib/economicCrypto";
+import { economicFingerprint } from "./lib/economicCrypto";
 import { applyEconomicData, unavailableEconomicInputs, type EconomicApprovalCandidate } from "./lib/economicReport";
 import { economicApprovalItemValidator, economicCategoryValidator, economicLocationMappingValidator } from "./lib/economicValidators";
 import { monthlyKpiInputsValidator, monthlyKpiReportValidator } from "./lib/monthlyKpiValidators";
@@ -43,6 +44,9 @@ type ReportResult = Infer<typeof economicReportResultValidator>;
 async function resolveReportContext(ctx: QueryCtx, args: ReportArgs): Promise<ReportContext> {
   const auth = await requireFinancialReportViewer(ctx);
   const inputs = await readInputs(ctx, args);
+  if (!await isIntegrationEnabled(ctx, auth.organizationId, "economic")) {
+    return { inputs, connections: [], approvals: [], revision: inputs.revision, canApprove: false };
+  }
   const selectedMappings = await Promise.all(inputs.locations.map((location) => ctx.db.query("economicLocationMappings")
     .withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", location.id)).unique()));
   const connectionIds = [...new Set(selectedMappings.flatMap((mapping) => mapping ? [mapping.connectionId] : []))].sort();
@@ -114,7 +118,7 @@ async function loadEconomicInputs(ctx: ActionCtx, args: ReportArgs & { expectedR
         const locationIds = new Set(item.mappings.map((mapping) => mapping.locationId));
         const selectedLocations = inputs.locations.filter((location) => locationIds.has(location.id));
         const data = await fetchEconomicReportData({
-          credentials: await decryptEconomicCredentials(connection),
+          credentials: await ctx.runMutation(internal.economic.getCredentials, { organizationId: connection.organizationId, connectionId: connection._id }),
           accountNumbers: connection.accountMappings.map((mapping) => mapping.accountNumber),
           fromDate: `${first.month}-01`, toDate: last.through,
           budgetFromDate: `${inputs.month}-01`, budgetToDate: kpiMonthEnd(inputs.month), deadlineAt: deadline,
@@ -268,6 +272,7 @@ export const saveApproval = internalMutation({
   handler: async (ctx, args) => {
     const auth = await requireBudgetManager(ctx);
     requireLocationAccess(auth, args.locationId);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "economic");
     const connection = await ctx.db.get("economicConnections", args.connectionId);
     const mapping = await ctx.db.query("economicLocationMappings").withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", auth.organizationId).eq("locationId", args.locationId)).unique();
     if (!connection || connection.organizationId !== auth.organizationId || !connection.enabled || connection.revision !== args.connectionRevision || mapping?.connectionId !== connection._id) {

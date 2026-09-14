@@ -1,12 +1,14 @@
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, env, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import schema from "./schema";
+import { ensureOrganizationCredentialKey, encryptCredential } from "./integrations/credentials";
+import { requireIntegrationEnabled } from "./integrations/state";
 import { recordAudit } from "./lib/audit";
 import { requireAllLocationAccess, requireHumanPrincipal, requireIntegrationManager } from "./lib/auth";
 import { getEconomicCatalog, getEconomicSelf, type EconomicCredentials } from "./lib/economicApi";
-import { decryptEconomicCredentials, encryptEconomicToken } from "./lib/economicCrypto";
+import { decryptEconomicCredentials } from "./lib/economicCrypto";
 import { economicLocationMappingValidator, economicMappingFields } from "./lib/economicValidators";
 import { requireOrganizationLocation } from "./lib/locations";
 import { resolveLocationCurrency } from "./lib/masterData";
@@ -26,6 +28,7 @@ const mappingsArgs = { ...connectionArgs, ...v.object(economicMappingFields).omi
 async function requireManager(ctx: QueryCtx | MutationCtx) {
   const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
   requireAllLocationAccess(auth);
+  await requireIntegrationEnabled(ctx, auth.organizationId, "economic");
   return auth;
 }
 
@@ -68,7 +71,7 @@ export const getSettings = query({
     }
     return {
       organizationId: auth.organizationId,
-      configured: Boolean(env.ECONOMIC_ENCRYPTION_KEY?.trim()),
+      configured: true,
       connections: await Promise.all(connections.map(async (connection) => {
         const mappings = await ctx.db.query("economicLocationMappings").withIndex("by_connectionId", (q) => q.eq("connectionId", connection._id)).take(MAX_LOCATIONS + 1);
         if (mappings.length > MAX_LOCATIONS) throw new ConvexError("Aftalen har for mange lokationskoblinger");
@@ -92,6 +95,25 @@ export const getPrivateConnection = internalQuery({
   args: { connectionId: v.id("economicConnections") },
   returns: schema.doc("economicConnections"),
   handler: async (ctx, args) => (await requireConnection(ctx, args.connectionId)).connection,
+});
+
+export const getCredentials = internalMutation({
+  args: { organizationId: v.string(), connectionId: v.id("economicConnections") },
+  returns: v.object({ appSecretToken: v.string(), agreementGrantToken: v.string() }),
+  handler: async (ctx, { organizationId, connectionId }) => {
+    await requireIntegrationEnabled(ctx, organizationId, "economic");
+    const connection = await ctx.db.get("economicConnections", connectionId);
+    if (!connection || connection.organizationId !== organizationId) throw new ConvexError("e-conomic-aftalen blev ikke fundet");
+    const key = await ensureOrganizationCredentialKey(ctx, organizationId);
+    const credentials = await decryptEconomicCredentials(connection, key);
+    if (!connection.encryptedToken.startsWith("v3.") || !connection.encryptedAppSecretToken?.startsWith("v3.")) {
+      await ctx.db.patch(connectionId, {
+        encryptedToken: await encryptCredential(credentials.agreementGrantToken, organizationId, key),
+        encryptedAppSecretToken: await encryptCredential(credentials.appSecretToken, organizationId, key),
+      });
+    }
+    return credentials;
+  },
 });
 
 export const saveConnection = internalMutation({
@@ -143,6 +165,7 @@ export const connect = action({
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
     requireAllLocationAccess(auth);
     if (auth.organizationId !== args.expectedOrganizationId) throw new ConvexError("Organisationen er ændret. Opret forbindelsen igen");
+    await requireIntegrationEnabled(ctx, auth.organizationId, "economic");
     const grant = args.agreementGrantToken.trim();
     const appSecretToken = args.appSecretToken.trim();
     if (!appSecretToken || appSecretToken.length > 1000) throw new ConvexError("Indtast en gyldig e-conomic-appnøgle");
@@ -150,8 +173,9 @@ export const connect = action({
     const current = args.connectionId ? await ctx.runQuery(internal.economic.getPrivateConnection, { connectionId: args.connectionId }) : null;
     const credentials: EconomicCredentials = { appSecretToken, agreementGrantToken: grant };
     const self = await getEconomicSelf(credentials);
+    const key = await ctx.runMutation(internal.integrations.credentials.ensureKey, { organizationId: auth.organizationId });
     const [encryptedToken, encryptedAppSecretToken] = await Promise.all([
-      encryptEconomicToken(grant), encryptEconomicToken(appSecretToken),
+      encryptCredential(grant, auth.organizationId, key), encryptCredential(appSecretToken, auth.organizationId, key),
     ]);
     return ctx.runMutation(internal.economic.saveConnection, {
       organizationId: auth.organizationId, connectionId: args.connectionId,
@@ -192,7 +216,7 @@ export const getCatalog = action({
   args: { connectionId: v.id("economicConnections") }, returns: catalogValidator,
   handler: async (ctx, args): Promise<Infer<typeof catalogValidator>> => {
     const before = await ctx.runQuery(internal.economic.getPrivateConnection, args);
-    const catalog = await getEconomicCatalog(await decryptEconomicCredentials(before));
+    const catalog = await getEconomicCatalog(await ctx.runMutation(internal.economic.getCredentials, { organizationId: before.organizationId, connectionId: before._id }));
     const after = await ctx.runQuery(internal.economic.getPrivateConnection, args);
     requireRevision(after.revision, before.revision);
     return catalog;
@@ -246,7 +270,7 @@ export const saveMappings = action({
   handler: async (ctx, args): Promise<null> => {
     const before = await ctx.runQuery(internal.economic.getPrivateConnection, { connectionId: args.connectionId });
     requireRevision(before.revision, args.expectedRevision);
-    const catalog = await getEconomicCatalog(await decryptEconomicCredentials(before));
+    const catalog = await getEconomicCatalog(await ctx.runMutation(internal.economic.getCredentials, { organizationId: before.organizationId, connectionId: before._id }));
     for (const mapping of args.accountMappings) {
       const account = catalog.accounts.find((item) => item.number === mapping.accountNumber);
       if (!account || account.type !== 1) throw new ConvexError("Vælg en gyldig driftskonto fra aftalens kontoplan");

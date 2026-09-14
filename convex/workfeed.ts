@@ -1,5 +1,6 @@
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
 import {
   action,
@@ -49,6 +50,7 @@ async function requireConnectedSettings(
   ctx: ActionCtx,
 ) {
   const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
   const { organizationId } = auth;
   const settings: WorkfeedSettings | null = await ctx.runQuery(
     internal.workfeed.getPrivateSettings,
@@ -68,6 +70,7 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
     const { organizationId } = auth;
     const settings = await ctx.db
       .query("workfeedIntegrations")
@@ -99,6 +102,7 @@ export const listLocationMappings = query({
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
     const { organizationId } = auth;
     const [locations, mappings] = await Promise.all([
       ctx.db
@@ -144,6 +148,7 @@ export const getPrivateSettings = internalQuery({
   args: { organizationId: v.string() },
   returns: privateSettingsValidator,
   handler: async (ctx, args) => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "workfeed")) return null;
     const settings = await ctx.db
       .query("workfeedIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -170,6 +175,7 @@ export const saveConnection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "workfeed");
     const current = await ctx.db
       .query("workfeedIntegrations")
       .withIndex("by_organizationId", (q) =>
@@ -274,6 +280,7 @@ export const saveLocationMappingInternal = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    await requireIntegrationEnabled(ctx, args.organizationId, "workfeed");
     const [location, current, departmentMapping] = await Promise.all([
       ctx.db.get("locations", args.locationId),
       ctx.db
@@ -334,6 +341,7 @@ export const connect = action({
   returns: v.object({ departmentCount: v.number() }),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
     requireAllLocationAccess(auth);
     const human = requireHumanPrincipal(auth);
     const { organizationId, userName } = auth;
@@ -358,18 +366,7 @@ export const connect = action({
 export const setEnabled = action({
   args: { enabled: v.boolean() },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const { auth, organizationId, settings } = await requireConnectedSettings(ctx);
-    requireAllLocationAccess(auth);
-    if (args.enabled) {
-      await requestDepartments(settings);
-    }
-    await ctx.runMutation(internal.workfeed.setEnabledInternal, {
-      organizationId,
-      enabled: args.enabled,
-    });
-    return null;
-  },
+  handler: async (ctx, args): Promise<null> => ctx.runMutation(api.integrations.setEnabled, { integration: "workfeed", enabled: args.enabled }),
 });
 
 export const listDepartments = action({
@@ -417,6 +414,7 @@ export const removeLocationMapping = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
     const { organizationId } = auth;
     requireLocationAccess(auth, args.locationId);
     const mapping = await ctx.db
@@ -442,6 +440,7 @@ export const disconnect = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
     requireAllLocationAccess(auth);
     const { organizationId } = auth;
     const [settings, mappings] = await Promise.all([
