@@ -326,47 +326,67 @@ export const operationFeatures: HelpFeature[] = [
     ],
   },
   {
-    integration: "workfeed",
     slug: "medarbejdere",
     label: "Medarbejdere",
     summary:
-      "Se vagtplan og medarbejdere fra Workfeed på den rigtige Lokation.",
+      "Find, opret og redigér medarbejdere på den valgte Lokation.",
     icon: UsersRoundIcon,
     guides: [
       {
         slug: "overblik",
         label: "Overblik",
         summary:
-          "Se vagtplan og medarbejdere fra Workfeed på den rigtige Lokation.",
-        appHref: "/employees",
+          "Find, opret og redigér medarbejdere på den valgte Lokation.",
+        appHref: "/employees/directory",
         appLinkLabel: "Åbn Medarbejdere",
         sections: [
           {
-            id: "om",
-            title: "Sådan fungerer Medarbejdere",
-            paragraphs: [
-              "Medarbejdere viser offentliggjorte vagter og medarbejderdata fra Workfeed. Ret data og vagter i Workfeed; den tilsluttede Lokation viser dem efter synkronisering.",
-            ],
-          },
-          {
-            id: "forloeb",
-            title: "Fra opsætning til daglig brug",
+            id: "find",
+            title: "Find en medarbejder",
             steps: [
-              "Klargør Workfeed-forbindelsen, og vælg vagtplanens tidszone og adgang.",
-              "Vælg Lokation og uge, find medarbejdere, og kontrollér synkroniseringen, hvis noget mangler.",
+              "Åbn Medarbejdere, og vælg Lokation.",
+              "Søg efter navnet. Vælg Aktive eller Alle for også at se inaktive medarbejdere.",
+              "Kontrollér medarbejderens lokationer og status. Brug Vis flere, hvis medarbejderen ikke er på den første side.",
             ],
           },
           {
-            id: "foer-du-starter",
-            title: "Før du starter",
-            bullets: [
-              "Workfeed skal være forbundet, og hver Lokation skal være koblet til den rigtige Workfeed-afdeling.",
-              "Rollen skal give adgang til vagtplanen, medarbejderkartoteket eller begge.",
+            id: "opret",
+            title: "Opret en medarbejder",
+            steps: [
+              "Vælg den Lokation, medarbejderen skal tilknyttes, og vælg Opret medarbejder.",
+              "Udfyld Fornavn og eventuelt Efternavn. Hvert navn må højst være 100 tegn.",
+              "Kontrollér Aktiv, og vælg Opret medarbejder. Medarbejderen oprettes på den valgte Lokation.",
+            ],
+          },
+          {
+            id: "rediger",
+            title: "Redigér navn og status",
+            steps: [
+              "Find medarbejderen, og vælg Redigér eller blyanten ved navnet.",
+              "Ret Fornavn, Efternavn eller Aktiv, og vælg Gem ændringer.",
+              "Vælg Alle i listen, hvis du vil finde og genaktivere en inaktiv medarbejder.",
+            ],
+          },
+          {
+            id: "adgang",
+            title: "Adgang til medarbejdere",
+            paragraphs: [
+              "Din rolle skal give adgang til medarbejderkartoteket og den valgte Lokation. Oprettelse og redigering kræver også adgang til organisationens indstillinger og er ikke tilgængelig i kiosktilstand.",
+              "Medarbejdere, der er oprettet her, kan administreres uden en integration.",
+            ],
+          },
+          {
+            integration: "workfeed",
+            id: "importerede",
+            title: "Medarbejdere fra Workfeed",
+            paragraphs: [
+              "Medarbejdere hentet fra Workfeed kan ikke redigeres her. Ret dem i Workfeed, og synkronisér ændringerne. Medarbejdere, du har oprettet i appen, kan fortsat redigeres her.",
             ],
           },
         ],
       },
       {
+        integration: "workfeed",
         slug: "vagtplan",
         label: "Sæt op og brug vagtplanen",
         summary:

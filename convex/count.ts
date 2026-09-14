@@ -1,4 +1,4 @@
-import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
+import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/connections";
 import { parseDateKey } from "../lib/date";
 import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";

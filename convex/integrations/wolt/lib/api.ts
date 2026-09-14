@@ -1,9 +1,9 @@
-import type { Doc } from "../_generated/dataModel";
+import type { Doc } from "../../../_generated/dataModel";
 import {
   type WoltCredentials,
   type WoltEnvironmentName,
   woltEndpoints,
-} from "./woltCrypto";
+} from "./crypto";
 
 const MAX_PROVIDER_ERROR = 300;
 const MAX_ITEMS = 500;

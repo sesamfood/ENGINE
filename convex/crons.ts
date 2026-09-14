@@ -1,7 +1,14 @@
+import { registerWoltCrons } from "./integrations/wolt/crons";
+import { registerOnlinePosCrons } from "./integrations/onlinepos/crons";
+import { registerWorkfeedCrons } from "./integrations/workfeed/crons";
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
 
 const crons = cronJobs();
+
+registerWorkfeedCrons(crons);
+registerOnlinePosCrons(crons);
+registerWoltCrons(crons);
 
 crons.interval("refresh weather and holiday forecasts", { hours: 6 }, internal.forecasts.dispatch, { cursor: null });
 
@@ -16,71 +23,6 @@ crons.interval(
   "delete expired archived products",
   { hours: 24 },
   internal.catalog.deleteExpiredProducts,
-  {},
-);
-
-crons.cron(
-  "daily Workfeed synchronization",
-  "17 3 * * *",
-  internal.workfeedSync.dispatchEnabledIntegrations,
-  { kind: "employees", cursor: null },
-);
-
-crons.cron(
-  "incremental OnlinePOS sales",
-  "13 */4 * * *",
-  internal.onlinePosSync.dispatchEnabledLocations,
-  { kind: "incremental", cursor: null },
-);
-
-crons.interval(
-  "OnlinePOS sales for live stock",
-  { minutes: 10 },
-  internal.onlinePosSync.dispatchEnabledLocations,
-  { kind: "incremental", cursor: null, stockOnly: true },
-);
-
-// Convex cron expressions are UTC (not org-local). 05:23 UTC is 06:23 CET /
-// 07:23 CEST — after typical Copenhagen close-of-business for the prior local day.
-crons.cron(
-  "reconcile OnlinePOS sales",
-  "23 5 * * *",
-  internal.onlinePosSync.dispatchEnabledLocations,
-  { kind: "reconcile", cursor: null },
-);
-
-crons.interval(
-  "prune OnlinePOS sales",
-  { hours: 24 },
-  internal.onlinePosSync.pruneSales,
-  { cursor: null },
-);
-
-crons.interval(
-  "prune sales stock applications",
-  { hours: 24 },
-  internal.onlinePosStock.prune,
-  {},
-);
-
-crons.interval(
-  "recover pending Wolt jobs",
-  { minutes: 5 },
-  internal.woltSync.dispatchPendingJobs,
-  {},
-);
-
-crons.interval(
-  "maintain Wolt refresh tokens",
-  { minutes: 10 },
-  internal.woltSync.dispatchTokenMaintenance,
-  {},
-);
-
-crons.interval(
-  "prune Wolt order details",
-  { hours: 24 },
-  internal.woltSync.prune,
   {},
 );
 
@@ -105,20 +47,6 @@ crons.cron(
   "delete orphaned member location access",
   "41 2 * * 0",
   internal.access.purgeOrphanedMemberLocationAccess,
-  { cursor: null },
-);
-
-crons.interval(
-  "refresh estimated Workfeed labour",
-  { hours: 6 },
-  internal.workfeedLabor.dispatchCurrent,
-  { cursor: null },
-);
-
-crons.interval(
-  "refresh OnlinePOS financial sales",
-  { hours: 6 },
-  internal.onlinePosFinancial.refreshRecentMonths,
   { cursor: null },
 );
 

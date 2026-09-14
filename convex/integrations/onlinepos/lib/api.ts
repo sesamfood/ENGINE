@@ -1,4 +1,4 @@
-import { dateTimeFormatter, zonedTimestamp, DEFAULT_TIME_ZONE } from "../../lib/date";
+import { dateTimeFormatter, zonedTimestamp, DEFAULT_TIME_ZONE } from "../../../../lib/date";
 import { ConvexError } from "convex/values";
 
 export const ONLINE_POS_API_URL = "https://api.onlinepos.dk/api";

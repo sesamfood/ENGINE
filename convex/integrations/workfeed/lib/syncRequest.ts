@@ -1,7 +1,7 @@
-import { isIntegrationEnabled } from "../integrations/state";
-import { internal } from "../_generated/api";
-import type { MutationCtx } from "../_generated/server";
-import { rateLimiter } from "./rateLimits";
+import { isIntegrationEnabled } from "../../state";
+import { internal } from "../../../_generated/api";
+import type { MutationCtx } from "../../../_generated/server";
+import { rateLimiter } from "../../../lib/rateLimits";
 
 export type WorkfeedEmployeeSyncResult = {
   accepted: boolean;

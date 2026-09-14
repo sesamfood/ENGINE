@@ -13,7 +13,7 @@ import {
   requireLocationAccess, type OrganizationAuth,
 } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
-import { economicCategoryValidator } from "./lib/economicValidators";
+import { economicCategoryValidator } from "./integrations/economic/lib/validators";
 import { requireOrganizationLocation } from "./lib/locations";
 import { resolveLocationCurrency } from "./lib/masterData";
 import { rateLimiter } from "./lib/rateLimits";
@@ -22,8 +22,8 @@ import {
   nullableKpiNumber as nullableNumber,
 } from "./lib/monthlyKpiValidators";
 import { resolveTimeZone } from "./lib/timeZone";
-import { queueFinancialRange, readFinancialMonths } from "./onlinePosFinancial";
-import { queueLaborMonth, readLaborMonths } from "./workfeedLabor";
+import { queueFinancialRange, readFinancialMonths } from "./integrations/onlinepos/financial";
+import { queueLaborMonth, readLaborMonths } from "./integrations/workfeed/labor";
 
 const locationIdsValidator = v.union(v.array(v.id("locations")), v.null());
 function requireMonth(month: string) {
@@ -241,7 +241,9 @@ export const saveBudget = mutation({
       organizationId: auth.organizationId, locationId: args.locationId, month: args.month, currency, sourceNote,
       sales: args.sales, transactions: args.transactions, labour: args.labour, cogs: args.cogs,
       waste: args.waste, rent: args.rent, utilities: args.utilities, other: args.other, guestScore: args.guestScore,
-      economicBudgetCategories: economicBudgetComponents.filter((category) => args.economicBudgetCategories.includes(category)),
+      economicBudgetCategories: await isIntegrationEnabled(ctx, auth.organizationId, "economic")
+        ? economicBudgetComponents.filter((category) => args.economicBudgetCategories.includes(category))
+        : previous?.economicBudgetCategories ?? [],
       revision: args.expectedRevision + 1, updatedAt: Date.now(), updatedBy: auth.userId,
     });
     await recordAudit(ctx, auth, { action: "monthlyKpi.budgetSaved", entityTable: "monthlyKpiBudgets", entityId: id,

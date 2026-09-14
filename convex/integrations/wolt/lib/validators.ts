@@ -41,12 +41,6 @@ export const woltProductMatchTypeValidator = v.union(
   v.literal("name"),
 );
 
-export const salesSourceValidator = v.union(
-  v.literal("onlinePos"),
-  v.literal("wolt"),
-  v.literal("combined"),
-);
-
 export const woltWebhookEnvelopeValidator = v.object({
   eventId: v.string(),
   orderId: v.string(),

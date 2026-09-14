@@ -1,7 +1,7 @@
 import { v } from "convex/values";
-import { salesSourceValidator } from "./woltValidators";
+import { salesSourceValidator } from "./salesSources";
 
-export { salesSourceValidator } from "./woltValidators";
+export { salesSourceValidator } from "./salesSources";
 
 export const metricIdValidator = v.union(
   v.literal("googleRating"),

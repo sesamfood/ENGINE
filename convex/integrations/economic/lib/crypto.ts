@@ -1,8 +1,8 @@
 import { ConvexError } from "convex/values";
-import type { Doc } from "../_generated/dataModel";
-import { env } from "../_generated/server";
-import type { EconomicCredentials } from "./economicApi";
-import { decryptCredential } from "../integrations/credentials";
+import type { Doc } from "../../../_generated/dataModel";
+import { env } from "../../../_generated/server";
+import type { EconomicCredentials } from "./api";
+import { decryptCredential } from "../../credentials";
 
 function decode(value: string) {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new ConvexError("e-conomic-nøglen er ugyldig");

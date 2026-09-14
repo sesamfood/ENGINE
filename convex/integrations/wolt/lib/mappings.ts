@@ -1,5 +1,5 @@
-import type { Doc, Id } from "../_generated/dataModel";
-import { normalizeWoltText } from "./woltApi";
+import type { Doc, Id } from "../../../_generated/dataModel";
+import { normalizeWoltText } from "./api";
 
 export type WoltItemIdentifiers = {
   gtin?: string;

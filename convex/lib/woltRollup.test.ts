@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Id } from "../_generated/dataModel";
-import { woltDailyContribution } from "./woltRollup";
+import { woltDailyContribution } from "../integrations/wolt/lib/rollup";
 
 const locationId = "location" as Id<"locations">;
 

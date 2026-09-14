@@ -1,6 +1,6 @@
-import type { Id } from "../_generated/dataModel";
-import { dateKey, zonedStart } from "./dashboardMetrics";
-import type { WoltOrderSnapshot } from "./woltApi";
+import type { Id } from "../../../_generated/dataModel";
+import { dateKey, zonedStart } from "../../../lib/dashboardMetrics";
+import type { WoltOrderSnapshot } from "./api";
 
 export type WoltDailyContribution = {
   organizationId: string;

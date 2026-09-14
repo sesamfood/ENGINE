@@ -1,9 +1,9 @@
 import { ConvexError, type Infer } from "convex/values";
-import { economicBudgetComponents, kpiCell, kpiMonthEnd, type MonthlyKpiCell, type MonthlyKpiInputs } from "../../lib/dashboard/monthly-kpi";
-import type { Doc, Id } from "../_generated/dataModel";
-import type { fetchEconomicReportData } from "./economicApi";
-import { economicFingerprint } from "./economicCrypto";
-import type { economicCategoryValidator } from "./economicValidators";
+import { economicBudgetComponents, kpiCell, kpiMonthEnd, type MonthlyKpiCell, type MonthlyKpiInputs } from "../../../../lib/dashboard/monthly-kpi";
+import type { Doc, Id } from "../../../_generated/dataModel";
+import type { fetchEconomicReportData } from "./api";
+import { economicFingerprint } from "./crypto";
+import type { economicCategoryValidator } from "./validators";
 
 export type EconomicCategory = Infer<typeof economicCategoryValidator>;
 export const economicCategories: readonly EconomicCategory[] = economicBudgetComponents;

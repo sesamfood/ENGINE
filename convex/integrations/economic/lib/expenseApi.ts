@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { Doc } from "../_generated/dataModel";
-import type { EconomicCredentials } from "./economicApi";
+import type { Doc } from "../../../_generated/dataModel";
+import type { EconomicCredentials } from "./api";
 
 const JOURNALS = "https://apis.e-conomic.com/journalsapi/v15.0.1";
 const ACCOUNTS = "https://apis.e-conomic.com/accountsapi/v7.0.1/Accounts";
@@ -186,7 +186,7 @@ export async function readExpenseDraft(credentials: EconomicCredentials, expense
   return entry;
 }
 
-export async function attachExpenseDimension(credentials: EconomicCredentials, expense: Expense, mapping: Mapping, entryNumber: number) {
+export async function attachExpenseDimension(credentials: EconomicCredentials, expense: Expense, mapping: Mapping, entryNumber: number, beforeWrite: () => Promise<void>) {
   if (mapping.dimensionNumber === null || mapping.dimensionKey === null) return;
   const existing = await request(credentials, filtered(DIMENSIONS, `journalNumber$eq:${mapping.journalNumber}$and:entryNumber$eq:${entryNumber}$and:dimensionNumber$eq:${mapping.dimensionNumber}`), z.object({
     items: z.array(z.object({ journalNumber: number, entryNumber: number, dimensionNumber: number, dimensionKey: number, isDistribution: z.boolean().optional(), objectVersion: z.string().min(1).max(1_000).nullish() })).max(1).nullable(),
@@ -199,13 +199,14 @@ export async function attachExpenseDimension(credentials: EconomicCredentials, e
   }
   if (current?.dimensionKey === mapping.dimensionKey && !current.isDistribution) return;
   if (current && !current.objectVersion) throw new ExpenseEconomicError("Afdelingen kunne ikke opdateres sikkert. Kontrollér posteringen i e-conomic.");
+  await beforeWrite();
   await request(credentials, DIMENSIONS, z.union([z.object({ dimensionNumber: number }), z.null()]), {
     method: current ? "PUT" : "POST", key: `expense/${expense._id}/dimension/${current?.objectVersion ?? "new"}`,
     body: JSON.stringify({ journalNumber: mapping.journalNumber, entryNumber, dimensionNumber: mapping.dimensionNumber, dimensionKey: mapping.dimensionKey, isDistribution: false, ...(current ? { objectVersion: current.objectVersion } : {}) }),
   });
 }
 
-export async function attachExpenseReceipt(credentials: EconomicCredentials, expense: Expense, accountingYear: string, voucherNumber: number, blob: Blob) {
+export async function attachExpenseReceipt(credentials: EconomicCredentials, expense: Expense, accountingYear: string, voucherNumber: number, blob: Blob, beforeWrite: () => Promise<void>) {
   if (!voucherNumber) throw new ExpenseEconomicError("e-conomic kan ikke vedhæfte bilag til bilagsnummer 0. Kontrollér kassekladden.");
   const note = `Udgift ${expense._id}`;
   const existing = await request(credentials, filtered(DOCUMENTS, `accountingYear$eq:${accountingYear}$and:voucherNumber$eq:${voucherNumber}`), z.object({
@@ -224,5 +225,6 @@ export async function attachExpenseReceipt(credentials: EconomicCredentials, exp
   form.append("voucherNumber", String(voucherNumber));
   form.append("note", note);
   form.append("onConflict", "1");
+  await beforeWrite();
   await request(credentials, DOCUMENTS, z.object({ number }), { method: "POST", key: `expense/${expense._id}/receipt`, body: form });
 }

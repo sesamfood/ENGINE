@@ -5,7 +5,7 @@ import {
   hashWoltState,
   verifyWoltSignature,
   woltWioRedirectUris,
-} from "./woltCrypto";
+} from "../integrations/wolt/lib/crypto";
 
 const credentialKey = btoa("01234567890123456789012345678901");
 const webhookSecret = "organization-webhook-secret-with-enough-bytes";

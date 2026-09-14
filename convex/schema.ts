@@ -1,10 +1,14 @@
+import { woltTables } from "./integrations/wolt/schema";
+import { economicTables } from "./integrations/economic/schema";
+import { onlineposTables } from "./integrations/onlinepos/schema";
+import { workfeedTables } from "./integrations/workfeed/schema";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
 import { featureIdValidator } from "./lib/features";
 import { expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
-import { economicApprovalItemValidator, economicCategoryValidator, economicMappingFields } from "./lib/economicValidators";
+import { economicCategoryValidator } from "./integrations/economic/lib/validators";
 import {
   forecastProfileValidator,
   locationForecastValidator,
@@ -14,7 +18,7 @@ import {
   weeklyOpeningHoursValidator,
 } from "./lib/openingHours";
 import { countScheduleValidator } from "./lib/countSettings";
-import { menuGroupValidator } from "./lib/menuGroups";
+
 import {
   ownCheckControlTypeValidator,
   ownCheckFieldValidator,
@@ -24,7 +28,7 @@ import {
   ownCheckValueValidator,
 } from "./lib/ownCheckValidators";
 import { organizationThemeValidator } from "./lib/organizationTheme";
-import { woltStoredCredentialsValidator } from "./lib/woltCredentialValidators";
+
 import {
   customMetricSpecValidator,
   dashboardSummarySourceValidator,
@@ -32,17 +36,13 @@ import {
   scopeValidator,
   widgetValidator,
 } from "./lib/dashboardValidators";
-import {
-  salesSourceValidator,
-  woltConnectionStateValidator,
-  woltJobStateValidator,
-  woltOnboardingModeValidator,
-  woltOrderStatusValidator,
-  woltOrderTypeValidator,
-  woltProductMatchTypeValidator,
-} from "./lib/woltValidators";
+import { salesSourceValidator } from "./lib/salesSources";
 
 export default defineSchema({
+  ...workfeedTables,
+  ...onlineposTables,
+  ...economicTables,
+  ...woltTables,
   integrationSecrets: defineTable({
     organizationId: v.string(),
     key: v.string(),
@@ -227,65 +227,6 @@ export default defineSchema({
     lastRequestedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
-  onlinePosIntegrations: defineTable({
-    organizationId: v.string(),
-    name: v.optional(v.string()),
-    catalogScoped: v.optional(v.boolean()),
-    token: v.string(),
-    companyId: v.number(),
-    enabled: v.boolean(),
-    stockSyncEnabled: v.optional(v.boolean()),
-    stockRefundsToWaste: v.optional(v.boolean()),
-    stockSyncStartedAt: v.optional(v.number()),
-    stockSyncHistoryStartAt: v.optional(v.number()),
-    stockSyncSinceLastCount: v.optional(v.boolean()),
-    stockMappingRevision: v.optional(v.number()),
-    connectedAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"]),
-
-  onlinePosLocationIntegrations: defineTable({
-    organizationId: v.string(),
-    masterIntegrationId: v.optional(v.id("onlinePosIntegrations")),
-    locationId: v.id("locations"),
-    token: v.string(),
-    companyId: v.number(),
-    connectedAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ]),
-
-  onlinePosSalesResets: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-  }).index("by_organizationId_and_locationId", [
-    "organizationId",
-    "locationId",
-  ]),
-
-  onlinePosStockSyncStatus: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    runToken: v.string(),
-    activationAt: v.number(),
-    state: v.union(v.literal("running"), v.literal("idle"), v.literal("error")),
-    updatedAt: v.number(),
-    lastSuccessAt: v.optional(v.number()),
-    syncedThroughAt: v.optional(v.number()),
-    salesStatusId: v.optional(v.id("onlinePosSyncStatus")),
-    salesRevision: v.optional(v.number()),
-    orderRevisionsVersion: v.optional(v.literal(1)),
-    mappingRevision: v.optional(v.number()),
-    connectionId: v.optional(v.id("onlinePosLocationIntegrations")),
-    connectedAt: v.optional(v.number()),
-    lastError: v.optional(v.string()),
-    unmappedQuantity: v.number(),
-  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
-
   salesStockApplications: defineTable({
     organizationId: v.string(),
     integrationId: v.optional(v.id("onlinePosIntegrations")),
@@ -321,107 +262,6 @@ export default defineSchema({
     .index("by_organizationId_and_locationId_and_externalId", ["organizationId", "locationId", "externalId"])
     .index("by_organizationId_and_locationId_and_dayStart", ["organizationId", "locationId", "dayStart"])
     .index("by_dayStart", ["dayStart"]),
-
-  onlinePosProductMappings: defineTable({
-    organizationId: v.string(),
-    integrationId: v.optional(v.id("onlinePosIntegrations")),
-    productId: v.id("products"),
-    onlinePosProductId: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_integrationId", [
-      "organizationId",
-      "integrationId",
-    ])
-    .index("by_organizationId_and_integrationId_and_onlinePosProductId", [
-      "organizationId",
-      "integrationId",
-      "onlinePosProductId",
-    ])
-    .index("by_organizationId_and_productId", ["organizationId", "productId"])
-    .index("by_organizationId_and_integrationId_and_productId", [
-      "organizationId",
-      "integrationId",
-      "productId",
-    ])
-    .index("by_organizationId_and_onlinePosProductId", [
-      "organizationId",
-      "onlinePosProductId",
-    ]),
-
-  onlinePosMenus: defineTable({
-    organizationId: v.string(),
-    integrationId: v.optional(v.id("onlinePosIntegrations")),
-    onlinePosProductId: v.number(),
-    name: v.string(),
-    onlinePosProductName: v.optional(v.string()),
-    groupName: v.string(),
-    groups: v.optional(v.array(menuGroupValidator)),
-    products: v.array(
-      v.object({
-        kind: v.optional(v.union(v.literal("primary"), v.literal("additional"))),
-        groupId: v.optional(v.string()),
-        productId: v.id("products"),
-        name: v.string(),
-      }),
-    ),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_integrationId", [
-      "organizationId",
-      "integrationId",
-    ])
-    .index("by_organizationId_and_integrationId_and_onlinePosProductId", [
-      "organizationId",
-      "integrationId",
-      "onlinePosProductId",
-    ])
-    .index("by_organizationId_and_onlinePosProductId", [
-      "organizationId",
-      "onlinePosProductId",
-    ]),
-
-  onlinePosSyncStatus: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    state: v.union(
-      v.literal("idle"),
-      v.literal("queued"),
-      v.literal("running"),
-      v.literal("error"),
-    ),
-    runToken: v.optional(v.string()),
-    syncedThroughAt: v.optional(v.number()),
-    backfillThroughAt: v.optional(v.number()),
-    stockRevision: v.optional(v.number()),
-    stockChangedFrom: v.optional(v.number()),
-    stockFullSyncRevision: v.optional(v.number()),
-    // Set before destroying a day during reconcile; cleared only on success.
-    // Dispatcher retries this dayStart until the rebuild completes.
-    pendingReconcileDayStart: v.optional(v.number()),
-    dayStartRerollToken: v.optional(v.string()),
-    dayStartRerollTimeZone: v.optional(v.string()),
-    dayStartRerollRetryCount: v.optional(v.number()),
-    dayStartRerollError: v.optional(v.string()),
-    dailyHistoryFrom: v.optional(v.number()),
-    // Keep the latest reconciled day hash; replace by dayStart.
-    reconcileHashes: v.optional(
-      v.array(v.object({ dayStart: v.number(), hash: v.string() })),
-    ),
-    reconcileFailCount: v.optional(v.number()),
-    // true after we've written location-scoped line externalIds
-    lineIdsScoped: v.optional(v.boolean()),
-    lastAttemptAt: v.optional(v.number()),
-    lastSuccessAt: v.optional(v.number()),
-    lastError: v.optional(v.string()),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ]),
 
   invoices: defineTable({
     organizationId: v.string(),
@@ -553,356 +393,6 @@ export default defineSchema({
     "dayStart",
   ]),
 
-  onlinePosFinancialMonths: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    month: v.string(),
-    sourceKey: v.string(),
-    state: v.union(v.literal("queued"), v.literal("running"), v.literal("idle"), v.literal("error")),
-    runToken: v.optional(v.string()),
-    requestedThrough: v.string(),
-    lastError: v.optional(v.string()),
-    updatedAt: v.number(),
-    snapshot: v.optional(v.object({
-      netRevenue: v.number(),
-      transactionCount: v.number(),
-      currency: v.string(),
-      timeZone: v.string(),
-      through: v.string(),
-      syncedAt: v.number(),
-      sourceKey: v.string(),
-      version: v.literal(1),
-      days: v.array(v.object({
-        date: v.string(),
-        netRevenue: v.number(),
-        transactionCount: v.number(),
-      })),
-    })),
-  }).index("by_organizationId_and_locationId_and_month", [
-    "organizationId",
-    "locationId",
-    "month",
-  ]),
-
-  woltIntegrations: defineTable({
-    organizationId: v.string(),
-    credentials: v.optional(woltStoredCredentialsValidator),
-    enabled: v.boolean(),
-    updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"]),
-
-  woltVenueConnections: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    venueId: v.string(),
-    partnerVenueId: v.optional(v.string()),
-    onboardingMode: woltOnboardingModeValidator,
-    state: woltConnectionStateValidator,
-    accessTokenCiphertext: v.string(),
-    refreshTokenCiphertext: v.string(),
-    accessTokenExpiresAt: v.number(),
-    refreshTokenExpiresAt: v.number(),
-    tokenVersion: v.number(),
-    refreshLeaseId: v.optional(v.string()),
-    refreshLeaseExpiresAt: v.optional(v.number()),
-    activatedAt: v.number(),
-    disabledAt: v.optional(v.number()),
-    lastWebhookAt: v.optional(v.number()),
-    lastSuccessAt: v.optional(v.number()),
-    lastError: v.optional(v.string()),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ])
-    .index("by_venueId", ["venueId"])
-    .index("by_state_and_accessTokenExpiresAt", [
-      "state",
-      "accessTokenExpiresAt",
-    ])
-    .index("by_state_and_disabledAt", ["state", "disabledAt"]),
-
-  woltOAuthStates: defineTable({
-    stateHash: v.string(),
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    userId: v.string(),
-    redirectUri: v.string(),
-    returnPath: v.string(),
-    expiresAt: v.number(),
-    consumedAt: v.optional(v.number()),
-    createdAt: v.number(),
-  })
-    .index("by_stateHash", ["stateHash"])
-    .index("by_expiresAt", ["expiresAt"])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ]),
-
-  woltPartnerVenueMappings: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    partnerVenueId: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ])
-    .index("by_partnerVenueId", ["partnerVenueId"]),
-
-  woltOnboardingEvents: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    partnerVenueId: v.optional(v.string()),
-    mode: woltOnboardingModeValidator,
-    authorizationCodeHash: v.string(),
-    authorizationCodeCiphertext: v.string(),
-    redirectUri: v.string(),
-    redirectUriAllowed: v.literal(true),
-    state: woltJobStateValidator,
-    runToken: v.optional(v.string()),
-    attemptCount: v.number(),
-    nextAttemptAt: v.number(),
-    lastError: v.optional(v.string()),
-    expiresAt: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_authorizationCodeHash", ["authorizationCodeHash"])
-    .index("by_state_and_nextAttemptAt", ["state", "nextAttemptAt"])
-    .index("by_organizationId_and_state", ["organizationId", "state"])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ])
-    .index("by_expiresAt", ["expiresAt"]),
-
-  woltOnboardingQuarantine: defineTable({
-    organizationId: v.optional(v.string()),
-    partnerVenueId: v.string(),
-    authorizationCodeHash: v.string(),
-    authorizationCodeCiphertext: v.string(),
-    redirectUri: v.string(),
-    redirectUriAllowed: v.literal(true),
-    reason: v.string(),
-    createdAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_authorizationCodeHash", ["authorizationCodeHash"])
-    .index("by_partnerVenueId", ["partnerVenueId"])
-    .index("by_expiresAt", ["expiresAt"]),
-
-  woltWebhookEvents: defineTable({
-    eventId: v.string(),
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    venueId: v.string(),
-    orderId: v.string(),
-    providerStatus: v.string(),
-    eventCreatedAt: v.number(),
-    state: woltJobStateValidator,
-    runToken: v.optional(v.string()),
-    attemptCount: v.number(),
-    nextAttemptAt: v.number(),
-    lastError: v.optional(v.string()),
-    receivedAt: v.number(),
-    completedAt: v.optional(v.number()),
-  })
-    .index("by_eventId", ["eventId"])
-    .index("by_venueId_and_eventId", ["venueId", "eventId"])
-    .index("by_state_and_nextAttemptAt", ["state", "nextAttemptAt"])
-    .index("by_organizationId_and_state", ["organizationId", "state"])
-    .index("by_organizationId_and_locationId_and_state", [
-      "organizationId",
-      "locationId",
-      "state",
-    ])
-    .index("by_organizationId_and_locationId_and_receivedAt", [
-      "organizationId",
-      "locationId",
-      "receivedAt",
-    ])
-    .index("by_organizationId_and_orderId_and_receivedAt", [
-      "organizationId",
-      "orderId",
-      "receivedAt",
-    ])
-    .index("by_receivedAt", ["receivedAt"]),
-
-  woltWebhookQuarantine: defineTable({
-    organizationId: v.optional(v.string()),
-    eventId: v.string(),
-    venueId: v.string(),
-    orderId: v.string(),
-    providerStatus: v.string(),
-    eventCreatedAt: v.number(),
-    reason: v.string(),
-    receivedAt: v.number(),
-  })
-    .index("by_eventId", ["eventId"])
-    .index("by_venueId_and_eventId", ["venueId", "eventId"])
-    .index("by_venueId_and_receivedAt", ["venueId", "receivedAt"])
-    .index("by_organizationId_and_venueId_and_receivedAt", ["organizationId", "venueId", "receivedAt"])
-    .index("by_receivedAt", ["receivedAt"]),
-
-  woltOrders: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    venueId: v.string(),
-    woltOrderId: v.string(),
-    displayNumber: v.string(),
-    normalizedDisplayNumber: v.string(),
-    status: woltOrderStatusValidator,
-    providerStatus: v.string(),
-    orderType: woltOrderTypeValidator,
-    occurredAt: v.number(),
-    dayStart: v.number(),
-    date: v.string(),
-    providerCreatedAt: v.number(),
-    scheduledAt: v.optional(v.number()),
-    modifiedAt: v.number(),
-    basketPrice: v.number(),
-    refundAmount: v.optional(v.number()),
-    netRevenue: v.number(),
-    currency: v.string(),
-    itemCount: v.number(),
-    contributionVersion: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId_and_woltOrderId", [
-      "organizationId",
-      "woltOrderId",
-    ])
-    .index("by_organizationId_and_normalizedDisplayNumber", [
-      "organizationId",
-      "normalizedDisplayNumber",
-    ])
-    .index("by_organizationId_and_occurredAt", [
-      "organizationId",
-      "occurredAt",
-    ])
-    .index("by_organizationId_and_locationId_and_occurredAt", [
-      "organizationId",
-      "locationId",
-      "occurredAt",
-    ])
-    .index("by_organizationId_and_status_and_occurredAt", [
-      "organizationId",
-      "status",
-      "occurredAt",
-    ])
-    .index("by_organizationId_and_locationId_and_status_and_occurredAt", [
-      "organizationId",
-      "locationId",
-      "status",
-      "occurredAt",
-    ])
-    .index("by_occurredAt", ["occurredAt"]),
-
-  woltOrderItems: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    orderId: v.id("woltOrders"),
-    woltOrderId: v.string(),
-    itemId: v.string(),
-    name: v.string(),
-    normalizedName: v.string(),
-    quantity: v.number(),
-    posId: v.optional(v.string()),
-    sku: v.optional(v.string()),
-    gtin: v.optional(v.string()),
-    unitPrice: v.number(),
-    lineTotal: v.number(),
-    currency: v.string(),
-    occurredAt: v.number(),
-    status: woltOrderStatusValidator,
-    orderType: woltOrderTypeValidator,
-    observedAt: v.number(),
-  })
-    .index("by_organizationId_and_orderId", ["organizationId", "orderId"])
-    .index("by_organizationId_and_locationId_and_observedAt", [
-      "organizationId",
-      "locationId",
-      "observedAt",
-    ])
-    .index("by_organizationId_and_locationId_and_occurredAt", [
-      "organizationId",
-      "locationId",
-      "occurredAt",
-    ])
-    .index("by_organizationId_and_locationId_and_status_and_occurredAt", [
-      "organizationId",
-      "locationId",
-      "status",
-      "occurredAt",
-    ])
-    .index("by_organizationId_and_observedAt", [
-      "organizationId",
-      "observedAt",
-    ])
-    .index("by_organizationId_and_gtin", ["organizationId", "gtin"])
-    .index("by_organizationId_and_posId", ["organizationId", "posId"])
-    .index("by_organizationId_and_sku", ["organizationId", "sku"])
-    .index("by_organizationId_and_normalizedName", [
-      "organizationId",
-      "normalizedName",
-    ])
-    .index("by_observedAt", ["observedAt"]),
-
-  woltProductMappings: defineTable({
-    organizationId: v.string(),
-    locationId: v.union(v.id("locations"), v.null()),
-    matchType: woltProductMatchTypeValidator,
-    matchValue: v.string(),
-    productId: v.id("products"),
-    updatedBy: v.string(),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId_and_matchType_and_matchValue_and_locationId", [
-      "organizationId",
-      "matchType",
-      "matchValue",
-      "locationId",
-    ])
-    .index("by_organizationId_and_productId", [
-      "organizationId",
-      "productId",
-    ])
-    .index("by_organizationId_and_locationId", [
-      "organizationId",
-      "locationId",
-    ])
-    .index("by_organizationId", ["organizationId"]),
-
-  woltSalesDaily: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    dayStart: v.number(),
-    date: v.string(),
-    currency: v.string(),
-    revenue: v.number(),
-    orderCount: v.number(),
-    itemCount: v.number(),
-    canceledCount: v.number(),
-    totalCount: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId_and_locationId_and_dayStart", [
-      "organizationId",
-      "locationId",
-      "dayStart",
-    ])
-    .index("by_organizationId_and_dayStart", [
-      "organizationId",
-      "dayStart",
-    ]),
-
   feedbackSettings: defineTable({
     organizationId: v.string(),
     enabled: v.boolean(),
@@ -938,42 +428,6 @@ export default defineSchema({
   })
     .index("by_organizationId_and_createdAt", ["organizationId", "createdAt"])
     .index("by_screenshotStorageId", ["screenshotStorageId"]),
-
-  workfeedLaborDaily: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    date: v.string(),
-    laborCostMinor: v.number(),
-    currency: v.string(),
-    sourceKey: v.string(),
-    updatedAt: v.number(),
-  }).index("by_organizationId_and_locationId_and_date", [
-    "organizationId", "locationId", "date",
-  ]),
-
-  workfeedLaborSyncStatus: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    month: v.string(),
-    sourceKey: v.string(),
-    currency: v.string(),
-    timeZone: v.string(),
-    state: v.union(
-      v.literal("queued"),
-      v.literal("running"),
-      v.literal("ready"),
-      v.literal("error"),
-    ),
-    runToken: v.string(),
-    requestedThrough: v.string(),
-    coveredThrough: v.optional(v.string()),
-    laborCostMinor: v.optional(v.number()),
-    lastAttemptAt: v.number(),
-    lastSuccessAt: v.optional(v.number()),
-    lastError: v.optional(v.string()),
-  }).index("by_organizationId_and_locationId_and_month", [
-    "organizationId", "locationId", "month",
-  ]),
 
   monthlyKpiBudgets: defineTable({
     organizationId: v.string(),
@@ -1013,68 +467,6 @@ export default defineSchema({
     "organizationId", "locationId", "month", "revision",
   ]),
 
-  economicConnections: defineTable({
-    organizationId: v.string(),
-    agreementNumber: v.number(),
-    name: v.string(),
-    currency: v.string(),
-    encryptedToken: v.string(),
-    encryptedAppSecretToken: v.optional(v.string()),
-    enabled: v.boolean(),
-    ...economicMappingFields,
-    revision: v.number(),
-    connectedAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_agreementNumber", ["organizationId", "agreementNumber"]),
-
-  economicLocationMappings: defineTable({
-    organizationId: v.string(),
-    connectionId: v.id("economicConnections"),
-    locationId: v.id("locations"),
-    dimensionKey: v.union(v.number(), v.null()),
-  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"])
-    .index("by_connectionId", ["connectionId"]),
-
-  economicApprovals: defineTable({
-    organizationId: v.string(),
-    connectionId: v.id("economicConnections"),
-    locationId: v.id("locations"),
-    month: v.string(),
-    items: v.array(economicApprovalItemValidator),
-    sourceNote: v.string(),
-    revision: v.number(),
-    approvedAt: v.number(),
-    approvedBy: v.string(),
-  }).index("by_organizationId_and_locationId_and_month_and_revision", [
-    "organizationId", "locationId", "month", "revision",
-  ]),
-
-  workfeedIntegrations: defineTable({
-    organizationId: v.string(),
-    apiKey: v.string(),
-    companyId: v.string(),
-    enabled: v.boolean(),
-    connectedAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_enabled_and_organizationId", ["enabled", "organizationId"]),
-
-  workfeedLocationMappings: defineTable({
-    organizationId: v.string(),
-    locationId: v.id("locations"),
-    departmentId: v.string(),
-    departmentName: v.string(),
-    updatedAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_locationId", ["organizationId", "locationId"])
-    .index("by_organizationId_and_departmentId", [
-      "organizationId",
-      "departmentId",
-    ]),
-
   organizationScheduleSettings: defineTable({
     organizationId: v.string(),
     timeZone: v.string(),
@@ -1083,6 +475,7 @@ export default defineSchema({
 
   employees: defineTable({
     organizationId: v.string(),
+    managedLocally: v.optional(v.boolean()),
     firstName: v.string(),
     lastName: v.string(),
     displayName: v.string(),
@@ -1266,90 +659,6 @@ export default defineSchema({
       "employeeId",
       "registeredAt",
     ]),
-
-  workfeedEmployeeMappings: defineTable({
-    organizationId: v.string(),
-    companyId: v.string(),
-    externalEmployeeId: v.string(),
-    employeeId: v.id("employees"),
-    syncToken: v.string(),
-    lastSeenAt: v.number(),
-    pendingLocationIds: v.optional(v.array(v.id("locations"))),
-    pendingActive: v.optional(v.boolean()),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_companyId_and_externalEmployeeId", [
-      "organizationId",
-      "companyId",
-      "externalEmployeeId",
-    ])
-    .index("by_organizationId_and_employeeId", [
-      "organizationId",
-      "employeeId",
-    ]),
-
-  workfeedShiftMappings: defineTable({
-    organizationId: v.string(),
-    companyId: v.string(),
-    externalShiftId: v.string(),
-    shiftId: v.id("scheduledShifts"),
-    externalDepartmentId: v.string(),
-    startsAt: v.number(),
-    syncToken: v.string(),
-    lastSeenAt: v.number(),
-  })
-    .index("by_organizationId", ["organizationId"])
-    .index("by_organizationId_and_companyId_and_externalShiftId", [
-      "organizationId",
-      "companyId",
-      "externalShiftId",
-    ])
-    .index("by_organizationId_and_companyId_and_startsAt", [
-      "organizationId",
-      "companyId",
-      "startsAt",
-    ])
-    .index("by_organizationId_and_shiftId", ["organizationId", "shiftId"]),
-
-  workfeedRoles: defineTable({
-    organizationId: v.string(),
-    companyId: v.string(),
-    externalRoleId: v.string(),
-    externalDepartmentId: v.string(),
-    name: v.string(),
-    active: v.boolean(),
-    syncToken: v.string(),
-    updatedAt: v.number(),
-  }).index("by_organizationId_and_companyId_and_externalRoleId", [
-    "organizationId",
-    "companyId",
-    "externalRoleId",
-  ]),
-
-  workfeedSyncStatus: defineTable({
-    organizationId: v.string(),
-    state: v.union(
-      v.literal("idle"),
-      v.literal("queued"),
-      v.literal("running"),
-      v.literal("error"),
-    ),
-    runKind: v.optional(v.union(v.literal("employees"), v.literal("shifts"))),
-    runToken: v.optional(v.string()),
-    pendingShiftChunks: v.optional(v.number()),
-    shiftChunkHashes: v.optional(v.array(v.string())),
-    lastEmployeeAttemptAt: v.optional(v.number()),
-    lastEmployeeSuccessAt: v.optional(v.number()),
-    lastEmployeeCompanyId: v.optional(v.string()),
-    lastShiftAttemptAt: v.optional(v.number()),
-    lastShiftSuccessAt: v.optional(v.number()),
-    shiftCoverageFrom: v.optional(v.number()),
-    shiftCoverageThrough: v.optional(v.number()),
-    shiftCoverageCompanyId: v.optional(v.string()),
-    shiftCoverageTimeZone: v.optional(v.string()),
-    lastError: v.optional(v.string()),
-    updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"]),
 
   categories: defineTable({
     organizationId: v.string(),

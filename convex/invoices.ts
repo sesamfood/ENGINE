@@ -2,7 +2,7 @@ import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/
 import {
   getOnlinePosLocationMaster,
   onlinePosCatalogId,
-} from "./lib/onlinePosConnections";
+} from "./integrations/onlinepos/lib/connections";
 import {
   paginationOptsValidator,
   paginationResultValidator,

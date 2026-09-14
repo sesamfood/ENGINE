@@ -1,5 +1,5 @@
 import { ConvexError } from "convex/values";
-import { addDays, inclusiveDateRangeDays } from "../../lib/date";
+import { addDays, inclusiveDateRangeDays } from "../../../../lib/date";
 
 const API_URL =
   "https://europe-west1-production-eu-327a3.cloudfunctions.net/api";

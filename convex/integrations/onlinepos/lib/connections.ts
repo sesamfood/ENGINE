@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
-import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { Doc, Id } from "../../../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../../../_generated/server";
 
 type ReadCtx = QueryCtx | MutationCtx;
 export const MAX_MASTER_CONNECTIONS = 20;

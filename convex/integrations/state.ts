@@ -1,3 +1,7 @@
+import { legacyWorkfeedEnabled } from "./workfeed/lifecycle";
+import { legacyOnlinePosEnabled } from "./onlinepos/lifecycle";
+import { legacyEconomicEnabled } from "./economic/lifecycle";
+import { legacyWoltEnabled } from "./wolt/lifecycle";
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "../_generated/api";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
@@ -11,6 +15,16 @@ export const integrationIdValidator = v.union(
 
 export type IntegrationId = Infer<typeof integrationIdValidator>;
 
+export async function getIntegrationState(ctx: QueryCtx | MutationCtx, organizationId: string) {
+  const [workfeed, onlinepos, economic, wolt] = await Promise.all([
+    isIntegrationEnabled(ctx, organizationId, "workfeed"),
+    isIntegrationEnabled(ctx, organizationId, "onlinepos"),
+    isIntegrationEnabled(ctx, organizationId, "economic"),
+    isIntegrationEnabled(ctx, organizationId, "wolt"),
+  ]);
+  return { workfeed, onlinepos, economic, wolt };
+}
+
 export async function isIntegrationEnabled(
   ctx: QueryCtx | MutationCtx,
   organizationId: string,
@@ -22,29 +36,23 @@ export async function isIntegrationEnabled(
     .unique();
   if (installation) return installation.enabled;
 
-  // Existing organizations keep their provider switches until explicitly changed.
   switch (integration) {
-    case "workfeed": {
-      const connection = await ctx.db.query("workfeedIntegrations")
-        .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId)).unique();
-      return connection?.enabled ?? false;
-    }
-    case "onlinepos": {
-      const connection = await ctx.db.query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId)).first();
-      return connection?.enabled ?? false;
-    }
-    case "economic": {
-      const connections = await ctx.db.query("economicConnections")
-        .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId)).take(201);
-      return connections.some((connection) => connection.enabled);
-    }
-    case "wolt": {
-      const connection = await ctx.db.query("woltIntegrations")
-        .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId)).unique();
-      return Boolean(connection?.enabled && connection.credentials);
-    }
+    case "workfeed": return legacyWorkfeedEnabled(ctx, organizationId);
+    case "onlinepos": return legacyOnlinePosEnabled(ctx, organizationId);
+    case "economic": return legacyEconomicEnabled(ctx, organizationId);
+    case "wolt": return legacyWoltEnabled(ctx, organizationId);
   }
+}
+
+export async function writeInstallationState(ctx: MutationCtx, organizationId: string, integration: IntegrationId, enabled: boolean, updatedAt: number) {
+  const current = await ctx.db.query("integrationSettings")
+    .withIndex("by_organizationId_and_integration", (q) =>
+      q.eq("organizationId", organizationId).eq("integration", integration)).unique();
+  if (current) {
+    await ctx.db.patch(current._id, { enabled, updatedAt });
+    return current._id;
+  }
+  return ctx.db.insert("integrationSettings", { organizationId, integration, enabled, updatedAt });
 }
 
 export async function requireIntegrationEnabled(

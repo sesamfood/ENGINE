@@ -1,5 +1,5 @@
-import { env } from "../_generated/server";
-import { decryptCredential, encryptCredential } from "../integrations/credentials";
+import { env } from "../../../_generated/server";
+import { decryptCredential, encryptCredential } from "../../credentials";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

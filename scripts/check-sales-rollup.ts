@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { parseSaleLines } from "../convex/lib/onlinePosApi";
+import { parseSaleLines } from "../convex/integrations/onlinepos/lib/api";
 import {
   computeDailySalesDeltas,
   dayBucketKey,

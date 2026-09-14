@@ -3,7 +3,7 @@ import {
   normalizeWoltStatus,
   parseWoltOrder,
   parseWoltWebhook,
-} from "./woltApi";
+} from "../integrations/wolt/lib/api";
 
 function orderFixture(overrides: Record<string, unknown> = {}) {
   return {

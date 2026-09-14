@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
-import { addDays, dateKey, parseDateKey, zonedStart, zonedTimestamp } from "../../lib/date";
-import { number, object, requestOnlinePos, type OnlinePosSettings } from "./onlinePosApi";
+import { addDays, dateKey, parseDateKey, zonedStart, zonedTimestamp } from "../../../../lib/date";
+import { number, object, requestOnlinePos, type OnlinePosSettings } from "./api";
 
 const MAX_PAGES = 100;
 const MAX_LINES = 500_000;

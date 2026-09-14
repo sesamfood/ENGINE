@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { economicCategoryValidator } from "./economicValidators";
+import { economicCategoryValidator } from "../integrations/economic/lib/validators";
 
 export const nullableKpiNumber = v.union(v.number(), v.null());
 export const nullableKpiString = v.union(v.string(), v.null());
