@@ -597,6 +597,9 @@ function ProductMappings({
 }: {
   integrationId: Id<"onlinePosIntegrations">;
 }) {
+  const categoryFilterId = useId();
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const categories = useQuery(api.catalog.listCategoryOptions);
   const mappingOptions = useQuery(api.onlinePos.listMappingOptions, {
     integrationId,
   });
@@ -665,9 +668,37 @@ function ProductMappings({
     }
   }
 
-  if (!mappingOptions || (loading && !onlinePosProducts)) {
+  if (!mappingOptions || !categories || (loading && !onlinePosProducts)) {
     return <Skeleton className="h-96 w-full max-w-5xl" />;
   }
+
+  const categoryItems = [
+    { value: "all", label: "Alle kategorier" },
+    ...categories.map((category) => ({
+      value: category.id,
+      label: category.path,
+    })),
+  ];
+  const selectedCategory = categories.find(
+    (category) => category.id === categoryFilter,
+  );
+  const categoriesById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  const filteredProducts = selectedCategory
+    ? mappingOptions.products.filter((product) =>
+        product.categoryIds.some((categoryId) => {
+          let category = categoriesById.get(categoryId);
+          while (category) {
+            if (category.id === selectedCategory.id) return true;
+            category = category.parentCategoryId
+              ? categoriesById.get(category.parentCategoryId)
+              : undefined;
+          }
+          return false;
+        }),
+      )
+    : mappingOptions.products;
 
   return (
     <Card className="max-w-5xl">
@@ -694,6 +725,29 @@ function ProductMappings({
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <FieldGroup>
+          <Field className="max-w-sm">
+            <FieldLabel htmlFor={categoryFilterId}>Kategori</FieldLabel>
+            <Select
+              items={categoryItems}
+              value={selectedCategory?.id ?? "all"}
+              onValueChange={(value) => setCategoryFilter(value ?? "all")}
+            >
+              <SelectTrigger id={categoryFilterId} className="h-11 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {categoryItems.map((category) => (
+                    <SelectItem key={category.value} value={category.value}>
+                      {category.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
         {mappingOptions.limitReached ? (
           <Alert>
             <CircleAlertIcon />
@@ -716,6 +770,15 @@ function ProductMappings({
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
+        ) : filteredProducts.length === 0 ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>Ingen produkter i kategorien</EmptyTitle>
+              <EmptyDescription>
+                Vælg en anden kategori, eller vis alle kategorier.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : onlinePosProducts ? (
           <Table>
             <TableHeader>
@@ -725,7 +788,7 @@ function ProductMappings({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mappingOptions.products.map((product) => {
+              {filteredProducts.map((product) => {
                 return (
                   <TableRow key={product.id}>
                     <TableCell className="font-medium">
