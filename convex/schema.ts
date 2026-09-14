@@ -1,5 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { expiryValidator } from "./lib/expiry";
+import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
 import { economicApprovalItemValidator, economicCategoryValidator, economicMappingFields } from "./lib/economicValidators";
 import {
   forecastProfileValidator,
@@ -1383,6 +1385,7 @@ export default defineSchema({
     defaultUnitId: v.id("units"),
     imageStorageId: v.optional(v.id("_storage")),
     maxTemperatureCelsius: v.optional(v.number()),
+    expiry: v.optional(expiryValidator),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdBy: v.string(),
     updatedAt: v.number(),
@@ -1735,6 +1738,14 @@ export default defineSchema({
     "organizationId",
     "manualGoodsReceiptId",
   ]),
+
+  dateLabelSettings: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    ...dateLabelSelectionFields,
+    includeTime: v.optional(v.boolean()),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 
   orderingSettings: defineTable({
     organizationId: v.string(),

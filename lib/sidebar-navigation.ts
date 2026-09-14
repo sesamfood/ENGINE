@@ -1,5 +1,6 @@
 export const sidebarItems = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "dateLabels", label: "Datomærkning" },
   { id: "woltOrders", label: "Wolt-ordrer" },
   { id: "ordering", label: "Bestilling" },
   { id: "transfers", label: "Transfer" },

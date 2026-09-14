@@ -15,6 +15,7 @@ import {
   SettingsIcon,
   MonitorIcon,
   PackageCheckIcon,
+  PrinterIcon,
   StoreIcon,
   Trash2Icon,
   UtensilsIcon,
@@ -111,6 +112,7 @@ import {
 
 const navigationIcons = {
   dashboard: LayoutDashboardIcon,
+  dateLabels: PrinterIcon,
   woltOrders: ShoppingBagIcon,
   ordering: ShoppingCartIcon,
   transfers: ArrowRightLeftIcon,
@@ -1138,6 +1140,7 @@ export function AppShell({
   const showAdministrationHeader =
     pathname === "/administration" || pathname.startsWith("/administration/");
   const showPageHeader =
+    pathname === "/date-labels" ||
     showOrderingHeader ||
     showCountHeader ||
     showWasteHeader ||

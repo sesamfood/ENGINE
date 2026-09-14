@@ -3,6 +3,8 @@
 import { OnlinePosMasterSelect } from "./online-pos-master-select";
 
 import { uploadToStorage } from "@/lib/upload-to-storage";
+import { ExpiryField } from "@/components/catalog/expiry-field";
+import { expiryError, type Expiry } from "@/lib/expiry";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
@@ -334,6 +336,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   >(undefined);
   const [name, setName] = useState("");
   const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
+  const [expiryValue, setExpiryValue] = useState("");
+  const [expiryUnit, setExpiryUnit] = useState<Expiry["unit"]>("days");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [unitRows, setUnitRows] = useState<UnitRow[]>([
     { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
@@ -371,6 +375,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     }
     initializedProduct.current = productId;
     setName(product.name);
+    setExpiryValue(product.expiry?.value.toString() ?? "");
+    setExpiryUnit(product.expiry?.unit ?? "days");
     setMaxTemperatureCelsius(
       product.maxTemperatureCelsius?.toString() ?? "",
     );
@@ -679,6 +685,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   function validate() {
     const nextErrors: Record<string, string> = {};
     if (!name.trim()) nextErrors.name = "Indtast et produktnavn";
+    if (expiryValue.trim()) {
+      const error = expiryError({ value: Number(expiryValue), unit: expiryUnit });
+      if (error) nextErrors.expiry = error;
+    }
     const temperatureError = maxTemperatureError(maxTemperatureCelsius);
     if (temperatureError) {
       nextErrors.maxTemperatureCelsius = temperatureError;
@@ -788,6 +798,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             ingredients,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
+            expiry: expiryValue.trim()
+              ? { value: Number(expiryValue), unit: expiryUnit }
+              : null,
           })
         : await createProduct({
             name,
@@ -802,6 +815,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             ingredients,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
+            expiry: expiryValue.trim()
+              ? { value: Number(expiryValue), unit: expiryUnit }
+              : null,
           });
 
       let imageError: unknown;
@@ -1021,6 +1037,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 </InputGroup>
                 <FieldError>{errors.maxTemperatureCelsius}</FieldError>
               </Field>
+
+              <ExpiryField
+                id="product-expiry"
+                value={expiryValue}
+                unit={expiryUnit}
+                onValueChange={setExpiryValue}
+                onUnitChange={setExpiryUnit}
+                error={errors.expiry}
+                disabled={isSaving}
+              />
 
               {productId ? (
                 <OnlinePosProductMappingField
