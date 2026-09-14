@@ -15,6 +15,7 @@ import {
   requireStockViewer,
 } from "./lib/auth";
 import { otherFeaturesLockState } from "./lib/countLock";
+import { getDisabledFeatures } from "./lib/features";
 import {
   listCountAreas,
   MAX_COUNT_AREAS,
@@ -382,6 +383,9 @@ export const getOtherFeaturesLockEnabled = query({
   returns: v.boolean(),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
+    if ((await getDisabledFeatures(ctx, organizationId)).includes("count")) {
+      return false;
+    }
     const settings = await getCountConfiguration(ctx, organizationId);
     return settings.lockOtherFeaturesDuringCount;
   },

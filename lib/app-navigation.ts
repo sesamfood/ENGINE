@@ -1,4 +1,5 @@
 import type { PermissionId } from "./auth-permissions";
+import { featureForPath, type FeatureId } from "./features";
 import { kioskDestinations } from "./kiosk";
 import { sidebarItems, type SidebarItemId } from "./sidebar-navigation";
 
@@ -71,12 +72,25 @@ type KioskNavigation = {
   settings: { homePage: string | null; enabledPages: string[] } | null;
 };
 
-export function kioskHome(kiosk: KioskNavigation, countLocked: boolean) {
-  if (countLocked) return "/count";
+export function kioskHome(
+  kiosk: KioskNavigation,
+  countLocked: boolean,
+  disabledFeatures: readonly FeatureId[] = [],
+) {
+  if (countLocked && !disabledFeatures.includes("count")) return "/count";
+  const destinations = kioskDestinations.filter((destination) => {
+    const feature = featureForPath(destination.route);
+    return (
+      (!feature || !disabledFeatures.includes(feature)) &&
+      kiosk.settings?.enabledPages.includes(destination.id)
+    );
+  });
   return (
-    kioskDestinations.find(
+    destinations.find(
       (destination) => destination.id === kiosk.settings?.homePage,
-    )?.route ?? "/transfers"
+    )?.route ??
+    destinations[0]?.route ??
+    "/profile"
   );
 }
 
@@ -85,19 +99,28 @@ export function resolveAppNavigation({
   kiosk,
   countLocked,
   woltEnabled,
+  disabledFeatures = [],
 }: {
   permissions: readonly string[];
   kiosk: KioskNavigation | null;
   countLocked: boolean;
   woltEnabled: boolean;
+  disabledFeatures?: readonly FeatureId[];
 }) {
+  const otherFeaturesLocked = countLocked && !disabledFeatures.includes("count");
   return sidebarItems.flatMap((item) => {
+    if (item.id !== "organization" && disabledFeatures.includes(item.id))
+      return [];
+    if (item.id === "woltOrders" && !woltEnabled) return [];
     const candidates = routes[item.id];
-    if (countLocked && !["count", "waste", "organization"].includes(item.id))
+    if (
+      otherFeaturesLocked &&
+      !["count", "waste", "organization"].includes(item.id)
+    )
       return [];
     if (kiosk?.kioskModeEnabled) {
       if (item.id === "organization") return [];
-      if (countLocked)
+      if (otherFeaturesLocked)
         return [{ ...item, href: item.id === "count" ? "/count" : "/waste" }];
       const root = candidates[0].href;
       const destination = kioskDestinations.find(
@@ -107,7 +130,6 @@ export function resolveAppNavigation({
       );
       return destination ? [{ ...item, href: destination.route }] : [];
     }
-    if (item.id === "woltOrders" && !woltEnabled) return [];
     const route = candidates.find((candidate) =>
       permissions.includes(candidate.permission),
     );

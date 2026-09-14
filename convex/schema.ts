@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
+import { featureIdValidator } from "./lib/features";
 import { economicApprovalItemValidator, economicCategoryValidator, economicMappingFields } from "./lib/economicValidators";
 import {
   forecastProfileValidator,
@@ -40,6 +41,11 @@ import {
 } from "./lib/woltValidators";
 
 export default defineSchema({
+  featureSettings: defineTable({
+    organizationId: v.string(),
+    disabledFeatures: v.array(featureIdValidator),
+  }).index("by_organizationId", ["organizationId"]),
+
   addressSearchCache: defineTable({
     organizationId: v.string(),
     query: v.string(),
