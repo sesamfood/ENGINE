@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { PrinterIcon } from "lucide-react";
-import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,31 +29,34 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import type { LabelPrinter } from "@/hooks/use-label-printer";
-import { labelFormats, type LabelFormat } from "@/lib/date-label-print";
+import { useSmoothPrint } from "@/hooks/use-smooth-print";
+import {
+  labelFormats,
+  printDateLabels,
+  type LabelFormat,
+} from "@/lib/date-label-print";
+import {
+  smoothPrintConnectUrl,
+  smoothPrintDownloadUrl,
+  type SmoothPrintConnection,
+} from "@/lib/smooth-print";
 
 type PrinterSetupProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  printer: LabelPrinter;
   format: LabelFormat;
   onFormatChange: (format: LabelFormat) => void;
 };
 
 export function PrinterSetup(props: PrinterSetupProps) {
   return (
-    <Dialog
-      open={props.open}
-      onOpenChange={(open) => {
-        if (!props.printer.busy) props.onOpenChange(open);
-      }}
-    >
-      <DialogContent>
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Tilslut etiketprinter</DialogTitle>
+          <DialogTitle>Printeropsætning</DialogTitle>
           <DialogDescription>
-            Par denne enhed med en printer. Valget huskes for lokationen på
-            denne enhed.
+            På iPad og Android forbindes printeren i Brother Smooth Print. På en
+            computer bruges enhedens printdialog.
           </DialogDescription>
         </DialogHeader>
         <PrinterForm {...props} />
@@ -63,153 +65,208 @@ export function PrinterSetup(props: PrinterSetupProps) {
   );
 }
 
-function defaultHost() {
-  if (
-    typeof navigator !== "undefined" &&
-    (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-      (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
-  )
-    return "";
-  return "localhost";
-}
+const models = [
+  { value: "QL-820NWB", label: "Brother QL-820NWB" },
+  { value: "QL-820NWBc", label: "Brother QL-820NWBc" },
+];
+const connections = [
+  { value: "WiFi", label: "Wi-Fi" },
+  { value: "BT", label: "Bluetooth" },
+];
 
 function PrinterForm({
-  printer,
   format,
   onFormatChange,
   onOpenChange,
 }: PrinterSetupProps) {
-  const [host, setHost] = useState(
-    () => printer.pairing?.host ?? defaultHost(),
-  );
-  const [selected, setSelected] = useState<string | null>(
-    printer.pairing?.printer ?? null,
-  );
+  const [settings, setSettings] = useState<SmoothPrintConnection>({
+    model: "QL-820NWB",
+    connection: "WiFi",
+    address: "",
+    serial: "",
+  });
   const [error, setError] = useState<string | null>(null);
-  const connected =
-    printer.connected && printer.host === host.trim().toLowerCase();
-  const options = connected
-    ? printer.printers.map((name) => ({ value: name, label: name }))
-    : [];
-  const canPair = connected && selected && printer.printers.includes(selected);
-  const saved =
-    printer.pairing?.host === host.trim().toLowerCase() &&
-    printer.pairing.printer === selected;
+  const [connecting, setConnecting] = useState(false);
+  const [label] = useState(() => {
+    const now = Math.floor(Date.now() / 60_000) * 60_000;
+    return {
+      productName: "Testetiket",
+      locationName: "Datomærkning",
+      producedAt: now,
+      expiresAt: now + 86_400_000,
+    };
+  });
+  const printer = useSmoothPrint(label, format, 1);
 
-  async function connect() {
-    setError(null);
-    try {
-      const printers = await printer.connect(host);
-      setHost(host.trim().toLowerCase());
-      setSelected(
-        selected && printers.includes(selected)
-          ? selected
-          : printers.length === 1
-            ? printers[0]
-            : null,
-      );
-      if (!printers.length)
-        setError(
-          "Ingen printere fundet. Installér printerens driver på computeren med QZ Tray",
-        );
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Printerne kunne ikke findes",
-      );
-    }
-  }
-  async function testPrint() {
-    setError(null);
-    try {
-      const now = Math.floor(Date.now() / 60_000) * 60_000;
-      await printer.print(
-        {
-          productName: "Testetiket",
-          locationName: "Datomærkning",
-          producedAt: now,
-          expiresAt: now + 86_400_000,
-        },
-        format,
-        1,
-      );
-      toast.success("Testetiketten er sendt til printerkøen");
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Testetiketten kunne ikke printes",
-      );
-    }
-  }
   return (
     <>
+      <Alert>
+        <PrinterIcon />
+        <AlertTitle>Brother Smooth Print</AlertTitle>
+        <AlertDescription>
+          <p>
+            Installér Smooth Print på hver tablet. Vælg printeren i appen via
+            Wi-Fi eller Bluetooth, eller brug forbindelsesfelterne herunder.
+          </p>
+          <a
+            href={smoothPrintDownloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-4"
+          >
+            Hent Smooth Print til iPad eller Android
+          </a>
+          <p>
+            Print bruger den printer, der er valgt i Smooth Print. Kontrollér
+            valget, når du skifter lokation. Resultat og eventuelle fejl vises i
+            Smooth Print.
+          </p>
+        </AlertDescription>
+      </Alert>
       <FieldGroup>
-        <Field>
-          <div className="flex items-center gap-2">
-            <FieldLabel htmlFor="printer-host">Printtjeneste</FieldLabel>
-            <HelpTooltip
-              label="printtjeneste"
-              content="På en computer med QZ Tray: brug localhost. På en tablet: brug værtsnavnet på en computer med QZ Tray på samme netværk. Det er printtjenestens adresse, ikke printerens."
-            />
-          </div>
-          <div className="flex gap-2">
-            <Input
-              id="printer-host"
-              value={host}
-              onChange={(event) => {
-                setHost(event.target.value);
-                setSelected(null);
-              }}
-              placeholder="print.example.dk"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              disabled={printer.busy}
-              className="h-11 min-w-0"
-            />
+        {printer.platform ? (
+          <>
+            <Field>
+              <FieldLabel htmlFor="printer-model">Printermodel</FieldLabel>
+              <Select
+                items={models}
+                value={settings.model}
+                onValueChange={(value) => {
+                  if (value === "QL-820NWB" || value === "QL-820NWBc")
+                    setSettings({ ...settings, model: value });
+                }}
+              >
+                <SelectTrigger id="printer-model" className="h-11! w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {models.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="printer-connection">Forbindelse</FieldLabel>
+              <Select
+                items={connections}
+                value={settings.connection}
+                onValueChange={(value) => {
+                  if (value === "WiFi" || value === "BT")
+                    setSettings({
+                      ...settings,
+                      connection: value,
+                      address: "",
+                    });
+                }}
+              >
+                <SelectTrigger id="printer-connection" className="h-11! w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {connections.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <div className="flex items-center gap-2">
+                <FieldLabel htmlFor="printer-address">
+                  {settings.connection === "WiFi"
+                    ? "Printerens IP-adresse"
+                    : "Printerens Bluetooth-adresse"}
+                </FieldLabel>
+                <HelpTooltip
+                  label="printeradresse"
+                  content={
+                    settings.connection === "WiFi"
+                      ? "Brug adressen fra printerens netværksindstillinger. Enheden og printeren skal være på samme netværk."
+                      : "Par først printeren i enhedens Bluetooth-indstillinger. Find MAC-adressen i printerens indstillinger, eller vælg printeren direkte i Smooth Print."
+                  }
+                />
+              </div>
+              <Input
+                id="printer-address"
+                value={settings.address}
+                onChange={(event) =>
+                  setSettings({ ...settings, address: event.target.value })
+                }
+                placeholder={
+                  settings.connection === "WiFi"
+                    ? "192.168.1.50"
+                    : "00:11:22:33:44:55"
+                }
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="h-11"
+              />
+            </Field>
+            {settings.connection === "BT" && printer.platform === "ios" ? (
+              <Field>
+                <div className="flex items-center gap-2">
+                  <FieldLabel htmlFor="printer-serial">
+                    Printerens serienummer
+                  </FieldLabel>
+                  <HelpTooltip
+                    label="serienummer"
+                    content="Serienummeret står på printeren og kræves ved Bluetooth-forbindelse fra iPad og iPhone."
+                  />
+                </div>
+                <Input
+                  id="printer-serial"
+                  value={settings.serial}
+                  onChange={(event) =>
+                    setSettings({ ...settings, serial: event.target.value })
+                  }
+                  maxLength={100}
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="h-11"
+                />
+              </Field>
+            ) : null}
             <Button
               variant="outline"
-              className="min-h-11 shrink-0"
-              disabled={printer.busy || !host.trim()}
-              onClick={() => void connect()}
+              className="min-h-11"
+              disabled={!settings.address.trim()}
+              onClick={() => {
+                if (!printer.platform) return;
+                try {
+                  window.location.assign(
+                    smoothPrintConnectUrl(settings, printer.platform),
+                  );
+                  setConnecting(true);
+                  setError(null);
+                } catch (error) {
+                  setError(
+                    error instanceof Error
+                      ? error.message
+                      : "Forbindelsen kunne ikke åbnes",
+                  );
+                }
+              }}
             >
-              {printer.busy ? <Spinner data-icon="inline-start" /> : null}Find
-              printere
+              Tilslut i Smooth Print
             </Button>
-          </div>
-          {connected ? (
-            <FieldDescription>Forbundet med {printer.host}</FieldDescription>
-          ) : null}
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="paired-printer">Printer</FieldLabel>
-          <Select
-            items={options}
-            value={
-              options.some((item) => item.value === selected) ? selected : null
-            }
-            onValueChange={setSelected}
-            disabled={printer.busy || !options.length}
-          >
-            <SelectTrigger id="paired-printer" className="h-11! w-full">
-              <SelectValue placeholder="Find printere, og vælg en printer" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {options.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {printer.pairing ? (
-            <FieldDescription>
-              Gemt printer: {printer.pairing.printer}
-            </FieldDescription>
-          ) : null}
-        </Field>
+            {connecting ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                Fuldfør forbindelsen i Smooth Print, og vend tilbage for at
+                printe. Hvis appen ikke åbner, kontrollér at den er installeret,
+                og tillad browseren at åbne den.
+              </p>
+            ) : null}
+          </>
+        ) : null}
         <Field>
           <FieldLabel htmlFor="label-format">Etiketstørrelse</FieldLabel>
           <Select
@@ -218,7 +275,6 @@ function PrinterForm({
             onValueChange={(value) => {
               if (value) onFormatChange(value);
             }}
-            disabled={printer.busy}
           >
             <SelectTrigger id="label-format" className="h-11! w-full">
               <SelectValue />
@@ -233,101 +289,55 @@ function PrinterForm({
               </SelectGroup>
             </SelectContent>
           </Select>
+          <FieldDescription>
+            {format === "62x40"
+              ? "Brug en sort/hvid, 62 mm bred endeløs rulle."
+              : "Brug udstansede etiketter i den valgte størrelse."}
+          </FieldDescription>
         </Field>
       </FieldGroup>
-      <Alert>
-        <PrinterIcon />
-        <AlertTitle>QZ Tray skal være installeret</AlertTitle>
-        <AlertDescription>
-          <p>
-            Installér QZ Tray og printerens driver på en computer. En tablet
-            bruger computerens printtjeneste over en sikker forbindelse.
-          </p>
-          <p>
-            <a
-              href="https://qz.io/download/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-4"
-            >
-              Hent QZ Tray
-            </a>
-            {" · "}
-            <a
-              href="https://qz.io/docs/print-server"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-4"
-            >
-              Opsæt printtjeneste til tablets
-            </a>
-          </p>
-        </AlertDescription>
-      </Alert>
-      {connected && !printer.signed ? (
-        <p className="text-sm text-muted-foreground">
-          Godkend print i QZ Tray. En Administrator kan konfigurere signering,
-          så print kan godkendes én gang og huskes.
-        </p>
-      ) : null}
-      {error ? (
+      {error || printer.error ? (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{error ?? printer.error}</AlertDescription>
         </Alert>
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          className="min-h-11"
-          disabled={printer.busy || !saved}
-          onClick={() => void testPrint()}
-        >
-          <PrinterIcon data-icon="inline-start" />
-          Print testetiket
-        </Button>
-        {printer.pairing ? (
-          <Button
-            variant="ghost"
-            className="min-h-11"
-            disabled={printer.busy}
-            onClick={() => {
-              printer.forget();
-              setSelected(null);
-              toast.success("Printervalget er fjernet fra denne enhed");
-            }}
-          >
-            Glem printer
-          </Button>
-        ) : null}
-      </div>
+      {printer.opened ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          Kontrollér testetiketten i Smooth Print. Hvis appen ikke åbner,
+          kontrollér at den er installeret, og tillad browseren at åbne den.
+        </p>
+      ) : null}
       <DialogFooter>
         <Button
           variant="outline"
           className="min-h-11"
-          disabled={printer.busy}
           onClick={() => onOpenChange(false)}
         >
           Luk
         </Button>
         <Button
           className="min-h-11"
-          disabled={printer.busy || !canPair}
+          disabled={printer.preparing || Boolean(printer.error)}
           onClick={() => {
-            if (!selected) return;
             try {
-              printer.pair(host, selected);
-              toast.success("Printeren er parret med denne enhed");
-              onOpenChange(false);
+              if (printer.platform) printer.open();
+              else printDateLabels(label, format, 1);
+              setError(null);
             } catch (error) {
               setError(
                 error instanceof Error
                   ? error.message
-                  : "Printeren kunne ikke parres",
+                  : "Testetiketten kunne ikke åbnes",
               );
             }
           }}
         >
-          Par printer
+          {printer.preparing ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <PrinterIcon data-icon="inline-start" />
+          )}
+          Print testetiket
         </Button>
       </DialogFooter>
     </>

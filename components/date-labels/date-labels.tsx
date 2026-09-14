@@ -85,7 +85,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
-import { useLabelPrinter, type LabelPrinter } from "@/hooks/use-label-printer";
+import { useSmoothPrint } from "@/hooks/use-smooth-print";
 import { authClient } from "@/lib/auth-client";
 import {
   dateKey,
@@ -251,7 +251,6 @@ function LabelWorkspace({
   locationId: Id<"locations">;
   locationName: string;
 }) {
-  const printer = useLabelPrinter(organizationId, locationId);
   const products = useCompleteCatalog(api.dateLabels.listProducts, {
     locationId,
   });
@@ -393,7 +392,6 @@ function LabelWorkspace({
       expiry={selectedProduct.expiry ?? selection?.expiry ?? null}
       locationName={locationName}
       format={format}
-      printer={printer}
       onClose={() => setSelection(null)}
       onPrinterSetup={() => setPrinterOpen(true)}
       onMissingExpiry={() => selectProduct(selectedProduct)}
@@ -412,7 +410,7 @@ function LabelWorkspace({
           onClick={() => setPrinterOpen(true)}
         >
           <PrinterIcon data-icon="inline-start" />
-          {printer.pairing ? "Printeropsætning" : "Tilslut printer"}
+          Printeropsætning
         </Button>
       </div>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -557,7 +555,6 @@ function LabelWorkspace({
                   <CardFooter>
                     <Button
                       className="min-h-11 w-full"
-                      disabled={printer.busy}
                       onClick={() => selectProduct(product)}
                       aria-label={`Print etiket for ${product.name}`}
                     >
@@ -682,7 +679,6 @@ function LabelWorkspace({
         </DialogContent>
       </Dialog>
       <PrinterSetup
-        printer={printer}
         open={printerOpen}
         onOpenChange={setPrinterOpen}
         format={format}
@@ -699,7 +695,6 @@ function PrintPanel({
   expiry,
   locationName,
   format,
-  printer,
   onClose,
   onPrinterSetup,
   onMissingExpiry,
@@ -708,7 +703,6 @@ function PrintPanel({
   expiry: Expiry | null;
   locationName: string;
   format: LabelFormat;
-  printer: LabelPrinter;
   onClose: () => void;
   onPrinterSetup: () => void;
   onMissingExpiry: () => void;
@@ -752,20 +746,21 @@ function PrintPanel({
     Number.isInteger(Number(copies)) &&
     Number(copies) >= 1 &&
     Number(copies) <= 100;
-  async function print() {
+  const printer = useSmoothPrint(
+    copiesValid ? label : null,
+    format,
+    Number(copies),
+  );
+  function print() {
     if (!expiry) {
       onMissingExpiry();
       return;
     }
     if (!label || !copiesValid) return;
-    if (!printer.pairing) {
-      onPrinterSetup();
-      return;
-    }
     try {
-      await printer.print(label, format, Number(copies));
+      if (printer.platform) printer.open();
+      else printDateLabels(label, format, Number(copies));
       setPrintError(null);
-      toast.success("Etiketten er sendt til printerkøen");
     } catch (error) {
       setPrintError(
         error instanceof Error
@@ -784,7 +779,6 @@ function PrintPanel({
             size="icon"
             className="min-h-11 min-w-11"
             aria-label="Ryd produktvalg"
-            disabled={printer.busy}
             onClick={onClose}
           >
             <XIcon />
@@ -910,13 +904,13 @@ function PrintPanel({
             </Button>
           </div>
           <p className="text-sm text-muted-foreground">
-            {printer.pairing?.printer ?? "Ingen printer tilsluttet"}
+            {printer.platform
+              ? "Printeren vælges i Brother Smooth Print"
+              : "Printeren vælges i enhedens printdialog"}
           </p>
-          {printer.pairing ? (
+          {printer.platform ? (
             <p className="text-xs text-muted-foreground">
-              {printer.pairedConnection
-                ? "Printtjenesten er forbundet"
-                : "Forbinder til printtjenesten ved print"}
+              Kontrollér printervalget i Smooth Print, når du skifter lokation.
             </p>
           ) : null}
           <Badge variant="outline">{size.label}</Badge>
@@ -936,47 +930,63 @@ function PrintPanel({
             />
           </div>
         ) : null}
-        {printError ? (
+        {printError || printer.error ? (
           <Alert variant="destructive">
-            <AlertDescription>{printError}</AlertDescription>
+            <AlertDescription>{printError ?? printer.error}</AlertDescription>
           </Alert>
         ) : null}
       </CardContent>
       <CardFooter className="flex flex-col gap-2">
         <Button
           className="min-h-12 w-full"
-          disabled={printer.busy || Boolean(dateError) || !copiesValid}
-          onClick={() => void print()}
+          disabled={
+            printer.preparing ||
+            Boolean(printer.error) ||
+            Boolean(dateError) ||
+            !copiesValid
+          }
+          onClick={print}
         >
-          {printer.busy ? (
+          {printer.preparing ? (
             <Spinner data-icon="inline-start" />
           ) : (
             <PrinterIcon data-icon="inline-start" />
           )}
           {expiry
-            ? `Print ${Number(copies) === 1 ? "etiket" : `${copies} etiketter`}`
+            ? printer.platform
+              ? "Print i Smooth Print"
+              : `Print ${Number(copies) === 1 ? "etiket" : `${copies} etiketter`}`
             : "Angiv holdbarhed"}
         </Button>
-        <Button
-          variant="ghost"
-          className="min-h-11 w-full"
-          disabled={printer.busy || !label || !copiesValid}
-          onClick={() => {
-            if (!label) return;
-            try {
-              printDateLabels(label, format, Number(copies));
-              setPrintError(null);
-            } catch (error) {
-              setPrintError(
-                error instanceof Error
-                  ? error.message
-                  : "Printdialogen kunne ikke åbnes",
-              );
-            }
-          }}
-        >
-          Brug enhedens printdialog
-        </Button>
+        {printer.opened ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            Kontrollér resultatet i Smooth Print, før du printer igen. Hvis
+            appen ikke åbner, kan du hente den under Printeropsætning eller
+            bruge enhedens printdialog.
+          </p>
+        ) : null}
+        {printer.platform ? (
+          <Button
+            variant="ghost"
+            className="min-h-11 w-full"
+            disabled={!label || !copiesValid}
+            onClick={() => {
+              if (!label) return;
+              try {
+                printDateLabels(label, format, Number(copies));
+                setPrintError(null);
+              } catch (error) {
+                setPrintError(
+                  error instanceof Error
+                    ? error.message
+                    : "Printdialogen kunne ikke åbnes",
+                );
+              }
+            }}
+          >
+            Brug enhedens printdialog
+          </Button>
+        ) : null}
       </CardFooter>
     </Card>
   );

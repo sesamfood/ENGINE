@@ -24,25 +24,6 @@ const labelProductValidator = v.object({
   expiry: v.union(expiryValidator, v.null()),
 });
 
-export const authorizePrinter = query({
-  args: { locationId: v.id("locations") },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requirePermission(
-      ctx,
-      "dateLabels.print",
-      "dateLabels.print",
-    );
-    requireLocationAccess(auth, args.locationId);
-    await requireOrganizationLocation(
-      ctx,
-      auth.organizationId,
-      args.locationId,
-    );
-    return null;
-  },
-});
-
 export const listProducts = query({
   args: {
     locationId: v.id("locations"),
