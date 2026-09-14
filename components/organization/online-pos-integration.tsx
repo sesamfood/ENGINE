@@ -669,7 +669,7 @@ function ProductMappings({
   }
 
   if (!mappingOptions || !categories || (loading && !onlinePosProducts)) {
-    return <Skeleton className="h-96 w-full max-w-5xl" />;
+    return <Skeleton className="h-96 w-full" />;
   }
 
   const categoryItems = [
@@ -701,7 +701,7 @@ function ProductMappings({
     : mappingOptions.products;
 
   return (
-    <Card className="max-w-5xl">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
