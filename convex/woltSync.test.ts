@@ -40,15 +40,21 @@ async function seedConnection(t: ReturnType<typeof convexTest>) {
   });
 }
 
-test("webhook-inbox deduplikerer og sætter ukendte venues i karantæne", async () => {
+test("webhook-inbox deduplikerer og sætter inaktive venues i karantæne", async () => {
   const t = convexTest(schema, modules);
-  const unknown = await t.mutation(internal.woltSync.acceptWebhook, {
+  const { connectionId } = await seedConnection(t);
+  await t.run(async (ctx) => {
+    await ctx.db.patch(connectionId, { state: "reauthorizationRequired" });
+  });
+  const inactive = await t.mutation(internal.woltSync.acceptWebhook, {
+    organizationId: "org-1",
     envelope,
     receivedAt: Date.now(),
   });
-  expect(unknown).toEqual({ kind: "quarantined" });
+  expect(inactive).toEqual({ kind: "quarantined" });
   expect(
     await t.mutation(internal.woltSync.acceptWebhook, {
+      organizationId: "org-1",
       envelope,
       receivedAt: Date.now(),
     }),
@@ -78,12 +84,14 @@ test("webhook-inbox deduplikerer og sætter ukendte venues i karantæne", async 
   });
   expect(
     await t.mutation(internal.woltSync.acceptWebhook, {
+      organizationId: "org-2",
       envelope: knownEnvelope,
       receivedAt: Date.now(),
     }),
   ).toEqual({ kind: "accepted" });
   expect(
     await t.mutation(internal.woltSync.acceptWebhook, {
+      organizationId: "org-2",
       envelope: knownEnvelope,
       receivedAt: Date.now(),
     }),

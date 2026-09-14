@@ -314,6 +314,7 @@ export function AdministrationOverview() {
     .map((category) => ({
       ...category,
       sections: category.sections.filter((section) =>
+        (section.href !== "/administration/wolt-orders" || access.woltEnabled === true) &&
         section.permissions.some((permission) => allowedPermissions[permission]),
       ),
     }))

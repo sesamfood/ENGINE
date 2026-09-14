@@ -23,6 +23,7 @@ import {
   ownCheckValueValidator,
 } from "./lib/ownCheckValidators";
 import { organizationThemeValidator } from "./lib/organizationTheme";
+import { woltStoredCredentialsValidator } from "./lib/woltCredentialValidators";
 import {
   customMetricSpecValidator,
   dashboardSummarySourceValidator,
@@ -559,6 +560,7 @@ export default defineSchema({
 
   woltIntegrations: defineTable({
     organizationId: v.string(),
+    credentials: v.optional(woltStoredCredentialsValidator),
     enabled: v.boolean(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
@@ -656,6 +658,7 @@ export default defineSchema({
     .index("by_expiresAt", ["expiresAt"]),
 
   woltOnboardingQuarantine: defineTable({
+    organizationId: v.optional(v.string()),
     partnerVenueId: v.string(),
     authorizationCodeHash: v.string(),
     authorizationCodeCiphertext: v.string(),
@@ -707,6 +710,7 @@ export default defineSchema({
     .index("by_receivedAt", ["receivedAt"]),
 
   woltWebhookQuarantine: defineTable({
+    organizationId: v.optional(v.string()),
     eventId: v.string(),
     venueId: v.string(),
     orderId: v.string(),
@@ -718,6 +722,7 @@ export default defineSchema({
     .index("by_eventId", ["eventId"])
     .index("by_venueId_and_eventId", ["venueId", "eventId"])
     .index("by_venueId_and_receivedAt", ["venueId", "receivedAt"])
+    .index("by_organizationId_and_venueId_and_receivedAt", ["organizationId", "venueId", "receivedAt"])
     .index("by_receivedAt", ["receivedAt"]),
 
   woltOrders: defineTable({

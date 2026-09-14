@@ -293,11 +293,7 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
     api.access.getRuntimeContext,
     isAuthenticated && organization.data ? {} : "skip",
   );
-  const canWolt = Boolean(
-    runtime?.permissions.includes("sales.viewDetail") &&
-      !runtime.disabledFeatures.includes("woltOrders"),
-  );
-  const woltEnabled = useQuery(api.wolt.isEnabled, canWolt ? {} : "skip");
+  const woltEnabled = useQuery(api.wolt.isEnabled, runtime ? {} : "skip");
 
   if (isLoading || (organization.data && runtime === undefined)) {
     return (
@@ -311,7 +307,7 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
   }
 
   const contextValue = runtime
-    ? { ...runtime, woltEnabled: canWolt ? woltEnabled : true }
+    ? { ...runtime, woltEnabled }
     : null;
   return (
     <AccessContext.Provider value={contextValue}>
@@ -322,12 +318,14 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
 
 function useCurrentFeatureState() {
   const access = useAccess();
-  const feature = featureForPath(usePathname());
+  const pathname = usePathname();
+  const woltSettings = pathname === "/administration/wolt-orders";
+  const feature = woltSettings ? "woltOrders" : featureForPath(pathname);
   return {
     feature,
     disabled: Boolean(
       feature &&
-        (access?.disabledFeatures.includes(feature) ||
+        ((!woltSettings && access?.disabledFeatures.includes(feature)) ||
           (feature === "woltOrders" && access?.woltEnabled === false)),
     ),
     pending: Boolean(

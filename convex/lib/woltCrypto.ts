@@ -2,9 +2,18 @@ import { env } from "../_generated/server";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const ENCRYPTION_VERSION = "v1";
+const ENCRYPTION_VERSION = "v2";
 
-type WoltEnvironmentName = "development" | "production";
+export type WoltEnvironmentName = "development" | "production";
+
+export type WoltCredentials = {
+  environment: WoltEnvironmentName;
+  clientId: string;
+  clientSecret: string;
+  webhookSecret: string;
+  wioApiKey: string | null;
+  wioRedirectUris: string[];
+};
 
 function bytesToHex(bytes: Uint8Array) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -40,54 +49,21 @@ function requiredValue(value: string | undefined, name: string) {
   return normalized;
 }
 
-export function woltEnvironment(): WoltEnvironmentName {
-  const value = requiredValue(env.WOLT_ENVIRONMENT, "WOLT_ENVIRONMENT");
-  if (value !== "development" && value !== "production") {
-    throw new Error("WOLT_ENVIRONMENT skal være development eller production");
-  }
-  return value;
-}
-
-export function woltClientCredentials() {
-  return {
-    clientId: requiredValue(env.WOLT_CLIENT_ID, "WOLT_CLIENT_ID"),
-    clientSecret: requiredValue(env.WOLT_CLIENT_SECRET, "WOLT_CLIENT_SECRET"),
-  };
-}
-
-export function woltWebhookSecret() {
-  const secret = requiredValue(env.WOLT_WEBHOOK_SECRET, "WOLT_WEBHOOK_SECRET");
-  if (encoder.encode(secret).length < 16) {
-    throw new Error("WOLT_WEBHOOK_SECRET skal være mindst 16 byte");
-  }
-  return secret;
-}
-
-export function woltWioApiKey() {
-  const key = requiredValue(env.WOLT_WIO_API_KEY, "WOLT_WIO_API_KEY");
-  if (key.length < 32) throw new Error("WOLT_WIO_API_KEY skal være mindst 32 tegn");
-  return key;
-}
-
-export function woltWioRedirectUris() {
-  const values = requiredValue(
-    env.WOLT_WIO_REDIRECT_URIS,
-    "WOLT_WIO_REDIRECT_URIS",
-  )
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (values.length === 0 || values.length > 10) {
-    throw new Error("WOLT_WIO_REDIRECT_URIS skal indeholde 1-10 URL'er");
+export function woltWioRedirectUris(values: readonly string[]) {
+  if (values.length > 10) {
+    throw new Error("WIO må højst have 10 redirect-URL'er");
   }
   return new Set(
     values.map((value) => {
       const parsed = new URL(value);
       if (
         parsed.protocol !== "https:" &&
-        !(parsed.protocol === "http:" && parsed.hostname === "localhost")
+        !(
+          parsed.protocol === "http:" &&
+          (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+        )
       ) {
-        throw new Error("WOLT_WIO_REDIRECT_URIS skal bruge HTTPS");
+        throw new Error("WIO redirect-URL'er skal bruge HTTPS");
       }
       return parsed.toString();
     }),
@@ -95,15 +71,18 @@ export function woltWioRedirectUris() {
 }
 
 export function woltOAuthRedirectUri() {
-  const value = requiredValue(env.WOLT_OAUTH_REDIRECT_URI, "WOLT_OAUTH_REDIRECT_URI");
+  const value = requiredValue(env.CONVEX_SITE_URL, "CONVEX_SITE_URL");
   const parsed = new URL(value);
   if (
     parsed.protocol !== "https:" &&
-    !(parsed.protocol === "http:" && parsed.hostname === "localhost")
+    !(
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+    )
   ) {
-    throw new Error("WOLT_OAUTH_REDIRECT_URI skal bruge HTTPS");
+    throw new Error("CONVEX_SITE_URL skal bruge HTTPS");
   }
-  return parsed.toString();
+  return new URL("/wolt/oauth/callback", parsed).toString();
 }
 
 export function woltAppUrl() {
@@ -118,8 +97,8 @@ export function woltAppUrl() {
   return parsed.origin;
 }
 
-export function woltEndpoints() {
-  if (woltEnvironment() === "development") {
+export function woltEndpoints(environment: WoltEnvironmentName) {
+  if (environment === "development") {
     return {
       api: "https://pos-integration-service.development.dev.woltapi.com",
       auth: "https://integrations-authentication-service.development.dev.woltapi.com/oauth2/token",
@@ -133,16 +112,28 @@ export function woltEndpoints() {
   };
 }
 
-async function encryptionKey() {
-  const encoded = requiredValue(env.WOLT_ENCRYPTION_KEY, "WOLT_ENCRYPTION_KEY");
-  const bytes = base64UrlToBytes(encoded);
-  if (bytes.length !== 32) {
-    throw new Error("WOLT_ENCRYPTION_KEY skal være en base64url-kodet 256-bit nøgle");
-  }
-  return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, [
-    "encrypt",
-    "decrypt",
-  ]);
+async function encryptionKey(organizationId: string) {
+  if (!organizationId) throw new Error("Organisationen mangler");
+  const secret = requiredValue(env.BETTER_AUTH_SECRET, "BETTER_AUTH_SECRET");
+  const sourceKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    "HKDF",
+    false,
+    ["deriveKey"],
+  );
+  return await crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: encoder.encode("engine/wolt/secrets/v2"),
+      info: encoder.encode(organizationId),
+    },
+    sourceKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
 }
 
 export function randomWoltSecret(bytes = 32) {
@@ -154,19 +145,22 @@ export async function hashWoltState(value: string) {
   return bytesToHex(new Uint8Array(digest));
 }
 
-export async function encryptWoltSecret(value: string) {
+export async function encryptWoltSecret(value: string, organizationId: string) {
   if (!value || value.length > 8_000) throw new Error("Hemmeligheden er ugyldig");
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: nonce },
-    await encryptionKey(),
+    { name: "AES-GCM", iv: nonce, additionalData: encoder.encode(organizationId) },
+    await encryptionKey(organizationId),
     encoder.encode(value),
   );
   return `${ENCRYPTION_VERSION}.${bytesToBase64Url(nonce)}.${bytesToBase64Url(new Uint8Array(ciphertext))}`;
 }
 
-export async function decryptWoltSecret(value: string) {
+export async function decryptWoltSecret(value: string, organizationId: string) {
   const [version, nonceValue, ciphertextValue, extra] = value.split(".");
+  if (version === "v1") {
+    throw new Error("Wolt-forbindelsen bruger gamle nøgler. Tilslut Wolt igen under organisationens integrationer.");
+  }
   if (
     version !== ENCRYPTION_VERSION ||
     !nonceValue ||
@@ -176,8 +170,12 @@ export async function decryptWoltSecret(value: string) {
     throw new Error("Den krypterede værdi har et ukendt format");
   }
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64UrlToBytes(nonceValue) },
-    await encryptionKey(),
+    {
+      name: "AES-GCM",
+      iv: base64UrlToBytes(nonceValue),
+      additionalData: encoder.encode(organizationId),
+    },
+    await encryptionKey(organizationId),
     base64UrlToBytes(ciphertextValue),
   );
   return decoder.decode(plaintext);
@@ -186,13 +184,14 @@ export async function decryptWoltSecret(value: string) {
 export async function verifyWoltSignature(
   body: Uint8Array,
   signatureHex: string | null,
+  webhookSecret: string,
 ) {
   if (!signatureHex || signatureHex.length !== 64) return false;
   const supplied = hexToBytes(signatureHex);
   if (!supplied || supplied.length !== 32) return false;
   const key = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(woltWebhookSecret()),
+    encoder.encode(webhookSecret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
