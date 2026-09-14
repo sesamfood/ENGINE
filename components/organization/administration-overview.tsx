@@ -13,6 +13,7 @@ import {
   PackageIcon,
   PackageCheckIcon,
   PlugIcon,
+  PrinterIcon,
   ShoppingCartIcon,
   StoreIcon,
   Trash2Icon,
@@ -39,6 +40,7 @@ type AdministrationPermission = Extract<
     | "catalog.manage"
     | "count.settings"
     | "dashboard.manage"
+    | "dateLabels.print"
     | "goodsReceipts.settings"
     | "integrations.manage"
     | "locations.manage"
@@ -112,6 +114,13 @@ const categories: AdministrationCategory[] = [
         href: "/administration/ordering",
         icon: ShoppingCartIcon,
         permissions: ["organization.settings"],
+      },
+      {
+        title: "Datomærkning",
+        description: "Vælg produkter pr. lokation, og opsæt labelprinteren.",
+        href: "/administration/date-labels",
+        icon: PrinterIcon,
+        permissions: ["dateLabels.print"],
       },
       {
         title: "Count",
@@ -230,11 +239,13 @@ export function AdministrationOverview() {
   const canStaffFood = usePermission("staffFood.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canDashboardManage = usePermission("dashboard.manage");
+  const canDateLabels = usePermission("dateLabels.print");
   const allowedPermissions: Record<AdministrationPermission, boolean> = {
     "apiKeys.manage": canApiKeys,
     "catalog.manage": canCatalog,
     "count.settings": canCountSettings,
     "dashboard.manage": canDashboardManage,
+    "dateLabels.print": canDateLabels,
     "goodsReceipts.settings": canGoodsReceiptSettings,
     "integrations.manage": canIntegrations,
     "locations.manage": canLocations,

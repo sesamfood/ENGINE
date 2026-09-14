@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
@@ -11,7 +12,6 @@ import {
   PlusIcon,
   PrinterIcon,
   SearchIcon,
-  SettingsIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -109,42 +109,21 @@ import {
   type Expiry,
 } from "@/lib/expiry";
 import { selectedLocationId } from "@/lib/location-preference";
+import {
+  readPreference,
+  savePreference,
+  subscribePreferences,
+  useLabelFormat,
+} from "@/lib/date-label-prefs";
 import { productSearchScore } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
-import { DateLabelSettings } from "./printer-setup";
 
 type Product = FunctionReturnType<
   typeof api.dateLabels.listProducts
 >["page"][number];
 
-const preferencesEvent = "engine.date-labels.preferences";
-const memory = new Map<string, string>();
-function subscribePreferences(callback: () => void) {
-  window.addEventListener("storage", callback);
-  window.addEventListener(preferencesEvent, callback);
-  return () => {
-    window.removeEventListener("storage", callback);
-    window.removeEventListener(preferencesEvent, callback);
-  };
-}
-function readPreference(key: string) {
-  try {
-    return window.localStorage.getItem(key) ?? memory.get(key) ?? null;
-  } catch {
-    return memory.get(key) ?? null;
-  }
-}
-function savePreference(key: string, value: string) {
-  memory.set(key, value);
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    /* Keep preferences for this session when storage is unavailable. */
-  }
-  window.dispatchEvent(new Event(preferencesEvent));
-}
 function subscribeWide(callback: () => void) {
   const media = window.matchMedia("(min-width: 1024px)");
   media.addEventListener("change", callback);
@@ -282,13 +261,7 @@ function LabelWorkspace({
       return new Set<string>();
     }
   }, [storedFavorites]);
-  const storedFormat = useSyncExternalStore(
-    subscribePreferences,
-    () => readPreference("engine.date-labels.format"),
-    () => null,
-  );
-  const format =
-    labelFormats.find((item) => item.value === storedFormat)?.value ?? "62x29";
+  const [format] = useLabelFormat();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [category, setCategory] = useState<string | null>(null);
@@ -302,10 +275,6 @@ function LabelWorkspace({
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [printerOpen, setPrinterOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"products" | "printer">(
-    "products",
-  );
   const selectedProduct = products?.find(
     (product) => product.id === selection?.id,
   );
@@ -400,29 +369,13 @@ function LabelWorkspace({
       locationName={locationName}
       format={format}
       onClose={() => setSelection(null)}
-      onPrinterSetup={() => {
-        setSettingsTab("printer");
-        setPrinterOpen(true);
-      }}
+      canConfigurePrinter={!kiosk?.kioskModeEnabled}
       onMissingExpiry={() => selectProduct(selectedProduct)}
     />
   ) : null;
 
   return (
     <>
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          className="min-h-11"
-          onClick={() => {
-            setSettingsTab("products");
-            setPrinterOpen(true);
-          }}
-        >
-          <SettingsIcon data-icon="inline-start" />
-          Indstillinger
-        </Button>
-      </div>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -511,7 +464,7 @@ function LabelWorkspace({
                 <EmptyDescription>
                   {products.length
                     ? "Prøv en anden søgning eller kategori. Tryk på hjertet for at gemme en favorit på denne enhed."
-                    : "Kontrollér produktvalget under Indstillinger og de produkter, der er tilgængelige på lokationen."}
+                    : "Kontrollér produktvalget under Administration → Datomærkning og de produkter, der er tilgængelige på lokationen."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -688,18 +641,6 @@ function LabelWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <DateLabelSettings
-        locationId={locationId}
-        locationName={locationName}
-        canConfigure={canRemember}
-        initialTab={settingsTab}
-        open={printerOpen}
-        onOpenChange={setPrinterOpen}
-        format={format}
-        onFormatChange={(value) =>
-          savePreference("engine.date-labels.format", value)
-        }
-      />
     </>
   );
 }
@@ -710,7 +651,7 @@ function PrintPanel({
   locationName,
   format,
   onClose,
-  onPrinterSetup,
+  canConfigurePrinter,
   onMissingExpiry,
 }: {
   product: Product;
@@ -718,7 +659,7 @@ function PrintPanel({
   locationName: string;
   format: LabelFormat;
   onClose: () => void;
-  onPrinterSetup: () => void;
+  canConfigurePrinter: boolean;
   onMissingExpiry: () => void;
 }) {
   const [date, setDate] = useState(() =>
@@ -908,14 +849,17 @@ function PrintPanel({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">Printer</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11"
-              onClick={onPrinterSetup}
-            >
-              Opsætning
-            </Button>
+            {canConfigurePrinter ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11"
+                nativeButton={false}
+                render={<Link href="/administration/date-labels#printer" />}
+              >
+                Opsætning
+              </Button>
+            ) : null}
           </div>
           <p className="text-sm text-muted-foreground">
             {printer.platform
@@ -975,7 +919,7 @@ function PrintPanel({
         {printer.opened ? (
           <p role="status" className="text-sm text-muted-foreground">
             Kontrollér resultatet i Smooth Print, før du printer igen. Hvis
-            appen ikke åbner, kan du hente den under Indstillinger eller bruge
+            appen ikke åbner, kan du hente den i Administration eller bruge
             enhedens printdialog.
           </p>
         ) : null}

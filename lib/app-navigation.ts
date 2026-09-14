@@ -4,6 +4,7 @@ import { sidebarItems, type SidebarItemId } from "./sidebar-navigation";
 
 const administrationPermissions: PermissionId[] = [
   "catalog.manage",
+  "dateLabels.print",
   "locations.manage",
   "organization.settings",
   "count.settings",
