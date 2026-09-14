@@ -12,6 +12,7 @@ import {
   LogOutIcon,
   LayoutDashboardIcon,
   ReceiptTextIcon,
+  WalletIcon,
   RefreshCwIcon,
   SettingsIcon,
   MonitorIcon,
@@ -126,6 +127,7 @@ const navigationIcons = {
   ordering: ShoppingCartIcon,
   transfers: ArrowRightLeftIcon,
   invoices: ReceiptTextIcon,
+  expenses: WalletIcon,
   goodsReceipts: PackageCheckIcon,
   waste: Trash2Icon,
   ownChecks: ClipboardCheckIcon,
@@ -1219,6 +1221,8 @@ export function AppShell({
     pathname === "/transfers" || pathname.startsWith("/transfers/");
   const showInvoicesHeader =
     pathname === "/invoices" || pathname.startsWith("/invoices/");
+  const showExpensesHeader =
+    pathname === "/expenses" || pathname.startsWith("/expenses/");
   const showGoodsReceiptsHeader =
     pathname === "/goods-receipts" || pathname.startsWith("/goods-receipts/");
   const showDashboardHeader =
@@ -1235,6 +1239,7 @@ export function AppShell({
     showEmployeesHeader ||
     showTransfersHeader ||
     showInvoicesHeader ||
+    showExpensesHeader ||
     showGoodsReceiptsHeader ||
     showDashboardHeader ||
     showAdministrationHeader;

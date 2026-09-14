@@ -70,6 +70,18 @@ Before accepting the KPI issues as reconciled, compare real monthly reports with
 
 Historical Google guest scores remain a dependency. The existing Google Maps widget supplies a current rating, without the review history needed for monthly comparisons. The monthly report keeps that row unavailable until the required access and permitted historical reporting are resolved.
 
+## Send expenses to e-conomic
+
+Enable **Udgift** and configure its notification recipients under **Indstillinger**. E-mail delivery and e-conomic transfer have separate statuses in **Udgifter**.
+
+For each connected agreement, configure the expense journal, a balance account as the contra-account, and one profit-and-loss account for each expense category you want to transfer. Choose the agreement's code for 25% domestic purchase VAT. The existing location mapping determines the agreement and dimension for each expense. The API grant needs `Bookkeeping` or `SuperUser` access. [API permissions](https://www.e-conomic.com/developer/permissions)
+
+Selecting **Opret i e-conomic** creates a finance-voucher draft. It does not book the journal or pay a supplier. The exporter sends the gross amount and VAT code, checks the returned accounts and amount, and assigns the location's dimension. The expense date determines the accounting period. The month selected in the app is included in the draft text; it does not create an accrual. [Journals API](https://apis.e-conomic.com/journalsapi/redoc.html), [Journal amount fields](https://www.e-conomic.dk/support/artikler/oprettelse-af-standardposteringer-og-bilagsfelter), [Dimensions API](https://apis.e-conomic.com/dimensionsapi/redoc.html)
+
+Receipts can be PDF, JPG, or PNG. The app allows files up to 10 MB, but e-conomic accepts at most 9 MB. A larger receipt stops the transfer before the draft is created. Use distinct voucher-number ranges across journals so receipts cannot be attached to another journal's voucher with the same number and accounting year. [Documents API](https://apis.e-conomic.com/documentsapi/redoc.html)
+
+The exporter saves the returned entry number before assigning dimensions or attaching the receipt. Retrying a partial transfer continues on that entry. If the creation response is lost, the status requires checking the journal before another transfer. Provider idempotency keys expire after one hour, so they cannot guarantee a later retry is safe. [Idempotency tokens](https://apis.e-conomic.com/journalsapi/redoc.html#section/Idempotency-tokens)
+
 ## Code generation behavior
 
 With the installed Convex CLI 1.45.0, `bunx convex codegen` uploads bundled functions to the selected backend for analysis and type generation. It calls `start_push` but does not call `finish_push`, so it does not replace the running deployment. The message `Uploading functions to Convex...` is expected; this command is not local-only. See `node_modules/convex/src/cli/codegen.ts` and `node_modules/convex/src/cli/lib/components.ts` when upgrading the CLI.

@@ -7,6 +7,9 @@ export async function getStorageReferences(
   storageId: Id<"_storage">,
 ) {
   return await Promise.all([
+    ctx.db.query("expenses")
+      .withIndex("by_attachment_storageId", (q) => q.eq("attachment.storageId", storageId))
+      .take(2),
     ctx.db.query("invoices")
       .withIndex("by_receiptStorageId", (q) => q.eq("receiptStorageId", storageId))
       .take(2),
