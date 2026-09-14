@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import { organizationRoleCatalog } from "./lib/roles";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -447,12 +448,7 @@ export const salesSourceAvailability = query({
     );
     const [onlinePosIntegration, onlinePosConnections, woltIntegration, woltConnections] =
       await Promise.all([
-        ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", auth.organizationId),
-          )
-          .unique(),
+        getOnlinePosOrganizationSettings(ctx, auth.organizationId),
         Promise.all(
           params.locations.map((location) =>
             ctx.db
@@ -625,12 +621,7 @@ async function requestOnlinePosDashboardSync(
   if (!syncWholeOrganization && locationIds.length === 0) {
     return { state: "unavailable", retryAt: null };
   }
-  const integration = await ctx.db
-    .query("onlinePosIntegrations")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
+  const integration = await getOnlinePosOrganizationSettings(ctx, organizationId);
   if (!integration?.enabled) {
     return { state: "unavailable", retryAt: null };
   }

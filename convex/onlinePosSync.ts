@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import { addDays as addDateKey } from "../lib/date";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -279,12 +280,7 @@ async function markStockChanged(
 }
 
 async function isMasterEnabled(ctx: MutationCtx, organizationId: string) {
-  const settings = await ctx.db
-    .query("onlinePosIntegrations")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
+  const settings = await getOnlinePosOrganizationSettings(ctx, organizationId);
   return settings?.enabled === true;
 }
 
@@ -446,12 +442,7 @@ export const getLocationSyncContext = internalQuery({
     const [location, master, connection, status, reset, timeZone] =
       await Promise.all([
         ctx.db.get("locations", args.locationId),
-        ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId),
-          )
-          .unique(),
+        getOnlinePosOrganizationSettings(ctx, args.organizationId),
         ctx.db
           .query("onlinePosLocationIntegrations")
           .withIndex("by_organizationId_and_locationId", (q) =>
@@ -874,12 +865,7 @@ export const dispatchEnabledLocations = internalMutation({
     const masterByOrg = new Map<string, boolean>();
     for (const connection of result.page) {
       if (args.stockOnly) {
-        const settings = await ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", connection.organizationId),
-          )
-          .unique();
+        const settings = await getOnlinePosOrganizationSettings(ctx, connection.organizationId);
         if (!settings?.stockSyncEnabled) continue;
       }
       let enabled = masterByOrg.get(connection.organizationId);

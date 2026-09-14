@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import { parseDateKey } from "../lib/date";
 import { requireOrganizationLocation as requireLocation } from "./lib/locations";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
@@ -913,8 +914,7 @@ export const submitCount = mutation({
     }
 
     const totals = new Map<Id<"products">, number>();
-    const onlinePos = await ctx.db.query("onlinePosIntegrations")
-      .withIndex("by_organizationId", q => q.eq("organizationId", organizationId)).unique();
+    const onlinePos = await getOnlinePosOrganizationSettings(ctx, organizationId);
     const onlinePosConnection = onlinePos?.enabled && onlinePos.stockSyncEnabled
       ? await ctx.db.query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId_and_locationId", q => q.eq("organizationId", organizationId).eq("locationId", args.locationId)).unique()

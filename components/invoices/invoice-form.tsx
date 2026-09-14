@@ -118,7 +118,6 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const locations = useQuery(api.invoices.listLocations, { page: "new" });
-  const menus = useQuery(api.invoices.listMenus, {});
   const products = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
     {},
@@ -164,6 +163,10 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     isLocked: Boolean(kiosk?.isKioskAccount),
   });
   const location = locations?.find((option) => option.id === locationId);
+  const menus = useQuery(
+    api.invoices.listMenus,
+    location ? { locationId: location.id } : "skip",
+  );
   const productAccess = useQuery(
     api.invoices.getProductAccess,
     location ? { locationId: location.id } : "skip",

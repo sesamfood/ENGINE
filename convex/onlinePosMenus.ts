@@ -1,3 +1,7 @@
+import {
+  getOnlinePosMaster,
+  onlinePosCatalogId,
+} from "./lib/onlinePosConnections";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -138,12 +142,14 @@ function normalizeMenuGroups(groups: Infer<typeof menuGroupInputValidator>[]) {
 async function enabledSettings(
   ctx: ActionCtx,
   organizationId: string,
+  integrationId?: Id<"onlinePosIntegrations">,
 ): Promise<{
   integrationId: Id<"onlinePosIntegrations">;
   settings: OnlinePosSettings;
 }> {
   const settings = await ctx.runQuery(internal.onlinePos.getPrivateSettings, {
     organizationId,
+    integrationId,
   });
   if (!settings?.enabled) {
     throw new ConvexError("OnlinePOS-integrationen er ikke aktiveret");
@@ -155,31 +161,34 @@ async function enabledSettings(
 }
 
 export const list = query({
-  args: {},
+  args: { integrationId: v.optional(v.id("onlinePosIntegrations")) },
   returns: v.object({
     connected: v.boolean(),
     enabled: v.boolean(),
     menus: v.array(menuValidator),
   }),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const { organizationId } = await requireIntegrationManager(ctx);
-    const [integration, menus, mappings] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+    const integration = await getOnlinePosMaster(
+      ctx,
+      organizationId,
+      args.integrationId,
+    );
+    const [menus, mappings] = await Promise.all([
       ctx.db
         .query("onlinePosMenus")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("integrationId", onlinePosCatalogId(integration)),
         )
         .take(MAX_MENUS + 1),
       ctx.db
         .query("onlinePosProductMappings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
+        .withIndex("by_organizationId_and_integrationId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("integrationId", onlinePosCatalogId(integration)),
         )
         .take(MAX_PRODUCT_MAPPINGS + 1),
     ]);
@@ -215,11 +224,15 @@ export const list = query({
 });
 
 export const listOnlinePosProducts = action({
-  args: {},
+  args: { integrationId: v.optional(v.id("onlinePosIntegrations")) },
   returns: v.array(onlinePosProductOptionValidator),
-  handler: async (ctx): Promise<OnlinePosProduct[]> => {
+  handler: async (ctx, args): Promise<OnlinePosProduct[]> => {
     const { organizationId } = await requireIntegrationManager(ctx);
-    const { settings } = await enabledSettings(ctx, organizationId);
+    const { settings } = await enabledSettings(
+      ctx,
+      organizationId,
+      args.integrationId,
+    );
     return normalizeProducts(await requestProducts(settings));
   },
 });
@@ -241,29 +254,33 @@ export const saveConfiguration = internalMutation({
     const name = normalizeMenuName(args.name);
     const groups = normalizeMenuGroups(args.groups);
     const productIds = groups.flatMap((group) => group.productIds);
-    const [integration, current, duplicateMenus, menus, products, mappings] =
+    const integration = await getOnlinePosMaster(
+      ctx,
+      args.organizationId,
+      args.integrationId,
+    );
+    const [current, duplicateMenus, menus, products, mappings] =
       await Promise.all([
-        ctx.db
-          .query("onlinePosIntegrations")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId),
-          )
-          .unique(),
         args.menuId === null
           ? Promise.resolve(null)
           : ctx.db.get("onlinePosMenus", args.menuId),
         ctx.db
           .query("onlinePosMenus")
-          .withIndex("by_organizationId_and_onlinePosProductId", (q) =>
-            q
-              .eq("organizationId", args.organizationId)
-              .eq("onlinePosProductId", args.menuProduct.onlinePosProductId),
+          .withIndex(
+            "by_organizationId_and_integrationId_and_onlinePosProductId",
+            (q) =>
+              q
+                .eq("organizationId", args.organizationId)
+                .eq("integrationId", onlinePosCatalogId(integration))
+                .eq("onlinePosProductId", args.menuProduct.onlinePosProductId),
           )
           .take(2),
         ctx.db
           .query("onlinePosMenus")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId),
+          .withIndex("by_organizationId_and_integrationId", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("integrationId", onlinePosCatalogId(integration)),
           )
           .take(MAX_MENUS + 1),
         Promise.all(
@@ -271,8 +288,10 @@ export const saveConfiguration = internalMutation({
         ),
         ctx.db
           .query("onlinePosProductMappings")
-          .withIndex("by_organizationId", (q) =>
-            q.eq("organizationId", args.organizationId),
+          .withIndex("by_organizationId_and_integrationId", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("integrationId", onlinePosCatalogId(integration)),
           )
           .take(MAX_PRODUCT_MAPPINGS + 1),
       ]);
@@ -288,7 +307,9 @@ export const saveConfiguration = internalMutation({
     }
     if (
       args.menuId !== null &&
-      (!current || current.organizationId !== args.organizationId)
+      (!current ||
+        current.organizationId !== args.organizationId ||
+        current.integrationId !== onlinePosCatalogId(integration))
     ) {
       throw new ConvexError("Menuen blev ikke fundet");
     }
@@ -345,6 +366,7 @@ export const saveConfiguration = internalMutation({
 
     const updatedAt = Date.now();
     const values = {
+      integrationId: onlinePosCatalogId(integration),
       onlinePosProductId: args.menuProduct.onlinePosProductId,
       name,
       onlinePosProductName: args.menuProduct.name,
@@ -372,9 +394,7 @@ export const saveConfiguration = internalMutation({
         (product) => !productIds.includes(product.productId),
       )
     ) {
-      await ctx.db.patch(integration._id, {
-        stockMappingRevision: (integration.stockMappingRevision ?? 0) + 1,
-      });
+      await invalidateSalesStockMappings(ctx, args.organizationId);
     }
 
     await recordAudit(
@@ -399,6 +419,7 @@ export const saveConfiguration = internalMutation({
 
 export const save = action({
   args: {
+    integrationId: v.optional(v.id("onlinePosIntegrations")),
     menuId: v.union(v.id("onlinePosMenus"), v.null()),
     name: v.string(),
     onlinePosProductId: v.number(),
@@ -416,7 +437,11 @@ export const save = action({
     }
     const groups = normalizeMenuGroups(args.groups);
 
-    const connection = await enabledSettings(ctx, auth.organizationId);
+    const connection = await enabledSettings(
+      ctx,
+      auth.organizationId,
+      args.integrationId,
+    );
     const onlinePosProducts = normalizeProducts(
       await requestProducts(connection.settings),
     );
@@ -456,18 +481,17 @@ export const removeProductReferences = internalMutation({
   args: {
     organizationId: v.string(),
     productId: v.id("products"),
+    cursor: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const menus = await ctx.db
+    const page = await ctx.db
       .query("onlinePosMenus")
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", args.organizationId),
       )
-      .take(MAX_MENUS + 1);
-    if (menus.length > MAX_MENUS) {
-      throw new ConvexError("Der er for mange OnlinePOS-menuer");
-    }
+      .paginate({ numItems: MAX_MENUS, cursor: args.cursor ?? null });
+    const menus = page.page;
     const updatedAt = Date.now();
     let changed = false;
     for (const menu of menus) {
@@ -480,6 +504,11 @@ export const removeProductReferences = internalMutation({
       }
     }
     if (changed) await invalidateSalesStockMappings(ctx, args.organizationId);
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.onlinePosMenus.removeProductReferences, {
+        ...args, cursor: page.continueCursor,
+      });
+    }
     return null;
   },
 });

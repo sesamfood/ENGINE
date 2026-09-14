@@ -1,3 +1,4 @@
+import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -46,14 +47,6 @@ const pageArgs = {
   cursor: v.union(v.string(), v.null()),
 };
 
-async function integration(ctx: MutationCtx, organizationId: string) {
-  return ctx.db
-    .query("onlinePosIntegrations")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", organizationId),
-    )
-    .unique();
-}
 
 export async function queueStockSync(
   ctx: MutationCtx,
@@ -62,7 +55,7 @@ export async function queueStockSync(
   reconcileFrom?: number,
   full = false,
 ) {
-  const settings = await integration(ctx, organizationId);
+  const settings = await getOnlinePosOrganizationSettings(ctx, organizationId);
   if (
     !settings?.enabled ||
     !settings.stockSyncEnabled ||
@@ -356,6 +349,8 @@ async function applyOrder(
     locationId: order.locationId,
     source: "onlinePos" as const,
     connectionId: connection._id,
+    integrationId: connection.masterIntegrationId,
+    mappingRevision: settings.stockMappingRevision ?? 0,
     externalId:
       previous?.externalId ?? `${connection.companyId}:${order.externalId}`,
     dayStart: order.dayStart,
@@ -381,7 +376,7 @@ export const applyPage = internalMutation({
     if (args.afterRevision !== undefined && args.orderRevisionsVersion !== 1)
       return null;
     const [settings, status, sales, location, connection] = await Promise.all([
-      integration(ctx, args.organizationId),
+      getOnlinePosOrganizationSettings(ctx, args.organizationId),
       ctx.db
         .query("onlinePosStockSyncStatus")
         .withIndex("by_organizationId_and_locationId", (q) =>
@@ -451,7 +446,11 @@ export const applyPage = internalMutation({
                   .lte("stockRevision", args.salesRevision),
               );
       const page = await orders.paginate({ numItems: 5, cursor: args.cursor });
-      const resolve = createSalesStockResolver(ctx, args.organizationId);
+      const resolve = createSalesStockResolver(
+        ctx,
+        args.organizationId,
+        connection.masterIntegrationId,
+      );
       for (const order of page.page) {
         if (order.occurredAt < args.from) continue;
         if (order.occurredAt < Date.now() - 400 * 86_400_000) continue;
@@ -484,6 +483,8 @@ export const applyPage = internalMutation({
         const fingerprint = stockSalesFingerprint(lines);
         if (
           previous?.fingerprint === fingerprint &&
+          previous.integrationId === connection.masterIntegrationId &&
+          previous.mappingRevision === args.mappingRevision &&
           previous.activationAt === args.activationAt &&
           previous.connectionId === connection._id &&
           previous.unmappedQuantity === 0
@@ -491,6 +492,8 @@ export const applyPage = internalMutation({
           continue;
         const result =
           previous?.fingerprint === fingerprint &&
+          previous.integrationId === connection.masterIntegrationId &&
+          previous.mappingRevision === args.mappingRevision &&
           previous.unmappedQuantity === 0
             ? { entries: previous.entries, unmappedQuantity: 0 }
             : await resolve(lines);
@@ -647,7 +650,10 @@ export const setEnabled = mutation({
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     requireAllLocationAccess(auth);
-    const settings = await integration(ctx, auth.organizationId);
+    const settings = await getOnlinePosOrganizationSettings(
+      ctx,
+      auth.organizationId,
+    );
     if (!settings || (args.enabled && !settings.enabled))
       throw new ConvexError("Aktivér OnlinePOS-integrationen først");
     if ((settings.stockSyncEnabled ?? false) === args.enabled) return null;
@@ -690,7 +696,10 @@ export const setRefundsToWaste = mutation({
   handler: async (ctx, args) => {
     const auth = await requireIntegrationManager(ctx);
     requireAllLocationAccess(auth);
-    const settings = await integration(ctx, auth.organizationId);
+    const settings = await getOnlinePosOrganizationSettings(
+      ctx,
+      auth.organizationId,
+    );
     if (!settings?.enabled || !settings.stockSyncEnabled)
       throw new ConvexError("Aktivér lagersynkronisering først");
     await ctx.db.patch(settings._id, { stockRefundsToWaste: args.enabled, updatedAt: Date.now() });
@@ -753,12 +762,7 @@ export const getSettings = query({
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
     const [settings, connections] = await Promise.all([
-      ctx.db
-        .query("onlinePosIntegrations")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", auth.organizationId),
-        )
-        .unique(),
+      getOnlinePosOrganizationSettings(ctx, auth.organizationId),
       ctx.db
         .query("onlinePosLocationIntegrations")
         .withIndex("by_organizationId", (q) =>
