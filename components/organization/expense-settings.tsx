@@ -2,19 +2,16 @@
 
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -161,6 +158,15 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const cc = ccDraft ?? settings.cc.join(", ");
   const bcc = bccDraft ?? settings.bcc.join(", ");
   const mappings = mappingsDraft ?? mappingDrafts(settings);
+  const usableConnections = settings.connections.filter(
+    (connection) => connection.enabled && !connection.requiresReconnect,
+  );
+  const usableConnectionIds = new Set(
+    usableConnections.map((connection) => connection.id),
+  );
+  const visibleMappings = mappings.filter((mapping) =>
+    usableConnectionIds.has(mapping.connectionId),
+  );
   const canEditMappings = canManageIntegrations && access.locationScope.all;
 
   function updateMapping(
@@ -181,26 +187,33 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
       const recipients = readRecipients(to, cc, bcc);
       const economicMappings: EconomicMapping[] =
         canEditMappings && mappingsDraft !== null
-          ? mappings.filter((mapping) => mapping.enabled).map((mapping) => {
-              const vatCode25 = mapping.vatCode25.trim();
-              if (!vatCode25) throw new Error("Angiv en momskode til 25 % moms");
-              const accountMappings = mapping.accountMappings
-                .filter((account) => account.accountNumber.trim())
-                .map((account) => ({
-                  categoryId: account.categoryId,
-                  accountNumber: positiveInteger(account.accountNumber, "Udgiftskonto"),
-                }));
-              if (!accountMappings.length) {
-                throw new Error("Angiv mindst én udgiftskonto for hver aktiveret e-conomic-aftale");
-              }
-              return {
-                connectionId: mapping.connectionId,
-                journalNumber: positiveInteger(mapping.journalNumber, "Kassekladdenummer"),
-                contraAccountNumber: positiveInteger(mapping.contraAccountNumber, "Modkonto"),
-                vatCode25,
-                accountMappings,
-              };
-            })
+          ? [
+              ...loadedSettings.economicMappings.filter(
+                (mapping) => !usableConnectionIds.has(mapping.connectionId),
+              ),
+              ...visibleMappings
+                .filter((mapping) => mapping.enabled)
+                .map((mapping) => {
+                  const vatCode25 = mapping.vatCode25.trim();
+                  if (!vatCode25) throw new Error("Angiv en momskode til 25 % moms");
+                  const accountMappings = mapping.accountMappings
+                    .filter((account) => account.accountNumber.trim())
+                    .map((account) => ({
+                      categoryId: account.categoryId,
+                      accountNumber: positiveInteger(account.accountNumber, "Udgiftskonto"),
+                    }));
+                  if (!accountMappings.length) {
+                    throw new Error("Angiv mindst én udgiftskonto for hver aktiveret e-conomic-aftale");
+                  }
+                  return {
+                    connectionId: mapping.connectionId,
+                    journalNumber: positiveInteger(mapping.journalNumber, "Kassekladdenummer"),
+                    contraAccountNumber: positiveInteger(mapping.contraAccountNumber, "Modkonto"),
+                    vatCode25,
+                    accountMappings,
+                  };
+                }),
+            ]
           : loadedSettings.economicMappings;
       setSaving(true);
       await saveSettings({
@@ -276,137 +289,119 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>e-conomic</CardTitle>
-          <CardDescription>
-            Udgifter oprettes som kladder til gennemgang i e-conomic.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            {!canEditMappings ? (
-              <Alert>
-                <AlertDescription>
-                  Du skal have adgang til at administrere integrationer og alle
-                  lokationer for at ændre konteringen.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {settings.connections.length === 0 ? (
-              <Alert>
-                <AlertTitle>Ingen e-conomic-forbindelse</AlertTitle>
-                <AlertDescription>
-                  Tilføj en e-conomic-forbindelse under Integrationer for at
-                  oprette udgifter i e-conomic.
-                  {canManageIntegrations ? (
-                    <Link href="/administration/integrations" className="underline underline-offset-4">
-                      Åbn Integrationer
-                    </Link>
-                  ) : null}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {mappings.map((mapping) => {
-              const connection = settings.connections.find(
-                (item) => item.id === mapping.connectionId,
-              );
-              if (!connection) return null;
-              const disabled = saving || !canEditMappings;
-              return (
-                <FieldSet key={connection.id} disabled={disabled}>
-                  <FieldLegend>
-                    <span className="flex flex-wrap items-center gap-2">
-                      {connection.name}
-                      {!connection.enabled ? <Badge variant="outline">Deaktiveret</Badge> : null}
-                      {connection.requiresReconnect ? <Badge variant="outline">Skal forbindes igen</Badge> : null}
-                    </span>
-                  </FieldLegend>
-                  <FieldDescription>Aftalenummer {connection.agreementNumber}</FieldDescription>
-                  <FieldGroup>
-                    <SettingsSwitchField
-                      label="Brug til udgifter"
-                      checked={mapping.enabled}
-                      disabled={disabled}
-                      onCheckedChange={(enabled) => updateMapping(connection.id, { enabled })}
-                      help={{
-                        label: "udgifter i e-conomic",
-                        content: "Gør forbindelsen tilgængelig ved registrering af udgifter. Hver udgift sendes først, når brugeren vælger det. Kladden skal gennemgås og bogføres i e-conomic.",
-                      }}
-                    />
-                    {mapping.enabled ? (
-                      <>
-                        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                          <Field data-disabled={disabled}>
-                            <div className="flex items-center gap-1">
-                              <FieldLabel htmlFor={`expense-journal-${connection.id}`}>Kassekladdenummer</FieldLabel>
-                              <HelpTooltip label="kassekladdenummer" content="Nummeret på den kassekladde i e-conomic, der skal modtage udgifterne." />
-                            </div>
-                            <Input id={`expense-journal-${connection.id}`} type="number" min="1" step="1" required disabled={disabled} value={mapping.journalNumber} onChange={(event) => updateMapping(connection.id, { journalNumber: event.target.value })} />
-                          </Field>
-                          <Field data-disabled={disabled}>
-                            <div className="flex items-center gap-1">
-                              <FieldLabel htmlFor={`expense-contra-${connection.id}`}>Modkonto</FieldLabel>
-                              <HelpTooltip label="modkonto" content="Kontonummeret for udgiftens modpost i e-conomic, for eksempel en bank- eller mellemregningskonto." />
-                            </div>
-                            <Input id={`expense-contra-${connection.id}`} type="number" min="1" step="1" required disabled={disabled} value={mapping.contraAccountNumber} onChange={(event) => updateMapping(connection.id, { contraAccountNumber: event.target.value })} />
-                          </Field>
-                          <Field data-disabled={disabled}>
-                            <div className="flex items-center gap-1">
-                              <FieldLabel htmlFor={`expense-vat-${connection.id}`}>Momskode ved 25 % moms</FieldLabel>
-                              <HelpTooltip label="momskode" content="Momskoden for køb med 25 % moms i denne e-conomic-aftale. Udgifter uden moms oprettes uden momskode." />
-                            </div>
-                            <Input id={`expense-vat-${connection.id}`} required disabled={disabled} value={mapping.vatCode25} onChange={(event) => updateMapping(connection.id, { vatCode25: event.target.value })} />
-                          </Field>
-                        </FieldGroup>
-                        <FieldSet>
-                          <FieldLegend variant="label">
-                            <span className="flex items-center gap-1">
-                              Udgiftskonti
-                              <HelpTooltip label="udgiftskonti" content="Angiv mindst én udgiftskonto. Kategorier uden en konto kan stadig registreres her, men kan ikke oprettes i e-conomic." />
-                            </span>
-                          </FieldLegend>
+      {usableConnections.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>e-conomic</CardTitle>
+            <CardDescription>
+              Udgifter oprettes som kladder til gennemgang i e-conomic.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup>
+              {!canEditMappings ? (
+                <Alert>
+                  <AlertDescription>
+                    Du skal have adgang til at administrere integrationer og alle
+                    lokationer for at ændre konteringen.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {visibleMappings.map((mapping) => {
+                const connection = usableConnections.find(
+                  (item) => item.id === mapping.connectionId,
+                );
+                if (!connection) return null;
+                const disabled = saving || !canEditMappings;
+                return (
+                  <FieldSet key={connection.id} disabled={disabled}>
+                    <FieldLegend>{connection.name}</FieldLegend>
+                    <FieldDescription>Aftalenummer {connection.agreementNumber}</FieldDescription>
+                    <FieldGroup>
+                      <SettingsSwitchField
+                        label="Brug til udgifter"
+                        checked={mapping.enabled}
+                        disabled={disabled}
+                        onCheckedChange={(enabled) => updateMapping(connection.id, { enabled })}
+                        help={{
+                          label: "udgifter i e-conomic",
+                          content: "Gør forbindelsen tilgængelig ved registrering af udgifter. Hver udgift sendes først, når brugeren vælger det. Kladden skal gennemgås og bogføres i e-conomic.",
+                        }}
+                      />
+                      {mapping.enabled ? (
+                        <>
                           <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                            {mapping.accountMappings.map((account) => (
-                              <Field key={account.categoryId} data-disabled={disabled}>
-                                <FieldLabel htmlFor={`expense-account-${connection.id}-${account.categoryId}`}>
-                                  {expenseCategories.find((category) => category.id === account.categoryId)?.label}
-                                </FieldLabel>
-                                <Input
-                                  id={`expense-account-${connection.id}-${account.categoryId}`}
-                                  type="number"
-                                  min="1"
-                                  step="1"
-                                  disabled={disabled}
-                                  value={account.accountNumber}
-                                  onChange={(event) => updateMapping(connection.id, {
-                                    accountMappings: mapping.accountMappings.map((item) => item.categoryId === account.categoryId ? { ...item, accountNumber: event.target.value } : item),
-                                  })}
-                                />
-                              </Field>
-                            ))}
+                            <Field data-disabled={disabled}>
+                              <div className="flex items-center gap-1">
+                                <FieldLabel htmlFor={`expense-journal-${connection.id}`}>Kassekladdenummer</FieldLabel>
+                                <HelpTooltip label="kassekladdenummer" content="Nummeret på den kassekladde i e-conomic, der skal modtage udgifterne." />
+                              </div>
+                              <Input id={`expense-journal-${connection.id}`} type="number" min="1" step="1" required disabled={disabled} value={mapping.journalNumber} onChange={(event) => updateMapping(connection.id, { journalNumber: event.target.value })} />
+                            </Field>
+                            <Field data-disabled={disabled}>
+                              <div className="flex items-center gap-1">
+                                <FieldLabel htmlFor={`expense-contra-${connection.id}`}>Modkonto</FieldLabel>
+                                <HelpTooltip label="modkonto" content="Kontonummeret for udgiftens modpost i e-conomic, for eksempel en bank- eller mellemregningskonto." />
+                              </div>
+                              <Input id={`expense-contra-${connection.id}`} type="number" min="1" step="1" required disabled={disabled} value={mapping.contraAccountNumber} onChange={(event) => updateMapping(connection.id, { contraAccountNumber: event.target.value })} />
+                            </Field>
+                            <Field data-disabled={disabled}>
+                              <div className="flex items-center gap-1">
+                                <FieldLabel htmlFor={`expense-vat-${connection.id}`}>Momskode ved 25 % moms</FieldLabel>
+                                <HelpTooltip label="momskode" content="Momskoden for køb med 25 % moms i denne e-conomic-aftale. Udgifter uden moms oprettes uden momskode." />
+                              </div>
+                              <Input id={`expense-vat-${connection.id}`} required disabled={disabled} value={mapping.vatCode25} onChange={(event) => updateMapping(connection.id, { vatCode25: event.target.value })} />
+                            </Field>
                           </FieldGroup>
-                        </FieldSet>
-                      </>
-                    ) : null}
-                  </FieldGroup>
-                </FieldSet>
-              );
-            })}
-            {error ? (
-              <Alert variant="destructive" role="alert">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-          </FieldGroup>
-        </CardContent>
-        <CardFooter className="justify-end">
-          <Button type="submit" disabled={saving}>
-            {saving ? <Spinner data-icon="inline-start" /> : null}
-            Gem indstillinger
-          </Button>
-        </CardFooter>
-      </Card>
+                          <FieldSet>
+                            <FieldLegend variant="label">
+                              <span className="flex items-center gap-1">
+                                Udgiftskonti
+                                <HelpTooltip label="udgiftskonti" content="Angiv mindst én udgiftskonto. Kategorier uden en konto kan stadig registreres her, men kan ikke oprettes i e-conomic." />
+                              </span>
+                            </FieldLegend>
+                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                              {mapping.accountMappings.map((account) => (
+                                <Field key={account.categoryId} data-disabled={disabled}>
+                                  <FieldLabel htmlFor={`expense-account-${connection.id}-${account.categoryId}`}>
+                                    {expenseCategories.find((category) => category.id === account.categoryId)?.label}
+                                  </FieldLabel>
+                                  <Input
+                                    id={`expense-account-${connection.id}-${account.categoryId}`}
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    disabled={disabled}
+                                    value={account.accountNumber}
+                                    onChange={(event) => updateMapping(connection.id, {
+                                      accountMappings: mapping.accountMappings.map((item) => item.categoryId === account.categoryId ? { ...item, accountNumber: event.target.value } : item),
+                                    })}
+                                  />
+                                </Field>
+                              ))}
+                            </FieldGroup>
+                          </FieldSet>
+                        </>
+                      ) : null}
+                    </FieldGroup>
+                  </FieldSet>
+                );
+              })}
+            </FieldGroup>
+          </CardContent>
+        </Card>
+      ) : null}
+      {error ? (
+        <Alert variant="destructive" role="alert">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      <div className="flex justify-end">
+        <Button type="submit" disabled={saving}>
+          {saving ? <Spinner data-icon="inline-start" /> : null}
+          Gem indstillinger
+        </Button>
+      </div>
     </form>
   );
 }

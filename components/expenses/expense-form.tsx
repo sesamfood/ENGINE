@@ -109,7 +109,7 @@ export function ExpenseForm({
   const categoryMapped = Boolean(
     categoryId && location?.economicCategoryIds.includes(categoryId),
   );
-  const shouldExport = sendToEconomic;
+  const shouldExport = Boolean(location?.economicConfigured && sendToEconomic);
   const exportValid = !shouldExport || (exportAvailable && categoryMapped);
   const amountValid =
     netAmount !== null && netAmount > 0 && netAmount <= 1_000_000_000;
@@ -240,7 +240,9 @@ export function ExpenseForm({
       requestId.current = null;
       uploaded.current = null;
       toast.success(
-        "Udgiften er registreret. Se status for e-mail og e-conomic under Udgifter.",
+        shouldExport
+          ? "Udgiften er registreret. Se status for e-mail og e-conomic under Udgifter."
+          : "Udgiften er registreret. Se status for e-mail under Udgifter.",
       );
     } catch (error) {
       if (mounted.current)
@@ -626,7 +628,7 @@ export function ExpenseForm({
                   </TableBody>
                 </Table>
               </div>
-              {exportAvailable || sendToEconomic ? (
+              {location?.economicConfigured && (exportAvailable || sendToEconomic) ? (
                 <FieldGroup>
                   <Field
                     orientation="horizontal"

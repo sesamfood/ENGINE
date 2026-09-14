@@ -93,8 +93,10 @@ const economicLabels = {
 
 function ExpenseStatuses({
   expense,
+  economicConfigured,
 }: {
   expense: Pick<Doc<"expenses">, "noticeStatus" | "economicStatus">;
+  economicConfigured: boolean;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -103,7 +105,7 @@ function ExpenseStatuses({
       >
         E-mail: {noticeLabels[expense.noticeStatus]}
       </Badge>
-      <Badge
+      {economicConfigured ? <Badge
         variant={
           expense.economicStatus === "failed" ||
           expense.economicStatus === "uncertain"
@@ -112,7 +114,7 @@ function ExpenseStatuses({
         }
       >
         e-conomic: {economicLabels[expense.economicStatus]}
-      </Badge>
+      </Badge> : null}
     </div>
   );
 }
@@ -252,14 +254,14 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
             </TableBody>
           </Table>
         </div>
-        <ExpenseStatuses expense={expense} />
+        <ExpenseStatuses expense={expense} economicConfigured={expense.economicConfigured} />
         {expense.noticeError ? (
           <Alert variant="destructive">
             <AlertTitle>E-mailen kunne ikke sendes</AlertTitle>
             <AlertDescription>{expense.noticeError}</AlertDescription>
           </Alert>
         ) : null}
-        {expense.economicError ? (
+        {expense.economicConfigured && expense.economicError ? (
           <Alert variant="destructive">
             <AlertTitle>
               {expense.economicStatus === "uncertain"
@@ -269,13 +271,13 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
             <AlertDescription>{expense.economicError}</AlertDescription>
           </Alert>
         ) : null}
-        {expense.economicStatus === "uncertain" ? (
+        {expense.economicConfigured && expense.economicStatus === "uncertain" ? (
           <p className="text-sm text-muted-foreground">
             e-conomic kan have modtaget udgiften. Kontrollér kladden i
             e-conomic, før udgiften oprettes igen.
           </p>
         ) : null}
-        {expense.economicEntryNumber !== undefined ? (
+        {expense.economicConfigured && expense.economicEntryNumber !== undefined ? (
           <p className="text-sm">
             Postering i e-conomic: {expense.economicEntryNumber}
           </p>
@@ -311,6 +313,7 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
             </Button>
           ) : null}
           {canExport &&
+          expense.economicConfigured &&
           expense.economicAvailable &&
           (expense.economicStatus === "notRequested" ||
             expense.economicStatus === "failed") ? (
@@ -323,7 +326,7 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
         </div>
       </div>
       <AlertDialog
-        open={confirmExport}
+        open={expense.economicConfigured && confirmExport}
         onOpenChange={(open) => {
           if (!exporting) setConfirmExport(open);
         }}
@@ -458,7 +461,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                       )}
                     </TableCell>
                     <TableCell className="max-w-72">
-                      <ExpenseStatuses expense={expense} />
+                      <ExpenseStatuses expense={expense} economicConfigured={location.economicConfigured} />
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -502,7 +505,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                         expense.currency,
                       )}
                     </p>
-                    <ExpenseStatuses expense={expense} />
+                    <ExpenseStatuses expense={expense} economicConfigured={location.economicConfigured} />
                   </CardContent>
                   <CardFooter>
                     <Button

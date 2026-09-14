@@ -17,7 +17,7 @@ import { claimStorageForOrganization } from "./lib/storageOwnership";
 type ReadCtx = QueryCtx | MutationCtx;
 const MAX_LOCATIONS = 500;
 const publicExpense = schema.doc("expenses").omit("to", "cc", "bcc", "economic", "requestFingerprint");
-const locationOption = v.object({ id: v.id("locations"), name: v.string(), currency: v.string() });
+const locationOption = v.object({ id: v.id("locations"), name: v.string(), currency: v.string(), economicConfigured: v.boolean() });
 const expenseIdArgs = { expenseId: v.id("expenses") };
 
 async function requireExpenseAccess(ctx: ReadCtx, permission: "expenses.create" | "expenses.view" | "expenses.exportEconomic") {
@@ -183,7 +183,7 @@ export const getFormOptions = query({
         ? settings?.economicMappings.find((item) => item.connectionId === linked.connection._id)
         : undefined;
       return {
-        id: location._id, name: location.name, currency,
+        id: location._id, name: location.name, currency, economicConfigured: Boolean(linked),
         economicAvailable: Boolean(mapping?.accountMappings.length),
         economicCategoryIds: mapping?.accountMappings.map((item) => item.categoryId) ?? [],
       };
@@ -197,6 +197,7 @@ export const getHistoryLocations = query({
     const auth = await requireExpenseAccess(ctx, "expenses.view");
     return await Promise.all((await availableLocations(ctx, auth)).map(async (location) => ({
       id: location._id, name: location.name, currency: await resolveLocationCurrency(ctx, auth.organizationId, location),
+      economicConfigured: Boolean(await economicForLocation(ctx, auth.organizationId, location._id)),
     })));
   },
 });
@@ -287,13 +288,18 @@ export const list = query({
 
 export const get = query({
   args: expenseIdArgs,
-  returns: v.union(v.null(), publicExpense.extend({ attachmentUrl: v.union(v.string(), v.null()), economicAvailable: v.boolean() })),
+  returns: v.union(v.null(), publicExpense.extend({ attachmentUrl: v.union(v.string(), v.null()), economicAvailable: v.boolean(), economicConfigured: v.boolean() })),
   handler: async (ctx, args) => {
     const auth = await requireExpenseAccess(ctx, "expenses.view");
     const expense = await ctx.db.get("expenses", args.expenseId);
     if (!expense || expense.organizationId !== auth.organizationId) return null;
     requireLocationAccess(auth, expense.locationId);
-    return { ...visibleExpense(expense), attachmentUrl: expense.attachment ? await ctx.storage.getUrl(expense.attachment.storageId) : null, economicAvailable: await canExportExpense(ctx, expense) };
+    return {
+      ...visibleExpense(expense),
+      attachmentUrl: expense.attachment ? await ctx.storage.getUrl(expense.attachment.storageId) : null,
+      economicAvailable: await canExportExpense(ctx, expense),
+      economicConfigured: Boolean(await economicForLocation(ctx, auth.organizationId, expense.locationId)),
+    };
   },
 });
 
