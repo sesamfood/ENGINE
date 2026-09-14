@@ -201,7 +201,6 @@ export const defaultRolePermissions: Record<
       id !== "sales.viewDetail",
   ),
   member: [
-    "dateLabels.print",
     "count.register",
     "count.viewStock",
     "waste.register",
