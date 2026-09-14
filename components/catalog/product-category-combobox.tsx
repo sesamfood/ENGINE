@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import {
   CreatableMultiCombobox,
+  type ComboboxGroupChange,
   type ComboboxOptionGroup,
 } from "@/components/catalog/creatable-combobox";
 
@@ -44,7 +45,7 @@ export function ProductCategoryCombobox({
   categories: readonly ProductCategory[];
   products: readonly ProductOption[];
   values: string[];
-  onValuesChange: (values: string[]) => void;
+  onValuesChange: (values: string[], categoryChange?: ComboboxGroupChange) => void;
   nameFilter?: {
     values: string[];
     onValuesChange: (values: string[]) => void;
@@ -142,13 +143,14 @@ export function ProductCategoryCombobox({
           ? [...values, ...nameOptions.map((option) => option.value)]
           : values
       }
-      onValuesChange={(nextValues) => {
+      onValuesChange={(nextValues, groupChange) => {
         if (!nameFilter) {
-          onValuesChange(nextValues);
+          onValuesChange(nextValues, groupChange);
           return;
         }
         onValuesChange(
           nextValues.filter((value) => !value.startsWith(NAME_FILTER_PREFIX)),
+          groupChange,
         );
         nameFilter.onValuesChange(
           nextValues

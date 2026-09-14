@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { toast } from "sonner";
@@ -13,17 +13,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CardContent, CardFooter } from "@/components/ui/card";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
 import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 
 type Settings = FunctionReturnType<typeof api.dateLabels.getSettings>;
@@ -81,7 +75,6 @@ function VisibilityForm({
   const [excludedIds, setExcludedIds] = useState(
     () => new Set(settings.excludedProductIds),
   );
-  const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const includedCategories = useMemo(
@@ -99,19 +92,75 @@ function VisibilityForm({
     mode === "all" ||
     (!excludedIds.has(product.id) &&
       (productIds.has(product.id) || fromCategory(product)));
-  const matches = (text: string) =>
-    text
-      .toLocaleLowerCase("da")
-      .includes(search.trim().toLocaleLowerCase("da"));
-  const filteredCategories = settings.categories.filter((category) =>
-    matches(category.path),
+  const visibleProducts = products.filter(isVisible);
+  const categories = useMemo(() => {
+    const byId = new Map(
+      settings.categories.map((category) => [category.id, category]),
+    );
+    return settings.categories.map((category) => {
+      let depth = 0;
+      let parentId = category.parentCategoryId;
+      while (parentId) {
+        depth++;
+        parentId = byId.get(parentId)?.parentCategoryId ?? null;
+      }
+      return { ...category, depth };
+    });
+  }, [settings.categories]);
+  const productOptions = useMemo(
+    () =>
+      products.map((product) => ({
+        value: product.id,
+        label: product.name,
+        categoryIds: product.categories.map((category) => category.id),
+      })),
+    [products],
   );
-  const filteredProducts = products.filter((product) =>
-    matches(
-      `${product.name} ${product.categories.map((category) => category.name).join(" ")}`,
-    ),
-  );
-  const visibleCount = products.filter(isVisible).length;
+
+  const updateSelection: ComponentProps<
+    typeof ProductCategoryCombobox
+  >["onValuesChange"] = (values, categoryChange) => {
+    const nextVisibleIds = new Set(values);
+    const nextCategoryIds = new Set(categoryIds);
+    const changedCategory = settings.categories.find(
+      (category) => category.id === categoryChange?.value,
+    );
+    if (changedCategory && categoryChange) {
+      const subtree = categoryIdsInSubtree(
+        settings.categories,
+        changedCategory.id,
+      );
+      if (categoryChange.selected) nextCategoryIds.add(changedCategory.id);
+      else {
+        for (const id of subtree) nextCategoryIds.delete(id);
+      }
+      for (const product of products) {
+        if (!product.categories.some((category) => subtree.has(category.id)))
+          continue;
+        if (categoryChange.selected) nextVisibleIds.add(product.id);
+        else nextVisibleIds.delete(product.id);
+      }
+    }
+    const nextIncludedCategories = new Set(
+      [...nextCategoryIds].flatMap((id) => [
+        ...categoryIdsInSubtree(settings.categories, id),
+      ]),
+    );
+    const nextProductIds = new Set<Id<"products">>();
+    const nextExcludedIds = new Set<Id<"products">>();
+    for (const product of products) {
+      const includedByCategory = product.categories.some((category) =>
+        nextIncludedCategories.has(category.id),
+      );
+      if (nextVisibleIds.has(product.id)) {
+        if (!includedByCategory || productIds.has(product.id))
+          nextProductIds.add(product.id);
+      } else if (includedByCategory) nextExcludedIds.add(product.id);
+    }
+    setCategoryIds(nextCategoryIds);
+    setProductIds(nextProductIds);
+    setExcludedIds(nextExcludedIds);
+  };
 
   async function save() {
     if (saving) return;
@@ -178,110 +227,21 @@ function VisibilityForm({
             />
           </Field>
           {mode === "selected" ? (
-            <>
-              <Field>
-                <FieldLabel htmlFor="date-label-settings-search">
-                  Søg efter produkt eller kategori
-                </FieldLabel>
-                <Input
-                  id="date-label-settings-search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="h-11"
-                />
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FieldSet className="min-w-0 gap-2">
-                  <FieldLegend variant="label">Kategorier</FieldLegend>
-                  <div className="max-h-64 overflow-y-auto rounded-md border p-2">
-                    {filteredCategories.map((category) => {
-                      const selected = categoryIds.has(category.id);
-                      const inherited =
-                        !selected && includedCategories.has(category.id);
-                      return (
-                        <Field
-                          key={category.id}
-                          orientation="horizontal"
-                          className="gap-2"
-                        >
-                          <Checkbox
-                            id={`label-category-${category.id}`}
-                            checked={selected || inherited}
-                            disabled={saving || inherited}
-                            onCheckedChange={(checked) => {
-                              const next = new Set(categoryIds);
-                              if (checked) next.add(category.id);
-                              else next.delete(category.id);
-                              setCategoryIds(next);
-                            }}
-                          />
-                          <FieldLabel
-                            htmlFor={`label-category-${category.id}`}
-                            className="min-h-11 min-w-0 break-words"
-                          >
-                            {category.path}
-                            {inherited ? " (via overkategori)" : ""}
-                          </FieldLabel>
-                        </Field>
-                      );
-                    })}
-                    {!filteredCategories.length ? (
-                      <p className="p-2 text-muted-foreground">
-                        Ingen kategorier fundet
-                      </p>
-                    ) : null}
-                  </div>
-                </FieldSet>
-                <FieldSet className="min-w-0 gap-2">
-                  <FieldLegend variant="label">Produkter</FieldLegend>
-                  <div className="max-h-64 overflow-y-auto rounded-md border p-2">
-                    {filteredProducts.map((product) => (
-                      <Field
-                        key={product.id}
-                        orientation="horizontal"
-                        className="gap-2"
-                      >
-                        <Checkbox
-                          id={`label-product-${product.id}`}
-                          checked={isVisible(product)}
-                          disabled={saving}
-                          onCheckedChange={(checked) => {
-                            const included = new Set(productIds);
-                            const excluded = new Set(excludedIds);
-                            if (checked) {
-                              excluded.delete(product.id);
-                              if (!fromCategory(product))
-                                included.add(product.id);
-                            } else {
-                              included.delete(product.id);
-                              if (fromCategory(product))
-                                excluded.add(product.id);
-                              else excluded.delete(product.id);
-                            }
-                            setProductIds(included);
-                            setExcludedIds(excluded);
-                          }}
-                        />
-                        <FieldLabel
-                          htmlFor={`label-product-${product.id}`}
-                          className="min-h-11 min-w-0 break-words"
-                        >
-                          {product.name}
-                        </FieldLabel>
-                      </Field>
-                    ))}
-                    {!filteredProducts.length ? (
-                      <p className="p-2 text-muted-foreground">
-                        Ingen produkter fundet
-                      </p>
-                    ) : null}
-                  </div>
-                </FieldSet>
-              </div>
-            </>
+            <Field data-disabled={saving}>
+              <FieldLabel>Produkter og kategorier</FieldLabel>
+              <ProductCategoryCombobox
+                categories={categories}
+                products={productOptions}
+                values={visibleProducts.map((product) => product.id)}
+                onValuesChange={updateSelection}
+                disabled={saving}
+                ariaLabel="Produkter til datomærkning"
+              />
+            </Field>
           ) : null}
           <p className="text-sm text-muted-foreground" role="status">
-            {visibleCount} af {products.length} produkter vises på lokationen.
+            {visibleProducts.length} af {products.length} produkter vises på
+            lokationen.
           </p>
           {error ? (
             <Alert variant="destructive">

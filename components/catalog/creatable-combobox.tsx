@@ -37,6 +37,11 @@ export type ComboboxOptionGroup = {
   optionValues: string[];
 };
 
+export type ComboboxGroupChange = {
+  value: string;
+  selected: boolean;
+};
+
 const GROUP_SELECTION_PREFIX = "__combobox_group__:";
 const SUGGESTION_SELECTION_PREFIX = "__combobox_suggestion__:";
 
@@ -269,7 +274,7 @@ export function CreatableMultiCombobox({
 }: {
   options: ComboboxOption[];
   values: string[];
-  onValuesChange: (values: string[]) => void;
+  onValuesChange: (values: string[], groupChange?: ComboboxGroupChange) => void;
   getInputOption?: (input: string) => ComboboxOption | null;
   placeholder: string;
   allowCreate?: boolean;
@@ -531,6 +536,10 @@ export function CreatableMultiCombobox({
                     (value) => !selectedValueSet.has(value),
                   ),
                 ],
+            {
+              value: toggledGroupValue.slice(GROUP_SELECTION_PREFIX.length),
+              selected: !allSelected,
+            },
           );
         } else if (toggledSuggestionValue) {
           const suggestionValue = suggestionOptionsByValue.get(
