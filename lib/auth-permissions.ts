@@ -104,6 +104,15 @@ export const permissionCatalog = [
     ],
   },
   {
+    group: "Udgift",
+    permissions: [
+      { id: "expenses.create", label: "Registrere udgifter" },
+      { id: "expenses.view", label: "Se udgifter" },
+      { id: "expenses.exportEconomic", label: "Oprette udgifter i e-conomic" },
+      { id: "expenses.settings", label: "Administrere udgiftsindstillinger" },
+    ],
+  },
+  {
     group: "Varemodtagelse",
     permissions: [
       {
@@ -185,6 +194,7 @@ export const defaultRolePermissions: Record<
   manager: permissionIds.filter(
     (id) =>
       !id.endsWith(".settings") &&
+      id !== "expenses.exportEconomic" &&
       id !== "integrations.manage" &&
       id !== "apiKeys.manage" &&
       id !== "locations.manage" &&

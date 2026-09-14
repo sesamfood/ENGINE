@@ -40,6 +40,7 @@ const sectionTitles = [
   { value: "schedule", label: "Medarbejdere" },
   { value: "transfers", label: "Transfer" },
   { value: "invoices", label: "Faktura" },
+  { value: "expenses", label: "Udgift" },
   { value: "wolt-orders", label: "Wolt-ordrer" },
   { value: "staff-food", label: "Staff food" },
   { value: "own-checks", label: "Egenkontrol" },

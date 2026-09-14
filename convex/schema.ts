@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
 import { featureIdValidator } from "./lib/features";
+import { expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
 import { economicApprovalItemValidator, economicCategoryValidator, economicMappingFields } from "./lib/economicValidators";
 import {
   forecastProfileValidator,
@@ -42,6 +43,19 @@ import {
 } from "./lib/woltValidators";
 
 export default defineSchema({
+  expenseSettings: defineTable({
+    organizationId: v.string(),
+    to: v.array(v.string()),
+    cc: v.array(v.string()),
+    bcc: v.array(v.string()),
+    economicMappings: v.array(expenseEconomicMappingValidator),
+  }).index("by_organizationId", ["organizationId"]),
+
+  expenses: defineTable(expenseFields)
+    .index("by_organizationId_and_requestId", ["organizationId", "requestId"])
+    .index("by_organizationId_and_locationId_and_date", ["organizationId", "locationId", "date"])
+    .index("by_attachment_storageId", ["attachment.storageId"]),
+
   featureSettings: defineTable({
     organizationId: v.string(),
     disabledFeatures: v.array(featureIdValidator),

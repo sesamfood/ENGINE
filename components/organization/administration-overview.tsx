@@ -17,6 +17,7 @@ import {
   PlugIcon,
   PrinterIcon,
   ReceiptTextIcon,
+  WalletIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
   StoreIcon,
@@ -45,6 +46,7 @@ type AdministrationPermission = Extract<
     | "count.settings"
     | "dashboard.manage"
     | "dateLabels.print"
+    | "expenses.settings"
     | "goodsReceipts.settings"
     | "integrations.manage"
     | "locations.manage"
@@ -132,6 +134,13 @@ const categories: AdministrationCategory[] = [
         href: "/administration/invoices",
         icon: ReceiptTextIcon,
         permissions: ["organization.settings"],
+      },
+      {
+        title: "Udgift",
+        description: "Vælg e-mailmodtagere og konti til e-conomic.",
+        href: "/administration/expenses",
+        icon: WalletIcon,
+        permissions: ["expenses.settings", "organization.settings"],
       },
       {
         title: "Wolt-ordrer",
@@ -266,6 +275,7 @@ export function AdministrationOverview() {
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
   const canWasteSettings = usePermission("waste.settings");
+  const canExpenseSettings = usePermission("expenses.settings");
   const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
   const canOwnChecksManage = usePermission("ownChecks.manage");
   const canStaffFood = usePermission("staffFood.manage");
@@ -278,6 +288,7 @@ export function AdministrationOverview() {
     "count.settings": canCountSettings,
     "dashboard.manage": canDashboardManage,
     "dateLabels.print": canDateLabels,
+    "expenses.settings": canExpenseSettings,
     "goodsReceipts.settings": canGoodsReceiptSettings,
     "integrations.manage": canIntegrations,
     "locations.manage": canLocations,

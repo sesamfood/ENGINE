@@ -10,6 +10,7 @@ const administrationPermissions: PermissionId[] = [
   "organization.settings",
   "count.settings",
   "waste.settings",
+  "expenses.settings",
   "goodsReceipts.settings",
   "ownChecks.manage",
   "integrations.manage",
@@ -39,6 +40,10 @@ const routes: Record<SidebarItemId, readonly Route[]> = {
   invoices: [
     { href: "/invoices", permission: "invoices.manage" },
     { href: "/invoices/history", permission: "invoices.view" },
+  ],
+  expenses: [
+    { href: "/expenses", permission: "expenses.create" },
+    { href: "/expenses/history", permission: "expenses.view" },
   ],
   goodsReceipts: [
     { href: "/goods-receipts", permission: "goodsReceipts.register" },
@@ -146,6 +151,7 @@ export function homeDestination(
     "woltOrders",
     "transfers",
     "invoices",
+    "expenses",
     "goodsReceipts",
     "waste",
     "ownChecks",
