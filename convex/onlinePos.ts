@@ -175,6 +175,37 @@ export const getSettings = query({
   },
 });
 
+export const renameConnection = mutation({
+  args: {
+    integrationId: v.id("onlinePosIntegrations"),
+    name: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    requireAllLocationAccess(auth);
+    requireHumanPrincipal(auth);
+    const master = await getOnlinePosMaster(
+      ctx,
+      auth.organizationId,
+      args.integrationId,
+    );
+    if (!master) throw new ConvexError("Masterforbindelsen blev ikke fundet");
+    const name = args.name.trim();
+    if (!name) throw new ConvexError("Indtast et navn på masterforbindelsen");
+    if (name.length > 100)
+      throw new ConvexError("Navnet må højst være 100 tegn");
+    await ctx.db.patch(master._id, { name, updatedAt: Date.now() });
+    await recordAudit(ctx, auth, {
+      action: "integration.renamed",
+      entityTable: "onlinePosIntegrations",
+      entityId: master._id,
+      summary: `OnlinePOS-masterforbindelsen blev omdøbt til ${name}`,
+    });
+    return null;
+  },
+});
+
 export const listLocationConnections = query({
   args: {},
   returns: v.object({

@@ -16,6 +16,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CopyIcon,
+  PencilIcon,
   PlugIcon,
   RefreshCwIcon,
   ShoppingBasketIcon,
@@ -194,6 +195,7 @@ function ConnectionCard({
   const fieldId = useId();
   const [name, setName] = useState(settings.name);
   const connect = useAction(api.onlinePos.connect);
+  const renameConnection = useMutation(api.onlinePos.renameConnection);
   const disconnect = useMutation(api.onlinePos.disconnect);
   const [companyIdDraft, setCompanyIdDraft] = useState<string | null>(null);
   const [token, setToken] = useState("");
@@ -208,26 +210,33 @@ function ConnectionCard({
       toast.error("Indtast et gyldigt firma-id");
       return;
     }
-    if (!token.trim()) {
+    if (!token.trim() && !settings.id) {
       toast.error("Indtast dit OnlinePOS-token");
       return;
     }
 
     setConnecting(true);
     try {
-      const result = await connect({
-        companyId: parsedCompanyId,
-        token,
-        name,
-        integrationId: settings.id ?? undefined,
-      });
+      if (settings.id && !token.trim()) {
+        await renameConnection({ integrationId: settings.id, name });
+        toast.success("Masterforbindelsens navn er gemt");
+      } else {
+        const result = await connect({
+          companyId: parsedCompanyId,
+          token,
+          name,
+          integrationId: settings.id ?? undefined,
+        });
+        toast.success(
+          settings.connected
+            ? "Masterforbindelsen er opdateret"
+            : `Masterforbindelsen er oprettet. ${result.productCount} produkter blev fundet.`,
+        );
+      }
       setToken("");
       setCompanyIdDraft(null);
       setEditingConnection(false);
       onConnected();
-      toast.success(
-        `Masterforbindelsen er oprettet. ${result.productCount} produkter blev fundet.`,
-      );
     } catch (error) {
       toast.error(getUserErrorMessage(error, "OnlinePOS-integrationen kunne ikke opdateres. Prøv igen."));
     } finally {
@@ -313,7 +322,7 @@ function ConnectionCard({
             <Field>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor={`${fieldId}-token`}>
-                  {settings.connected ? "Nyt token til masterkontoen" : "Masterkontoens token"}
+                  {settings.connected ? "Nyt token til masterkontoen (valgfrit)" : "Masterkontoens token"}
                 </FieldLabel>
                 <HelpTooltip
                   label="Masterkontoens token"
@@ -328,7 +337,7 @@ function ConnectionCard({
                 onChange={(event) => setToken(event.target.value)}
                 placeholder={
                   settings.connected
-                    ? "Indtast nyt token"
+                    ? "Behold det nuværende token"
                     : "Token fra OnlinePOS"
                 }
                 className="h-11"
@@ -378,9 +387,14 @@ function ConnectionCard({
           </AlertDialog>
         ) : null}
         {settings.connected && !editingConnection ? (
-          <Button onClick={() => setEditingConnection(true)}>
-            <RefreshCwIcon data-icon="inline-start" />
-            Skift token
+          <Button
+            onClick={() => {
+              setName(settings.name);
+              setEditingConnection(true);
+            }}
+          >
+            <PencilIcon data-icon="inline-start" />
+            Redigér forbindelse
           </Button>
         ) : (
           <>
@@ -389,6 +403,7 @@ function ConnectionCard({
                 variant="outline"
                 disabled={connecting}
                 onClick={() => {
+                  setName(settings.name);
                   setCompanyIdDraft(null);
                   setToken("");
                   setEditingConnection(false);
@@ -403,7 +418,7 @@ function ConnectionCard({
               ) : (
                 <PlugIcon data-icon="inline-start" />
               )}
-              {settings.connected ? "Gem nyt token" : "Forbind master"}
+              {settings.connected ? "Gem ændringer" : "Forbind master"}
             </Button>
           </>
         )}
