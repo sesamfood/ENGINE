@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
+import { featureIdValidator } from "./lib/features";
 import { economicApprovalItemValidator, economicCategoryValidator, economicMappingFields } from "./lib/economicValidators";
 import {
   forecastProfileValidator,
@@ -22,6 +23,7 @@ import {
   ownCheckValueValidator,
 } from "./lib/ownCheckValidators";
 import { organizationThemeValidator } from "./lib/organizationTheme";
+import { woltStoredCredentialsValidator } from "./lib/woltCredentialValidators";
 import {
   customMetricSpecValidator,
   dashboardSummarySourceValidator,
@@ -40,6 +42,11 @@ import {
 } from "./lib/woltValidators";
 
 export default defineSchema({
+  featureSettings: defineTable({
+    organizationId: v.string(),
+    disabledFeatures: v.array(featureIdValidator),
+  }).index("by_organizationId", ["organizationId"]),
+
   addressSearchCache: defineTable({
     organizationId: v.string(),
     query: v.string(),
@@ -553,6 +560,7 @@ export default defineSchema({
 
   woltIntegrations: defineTable({
     organizationId: v.string(),
+    credentials: v.optional(woltStoredCredentialsValidator),
     enabled: v.boolean(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
@@ -650,6 +658,7 @@ export default defineSchema({
     .index("by_expiresAt", ["expiresAt"]),
 
   woltOnboardingQuarantine: defineTable({
+    organizationId: v.optional(v.string()),
     partnerVenueId: v.string(),
     authorizationCodeHash: v.string(),
     authorizationCodeCiphertext: v.string(),
@@ -701,6 +710,7 @@ export default defineSchema({
     .index("by_receivedAt", ["receivedAt"]),
 
   woltWebhookQuarantine: defineTable({
+    organizationId: v.optional(v.string()),
     eventId: v.string(),
     venueId: v.string(),
     orderId: v.string(),
@@ -712,6 +722,7 @@ export default defineSchema({
     .index("by_eventId", ["eventId"])
     .index("by_venueId_and_eventId", ["venueId", "eventId"])
     .index("by_venueId_and_receivedAt", ["venueId", "receivedAt"])
+    .index("by_organizationId_and_venueId_and_receivedAt", ["organizationId", "venueId", "receivedAt"])
     .index("by_receivedAt", ["receivedAt"]),
 
   woltOrders: defineTable({

@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { getLocationCountWindow } from "./countWindow";
+import { getDisabledFeatures } from "./features";
 
 type CountLockContext = QueryCtx | MutationCtx;
 
@@ -14,6 +15,10 @@ export async function otherFeaturesLockState(
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== organizationId) {
     throw new ConvexError("Lokationen blev ikke fundet");
+  }
+
+  if ((await getDisabledFeatures(ctx, organizationId)).includes("count")) {
+    return { isLocked: false, nextTransitionAt: null };
   }
 
   const window = await getLocationCountWindow(

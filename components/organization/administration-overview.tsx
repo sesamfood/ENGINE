@@ -1,12 +1,14 @@
 "use client";
 
 import {
+  ArrowRightLeftIcon,
   Building2Icon,
   CalendarClockIcon,
   ChartNoAxesCombinedIcon,
   ClipboardCheckIcon,
   ClipboardListIcon,
   KeyRoundIcon,
+  LayoutDashboardIcon,
   ListOrderedIcon,
   MessageSquarePlusIcon,
   MonitorCogIcon,
@@ -14,6 +16,8 @@ import {
   PackageCheckIcon,
   PlugIcon,
   PrinterIcon,
+  ReceiptTextIcon,
+  ShoppingBagIcon,
   ShoppingCartIcon,
   StoreIcon,
   Trash2Icon,
@@ -116,50 +120,71 @@ const categories: AdministrationCategory[] = [
         permissions: ["organization.settings"],
       },
       {
+        title: "Transfer",
+        description: "Slå Transfer til eller fra for organisationen.",
+        href: "/administration/transfers",
+        icon: ArrowRightLeftIcon,
+        permissions: ["organization.settings"],
+      },
+      {
+        title: "Faktura",
+        description: "Slå Faktura til eller fra for organisationen.",
+        href: "/administration/invoices",
+        icon: ReceiptTextIcon,
+        permissions: ["organization.settings"],
+      },
+      {
+        title: "Wolt-ordrer",
+        description: "Slå Wolt-ordrer til eller fra for organisationen.",
+        href: "/administration/wolt-orders",
+        icon: ShoppingBagIcon,
+        permissions: ["organization.settings"],
+      },
+      {
         title: "Datomærkning",
         description: "Vælg produkter pr. lokation, og opsæt labelprinteren.",
         href: "/administration/date-labels",
         icon: PrinterIcon,
-        permissions: ["dateLabels.print"],
+        permissions: ["dateLabels.print", "organization.settings"],
       },
       {
         title: "Count",
         description: "Indstil frekvens og regler for Count-vinduet.",
         href: "/administration/count",
         icon: ClipboardListIcon,
-        permissions: ["count.settings"],
+        permissions: ["count.settings", "organization.settings"],
       },
       {
         title: "Varemodtagelse",
         description: "Indstil billeder af følgesedler efter oprindelse.",
         href: "/administration/goods-receipts",
         icon: PackageCheckIcon,
-        permissions: ["goodsReceipts.settings"],
+        permissions: ["goodsReceipts.settings", "organization.settings"],
       },
       {
         title: "Waste",
         description: "Indstil nulstilling og popularitet for Waste.",
         href: "/administration/waste",
         icon: Trash2Icon,
-        permissions: ["waste.settings"],
+        permissions: ["waste.settings", "organization.settings"],
       },
       {
         title: "Egenkontrol",
         description: "Opret kontroller, tidsplaner og regler for dokumentation.",
         href: "/administration/own-checks",
         icon: ClipboardCheckIcon,
-        permissions: ["ownChecks.manage"],
+        permissions: ["ownChecks.manage", "organization.settings"],
       },
       {
         title: "Staff food",
         description: "Indstil vagtlængder, kategorier og tilladte produkter.",
         href: "/administration/staff-food",
         icon: UtensilsIcon,
-        permissions: ["staffFood.manage"],
+        permissions: ["staffFood.manage", "organization.settings"],
       },
       {
-        title: "Vagtplan",
-        description: "Indstil tidszonen for medarbejdernes vagtplan.",
+        title: "Medarbejdere",
+        description: "Slå medarbejdersider til eller fra, og indstil vagtplanens tidszone.",
         href: "/administration/schedule",
         icon: CalendarClockIcon,
         permissions: ["organization.settings"],
@@ -199,6 +224,13 @@ const categories: AdministrationCategory[] = [
     title: "Data og integrationer",
     description: "Forbind eksterne systemer, målinger og API-adgang.",
     sections: [
+      {
+        title: "Dashboard",
+        description: "Slå Dashboard til eller fra for organisationen.",
+        href: "/administration/dashboard",
+        icon: LayoutDashboardIcon,
+        permissions: ["organization.settings"],
+      },
       {
         title: "Integrationer",
         description: "Forbind eksterne systemer, og administrér dataudveksling.",
@@ -282,6 +314,7 @@ export function AdministrationOverview() {
     .map((category) => ({
       ...category,
       sections: category.sections.filter((section) =>
+        (section.href !== "/administration/wolt-orders" || access.woltEnabled === true) &&
         section.permissions.some((permission) => allowedPermissions[permission]),
       ),
     }))

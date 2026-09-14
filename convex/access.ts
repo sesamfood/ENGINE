@@ -25,6 +25,7 @@ import {
   requirePermission,
 } from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
+import { featureIdValidator, getDisabledFeatures } from "./lib/features";
 
 const roleValidator = v.string();
 const granularityValidator = v.union(
@@ -69,6 +70,7 @@ const accessContextValidator = v.object({
 
 const runtimeContextValidator = accessContextValidator.extend({
   locations: v.array(locationOptionValidator),
+  disabledFeatures: v.array(featureIdValidator),
 });
 
 const roleContextValidator = v.object({
@@ -289,6 +291,7 @@ export const getRuntimeContext = query({
     const { auth, context } = await getAccessContext(ctx);
     return {
       ...context,
+      disabledFeatures: await getDisabledFeatures(ctx, auth.organizationId),
       locations: await listScopedLocationOptions(
         ctx,
         auth.organizationId,

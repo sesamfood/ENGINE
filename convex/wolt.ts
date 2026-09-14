@@ -20,14 +20,15 @@ import {
   requireHumanPrincipal,
   requireIntegrationManager,
   requireLocationAccess,
+  requireOrganization,
   requireSalesDetailViewer,
   resolveLocationFilter,
 } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
+import { woltEnvironmentValidator } from "./lib/woltCredentialValidators";
 import {
   hashWoltState,
   randomWoltSecret,
-  woltClientCredentials,
   woltEndpoints,
   woltOAuthRedirectUri,
 } from "./lib/woltCrypto";
@@ -242,7 +243,7 @@ export const getIntegrationOverview = query({
       .some((connection) => connection.state !== "disabled");
     return {
       connected,
-      enabled: connected && (integration?.enabled ?? true),
+      enabled: connected && Boolean(integration?.credentials) && (integration?.enabled ?? true),
       canUseWio: auth.locationScope.all,
       limitReached:
         locations.length > MAX_LOCATIONS ||
@@ -277,7 +278,7 @@ export const isEnabled = query({
   args: {},
   returns: v.boolean(),
   handler: async (ctx) => {
-    const { organizationId } = await requireSalesDetailViewer(ctx);
+    const { organizationId } = await requireOrganization(ctx);
     const [integration, connections] = await Promise.all([
       ctx.db
         .query("woltIntegrations")
@@ -295,7 +296,7 @@ export const isEnabled = query({
     const connected = connections
       .slice(0, MAX_LOCATIONS)
       .some((connection) => connection.state !== "disabled");
-    return connected && (integration?.enabled ?? true);
+    return connected && Boolean(integration?.credentials) && (integration?.enabled ?? true);
   },
 });
 
@@ -324,19 +325,15 @@ export const setEnabled = mutation({
         q.eq("organizationId", auth.organizationId),
       )
       .unique();
-    const now = Date.now();
-    const integrationId = integration?._id ??
-      (await ctx.db.insert("woltIntegrations", {
-        organizationId: auth.organizationId,
-        enabled: args.enabled,
-        updatedAt: now,
-      }));
-    if (integration) {
-      await ctx.db.patch(integration._id, {
-        enabled: args.enabled,
-        updatedAt: now,
-      });
+    if (!integration?.credentials) {
+      throw new ConvexError("Gem organisationens Wolt-nøgler, før du aktiverer integrationen");
     }
+    const now = Date.now();
+    const integrationId = integration._id;
+    await ctx.db.patch(integration._id, {
+      enabled: args.enabled,
+      updatedAt: now,
+    });
     await recordAudit(ctx, auth, {
       action: args.enabled
         ? "wolt.integration.enabled"
@@ -363,6 +360,8 @@ export const getLocationForOnboarding = internalQuery({
 export const storeOAuthState = internalMutation({
   args: {
     organizationId: v.string(),
+    clientId: v.string(),
+    environment: woltEnvironmentValidator,
     locationId: v.id("locations"),
     userId: v.string(),
     userName: v.string(),
@@ -374,6 +373,13 @@ export const storeOAuthState = internalMutation({
   returns: v.id("woltOAuthStates"),
   handler: async (ctx, args) => {
     requireLocation(await ctx.db.get("locations", args.locationId), args.organizationId);
+    const integration = await ctx.db.query("woltIntegrations")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", args.organizationId))
+      .unique();
+    if (integration?.credentials?.clientId !== args.clientId ||
+      integration.credentials.environment !== args.environment) {
+      throw new ConvexError("Wolt-nøglerne blev ændret. Start forbindelsen igen.");
+    }
     const stateId = await ctx.db.insert("woltOAuthStates", {
       stateHash: args.stateHash,
       organizationId: args.organizationId,
@@ -407,7 +413,7 @@ export const storeOAuthState = internalMutation({
 export const beginSsio = action({
   args: { locationId: v.id("locations") },
   returns: v.object({ url: v.string() }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ url: string }> => {
     const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
     requireLocationAccess(auth, args.locationId);
     const location = await ctx.runQuery(internal.wolt.getLocationForOnboarding, {
@@ -415,10 +421,18 @@ export const beginSsio = action({
       locationId: args.locationId,
     });
     if (!location) throw new ConvexError("Lokationen blev ikke fundet");
+    const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+      organizationId: auth.organizationId,
+    });
+    if (!credentials) {
+      throw new ConvexError("Gem organisationens Wolt-nøgler, før du forbinder en lokation");
+    }
     const state = randomWoltSecret(32);
     const redirectUri = woltOAuthRedirectUri();
     await ctx.runMutation(internal.wolt.storeOAuthState, {
       organizationId: auth.organizationId,
+      clientId: credentials.clientId,
+      environment: credentials.environment,
       locationId: args.locationId,
       userId: auth.userId,
       userName: auth.userName,
@@ -427,8 +441,8 @@ export const beginSsio = action({
       returnPath: "/administration/integrations",
       now: Date.now(),
     });
-    const url = new URL(woltEndpoints().ssio);
-    url.searchParams.set("client_id", woltClientCredentials().clientId);
+    const url = new URL(woltEndpoints(credentials.environment).ssio);
+    url.searchParams.set("client_id", credentials.clientId);
     url.searchParams.set("redirect_url", redirectUri);
     url.searchParams.set("state", state);
     url.searchParams.set("venue_name", location.name);
@@ -474,6 +488,7 @@ export const setPartnerVenueMapping = mutation({
       .take(100);
     let adoptedOnboardingEvents = 0;
     for (const item of quarantined) {
+      if (item.organizationId !== auth.organizationId) continue;
       if (item.expiresAt <= now) {
         await ctx.db.delete(item._id);
         continue;

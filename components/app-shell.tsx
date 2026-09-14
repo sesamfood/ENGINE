@@ -8,6 +8,7 @@ import {
   ClipboardCheckIcon,
   ClipboardListIcon,
   CircleHelpIcon,
+  CircleOffIcon,
   LogOutIcon,
   LayoutDashboardIcon,
   ReceiptTextIcon,
@@ -63,6 +64,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
   Field,
   FieldContent,
   FieldLabel,
@@ -97,6 +105,7 @@ import { useCountLocation } from "@/lib/count-prefs";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
+import { featureForPath, featureLabels, type FeatureId } from "@/lib/features";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
 import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
 import {
@@ -147,12 +156,14 @@ type AccessRuntime = {
   role: string;
   granularity: DataGranularity;
   permissions: string[];
+  disabledFeatures: FeatureId[];
   locationScope: { all: boolean; ids: Id<"locations">[] };
   kiosk: KioskRuntime | null;
 };
 
 type AccessContextValue = AccessRuntime & {
   locations: LocationOption[];
+  woltEnabled: boolean | undefined;
 };
 
 const AccessContext = createContext<AccessContextValue | null>(null);
@@ -250,39 +261,41 @@ function useAppNavigation() {
   const access = useAccess();
   const countLocked = useContext(FeatureLockContext);
   const canWolt = Boolean(access?.permissions.includes("sales.viewDetail"));
-  const woltEnabled = useQuery(api.wolt.isEnabled, canWolt ? {} : "skip");
   const navigation = resolveAppNavigation({
     permissions: access?.permissions ?? [],
     kiosk: access?.kiosk ?? null,
     countLocked,
-    woltEnabled: woltEnabled === true,
+    woltEnabled: access?.woltEnabled === true,
+    disabledFeatures: access?.disabledFeatures,
   });
   return {
     navigation,
-    ready: access !== null && (!canWolt || woltEnabled !== undefined),
+    ready: access !== null && (!canWolt || access.woltEnabled !== undefined),
   };
 }
 
 export function useHomeDestination() {
+  const access = useAccess();
   const kiosk = useKiosk();
   const countLocked = useContext(FeatureLockContext);
   const { navigation, ready } = useAppNavigation();
   if (!ready) return null;
   if (countLocked) return "/count";
   return kiosk?.kioskModeEnabled
-    ? kioskHome(kiosk, countLocked)
+    ? kioskHome(kiosk, countLocked, access?.disabledFeatures)
     : homeDestination(navigation);
 }
 
 function AccessBoundary({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useConvexAuth();
+  const { isAuthenticated, isLoading } = useConvexAuth();
   const organization = authClient.useActiveOrganization();
   const runtime = useQuery(
     api.access.getRuntimeContext,
     isAuthenticated && organization.data ? {} : "skip",
   );
+  const woltEnabled = useQuery(api.wolt.isEnabled, runtime ? {} : "skip");
 
-  if (isAuthenticated && organization.data && runtime === undefined) {
+  if (isLoading || (organization.data && runtime === undefined)) {
     return (
       <main
         className="grid min-h-screen place-items-center"
@@ -293,7 +306,9 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const contextValue = runtime ?? null;
+  const contextValue = runtime
+    ? { ...runtime, woltEnabled }
+    : null;
   return (
     <AccessContext.Provider value={contextValue}>
       {children}
@@ -301,15 +316,77 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
   );
 }
 
+function useCurrentFeatureState() {
+  const access = useAccess();
+  const pathname = usePathname();
+  const woltSettings = pathname === "/administration/wolt-orders";
+  const feature = woltSettings ? "woltOrders" : featureForPath(pathname);
+  return {
+    feature,
+    disabled: Boolean(
+      feature &&
+        ((!woltSettings && access?.disabledFeatures.includes(feature)) ||
+          (feature === "woltOrders" && access?.woltEnabled === false)),
+    ),
+    pending: Boolean(
+      feature &&
+        (!access ||
+          (feature === "woltOrders" && access.woltEnabled === undefined)),
+    ),
+  };
+}
+
+function FeatureRouteBoundary({ children }: { children: React.ReactNode }) {
+  const { feature, disabled, pending } = useCurrentFeatureState();
+  if (pending) {
+    return (
+      <main
+        className="grid min-h-64 place-items-center"
+        aria-label="Indlæser funktion"
+      >
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+  if (feature && disabled) {
+    return (
+      <main className="flex min-h-64 items-center">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <CircleOffIcon aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>
+              <h1>{featureLabels[feature]} er slået fra</h1>
+            </EmptyTitle>
+            <EmptyDescription>
+              Kontakt en Administrator for at få funktionen aktiveret.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </main>
+    );
+  }
+  return children;
+}
+
 function KioskBehavior({ children }: { children: React.ReactNode }) {
   const runtime = useKiosk();
   const countLocked = useContext(FeatureLockContext);
   const pathname = usePathname();
   const router = useRouter();
-  const home = runtime ? kioskHome(runtime, countLocked) : "/transfers";
+  const home = useHomeDestination();
+  const { disabled, pending } = useCurrentFeatureState();
 
   useEffect(() => {
-    if (!runtime?.kioskModeEnabled || !runtime.settings) return;
+    if (
+      !runtime?.kioskModeEnabled ||
+      !runtime.settings ||
+      !home ||
+      disabled ||
+      pending
+    )
+      return;
     if (countLocked) {
       if (pathname !== "/count" && pathname !== "/waste") {
         router.replace("/count");
@@ -322,14 +399,14 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
         (page === "ownChecks.today" &&
           pathname.startsWith("/own-checks/check/")),
     );
-    if (!allowed) router.replace(home);
-  }, [countLocked, home, pathname, router, runtime]);
+    if (!allowed && pathname !== home) router.replace(home);
+  }, [countLocked, disabled, home, pathname, pending, router, runtime]);
 
   useEffect(() => {
     const seconds = runtime?.kioskModeEnabled
       ? runtime.settings?.inactivitySeconds
       : null;
-    if (!seconds || pathname === home) return;
+    if (!seconds || !home || pathname === home || disabled || pending) return;
     let timeout = window.setTimeout(
       () => window.location.replace(home),
       seconds * 1000,
@@ -360,8 +437,10 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [
+    disabled,
     home,
     pathname,
+    pending,
     runtime?.kioskModeEnabled,
     runtime?.settings?.inactivitySeconds,
     runtime?.settings?.updatedAt,
@@ -390,15 +469,18 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated } = useConvexAuth();
   const kiosk = useKiosk();
+  const access = useAccess();
   const organization = authClient.useActiveOrganization();
-  const exempt = featureLockExempt(pathname);
+  const { disabled, pending } = useCurrentFeatureState();
+  const exempt = featureLockExempt(pathname) || disabled || pending;
+  const countEnabled = access?.disabledFeatures.includes("count") === false;
   const [queryNow, setQueryNow] = useState(minuteTimestamp);
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
   const { locations } = useLocationAccess();
   const lockEnabled = useQuery(
     api.count.getOtherFeaturesLockEnabled,
-    organizationId && isAuthenticated ? {} : "skip",
+    organizationId && isAuthenticated && countEnabled ? {} : "skip",
   );
   const locationId = kiosk?.isKioskAccount
     ? kiosk.locationId
@@ -407,7 +489,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
       : (locations?.[0]?.id ?? null);
   const lockState = useQuery(
     api.count.getOtherFeaturesLockState,
-    organizationId && isAuthenticated && lockEnabled && locationId
+    organizationId && isAuthenticated && countEnabled && lockEnabled && locationId
       ? {
           locationId,
           now: queryNow,
@@ -418,11 +500,13 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     lockState,
     organizationId && locationId ? `${organizationId}:${locationId}` : null,
   );
-  const isLocked = lockEnabled ? (currentLockState?.isLocked ?? false) : false;
+  const isLocked =
+    countEnabled && lockEnabled ? (currentLockState?.isLocked ?? false) : false;
   const lockReady =
-    locations !== undefined &&
-    lockEnabled !== undefined &&
-    (!lockEnabled || !locationId || currentLockState !== undefined);
+    !countEnabled ||
+    (locations !== undefined &&
+      lockEnabled !== undefined &&
+      (!lockEnabled || !locationId || currentLockState !== undefined));
 
   useEffect(() => {
     if (!lockEnabled) return;
@@ -792,6 +876,7 @@ function ProfileMenu({
 
 function KioskModeControl() {
   const kiosk = useKiosk();
+  const access = useAccess();
   const countLocked = useContext(FeatureLockContext);
   const { state } = useSidebar();
   const router = useRouter();
@@ -823,7 +908,8 @@ function KioskModeControl() {
     setPending(true);
     try {
       await setMode({ enabled });
-      if (enabled) router.replace(kioskHome(kiosk, countLocked));
+      if (enabled)
+        router.replace(kioskHome(kiosk, countLocked, access?.disabledFeatures));
       router.refresh();
     } catch (error) {
       toast.error(
@@ -1239,7 +1325,7 @@ export function AppShell({
                             : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
                         )}
                       >
-                        {children}
+                        <FeatureRouteBoundary>{children}</FeatureRouteBoundary>
                       </div>
                     </SidebarInset>
                   </SidebarProvider>

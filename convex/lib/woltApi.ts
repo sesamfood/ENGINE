@@ -1,6 +1,7 @@
 import type { Doc } from "../_generated/dataModel";
 import {
-  woltClientCredentials,
+  type WoltCredentials,
+  type WoltEnvironmentName,
   woltEndpoints,
 } from "./woltCrypto";
 
@@ -9,6 +10,7 @@ const MAX_ITEMS = 500;
 const MAX_TEXT = 500;
 
 type JsonObject = Record<string, unknown>;
+type WoltOAuthCredentials = Pick<WoltCredentials, "environment" | "clientId" | "clientSecret">;
 
 export type WoltWebhookEnvelope = {
   eventId: string;
@@ -157,7 +159,10 @@ export function parseWoltWioPayload(value: unknown): WoltWioPayload {
   const parsed = new URL(redirectUri);
   if (
     parsed.protocol !== "https:" &&
-    !(parsed.protocol === "http:" && parsed.hostname === "localhost")
+    !(
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+    )
   ) {
     throw new Error("Redirect-URL er ugyldig");
   }
@@ -278,10 +283,14 @@ async function providerJson(response: Response) {
   }
 }
 
-export async function requestWoltOrder(orderId: string, accessToken: string) {
+export async function requestWoltOrder(
+  orderId: string,
+  accessToken: string,
+  environment: WoltEnvironmentName,
+) {
   let response: Response;
   try {
-    response = await fetch(`${woltEndpoints().api}/v2/orders/${encodeURIComponent(orderId)}`, {
+    response = await fetch(`${woltEndpoints(environment).api}/v2/orders/${encodeURIComponent(orderId)}`, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
     });
   } catch {
@@ -338,11 +347,11 @@ function parseTokenResponse(value: unknown): WoltTokenResponse {
   };
 }
 
-async function tokenRequest(parameters: URLSearchParams) {
-  const { clientId, clientSecret } = woltClientCredentials();
+async function tokenRequest(parameters: URLSearchParams, credentials: WoltOAuthCredentials) {
+  const { clientId, clientSecret, environment } = credentials;
   let response: Response;
   try {
-    response = await fetch(woltEndpoints().auth, {
+    response = await fetch(woltEndpoints(environment).auth, {
       method: "POST",
       headers: {
         Authorization: `Basic ${base64(`${clientId}:${clientSecret}`)}`,
@@ -362,19 +371,23 @@ async function tokenRequest(parameters: URLSearchParams) {
   }
 }
 
-export async function exchangeWoltAuthorizationCode(code: string, redirectUri: string) {
+export async function exchangeWoltAuthorizationCode(
+  code: string,
+  redirectUri: string,
+  credentials: WoltOAuthCredentials,
+) {
   return await tokenRequest(new URLSearchParams({
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
-  }));
+  }), credentials);
 }
 
-export async function refreshWoltTokens(refreshToken: string) {
+export async function refreshWoltTokens(refreshToken: string, credentials: WoltOAuthCredentials) {
   return await tokenRequest(new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-  }));
+  }), credentials);
 }
 
 export function publicConnectionHealth(connection: Doc<"woltVenueConnections">) {

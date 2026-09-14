@@ -112,7 +112,9 @@ async function adoptWebhookQuarantineRows(
 ) {
   const rows = await ctx.db
     .query("woltWebhookQuarantine")
-    .withIndex("by_venueId_and_receivedAt", (q) => q.eq("venueId", venueId))
+    .withIndex("by_organizationId_and_venueId_and_receivedAt", (q) =>
+      q.eq("organizationId", organizationId).eq("venueId", venueId),
+    )
     .take(100);
   let adopted = 0;
   for (const row of rows) {
@@ -146,11 +148,73 @@ async function adoptWebhookQuarantineRows(
   return { adopted, more: rows.length === 100 };
 }
 
+export const getWebhookOrganization = internalQuery({
+  args: { venueId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const connections = await ctx.db
+      .query("woltVenueConnections")
+      .withIndex("by_venueId", (q) => q.eq("venueId", args.venueId))
+      .take(2);
+    if (connections.length !== 1) return null;
+    const connection = connections[0];
+    const location = await ctx.db.get("locations", connection.locationId);
+    return location?.organizationId === connection.organizationId
+      ? connection.organizationId
+      : null;
+  },
+});
+
+export const getOAuthOrganization = internalQuery({
+  args: { stateHash: v.string(), now: v.number() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const state = await ctx.db
+      .query("woltOAuthStates")
+      .withIndex("by_stateHash", (q) => q.eq("stateHash", args.stateHash))
+      .unique();
+    if (!state || state.consumedAt !== undefined || state.expiresAt <= args.now) return null;
+    const location = await ctx.db.get("locations", state.locationId);
+    return location?.organizationId === state.organizationId ? state.organizationId : null;
+  },
+});
+
+export const getWioOrganization = internalQuery({
+  args: { partnerVenueId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const mappings = await ctx.db
+      .query("woltPartnerVenueMappings")
+      .withIndex("by_partnerVenueId", (q) => q.eq("partnerVenueId", args.partnerVenueId))
+      .take(2);
+    if (mappings.length !== 1) return null;
+    const mapping = mappings[0];
+    const location = await ctx.db.get("locations", mapping.locationId);
+    return location?.organizationId === mapping.organizationId ? mapping.organizationId : null;
+  },
+});
+
 export const acceptWebhook = internalMutation({
-  args: { envelope: woltWebhookEnvelopeValidator, receivedAt: v.number() },
+  args: {
+    organizationId: v.string(),
+    envelope: woltWebhookEnvelopeValidator,
+    receivedAt: v.number(),
+  },
   returns: inboxResultValidator,
   handler: async (ctx, args) => {
     const { envelope } = args;
+    const connections = await ctx.db
+      .query("woltVenueConnections")
+      .withIndex("by_venueId", (q) => q.eq("venueId", envelope.venueId))
+      .take(2);
+    const connection = connections.length === 1 ? connections[0] : null;
+    if (!connection || connection.organizationId !== args.organizationId) {
+      throw new ConvexError("Wolt-venuet blev ikke fundet i organisationen");
+    }
+    const location = await ctx.db.get("locations", connection.locationId);
+    if (!location || location.organizationId !== args.organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
     const [existing, quarantined] = await Promise.all([
       ctx.db
         .query("woltWebhookEvents")
@@ -167,20 +231,11 @@ export const acceptWebhook = internalMutation({
     ]);
     if (existing || quarantined) return { kind: "duplicate" as const };
 
-    const connections = await ctx.db
-      .query("woltVenueConnections")
-      .withIndex("by_venueId", (q) => q.eq("venueId", envelope.venueId))
-      .take(2);
-    const connection = connections.length === 1 ? connections[0] : null;
-    if (!connection || connection.state !== "ready") {
+    if (connection.state !== "ready") {
       await ctx.db.insert("woltWebhookQuarantine", {
         ...envelope,
-        reason:
-          connections.length > 1
-            ? "venue-id er tvetydigt"
-            : connection
-              ? "forbindelsen er ikke aktiv"
-              : "venue-id er ukendt",
+        organizationId: args.organizationId,
+        reason: "forbindelsen er ikke aktiv",
         receivedAt: args.receivedAt,
       });
       return { kind: "quarantined" as const };
@@ -218,6 +273,7 @@ export const acceptWebhook = internalMutation({
 
 export const consumeOAuthCallback = internalMutation({
   args: {
+    organizationId: v.string(),
     stateHash: v.string(),
     authorizationCodeHash: v.string(),
     authorizationCodeCiphertext: v.string(),
@@ -229,7 +285,12 @@ export const consumeOAuthCallback = internalMutation({
       .query("woltOAuthStates")
       .withIndex("by_stateHash", (q) => q.eq("stateHash", args.stateHash))
       .unique();
-    if (!state || state.consumedAt !== undefined || state.expiresAt <= args.now) {
+    if (
+      !state ||
+      state.organizationId !== args.organizationId ||
+      state.consumedAt !== undefined ||
+      state.expiresAt <= args.now
+    ) {
       throw new ConvexError("Forbindelseslinket er udløbet eller allerede brugt");
     }
     const location = await ctx.db.get("locations", state.locationId);
@@ -261,6 +322,7 @@ export const consumeOAuthCallback = internalMutation({
 
 export const acceptWioOnboarding = internalMutation({
   args: {
+    organizationId: v.string(),
     partnerVenueId: v.string(),
     authorizationCodeHash: v.string(),
     authorizationCodeCiphertext: v.string(),
@@ -269,6 +331,18 @@ export const acceptWioOnboarding = internalMutation({
   },
   returns: inboxResultValidator,
   handler: async (ctx, args) => {
+    const mappings = await ctx.db
+      .query("woltPartnerVenueMappings")
+      .withIndex("by_partnerVenueId", (q) => q.eq("partnerVenueId", args.partnerVenueId))
+      .take(2);
+    const mapping = mappings.length === 1 ? mappings[0] : null;
+    if (!mapping || mapping.organizationId !== args.organizationId) {
+      throw new ConvexError("Partner-venue-id'et blev ikke fundet i organisationen");
+    }
+    const location = await ctx.db.get("locations", mapping.locationId);
+    if (!location || location.organizationId !== args.organizationId) {
+      throw new ConvexError("Lokationen blev ikke fundet");
+    }
     const [existingEvent, existingQuarantine] = await Promise.all([
       ctx.db
         .query("woltOnboardingEvents")
@@ -284,40 +358,6 @@ export const acceptWioOnboarding = internalMutation({
         .unique(),
     ]);
     if (existingEvent || existingQuarantine) return { kind: "duplicate" as const };
-    const mappings = await ctx.db
-      .query("woltPartnerVenueMappings")
-      .withIndex("by_partnerVenueId", (q) =>
-        q.eq("partnerVenueId", args.partnerVenueId),
-      )
-      .take(2);
-    const mapping = mappings.length === 1 ? mappings[0] : null;
-    if (!mapping) {
-      await ctx.db.insert("woltOnboardingQuarantine", {
-        partnerVenueId: args.partnerVenueId,
-        authorizationCodeHash: args.authorizationCodeHash,
-        authorizationCodeCiphertext: args.authorizationCodeCiphertext,
-        redirectUri: args.redirectUri,
-        redirectUriAllowed: true,
-        reason: mappings.length > 1 ? "partner-venue-id er tvetydigt" : "partner-venue-id er ukendt",
-        createdAt: args.now,
-        expiresAt: args.now + 60 * 60 * 1_000,
-      });
-      return { kind: "quarantined" as const };
-    }
-    const location = await ctx.db.get("locations", mapping.locationId);
-    if (!location || location.organizationId !== mapping.organizationId) {
-      await ctx.db.insert("woltOnboardingQuarantine", {
-        partnerVenueId: args.partnerVenueId,
-        authorizationCodeHash: args.authorizationCodeHash,
-        authorizationCodeCiphertext: args.authorizationCodeCiphertext,
-        redirectUri: args.redirectUri,
-        redirectUriAllowed: true,
-        reason: "lokationskoblingen er ugyldig",
-        createdAt: args.now,
-        expiresAt: args.now + 60 * 60 * 1_000,
-      });
-      return { kind: "quarantined" as const };
-    }
     const onboardingEventId = await ctx.db.insert("woltOnboardingEvents", {
       organizationId: mapping.organizationId,
       locationId: mapping.locationId,
@@ -581,15 +621,19 @@ export const processOnboardingEvent = internalAction({
     });
     if (!claim) return null;
     try {
-      const code = await decryptWoltSecret(claim.authorizationCodeCiphertext);
-      const tokens = await exchangeWoltAuthorizationCode(code, claim.redirectUri);
+      const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+        organizationId: claim.organizationId,
+      });
+      if (!credentials) throw new WoltProviderError("Organisationens Wolt-nøgler mangler", false);
+      const code = await decryptWoltSecret(claim.authorizationCodeCiphertext, claim.organizationId);
+      const tokens = await exchangeWoltAuthorizationCode(code, claim.redirectUri, credentials);
       const now = Date.now();
       await ctx.runMutation(internal.woltSync.completeOnboardingEvent, {
         onboardingEventId: claim.onboardingEventId,
         runToken,
         venueId: tokens.venueId,
-        accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken),
-        refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken),
+        accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken, claim.organizationId),
+        refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken, claim.organizationId),
         accessTokenExpiresAt: now + tokens.accessExpiresIn * 1_000,
         refreshTokenExpiresAt: now + tokens.refreshExpiresIn * 1_000,
         now,
@@ -784,6 +828,7 @@ export const requireReauthorization = internalMutation({
   args: {
     organizationId: v.string(),
     locationId: v.id("locations"),
+    expectedTokenVersion: v.optional(v.number()),
     message: v.string(),
     now: v.number(),
   },
@@ -795,7 +840,11 @@ export const requireReauthorization = internalMutation({
         q.eq("organizationId", args.organizationId).eq("locationId", args.locationId),
       )
       .unique();
-    if (connection && connection.state !== "disabled") {
+    if (
+      connection &&
+      connection.state !== "disabled" &&
+      (args.expectedTokenVersion === undefined || connection.tokenVersion === args.expectedTokenVersion)
+    ) {
       await ctx.db.patch(connection._id, {
         state: "reauthorizationRequired",
         accessTokenCiphertext: "",
@@ -844,13 +893,35 @@ type AccessContext = {
   locationId: Id<"locations">;
   venueId: string;
   accessTokenCiphertext: string;
+  refreshTokenCiphertext: string;
   accessTokenExpiresAt: number;
   tokenVersion: number;
 };
 
 async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
+  if (
+    !connection.accessTokenCiphertext.startsWith("v2.") ||
+    !connection.refreshTokenCiphertext.startsWith("v2.")
+  ) {
+    const message = "Wolt-forbindelsen skal godkendes igen med organisationens Wolt-nøgler";
+    await ctx.runMutation(internal.woltSync.requireReauthorization, {
+      organizationId: connection.organizationId,
+      locationId: connection.locationId,
+      expectedTokenVersion: connection.tokenVersion,
+      message,
+      now: Date.now(),
+    });
+    throw new WoltProviderError(message, false);
+  }
+  const credentials = await ctx.runQuery(internal.woltCredentials.getForOrganization, {
+    organizationId: connection.organizationId,
+  });
+  if (!credentials) throw new WoltProviderError("Organisationens Wolt-nøgler mangler", false);
   if (connection.accessTokenExpiresAt > Date.now() + ACCESS_TOKEN_SKEW_MS) {
-    return await decryptWoltSecret(connection.accessTokenCiphertext);
+    return {
+      accessToken: await decryptWoltSecret(connection.accessTokenCiphertext, connection.organizationId),
+      environment: credentials.environment,
+    };
   }
   const leaseId = randomWoltSecret(16);
   const lease = await ctx.runMutation(internal.woltSync.acquireRefreshLease, {
@@ -869,7 +940,8 @@ async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
   let rotated = false;
   try {
     const tokens = await refreshWoltTokens(
-      await decryptWoltSecret(lease.refreshTokenCiphertext),
+      await decryptWoltSecret(lease.refreshTokenCiphertext, connection.organizationId),
+      credentials,
     );
     rotated = true;
     if (tokens.venueId !== lease.venueId) {
@@ -882,8 +954,8 @@ async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
       leaseId,
       expectedTokenVersion: lease.tokenVersion,
       venueId: lease.venueId,
-      accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken),
-      refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken),
+      accessTokenCiphertext: await encryptWoltSecret(tokens.accessToken, connection.organizationId),
+      refreshTokenCiphertext: await encryptWoltSecret(tokens.refreshToken, connection.organizationId),
       accessTokenExpiresAt: now + tokens.accessExpiresIn * 1_000,
       refreshTokenExpiresAt: now + tokens.refreshExpiresIn * 1_000,
       now,
@@ -897,7 +969,7 @@ async function usableAccessToken(ctx: ActionCtx, connection: AccessContext) {
       });
       throw new WoltProviderError("Wolt-forbindelsen kræver ny godkendelse", false);
     }
-    return tokens.accessToken;
+    return { accessToken: tokens.accessToken, environment: credentials.environment };
   } catch (error) {
     if (!rotated) {
       await ctx.runMutation(internal.woltSync.releaseRefreshLease, {
@@ -1175,8 +1247,8 @@ export const processWebhookEvent = internalAction({
     });
     if (!claim) return null;
     try {
-      const accessToken = await usableAccessToken(ctx, claim);
-      const snapshot = await requestWoltOrder(claim.orderId, accessToken);
+      const { accessToken, environment } = await usableAccessToken(ctx, claim);
+      const snapshot = await requestWoltOrder(claim.orderId, accessToken, environment);
       await ctx.runMutation(internal.woltSync.applyOrderSnapshot, {
         eventId: claim.eventId,
         runToken,
@@ -1342,6 +1414,7 @@ export const getConnectionForRefresh = internalQuery({
       locationId: v.id("locations"),
       venueId: v.string(),
       accessTokenCiphertext: v.string(),
+      refreshTokenCiphertext: v.string(),
       accessTokenExpiresAt: v.number(),
       tokenVersion: v.number(),
     }),
@@ -1355,6 +1428,7 @@ export const getConnectionForRefresh = internalQuery({
       locationId: connection.locationId,
       venueId: connection.venueId,
       accessTokenCiphertext: connection.accessTokenCiphertext,
+      refreshTokenCiphertext: connection.refreshTokenCiphertext,
       accessTokenExpiresAt: connection.accessTokenExpiresAt,
       tokenVersion: connection.tokenVersion,
     };

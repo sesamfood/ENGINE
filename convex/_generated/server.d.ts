@@ -30,19 +30,12 @@ import type { DataModel } from "./dataModel.js";
 type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
+  readonly BETTER_AUTH_SECRET: string | undefined;
   readonly ECONOMIC_ENCRYPTION_KEY: string | undefined;
   readonly GOOGLE_PLACES_API_KEY: string | undefined;
   readonly NOMINATIM_URL: string | undefined;
   readonly OPENWEATHER_API_KEY: string | undefined;
   readonly SITE_URL: string | undefined;
-  readonly WOLT_CLIENT_ID: string | undefined;
-  readonly WOLT_CLIENT_SECRET: string | undefined;
-  readonly WOLT_ENCRYPTION_KEY: string | undefined;
-  readonly WOLT_ENVIRONMENT: "development" | "production" | undefined;
-  readonly WOLT_OAUTH_REDIRECT_URI: string | undefined;
-  readonly WOLT_WEBHOOK_SECRET: string | undefined;
-  readonly WOLT_WIO_API_KEY: string | undefined;
-  readonly WOLT_WIO_REDIRECT_URIS: string | undefined;
 };
 
 /**

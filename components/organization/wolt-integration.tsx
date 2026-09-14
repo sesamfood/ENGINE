@@ -1,10 +1,12 @@
 "use client";
 
 import { IntegrationCard } from "./integration-card";
+import { WoltCredentials } from "./wolt-credentials";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { authClient } from "@/lib/auth-client";
 import {
   CircleAlertIcon,
   CloudOffIcon,
@@ -195,6 +197,7 @@ function ConnectionHealth({
 function LocationHealthCard({
   location,
   canUseWio,
+  credentialsConfigured,
   busyKey,
   onStartSsio,
   onSavePartner,
@@ -204,6 +207,7 @@ function LocationHealthCard({
 }: {
   location: WoltLocation;
   canUseWio: boolean;
+  credentialsConfigured: boolean;
   busyKey: string | null;
   onStartSsio: () => void;
   onSavePartner: (partnerVenueId: string) => void;
@@ -249,7 +253,9 @@ function LocationHealthCard({
             <CloudOffIcon aria-hidden="true" />
             <AlertTitle>Ingen Wolt-forbindelse</AlertTitle>
             <AlertDescription>
-              Start SSIO for at forbinde denne lokation. Forbindelsen henter kun nye events efter godkendelsen.
+              {credentialsConfigured
+                ? "Start SSIO for at forbinde denne lokation. Forbindelsen henter kun nye events efter godkendelsen."
+                : "Gem organisationens Wolt-nøgler ovenfor, før du forbinder lokationen. Kontakt en Administrator, hvis du ikke har adgang."}
             </AlertDescription>
           </Alert>
         )}
@@ -301,7 +307,7 @@ function LocationHealthCard({
             variant="outline"
             size="lg"
             className="min-h-11"
-            disabled={ssioBusy}
+            disabled={ssioBusy || !credentialsConfigured}
             onClick={onStartSsio}
           >
             {ssioBusy ? (
@@ -741,6 +747,7 @@ function ObservedItemMappings({
 }
 
 export function WoltIntegration() {
+  const { data: session } = authClient.useSession();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -752,6 +759,10 @@ export function WoltIntegration() {
   const integrationOpen = detailsOpen || setupOpen;
   const overview = useQuery(
     api.wolt.getIntegrationOverview,
+    canManage ? {} : "skip",
+  );
+  const credentialSettings = useQuery(
+    api.woltCredentials.getSettings,
     canManage ? {} : "skip",
   );
   const observedLocationState = useState<Id<"locations"> | "all">("all");
@@ -825,6 +836,10 @@ export function WoltIntegration() {
   }
 
   async function startSsio(locationId: Id<"locations">) {
+    if (!credentialSettings?.configured) {
+      toast.error("Gem organisationens Wolt-nøgler, før du forbinder lokationen.");
+      return;
+    }
     setBusyKey(`ssio:${locationId}`);
     try {
       const result = await beginSsio({ locationId });
@@ -989,6 +1004,14 @@ export function WoltIntegration() {
       <div>
         <Badge variant="outline">Kun læsning af ordredata</Badge>
       </div>
+      {credentialSettings ? (
+        <WoltCredentials
+          key={`${session?.session.activeOrganizationId}:${session?.user.id}`}
+          settings={credentialSettings}
+        />
+      ) : (
+        <Skeleton className="h-96 w-full" />
+      )}
       {overview.limitReached ? (
         <Alert>
           <CircleAlertIcon aria-hidden="true" />
@@ -1017,6 +1040,7 @@ export function WoltIntegration() {
               key={`${location.id}:${location.partnerVenueId ?? ""}`}
               location={location}
               canUseWio={overview.canUseWio}
+              credentialsConfigured={credentialSettings?.configured === true}
               busyKey={busyKey}
               onStartSsio={() => void startSsio(location.id)}
               onSavePartner={(partnerVenueId) =>
