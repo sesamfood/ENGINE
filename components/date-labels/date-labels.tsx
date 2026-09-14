@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   Clock3Icon,
@@ -65,14 +65,6 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -95,7 +87,6 @@ import {
   zonedTimestamp,
 } from "@/lib/date";
 import {
-  formatLabelDate,
   labelDocument,
   labelFormats,
   printDateLabels,
@@ -234,6 +225,7 @@ function LabelWorkspace({
   const products = useCompleteCatalog(api.dateLabels.listProducts, {
     locationId,
   });
+  const settings = useQuery(api.dateLabels.getSettings, { locationId });
   const rememberExpiry = useMutation(api.dateLabels.rememberExpiry);
   const catalogPermission = usePermission("catalog.manage");
   const kiosk = useKiosk();
@@ -264,7 +256,6 @@ function LabelWorkspace({
   const [format] = useLabelFormat();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [category, setCategory] = useState<string | null>(null);
   const [selection, setSelection] = useState<{
     id: Id<"products">;
     expiry: Expiry | null;
@@ -279,37 +270,23 @@ function LabelWorkspace({
     (product) => product.id === selection?.id,
   );
   const pendingProduct = products?.find((product) => product.id === pendingId);
-  const categories = useMemo(
-    () => [
-      { value: "all", label: "Alle kategorier" },
-      ...Array.from(
-        new Map(
-          products?.flatMap((product) =>
-            product.categories.map((item) => [item.id, item.name] as const),
-          ) ?? [],
-        ).entries(),
-      )
-        .sort((a, b) => a[1].localeCompare(b[1], "da"))
-        .map(([value, label]) => ({ value, label })),
-    ],
-    [products],
+  const categoryPaths = useMemo(
+    () =>
+      new Map(
+        settings?.categories.map((category) => [category.id, category.path]),
+      ),
+    [settings?.categories],
   );
-  const activeCategory = categories.some((item) => item.value === category)
-    ? category
-    : null;
   const visibleProducts = useMemo(
     () =>
       (products ?? [])
         .flatMap((product) => {
           if (filter === "favorites" && !favorites.has(product.id)) return [];
-          if (
-            activeCategory &&
-            !product.categories.some((item) => item.id === activeCategory)
-          )
-            return [];
           const score = productSearchScore(
             product.name,
-            product.categories.map((item) => item.name).join(" "),
+            product.categories
+              .map((item) => categoryPaths.get(item.id) ?? item.name)
+              .join(" "),
             search,
           );
           return score === null ? [] : [{ product, score }];
@@ -320,7 +297,7 @@ function LabelWorkspace({
             a.product.name.localeCompare(b.product.name, "da"),
         )
         .map((item) => item.product),
-    [products, filter, favorites, activeCategory, search],
+    [products, filter, favorites, categoryPaths, search],
   );
 
   function selectProduct(product: Product) {
@@ -361,18 +338,20 @@ function LabelWorkspace({
       setSaving(false);
     }
   }
-  const panel = selectedProduct ? (
-    <PrintPanel
-      key={selectedProduct.id}
-      product={selectedProduct}
-      expiry={selectedProduct.expiry ?? selection?.expiry ?? null}
-      locationName={locationName}
-      format={format}
-      onClose={() => setSelection(null)}
-      canConfigurePrinter={!kiosk?.kioskModeEnabled}
-      onMissingExpiry={() => selectProduct(selectedProduct)}
-    />
-  ) : null;
+  const panel =
+    selectedProduct && settings ? (
+      <PrintPanel
+        key={selectedProduct.id}
+        product={selectedProduct}
+        expiry={selectedProduct.expiry ?? selection?.expiry ?? null}
+        locationName={locationName}
+        format={format}
+        includeTime={settings.includeTime}
+        onClose={() => setSelection(null)}
+        canConfigurePrinter={!kiosk?.kioskModeEnabled}
+        onMissingExpiry={() => selectProduct(selectedProduct)}
+      />
+    ) : null;
 
   return (
     <>
@@ -395,40 +374,15 @@ function LabelWorkspace({
                 Favoritter
               </ToggleGroupItem>
             </ToggleGroup>
-            <Select
-              items={categories}
-              value={activeCategory ?? "all"}
-              onValueChange={(value) =>
-                setCategory(value === "all" ? null : value)
-              }
-            >
-              <SelectTrigger
-                className="h-11! w-full min-[500px]:w-52"
-                aria-label="Produktkategori"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {categories.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-3">
-            <InputGroup className="h-11 flex-1">
+            <InputGroup className="h-11 min-w-48 flex-1">
               <InputGroupAddon>
                 <SearchIcon />
               </InputGroupAddon>
               <InputGroupInput
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Søg efter et produkt…"
-                aria-label="Søg efter et produkt"
+                placeholder="Søg efter produkt eller kategori…"
+                aria-label="Søg efter produkt eller kategori"
               />
             </InputGroup>
             {products ? (
@@ -650,6 +604,7 @@ function PrintPanel({
   expiry,
   locationName,
   format,
+  includeTime,
   onClose,
   canConfigurePrinter,
   onMissingExpiry,
@@ -658,6 +613,7 @@ function PrintPanel({
   expiry: Expiry | null;
   locationName: string;
   format: LabelFormat;
+  includeTime: boolean;
   onClose: () => void;
   canConfigurePrinter: boolean;
   onMissingExpiry: () => void;
@@ -665,16 +621,18 @@ function PrintPanel({
   const [date, setDate] = useState(() =>
     dateKey(Date.now(), DEFAULT_TIME_ZONE),
   );
-  const [time, setTime] = useState(() => localTime(Date.now()));
+  const [defaultTime] = useState(() => localTime(Date.now()));
+  const [time, setTime] = useState(defaultTime);
+  const productionTime = includeTime ? time : defaultTime;
   const [copies, setCopies] = useState("1");
   const [printError, setPrintError] = useState<string | null>(null);
   const size = labelFormats.find((item) => item.value === format)!;
   let label: DateLabel | null = null;
   let dateError: string | null = null;
   try {
-    if (!/^\d{2}:\d{2}$/.test(time))
+    if (!/^\d{2}:\d{2}$/.test(productionTime))
       throw new Error("Angiv et gyldigt klokkeslæt");
-    const [hours, minutes] = time.split(":").map(Number);
+    const [hours, minutes] = productionTime.split(":").map(Number);
     if (hours > 23 || minutes > 59)
       throw new Error("Angiv et gyldigt klokkeslæt");
     const producedAt = zonedTimestamp(
@@ -682,13 +640,14 @@ function PrintPanel({
       hours * 60 + minutes,
       DEFAULT_TIME_ZONE,
     );
-    if (localTime(producedAt) !== time)
+    if (includeTime && localTime(producedAt) !== productionTime)
       throw new Error(
         "Klokkeslættet findes ikke ved skift til sommertid. Vælg et andet klokkeslæt",
       );
     if (expiry)
       label = {
         productName: product.name,
+        includeTime,
         locationName,
         producedAt,
         expiresAt: expiryTimestamp(producedAt, expiry),
@@ -761,7 +720,12 @@ function PrintPanel({
         </div>
         <Separator />
         <FieldGroup>
-          <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
+          <div
+            className={cn(
+              "grid gap-3",
+              includeTime && "grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]",
+            )}
+          >
             <Field data-invalid={Boolean(dateError)}>
               <FieldLabel htmlFor="label-date">Produktionsdato</FieldLabel>
               <Input
@@ -773,34 +737,21 @@ function PrintPanel({
                 aria-invalid={Boolean(dateError)}
               />
             </Field>
-            <Field data-invalid={Boolean(dateError)}>
-              <FieldLabel htmlFor="label-time">Klokkeslæt</FieldLabel>
-              <Input
-                id="label-time"
-                type="time"
-                value={time}
-                onChange={(event) => setTime(event.target.value)}
-                className="h-11 min-w-0"
-                aria-invalid={Boolean(dateError)}
-              />
-            </Field>
+            {includeTime ? (
+              <Field data-invalid={Boolean(dateError)}>
+                <FieldLabel htmlFor="label-time">Klokkeslæt</FieldLabel>
+                <Input
+                  id="label-time"
+                  type="time"
+                  value={time}
+                  onChange={(event) => setTime(event.target.value)}
+                  className="h-11 min-w-0"
+                  aria-invalid={Boolean(dateError)}
+                />
+              </Field>
+            ) : null}
           </div>
           {dateError ? <FieldError>{dateError}</FieldError> : null}
-          <Field>
-            <FieldLabel htmlFor="label-expires">
-              Sidste anvendelsesdato og tid
-            </FieldLabel>
-            <Input
-              id="label-expires"
-              readOnly
-              value={label ? formatLabelDate(label.expiresAt) : ""}
-              placeholder="Angiv holdbarhed og produktionsdato"
-              className="h-11 bg-muted"
-            />
-            <FieldDescription>
-              Datoer og klokkeslæt er i dansk tid.
-            </FieldDescription>
-          </Field>
           <Field data-invalid={!copiesValid}>
             <FieldLabel htmlFor="label-copies">Antal etiketter</FieldLabel>
             <div className="flex items-center gap-2">
@@ -825,7 +776,7 @@ function PrintPanel({
                 value={copies}
                 onChange={(event) => setCopies(event.target.value)}
                 aria-invalid={!copiesValid}
-                className="h-11 w-20 text-center"
+                className="h-11 min-w-0 flex-1 text-center"
               />
               <Button
                 variant="outline"

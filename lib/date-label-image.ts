@@ -23,12 +23,12 @@ export function drawDateLabel(
   const blocks = [
     { text: label.productName, bold: true, points: 11 },
     {
-      text: `Prod.: ${formatLabelDate(label.producedAt)}`,
+      text: `Prod.: ${formatLabelDate(label.producedAt, label.includeTime)}`,
       bold: false,
       points: 8,
     },
     {
-      text: `Sidste anv.: ${formatLabelDate(label.expiresAt)}`,
+      text: `Sidste anv.: ${formatLabelDate(label.expiresAt, label.includeTime)}`,
       bold: true,
       points: 8,
     },

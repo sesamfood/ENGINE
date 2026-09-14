@@ -1,8 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { PrinterIcon } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -47,7 +55,15 @@ const connections = [
   { value: "BT", label: "Bluetooth" },
 ];
 
-export function PrinterSettings() {
+export function PrinterSettings({
+  locationId,
+}: {
+  locationId: Id<"locations"> | null;
+}) {
+  const labelSettings = useQuery(
+    api.dateLabels.getSettings,
+    locationId ? { locationId } : "skip",
+  );
   const [format, onFormatChange] = useLabelFormat();
   const [settings, setSettings] = useState<SmoothPrintConnection>({
     model: "QL-820NWB",
@@ -57,7 +73,7 @@ export function PrinterSettings() {
   });
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [label] = useState(() => {
+  const [testLabel] = useState(() => {
     const now = Math.floor(Date.now() / 60_000) * 60_000;
     return {
       productName: "Testetiket",
@@ -66,6 +82,10 @@ export function PrinterSettings() {
       expiresAt: now + 86_400_000,
     };
   });
+  const label = {
+    ...testLabel,
+    includeTime: labelSettings?.includeTime ?? false,
+  };
   const printer = useSmoothPrint(label, format, 1);
 
   return (
@@ -81,10 +101,6 @@ export function PrinterSettings() {
           <PrinterIcon />
           <AlertTitle>Brother Smooth Print</AlertTitle>
           <AlertDescription>
-            <p>
-              Installér Smooth Print på hver tablet. Vælg printeren i appen via
-              Wi-Fi eller Bluetooth, eller brug forbindelsesfelterne herunder.
-            </p>
             <a
               href={smoothPrintDownloadUrl}
               target="_blank"
@@ -93,12 +109,13 @@ export function PrinterSettings() {
             >
               Hent Smooth Print til iPad eller Android
             </a>
-            <p>
-              Print bruger den printer, der er valgt i Smooth Print. Kontrollér
-              valget, når du skifter lokation. Resultat og eventuelle fejl vises
-              i Smooth Print.
-            </p>
           </AlertDescription>
+          <AlertAction>
+            <HelpTooltip
+              label="Brother Smooth Print"
+              content="Installér appen på hver tablet. Vælg printeren i Smooth Print via Wi-Fi eller Bluetooth, eller brug felterne herunder. Kontrollér printervalget, når du skifter lokation. Printstatus og fejl vises i Smooth Print."
+            />
+          </AlertAction>
         </Alert>
         <FieldGroup>
           {printer.platform ? (
@@ -293,7 +310,11 @@ export function PrinterSettings() {
       <CardFooter className="justify-end">
         <Button
           className="min-h-11"
-          disabled={printer.preparing || Boolean(printer.error)}
+          disabled={
+            printer.preparing ||
+            Boolean(printer.error) ||
+            Boolean(locationId && !labelSettings)
+          }
           onClick={() => {
             try {
               if (printer.platform) printer.open();

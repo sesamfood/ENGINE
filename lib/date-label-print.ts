@@ -11,16 +11,17 @@ export type DateLabel = {
   locationName: string;
   producedAt: number;
   expiresAt: number;
+  includeTime: boolean;
 };
 
-export function formatLabelDate(timestamp: number) {
+export function formatLabelDate(timestamp: number, includeTime = false) {
   return dateTimeFormatter("da-DK", {
     timeZone: DEFAULT_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    hour: includeTime ? "2-digit" : undefined,
+    minute: includeTime ? "2-digit" : undefined,
   }).format(timestamp);
 }
 
@@ -49,7 +50,7 @@ export function labelDocument(
     label.expiresAt <= label.producedAt
   )
     throw new Error("Kontrollér datoerne på etiketten");
-  const markup = `<section class="label"><strong>${escapeHtml(label.productName)}</strong><div>Prod.: ${escapeHtml(formatLabelDate(label.producedAt))}</div><div class="expiry">Sidste anv.: ${escapeHtml(formatLabelDate(label.expiresAt))}</div><small>${escapeHtml(label.locationName)}</small></section>`;
+  const markup = `<section class="label"><strong>${escapeHtml(label.productName)}</strong><div>Prod.: ${escapeHtml(formatLabelDate(label.producedAt, label.includeTime))}</div><div class="expiry">Sidste anv.: ${escapeHtml(formatLabelDate(label.expiresAt, label.includeTime))}</div><small>${escapeHtml(label.locationName)}</small></section>`;
   const compact = label.productName.length + label.locationName.length > 100;
   return `<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Datoetiketter</title><style>
     @page { size: ${size.width}mm ${size.height}mm; margin: 0; }

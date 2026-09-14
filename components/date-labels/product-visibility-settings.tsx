@@ -24,6 +24,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 
 type Settings = FunctionReturnType<typeof api.dateLabels.getSettings>;
 type Products = FunctionReturnType<typeof api.dateLabels.listProducts>["page"];
@@ -70,6 +71,7 @@ function VisibilityForm({
   const saveSettings = useMutation(api.dateLabels.saveSettings);
   const [revision] = useState(settings.updatedAt);
   const [mode, setMode] = useState(settings.mode);
+  const [includeTime, setIncludeTime] = useState(settings.includeTime);
   const [categoryIds, setCategoryIds] = useState(
     () => new Set(settings.categoryIds),
   );
@@ -123,6 +125,7 @@ function VisibilityForm({
       await saveSettings({
         locationId,
         mode,
+        includeTime,
         categoryIds: [...categoryIds].filter((id) =>
           availableCategories.has(id),
         ),
@@ -132,7 +135,7 @@ function VisibilityForm({
         ),
         expectedUpdatedAt: revision,
       });
-      toast.success("Produktvisningen er gemt for lokationen");
+      toast.success("Indstillingerne er gemt for lokationen");
       onReset();
     } catch (error) {
       setError(getUserErrorMessage(error, "Indstillingerne kunne ikke gemmes"));
@@ -144,7 +147,19 @@ function VisibilityForm({
   return (
     <>
       <CardContent>
-        <FieldGroup>
+        <FieldGroup className="gap-2">
+          <SettingsSwitchField
+            id="date-label-include-time"
+            label="Medtag klokkeslæt"
+            checked={includeTime}
+            onCheckedChange={setIncludeTime}
+            disabled={saving}
+            help={{
+              label: "klokkeslæt på etiketter",
+              content:
+                "Vis produktionsklokkeslæt på siden og klokkeslæt for produktion og sidste anvendelse på etiketten. Slå fra for kun at vise datoer.",
+            }}
+          />
           <Field orientation="horizontal">
             <Checkbox
               id="date-label-show-all"

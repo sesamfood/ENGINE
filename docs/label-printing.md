@@ -39,8 +39,12 @@ Without hardware, use the system print dialog to save a PDF and check expiry cal
 
 ## Products shown at a location
 
-In **Administration → Datomærkning → Produkter**, users with catalog-management and label-printing permission can configure which products appear for everyone at the selected location. Kiosk accounts cannot edit these settings.
+In **Administration → Datomærkning → Etiketter og produkter**, users with catalog-management and label-printing permission can configure which products appear for everyone at the selected location. Kiosk accounts cannot edit these settings.
 
 **Vis alle produkter** is the default. Turn it off to select categories or individual products. Categories include their descendants and products added later. Uncheck a product to exclude it even when its category is selected. An empty selection shows no products. The location's existing product availability still applies.
 
 Selections are stored in Convex per organization and location. Concurrent edits require reloading the settings before saving, so one user's changes cannot silently overwrite another's.
+
+**Medtag klokkeslæt** is off by default and applies to everyone at the selected location. Turn it on to show the production-time field and print production and expiry times. When off, the production time defaults to the time the product was selected, while previews and printed labels show dates only. This applies to system printing, Smooth Print, and test labels.
+
+The label page's search matches product names and category paths, including parent categories. **Alle** and **Favoritter** share the search row.

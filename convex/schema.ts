@@ -1743,6 +1743,7 @@ export default defineSchema({
     organizationId: v.string(),
     locationId: v.id("locations"),
     ...dateLabelSelectionFields,
+    includeTime: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 

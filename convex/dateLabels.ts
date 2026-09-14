@@ -160,6 +160,7 @@ export const getSettings = query({
   args: { locationId: v.id("locations") },
   returns: v.object({
     ...dateLabelSelectionFields,
+    includeTime: v.boolean(),
     updatedAt: v.union(v.number(), v.null()),
     categories: v.array(
       v.object({
@@ -191,6 +192,7 @@ export const getSettings = query({
       categoryIds: settings?.categoryIds ?? [],
       productIds: settings?.productIds ?? [],
       excludedProductIds: settings?.excludedProductIds ?? [],
+      includeTime: settings?.includeTime ?? false,
       updatedAt: settings?.updatedAt ?? null,
       categories: categories.map(({ id, name, path, parentCategoryId }) => ({
         id,
@@ -206,6 +208,7 @@ export const saveSettings = mutation({
   args: {
     locationId: v.id("locations"),
     ...dateLabelSelectionFields,
+    includeTime: v.optional(v.boolean()),
     expectedUpdatedAt: v.union(v.number(), v.null()),
   },
   returns: v.null(),
@@ -263,6 +266,7 @@ export const saveSettings = mutation({
     }
     const values = {
       mode: args.mode,
+      includeTime: args.includeTime ?? current?.includeTime ?? false,
       categoryIds,
       productIds,
       excludedProductIds,
@@ -281,7 +285,7 @@ export const saveSettings = mutation({
       locationId: args.locationId,
       entityTable: "dateLabelSettings",
       entityId: id,
-      summary: `Produktvisningen for Datomærkning på ${location.name} blev gemt`,
+      summary: `Indstillingerne for Datomærkning på ${location.name} blev gemt`,
     });
     return null;
   },

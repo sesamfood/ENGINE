@@ -77,7 +77,7 @@ export function DateLabelSettings() {
           {locationId ? (
             <Card>
               <CardHeader>
-                <CardTitle>Produkter</CardTitle>
+                <CardTitle>Etiketter og produkter</CardTitle>
                 <CardDescription>
                   Gælder alle brugere på {locationName}.
                 </CardDescription>
@@ -98,7 +98,7 @@ export function DateLabelSettings() {
           )}
         </>
       ) : null}
-      <PrinterSettings />
+      <PrinterSettings locationId={locationId} />
     </div>
   );
 }
