@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { expiryValidator } from "./lib/expiry";
 import { economicApprovalItemValidator, economicCategoryValidator, economicMappingFields } from "./lib/economicValidators";
 import {
   forecastProfileValidator,
@@ -1353,6 +1354,7 @@ export default defineSchema({
     defaultUnitId: v.id("units"),
     imageStorageId: v.optional(v.id("_storage")),
     maxTemperatureCelsius: v.optional(v.number()),
+    expiry: v.optional(expiryValidator),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdBy: v.string(),
     updatedAt: v.number(),

@@ -49,6 +49,12 @@ export type DataGranularity = (typeof dataGranularities)[number];
 
 export const permissionCatalog = [
   {
+    group: "Datomærkning",
+    permissions: [
+      { id: "dateLabels.print", label: "Printe datoetiketter" },
+    ],
+  },
+  {
     group: "Bestilling",
     permissions: [
       { id: "ordering.plan", label: "Planlægge bestillinger og se produktforbrug" },
@@ -195,6 +201,7 @@ export const defaultRolePermissions: Record<
       id !== "sales.viewDetail",
   ),
   member: [
+    "dateLabels.print",
     "count.register",
     "count.viewStock",
     "waste.register",

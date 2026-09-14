@@ -1,4 +1,6 @@
 import { productNameSearchScore as fuzzyScore } from "../lib/product-search";
+import type { Expiry } from "../lib/expiry";
+import { expiryValidator, requireValidExpiry } from "./lib/expiry";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -101,6 +103,7 @@ const productDetailValidator = v.object({
   name: v.string(),
   status: statusValidator,
   maxTemperatureCelsius: v.union(v.number(), v.null()),
+  expiry: v.union(expiryValidator, v.null()),
   category: v.union(
     productCategoryValidator,
     v.null(),
@@ -1473,6 +1476,7 @@ export const getProduct = query({
       name: product.name,
       status: product.status,
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
+      expiry: product.expiry ?? null,
       category: category ?? null,
       categories,
       imageUrl,
@@ -1613,9 +1617,11 @@ export async function createProductWithAuth(
     ingredients: IngredientInput[];
     addableIngredients: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
+    expiry?: Expiry | null;
   },
 ): Promise<Id<"products">> {
   const { organizationId, userIdentifier } = auth;
+  if (args.expiry) requireValidExpiry(args.expiry);
   const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
   await assertProductNameAvailable(ctx, organizationId, normalizedName);
   const categoryIds = await resolveCategories(
@@ -1647,6 +1653,7 @@ export async function createProductWithAuth(
       : {}),
     status: "active",
     createdBy: userIdentifier,
+    ...(args.expiry ? { expiry: args.expiry } : {}),
     updatedAt: Date.now(),
   });
   await replaceProductChildren(
@@ -1687,9 +1694,11 @@ export async function updateProductWithAuth(
     ingredients: IngredientInput[];
     addableIngredients?: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
+    expiry?: Expiry | null;
   },
 ): Promise<Id<"products">> {
   const { organizationId } = auth;
+  if (args.expiry) requireValidExpiry(args.expiry);
   const product = await ctx.db.get("products", args.productId);
   if (!product || product.organizationId !== organizationId) {
     throw new ConvexError("Produktet blev ikke fundet");
@@ -1800,6 +1809,7 @@ export async function updateProductWithAuth(
   );
   const updatedAt = Math.max(Date.now(), product.updatedAt + 1);
   await ctx.db.patch("products", product._id, {
+    ...(args.expiry !== undefined ? { expiry: args.expiry ?? undefined } : {}),
     name,
     normalizedName,
     categoryId,
@@ -1925,6 +1935,7 @@ export const createProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
+    expiry: v.optional(v.union(expiryValidator, v.null())),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {
@@ -2355,6 +2366,7 @@ export const updateProduct = mutation({
     ingredients: v.array(ingredientInputValidator),
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
+    expiry: v.optional(v.union(expiryValidator, v.null())),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {

@@ -1,4 +1,5 @@
 export const kioskDestinations = [
+  { id: "dateLabels.print", route: "/date-labels", label: "Datomærkning", group: "Datomærkning" },
   { id: "transfers.new", route: "/transfers", label: "Ny transfer", group: "Transfer" },
   { id: "transfers.history", route: "/transfers/history", label: "Transferhistorik", group: "Transfer" },
   { id: "invoices.new", route: "/invoices", label: "Registrér salg", group: "Faktura" },
