@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import type { Id } from "@/convex/_generated/dataModel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProductVisibilitySettings } from "./product-visibility-settings";
 import { PrinterIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -42,24 +45,54 @@ import {
 } from "@/lib/smooth-print";
 
 type PrinterSetupProps = {
+  locationId: Id<"locations">;
+  locationName: string;
+  canConfigure: boolean;
+  initialTab: "products" | "printer";
   open: boolean;
   onOpenChange: (open: boolean) => void;
   format: LabelFormat;
   onFormatChange: (format: LabelFormat) => void;
 };
 
-export function PrinterSetup(props: PrinterSetupProps) {
+export function DateLabelSettings(props: PrinterSetupProps) {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Printeropsætning</DialogTitle>
+          <DialogTitle>Indstillinger for Datomærkning</DialogTitle>
           <DialogDescription>
-            På iPad og Android forbindes printeren i Brother Smooth Print. På en
-            computer bruges enhedens printdialog.
+            Vælg produktvisning for lokationen og printeropsætning for denne
+            enhed.
           </DialogDescription>
         </DialogHeader>
-        <PrinterForm {...props} />
+        <Tabs
+          key={props.initialTab}
+          defaultValue={props.canConfigure ? props.initialTab : "printer"}
+        >
+          <TabsList className="mb-4">
+            {props.canConfigure ? (
+              <TabsTrigger value="products" className="min-h-11">
+                Produkter
+              </TabsTrigger>
+            ) : null}
+            <TabsTrigger value="printer" className="min-h-11">
+              Printer
+            </TabsTrigger>
+          </TabsList>
+          {props.canConfigure ? (
+            <TabsContent value="products">
+              <ProductVisibilitySettings
+                locationId={props.locationId}
+                locationName={props.locationName}
+                onClose={() => props.onOpenChange(false)}
+              />
+            </TabsContent>
+          ) : null}
+          <TabsContent value="printer" className="flex flex-col gap-4">
+            <PrinterForm {...props} />
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

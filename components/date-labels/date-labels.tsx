@@ -11,6 +11,7 @@ import {
   PlusIcon,
   PrinterIcon,
   SearchIcon,
+  SettingsIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -112,7 +113,7 @@ import { productSearchScore } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
-import { PrinterSetup } from "./printer-setup";
+import { DateLabelSettings } from "./printer-setup";
 
 type Product = FunctionReturnType<
   typeof api.dateLabels.listProducts
@@ -302,6 +303,9 @@ function LabelWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [printerOpen, setPrinterOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"products" | "printer">(
+    "products",
+  );
   const selectedProduct = products?.find(
     (product) => product.id === selection?.id,
   );
@@ -321,14 +325,17 @@ function LabelWorkspace({
     ],
     [products],
   );
+  const activeCategory = categories.some((item) => item.value === category)
+    ? category
+    : null;
   const visibleProducts = useMemo(
     () =>
       (products ?? [])
         .flatMap((product) => {
           if (filter === "favorites" && !favorites.has(product.id)) return [];
           if (
-            category &&
-            !product.categories.some((item) => item.id === category)
+            activeCategory &&
+            !product.categories.some((item) => item.id === activeCategory)
           )
             return [];
           const score = productSearchScore(
@@ -344,7 +351,7 @@ function LabelWorkspace({
             a.product.name.localeCompare(b.product.name, "da"),
         )
         .map((item) => item.product),
-    [products, filter, favorites, category, search],
+    [products, filter, favorites, activeCategory, search],
   );
 
   function selectProduct(product: Product) {
@@ -393,24 +400,27 @@ function LabelWorkspace({
       locationName={locationName}
       format={format}
       onClose={() => setSelection(null)}
-      onPrinterSetup={() => setPrinterOpen(true)}
+      onPrinterSetup={() => {
+        setSettingsTab("printer");
+        setPrinterOpen(true);
+      }}
       onMissingExpiry={() => selectProduct(selectedProduct)}
     />
   ) : null;
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          Vælg et produkt, bekræft produktionsdatoen, og print en etiket.
-        </p>
+      <div className="flex justify-end">
         <Button
           variant="outline"
           className="min-h-11"
-          onClick={() => setPrinterOpen(true)}
+          onClick={() => {
+            setSettingsTab("products");
+            setPrinterOpen(true);
+          }}
         >
-          <PrinterIcon data-icon="inline-start" />
-          Printeropsætning
+          <SettingsIcon data-icon="inline-start" />
+          Indstillinger
         </Button>
       </div>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -434,7 +444,7 @@ function LabelWorkspace({
             </ToggleGroup>
             <Select
               items={categories}
-              value={category ?? "all"}
+              value={activeCategory ?? "all"}
               onValueChange={(value) =>
                 setCategory(value === "all" ? null : value)
               }
@@ -501,7 +511,7 @@ function LabelWorkspace({
                 <EmptyDescription>
                   {products.length
                     ? "Prøv en anden søgning eller kategori. Tryk på hjertet for at gemme en favorit på denne enhed."
-                    : "Opret produkter i Administration, eller kontrollér lokationens produktvalg."}
+                    : "Kontrollér produktvalget under Indstillinger og de produkter, der er tilgængelige på lokationen."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -678,7 +688,11 @@ function LabelWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <PrinterSetup
+      <DateLabelSettings
+        locationId={locationId}
+        locationName={locationName}
+        canConfigure={canRemember}
+        initialTab={settingsTab}
         open={printerOpen}
         onOpenChange={setPrinterOpen}
         format={format}
@@ -961,8 +975,8 @@ function PrintPanel({
         {printer.opened ? (
           <p role="status" className="text-sm text-muted-foreground">
             Kontrollér resultatet i Smooth Print, før du printer igen. Hvis
-            appen ikke åbner, kan du hente den under Printeropsætning eller
-            bruge enhedens printdialog.
+            appen ikke åbner, kan du hente den under Indstillinger eller bruge
+            enhedens printdialog.
           </p>
         ) : null}
         {printer.platform ? (

@@ -53,6 +53,7 @@ import type * as lib_dashboardMetrics from "../lib/dashboardMetrics.js";
 import type * as lib_dashboardShareCrypto from "../lib/dashboardShareCrypto.js";
 import type * as lib_dashboardSummaries from "../lib/dashboardSummaries.js";
 import type * as lib_dashboardValidators from "../lib/dashboardValidators.js";
+import type * as lib_dateLabelSettings from "../lib/dateLabelSettings.js";
 import type * as lib_economicApi from "../lib/economicApi.js";
 import type * as lib_economicCrypto from "../lib/economicCrypto.js";
 import type * as lib_economicReport from "../lib/economicReport.js";
@@ -195,6 +196,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dashboardShareCrypto": typeof lib_dashboardShareCrypto;
   "lib/dashboardSummaries": typeof lib_dashboardSummaries;
   "lib/dashboardValidators": typeof lib_dashboardValidators;
+  "lib/dateLabelSettings": typeof lib_dateLabelSettings;
   "lib/economicApi": typeof lib_economicApi;
   "lib/economicCrypto": typeof lib_economicCrypto;
   "lib/economicReport": typeof lib_economicReport;

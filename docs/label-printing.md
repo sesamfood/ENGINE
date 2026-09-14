@@ -8,7 +8,7 @@ Smooth Print supports iOS 14.1+ and Android 8.0+. Computers use the existing sys
 
 1. Install the latest Smooth Print from [Brother's download page](https://support.brother.com/g/s/es/htmldoc/smoothprint/overview/download/).
 2. In Smooth Print, choose the printer and configure Wi-Fi or Bluetooth. For Wi-Fi, the device and printer must be on the same network. For Bluetooth, pair the printer in the device's Bluetooth settings first.
-3. Alternatively, open **Datomærkning → Printeropsætning** on the mobile device. Choose QL-820NWB or QL-820NWBc and the connection type. Enter the printer's IP address for Wi-Fi, or its Bluetooth MAC address for Bluetooth. Bluetooth on iPad/iPhone also requires the printer's serial number. Select **Tilslut i Smooth Print** and complete the connection there.
+3. Alternatively, open **Datomærkning → Indstillinger → Printer** on the mobile device. Choose QL-820NWB or QL-820NWBc and the connection type. Enter the printer's IP address for Wi-Fi, or its Bluetooth MAC address for Bluetooth. Bluetooth on iPad/iPhone also requires the printer's serial number. Select **Tilslut i Smooth Print** and complete the connection there.
 4. Return to Datomærkning, select the installed label size, and print one test label.
 
 The app opens Brother's documented `brotherwebprint://connect` URL. Smooth Print owns the selected printer and connection. The website does not report an online status or save a separate printer selection per location. Check the printer selected in Smooth Print when changing location.
@@ -36,3 +36,11 @@ References: [PDF printing](https://support.brother.com/g/s/es/htmldoc/smoothprin
 ## Verification
 
 Without hardware, use the system print dialog to save a PDF and check expiry calculation. Code checks can validate the attached PDF dimensions and URL parameters. A real mobile device with Smooth Print and a printer is still required to verify the app handoff, Bluetooth/Wi-Fi connection, continuous-roll length, rotation, cutting, multiple copies, and printer errors.
+
+## Products shown at a location
+
+In **Indstillinger → Produkter**, users with catalog-management and label-printing permission can configure which products appear for everyone at the selected location. Kiosk accounts cannot edit these settings.
+
+**Vis alle produkter** is the default. Turn it off to select categories or individual products. Categories include their descendants and products added later. Uncheck a product to exclude it even when its category is selected. An empty selection shows no products. The location's existing product availability still applies.
+
+Selections are stored in Convex per organization and location. Concurrent edits require reloading the settings before saving, so one user's changes cannot silently overwrite another's.
