@@ -1,4 +1,4 @@
-function normalize(value: string) {
+export function normalizeProductSearch(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -11,13 +11,67 @@ function normalize(value: string) {
 
 function subsequenceScore(value: string, search: string) {
   if (!search) return 0;
-  if (value.startsWith(search)) return 0;
-  if (value.includes(search)) return 1;
+  if (value === search) return 0;
+  if (value.startsWith(search)) return 1;
+  if (value.includes(search)) return 2;
+  if (
+    search
+      .split(" ")
+      .every((term) => value.split(" ").some((word) => word.startsWith(term)))
+  )
+    return 3;
   let cursor = 0;
   for (const character of value) {
     if (character === search[cursor]) cursor += 1;
   }
-  return cursor === search.length ? 2 : null;
+  return cursor === search.length ? 5 : null;
+}
+
+const synonymGroups = [
+  ["kikært", "kikærter", "chickpea", "chickpeas", "garbanzo"],
+  ["aubergine", "eggplant"],
+  ["squash", "courgette", "zucchini"],
+  ["koriander", "cilantro", "coriander"],
+  ["kylling", "chicken"],
+  ["oksekød", "beef"],
+  ["svinekød", "pork"],
+  ["kartoffel", "kartofler", "potato", "potatoes"],
+  ["tomat", "tomater", "tomato", "tomatoes"],
+  ["løg", "onion", "onions"],
+  ["hvidløg", "garlic"],
+  ["mælk", "milk"],
+  ["smør", "butter"],
+  ["ost", "cheese"],
+  ["æg", "egg", "eggs"],
+  ["mel", "flour"],
+  ["sukker", "sugar"],
+  ["olie", "oil"],
+  ["rapsolie", "canola", "canola oil", "rapeseed oil"],
+  ["ris", "rice"],
+] as const;
+const synonyms = new Map(
+  synonymGroups.flatMap((group) =>
+    group.map(
+      (term) =>
+        [
+          normalizeProductSearch(term),
+          normalizeProductSearch(group[0]),
+        ] as const,
+    ),
+  ),
+);
+const phraseSynonyms = [...synonyms]
+  .filter(([term]) => term.includes(" "))
+  .sort(([left], [right]) => right.length - left.length);
+
+function synonymText(value: string) {
+  for (const [phrase, replacement] of phraseSynonyms) {
+    value = value.replace(new RegExp(`\\b${phrase}\\b`, "g"), replacement);
+  }
+  return value
+    .split(" ")
+    .map((term) => synonyms.get(term) ?? term)
+    .join(" ");
 }
 
 function editDistance(left: string, right: string) {
@@ -40,12 +94,17 @@ function editDistance(left: string, right: string) {
 }
 
 export function productNameSearchScore(name: string, search: string) {
-  const normalizedName = normalize(name);
-  const normalizedSearch = normalize(search);
+  const normalizedName = normalizeProductSearch(name);
+  const normalizedSearch = normalizeProductSearch(search.slice(0, 200));
   const direct = subsequenceScore(normalizedName, normalizedSearch);
   if (direct !== null) return direct;
+  const synonymMatch = subsequenceScore(
+    synonymText(normalizedName),
+    synonymText(normalizedSearch),
+  );
+  if (synonymMatch !== null) return 4 + synonymMatch / 10;
   const words = normalizedName.split(" ");
-  let score = 3;
+  let score = 6;
   for (const term of normalizedSearch.split(" ")) {
     if (term.length < 3) return null;
     const tolerance = Math.max(1, Math.floor(term.length / 3));
@@ -62,7 +121,7 @@ export function productNameSearchScore(name: string, search: string) {
     if (best > tolerance) return null;
     score += best;
   }
-  return score;
+  return Math.min(score, 19);
 }
 
 export function productSearchScore(
@@ -71,8 +130,35 @@ export function productSearchScore(
   search: string,
 ) {
   const nameScore = productNameSearchScore(name, search);
-  const categoryScore = productNameSearchScore(categoryPath, search);
+  const categoryMatch = productNameSearchScore(categoryPath, search);
+  const categoryScore = categoryMatch === null ? null : 20 + categoryMatch;
+  if (nameScore === null && categoryScore === null && categoryPath) {
+    const combinedScore = productNameSearchScore(
+      `${name} ${categoryPath}`,
+      search,
+    );
+    return combinedScore === null ? null : 40 + combinedScore;
+  }
   if (nameScore === null) return categoryScore;
   if (categoryScore === null) return nameScore;
   return Math.min(nameScore, categoryScore);
+}
+
+export function searchProducts<T>(
+  products: readonly T[],
+  search: string,
+  fields: (product: T) => { name: string; categoryPath?: string },
+) {
+  if (!normalizeProductSearch(search)) return [...products];
+  return products
+    .flatMap((product) => {
+      const { name, categoryPath = "" } = fields(product);
+      const score = productSearchScore(name, categoryPath, search);
+      return score === null ? [] : [{ product, name, score }];
+    })
+    .sort(
+      (left, right) =>
+        left.score - right.score || left.name.localeCompare(right.name, "da"),
+    )
+    .map(({ product }) => product);
 }

@@ -91,6 +91,7 @@ export function IngredientEditorRow({
         <Field data-invalid={Boolean(productError)}>
           <FieldLabel>Produkt</FieldLabel>
           <CreatableCombobox
+            productSearch
             options={options}
             value={row.productId}
             disabled={disabled}

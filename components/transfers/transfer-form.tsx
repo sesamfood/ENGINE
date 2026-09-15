@@ -44,13 +44,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { productSearchScore } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
 import posthog from "posthog-js";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type LocationOption = {
@@ -203,7 +202,6 @@ export function TransferForm({
     LocationOption[] | undefined;
   const kiosk = useKiosk();
   const responsibleUsers = useQuery(api.transfers.listResponsibleUsers, {});
-  const [productSearch, setProductSearch] = useState("");
   const productSearchOptions = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
     {},
@@ -271,18 +269,6 @@ export function TransferForm({
       ? sessionUserId
       : null);
 
-  const products = useMemo(
-    () =>
-      (productSearchOptions ?? []).filter(
-        (product) =>
-          productSearchScore(
-            product.name,
-            product.categoryPath,
-            productSearch,
-          ) !== null,
-      ),
-    [productSearch, productSearchOptions],
-  );
   const displayLines = lines;
   const lineGroups = Array.from(
     displayLines
@@ -295,9 +281,13 @@ export function TransferForm({
       .values(),
   );
   const addedProductIds = new Set(lines.map((line) => line.productId));
-  const productOptions: ComboboxOption[] = products
+  const productOptions: ComboboxOption[] = (productSearchOptions ?? [])
     .filter((product) => !addedProductIds.has(product.id))
-    .map((product) => ({ value: product.id, label: product.name }));
+    .map((product) => ({
+      value: product.id,
+      label: product.name,
+      searchText: product.categoryPath,
+    }));
 
   const fromLocationOptions: ComboboxOption[] = (locations ?? []).map(
     (location) => ({
@@ -807,10 +797,10 @@ export function TransferForm({
             <Field data-invalid={Boolean(errors.items)}>
               <FieldLabel>Tilføj produkt</FieldLabel>
               <CreatableCombobox
+                productSearch
                 options={productOptions}
                 value={productToAdd}
                 onValueChange={(value) => void addProduct(value)}
-                onInputValueChange={setProductSearch}
                 placeholder="Søg efter produkter"
                 ariaLabel="Tilføj produkt"
                 disabled={loadingProductId !== undefined}

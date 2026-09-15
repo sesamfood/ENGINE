@@ -169,7 +169,13 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
           (unit) => !usedPairKeys.has(`${product.id}:${unit.id}`),
         ),
     )
-    .map((product) => ({ value: product.id, label: product.name }));
+    .map((product) => ({
+      value: product.id,
+      label: product.name,
+      searchText: product.categories
+        .map((category) => category.path)
+        .join(" · "),
+    }));
   const additionalReceivedLineCount = additionalLines.filter((line) => {
     const quantity = parseQuantity(line.quantity);
     return quantity !== null && quantity > 0;
@@ -813,6 +819,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                   <Field>
                     <FieldLabel>Tilføj produkt</FieldLabel>
                     <CreatableCombobox
+                      productSearch
                       options={productOptions}
                       value={null}
                       onValueChange={addProduct}

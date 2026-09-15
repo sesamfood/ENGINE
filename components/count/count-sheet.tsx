@@ -80,7 +80,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { downloadCsv } from "@/lib/download-csv";
-import { productSearchScore } from "@/lib/product-search";
+import { productSearchScore, searchProducts } from "@/lib/product-search";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
@@ -846,12 +846,15 @@ function OrderBuilder({
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Id<"products">[]>([]);
   const selected = new Set(selectedIds);
-  const available = products.filter(
-    (product) =>
-      !selected.has(product.id) &&
-      product.name
-        .toLocaleLowerCase("da")
-        .includes(search.toLocaleLowerCase("da")),
+  const available = searchProducts(
+    products.filter((product) => !selected.has(product.id)),
+    search,
+    (product) => ({
+      name: product.name,
+      categoryPath: product.categories
+        .map((category) => category.path)
+        .join(" · "),
+    }),
   );
 
   function close(open: boolean) {
@@ -1441,7 +1444,18 @@ export function CountSheet() {
   }, [activeCountAreaId, productOrder, products]);
 
   const displayedProducts = useMemo(() => {
-    if (!editingOrder || !orderDraft) return serverOrderedProducts;
+    if (!editingOrder || !orderDraft) {
+      return searchProducts(
+        serverOrderedProducts,
+        editingOrder || viewMode === "single" ? "" : search,
+        (product) => ({
+          name: product.name,
+          categoryPath: product.categories
+            .map((category) => category.path)
+            .join(" · "),
+        }),
+      );
+    }
     const byId = new Map(products?.map((product) => [product.id, product]));
     if (activeCountAreaId) {
       return orderDraft
@@ -1461,6 +1475,8 @@ export function CountSheet() {
     orderDraft,
     products,
     serverOrderedProducts,
+    viewMode,
+    search,
   ]);
 
   const productListKey = `${locationId ?? ""}:${activeCountAreaId ?? "location"}:${displayedProducts.map((product) => product.id).join(",")}`;

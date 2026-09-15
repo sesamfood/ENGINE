@@ -448,6 +448,8 @@ function MasterMenuManager({
   const menuProductOptions = (onlinePosProductOptions ?? []).map((product) => ({
     value: String(product.id),
     label: onlinePosProductLabel(product),
+    searchName: product.name,
+    searchText: product.groupName,
     disabled: assignedMenuProductIds.has(product.id),
   }));
   if (
@@ -458,6 +460,8 @@ function MasterMenuManager({
   ) {
     menuProductOptions.unshift({
       value: String(editor.menu.onlinePosProductId),
+      searchName: editor.menu.onlinePosProductName,
+      searchText: editor.menu.groupName,
       label: onlinePosProductLabel({
         id: editor.menu.onlinePosProductId,
         name: editor.menu.onlinePosProductName,
@@ -757,6 +761,7 @@ function MasterMenuManager({
             >
               <FieldLabel>Menu i OnlinePOS</FieldLabel>
               <CreatableCombobox
+                productSearch
                 options={menuProductOptions}
                 value={selectedMenuProductId}
                 onValueChange={(value) => {

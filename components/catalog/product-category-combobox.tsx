@@ -137,6 +137,7 @@ export function ProductCategoryCombobox({
 
   return (
     <CreatableMultiCombobox
+      productSearch
       options={nameFilter ? [...options, ...nameOptions] : options}
       values={
         nameFilter
