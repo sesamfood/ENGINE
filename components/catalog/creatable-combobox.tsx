@@ -2,6 +2,7 @@
 
 import { FolderIcon, PlusIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { searchProducts } from "@/lib/product-search";
 import {
   Combobox,
   ComboboxChip,
@@ -27,6 +28,7 @@ export type ComboboxOption = {
   groupDepth?: number;
   groupLabel?: string;
   searchText?: string;
+  searchName?: string;
 };
 
 export type ComboboxOptionGroup = {
@@ -72,6 +74,7 @@ export function CreatableCombobox({
   disabled = false,
   ariaLabel,
   ariaInvalid = false,
+  productSearch = false,
 }: {
   options: ComboboxOption[];
   value: string | null;
@@ -84,6 +87,7 @@ export function CreatableCombobox({
   disabled?: boolean;
   ariaLabel: string;
   ariaInvalid?: boolean;
+  productSearch?: boolean;
 }) {
   const selectedLabel =
     options.find((option) => option.value === value)?.label ??
@@ -100,13 +104,18 @@ export function CreatableCombobox({
 
   const visibleOptions = useMemo(() => {
     const query = inputValue.trim().toLocaleLowerCase("da");
-    const matches = query
-      ? options.filter((option) =>
-          [option.label, option.searchText ?? ""].some((text) =>
-            text.toLocaleLowerCase("da").includes(query),
-          ),
-        )
-      : options;
+    const matches = productSearch
+      ? searchProducts(options, inputValue, (option) => ({
+          name: option.searchName ?? option.label,
+          categoryPath: option.searchText,
+        }))
+      : query
+        ? options.filter((option) =>
+            [option.label, option.searchText ?? ""].some((text) =>
+              text.toLocaleLowerCase("da").includes(query),
+            ),
+          )
+        : options;
     const exactMatch = options.some(
       (option) => option.label.toLocaleLowerCase("da") === query,
     );
@@ -117,15 +126,17 @@ export function CreatableCombobox({
       ];
     }
     return matches;
-  }, [allowCreate, inputValue, options]);
+  }, [allowCreate, inputValue, options, productSearch]);
 
+  const visibleSuggestions =
+    productSearch && inputValue.trim() ? [] : suggestionOptions;
   const suggestionValues = new Set(
-    suggestionOptions.map((option) => option.value),
+    visibleSuggestions.map((option) => option.value),
   );
   const regularOptions = visibleOptions.filter(
     (option) => !suggestionValues.has(option.value),
   );
-  const displayedOptions = [...suggestionOptions, ...regularOptions];
+  const displayedOptions = [...visibleSuggestions, ...regularOptions];
   const itemValues = displayedOptions.map((option) => option.value);
 
   function commitInput() {
@@ -216,10 +227,10 @@ export function CreatableCombobox({
       <ComboboxContent>
         <ComboboxEmpty>Ingen resultater fundet.</ComboboxEmpty>
         <ComboboxList>
-          {suggestionOptions.length ? (
+          {visibleSuggestions.length ? (
             <ComboboxGroup>
               <ComboboxLabel>{suggestionLabel}</ComboboxLabel>
-              {suggestionOptions.map((option) => (
+              {visibleSuggestions.map((option) => (
                 <ComboboxItem
                   key={option.value}
                   value={option.value}
@@ -231,7 +242,7 @@ export function CreatableCombobox({
               ))}
             </ComboboxGroup>
           ) : null}
-          {suggestionOptions.length && regularOptions.length ? (
+          {visibleSuggestions.length && regularOptions.length ? (
             <ComboboxSeparator />
           ) : null}
           <ComboboxGroup>
@@ -271,6 +282,7 @@ export function CreatableMultiCombobox({
   suggestionValues = [],
   disabled = false,
   ariaLabel,
+  productSearch = false,
 }: {
   options: ComboboxOption[];
   values: string[];
@@ -285,6 +297,7 @@ export function CreatableMultiCombobox({
   suggestionValues?: readonly string[];
   disabled?: boolean;
   ariaLabel: string;
+  productSearch?: boolean;
 }) {
   const anchor = useComboboxAnchor();
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -300,13 +313,20 @@ export function CreatableMultiCombobox({
 
   const visibleOptions = useMemo(() => {
     const query = inputValue.trim().toLocaleLowerCase("da");
-    const matches = query
-      ? options.filter((option) =>
-          [option.label, option.group, option.groupLabel, option.searchText]
-            .filter((value): value is string => Boolean(value))
-            .some((value) => value.toLocaleLowerCase("da").includes(query)),
-        )
-      : options;
+    const matches = productSearch
+      ? searchProducts(options, inputValue, (option) => ({
+          name: option.searchName ?? option.label,
+          categoryPath: [option.groupLabel, option.searchText]
+            .filter(Boolean)
+            .join(" "),
+        }))
+      : query
+        ? options.filter((option) =>
+            [option.label, option.group, option.groupLabel, option.searchText]
+              .filter((value): value is string => Boolean(value))
+              .some((value) => value.toLocaleLowerCase("da").includes(query)),
+          )
+        : options;
     const exactMatch = [
       ...options.map((option) => option.value),
       ...values,
@@ -320,7 +340,7 @@ export function CreatableMultiCombobox({
       ];
     }
     return matches;
-  }, [allowCreate, inputValue, options, values]);
+  }, [allowCreate, inputValue, options, values, productSearch]);
   const optionsByValue = useMemo(
     () => new Map(options.map((option) => [option.value, option])),
     [options],
@@ -333,8 +353,10 @@ export function CreatableMultiCombobox({
     () => new Set(visibleOptions.map((option) => option.value)),
     [visibleOptions],
   );
-  const visibleSuggestionOptions = suggestionOptions.filter((option) =>
-    visibleOptionValues.has(option.value),
+  const visibleSuggestionOptions = suggestionOptions.filter(
+    (option) =>
+      (!productSearch || !inputValue.trim()) &&
+      visibleOptionValues.has(option.value),
   );
   const optionGroups = useMemo(() => {
     const optionsByGroup = new Map<string, ComboboxOption[]>();

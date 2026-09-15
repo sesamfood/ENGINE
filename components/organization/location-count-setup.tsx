@@ -1,5 +1,7 @@
 "use client";
 
+import { searchProducts } from "@/lib/product-search";
+
 import { SortableListRow } from "./sortable-list-row";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
@@ -246,14 +248,7 @@ export function LocationCountSetup({
       ? configuration.ingredientProductIds
       : [];
   const filteredProducts = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("da");
-    if (!products) return [];
-    if (!query) return products;
-    return products.filter(
-      (product) =>
-        product.name.toLocaleLowerCase("da").includes(query) ||
-        product.categoryPath.toLocaleLowerCase("da").includes(query),
-    );
+    return searchProducts(products ?? [], search, (product) => product);
   }, [products, search]);
   const effectiveProductIds = useMemo(() => {
     if (!products || !configuration) return new Set<ProductId>();

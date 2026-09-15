@@ -135,7 +135,13 @@ function ManualGoodsReceiptForm({
       );
       return product.units.some((unit) => !usedUnitIds.has(unit.id));
     })
-    .map((product) => ({ value: product.id, label: product.name }));
+    .map((product) => ({
+      value: product.id,
+      label: product.name,
+      searchText: product.categories
+        .map((category) => category.path)
+        .join(" · "),
+    }));
   const receivedLineCount = lines.filter((line) => {
     const quantity = parseQuantity(line.quantity);
     return quantity !== null && quantity > 0;
@@ -507,6 +513,7 @@ function ManualGoodsReceiptForm({
                 <Field data-invalid={Boolean(errors.items)}>
                   <FieldLabel>Tilføj produkt</FieldLabel>
                   <CreatableCombobox
+                    productSearch
                     options={productOptions}
                     value={null}
                     onValueChange={addProduct}

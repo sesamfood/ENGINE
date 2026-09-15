@@ -1,7 +1,7 @@
 "use client";
 
 import { Trash2Icon } from "lucide-react";
-import { useId, useState } from "react";
+import { useId } from "react";
 import { CreatableCombobox } from "@/components/catalog/creatable-combobox";
 import { ProductLineGroup } from "@/components/product-line-group";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,6 @@ import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { dateKey, dateTimeFormatter, zonedTimestamp } from "@/lib/date";
-import { productSearchScore } from "@/lib/product-search";
 
 type ProductTemperature = NonNullable<
   Doc<"ownCheckEntries">["productTemperatures"]
@@ -228,23 +227,17 @@ function ProductTemperatureInputs({
   errors: Record<string, string>;
 }) {
   const id = useId();
-  const [search, setSearch] = useState("");
   const products = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
     {},
   );
   const options = (products ?? [])
     .filter((product) => !value.some((row) => row.productId === product.id))
-    .map((product) => ({ value: product.id, label: product.name }));
-  const suggestions = (products ?? [])
-    .flatMap((product) => {
-      if (value.some((row) => row.productId === product.id)) return [];
-      const score = productSearchScore(product.name, product.categoryPath, search);
-      return score === null ? [] : [{ product, score }];
-    })
-    .sort((left, right) => left.score - right.score)
-    .slice(0, 10)
-    .map(({ product }) => ({ value: product.id, label: product.name }));
+    .map((product) => ({
+      value: product.id,
+      label: product.name,
+      searchText: product.categoryPath,
+    }));
 
   return (
     <FieldSet>
@@ -253,10 +246,9 @@ function ProductTemperatureInputs({
         <Field data-invalid={Boolean(errors.products)} data-disabled={disabled}>
           <FieldLabel>Tilføj produkt</FieldLabel>
           <CreatableCombobox
+            productSearch
             options={options}
-            suggestionOptions={search.trim() ? suggestions : []}
             value={null}
-            onInputValueChange={setSearch}
             onValueChange={(productId) => {
               const product = products?.find((item) => item.id === productId);
               if (
@@ -272,7 +264,6 @@ function ProductTemperatureInputs({
                   temperature: "",
                 },
               ]);
-              setSearch("");
             }}
             placeholder={
               products === undefined
@@ -302,7 +293,9 @@ function ProductTemperatureInputs({
                     disabled={disabled}
                     onClick={() =>
                       onChange(
-                        value.filter((row) => row.productId !== product.productId),
+                        value.filter(
+                          (row) => row.productId !== product.productId,
+                        ),
                       )
                     }
                   >

@@ -138,7 +138,6 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       quantity: string;
     }>
   >([]);
-  const [productSearch, setProductSearch] = useState("");
   const [pickerKey, setPickerKey] = useState(0);
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [loadingProduct, setLoadingProduct] = useState(false);
@@ -351,9 +350,6 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     .filter(
       (menu) =>
         menuRows.length < MAX_LINES &&
-        menu.name
-          .toLocaleLowerCase("da")
-          .includes(productSearch.trim().toLocaleLowerCase("da")) &&
         menu.products.some((product) =>
           availableProducts.some((option) => option.id === product.id),
         ),
@@ -485,7 +481,6 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
           menuGroup.quantity,
         );
       });
-      setProductSearch("");
       setPickerKey((key) => key + 1);
       setErrors({});
     } catch (error) {
@@ -630,7 +625,6 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       setPhoto(null);
       setLines([]);
       setMenuRows([]);
-      setProductSearch("");
       setPickerKey((key) => key + 1);
       setErrors({});
       setConfirming(false);
@@ -938,6 +932,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
               <Field data-invalid={Boolean(errors.items)}>
                 <FieldLabel>Tilføj produkt eller menu</FieldLabel>
                 <CreatableCombobox
+                  productSearch
                   key={pickerKey}
                   options={[...menuOptions, ...productOptions]}
                   suggestionLabel="Menuer"
@@ -969,13 +964,11 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                               },
                             ],
                       );
-                      setProductSearch("");
                       setPickerKey((key) => key + 1);
                     } else {
                       void addProduct(value);
                     }
                   }}
-                  onInputValueChange={setProductSearch}
                   placeholder="Søg efter produkt, menu eller kategori"
                   ariaLabel="Tilføj produkt eller menu"
                   ariaInvalid={Boolean(errors.items)}
@@ -1145,6 +1138,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                                       </Badge>
                                     </FieldLabel>
                                     <CreatableCombobox
+                                      productSearch
                                       key={`${menu.key}:${group.id}:${pickerKey}`}
                                       options={pickerOptions}
                                       value={

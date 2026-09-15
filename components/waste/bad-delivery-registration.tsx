@@ -62,7 +62,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { compressImage, evidencePhotoOptions } from "@/lib/compress-image";
-import { productSearchScore } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { PackageOpenIcon, PlusIcon } from "lucide-react";
@@ -102,7 +101,6 @@ export function BadDeliveryRegistration() {
     api.badDeliveries.getRegistrationConfig,
     locationId ? { locationId } : "skip",
   );
-  const [search, setSearch] = useState("");
   const productSearchOptions = useCompleteCatalog(
     api.catalog.listActiveProductSearchOptionsPage,
     locationId ? {} : "skip",
@@ -169,12 +167,12 @@ export function BadDeliveryRegistration() {
   const selectedLocation = locations.find((item) => item.id === locationId)!;
   const addedProductIds = new Set(lines.map((line) => line.productId));
   const productOptions: ComboboxOption[] = (productSearchOptions ?? [])
-    .filter(
-      (product) =>
-        productSearchScore(product.name, product.categoryPath, search) !== null,
-    )
     .filter((product) => !addedProductIds.has(product.id))
-    .map((product) => ({ value: product.id, label: product.name }));
+    .map((product) => ({
+      value: product.id,
+      label: product.name,
+      searchText: product.categoryPath,
+    }));
   const groups = Array.from(
     lines
       .reduce((map, line) => {
@@ -327,7 +325,6 @@ export function BadDeliveryRegistration() {
       setDeductDraft(null);
       setErrors({});
       setProductToAdd(null);
-      setSearch("");
       setConfirming(false);
       if (result.initialNoticeStatus === "pending") {
         toast.success("Dårlig levering er registreret. Meddelelsen sendes nu.");
@@ -410,10 +407,10 @@ export function BadDeliveryRegistration() {
           <Field data-invalid={Boolean(errors.items)}>
             <FieldLabel>Tilføj produkt</FieldLabel>
             <CreatableCombobox
+              productSearch
               options={productOptions}
               value={productToAdd}
               onValueChange={(value) => void addProduct(value)}
-              onInputValueChange={setSearch}
               placeholder="Søg efter produkter"
               ariaLabel="Tilføj produkt"
               disabled={loadingProductId !== undefined || lines.length >= 200}
