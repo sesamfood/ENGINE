@@ -102,7 +102,7 @@ export function IntegrationOverview() {
               key={entry.id}
               className={cn("relative", canOpen && "transition-colors hover:bg-muted/50")}
             >
-              <CardHeader>
+              <CardHeader className="[container-type:normal]">
                 <CardTitle>
                   {canOpen ? (
                     <Link
