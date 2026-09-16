@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -27,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { integrationRegistry, type IntegrationId } from "@/integrations/registry";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { cn } from "@/lib/utils";
 
 export function IntegrationOverview() {
   const access = useAccess();
@@ -96,12 +96,26 @@ export function IntegrationOverview() {
         {integrationRegistry.map((entry) => {
           const enabled = state[entry.id];
           const canConfigure = !entry.requiresAllLocations || canToggle;
+          const canOpen = enabled && canConfigure;
           return (
-            <Card key={entry.id}>
+            <Card
+              key={entry.id}
+              className={cn("relative", canOpen && "transition-colors hover:bg-muted/50")}
+            >
               <CardHeader>
-                <CardTitle>{entry.name}</CardTitle>
+                <CardTitle>
+                  {canOpen ? (
+                    <Link
+                      href={`/administration/integrations/${entry.id}`}
+                      aria-label={`${entry.name}-indstillinger`}
+                      className="outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
+                    >
+                      {entry.name}
+                    </Link>
+                  ) : entry.name}
+                </CardTitle>
                 <CardDescription>{entry.description}</CardDescription>
-                <CardAction>
+                <CardAction className="relative z-10">
                   <Field orientation="horizontal" className="min-h-11 w-auto">
                     <FieldLabel htmlFor={`${entry.id}-enabled`} className="sr-only">
                       Aktivér {entry.name}
@@ -116,31 +130,21 @@ export function IntegrationOverview() {
                   </Field>
                 </CardAction>
               </CardHeader>
-              <CardContent className="flex-1">
+              <CardContent className="flex flex-1 items-center justify-between">
                 <Badge variant={enabled ? "default" : "secondary"}>
                   {enabled ? "Aktiveret" : "Deaktiveret"}
                 </Badge>
+                {canOpen ? <ArrowRightIcon className="size-4 text-muted-foreground" aria-hidden="true" /> : null}
               </CardContent>
-              <CardFooter>
-                {enabled && canConfigure ? (
-                  <Button
-                    variant="outline"
-                    className="min-h-11 w-full justify-between"
-                    render={<Link href={`/administration/integrations/${entry.id}`} />}
-                    nativeButton={false}
-                    aria-label={`${entry.name}-indstillinger`}
-                  >
-                    Indstillinger
-                    <ArrowRightIcon data-icon="inline-end" />
-                  </Button>
-                ) : (
+              {!canOpen ? (
+                <CardFooter>
                   <p className="flex min-h-11 items-center text-sm text-muted-foreground">
                     {enabled
                       ? "Indstillinger kræver adgang til alle lokationer."
                       : "Aktivér integrationen for at åbne indstillinger."}
                   </p>
-                )}
-              </CardFooter>
+                </CardFooter>
+              ) : null}
             </Card>
           );
         })}
