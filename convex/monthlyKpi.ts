@@ -216,7 +216,7 @@ function requireRevision(value: number) {
 }
 
 export const saveBudget = mutation({
-  args: { month: v.string(), locationId: v.id("locations"), ...budgetValues, economicBudgetCategories: v.array(economicCategoryValidator),
+  args: { month: v.string(), locationId: v.id("locations"), ...budgetValues, economicBudgetCategories: v.optional(v.array(economicCategoryValidator)),
     sourceNote: v.string(), expectedRevision: v.number(), expectedCurrency: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -224,7 +224,7 @@ export const saveBudget = mutation({
     requireMonth(args.month);
     requireLocationAccess(auth, args.locationId);
     const location = await requireOrganizationLocation(ctx, auth.organizationId, args.locationId);
-    if (args.economicBudgetCategories.length > economicBudgetComponents.length || new Set(args.economicBudgetCategories).size !== args.economicBudgetCategories.length) {
+    if (args.economicBudgetCategories !== undefined && (args.economicBudgetCategories.length > economicBudgetComponents.length || new Set(args.economicBudgetCategories).size !== args.economicBudgetCategories.length)) {
       throw new ConvexError("Vælg hver budgetpost fra e-conomic én gang");
     }
     for (const value of [args.sales, args.transactions, args.labour, args.cogs, args.waste, args.rent, args.utilities, args.other]) {
@@ -241,9 +241,9 @@ export const saveBudget = mutation({
       organizationId: auth.organizationId, locationId: args.locationId, month: args.month, currency, sourceNote,
       sales: args.sales, transactions: args.transactions, labour: args.labour, cogs: args.cogs,
       waste: args.waste, rent: args.rent, utilities: args.utilities, other: args.other, guestScore: args.guestScore,
-      economicBudgetCategories: await isIntegrationEnabled(ctx, auth.organizationId, "economic")
-        ? economicBudgetComponents.filter((category) => args.economicBudgetCategories.includes(category))
-        : previous?.economicBudgetCategories ?? [],
+      economicBudgetCategories: args.economicBudgetCategories !== undefined && await isIntegrationEnabled(ctx, auth.organizationId, "economic")
+        ? economicBudgetComponents.filter((category) => args.economicBudgetCategories?.includes(category))
+        : previous?.economicBudgetCategories,
       revision: args.expectedRevision + 1, updatedAt: Date.now(), updatedBy: auth.userId,
     });
     await recordAudit(ctx, auth, { action: "monthlyKpi.budgetSaved", entityTable: "monthlyKpiBudgets", entityId: id,

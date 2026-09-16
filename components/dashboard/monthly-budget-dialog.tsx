@@ -83,7 +83,8 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
   const integrations = useIntegrations();
   const saveBudget = useMutation(api.monthlyKpi.saveBudget);
   const [draft, setDraft] = useState(() => budgetDraft(budget));
-  const [economicBudgetCategories, setEconomicBudgetCategories] = useState(budget.economicBudgetCategories);
+  const [economicBudgetCategoriesDraft, setEconomicBudgetCategoriesDraft] = useState<Budget["economicBudgetCategories"] | null>(null);
+  const economicBudgetCategories = economicBudgetCategoriesDraft ?? budget.economicBudgetCategories;
   const [sourceNote, setSourceNote] = useState(budget.sourceNote);
   const [revision, setRevision] = useState(budget.revision);
   const [currency, setCurrency] = useState(budget.currency);
@@ -107,7 +108,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
       await saveBudget({ month, locationId, sales: parsed.sales.value, transactions: parsed.transactions.value,
         labour: parsed.labour.value, cogs: parsed.cogs.value, waste: parsed.waste.value, rent: parsed.rent.value,
         utilities: parsed.utilities.value, other: parsed.other.value, guestScore: parsed.guestScore.value,
-        economicBudgetCategories: integrations?.economic ? economicBudgetCategories : [], sourceNote, expectedRevision: revision, expectedCurrency: currency });
+        economicBudgetCategories: integrations.economic ? economicBudgetCategoriesDraft ?? undefined : undefined, sourceNote, expectedRevision: revision, expectedCurrency: currency });
       toast.success("Budgettet er gemt");
       onClose();
     } catch (error) {
@@ -128,7 +129,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
             <p>Budgettet eller lokationens valuta er ændret. Indlæs de nyeste værdier, før du redigerer videre.</p>
             <Button type="button" variant="outline" className="mt-2 min-h-11" onClick={() => {
               setDraft(budgetDraft(budget)); setSourceNote(budget.sourceNote);
-              setEconomicBudgetCategories(budget.economicBudgetCategories);
+              setEconomicBudgetCategoriesDraft(null);
               setRevision(budget.revision); setCurrency(budget.currency); setSubmitted(false);
             }}>Indlæs nyeste budget</Button>
           </AlertDescription>
@@ -151,8 +152,8 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
                 <Select items={budgetSources} value={usesEconomic ? "economic" : "manual"} disabled={saving || conflict}
                   onValueChange={(value) => {
                     if (value === null) return;
-                    setEconomicBudgetCategories((current) => {
-                      const remaining = current.filter((component) => component !== category);
+                    setEconomicBudgetCategoriesDraft((current) => {
+                      const remaining = (current ?? budget.economicBudgetCategories).filter((component) => component !== category);
                       return value === "economic" ? [...remaining, category] : remaining;
                     });
                   }}>

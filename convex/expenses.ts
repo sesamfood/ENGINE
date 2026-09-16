@@ -132,7 +132,7 @@ export const getSettings = query({
 export const setSettings = mutation({
   args: {
     expectedOrganizationId: v.string(), to: v.array(v.string()), cc: v.array(v.string()), bcc: v.array(v.string()),
-    economicMappings: v.array(expenseEconomicMappingValidator),
+    economicMappings: v.optional(v.array(expenseEconomicMappingValidator)),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -142,7 +142,7 @@ export const setSettings = mutation({
     if (!recipients.to.length && (recipients.cc.length || recipients.bcc.length)) throw new ConvexError("Angiv mindst én modtager i Til");
     const current = await settingsFor(ctx, auth.organizationId);
     const enabled = await isIntegrationEnabled(ctx, auth.organizationId, "economic");
-    const economicMappings = !enabled ? current?.economicMappings ?? [] : args.economicMappings.map((mapping) => ({
+    const economicMappings = !enabled || args.economicMappings === undefined ? current?.economicMappings ?? [] : args.economicMappings.map((mapping) => ({
       ...mapping, vatCode25: mapping.vatCode25.trim(),
       accountMappings: [...mapping.accountMappings].sort((a, b) => a.categoryId.localeCompare(b.categoryId)),
     })).sort((a, b) => a.connectionId.localeCompare(b.connectionId));

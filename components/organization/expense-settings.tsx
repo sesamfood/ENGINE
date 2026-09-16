@@ -188,7 +188,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
     setError(null);
     try {
       const recipients = readRecipients(to, cc, bcc);
-      const economicMappings: EconomicMapping[] =
+      const economicMappings: EconomicMapping[] | undefined =
         canEditMappings && mappingsDraft !== null
           ? [
               ...loadedSettings.economicMappings.filter(
@@ -217,7 +217,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
                   };
                 }),
             ]
-          : loadedSettings.economicMappings;
+          : undefined;
       setSaving(true);
       await saveSettings({
         expectedOrganizationId: loadedSettings.organizationId,
