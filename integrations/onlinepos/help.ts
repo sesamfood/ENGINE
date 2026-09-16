@@ -268,4 +268,3 @@ export const onlinePosGuide: HelpGuide = {
     },
   ],
 };
-

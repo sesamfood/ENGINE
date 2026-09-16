@@ -167,4 +167,3 @@ export const woltGuide: HelpGuide = {
   ],
   children: [woltOrdersGuide],
 };
-
