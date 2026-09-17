@@ -1216,6 +1216,7 @@ export function AppShell({
   const showAdministrationBack =
     pathname.startsWith("/administration/") &&
     !pathname.startsWith("/administration/products/");
+  const showIntegrationsBack = pathname.startsWith("/administration/integrations/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
   const showOrderingHeader = pathname === "/ordering";
@@ -1310,12 +1311,20 @@ export function AppShell({
                           <Button
                             variant="outline"
                             size="lg"
-                            render={<Link href="/administration" />}
+                            render={
+                              <Link
+                                href={showIntegrationsBack
+                                  ? "/administration/integrations"
+                                  : "/administration"}
+                              />
+                            }
                             nativeButton={false}
                           >
                             <ArrowLeftIcon data-icon="inline-start" />
                             <span className="hidden sm:inline">
-                              Tilbage til administration
+                              {showIntegrationsBack
+                                ? "Tilbage til integrationer"
+                                : "Tilbage til administration"}
                             </span>
                             <span className="sm:hidden">Tilbage</span>
                           </Button>

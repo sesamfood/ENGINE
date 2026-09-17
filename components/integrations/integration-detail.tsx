@@ -4,10 +4,7 @@ import { useIntegrations } from "@/integrations/use-integrations";
 
 import type { ComponentType } from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { ArrowLeftIcon } from "lucide-react";
 import { useAccess, usePermission } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { integrationRegistry, type IntegrationId } from "@/integrations/registry";
@@ -37,17 +34,6 @@ export function IntegrationDetail({ integration }: { integration: IntegrationId 
 
   return (
     <div className="flex max-w-6xl flex-col gap-5 pb-10">
-      <div>
-        <Button
-          variant="ghost"
-          className="min-h-11"
-          render={<Link href="/administration/integrations" />}
-          nativeButton={false}
-        >
-          <ArrowLeftIcon data-icon="inline-start" />
-          Integrationer
-        </Button>
-      </div>
       {available ? (
         <>
           <div className="flex flex-col gap-2">
