@@ -1,4 +1,4 @@
-import { productNameSearchScore as fuzzyScore } from "../lib/product-search";
+import { productSearchScore } from "../lib/product-search";
 import type { Expiry } from "../lib/expiry";
 import { expiryValidator, requireValidExpiry } from "./lib/expiry";
 import {
@@ -1153,10 +1153,13 @@ export const listProducts = query({
       if (categoryIds && !memberships.some((id) => categoryIds.has(id))) {
         return false;
       }
-      return !search || fuzzyScore(product.name, search) !== null ||
-        memberships.some((id) =>
-          fuzzyScore(categoryPaths.get(id) ?? "", search) !== null,
-        );
+      return (
+        productSearchScore(
+          product.name,
+          memberships.map((id) => categoryPaths.get(id) ?? "").join(" · "),
+          search,
+        ) !== null
+      );
     });
     const defaultUnitIds = [
       ...new Set(matches.map(({ product }) => product.defaultUnitId)),

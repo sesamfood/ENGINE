@@ -84,7 +84,7 @@ import { LocationField } from "@/components/location-field";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { downloadCsv } from "@/lib/download-csv";
 import { addDays, dateKey, DEFAULT_TIME_ZONE, zonedStart } from "@/lib/date";
-import { productSearchScore } from "@/lib/product-search";
+import { searchProducts } from "@/lib/product-search";
 
 type Settings = NonNullable<
   ReturnType<typeof useQuery<typeof api.staffFood.getSettings>>
@@ -701,20 +701,22 @@ export function StaffFoodSettings() {
                   allowanceIndex === index ? [] : item.productIds,
                 ),
               );
-              const products = productCatalog.filter(
-                (product) =>
-                  product.categoryIds.some((categoryId) =>
-                    categoryIds.has(categoryId),
-                  ) &&
-                  productSearchScore(
-                    product.name,
-                    product.categoryIds
-                      .map((categoryId) => categoryPaths.get(categoryId) ?? "")
-                      .join(" · "),
-                    productSearches[allowance.id] ?? "",
-                  ) !== null &&
-                  (product.status === "active" ||
-                    allowance.productIds.includes(product.id)),
+              const products = searchProducts(
+                productCatalog.filter(
+                  (product) =>
+                    product.categoryIds.some((categoryId) =>
+                      categoryIds.has(categoryId),
+                    ) &&
+                    (product.status === "active" ||
+                      allowance.productIds.includes(product.id)),
+                ),
+                productSearches[allowance.id] ?? "",
+                (product) => ({
+                  name: product.name,
+                  categoryPath: product.categoryIds
+                    .map((id) => categoryPaths.get(id) ?? "")
+                    .join(" · "),
+                }),
               );
               const selectableProducts = products.filter(
                 (product) =>

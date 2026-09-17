@@ -106,7 +106,7 @@ import {
   subscribePreferences,
   useLabelFormat,
 } from "@/lib/date-label-prefs";
-import { productSearchScore } from "@/lib/product-search";
+import { searchProducts } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
@@ -279,24 +279,20 @@ function LabelWorkspace({
   );
   const visibleProducts = useMemo(
     () =>
-      (products ?? [])
-        .flatMap((product) => {
-          if (filter === "favorites" && !favorites.has(product.id)) return [];
-          const score = productSearchScore(
-            product.name,
-            product.categories
-              .map((item) => categoryPaths.get(item.id) ?? item.name)
-              .join(" "),
-            search,
-          );
-          return score === null ? [] : [{ product, score }];
-        })
-        .sort(
-          (a, b) =>
-            a.score - b.score ||
-            a.product.name.localeCompare(b.product.name, "da"),
-        )
-        .map((item) => item.product),
+      searchProducts(
+        (products ?? [])
+          .filter(
+            (product) => filter !== "favorites" || favorites.has(product.id),
+          )
+          .sort((a, b) => a.name.localeCompare(b.name, "da")),
+        search,
+        (product) => ({
+          name: product.name,
+          categoryPath: product.categories
+            .map((item) => categoryPaths.get(item.id) ?? item.name)
+            .join(" · "),
+        }),
+      ),
     [products, filter, favorites, categoryPaths, search],
   );
 

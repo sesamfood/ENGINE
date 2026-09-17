@@ -584,6 +584,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const recipeProductComboboxOptions: ComboboxOption[] =
     recipeProductOptions.map((option) => ({
       value: option.id,
+      searchName: option.name,
+      searchText: option.categoryPath,
       label: [
         option.name,
         option.categoryPath,
@@ -595,6 +597,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const addableProductComboboxOptions: ComboboxOption[] =
     addableProductOptions.map((option) => ({
       value: option.id,
+      searchName: option.name,
+      searchText: option.categoryPath,
       label: [
         option.name,
         option.categoryPath,

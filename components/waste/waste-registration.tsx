@@ -58,7 +58,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { productSearchScore } from "@/lib/product-search";
+import { searchProducts } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -337,35 +337,19 @@ export function WasteRegistration() {
   }, [catalog]);
   const hasSearch = search.trim().length > 0;
   const products = useMemo(() => {
+    if (hasSearch) {
+      return searchProducts(catalog ?? [], search, (product) => ({
+        name: product.name,
+        categoryPath: product.categories.map((item) => item.path).join(" · "),
+      }));
+    }
     return [...(catalog ?? [])]
-      .filter((product) =>
-        hasSearch
-          ? productSearchScore(
-              product.name,
-              product.categories.map((item) => item.path).join(" · "),
-              search,
-            ) !== null
-          : category === "all" ||
-            product.categories.some((item) => item.id === category),
+      .filter(
+        (product) =>
+          category === "all" ||
+          product.categories.some((item) => item.id === category),
       )
       .sort((a, b) => {
-        if (hasSearch) {
-          const searchDiff =
-            productSearchScore(
-              a.name,
-              a.categories.map((item) => item.path).join(" · "),
-              search,
-            )! -
-            productSearchScore(
-              b.name,
-              b.categories.map((item) => item.path).join(" · "),
-              search,
-            )!;
-          if (searchDiff) return searchDiff;
-          const popularityDiff =
-            (rankMap.get(b.id)?.count ?? 0) - (rankMap.get(a.id)?.count ?? 0);
-          return popularityDiff || collator.compare(a.name, b.name);
-        }
         const aConfig = configMap.get(a.id);
         const bConfig = configMap.get(b.id);
         if (Boolean(aConfig?.pinnedAt) !== Boolean(bConfig?.pinnedAt)) {

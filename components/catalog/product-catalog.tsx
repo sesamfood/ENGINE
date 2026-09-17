@@ -3,6 +3,7 @@
 import type { FunctionReturnType } from "convex/server";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { searchProducts } from "@/lib/product-search";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -20,7 +21,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProductImportExport } from "@/components/catalog/product-import-export";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
@@ -333,11 +334,15 @@ export function ProductCatalog() {
   const requestedResults = requestedPage.search === querySearch && requestedPage.status === status
     ? requestedPage.count
     : 24;
+  const hasSearch = querySearch.trim().length > 0;
   useEffect(() => {
-    if (paginationStatus === "CanLoadMore" && results.length < requestedResults) {
+    if (
+      paginationStatus === "CanLoadMore" &&
+      (hasSearch || results.length < requestedResults)
+    ) {
       loadMore(24);
     }
-  }, [loadMore, paginationStatus, requestedResults, results.length]);
+  }, [hasSearch, loadMore, paginationStatus, requestedResults, results.length]);
 
   useEffect(() => {
     if (pendingSearch.current === search) {
@@ -400,9 +405,23 @@ export function ProductCatalog() {
     }
   }
 
-  const loading = paginationStatus === "LoadingFirstPage" ||
+  const loading =
+    paginationStatus === "LoadingFirstPage" ||
+    (hasSearch && categoryOptions === undefined) ||
+    (hasSearch && paginationStatus !== "Exhausted") ||
     (results.length === 0 && paginationStatus !== "Exhausted");
-  const currentResults = results;
+  const currentResults = useMemo(() => {
+    if (!hasSearch) return results;
+    const paths = new Map(
+      categoryOptions?.map((category) => [category.id, category.path]),
+    );
+    return searchProducts(results, querySearch, (product) => ({
+      name: product.name,
+      categoryPath: product.categories
+        .map((category) => paths.get(category.id) ?? category.name)
+        .join(" · "),
+    })).slice(0, requestedResults);
+  }, [categoryOptions, hasSearch, querySearch, requestedResults, results]);
 
   useEffect(() => {
     if (!loading) {
@@ -634,15 +653,23 @@ export function ProductCatalog() {
         </div>
       ) : null}
 
-      {paginationStatus === "CanLoadMore" ||
-      paginationStatus === "LoadingMore" ? (
+      {(!loading && results.length > currentResults.length) ||
+      (!hasSearch &&
+        (paginationStatus === "CanLoadMore" ||
+          paginationStatus === "LoadingMore")) ? (
         <div className="flex justify-center pt-2">
           <Button
             variant="outline"
             size="lg"
             className="min-h-11 px-5"
             disabled={paginationStatus === "LoadingMore"}
-            onClick={() => setRequestedPage({ search: querySearch, status, count: results.length + 24 })}
+            onClick={() =>
+              setRequestedPage({
+                search: querySearch,
+                status,
+                count: (hasSearch ? requestedResults : results.length) + 24,
+              })
+            }
           >
             {paginationStatus === "LoadingMore" ? (
               <Spinner data-icon="inline-start" />

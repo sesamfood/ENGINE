@@ -26,6 +26,8 @@ export function useOnlinePosProductOptions(
         : products.map((product) => ({
             ...product,
             value: String(product.id),
+            searchName: product.name,
+            searchText: product.groupName,
             label: product.groupName
               ? `${product.name} — ${product.groupName}`
               : product.name,
@@ -85,6 +87,7 @@ export function OnlinePosProductSelect({
   return (
     <>
       <CreatableCombobox
+        productSearch
         options={available}
         suggestionLabel={
           hasExactMatch

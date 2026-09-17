@@ -80,7 +80,7 @@ import type {
 } from "./wolt-types";
 
 type WoltLocation = WoltIntegrationOverview["locations"][number];
-type ProductOption = { id: Id<"products">; name: string };
+type ProductOption = { id: Id<"products">; name: string; categoryPath: string };
 
 type MatchChoice = {
   matchType: "gtin" | "posId" | "sku" | "name";
@@ -443,6 +443,7 @@ function ObservedMappingRow({
   const productOptions: ComboboxOption[] = products.map((product) => ({
     value: product.id,
     label: product.name,
+    searchText: product.categoryPath,
   }));
   const suggestionOptions: ComboboxOption[] = row.suggestions.map((product) => ({
     value: product.id,
@@ -516,12 +517,15 @@ function ObservedMappingRow({
             <FieldLabel>Lokalt produkt</FieldLabel>
             {productOptions.length ? (
               <CreatableCombobox
+                productSearch
                 options={productOptions}
                 suggestionOptions={suggestionOptions}
                 suggestionLabel="Navneforslag"
                 value={selectedProductId}
                 onValueChange={(value) => {
-                  const product = products.find((candidate) => candidate.id === value);
+                  const product = products.find(
+                    (candidate) => candidate.id === value,
+                  );
                   if (product) onSelect(product.id);
                 }}
                 placeholder="Søg efter produkt"

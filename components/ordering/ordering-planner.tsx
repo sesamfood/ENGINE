@@ -1,5 +1,7 @@
 "use client";
 
+import { searchProducts } from "@/lib/product-search";
+
 import { selectedLocationId } from "@/lib/location-preference";
 
 import { useLastDefined } from "@/lib/use-last-defined";
@@ -299,11 +301,10 @@ function Planner() {
     (row) => row.quantity !== null && row.quantity > 0,
   );
   const invalidQuantity = rows.some((row) => row.quantity === null);
-  const visible = rows.filter((row) =>
-    `${row.name} ${row.category}`
-      .toLocaleLowerCase("da")
-      .includes(search.trim().toLocaleLowerCase("da")),
-  );
+  const visible = searchProducts(rows, search, (row) => ({
+    name: row.name,
+    categoryPath: row.category,
+  }));
 
   const header = (
     <FieldGroup className="gap-4 sm:flex-row sm:items-end sm:justify-between">
