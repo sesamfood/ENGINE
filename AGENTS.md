@@ -52,6 +52,18 @@ Use this vocabulary in every user-facing surface, including navigation, help tex
 - Use Convex for database storage and synchronization.
 - Use shadcn/ui components wherever a suitable component exists. Prefer composing or adapting those components over creating replacements from scratch. Always use the shadcn skill when creating UI.
 
+# Integrations
+
+Integrations are built-in modules deployed with the app. Follow [integrations/README.md](integrations/README.md) when adding or changing a provider.
+
+- Keep settings UI and help in `integrations/<provider>/`; keep backend functions, API clients, jobs, lifecycle behavior, and provider tables in `convex/integrations/<provider>/`.
+- Register the provider in the shared registry, settings loader, and activation types/validators. Wire its tables, scheduled jobs, and HTTP handlers through the root Convex schema, crons, and router as needed.
+- Keep business records and rules in the core application. Provider modules own external connections and mappings; writes must enforce organization, location, and permission boundaries.
+- Use the shared organization activation state in `convex/integrations/state.ts`. Check it in provider operations, jobs, and callbacks, including before committing asynchronous results. Activation and account connection are separate steps.
+- Keep the app usable with every integration disabled. Hide disabled providers outside the integration overview; stop new provider work without deleting credentials, mappings, or imported history. Preserve results needed to reconcile requests already sent.
+- Let each organization supply its credentials. Follow [integrations/credentials.md](integrations/credentials.md); never return secrets in public settings queries.
+- Preserve old Convex function addresses through re-exports while deployed clients or queued jobs still use them.
+
 # Organization and data model
 
 - One Better Auth organization represents an entire restaurant chain.
