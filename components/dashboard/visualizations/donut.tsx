@@ -17,8 +17,12 @@ export function DonutVisualization({ result, compact = false, tooltipLabel }: { 
     return <div className="grid h-full place-items-center text-sm text-muted-foreground">Flere valutaer</div>;
   }
   const values = (result.breakdown ?? result.series.map((series) => ({ key: series.key, label: series.label, value: series.total }))).slice(0, 8);
-  const config = Object.fromEntries(values.map((item, index) => [item.key, { label: item.label, color: `var(--chart-${(index % 5) + 1})` }])) satisfies ChartConfig;
-  const data = values.map((item) => ({ ...item, fill: `var(--color-${item.key})` }));
+  const data = values.map((item, index) => ({
+    ...item,
+    key: `slice${index}`,
+    fill: `var(--color-slice${index})`,
+  }));
+  const config = Object.fromEntries(data.map((item, index) => [item.key, { label: item.label, color: `var(--chart-${(index % 5) + 1})` }])) satisfies ChartConfig;
   return (
     <ChartContainer config={config} className="h-full min-h-0 w-full aspect-auto">
       <PieChart accessibilityLayer>
