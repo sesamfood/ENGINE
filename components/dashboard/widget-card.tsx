@@ -504,7 +504,7 @@ export function WidgetCard({
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
       </CardHeader>
       <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-0", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-9")}>
-        {integrations?.wolt && salesSource === "combined" ? (
+        {salesSource === "combined" ? (
           <Alert className="mb-3">
             <CircleAlertIcon />
             <AlertTitle>Mulige dubletter</AlertTitle>
