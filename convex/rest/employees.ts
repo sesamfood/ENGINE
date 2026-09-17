@@ -15,7 +15,7 @@ import {
   type OrganizationAuth,
 } from "../lib/auth";
 import { runIdempotent } from "../lib/idempotency";
-import { requestWorkfeedEmployeeSync } from "../lib/workfeedSyncRequest";
+import { requestWorkfeedEmployeeSync } from "../integrations/workfeed/lib/syncRequest";
 import { requireRestApiMutation } from "./lib";
 
 const MAX_EMPLOYEE_LOCATIONS = 200;

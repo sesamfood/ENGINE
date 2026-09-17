@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
@@ -107,6 +109,7 @@ export function ExpenseSettings() {
 }
 
 function ExpenseSettingsControl({ organizationId }: { organizationId: string }) {
+  const integrations = useIntegrations();
   const access = useAccess();
   const canManage = usePermission("expenses.settings");
   const canToggle = usePermission("organization.settings");
@@ -159,7 +162,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const bcc = bccDraft ?? settings.bcc.join(", ");
   const mappings = mappingsDraft ?? mappingDrafts(settings);
   const usableConnections = settings.connections.filter(
-    (connection) => connection.enabled && !connection.requiresReconnect,
+    (connection) => integrations?.economic && connection.enabled && !connection.requiresReconnect,
   );
   const usableConnectionIds = new Set(
     usableConnections.map((connection) => connection.id),
@@ -167,7 +170,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const visibleMappings = mappings.filter((mapping) =>
     usableConnectionIds.has(mapping.connectionId),
   );
-  const canEditMappings = canManageIntegrations && access.locationScope.all;
+  const canEditMappings = integrations?.economic && canManageIntegrations && access.locationScope.all;
 
   function updateMapping(
     connectionId: MappingDraft["connectionId"],
@@ -185,7 +188,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
     setError(null);
     try {
       const recipients = readRecipients(to, cc, bcc);
-      const economicMappings: EconomicMapping[] =
+      const economicMappings: EconomicMapping[] | undefined =
         canEditMappings && mappingsDraft !== null
           ? [
               ...loadedSettings.economicMappings.filter(
@@ -214,7 +217,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
                   };
                 }),
             ]
-          : loadedSettings.economicMappings;
+          : undefined;
       setSaving(true);
       await saveSettings({
         expectedOrganizationId: loadedSettings.organizationId,

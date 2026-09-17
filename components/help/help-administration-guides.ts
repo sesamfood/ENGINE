@@ -122,9 +122,10 @@ export const administrationFeatures: HelpFeature[] = [
               "Åbn Administration → Produkter, og vælg Nyt produkt. Angiv navn og kategorier. Du kan vælge eksisterende kategorier eller oprette dem i formularen.",
               "Angiv Maksimal temperatur, når Produktet skal temperaturkontrolleres ved Transfer. Tilføj eventuelt et billede, og tilpas beskæringen.",
               "Under Enheder og omregninger vælger du standardenheden. Brug Tilføj enhed til andre pakninger, og angiv, hvor mange standardenheder én af dem svarer til.",
-              "Tilføj eventuelle ingredienser, og vælg Opret produkt. Åbn Produktet igen for at kontrollere opsætningen og tilføje en OnlinePOS-kobling, når integrationen er forbundet.",
+              "Tilføj eventuelle ingredienser, og vælg Opret produkt. Åbn Produktet igen for at kontrollere opsætningen.",
             ],
             screenshot: {
+              integration: "onlinepos",
               src: "/help/screenshots/product-setup.webp",
               alt: "Produkteditor med produktdetaljer, standardenhed, omregninger og ingredienser",
               caption:
@@ -139,12 +140,13 @@ export const administrationFeatures: HelpFeature[] = [
             bullets: [
               "Omregningen går til standardenheden. Hvis standarden er kg, og én kasse indeholder 5 kg, skal kassen have omregningen 5.",
               "Ingredienser er Produkter, der indgår som standard. Vælg Produkt, Mængde og Enhed for hver ingrediens.",
-              "Kan fjernes angiver en ingrediens, kunden kan fravælge. Ingredienser, der kan tilføjes, er ekstra valg og indgår ikke som standard. OnlinePOS-koblinger til til- og fravalg kræver den relevante integrationsopsætning.",
+              "Kan fjernes angiver en ingrediens, kunden kan fravælge. Ingredienser, der kan tilføjes, er ekstra valg og indgår ikke som standard.",
               "Kategorier har egen fane og kan indeholde både Produkter og underkategorier. Brug Ny underkategori eller Redigér til at tilpasse opdelingen.",
               "Under fanen Enheder kan Sammenlæg enheder samle dubletter. Produkter og aktive opsætninger flyttes til den valgte enhed, mens historiske registreringer bevares.",
             ],
           },
           {
+            integration: "onlinepos",
             id: "menuer",
             title: "Saml OnlinePOS-produkter i menuer",
             steps: [
@@ -170,6 +172,7 @@ export const administrationFeatures: HelpFeature[] = [
         ],
         troubleshooting: [
           {
+            integration: "onlinepos",
             question:
               "Hvorfor kan jeg ikke se Menuer eller OnlinePOS-koblinger?",
             answer:
@@ -183,8 +186,8 @@ export const administrationFeatures: HelpFeature[] = [
           },
         ],
         relatedLinks: [
-          { href: "/help/integrationer/onlinepos", label: "OnlinePOS" },
-          { href: "/administration/menus", label: "Åbn Menuer" },
+          { integration: "onlinepos", href: "/help/integrationer/onlinepos", label: "OnlinePOS" },
+          { integration: "onlinepos", href: "/administration/menus", label: "Åbn Menuer" },
           {
             href: "/help/administration/lokationer",
             label: "Produktvalg pr. Lokation",

@@ -16,6 +16,7 @@ const envelope = {
 
 async function seedConnection(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
+    await ctx.db.insert("integrationSettings", { organizationId: "org-1", integration: "wolt", enabled: true, updatedAt: Date.now() });
     const locationId = await ctx.db.insert("locations", {
       organizationId: "org-1",
       name: "Centrum",
@@ -62,6 +63,7 @@ test("webhook-inbox deduplikerer og sætter inaktive venues i karantæne", async
 
   const knownEnvelope = { ...envelope, eventId: "event-2", venueId: "venue-2" };
   await t.run(async (ctx) => {
+    await ctx.db.insert("integrationSettings", { organizationId: "org-2", integration: "wolt", enabled: true, updatedAt: Date.now() });
     const locationId = await ctx.db.insert("locations", {
       organizationId: "org-2",
       name: "Nord",

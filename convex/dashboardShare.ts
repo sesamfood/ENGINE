@@ -31,6 +31,8 @@ import {
 } from "./lib/customMetricExecutor";
 import { equalSecrets, hashDashboardPassword } from "./lib/dashboardShareCrypto";
 import { rateLimiter } from "./lib/rateLimits";
+import { getIntegrationState } from "./integrations/state";
+import { customMetricAvailable, widgetAvailable } from "../integrations/dashboard";
 
 const MAX_METRIC_BATCH = 3;
 
@@ -82,7 +84,16 @@ async function requireShare(
   ) {
     throw new ConvexError("Delingen er udløbet eller ikke tilgængelig");
   }
-  return share;
+  const integrations = await getIntegrationState(ctx, share.organizationId);
+  return {
+    ...share,
+    widgets: share.widgets.filter((widget) => {
+      if (!widgetAvailable(widget, integrations)) return false;
+      if (widget.metric.kind !== "custom") return true;
+      const snapshot = share.customMetricSnapshots.find((snapshot) => snapshot.id === widget.metric.id);
+      return snapshot !== undefined && customMetricAvailable(snapshot.spec, integrations);
+    }),
+  };
 }
 
 export const getPublicMeta = query({

@@ -1,4 +1,4 @@
-import { getOnlinePosOrganizationSettings } from "./onlinePosConnections";
+import { getOnlinePosOrganizationSettings } from "../integrations/onlinepos/lib/connections";
 import { dateKey, addDays, daysBetween, zonedStart, DEFAULT_TIME_ZONE } from "../../lib/date";
 export { dateKey, zonedStart } from "../../lib/date";
 import { ConvexError } from "convex/values";

@@ -1,3 +1,5 @@
+import { customMetricAvailable, type IntegrationState } from "../integrations/dashboard";
+import { getIntegrationState } from "./integrations/state";
 import { ConvexError, v } from "convex/values";
 import { dashboardDatasets } from "../lib/dashboard/datasets";
 import { hasPermission } from "../lib/auth-permissions";
@@ -63,7 +65,11 @@ function requireDatasetPermissions(
     permissions: ReadonlySet<string>;
   },
   spec: CustomMetricSpec,
+  integrations: IntegrationState,
 ) {
+  if (!customMetricAvailable(spec, integrations)) {
+    throw new ConvexError("Målingen er ikke tilgængelig");
+  }
   const queries =
     spec.kind === "single" ? [spec.query] : [spec.numerator, spec.denominator];
   for (const querySpec of queries) {
@@ -101,6 +107,7 @@ export const list = query({
   returns: v.array(customMetricValidator),
   handler: async (ctx) => {
     const auth = await requireDashboardViewer(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     const dashboards = await ctx.db
       .query("dashboards")
       .withIndex("by_organizationId_and_sortOrder", (q) =>
@@ -123,7 +130,7 @@ export const list = query({
       .take(MAX_CUSTOM_METRICS + 1);
     return rows.slice(0, MAX_CUSTOM_METRICS).flatMap((metric) => {
       try {
-        requireDatasetPermissions(auth, metric.spec);
+        requireDatasetPermissions(auth, metric.spec, integrations);
         validateCustomMetricSpec(metric.spec, auth.granularity);
         return [
           {
@@ -152,8 +159,9 @@ export const create = mutation({
   returns: v.id("customMetrics"),
   handler: async (ctx, args) => {
     const auth = await requireDashboardManager(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     validateCustomMetricSpec(args.spec, auth.granularity);
-    requireDatasetPermissions(auth, args.spec);
+    requireDatasetPermissions(auth, args.spec, integrations);
     const { name, normalizedName: normalized } = normalizedName(args.name);
     const rows = await ctx.db
       .query("customMetrics")
@@ -194,15 +202,19 @@ export const update = mutation({
   returns: v.number(),
   handler: async (ctx, args) => {
     const auth = await requireDashboardManager(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     const metric = await ctx.db.get("customMetrics", args.metricId);
     if (!metric || metric.organizationId !== auth.organizationId) {
       throw new ConvexError("Målingen blev ikke fundet");
+    }
+    if (!customMetricAvailable(metric.spec, integrations)) {
+      throw new ConvexError("Målingen er ikke tilgængelig");
     }
     if (metric.updatedAt !== args.expectedUpdatedAt) {
       throw new ConvexError("Målingen blev ændret i en anden fane");
     }
     validateCustomMetricSpec(args.spec, auth.granularity);
-    requireDatasetPermissions(auth, args.spec);
+    requireDatasetPermissions(auth, args.spec, integrations);
     const { name, normalizedName: normalized } = normalizedName(args.name);
     const existing = await ctx.db
       .query("customMetrics")
@@ -252,9 +264,13 @@ export const remove = mutation({
   returns: v.number(),
   handler: async (ctx, args) => {
     const auth = await requireDashboardManager(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     const metric = await ctx.db.get("customMetrics", args.metricId);
     if (!metric || metric.organizationId !== auth.organizationId) {
       throw new ConvexError("Målingen blev ikke fundet");
+    }
+    if (!customMetricAvailable(metric.spec, integrations)) {
+      throw new ConvexError("Målingen er ikke tilgængelig");
     }
     const dashboards = await ctx.db
       .query("dashboards")
@@ -292,11 +308,12 @@ export const listProductOptions = query({
   }),
   handler: async (ctx, args) => {
     const auth = await requireDashboardManager(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     if (args.spec.dimension !== "product") {
       throw new ConvexError("Målingen er ikke grupperet efter produkt");
     }
     validateCustomMetricSpec(args.spec, auth.granularity);
-    requireDatasetPermissions(auth, args.spec);
+    requireDatasetPermissions(auth, args.spec, integrations);
     const human = requireHumanPrincipal(auth);
     const params = await resolveMetricParams(
       ctx,
@@ -328,9 +345,10 @@ export const preview = query({
   returns: metricResultValidator,
   handler: async (ctx, args) => {
     const auth = await requireDashboardManager(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     const human = requireHumanPrincipal(auth);
     validateCustomMetricSpec(args.spec, auth.granularity);
-    requireDatasetPermissions(auth, args.spec);
+    requireDatasetPermissions(auth, args.spec, integrations);
     if (
       args.visualization === "donut" &&
       (args.spec.kind === "ratio" || !args.spec.dimension)

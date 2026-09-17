@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { dateKey, addDays, dateTimeFormatter } from "@/lib/date";
 
 import { selectedLocationId } from "@/lib/location-preference";
@@ -7,6 +9,7 @@ import { selectedLocationId } from "@/lib/location-preference";
 import { AppPageHeader } from "@/components/app-page-header";
 
 import { EmployeeAvatar } from "@/components/employees/employee-avatar";
+import { EmployeeEditor, type DirectoryEmployee } from "@/components/employees/employee-editor";
 
 import {
   useKiosk,
@@ -20,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -58,6 +60,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Clock3Icon,
+  PencilIcon,
+  PlusIcon,
   RefreshCwIcon,
   SearchIcon,
   UsersRoundIcon,
@@ -372,6 +376,9 @@ function DirectoryTab({
   locationId: Id<"locations"> | null;
   syncButton: ReactNode;
 }) {
+  const kiosk = useKiosk();
+  const canManage = usePermission("organization.settings") && !kiosk?.kioskModeEnabled;
+  const [editing, setEditing] = useState<DirectoryEmployee | "new" | null>(null);
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [activeOnly, setActiveOnly] = useState(true);
@@ -415,6 +422,12 @@ function DirectoryTab({
             </InputGroupAddon>
           </InputGroup>
           {syncButton}
+          {canManage ? (
+            <Button className="min-h-11" onClick={() => setEditing("new")}>
+              <PlusIcon data-icon="inline-start" />
+              Opret medarbejder
+            </Button>
+          ) : null}
         </div>
         <ToggleGroup
           value={[activeOnly ? "active" : "all"]}
@@ -439,6 +452,7 @@ function DirectoryTab({
                   <TableHead>Medarbejder</TableHead>
                   <TableHead>Lokationer</TableHead>
                   <TableHead className="text-right">Status</TableHead>
+                  {canManage ? <TableHead className="w-14"><span className="sr-only">Handlinger</span></TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -474,6 +488,21 @@ function DirectoryTab({
                         {employee.active ? "Aktiv" : "Inaktiv"}
                       </Badge>
                     </TableCell>
+                    {canManage ? (
+                      <TableCell>
+                        {employee.managedLocally ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-11"
+                            aria-label={`Redigér ${employee.displayName}`}
+                            onClick={() => setEditing(employee)}
+                          >
+                            <PencilIcon />
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>
@@ -495,9 +524,22 @@ function DirectoryTab({
                         .join(", ") || "Ingen lokation"}
                     </p>
                   </div>
-                  <Badge variant={employee.active ? "secondary" : "outline"}>
-                    {employee.active ? "Aktiv" : "Inaktiv"}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-2">
+                    <Badge variant={employee.active ? "secondary" : "outline"}>
+                      {employee.active ? "Aktiv" : "Inaktiv"}
+                    </Badge>
+                    {canManage && employee.managedLocally ? (
+                      <Button
+                        variant="outline"
+                        className="min-h-11"
+                        aria-label={`Redigér ${employee.displayName}`}
+                        onClick={() => setEditing(employee)}
+                      >
+                        <PencilIcon data-icon="inline-start" />
+                        Redigér
+                      </Button>
+                    ) : null}
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -513,7 +555,9 @@ function DirectoryTab({
             <EmptyDescription>
               {search
                 ? "Prøv en anden søgning."
-                : "Medarbejdere vises her efter den første synkronisering."}
+                : canManage
+                  ? "Opret en medarbejder på den valgte lokation."
+                  : "Der er ingen medarbejdere på den valgte lokation."}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -530,11 +574,19 @@ function DirectoryTab({
           <Spinner />
         </div>
       ) : null}
+      {canManage && editing ? (
+        <EmployeeEditor
+          employee={editing === "new" ? undefined : editing}
+          locationId={locationId}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
 export function EmployeeScheduling() {
+  const integrations = useIntegrations();
   const organization = authClient.useActiveOrganization();
   const pathname = usePathname();
   const router = useRouter();
@@ -654,7 +706,7 @@ export function EmployeeScheduling() {
     </div>
   );
   const syncButton =
-    context.workfeedEnabled && !kiosk?.kioskModeEnabled ? (
+    integrations?.workfeed && context.workfeedEnabled && !kiosk?.kioskModeEnabled ? (
       <Button
         size="lg"
         variant="outline"
@@ -683,7 +735,7 @@ export function EmployeeScheduling() {
     <main className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
       <AppPageHeader>{header}</AppPageHeader>
 
-      {context.lastError ? (
+      {!integrations?.workfeed ? null : context.lastError ? (
         <Alert variant="destructive">
           <AlertTriangleIcon />
           <AlertTitle>Seneste synkronisering mislykkedes</AlertTitle>
@@ -720,70 +772,54 @@ export function EmployeeScheduling() {
         </Alert>
       ) : null}
 
-      {!context.hasCachedEmployees ? (
-        <Empty className="min-h-72 border">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <UsersRoundIcon />
-            </EmptyMedia>
-            <EmptyTitle>Ingen medarbejderdata endnu</EmptyTitle>
-            <EmptyDescription>
-              {context.workfeedEnabled
-                ? "Start en synkronisering for at hente medarbejdere og offentliggjorte vagter."
-                : "Medarbejdere vises her, når en integration har leveret den første synkronisering."}
-            </EmptyDescription>
-          </EmptyHeader>
-          {syncButton ? <EmptyContent>{syncButton}</EmptyContent> : null}
-        </Empty>
-      ) : (
-        <Tabs
-          value={selectedTab}
-          onValueChange={(value) =>
-            router.push(
-              value === "directory" ? "/employees/directory" : "/employees",
-            )
-          }
-        >
-          {showSectionTabs ? (
-            <TabsList className="w-full" aria-label="Medarbejdersektioner">
-              {showSchedule ? (
-                <TabsTrigger value="schedule" className="px-5">
-                  Vagtplan
-                </TabsTrigger>
-              ) : null}
-              {showDirectory ? (
-                <TabsTrigger value="directory" className="px-5">
-                  Medarbejdere
-                </TabsTrigger>
-              ) : null}
-            </TabsList>
-          ) : null}
-          {showSchedule ? (
-            <TabsContent
-              value="schedule"
-              className={showSectionTabs ? "pt-3" : undefined}
-            >
-              <ScheduleTab
-                locationId={activeLocationId}
-                hasLocations={Boolean(locations.length)}
-                syncButton={syncButton}
-                timeZone={context.timeZone}
-              />
-            </TabsContent>
-          ) : null}
-          {showDirectory ? (
-            <TabsContent
-              value="directory"
-              className={showSectionTabs ? "pt-3" : undefined}
-            >
-              <DirectoryTab
-                locationId={activeLocationId}
-                syncButton={syncButton}
-              />
-            </TabsContent>
-          ) : null}
-        </Tabs>
-      )}
+      <Tabs
+        value={selectedTab}
+        onValueChange={(value) =>
+          router.push(
+            value === "directory" ? "/employees/directory" : "/employees",
+          )
+        }
+      >
+        {showSectionTabs ? (
+          <TabsList className="w-full" aria-label="Medarbejdersektioner">
+            {showSchedule ? (
+              <TabsTrigger value="schedule" className="px-5">
+                Vagtplan
+              </TabsTrigger>
+            ) : null}
+            {showDirectory ? (
+              <TabsTrigger value="directory" className="px-5">
+                Medarbejdere
+              </TabsTrigger>
+            ) : null}
+          </TabsList>
+        ) : null}
+        {showSchedule ? (
+          <TabsContent
+            value="schedule"
+            className={showSectionTabs ? "pt-3" : undefined}
+          >
+            <ScheduleTab
+              locationId={activeLocationId}
+              hasLocations={Boolean(locations.length)}
+              syncButton={syncButton}
+              timeZone={context.timeZone}
+            />
+          </TabsContent>
+        ) : null}
+        {showDirectory ? (
+          <TabsContent
+            value="directory"
+            className={showSectionTabs ? "pt-3" : undefined}
+          >
+            <DirectoryTab
+              key={`${organizationId}:${activeLocationId}`}
+              locationId={activeLocationId}
+              syncButton={syncButton}
+            />
+          </TabsContent>
+        ) : null}
+      </Tabs>
     </main>
   );
 }

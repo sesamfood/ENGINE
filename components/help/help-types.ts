@@ -1,6 +1,8 @@
+import type { IntegrationId } from "@/integrations/registry";
 import type { LucideIcon } from "lucide-react";
 
 export type HelpFeature = {
+  integration?: IntegrationId;
   slug: string;
   label: string;
   summary: string;
@@ -9,6 +11,7 @@ export type HelpFeature = {
 };
 
 export type HelpScreenshot = {
+  integration?: IntegrationId;
   src: string;
   alt: string;
   caption: string;
@@ -17,6 +20,7 @@ export type HelpScreenshot = {
 };
 
 export type HelpGuide = {
+  integration?: IntegrationId;
   slug: string;
   label: string;
   summary: string;
@@ -24,6 +28,7 @@ export type HelpGuide = {
   appLinkLabel: string;
   children?: HelpGuide[];
   sections: {
+    integration?: IntegrationId;
     id: string;
     title: string;
     paragraphs?: string[];
@@ -31,6 +36,6 @@ export type HelpGuide = {
     bullets?: string[];
     screenshot?: HelpScreenshot;
   }[];
-  troubleshooting?: { question: string; answer: string }[];
-  relatedLinks?: { href: string; label: string }[];
+  troubleshooting?: { integration?: IntegrationId; question: string; answer: string }[];
+  relatedLinks?: { integration?: IntegrationId; href: string; label: string }[];
 };

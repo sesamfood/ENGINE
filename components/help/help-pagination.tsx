@@ -1,8 +1,11 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
-import { helpPages } from "./help-features";
+import { useVisibleHelp } from "./use-visible-help";
 
 export function HelpPagination({ href }: { href: string }) {
+  const { pages: helpPages } = useVisibleHelp();
   const index = helpPages.findIndex((page) => page.href === href);
   const previous = helpPages[index - 1];
   const next = helpPages[index + 1];

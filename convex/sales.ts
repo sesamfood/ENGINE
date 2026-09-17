@@ -2,7 +2,7 @@ import {
   getOnlinePosOrganizationSettings,
   getOnlinePosLocationMaster,
   onlinePosCatalogId,
-} from "./lib/onlinePosConnections";
+} from "./integrations/onlinepos/lib/connections";
 import { resolveLocationCurrency as locationCurrency } from "./lib/masterData";
 import {
   paginationOptsValidator,

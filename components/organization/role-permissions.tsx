@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import type { FunctionReturnType } from "convex/server";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -81,6 +83,7 @@ const granularityItems = [
 ] satisfies Array<{ value: DataGranularity; label: string }>;
 
 export function RolePermissions() {
+  const integrations = useIntegrations();
   const allowed = usePermission("roles.manage");
   const rows = useQuery(api.access.listRolePermissions, allowed ? {} : "skip");
   const ensureRoles = useMutation(api.access.ensureRoles);
@@ -301,7 +304,7 @@ export function RolePermissions() {
                       {group.group}
                     </TableCell>
                   </TableRow>
-                  {group.permissions.map((permission) => (
+                  {group.permissions.filter((permission) => permission.id !== "expenses.exportEconomic" || integrations?.economic).map((permission) => (
                     <TableRow key={permission.id}>
                       <TableCell className="font-medium">
                         {permission.label}

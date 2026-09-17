@@ -2,7 +2,7 @@ import { Migrations } from "@convex-dev/migrations";
 import { ConvexError } from "convex/values";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
-import { unitPriceFromLineTotal } from "./lib/onlinePosApi";
+import { unitPriceFromLineTotal } from "./integrations/onlinepos/lib/api";
 
 const ONLINE_POS_SOURCE = "onlinePos";
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
@@ -223,6 +225,9 @@ function PermissionFields({
   disabled: boolean;
   onChange: (draft: PolicyDraft) => void;
 }) {
+  const integrations = useIntegrations();
+  const permissionVisible = (permission: { id: string }) =>
+    permission.id !== "expenses.exportEconomic" || integrations?.economic === true;
   const rolePermissions = new Set(
     options.roles.find((role) => role.key === draft.role)?.permissions ?? [],
   );
@@ -237,7 +242,7 @@ function PermissionFields({
         {options.permissionGroups
           .filter((group) =>
             group.permissions.some((permission) =>
-              rolePermissions.has(permission.id),
+              permissionVisible(permission) && rolePermissions.has(permission.id),
             ),
           )
           .map((group) => (
@@ -246,7 +251,7 @@ function PermissionFields({
               {group.group}
             </FieldLegend>
             {group.permissions
-              .filter((permission) => rolePermissions.has(permission.id))
+              .filter((permission) => permissionVisible(permission) && rolePermissions.has(permission.id))
               .map((permission) => {
               const id = `api-key-permission-${permission.id.replace(/[^a-zA-Z0-9]/g, "-")}`;
               return (

@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import {
   addDays,
   dateKey,
@@ -105,6 +107,7 @@ function formatNumber(value: number) {
 }
 
 export function WasteReport() {
+  const integrations = useIntegrations();
   const convex = useConvex();
   const kiosk = useKiosk();
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
@@ -360,7 +363,7 @@ export function WasteReport() {
           String(row.quantity).replace(".", ","),
           row.unitName,
           row.source === "onlinePos"
-            ? "OnlinePOS-refundering"
+            ? integrations?.onlinepos ? "OnlinePOS-refundering" : "Refundering"
             : row.source === "shortcut"
               ? "Genvej"
               : "Tilpasset",
@@ -582,7 +585,7 @@ export function WasteReport() {
                       </TableCell>
                       <TableCell>
                         {row.source === "onlinePos"
-                          ? "OnlinePOS-refundering"
+                          ? integrations?.onlinepos ? "OnlinePOS-refundering" : "Refundering"
                           : row.source === "shortcut"
                             ? "Genvej"
                             : "Tilpasset"}
@@ -663,7 +666,7 @@ export function WasteReport() {
                 <dt className="text-muted-foreground">Kilde</dt>
                 <dd>
                   {selected.source === "onlinePos"
-                    ? "OnlinePOS-refundering"
+                    ? integrations?.onlinepos ? "OnlinePOS-refundering" : "Refundering"
                     : selected.source === "shortcut"
                       ? "Genvej"
                       : "Tilpasset"}

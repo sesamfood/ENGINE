@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { useEffect, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
 import { useAction, useMutation, useQueries, useQuery } from "convex/react";
@@ -47,7 +49,7 @@ const columns = [
 
 const explanations: Partial<Record<MonthlyKpiRow["id"], string>> = {
   cogsPercent: "Lagerreguleret vareforbrug i procent af nettoomsætningen. En lavere procent er bedre.",
-  labourPercent: "Godkendt løn fra e-conomic erstatter Workfeeds estimat for den enkelte lokation og måned. En lavere procent er bedre.",
+  labourPercent: "Godkendt løn erstatter estimatet for den enkelte lokation og måned. En lavere procent er bedre.",
   grossMarginPercent: "Nettoomsætning minus vareforbrug, divideret med nettoomsætningen. En højere procent er bedre.",
   wastePercent: "Godkendt registreret Waste i procent af nettoomsætningen. En lavere procent er bedre.",
   rentPercent: "Husleje i procent af nettoomsætningen. En lavere procent er bedre.",
@@ -182,19 +184,21 @@ function ReportData({ state, month, locationId, locationName, now, timeZone, pen
   state: ReportState; month: string; locationId: Id<"locations"> | null; locationName: string; now: number; timeZone: string;
   pendingReads: RefObject<Map<string, Promise<LiveReport>>>;
 }) {
+  const integrations = useIntegrations();
+  const connected = Boolean(integrations?.economic && state.connected);
   const getReport = useAction(api.economicReports.getReport);
   const [requestedAt] = useState(now);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [loaded, setLoaded] = useState<LoadedReport | null>(null);
-  const current = loaded?.version === refreshVersion ? loaded : null;
-  const loading = state.connected && current === null;
+  const current = connected && loaded?.version === refreshVersion ? loaded : null;
+  const loading = connected && current === null;
   const result = current?.kind === "ready" ? current.data : null;
   const report = result?.report ?? state.report;
   const errors = current?.kind === "error" ? [current.message] : result?.errors ?? [];
   const candidates = locationId ? result?.approvals.filter((candidate) => candidate.locationId === locationId && candidate.month === month && !candidate.approved) ?? [] : [];
 
   useEffect(() => {
-    if (!state.connected) return;
+    if (!connected) return;
     let active = true;
     const key = JSON.stringify([month, locationId, state.revision]);
     let promise = pendingReads.current.get(key);
@@ -208,11 +212,11 @@ function ReportData({ state, month, locationId, locationName, now, timeZone, pen
       (error: unknown) => { if (active) setLoaded({ version: refreshVersion, kind: "error", message: getUserErrorMessage(error, "e-conomic kunne ikke indlæses. Prøv igen.") }); },
     );
     return () => { active = false; };
-  }, [getReport, locationId, month, pendingReads, refreshVersion, requestedAt, state.connected, state.revision]);
+  }, [getReport, locationId, month, pendingReads, refreshVersion, requestedAt, connected, state.revision]);
 
   return (
     <>
-      {state.connected ? (
+      {connected ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
             {loading ? <><Spinner data-icon="inline-start" />Henter beløb fra e-conomic</> : result?.fetchedAt ? `e-conomic hentet ${new Date(result.fetchedAt).toLocaleString("da-DK", { dateStyle: "short", timeStyle: "short", timeZone })}` : "e-conomic er ikke indlæst"}
@@ -222,11 +226,11 @@ function ReportData({ state, month, locationId, locationName, now, timeZone, pen
             <Button variant="outline" className="min-h-11" disabled={loading} onClick={() => setRefreshVersion((version) => version + 1)}><RefreshCwIcon data-icon="inline-start" />Opdatér e-conomic</Button>
           </div>
         </div>
-      ) : <p className="text-sm text-muted-foreground">e-conomic er ikke forbundet for de valgte lokationer.</p>}
-      {errors.length ? <Alert variant="destructive"><AlertTitle>e-conomic kunne ikke indlæses fuldstændigt</AlertTitle><AlertDescription><ul className="flex list-disc flex-col gap-1 pl-5">{errors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul><p>Opdatér e-conomic for at prøve igen.</p></AlertDescription></Alert> : null}
+      ) : integrations?.economic ? <p className="text-sm text-muted-foreground">e-conomic er ikke forbundet for de valgte lokationer.</p> : null}
+      {integrations?.economic && errors.length ? <Alert variant="destructive"><AlertTitle>e-conomic kunne ikke indlæses fuldstændigt</AlertTitle><AlertDescription><ul className="flex list-disc flex-col gap-1 pl-5">{errors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul><p>Opdatér e-conomic for at prøve igen.</p></AlertDescription></Alert> : null}
       <div className="flex flex-wrap justify-between gap-2 text-sm text-muted-foreground">
         <p>{report.through ? `Faktisk til og med ${new Date(`${report.through}T12:00:00Z`).toLocaleDateString("da-DK", { dateStyle: "long", timeZone: "UTC" })}.` : "Ingen afsluttede dage i den valgte måned."} Budgettet dækker hele måneden.</p>
-        <p>{report.updatedAt === null ? "Ingen POS- eller Workfeed-synkronisering registreret" : `Ældste POS- eller Workfeed-synkronisering ${new Date(report.updatedAt).toLocaleString("da-DK", { dateStyle: "short", timeStyle: "short", timeZone })}`}</p>
+        <p>{report.updatedAt === null ? "Ingen synkronisering registreret" : `Ældste synkronisering ${new Date(report.updatedAt).toLocaleString("da-DK", { dateStyle: "short", timeStyle: "short", timeZone })}`}</p>
       </div>
       <div className="overflow-hidden rounded-xl border bg-card" aria-busy={loading}>
         <Table className="min-w-[56rem]">
@@ -240,12 +244,13 @@ function ReportData({ state, month, locationId, locationName, now, timeZone, pen
           ))}</TableBody>
         </Table>
       </div>
-      <p className="text-sm text-muted-foreground">Sidste måned er den foregående kalendermåned. År til dato beregnes af årets samlede beløb og antal. Åbne måneder og Workfeed-estimater er foreløbige. Afvigelser i procenter vises i procentpoint.</p>
+      <p className="text-sm text-muted-foreground">Sidste måned er den foregående kalendermåned. År til dato beregnes af årets samlede beløb og antal. Åbne måneder og estimater er foreløbige. Afvigelser i procenter vises i procentpoint.</p>
     </>
   );
 }
 
 function MonthlyReportContent({ context }: { context: MonthlyContext }) {
+  const integrations = useIntegrations();
   const dashboardNow = useDashboardNow();
   const [openedAt] = useState(Date.now);
   const now = Math.max(dashboardNow, openedAt);
@@ -306,7 +311,7 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
                 <MonthlyBudgetDialog key={`budget:${month}:${selectedLocation?.id ?? "all"}`} month={month} locations={context.locations} selectedLocationId={selectedLocation?.id ?? null} />
                 <MonthlyActualsDialog key={`actuals:${month}:${selectedLocation?.id ?? "all"}`} month={month} locations={context.locations} selectedLocationId={selectedLocation?.id ?? null} />
               </> : null}
-              {context.canSync ? <Button variant="outline" className="min-h-11" disabled={syncing || !validMonth} onClick={() => void sync()}>{syncing ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}{syncing ? "Opdaterer" : "Opdatér POS og Workfeed"}</Button> : null}
+              {context.canSync && (integrations?.onlinepos || integrations?.workfeed) ? <Button variant="outline" className="min-h-11" disabled={syncing || !validMonth} onClick={() => void sync()}>{syncing ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}{syncing ? "Opdaterer" : "Opdatér data"}</Button> : null}
             </div>
           </div>
           {validMonth ? state instanceof Error ? <Alert variant="destructive"><AlertTitle>Rapporten kunne ikke indlæses</AlertTitle><AlertDescription>{getUserErrorMessage(state, "Kontrollér din adgang, og prøv igen.")}</AlertDescription></Alert>

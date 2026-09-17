@@ -300,6 +300,12 @@ test("custom metric executor mapper shifts er indeksbaseret", async () => {
   const { org, asUser } = await setupAuthOrg(t);
   const { locationId, employeeId } = await seedBase(t, org._id);
   await t.run(async (ctx) => {
+    await ctx.db.insert("integrationSettings", {
+      organizationId: org._id,
+      integration: "workfeed",
+      enabled: true,
+      updatedAt: NOW,
+    });
     await ctx.db.insert("scheduledShifts", {
       organizationId: org._id,
       employeeId,

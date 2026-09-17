@@ -1,4 +1,6 @@
-import { getOnlinePosOrganizationSettings } from "./lib/onlinePosConnections";
+import { customMetricAvailable, metricSourceAvailable, widgetAvailable, type IntegrationState } from "../integrations/dashboard";
+import { getIntegrationState } from "./integrations/state";
+import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/connections";
 import { organizationRoleCatalog } from "./lib/roles";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -17,7 +19,7 @@ import {
   type MetricSource,
 } from "../lib/dashboard/registry";
 import { canBatchCustomMetric, dashboardDatasets } from "../lib/dashboard/datasets";
-import { dashboardColumns, widgetSizeSpans } from "../lib/dashboard/layout";
+import { dashboardColumns, layoutDashboardWidgets, widgetSizeSpans } from "../lib/dashboard/layout";
 import type {
   DashboardConfig,
   DashboardScope,
@@ -66,7 +68,7 @@ import {
 } from "../lib/auth-permissions";
 import type { DataGranularity } from "../lib/auth-permissions";
 import { rateLimiter } from "./lib/rateLimits";
-import { requestWorkfeedEmployeeSync } from "./lib/workfeedSyncRequest";
+import { requestWorkfeedEmployeeSync } from "./integrations/workfeed/lib/syncRequest";
 
 const MAX_WIDGETS = 24;
 const MAX_DASHBOARDS = 8;
@@ -208,6 +210,7 @@ async function validateWidgets(
   organizationId: string,
   widgets: WidgetInstance[],
   auth: DashboardAccess,
+  integrations: IntegrationState,
 ) {
   if (widgets.length > MAX_WIDGETS) {
     throw new ConvexError(`Dashboardet kan højst have ${MAX_WIDGETS} widgets`);
@@ -217,6 +220,9 @@ async function validateWidgets(
   }
   const occupied = new Set<string>();
   for (const widget of widgets) {
+    if (!widgetAvailable(widget, integrations)) {
+      throw new ConvexError("Målingen er ikke tilgængelig");
+    }
     if (!widget.key.trim() || widget.key.length > 100) {
       throw new ConvexError("Widgetnøglen er ugyldig");
     }
@@ -236,6 +242,9 @@ async function validateWidgets(
       const metric = await ctx.db.get("customMetrics", widget.metric.id);
       if (!metric || metric.organizationId !== organizationId) {
         throw new ConvexError("Målingen blev ikke fundet");
+      }
+      if (!customMetricAvailable(metric.spec, integrations)) {
+        throw new ConvexError("Målingen er ikke tilgængelig");
       }
       if (!customMetricAllowed(auth, metric.spec)) {
         throw new ConvexError("Du har ikke adgang til denne måling");
@@ -438,6 +447,7 @@ export const salesSourceAvailability = query({
   returns: salesSourceAvailabilityValidator,
   handler: async (ctx, args) => {
     const auth = await requireDashboardViewer(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     const params = await resolveMetricParams(
       ctx,
       auth.organizationId,
@@ -482,10 +492,10 @@ export const salesSourceAvailability = query({
       ]);
     return {
       onlinePos:
-        onlinePosIntegration?.enabled === true &&
+        integrations.onlinepos && onlinePosIntegration?.enabled === true &&
         onlinePosConnections.some(Boolean),
       wolt:
-        canViewWoltSales(auth) &&
+        integrations.wolt && canViewWoltSales(auth) &&
         woltIntegration?.enabled !== false &&
         woltConnections.some((connection) => connection?.state === "ready"),
     };
@@ -554,28 +564,35 @@ async function availableWidgets(
   ctx: QueryCtx | MutationCtx,
   auth: DashboardAccess & { organizationId: string },
   widgets: WidgetInstance[],
+  integrations: IntegrationState,
 ) {
-  return (
-    await Promise.all(
-      widgets.map(async (widget) => {
-        if (widget.metric.kind === "builtin") {
-          const salesSource = resolveBuiltinSalesSource(
-            widget.metric.id,
-            widget.options?.salesSource,
-          );
-          return canViewBuiltinMetric(auth, widget.metric.id, salesSource)
-            ? widget
-            : null;
-        }
-        const metric = await ctx.db.get("customMetrics", widget.metric.id);
-        return metric &&
-          metric.organizationId === auth.organizationId &&
-          customMetricAllowed(auth, metric.spec)
-          ? widget
-          : null;
-      }),
-    )
-  ).filter((widget): widget is WidgetInstance => widget !== null);
+  const availability = await Promise.all(
+    widgets.map(async (widget) => {
+      if (widget.metric.kind === "builtin") {
+        const salesSource = resolveBuiltinSalesSource(
+          widget.metric.id,
+          widget.options?.salesSource,
+        );
+        return {
+          widget,
+          permitted: canViewBuiltinMetric(auth, widget.metric.id, salesSource),
+          enabled: widgetAvailable(widget, integrations),
+        };
+      }
+      const metric = await ctx.db.get("customMetrics", widget.metric.id);
+      const ownedMetric = metric?.organizationId === auth.organizationId ? metric : null;
+      return {
+        widget,
+        permitted: Boolean(ownedMetric && customMetricAllowed(auth, ownedMetric.spec)),
+        enabled: !ownedMetric || customMetricAvailable(ownedMetric.spec, integrations),
+      };
+    }),
+  );
+  return {
+    widgets: availability.flatMap(({ widget, permitted, enabled }) => permitted && enabled ? [widget] : []),
+    hiddenWidgets: availability.flatMap(({ widget, enabled }) => enabled ? [] : [widget]),
+    hasAccessibleWidgets: widgets.length === 0 || availability.some(({ permitted }) => permitted),
+  };
 }
 
 async function dashboardExternalSources(
@@ -836,17 +853,17 @@ export const list = query({
   returns: dashboardListValidator,
   handler: async (ctx) => {
     const auth = await requireDashboardViewer(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     const dashboards = await organizationDashboards(ctx, auth.organizationId);
     const withWidgets = await Promise.all(
       dashboards.map(async (dashboard) => ({
         dashboard,
-        widgets: await availableWidgets(ctx, auth, dashboard.widgets),
+        ...await availableWidgets(ctx, auth, dashboard.widgets, integrations),
       })),
     );
     const accessible = withWidgets.filter(
-      ({ dashboard, widgets }) =>
-        roleAllowsDashboard(dashboard, auth.role) &&
-        (dashboard.widgets.length === 0 || widgets.length > 0),
+      ({ dashboard, hasAccessibleWidgets }) =>
+        roleAllowsDashboard(dashboard, auth.role) && hasAccessibleWidgets,
     );
     const singleLocationId = auth.kioskLocationId
       ? auth.kioskLocationId
@@ -868,6 +885,7 @@ export const get = query({
   returns: dashboardValidator,
   handler: async (ctx, args) => {
     const auth = await requireDashboardViewer(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     const dashboard = await requireOrganizationDashboard(
       ctx,
       auth.organizationId,
@@ -876,8 +894,8 @@ export const get = query({
     if (!roleAllowsDashboard(dashboard, auth.role)) {
       throw new ConvexError("Du har ikke adgang til dette dashboard");
     }
-    const widgets = await availableWidgets(ctx, auth, dashboard.widgets);
-    if (dashboard.widgets.length > 0 && widgets.length === 0) {
+    const { widgets, hasAccessibleWidgets } = await availableWidgets(ctx, auth, dashboard.widgets, integrations);
+    if (!hasAccessibleWidgets) {
       throw new ConvexError(
         "Ingen af dette dashboards widgets er tilgængelige for dig.",
       );
@@ -898,6 +916,7 @@ export const requestDataSync = mutation({
   returns: dashboardSyncResultValidator,
   handler: async (ctx, args) => {
     const auth = await requireDashboardViewer(ctx);
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     await requireIntegrationManager(ctx);
     const dashboard = await requireOrganizationDashboard(
       ctx,
@@ -907,8 +926,8 @@ export const requestDataSync = mutation({
     if (!roleAllowsDashboard(dashboard, auth.role)) {
       throw new ConvexError("Du har ikke adgang til dette dashboard");
     }
-    const widgets = await availableWidgets(ctx, auth, dashboard.widgets);
-    if (dashboard.widgets.length > 0 && widgets.length === 0) {
+    const { widgets, hasAccessibleWidgets } = await availableWidgets(ctx, auth, dashboard.widgets, integrations);
+    if (!hasAccessibleWidgets) {
       throw new ConvexError(
         "Ingen af dette dashboards widgets er tilgængelige for dig.",
       );
@@ -930,7 +949,7 @@ export const requestDataSync = mutation({
       args.scope.locationIds === null &&
       (!args.scope.level || args.scope.level === "organization") &&
       auth.locationScope.all;
-    const onlinePos = sources.has("onlinepos")
+    const onlinePos = integrations.onlinepos && sources.has("onlinepos")
       ? await requestOnlinePosDashboardSync(
           ctx,
           auth.organizationId,
@@ -938,7 +957,7 @@ export const requestDataSync = mutation({
           syncWholeOrganization,
         )
       : null;
-    const workfeedResult = sources.has("workfeed")
+    const workfeedResult = integrations.workfeed && sources.has("workfeed")
       ? await requestWorkfeedEmployeeSync(ctx, auth.organizationId)
       : null;
     const workfeed: DashboardSyncSourceResult | null = workfeedResult
@@ -1200,15 +1219,28 @@ export const saveConfigRevisioned = mutation({
         "Dashboardet blev ændret i en anden fane. Dine seneste ændringer blev ikke gemt",
       );
     }
+    const integrations = await getIntegrationState(ctx, auth.organizationId);
     await validateWidgets(
       ctx,
       auth.organizationId,
       args.widgets,
       auth,
+      integrations,
     );
+    const { hiddenWidgets } = await availableWidgets(ctx, auth, dashboard.widgets, integrations);
+    const submittedKeys = new Set(args.widgets.map((widget) => widget.key));
+    if (hiddenWidgets.some((widget) => submittedKeys.has(widget.key))) {
+      throw new ConvexError("Widgetnøglen bruges allerede. Genindlæs dashboardet, og prøv igen");
+    }
+    if (args.widgets.length + hiddenWidgets.length > MAX_WIDGETS) {
+      throw new ConvexError(`Dashboardet kan højst have ${MAX_WIDGETS} widgets`);
+    }
+    const widgets = hiddenWidgets.length
+      ? layoutDashboardWidgets([...args.widgets, ...hiddenWidgets])
+      : args.widgets;
     const updatedAt = Math.max(Date.now(), dashboard.updatedAt + 1);
     await ctx.db.patch(dashboard._id, {
-      widgets: args.widgets,
+      widgets,
       updatedBy: auth.userIdentifier,
       updatedAt,
     });
@@ -1267,6 +1299,7 @@ export const getMetric = query({
     const auth = await requireDashboardViewer(ctx);
     const human = requireHumanPrincipal(auth);
     const { organizationId } = auth;
+    const integrations = await getIntegrationState(ctx, organizationId);
     const definition = metricRegistry[args.metricId];
     if (!definition.visualizations.includes(args.visualization)) {
       throw new ConvexError("Visualiseringen understøttes ikke af målingen");
@@ -1275,6 +1308,10 @@ export const getMetric = query({
       args.metricId,
       args.salesSource,
     );
+    if (!metricSourceAvailable(definition.source, integrations) ||
+      (salesSource && salesSourceProviders(salesSource).includes("wolt") && !integrations.wolt)) {
+      throw new ConvexError("Målingen er ikke tilgængelig");
+    }
     if (!canViewBuiltinMetric(auth, args.metricId, salesSource)) {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
@@ -1313,6 +1350,7 @@ export const getMetrics = query({
     const auth = await requireDashboardViewer(ctx);
     const human = requireHumanPrincipal(auth);
     const { organizationId } = auth;
+    const integrations = await getIntegrationState(ctx, organizationId);
     if (
       args.widgets.length > MAX_METRIC_BATCH ||
       new Set(args.widgets.map((widget) => widget.key)).size !==
@@ -1331,6 +1369,10 @@ export const getMetrics = query({
           widget.metric.id,
           widget.salesSource,
         );
+        if (!metricSourceAvailable(definition.source, integrations) ||
+          (salesSource && salesSourceProviders(salesSource).includes("wolt") && !integrations.wolt)) {
+          throw new ConvexError("Målingen er ikke tilgængelig");
+        }
         if (!canViewBuiltinMetric(auth, widget.metric.id, salesSource)) {
           throw new ConvexError("Du har ikke adgang til denne måling");
         }
@@ -1343,6 +1385,7 @@ export const getMetrics = query({
       if (
         !metric ||
         metric.organizationId !== organizationId ||
+        !customMetricAvailable(metric.spec, integrations) ||
         !customMetricAllowed(auth, metric.spec)
       ) {
         throw new ConvexError("Du har ikke adgang til denne måling");
@@ -1450,6 +1493,7 @@ export const getShareSource = internalQuery({
       args.organizationId,
       args.dashboardId,
     );
+    const integrations = await getIntegrationState(ctx, args.organizationId);
     const customMetricIds = dashboard.widgets.flatMap((widget) =>
       widget.metric.kind === "custom" ? [widget.metric.id] : [],
     );
@@ -1465,16 +1509,23 @@ export const getShareSource = internalQuery({
     ) {
       throw new ConvexError("En tilpasset måling blev ikke fundet");
     }
+    const availableCustomMetrics = customMetrics.flatMap((metric) =>
+      metric && customMetricAvailable(metric.spec, integrations) ? [metric] : [],
+    );
+    const availableCustomIds = new Set(availableCustomMetrics.map((metric) => metric._id));
     return {
-      widgets: dashboard.widgets,
+      widgets: dashboard.widgets.filter((widget) =>
+        widget.metric.kind === "builtin"
+          ? widgetAvailable(widget, integrations)
+          : availableCustomIds.has(widget.metric.id)),
       scope: dashboard.defaultScope,
       range: dashboard.defaultRange,
       updatedAt: dashboard.updatedAt,
       roleIds: dashboard.roleIds,
-      customMetricSnapshots: customMetrics.map((metric) => ({
-        id: metric!._id,
-        name: metric!.name,
-        spec: metric!.spec,
+      customMetricSnapshots: availableCustomMetrics.map((metric) => ({
+        id: metric._id,
+        name: metric.name,
+        spec: metric.spec,
       })),
     };
   },

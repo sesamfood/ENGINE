@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import { useState } from "react";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { FileTextIcon, ReceiptTextIcon } from "lucide-react";
@@ -98,6 +100,7 @@ function ExpenseStatuses({
   expense: Pick<Doc<"expenses">, "noticeStatus" | "economicStatus">;
   economicConfigured: boolean;
 }) {
+  const integrations = useIntegrations();
   return (
     <div className="flex flex-wrap gap-2">
       <Badge
@@ -105,7 +108,7 @@ function ExpenseStatuses({
       >
         E-mail: {noticeLabels[expense.noticeStatus]}
       </Badge>
-      {economicConfigured ? <Badge
+      {integrations?.economic && economicConfigured ? <Badge
         variant={
           expense.economicStatus === "failed" ||
           expense.economicStatus === "uncertain"
@@ -123,7 +126,8 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
   const expense = useQuery(api.expenses.get, { expenseId });
   const requestExport = useMutation(api.expenses.requestEconomicExport);
   const retryNotice = useMutation(api.expenses.retryNotice);
-  const canExport = usePermission("expenses.exportEconomic");
+  const integrations = useIntegrations();
+  const canExport = usePermission("expenses.exportEconomic") && integrations?.economic === true;
   const canCreate = usePermission("expenses.create");
   const [confirmExport, setConfirmExport] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -261,7 +265,7 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
             <AlertDescription>{expense.noticeError}</AlertDescription>
           </Alert>
         ) : null}
-        {expense.economicConfigured && expense.economicError ? (
+        {integrations?.economic && expense.economicConfigured && expense.economicError ? (
           <Alert variant="destructive">
             <AlertTitle>
               {expense.economicStatus === "uncertain"
@@ -271,13 +275,13 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
             <AlertDescription>{expense.economicError}</AlertDescription>
           </Alert>
         ) : null}
-        {expense.economicConfigured && expense.economicStatus === "uncertain" ? (
+        {integrations?.economic && expense.economicConfigured && expense.economicStatus === "uncertain" ? (
           <p className="text-sm text-muted-foreground">
             e-conomic kan have modtaget udgiften. Kontrollér kladden i
             e-conomic, før udgiften oprettes igen.
           </p>
         ) : null}
-        {expense.economicConfigured && expense.economicEntryNumber !== undefined ? (
+        {integrations?.economic && expense.economicConfigured && expense.economicEntryNumber !== undefined ? (
           <p className="text-sm">
             Postering i e-conomic: {expense.economicEntryNumber}
           </p>
@@ -326,7 +330,7 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
         </div>
       </div>
       <AlertDialog
-        open={expense.economicConfigured && confirmExport}
+        open={integrations?.economic === true && expense.economicConfigured && confirmExport}
         onOpenChange={(open) => {
           if (!exporting) setConfirmExport(open);
         }}

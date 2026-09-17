@@ -1,3 +1,4 @@
+import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -54,6 +55,7 @@ async function availableLocations(ctx: ReadCtx, auth: OrganizationAuth) {
 }
 
 async function economicForLocation(ctx: ReadCtx, organizationId: string, locationId: Id<"locations">) {
+  if (!await isIntegrationEnabled(ctx, organizationId, "economic")) return null;
   const link = await ctx.db.query("economicLocationMappings")
     .withIndex("by_organizationId_and_locationId", (q) => q.eq("organizationId", organizationId).eq("locationId", locationId)).unique();
   if (!link) return null;
@@ -109,6 +111,7 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const auth = await requireSettingsAccess(ctx);
+    const enabled = await isIntegrationEnabled(ctx, auth.organizationId, "economic");
     const [settings, connections] = await Promise.all([
       settingsFor(ctx, auth.organizationId),
       ctx.db.query("economicConnections").withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId)).take(201),
@@ -117,8 +120,8 @@ export const getSettings = query({
     return {
       organizationId: auth.organizationId,
       to: settings?.to ?? [], cc: settings?.cc ?? [], bcc: settings?.bcc ?? [],
-      economicMappings: settings?.economicMappings ?? [],
-      connections: connections.map((connection) => ({
+      economicMappings: enabled ? settings?.economicMappings ?? [] : [],
+      connections: (enabled ? connections : []).map((connection) => ({
         id: connection._id, name: connection.name, agreementNumber: connection.agreementNumber,
         enabled: connection.enabled, requiresReconnect: !connection.encryptedAppSecretToken,
       })),
@@ -129,7 +132,7 @@ export const getSettings = query({
 export const setSettings = mutation({
   args: {
     expectedOrganizationId: v.string(), to: v.array(v.string()), cc: v.array(v.string()), bcc: v.array(v.string()),
-    economicMappings: v.array(expenseEconomicMappingValidator),
+    economicMappings: v.optional(v.array(expenseEconomicMappingValidator)),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -138,7 +141,8 @@ export const setSettings = mutation({
     const recipients = validateBadDeliveryRecipients(args);
     if (!recipients.to.length && (recipients.cc.length || recipients.bcc.length)) throw new ConvexError("Angiv mindst én modtager i Til");
     const current = await settingsFor(ctx, auth.organizationId);
-    const economicMappings = args.economicMappings.map((mapping) => ({
+    const enabled = await isIntegrationEnabled(ctx, auth.organizationId, "economic");
+    const economicMappings = !enabled || args.economicMappings === undefined ? current?.economicMappings ?? [] : args.economicMappings.map((mapping) => ({
       ...mapping, vatCode25: mapping.vatCode25.trim(),
       accountMappings: [...mapping.accountMappings].sort((a, b) => a.categoryId.localeCompare(b.categoryId)),
     })).sort((a, b) => a.connectionId.localeCompare(b.connectionId));
@@ -307,6 +311,7 @@ export const requestEconomicExport = mutation({
   args: expenseIdArgs, returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireExpenseAccess(ctx, "expenses.exportEconomic");
+    await requireIntegrationEnabled(ctx, auth.organizationId, "economic");
     const expense = await ctx.db.get("expenses", args.expenseId);
     if (!expense || expense.organizationId !== auth.organizationId) throw new ConvexError("Udgiften blev ikke fundet");
     requireLocationAccess(auth, expense.locationId);

@@ -1,5 +1,7 @@
 "use client";
 
+import { useIntegrations } from "@/integrations/use-integrations";
+
 import {
   ArrowLeftIcon,
   ArrowRightLeftIcon,
@@ -295,7 +297,8 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
     api.access.getRuntimeContext,
     isAuthenticated && organization.data ? {} : "skip",
   );
-  const woltEnabled = useQuery(api.wolt.isEnabled, runtime ? {} : "skip");
+  const integrations = useIntegrations();
+  const woltEnabled = integrations?.wolt;
 
   if (isLoading || (organization.data && runtime === undefined)) {
     return (
@@ -321,16 +324,22 @@ function AccessBoundary({ children }: { children: React.ReactNode }) {
 function useCurrentFeatureState() {
   const access = useAccess();
   const pathname = usePathname();
+  const integrations = useIntegrations();
+  const provider = pathname === "/administration/menus" ? "onlinepos"
+    : pathname === "/administration/wolt-orders" || pathname.startsWith("/wolt-orders") ? "wolt"
+    : undefined;
   const woltSettings = pathname === "/administration/wolt-orders";
   const feature = woltSettings ? "woltOrders" : featureForPath(pathname);
   return {
     feature,
     disabled: Boolean(
+      (provider && integrations?.[provider] === false) ||
       feature &&
         ((!woltSettings && access?.disabledFeatures.includes(feature)) ||
           (feature === "woltOrders" && access?.woltEnabled === false)),
     ),
     pending: Boolean(
+      (provider && integrations === undefined) ||
       feature &&
         (!access ||
           (feature === "woltOrders" && access.woltEnabled === undefined)),
@@ -350,7 +359,7 @@ function FeatureRouteBoundary({ children }: { children: React.ReactNode }) {
       </main>
     );
   }
-  if (feature && disabled) {
+  if (disabled) {
     return (
       <main className="flex min-h-64 items-center">
         <Empty>
@@ -359,7 +368,7 @@ function FeatureRouteBoundary({ children }: { children: React.ReactNode }) {
               <CircleOffIcon aria-hidden="true" />
             </EmptyMedia>
             <EmptyTitle>
-              <h1>{featureLabels[feature]} er slået fra</h1>
+              <h1>{feature && feature !== "woltOrders" ? `${featureLabels[feature]} er slået fra` : "Siden er ikke tilgængelig"}</h1>
             </EmptyTitle>
             <EmptyDescription>
               Kontakt en Administrator for at få funktionen aktiveret.
@@ -1207,6 +1216,7 @@ export function AppShell({
   const showAdministrationBack =
     pathname.startsWith("/administration/") &&
     !pathname.startsWith("/administration/products/");
+  const showIntegrationsBack = pathname.startsWith("/administration/integrations/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
   const showOrderingHeader = pathname === "/ordering";
@@ -1301,12 +1311,20 @@ export function AppShell({
                           <Button
                             variant="outline"
                             size="lg"
-                            render={<Link href="/administration" />}
+                            render={
+                              <Link
+                                href={showIntegrationsBack
+                                  ? "/administration/integrations"
+                                  : "/administration"}
+                              />
+                            }
                             nativeButton={false}
                           >
                             <ArrowLeftIcon data-icon="inline-start" />
                             <span className="hidden sm:inline">
-                              Tilbage til administration
+                              {showIntegrationsBack
+                                ? "Tilbage til integrationer"
+                                : "Tilbage til administration"}
                             </span>
                             <span className="sm:hidden">Tilbage</span>
                           </Button>

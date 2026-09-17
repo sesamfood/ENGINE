@@ -48,7 +48,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Før du starter",
             bullets: [
               "Din rolle skal have adgang til at administrere dashboards for at ændre opsætningen.",
-              "Målingerne bruger registreringer og tilsluttede datakilder. Salg kræver en salgskilde, og arbejdstimer kræver Workfeed.",
+              "Målingerne bruger registreringer og tilsluttede datakilder. Salg kræver en salgskilde, og arbejdstimer kræver vagtdata.",
             ],
           },
         ],
@@ -103,7 +103,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "datagrundlag",
             title: "Kontrollér datagrundlaget",
             bullets: [
-              "Vælg én Lokation og en periode med kendte data, og sammenhold tallene med kilden. Salgsmålinger kræver salgsdata, og arbejdstimer kræver Workfeed.",
+              "Vælg én Lokation og en periode med kendte data, og sammenhold tallene med kilden. Salgsmålinger kræver salgsdata, og arbejdstimer kræver vagtdata.",
               "En tom widget kan skyldes den valgte periode, lokationsvalget eller manglende registreringer.",
               "Opdatér kan starte en opdatering af datakilderne, hvis du har integrationsadgang. Opdateringen kan allerede være i gang eller være midlertidigt begrænset.",
               "En advarsel om mulige dubletter kræver, at salgskilderne kontrolleres. Det samme salg kan være registreret i mere end én kilde.",
@@ -161,8 +161,8 @@ export const operationFeatures: HelpFeature[] = [
               "Vælg Forhold for at dele én måling med en anden. Angiv Datasæt og Mål særskilt for Tæller og Nævner. De kan komme fra forskellige datasæt.",
             ],
             bullets: [
-              "Driftsdata findes i Waste, Dårlige leveringer, Transfer, Staff food, Vagter og Count. Vagter kommer fra Workfeed.",
-              "Salgsdata findes i Dagligt salg, Salgsordrer, Salgslinjer, Wolt-ordrer og Wolt-ordrelinjer. Vælg det datasæt, der dækker det salg, du vil følge.",
+              "Driftsdata findes i Waste, Dårlige leveringer, Transfer, Staff food, Vagter og Count. Vagter kræver en aktiveret datakilde.",
+              "Salgsdata findes i Dagligt salg, Salgsordrer og Salgslinjer. Aktiverede integrationer kan tilføje flere datasæt. Vælg det datasæt, der dækker det salg, du vil følge.",
               "Datasættet bestemmer de mulige mål, filtre og dimensioner. Et Forhold beregnes som tæller divideret med nævner. Periodens samlede værdi beregnes af de samlede tal.",
             ],
           },
@@ -191,6 +191,7 @@ export const operationFeatures: HelpFeature[] = [
             ],
           },
           {
+            integration: "workfeed",
             id: "eksempel",
             title: "Eksempel: omsætning pr. planlagt time",
             steps: [
@@ -239,7 +240,7 @@ export const operationFeatures: HelpFeature[] = [
           {
             question: "Hvorfor kan jeg ikke oprette eller se målingen?",
             answer:
-              "Oprettelse og ændringer kræver Administrere dashboards. Salgsdatasæt kræver også adgang til de relevante salgstal. Dagligt salg bruger aggregerede salgstal; salgsordrer, salgslinjer og Wolt bruger detaljerede salgstal. Rettigheden Se salgstal giver også adgang. Målinger med salgsdata markeres Følsom. Rollen og dens datavisning kan begrænse, hvilke målinger der er synlige.",
+              "Oprettelse og ændringer kræver Administrere dashboards. Salgsdatasæt kræver også adgang til de relevante salgstal. Dagligt salg bruger aggregerede salgstal; salgsordrer og salgslinjer bruger detaljerede salgstal. Rettigheden Se salgstal giver også adgang. Målinger med salgsdata markeres Følsom. Rollen og dens datavisning kan begrænse, hvilke målinger der er synlige.",
           },
           {
             question: "Forhåndsvisningen mangler data",
@@ -328,43 +329,64 @@ export const operationFeatures: HelpFeature[] = [
     slug: "medarbejdere",
     label: "Medarbejdere",
     summary:
-      "Se vagtplan og medarbejdere fra Workfeed på den rigtige Lokation.",
+      "Find, opret og redigér medarbejdere på den valgte Lokation.",
     icon: UsersRoundIcon,
     guides: [
       {
         slug: "overblik",
         label: "Overblik",
         summary:
-          "Se vagtplan og medarbejdere fra Workfeed på den rigtige Lokation.",
-        appHref: "/employees",
+          "Find, opret og redigér medarbejdere på den valgte Lokation.",
+        appHref: "/employees/directory",
         appLinkLabel: "Åbn Medarbejdere",
         sections: [
           {
-            id: "om",
-            title: "Sådan fungerer Medarbejdere",
-            paragraphs: [
-              "Medarbejdere viser offentliggjorte vagter og medarbejderdata fra Workfeed. Ret data og vagter i Workfeed; den tilsluttede Lokation viser dem efter synkronisering.",
-            ],
-          },
-          {
-            id: "forloeb",
-            title: "Fra opsætning til daglig brug",
+            id: "find",
+            title: "Find en medarbejder",
             steps: [
-              "Klargør Workfeed-forbindelsen, og vælg vagtplanens tidszone og adgang.",
-              "Vælg Lokation og uge, find medarbejdere, og kontrollér synkroniseringen, hvis noget mangler.",
+              "Åbn Medarbejdere, og vælg Lokation.",
+              "Søg efter navnet. Vælg Aktive eller Alle for også at se inaktive medarbejdere.",
+              "Kontrollér medarbejderens lokationer og status. Brug Vis flere, hvis medarbejderen ikke er på den første side.",
             ],
           },
           {
-            id: "foer-du-starter",
-            title: "Før du starter",
-            bullets: [
-              "Workfeed skal være forbundet, og hver Lokation skal være koblet til den rigtige Workfeed-afdeling.",
-              "Rollen skal give adgang til vagtplanen, medarbejderkartoteket eller begge.",
+            id: "opret",
+            title: "Opret en medarbejder",
+            steps: [
+              "Vælg den Lokation, medarbejderen skal tilknyttes, og vælg Opret medarbejder.",
+              "Udfyld Fornavn og eventuelt Efternavn. Hvert navn må højst være 100 tegn.",
+              "Kontrollér Aktiv, og vælg Opret medarbejder. Medarbejderen oprettes på den valgte Lokation.",
+            ],
+          },
+          {
+            id: "rediger",
+            title: "Redigér navn og status",
+            steps: [
+              "Find medarbejderen, og vælg Redigér eller blyanten ved navnet.",
+              "Ret Fornavn, Efternavn eller Aktiv, og vælg Gem ændringer.",
+              "Vælg Alle i listen, hvis du vil finde og genaktivere en inaktiv medarbejder.",
+            ],
+          },
+          {
+            id: "adgang",
+            title: "Adgang til medarbejdere",
+            paragraphs: [
+              "Din rolle skal give adgang til medarbejderkartoteket og den valgte Lokation. Oprettelse og redigering kræver også adgang til organisationens indstillinger og er ikke tilgængelig i kiosktilstand.",
+              "Medarbejdere, der er oprettet her, kan administreres uden en integration.",
+            ],
+          },
+          {
+            integration: "workfeed",
+            id: "importerede",
+            title: "Medarbejdere fra Workfeed",
+            paragraphs: [
+              "Medarbejdere hentet fra Workfeed kan ikke redigeres her. Ret dem i Workfeed, og synkronisér ændringerne. Medarbejdere, du har oprettet i appen, kan fortsat redigeres her.",
             ],
           },
         ],
       },
       {
+        integration: "workfeed",
         slug: "vagtplan",
         label: "Sæt op og brug vagtplanen",
         summary:
@@ -434,6 +456,7 @@ export const operationFeatures: HelpFeature[] = [
         ],
         relatedLinks: [
           {
+            integration: "workfeed",
             href: "/help/integrationer/workfeed",
             label: "Workfeed-forbindelse og synkronisering",
           },
@@ -920,7 +943,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "salgskilde",
             title: "Vælg salgskilde til rapporten",
             steps: [
-              "Åbn Administration → Count → Salgskilde til Count, og vælg OnlinePOS eller Wolt for hver Lokation.",
+              "Åbn Administration → Count → Salgskilde til Count, og vælg blandt de aktiverede salgskilder for hver Lokation.",
               "Vælg den kilde, der dækker lokationens salg. Kontrollér data og produktkoblinger for den periode, rapporten skal dække.",
             ],
           },
@@ -1164,7 +1187,7 @@ export const operationFeatures: HelpFeature[] = [
               "Bekræft. Mængden føres tilbage på lageret, og ændringshistorikken bevares. Status bliver Annulleret.",
             ],
             paragraphs: [
-              "OnlinePOS-refunderinger vises som en særskilt kilde og kan ikke annulleres med denne handling.",
+              "Refunderinger fra salgssystemet vises som en særskilt kilde og kan ikke annulleres med denne handling.",
             ],
           },
           {
@@ -1227,7 +1250,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "foer-du-starter",
             title: "Før du starter",
             bullets: [
-              "Workfeed skal være forbundet med de rigtige afdelinger på lokationerne.",
+              "Medarbejderen skal være tilknyttet lokationen.",
               "Kategorier og Produkter skal være oprettet. Ændring af regler kræver adgang til at administrere Staff food.",
             ],
           },
@@ -1245,7 +1268,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "regler",
             title: "Opret regler efter vagtlængde",
             steps: [
-              "Kontrollér Workfeed-forbindelsen og afdelingskoblingen for hver Lokation under Administration → Integrationer. Opret kategorier og Produkter, før du vælger dem i reglerne.",
+              "Kontrollér medarbejderens lokation. Opret kategorier og Produkter, før du vælger dem i reglerne.",
               "Åbn Administration → Staff food, og vælg Ny regel. Angiv Minimum vagtlængde i hele eller halve timer fra 0,5 til 24.",
               "Tilføj en kategori-regel for hver kategori. Angiv det samlede antal, og vælg de konkrete tilladte Produkter. Produkterne i kategorien deler samme grænse.",
               "Gem reglen. Opret flere regler, hvis længere vagter skal give et andet antal eller andre Produkter. Reglen med den højeste opfyldte minimumsvagtlængde gælder; reglerne lægges ikke sammen.",
@@ -1309,11 +1332,12 @@ export const operationFeatures: HelpFeature[] = [
           {
             question: "Vagten er ikke aktiv",
             answer:
-              "Vælg Skift medarbejder, og find den aktuelle vagt. Kontrollér Workfeed-forbindelsen og lokationskoblingen, hvis vagtdata mangler.",
+              "Vælg Skift medarbejder, og find den aktuelle vagt. Kontrollér lokationsvalget, hvis vagtdata mangler.",
           },
         ],
         relatedLinks: [
           {
+            integration: "workfeed",
             href: "/help/integrationer/workfeed",
             label: "Workfeed og vagtdata",
           },
