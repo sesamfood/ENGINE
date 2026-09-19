@@ -39,10 +39,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { dateKey, DEFAULT_TIME_ZONE, parseDateKey } from "@/lib/date";
 import {
-  expenseCategories,
   formatExpenseAmount,
   parseExpenseAmount,
-  type ExpenseCategoryId,
 } from "@/lib/expenses";
 import { selectedLocationId } from "@/lib/location-preference";
 import { uploadToStorage } from "@/lib/upload-to-storage";
@@ -75,6 +73,7 @@ export function ExpenseForm({
   const storedLocationId = useWasteLocation(organizationId);
   const locations =
     options?.organizationId === organizationId ? options.locations : undefined;
+  const categories = options?.organizationId === organizationId ? options.categories : [];
   const locationId = selectedLocationId({
     locations: locations ?? [],
     storedId: storedLocationId,
@@ -82,7 +81,7 @@ export function ExpenseForm({
     isLocked: false,
   });
   const location = locations?.find((option) => option.id === locationId);
-  const [categoryId, setCategoryId] = useState<ExpenseCategoryId | null>(null);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [supplier, setSupplier] = useState("");
   const [amount, setAmount] = useState("");
   const [vatRate, setVatRate] = useState(25);
@@ -107,7 +106,7 @@ export function ExpenseForm({
     netAmount === null
       ? null
       : netAmount + Math.round((netAmount * vatRate) / 100);
-  const category = expenseCategories.find((option) => option.id === categoryId);
+  const category = categories.find((option) => option.id === categoryId);
   const exportAvailable = Boolean(location?.economicAvailable && canExport);
   const categoryMapped = Boolean(
     categoryId && location?.economicCategoryIds.includes(categoryId),
@@ -168,7 +167,7 @@ export function ExpenseForm({
     if (savingRef.current) return;
     const nextErrors: Record<string, string> = {};
     if (!location) nextErrors.location = "Vælg en lokation.";
-    if (!categoryId) nextErrors.category = "Vælg en kategori.";
+    if (!category) nextErrors.category = "Vælg en tilgængelig kategori.";
     if (!supplier.trim())
       nextErrors.supplier = "Angiv leverandør eller modtager.";
     if (!amountValid) {
@@ -333,14 +332,14 @@ export function ExpenseForm({
                 <Field data-invalid={Boolean(errors.category)}>
                   <FieldLabel htmlFor="expense-category">Kategori</FieldLabel>
                   <Select
-                    items={expenseCategories.map((option) => ({
+                    items={categories.map((option) => ({
                       value: option.id,
                       label: option.label,
                     }))}
-                    value={categoryId}
+                    value={category?.id ?? null}
                     disabled={saving}
                     onValueChange={(value) => {
-                      const next = expenseCategories.find(
+                      const next = categories.find(
                         (option) => option.id === value,
                       );
                       setCategoryId(next?.id ?? null);
@@ -365,7 +364,7 @@ export function ExpenseForm({
                     </SelectTrigger>
                     <SelectContent alignItemWithTrigger={false}>
                       <SelectGroup>
-                        {expenseCategories.map((option) => (
+                        {categories.map((option) => (
                           <SelectItem key={option.id} value={option.id}>
                             {option.label}
                           </SelectItem>

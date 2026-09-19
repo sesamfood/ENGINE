@@ -1,9 +1,12 @@
 import { v } from "convex/values";
 
-export const expenseCategoryValidator = v.union(
-  v.literal("rent"), v.literal("utilities"), v.literal("repairs"),
-  v.literal("equipment"), v.literal("marketing"), v.literal("other"),
-);
+export const expenseCategoryValidator = v.string();
+
+export const expenseCategoryOptionValidator = v.object({
+  id: expenseCategoryValidator,
+  label: v.string(),
+  enabled: v.boolean(),
+});
 
 export const expenseEconomicMappingValidator = v.object({
   connectionId: v.id("economicConnections"),
@@ -35,6 +38,7 @@ export const expenseFields = {
   locationName: v.string(),
   currency: v.string(),
   categoryId: expenseCategoryValidator,
+  categoryLabel: v.optional(v.string()),
   supplier: v.string(),
   netAmount: v.number(),
   vatRate: v.number(),

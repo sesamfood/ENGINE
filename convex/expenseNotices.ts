@@ -1,7 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
-import { expenseCategories } from "../lib/expenses";
+import { expenseCategoryLabel } from "../lib/expenses";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { emailErrorMessage, escapeHtml } from "./lib/email";
@@ -15,7 +15,7 @@ export const sendNotice = internalAction({
     let result: { providerId: string } | { error: string };
     try {
       const money = new Intl.NumberFormat("da-DK", { style: "currency", currency: expense.currency });
-      const category = expenseCategories.find((item) => item.id === expense.categoryId)?.label ?? expense.categoryId;
+      const category = expenseCategoryLabel(expense);
       const text = [
         "Udgift registreret", "", `Reference: ${expense._id}`, `Lokation: ${expense.locationName}`,
         `Kategori: ${category}`, `Leverandør / modtager: ${expense.supplier}`, `Dato: ${expense.date}`, `Periode: ${expense.period}`,

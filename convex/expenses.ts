@@ -1,6 +1,7 @@
 import { isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { defaultExpenseCategories, MAX_EXPENSE_CATEGORIES } from "../lib/expenses";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -9,7 +10,7 @@ import { recordAudit } from "./lib/audit";
 import { requireAllLocationAccess, requireHumanPrincipal, requireLocationAccess, requirePermission, type OrganizationAuth } from "./lib/auth";
 import { validateBadDeliveryRecipients } from "./lib/badDeliverySettings";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
-import { expenseCategoryValidator, expenseEconomicMappingValidator } from "./lib/expenseValidators";
+import { expenseCategoryOptionValidator, expenseCategoryValidator, expenseEconomicMappingValidator } from "./lib/expenseValidators";
 import { getDisabledFeatures } from "./lib/features";
 import { requireOrganizationLocation } from "./lib/locations";
 import { resolveLocationCurrency } from "./lib/masterData";
@@ -106,6 +107,7 @@ export const getSettings = query({
   args: {},
   returns: v.object({
     organizationId: v.string(), to: v.array(v.string()), cc: v.array(v.string()), bcc: v.array(v.string()),
+    categories: v.array(expenseCategoryOptionValidator),
     economicMappings: v.array(expenseEconomicMappingValidator),
     connections: v.array(v.object({ id: v.id("economicConnections"), name: v.string(), agreementNumber: v.number(), enabled: v.boolean(), requiresReconnect: v.boolean() })),
   }),
@@ -119,6 +121,7 @@ export const getSettings = query({
     if (connections.length > 200) throw new ConvexError("Der kan højst konfigureres 200 e-conomic-aftaler");
     return {
       organizationId: auth.organizationId,
+      categories: settings?.categories ?? defaultExpenseCategories,
       to: settings?.to ?? [], cc: settings?.cc ?? [], bcc: settings?.bcc ?? [],
       economicMappings: enabled ? settings?.economicMappings ?? [] : [],
       connections: (enabled ? connections : []).map((connection) => ({
@@ -132,6 +135,7 @@ export const getSettings = query({
 export const setSettings = mutation({
   args: {
     expectedOrganizationId: v.string(), to: v.array(v.string()), cc: v.array(v.string()), bcc: v.array(v.string()),
+    categories: v.optional(v.array(expenseCategoryOptionValidator)),
     economicMappings: v.optional(v.array(expenseEconomicMappingValidator)),
   },
   returns: v.null(),
@@ -141,6 +145,15 @@ export const setSettings = mutation({
     const recipients = validateBadDeliveryRecipients(args);
     if (!recipients.to.length && (recipients.cc.length || recipients.bcc.length)) throw new ConvexError("Angiv mindst én modtager i Til");
     const current = await settingsFor(ctx, auth.organizationId);
+    const previousCategories = current?.categories ?? defaultExpenseCategories;
+    const categories = args.categories?.map((category) => ({ ...category, label: category.label.trim() })) ?? previousCategories;
+    if (!categories.length || categories.length > MAX_EXPENSE_CATEGORIES) throw new ConvexError(`Angiv mellem 1 og ${MAX_EXPENSE_CATEGORIES} udgiftskategorier`);
+    if (categories.some((category) => !/^[a-zA-Z0-9_-]{1,100}$/.test(category.id))) throw new ConvexError("En udgiftskategori har en ugyldig reference");
+    if (categories.some((category) => !category.label || category.label.length > 100 || /[\r\n]/.test(category.label))) throw new ConvexError("Kategorinavne skal være mellem 1 og 100 tegn på én linje");
+    const categoryIds = new Set(categories.map((category) => category.id));
+    if (categoryIds.size !== categories.length || new Set(categories.map((category) => category.label.toLocaleLowerCase("da-DK"))).size !== categories.length) throw new ConvexError("Udgiftskategorier skal have forskellige navne og referencer");
+    if (previousCategories.some((category) => !categoryIds.has(category.id))) throw new ConvexError("Eksisterende kategorier skal deaktiveres i stedet for at blive fjernet. Indlæs siden igen");
+    if (!categories.some((category) => category.enabled)) throw new ConvexError("Mindst én udgiftskategori skal være aktiv");
     const enabled = await isIntegrationEnabled(ctx, auth.organizationId, "economic");
     const economicMappings = !enabled || args.economicMappings === undefined ? current?.economicMappings ?? [] : args.economicMappings.map((mapping) => ({
       ...mapping, vatCode25: mapping.vatCode25.trim(),
@@ -157,11 +170,12 @@ export const setSettings = mutation({
         const numbers = [mapping.journalNumber, mapping.contraAccountNumber, ...mapping.accountMappings.map((item) => item.accountNumber)];
         if (numbers.some((value) => !Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647)) throw new ConvexError("Kassekladde og kontonumre skal være positive heltal");
         if (!mapping.vatCode25 || mapping.vatCode25.length > 20 || /\s/.test(mapping.vatCode25)) throw new ConvexError("Angiv en gyldig momskode for 25 % købsmoms");
-        if (!mapping.accountMappings.length || mapping.accountMappings.length > 6 || new Set(mapping.accountMappings.map((item) => item.categoryId)).size !== mapping.accountMappings.length) throw new ConvexError("Angiv én konto pr. valgt udgiftskategori");
+        if (!mapping.accountMappings.length || mapping.accountMappings.length > MAX_EXPENSE_CATEGORIES || new Set(mapping.accountMappings.map((item) => item.categoryId)).size !== mapping.accountMappings.length) throw new ConvexError("Angiv én konto pr. valgt udgiftskategori");
+        if (mapping.accountMappings.some((item) => !categoryIds.has(item.categoryId))) throw new ConvexError("En udgiftskategori i konteringen blev ikke fundet");
         if (mapping.accountMappings.some((item) => item.accountNumber === mapping.contraAccountNumber)) throw new ConvexError("Udgiftskonto og modkonto skal være forskellige");
       }
     }
-    const data = { organizationId: auth.organizationId, ...recipients, economicMappings };
+    const data = { organizationId: auth.organizationId, ...recipients, categories, economicMappings };
     let id;
     if (current) {
       await ctx.db.patch("expenseSettings", current._id, data);
@@ -176,11 +190,11 @@ export const setSettings = mutation({
 
 export const getFormOptions = query({
   args: {},
-  returns: v.object({ organizationId: v.string(), locations: v.array(locationOption.extend({ economicAvailable: v.boolean(), economicCategoryIds: v.array(expenseCategoryValidator) })) }),
+  returns: v.object({ organizationId: v.string(), categories: v.array(expenseCategoryOptionValidator), locations: v.array(locationOption.extend({ economicAvailable: v.boolean(), economicCategoryIds: v.array(expenseCategoryValidator) })) }),
   handler: async (ctx) => {
     const auth = await requireExpenseAccess(ctx, "expenses.create");
     const [locations, settings] = await Promise.all([availableLocations(ctx, auth), settingsFor(ctx, auth.organizationId)]);
-    return { organizationId: auth.organizationId, locations: await Promise.all(locations.map(async (location) => {
+    return { organizationId: auth.organizationId, categories: (settings?.categories ?? defaultExpenseCategories).filter((category) => category.enabled), locations: await Promise.all(locations.map(async (location) => {
       const currency = await resolveLocationCurrency(ctx, auth.organizationId, location);
       const linked = await economicForLocation(ctx, auth.organizationId, location._id);
       const mapping = linked && linked.connection.currency === currency
@@ -241,6 +255,9 @@ export const create = mutation({
       if (existing.registeredBy !== auth.userIdentifier || existing.requestFingerprint !== requestFingerprint) throw new ConvexError("Referencen er allerede brugt. Se den gemte udgift i historikken, og opret en ny registrering");
       return existing._id;
     }
+    const settings = await settingsFor(ctx, auth.organizationId);
+    const category = (settings?.categories ?? defaultExpenseCategories).find((item) => item.id === args.categoryId && item.enabled);
+    if (!category) throw new ConvexError("Kategorien er ikke længere tilgængelig. Vælg en anden kategori");
     const location = await requireOrganizationLocation(ctx, auth.organizationId, args.locationId);
     await requireOtherFeaturesUnlocked(ctx, auth.organizationId, args.locationId);
     const currency = await resolveLocationCurrency(ctx, auth.organizationId, location);
@@ -260,11 +277,10 @@ export const create = mutation({
       if (attachment && attachment.fileSize > 9_000_000) throw new ConvexError("e-conomic understøtter bilag på højst 9 MB");
       economic = await economicSnapshot(ctx, base);
     }
-    const settings = await settingsFor(ctx, auth.organizationId);
     const to = settings?.to ?? [];
     const vatAmount = Math.round(args.netAmount * args.vatRate / 100);
     const expenseId = await ctx.db.insert("expenses", {
-      ...base, requestId: args.requestId, requestFingerprint, locationName: location.name, supplier,
+      ...base, categoryLabel: category.label, requestId: args.requestId, requestFingerprint, locationName: location.name, supplier,
       netAmount: args.netAmount, vatAmount, grossAmount: args.netAmount + vatAmount, date: args.date, period: args.period, comment,
       ...(attachment ? { attachment } : {}), registeredAt: Date.now(), registeredBy: auth.userIdentifier, registeredByName: auth.userName,
       to, cc: settings?.cc ?? [], bcc: settings?.bcc ?? [], noticeStatus: to.length ? "pending" : "notConfigured",

@@ -4,6 +4,7 @@ import { useIntegrations } from "@/integrations/use-integrations";
 
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { PlusIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
@@ -14,6 +15,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -31,7 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
-import { expenseCategories } from "@/lib/expenses";
+import { MAX_EXPENSE_CATEGORIES } from "@/lib/expenses";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Settings = FunctionReturnType<typeof api.expenses.getSettings>;
@@ -48,7 +50,7 @@ type MappingDraft = {
   }>;
 };
 
-function mappingDrafts(settings: Settings): MappingDraft[] {
+function mappingDrafts(settings: Settings, categories: Settings["categories"]): MappingDraft[] {
   return settings.connections.map((connection) => {
     const mapping = settings.economicMappings.find(
       (item) => item.connectionId === connection.id,
@@ -59,7 +61,7 @@ function mappingDrafts(settings: Settings): MappingDraft[] {
       journalNumber: mapping ? String(mapping.journalNumber) : "",
       contraAccountNumber: mapping ? String(mapping.contraAccountNumber) : "",
       vatCode25: mapping?.vatCode25 ?? "",
-      accountMappings: expenseCategories.map((category) => ({
+      accountMappings: categories.map((category) => ({
         categoryId: category.id,
         accountNumber:
           mapping?.accountMappings
@@ -124,6 +126,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const [toDraft, setToDraft] = useState<string | null>(null);
   const [ccDraft, setCcDraft] = useState<string | null>(null);
   const [bccDraft, setBccDraft] = useState<string | null>(null);
+  const [categoriesDraft, setCategoriesDraft] = useState<Settings["categories"] | null>(null);
   const [mappingsDraft, setMappingsDraft] = useState<MappingDraft[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +163,16 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const to = toDraft ?? settings.to.join(", ");
   const cc = ccDraft ?? settings.cc.join(", ");
   const bcc = bccDraft ?? settings.bcc.join(", ");
-  const mappings = mappingsDraft ?? mappingDrafts(settings);
+  const categories = categoriesDraft ?? settings.categories;
+  const mappings = (mappingsDraft ?? mappingDrafts(settings, categories)).map((mapping) => ({
+    ...mapping,
+    accountMappings: categories.map((category) =>
+      mapping.accountMappings.find((account) => account.categoryId === category.id) ?? {
+        categoryId: category.id,
+        accountNumber: "",
+      },
+    ),
+  }));
   const usableConnections = settings.connections.filter(
     (connection) => integrations?.economic && connection.enabled && !connection.requiresReconnect,
   );
@@ -222,11 +234,13 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
       await saveSettings({
         expectedOrganizationId: loadedSettings.organizationId,
         ...recipients,
+        categories: categoriesDraft ?? undefined,
         economicMappings,
       });
       setToDraft(null);
       setCcDraft(null);
       setBccDraft(null);
+      setCategoriesDraft(null);
       setMappingsDraft(null);
       toast.success("Udgiftsindstillingerne er gemt");
     } catch (cause) {
@@ -246,6 +260,79 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
         void save();
       }}
     >
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1">
+            Kategorier
+            <HelpTooltip
+              label="udgiftskategorier"
+              content={`Tilføj og omdøb kategorier, og vælg, hvilke der kan bruges til nye udgifter. Deaktiverede kategorier kan aktiveres igen. Gemte udgifter beholder deres oprindelige kategorinavn. Mindst én kategori skal være aktiv. Der kan højst være ${MAX_EXPENSE_CATEGORIES} kategorier.`}
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            {categories.map((category, index) => (
+              <FieldGroup key={category.id} className="flex-row items-center gap-4">
+                <Field data-disabled={saving} className="min-w-0 flex-1">
+                  <FieldLabel htmlFor={`expense-category-${category.id}`} className="sr-only">
+                    Kategorinavn {index + 1}
+                  </FieldLabel>
+                  <Input
+                    id={`expense-category-${category.id}`}
+                    className="h-11"
+                    value={category.label}
+                    placeholder="Kategorinavn"
+                    required
+                    maxLength={100}
+                    disabled={saving}
+                    onChange={(event) => setCategoriesDraft(categories.map((item) =>
+                      item.id === category.id ? { ...item, label: event.target.value } : item,
+                    ))}
+                  />
+                </Field>
+                <SettingsSwitchField
+                  label="Aktiv"
+                  aria-label={`Brug ${category.label || "kategorien"} ved oprettelse`}
+                  checked={category.enabled}
+                  disabled={saving}
+                  fieldClassName="w-auto"
+                  onCheckedChange={(enabled) => setCategoriesDraft(categories.map((item) =>
+                    item.id === category.id ? { ...item, enabled } : item,
+                  ))}
+                />
+                {!settings.categories.some((item) => item.id === category.id) ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-lg"
+                    aria-label={`Fjern ny kategori ${category.label}`}
+                    disabled={saving}
+                    onClick={() => setCategoriesDraft(categories.filter((item) => item.id !== category.id))}
+                  >
+                    <XIcon />
+                  </Button>
+                ) : null}
+              </FieldGroup>
+            ))}
+          </FieldGroup>
+        </CardContent>
+        <CardFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving || categories.length >= MAX_EXPENSE_CATEGORIES}
+            onClick={() => setCategoriesDraft([
+              ...categories,
+              { id: crypto.randomUUID(), label: "", enabled: true },
+            ])}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Tilføj kategori
+          </Button>
+        </CardFooter>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>E-mailmodtagere</CardTitle>
@@ -367,7 +454,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
                               {mapping.accountMappings.map((account) => (
                                 <Field key={account.categoryId} data-disabled={disabled}>
                                   <FieldLabel htmlFor={`expense-account-${connection.id}-${account.categoryId}`}>
-                                    {expenseCategories.find((category) => category.id === account.categoryId)?.label}
+                                    {categories.find((category) => category.id === account.categoryId)?.label}
                                   </FieldLabel>
                                   <Input
                                     id={`expense-account-${connection.id}-${account.categoryId}`}

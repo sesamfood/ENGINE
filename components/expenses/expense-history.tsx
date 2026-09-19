@@ -57,7 +57,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { expenseCategories, formatExpenseAmount } from "@/lib/expenses";
+import { expenseCategoryLabel, formatExpenseAmount } from "@/lib/expenses";
 import { selectedLocationId } from "@/lib/location-preference";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
@@ -190,9 +190,6 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
       </>
     );
   }
-  const category = expenseCategories.find(
-    (option) => option.id === expense.categoryId,
-  );
 
   return (
     <>
@@ -207,7 +204,7 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
         <dl className="grid gap-4 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground">Kategori</dt>
-            <dd>{category?.label}</dd>
+            <dd>{expenseCategoryLabel(expense)}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Periode</dt>
@@ -452,11 +449,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                       )}
                     </TableCell>
                     <TableCell>
-                      {
-                        expenseCategories.find(
-                          (option) => option.id === expense.categoryId,
-                        )?.label
-                      }
+                      {expenseCategoryLabel(expense)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatExpenseAmount(
@@ -495,11 +488,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                         new Date(`${expense.date}T00:00:00Z`),
                       )}{" "}
                       ·{" "}
-                      {
-                        expenseCategories.find(
-                          (option) => option.id === expense.categoryId,
-                        )?.label
-                      }
+                      {expenseCategoryLabel(expense)}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3">

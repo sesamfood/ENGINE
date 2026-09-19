@@ -7,7 +7,7 @@ import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
 import { featureIdValidator } from "./lib/features";
-import { expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
+import { expenseCategoryOptionValidator, expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
 import { economicCategoryValidator } from "./integrations/economic/lib/validators";
 import {
   forecastProfileValidator,
@@ -50,6 +50,7 @@ export default defineSchema({
 
   expenseSettings: defineTable({
     organizationId: v.string(),
+    categories: v.optional(v.array(expenseCategoryOptionValidator)),
     to: v.array(v.string()),
     cc: v.array(v.string()),
     bcc: v.array(v.string()),
