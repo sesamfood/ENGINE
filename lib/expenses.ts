@@ -1,13 +1,17 @@
-export const expenseCategories = [
-  { id: "rent", label: "Husleje" },
-  { id: "utilities", label: "Forsyning" },
-  { id: "repairs", label: "Vedligeholdelse" },
-  { id: "equipment", label: "Udstyr" },
-  { id: "marketing", label: "Markedsføring" },
-  { id: "other", label: "Andet" },
-] as const;
+export const MAX_EXPENSE_CATEGORIES = 100;
 
-export type ExpenseCategoryId = (typeof expenseCategories)[number]["id"];
+export const defaultExpenseCategories = [
+  { id: "rent", label: "Husleje", enabled: true },
+  { id: "utilities", label: "Forsyning", enabled: true },
+  { id: "repairs", label: "Vedligeholdelse", enabled: true },
+  { id: "equipment", label: "Udstyr", enabled: true },
+  { id: "marketing", label: "Markedsføring", enabled: true },
+  { id: "other", label: "Andet", enabled: true },
+];
+
+export function expenseCategoryLabel(expense: { categoryId: string; categoryLabel?: string }) {
+  return expense.categoryLabel ?? defaultExpenseCategories.find((category) => category.id === expense.categoryId)?.label ?? expense.categoryId;
+}
 
 export function parseExpenseAmount(value: string): number | null {
   const normalized = value.trim().replace(/\s/g, "");

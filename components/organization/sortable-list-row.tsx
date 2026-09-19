@@ -16,6 +16,7 @@ export function SortableListRow({
   label,
   disabled = false,
   position,
+  children,
   actions,
   className,
   handleClassName,
@@ -25,6 +26,7 @@ export function SortableListRow({
   label: string;
   disabled?: boolean;
   position?: number;
+  children?: ReactNode;
   actions?: ReactNode;
   className?: string;
   handleClassName?: string;
@@ -67,6 +69,7 @@ export function SortableListRow({
         aria-roledescription={roleDescription}
         className={cn(
           "flex min-h-12 min-w-0 flex-1 touch-none cursor-grab items-center gap-2 rounded-md px-1 py-0 text-left outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing disabled:pointer-events-none disabled:cursor-default disabled:opacity-50",
+          children && "flex-none",
           handleClassName,
         )}
       >
@@ -78,8 +81,9 @@ export function SortableListRow({
             {position}
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+        <span className={cn("min-w-0 flex-1 truncate font-medium", children && "sr-only")}>{label}</span>
       </button>
+      {children}
       {actions}
     </li>
   );

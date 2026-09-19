@@ -2,18 +2,33 @@
 
 import { useIntegrations } from "@/integrations/use-integrations";
 
+import { closestCorners, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
+import { SortableListRow, sortableListInstructions } from "@/components/organization/sortable-list-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -31,7 +46,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
-import { expenseCategories } from "@/lib/expenses";
+import { MAX_EXPENSE_CATEGORIES } from "@/lib/expenses";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Settings = FunctionReturnType<typeof api.expenses.getSettings>;
@@ -48,7 +63,7 @@ type MappingDraft = {
   }>;
 };
 
-function mappingDrafts(settings: Settings): MappingDraft[] {
+function mappingDrafts(settings: Settings, categories: Settings["categories"]): MappingDraft[] {
   return settings.connections.map((connection) => {
     const mapping = settings.economicMappings.find(
       (item) => item.connectionId === connection.id,
@@ -59,7 +74,7 @@ function mappingDrafts(settings: Settings): MappingDraft[] {
       journalNumber: mapping ? String(mapping.journalNumber) : "",
       contraAccountNumber: mapping ? String(mapping.contraAccountNumber) : "",
       vatCode25: mapping?.vatCode25 ?? "",
-      accountMappings: expenseCategories.map((category) => ({
+      accountMappings: categories.map((category) => ({
         categoryId: category.id,
         accountNumber:
           mapping?.accountMappings
@@ -124,9 +139,15 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const [toDraft, setToDraft] = useState<string | null>(null);
   const [ccDraft, setCcDraft] = useState<string | null>(null);
   const [bccDraft, setBccDraft] = useState<string | null>(null);
+  const [categoriesDraft, setCategoriesDraft] = useState<Settings["categories"] | null>(null);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const [mappingsDraft, setMappingsDraft] = useState<MappingDraft[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   if (!access) return <Skeleton className="h-72 w-full max-w-3xl" />;
   if (access.kiosk?.kioskModeEnabled) return null;
@@ -160,7 +181,18 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
   const to = toDraft ?? settings.to.join(", ");
   const cc = ccDraft ?? settings.cc.join(", ");
   const bcc = bccDraft ?? settings.bcc.join(", ");
-  const mappings = mappingsDraft ?? mappingDrafts(settings);
+  const categories = categoriesDraft ?? settings.categories.filter((category) => category.enabled);
+  const categoryIds = new Set(categories.map((category) => category.id));
+  const deletingCategory = categories.find((category) => category.id === deletingCategoryId);
+  const mappings = (mappingsDraft ?? mappingDrafts(settings, categories)).map((mapping) => ({
+    ...mapping,
+    accountMappings: categories.map((category) =>
+      mapping.accountMappings.find((account) => account.categoryId === category.id) ?? {
+        categoryId: category.id,
+        accountNumber: "",
+      },
+    ),
+  }));
   const usableConnections = settings.connections.filter(
     (connection) => integrations?.economic && connection.enabled && !connection.requiresReconnect,
   );
@@ -199,12 +231,17 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
                 .map((mapping) => {
                   const vatCode25 = mapping.vatCode25.trim();
                   if (!vatCode25) throw new Error("Angiv en momskode til 25 % moms");
-                  const accountMappings = mapping.accountMappings
-                    .filter((account) => account.accountNumber.trim())
-                    .map((account) => ({
-                      categoryId: account.categoryId,
-                      accountNumber: positiveInteger(account.accountNumber, "Udgiftskonto"),
-                    }));
+                  const accountMappings = [
+                    // Keep accounts for saved expenses whose category has been removed.
+                    ...(loadedSettings.economicMappings.find((item) => item.connectionId === mapping.connectionId)?.accountMappings ?? [])
+                      .filter((account) => !categoryIds.has(account.categoryId)),
+                    ...mapping.accountMappings
+                      .filter((account) => account.accountNumber.trim())
+                      .map((account) => ({
+                        categoryId: account.categoryId,
+                        accountNumber: positiveInteger(account.accountNumber, "Udgiftskonto"),
+                      })),
+                  ];
                   if (!accountMappings.length) {
                     throw new Error("Angiv mindst én udgiftskonto for hver aktiveret e-conomic-aftale");
                   }
@@ -222,11 +259,13 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
       await saveSettings({
         expectedOrganizationId: loadedSettings.organizationId,
         ...recipients,
+        categories: categoriesDraft ?? undefined,
         economicMappings,
       });
       setToDraft(null);
       setCcDraft(null);
       setBccDraft(null);
+      setCategoriesDraft(null);
       setMappingsDraft(null);
       toast.success("Udgiftsindstillingerne er gemt");
     } catch (cause) {
@@ -246,6 +285,121 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
         void save();
       }}
     >
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1">
+            Kategorier
+            <HelpTooltip
+              label="udgiftskategorier"
+              content={`Træk kategorierne for at ændre rækkefølgen ved oprettelse af udgifter. Du kan tilføje, omdøbe og slette kategorier. Gemte udgifter beholder deres oprindelige kategorinavn. Der skal være mindst én kategori og højst ${MAX_EXPENSE_CATEGORIES}.`}
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DndContext
+            accessibility={{
+              screenReaderInstructions: sortableListInstructions,
+              announcements: {
+                onDragStart: ({ active }) => `${categories.find((category) => category.id === active.id)?.label || "Kategorien"} er valgt.`,
+                onDragOver: ({ over }) => over ? `Flyttes til plads ${categories.findIndex((category) => category.id === over.id) + 1}.` : undefined,
+                onDragEnd: () => "Kategorien er placeret.",
+                onDragCancel: () => "Flytning af kategorien blev annulleret.",
+              },
+            }}
+            collisionDetection={closestCorners}
+            sensors={sensors}
+            onDragEnd={({ active, over }) => {
+              if (saving || !over || active.id === over.id) return;
+              const from = categories.findIndex((category) => category.id === active.id);
+              const to = categories.findIndex((category) => category.id === over.id);
+              if (from >= 0 && to >= 0) setCategoriesDraft(arrayMove(categories, from, to));
+            }}
+          >
+            <SortableContext items={categories} strategy={verticalListSortingStrategy}>
+              <ol className="flex flex-col gap-2" aria-label="Rækkefølge af udgiftskategorier">
+                {categories.map((category, index) => (
+                  <SortableListRow
+                    key={category.id}
+                    id={category.id}
+                    label={category.label || "kategori"}
+                    disabled={saving}
+                    roleDescription="kategori, der kan flyttes"
+                    actions={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-lg"
+                        aria-label={`Slet kategori ${category.label}`}
+                        disabled={saving || categories.length === 1}
+                        onClick={() => setDeletingCategoryId(category.id)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    }
+                  >
+                    <Field data-disabled={saving} className="min-w-0 flex-1">
+                      <FieldLabel htmlFor={`expense-category-${category.id}`} className="sr-only">
+                        Kategorinavn {index + 1}
+                      </FieldLabel>
+                      <Input
+                        id={`expense-category-${category.id}`}
+                        className="h-11"
+                        value={category.label}
+                        placeholder="Kategorinavn"
+                        required
+                        maxLength={100}
+                        disabled={saving}
+                        onChange={(event) => setCategoriesDraft(categories.map((item) =>
+                          item.id === category.id ? { ...item, label: event.target.value } : item,
+                        ))}
+                      />
+                    </Field>
+                  </SortableListRow>
+                ))}
+              </ol>
+            </SortableContext>
+          </DndContext>
+        </CardContent>
+        <CardFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving || categories.length >= MAX_EXPENSE_CATEGORIES}
+            onClick={() => setCategoriesDraft([
+              ...categories,
+              { id: crypto.randomUUID(), label: "", enabled: true },
+            ])}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Tilføj kategori
+          </Button>
+        </CardFooter>
+      </Card>
+
+      <AlertDialog open={Boolean(deletingCategory)} onOpenChange={(open) => { if (!open) setDeletingCategoryId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slet kategori?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingCategory?.label || "Kategorien"} fjernes fra nye udgifter, når du gemmer indstillingerne. Gemte udgifter beholder deres kategorinavn.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Annullér</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setCategoriesDraft(categories.filter((category) => category.id !== deletingCategoryId));
+                setDeletingCategoryId(null);
+              }}
+            >
+              Slet kategori
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Card>
         <CardHeader>
           <CardTitle>E-mailmodtagere</CardTitle>
@@ -367,7 +521,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
                               {mapping.accountMappings.map((account) => (
                                 <Field key={account.categoryId} data-disabled={disabled}>
                                   <FieldLabel htmlFor={`expense-account-${connection.id}-${account.categoryId}`}>
-                                    {expenseCategories.find((category) => category.id === account.categoryId)?.label}
+                                    {categories.find((category) => category.id === account.categoryId)?.label}
                                   </FieldLabel>
                                   <Input
                                     id={`expense-account-${connection.id}-${account.categoryId}`}
