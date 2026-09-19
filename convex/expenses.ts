@@ -152,7 +152,6 @@ export const setSettings = mutation({
     if (categories.some((category) => !category.label || category.label.length > 100 || /[\r\n]/.test(category.label))) throw new ConvexError("Kategorinavne skal være mellem 1 og 100 tegn på én linje");
     const categoryIds = new Set(categories.map((category) => category.id));
     if (categoryIds.size !== categories.length || new Set(categories.map((category) => category.label.toLocaleLowerCase("da-DK"))).size !== categories.length) throw new ConvexError("Udgiftskategorier skal have forskellige navne og referencer");
-    if (previousCategories.some((category) => !categoryIds.has(category.id))) throw new ConvexError("Eksisterende kategorier skal deaktiveres i stedet for at blive fjernet. Indlæs siden igen");
     if (!categories.some((category) => category.enabled)) throw new ConvexError("Mindst én udgiftskategori skal være aktiv");
     const enabled = await isIntegrationEnabled(ctx, auth.organizationId, "economic");
     const economicMappings = !enabled || args.economicMappings === undefined ? current?.economicMappings ?? [] : args.economicMappings.map((mapping) => ({
@@ -171,7 +170,8 @@ export const setSettings = mutation({
         if (numbers.some((value) => !Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647)) throw new ConvexError("Kassekladde og kontonumre skal være positive heltal");
         if (!mapping.vatCode25 || mapping.vatCode25.length > 20 || /\s/.test(mapping.vatCode25)) throw new ConvexError("Angiv en gyldig momskode for 25 % købsmoms");
         if (!mapping.accountMappings.length || mapping.accountMappings.length > MAX_EXPENSE_CATEGORIES || new Set(mapping.accountMappings.map((item) => item.categoryId)).size !== mapping.accountMappings.length) throw new ConvexError("Angiv én konto pr. valgt udgiftskategori");
-        if (mapping.accountMappings.some((item) => !categoryIds.has(item.categoryId))) throw new ConvexError("En udgiftskategori i konteringen blev ikke fundet");
+        const previousAccountMappings = current?.economicMappings.find((item) => item.connectionId === mapping.connectionId)?.accountMappings ?? [];
+        if (mapping.accountMappings.some((item) => !categoryIds.has(item.categoryId) && !previousAccountMappings.some((previous) => previous.categoryId === item.categoryId))) throw new ConvexError("En udgiftskategori i konteringen blev ikke fundet");
         if (mapping.accountMappings.some((item) => item.accountNumber === mapping.contraAccountNumber)) throw new ConvexError("Udgiftskonto og modkonto skal være forskellige");
       }
     }
