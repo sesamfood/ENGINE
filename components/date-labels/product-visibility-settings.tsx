@@ -196,7 +196,7 @@ function VisibilityForm({
   return (
     <>
       <CardContent>
-        <FieldGroup className="gap-2">
+        <FieldGroup appearance="dense">
           <SettingsSwitchField
             id="date-label-include-time"
             label="Medtag klokkeslæt"
@@ -250,7 +250,7 @@ function VisibilityForm({
           ) : null}
         </FieldGroup>
       </CardContent>
-      <CardFooter className="justify-end gap-2">
+      <CardFooter appearance="compact" className="justify-end">
         <Button
           variant="outline"
           className="min-h-11"

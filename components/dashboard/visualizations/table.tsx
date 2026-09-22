@@ -14,7 +14,7 @@ export function TableVisualization({ result, compact = false }: { result: Metric
   const rows = result.breakdown ?? result.series.map((series) => ({ key: series.key, label: series.label, value: series.total }));
   return (
     <div className="@container h-full min-h-0 overflow-auto">
-      <Table className={cn("w-full table-auto @max-[12rem]:text-xs @max-[12rem]:[&_th]:px-1 @max-[12rem]:[&_td]:px-1", compact && "text-xs")}>
+      <Table appearance={compact ? "compactWidget" : "widget"} className="w-full table-auto">
         <TableHeader className={cn(compact && "sr-only")}>
           <TableRow>
             <TableHead>Navn</TableHead>
@@ -24,8 +24,8 @@ export function TableVisualization({ result, compact = false }: { result: Metric
         <TableBody>
           {rows.slice(0, 20).map((row) => (
             <TableRow key={row.key}>
-              <TableCell title={row.label} className={cn("max-w-0 truncate font-medium", compact && "py-1.5")}>{row.label}</TableCell>
-              <TableCell className={cn("w-px text-right whitespace-nowrap tabular-nums", compact && "py-1.5")}>{formatMetricValue(row.value, result)}</TableCell>
+              <TableCell title={row.label} appearance={compact ? "compactLabel" : "labelTruncate"} className="max-w-0">{row.label}</TableCell>
+              <TableCell appearance={compact ? "compactNumeric" : "numeric"} className="w-px text-right whitespace-nowrap">{formatMetricValue(row.value, result)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

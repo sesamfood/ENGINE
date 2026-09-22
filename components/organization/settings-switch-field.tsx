@@ -9,7 +9,6 @@ export function SettingsSwitchField({
   label,
   help,
   description,
-  fieldClassName,
   invalid,
   id,
   disabled,
@@ -18,7 +17,6 @@ export function SettingsSwitchField({
   label: ReactNode;
   help?: ComponentProps<typeof HelpTooltip>;
   description?: ReactNode;
-  fieldClassName?: string;
   invalid?: boolean;
 }) {
   const generatedId = useId();
@@ -26,7 +24,6 @@ export function SettingsSwitchField({
   return (
     <Field
       orientation="horizontal"
-      className={fieldClassName}
       data-disabled={disabled}
       data-invalid={invalid}
     >

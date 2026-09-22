@@ -74,11 +74,11 @@ function CheckRow({
       }
       className="flex h-auto min-h-16 w-full items-center justify-start gap-3 p-3 text-left"
     >
-      <Avatar size="lg" className="rounded-lg after:rounded-lg">
+      <Avatar size="lg" appearance="rounded">
         {item.imageUrl ? (
-          <AvatarImage src={item.imageUrl} alt="" className="rounded-lg" />
+          <AvatarImage src={item.imageUrl} alt="" appearance="rounded" />
         ) : null}
-        <AvatarFallback className="rounded-lg">
+        <AvatarFallback appearance="rounded">
           <ClipboardCheckIcon />
         </AvatarFallback>
       </Avatar>
@@ -130,7 +130,7 @@ function CheckSection({
           <Badge variant="secondary">{items.length}</Badge>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+      <CardContent appearance="dense" className="flex flex-col">
         {items.map((item) => (
           <CheckRow
             key={`${item.templateId}-${item.dueDateKey}`}
@@ -177,10 +177,10 @@ export function TodayOwnChecks({
     locations === undefined ||
     (locationId && (dateContext === undefined || result === undefined))
   )
-    return <Skeleton className="h-[34rem] w-full" />;
+    return <Skeleton className="h-136 w-full" />;
   if (!locations.length || !locationId)
     return (
-      <Empty className="min-h-72 border">
+      <Empty appearance="outlined" className="min-h-72">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <ClipboardCheckIcon />
@@ -268,7 +268,7 @@ export function TodayOwnChecks({
         !deviations.length &&
         !done.length &&
         !result.backlog.length ? (
-          <Empty className="min-h-72 border">
+          <Empty appearance="outlined" className="min-h-72">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <ClipboardCheckIcon />

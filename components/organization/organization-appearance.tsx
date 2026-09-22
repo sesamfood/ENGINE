@@ -163,11 +163,12 @@ function LogoUploadCard({
         <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent
+        appearance="spacious"
         className={cn(
-          "grid gap-6",
+          "grid",
           wide
-            ? "lg:grid-cols-[minmax(0,24rem)_1fr]"
-            : "sm:grid-cols-[8rem_1fr]",
+            ? "lg:grid-cols-(--grid-cols-appearance)"
+            : "sm:grid-cols-(--grid-cols-label-value)",
         )}
       >
         <Button
@@ -176,9 +177,16 @@ function LogoUploadCard({
           aria-label={`Vælg fil til ${title.toLocaleLowerCase("da")}`}
           disabled={saving}
           onClick={() => inputRef.current?.click()}
-          style={wide ? { aspectRatio: imageAspectRatio ?? 4 } : undefined}
+          style={
+            wide
+              ? ({
+                  "--preview-aspect": imageAspectRatio ?? 4,
+                } as React.CSSProperties)
+              : undefined
+          }
+          appearance="image"
           className={cn(
-            "relative overflow-hidden p-0",
+            "relative overflow-hidden aspect-(--preview-aspect)",
             wide ? "h-auto w-full max-w-96 self-center" : "size-32",
           )}
         >
@@ -239,7 +247,7 @@ function LogoUploadCard({
           <FieldError>{error}</FieldError>
         </Field>
       </CardContent>
-      <CardFooter className="flex-col-reverse items-stretch gap-3 sm:flex-row sm:justify-between">
+      <CardFooter appearance="spaced" className="flex-col-reverse items-stretch sm:flex-row sm:justify-between">
         {currentUrl ? (
           <AlertDialog>
             <AlertDialogTrigger

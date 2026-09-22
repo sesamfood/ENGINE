@@ -224,7 +224,7 @@ export function OwnCheckForm({
             <h3>Instruktioner</h3>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent appearance="stacked" className="flex flex-col">
           {item.imageUrl ? (
             <div className="relative h-64 w-full">
               <Image
@@ -252,7 +252,7 @@ export function OwnCheckForm({
             <h3>{item.entry ? "Registrering" : "Udfør kontrol"}</h3>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-6">
+        <CardContent appearance="spacious" className="flex flex-col">
           {item.entry ? (
             <Alert role="note">
               <AlertTitle>Kontrollen er registreret</AlertTitle>

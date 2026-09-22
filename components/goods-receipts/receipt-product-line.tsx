@@ -26,7 +26,7 @@ export function ReceiptProductLine({
   "lineKey" | "productName" | "units" | "unitId" | "quantity"
 >) {
   return (
-    <li className="grid gap-4 py-4 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,1fr)] xl:items-start">
+    <li className="grid gap-4 py-4 xl:grid-cols-(--grid-cols-delivery-details) xl:items-start">
       <div className="flex min-w-0 items-center gap-3">
         {line.imageUrl ? (
           <Image

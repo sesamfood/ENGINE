@@ -195,7 +195,7 @@ export function SidebarSettings() {
   const itemOrder = useQuery(api.navigation.getOrder, canManage ? {} : "skip");
 
   if (!access) {
-    return <Skeleton className="h-[36rem] w-full max-w-3xl" />;
+    return <Skeleton className="h-144 w-full max-w-3xl" />;
   }
 
   if (!canManage) {
@@ -210,7 +210,7 @@ export function SidebarSettings() {
   }
 
   if (itemOrder === undefined) {
-    return <Skeleton className="h-[36rem] w-full max-w-3xl" />;
+    return <Skeleton className="h-144 w-full max-w-3xl" />;
   }
 
   return (

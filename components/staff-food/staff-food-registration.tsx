@@ -183,7 +183,7 @@ function StaffFoodHeader({
   lockedName?: string | null;
 }) {
   return (
-    <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+    <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Staff food
@@ -195,7 +195,7 @@ function StaffFoodHeader({
       <div
         className={cn(
           "grid gap-3",
-          employeeName ? "sm:grid-cols-2 md:w-[34rem]" : "md:w-80",
+          employeeName ? "sm:grid-cols-2 md:w-136" : "md:w-80",
         )}
       >
         {employeeName ? (
@@ -203,7 +203,8 @@ function StaffFoodHeader({
             <FieldLabel>Medarbejder</FieldLabel>
             <Button
               variant="outline"
-              className="h-11 w-full justify-start px-3"
+              appearance="compact"
+              className="h-11 w-full justify-start"
               onClick={onEmployeeChange}
             >
               <UserRoundIcon data-icon="inline-start" />
@@ -541,11 +542,11 @@ export function StaffFoodRegistration() {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 pb-32 sm:pb-24">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-32 sm:pb-24">
       <AppPageHeader>{header}</AppPageHeader>
 
       {!locations.length ? (
-        <Empty className="min-h-80 border">
+        <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <MapPinIcon />
@@ -559,7 +560,7 @@ export function StaffFoodRegistration() {
       ) : picker === undefined ? (
         <Skeleton className="h-96 w-full" />
       ) : !picker.hasRules ? (
-        <Empty className="min-h-80 border">
+        <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <UtensilsIcon />
@@ -595,7 +596,7 @@ export function StaffFoodRegistration() {
             </Alert>
           ) : null}
           {state.tierMinimumShiftMinutes === null ? (
-            <Empty className="min-h-72 border">
+            <Empty appearance="outlined" className="min-h-72">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <Clock3Icon />
@@ -617,7 +618,7 @@ export function StaffFoodRegistration() {
               <div className="flex min-w-0 flex-col gap-5">
                 <Tabs value={effectiveCategoryId} onValueChange={setCategoryId}>
                   <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden">
-                    <TabsTrigger value="all" className="min-w-20 shrink-0 px-4">
+                    <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
                       Alle
                     </TabsTrigger>
                     {state.allowances.map((allowance) => {
@@ -632,7 +633,8 @@ export function StaffFoodRegistration() {
                         <TabsTrigger
                           key={allowance.categoryId}
                           value={allowance.categoryId}
-                          className="min-w-28 shrink-0 px-4"
+                          appearance="standard"
+                          className="min-w-28 shrink-0"
                         >
                           {allowance.categoryName}
                           <Badge variant="secondary">
@@ -683,10 +685,10 @@ export function StaffFoodRegistration() {
                               return (
                                 <Card
                                   key={product.id}
-                                  className={cn(
-                                    "h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-[opacity,filter,box-shadow] lg:[--card-spacing:--spacing(4)]",
-                                    unavailable && "opacity-40 grayscale",
-                                  )}
+                                  appearance="staffProduct"
+                                  unavailable={unavailable}
+                                  spacing="responsive"
+                                  className="h-full"
                                 >
                                   <div className="relative">
                                     <ProductCardMedia
@@ -699,14 +701,14 @@ export function StaffFoodRegistration() {
                                         />
                                       }
                                     />
-                                    <CardHeader className="py-2.5">
-                                      <CardTitle className="truncate">
+                                    <CardHeader appearance="dense">
+                                      <CardTitle appearance="truncate">
                                         {product.name}
                                       </CardTitle>
                                     </CardHeader>
                                   </div>
                                   {allowance.amount === 1 ? (
-                                    <CardFooter className="mt-auto border-t-0 p-3 pt-0">
+                                    <CardFooter appearance="product" className="mt-auto">
                                       <Button
                                         size="lg"
                                         className="h-12 w-full"
@@ -722,16 +724,15 @@ export function StaffFoodRegistration() {
                                       </Button>
                                     </CardFooter>
                                   ) : (
-                                    <CardFooter className="mt-auto grid grid-cols-[2.75rem_1fr_2.75rem] p-0">
+                                    <CardFooter appearance="flush" className="mt-auto grid grid-cols-(--grid-cols-quantity-control)">
                                       <Button
                                         size="icon-lg"
                                         variant="ghost"
-                                        className="size-11 rounded-none"
+                                        appearance="square"
+                                        className="size-11"
                                         aria-label={`Fjern én ${product.name}`}
                                         disabled={!quantity}
-                                        onClick={() =>
-                                          changeProduct(product, -1)
-                                        }
+                                        onClick={() => changeProduct(product, -1)}
                                       >
                                         <MinusIcon />
                                       </Button>
@@ -741,12 +742,11 @@ export function StaffFoodRegistration() {
                                       <Button
                                         size="icon-lg"
                                         variant="ghost"
-                                        className="size-11 rounded-none"
+                                        appearance="square"
+                                        className="size-11"
                                         aria-label={`Tilføj én ${product.name}`}
                                         disabled={!canAdd}
-                                        onClick={() =>
-                                          changeProduct(product, 1)
-                                        }
+                                        onClick={() => changeProduct(product, 1)}
                                       >
                                         <PlusIcon />
                                       </Button>
@@ -761,7 +761,7 @@ export function StaffFoodRegistration() {
                     })}
                   </div>
                 ) : (
-                  <Empty className="min-h-64 border">
+                  <Empty appearance="outlined" className="min-h-64">
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
                         <UtensilsIcon />
@@ -775,7 +775,7 @@ export function StaffFoodRegistration() {
                 )}
               </div>
               <AppBottomBar>
-                <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 overflow-x-auto">
                     <ShoppingBasketIcon className="shrink-0" />
                     {basketProducts.length ? (
@@ -845,7 +845,7 @@ export function StaffFoodRegistration() {
                     <CardHeader>
                       <CardTitle>Valgte produkter</CardTitle>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-2">
+                    <CardContent appearance="dense" className="flex flex-col">
                       {basketProducts.map(({ product, quantity }) => (
                         <div
                           key={product.id}
@@ -887,9 +887,9 @@ export function StaffFoodRegistration() {
       {picker?.hasRules && !sessionId && locations.length ? (
         <Card className="mx-auto w-full max-w-3xl">
           <CardHeader>
-            <CardTitle className="text-xl">Hvem er du?</CardTitle>
+            <CardTitle appearance="large">Hvem er du?</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-5">
+          <CardContent appearance="relaxed" className="flex flex-col">
             <InputGroup className="h-11">
               <InputGroupInput
                 value={search}
@@ -908,7 +908,7 @@ export function StaffFoodRegistration() {
             {manualEmployee ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-3">
+                  <CardTitle appearance="spaced" className="flex items-center">
                     <EmployeeAvatar
                       name={manualEmployee.displayName}
                       imageUrl={manualEmployee.imageUrl}
@@ -946,7 +946,7 @@ export function StaffFoodRegistration() {
                     </FieldDescription>
                   </Field>
                 </CardContent>
-                <CardFooter className="justify-end gap-2">
+                <CardFooter appearance="compact" className="justify-end">
                   <Button
                     variant="outline"
                     onClick={() => setManualEmployee(null)}
@@ -1003,7 +1003,7 @@ export function StaffFoodRegistration() {
                   )}
                 </div>
               ) : (
-                <Empty className="min-h-48 border">
+                <Empty appearance="outlined" className="min-h-48">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
                       <UserRoundIcon />
@@ -1031,7 +1031,7 @@ export function StaffFoodRegistration() {
                 </div>
               </div>
             ) : (
-              <Empty className="min-h-52 border">
+              <Empty appearance="outlined" className="min-h-52">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <UsersRoundIcon />

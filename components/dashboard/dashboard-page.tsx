@@ -132,7 +132,7 @@ function DashboardLanding() {
   }
   if (!dashboards.dashboards.length) {
     return (
-      <Empty className="min-h-80 border">
+      <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon"><LayoutDashboardIcon /></EmptyMedia>
           <EmptyTitle>Ingen dashboards</EmptyTitle>
@@ -350,7 +350,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];
 
   return (
-    <section className="mx-auto flex w-full max-w-[120rem] flex-col gap-6">
+    <section className="mx-auto flex w-full max-w-(--container-dashboard) flex-col gap-6">
       <AppPageHeader>{title}</AppPageHeader>
       <DashboardTabs
         key={dashboardList.map((candidate) => `${candidate.id}:${candidate.updatedAt}`).join("|")}
@@ -424,7 +424,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       {visibleWidgets.length ? (
         <DashboardGrid widgets={visibleWidgets} scope={currentScope} range={currentRange} now={now} editable={canManage && editing} onChange={(widgets) => commitWidgets([...widgets, ...hiddenWidgets])} />
       ) : (
-        <Empty className="min-h-80 border">
+        <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon"><LayoutDashboardIcon /></EmptyMedia>
             <EmptyTitle>Dashboardet er tomt</EmptyTitle>

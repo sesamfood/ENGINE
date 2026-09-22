@@ -32,19 +32,37 @@ const badgeVariants = cva(
   }
 )
 
+const badgeAppearance = cva("", {
+  variants: {
+    appearance: {
+      positive: "bg-primary/10 text-primary",
+      negative: "bg-destructive/10 text-destructive",
+      wrap: "py-1",
+      warning: "text-warning",
+    },
+  },
+})
+
 function Badge({
+  appearance,
   className,
   variant = "default",
   render,
   ...props
-}: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+}: useRender.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> &
+  VariantProps<typeof badgeAppearance>) {
   return useRender({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
-        className: cn(badgeVariants({ variant }), className),
+        className: cn(
+          badgeVariants({ variant }),
+          badgeAppearance({ appearance }),
+          className,
+        ),
       },
-      props
+      props,
     ),
     render,
     state: {

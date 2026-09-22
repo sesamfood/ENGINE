@@ -155,7 +155,7 @@ function newProductHref(search: string, status: ProductStatus) {
 function ProductImage({ product }: { product: CatalogProduct }) {
   if (product.imageUrl) {
     return (
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
+      <div className="relative aspect-4/3 w-full overflow-hidden bg-muted">
         <Image
           src={product.imageUrl}
           alt={`Produktbillede af ${product.name}`}
@@ -168,7 +168,7 @@ function ProductImage({ product }: { product: CatalogProduct }) {
   }
 
   return (
-    <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted text-muted-foreground">
+    <div className="flex aspect-4/3 w-full items-center justify-center bg-muted text-muted-foreground">
       <PackageOpenIcon className="size-12" aria-hidden="true" />
     </div>
   );
@@ -194,7 +194,7 @@ function ProductCard({
   onDelete: (product: CatalogProduct) => void;
 }) {
   return (
-    <Card className="relative gap-0 py-0 transition-shadow hover:shadow-sm">
+    <Card appearance="catalog" className="relative">
       <Link
         href={editHref}
         aria-label={
@@ -219,7 +219,7 @@ function ProductCard({
         </div>
       ) : null}
       <ProductImage product={product} />
-      <CardHeader className="py-4">
+      <CardHeader appearance="padded">
         <CardTitle>{product.name}</CardTitle>
         <CardDescription>
           {product.categories.map((category) => category.name).join(" · ") ||
@@ -228,7 +228,7 @@ function ProductCard({
             ? ` · Slettes automatisk ${new Intl.DateTimeFormat("da-DK", { dateStyle: "long" }).format(product.deletesAt)}`
             : null}
         </CardDescription>
-        <CardAction className="relative z-20 flex gap-1">
+        <CardAction appearance="compact" className="relative z-20 flex">
           <Button
             type="button"
             variant="ghost"
@@ -269,9 +269,9 @@ function CatalogSkeleton() {
   return (
     <div className="grid gap-5 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-4 min-[1200px]:grid-cols-5 min-[1600px]:grid-cols-6 min-[1920px]:grid-cols-7 min-[2240px]:grid-cols-8">
       {Array.from({ length: 8 }, (_, index) => (
-        <Card key={index} className="gap-4 py-0">
-          <Skeleton className="aspect-[4/3] w-full rounded-none" />
-          <CardHeader className="pb-4">
+        <Card key={index} appearance="gallery">
+          <Skeleton appearance="square" className="aspect-4/3 w-full" />
+          <CardHeader appearance="inset">
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="h-4 w-1/3" />
           </CardHeader>
@@ -521,14 +521,16 @@ export function ProductCatalog() {
               onChange={(event) => changeSearch(event.target.value)}
               placeholder="Søg efter produkter"
               aria-label="Søg efter produkter eller kategorier"
-              className="h-11 pl-10"
+              appearance="search"
+              className="h-11"
             />
           </div>
           <div className="flex flex-row flex-wrap items-center gap-3 md:flex-none">
             <Button
               type="button"
               variant={isSelectionMode ? "secondary" : "outline"}
-              className="min-h-11 px-3"
+              appearance="compact"
+              className="min-h-11"
               aria-pressed={isSelectionMode}
               onClick={toggleSelectionMode}
             >
@@ -541,7 +543,8 @@ export function ProductCatalog() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="min-h-11 px-3"
+                      appearance="compact"
+                      className="min-h-11"
                       aria-label="Handlinger for valgte produkter"
                       disabled={selectedIds.length === 0}
                     />
@@ -590,7 +593,8 @@ export function ProductCatalog() {
             />
             <Button
               size="lg"
-              className="min-h-11 px-4"
+              appearance="standard"
+              className="min-h-11"
               onClick={() => router.push(newProductHref(search, status))}
             >
               <PlusIcon data-icon="inline-start" />
@@ -603,7 +607,7 @@ export function ProductCatalog() {
       {showSkeleton ? <CatalogSkeleton /> : null}
 
       {!loading && results.length === 0 ? (
-        <Empty className="min-h-80 border">
+        <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <BoxesIcon />
@@ -624,7 +628,8 @@ export function ProductCatalog() {
           {status === "active" && !search ? (
             <EmptyContent>
               <Button
-                className="min-h-11 px-4"
+                appearance="standard"
+                className="min-h-11"
                 onClick={() => router.push(newProductHref(search, status))}
               >
                 <PlusIcon data-icon="inline-start" />
@@ -661,7 +666,8 @@ export function ProductCatalog() {
           <Button
             variant="outline"
             size="lg"
-            className="min-h-11 px-5"
+            appearance="wide"
+            className="min-h-11"
             disabled={paginationStatus === "LoadingMore"}
             onClick={() =>
               setRequestedPage({

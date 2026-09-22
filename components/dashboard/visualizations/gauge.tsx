@@ -15,7 +15,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
   if (scaleMax !== undefined) {
     if (result.series.length === 0) {
       return (
-        <Empty className="h-full p-0">
+        <Empty appearance="flush" className="h-full">
           <EmptyDescription>Ingen data</EmptyDescription>
         </Empty>
       );
@@ -27,10 +27,13 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
       <div
         className={cn(
           "@container h-full min-h-0 overflow-auto",
-          single ? "flex flex-col" : "grid auto-rows-max content-center-safe gap-x-4 gap-y-3",
-          !single && (compact
-            ? "grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))]"
-            : "grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]"),
+          single
+            ? "flex flex-col"
+            : "grid auto-rows-max content-center-safe gap-x-4 gap-y-3",
+          !single &&
+            (compact
+              ? "grid-cols-(--grid-cols-compact-metrics)"
+              : "grid-cols-(--grid-cols-metrics)"),
         )}
       >
         {result.series.map((series) => {
@@ -48,7 +51,7 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
               <div
                 className={cn(
                   "shrink-0",
-                  compact ? "size-18" : single ? "size-[min(14rem,100cqw)]" : "size-20",
+                  compact ? "size-18" : single ? "size-gauge" : "size-20",
                 )}
                 role="meter"
                 aria-label={series.label}
@@ -111,12 +114,16 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
   const valueFontSize = `clamp(1rem, min(${112.5 / formattedValue.length}cqw, ${Math.min(35, 112.5 / formattedValue.length)}cqh), ${compact ? 2.25 : 1.875}rem)`;
   return (
     <div
-      className="relative flex h-full min-h-0 min-w-0 items-center justify-center [container-type:size]"
+      className="relative flex h-full min-h-0 min-w-0 items-center justify-center @container-size"
       role="meter"
       aria-valuemin={0}
       aria-valuemax={target}
       aria-valuenow={result.mixedCurrency ? undefined : numericValue}
-      aria-valuetext={result.mixedCurrency ? formattedValue : `${formattedValue}, ${targetLabel}`}
+      aria-valuetext={
+        result.mixedCurrency
+          ? formattedValue
+          : `${formattedValue}, ${targetLabel}`
+      }
     >
       <svg
         viewBox="0 0 160 160"
@@ -141,8 +148,10 @@ export function GaugeVisualization({ result, compact = false }: { result: Metric
       <div className="absolute inset-0 flex flex-col overflow-auto" aria-hidden="true">
         <div className="m-auto flex max-w-full shrink-0 flex-col items-center gap-1 text-center">
           <p
-            className="max-w-full font-semibold leading-tight tracking-tight wrap-anywhere tabular-nums"
-            style={{ fontSize: valueFontSize }}
+            className="max-w-full font-semibold leading-tight tracking-tight wrap-anywhere tabular-nums text-(length:--metric-font-size)"
+            style={
+              { "--metric-font-size": valueFontSize } as React.CSSProperties
+            }
           >
             {formattedValue}
           </p>

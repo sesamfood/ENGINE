@@ -28,7 +28,8 @@ export function ErrorRecovery({
     >
       <Empty
         role="alert"
-        className="mx-auto min-h-80 w-full max-w-[96rem] border"
+        appearance="outlined"
+        className="mx-auto min-h-80 w-full max-w-(--container-page)"
       >
         <EmptyHeader>
           <EmptyTitle>Siden kunne ikke indlæses</EmptyTitle>

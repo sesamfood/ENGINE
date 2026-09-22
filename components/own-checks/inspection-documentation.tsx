@@ -684,7 +684,7 @@ export function InspectionDocumentation() {
   if (locations === undefined) return <Skeleton className="h-96 w-full" />;
   if (!locations.length || !locationId)
     return (
-      <Empty className="min-h-72 border">
+      <Empty appearance="outlined" className="min-h-72">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <FileDownIcon />
@@ -705,7 +705,7 @@ export function InspectionDocumentation() {
           Eksportér udførte og manglende kontroller til PDF eller CSV.
         </p>
       </div>
-      <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <FieldGroup appearance="standard" className="grid sm:grid-cols-2 xl:grid-cols-4">
         <Field>
           <FieldLabel htmlFor="own-documentation-location">Lokation</FieldLabel>
           <LocationField
@@ -823,7 +823,7 @@ export function InspectionDocumentation() {
         </Button>
       </div>
       {preparing ? (
-        <Empty className="min-h-72 border" role="status">
+        <Empty appearance="outlined" className="min-h-72" role="status">
           <EmptyHeader>
             <EmptyMedia>
               <Spinner />
@@ -840,7 +840,7 @@ export function InspectionDocumentation() {
           </AlertDescription>
         </Alert>
       ) : !preparedForCurrent ? (
-        <Empty className="min-h-72 border">
+        <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <FileDownIcon />
@@ -853,7 +853,7 @@ export function InspectionDocumentation() {
           </EmptyHeader>
         </Empty>
       ) : !reportReady ? (
-        <Empty className="min-h-72 border" role="status">
+        <Empty appearance="outlined" className="min-h-72" role="status">
           <EmptyHeader>
             <EmptyMedia>
               <Spinner />

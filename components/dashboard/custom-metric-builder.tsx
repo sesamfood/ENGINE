@@ -348,7 +348,7 @@ function ProductFilterField({
   onNameTermsChange: (nameTerms: string[]) => void;
 }) {
   return (
-    <FieldSet className="gap-3">
+    <FieldSet appearance="compact">
       <FieldLegend variant="label">Produktvalg</FieldLegend>
       <Field>
         <FieldLabel id="custom-metric-product-filter-mode">
@@ -830,7 +830,7 @@ export function CustomMetricBuilder({
               />
             </div>
             {fields.length ? (
-              <FieldSet className="gap-3">
+              <FieldSet appearance="compact">
                 <FieldLegend variant="label">Filtre</FieldLegend>
                 {!query.filters.length ? (
                   <FieldDescription>Ingen filtre valgt.</FieldDescription>
@@ -838,7 +838,8 @@ export function CustomMetricBuilder({
                 {query.filters.map((filter, index) => (
                   <FieldGroup
                     key={`${which}-filter-${index}`}
-                    className="grid items-start gap-3 rounded-lg border p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto]"
+                    appearance="panel"
+                    className="grid items-start md:grid-cols-(--grid-cols-metric-condition)"
                   >
                     <RegistrySelect
                       id={`${which}-filter-${index}-field`}
@@ -912,7 +913,7 @@ export function CustomMetricBuilder({
 
   return (
     <Dialog open={open && datasetsAvailable} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[calc(100vh-2rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-6xl">
+      <DialogContent className="grid max-h-(--spacing-viewport-inset) min-h-0 grid-rows-(--grid-rows-panel) overflow-hidden sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>
             {metric ? "Redigér tilpasset måling" : "Opret tilpasset måling"}
@@ -1026,7 +1027,7 @@ export function CustomMetricBuilder({
               </CardHeader>
               <CardContent>
                 <FieldGroup>
-                  <FieldGroup className="grid gap-4 md:grid-cols-3">
+                  <FieldGroup appearance="standard" className="grid md:grid-cols-3">
                     <RegistrySelect
                       id="custom-metric-dimension"
                       label="Dimension"
@@ -1142,7 +1143,7 @@ export function CustomMetricBuilder({
                   Opdateres automatisk kort efter en ændring i målingen.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-4">
+              <CardContent appearance="stacked" className="flex flex-col">
                 <FieldGroup className="max-w-xs">
                   <RegistrySelect
                     id="custom-metric-preview-visualization"

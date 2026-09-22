@@ -216,7 +216,7 @@ export function OnlinePosLocationConnections() {
     <Collapsible open={open} onOpenChange={setOpen}>
       <Card className="w-full">
         <CardHeader>
-          <CardTitle className="flex items-center gap-1">
+          <CardTitle appearance="compact" className="flex items-center">
             Lokationsindstillinger
             <HelpTooltip
               label="OnlinePOS-lokationsindstillinger"
@@ -235,7 +235,7 @@ export function OnlinePosLocationConnections() {
           </CardAction>
         </CardHeader>
         <CollapsibleContent>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent appearance="stacked" className="flex flex-col">
             {connections.limitReached ? (
               <Alert>
                 <AlertTitle>Kun de første 200 lokationer vises</AlertTitle>
@@ -276,7 +276,7 @@ export function OnlinePosLocationConnections() {
                           </Badge>
                         </CardAction>
                       </CardHeader>
-                      <CardContent className="flex flex-col gap-4">
+                      <CardContent appearance="stacked" className="flex flex-col">
                         <FieldGroup className="grid sm:grid-cols-2">
                           <OnlinePosMasterSelect
                             masters={settings.masters}
@@ -351,7 +351,7 @@ export function OnlinePosLocationConnections() {
                           </p>
                         ) : null}
                       </CardContent>
-                      <CardFooter className="flex-wrap justify-end gap-3">
+                      <CardFooter appearance="spaced" className="flex-wrap justify-end">
                         {location.connected ? (
                           <AlertDialog>
                             <AlertDialogTrigger

@@ -503,7 +503,8 @@ function MappingEditor({
           {accountMappings.map((mapping, index) => (
             <FieldGroup
               key={index}
-              className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+              appearance="compact"
+              className="grid items-end sm:grid-cols-(--grid-cols-connection)"
             >
               <Field>
                 <FieldLabel
@@ -752,7 +753,7 @@ function AgreementCard({
         <CardDescription>
           Aftale {connection.agreementNumber} · {connection.currency}
         </CardDescription>
-        <CardAction className="flex items-center gap-3">
+        <CardAction appearance="spaced" className="flex items-center">
           <Badge
             variant={
               connection.enabled && !connection.requiresReconnect
@@ -780,7 +781,7 @@ function AgreementCard({
           />
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent appearance="stacked" className="flex flex-col">
         {connection.requiresReconnect && !reconnecting ? (
           <Alert>
             <AlertTitle>Organisationens adgangsnøgler mangler</AlertTitle>
@@ -820,7 +821,7 @@ function AgreementCard({
         )}
       </CardContent>
       {(!editor || connection.requiresReconnect) && !reconnecting ? (
-        <CardFooter className="flex-wrap justify-end gap-3">
+        <CardFooter appearance="spaced" className="flex-wrap justify-end">
           <AlertDialog>
             <AlertDialogTrigger
               render={

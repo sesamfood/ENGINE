@@ -225,7 +225,7 @@ function OrderList({
 
   if (!results.length) {
     return (
-      <Empty className="min-h-56 border-0">
+      <Empty appearance="borderless" className="min-h-56">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PackageCheckIcon aria-hidden="true" />
@@ -260,7 +260,8 @@ function OrderList({
                 key={order.id}
                 tabIndex={0}
                 role="button"
-                className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                appearance="order"
+                className="cursor-pointer"
                 aria-label={`Åbn Wolt-ordre ${order.displayNumber}`}
                 onClick={() => onOpen(order)}
                 onKeyDown={(event) => {
@@ -270,7 +271,7 @@ function OrderList({
                   }
                 }}
               >
-                <TableCell className="font-medium">{order.displayNumber}</TableCell>
+                <TableCell appearance="label">{order.displayNumber}</TableCell>
                 <TableCell>{formatWoltDateTime(order.occurredAt)}</TableCell>
                 <TableCell>{order.locationName}</TableCell>
                 <TableCell><OrderStatus order={order} /></TableCell>
@@ -353,7 +354,7 @@ function WoltOrdersContent() {
   );
 
   if (!access) {
-    return <Skeleton className="h-[32rem] w-full" />;
+    return <Skeleton className="h-128 w-full" />;
   }
 
   if (!canView) {
@@ -393,7 +394,7 @@ function WoltOrdersContent() {
         <Alert>
           <CircleAlertIcon aria-hidden="true" />
           <AlertTitle>Nogle Wolt-data kan være ufuldstændige</AlertTitle>
-          <AlertDescription className="space-y-1">
+          <AlertDescription appearance="stacked">
             {sourceHealth.disconnectedLocationNames.length ? (
               <p>Ikke forbundet: {locationNames(sourceHealth.disconnectedLocationNames)}.</p>
             ) : null}
@@ -412,7 +413,7 @@ function WoltOrdersContent() {
       ) : null}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle appearance="inline" className="flex items-center">
             <ListFilterIcon aria-hidden="true" />
             Filtrér Wolt-ordrer
           </CardTitle>
@@ -421,7 +422,7 @@ function WoltOrdersContent() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <FieldGroup appearance="standard" className="grid sm:grid-cols-2 xl:grid-cols-5">
             <Field>
               <FieldLabel htmlFor="wolt-from-date">Fra dato</FieldLabel>
               <div className="relative">
@@ -431,7 +432,8 @@ function WoltOrdersContent() {
                   type="date"
                   value={fromDate}
                   onChange={(event) => setFromDate(event.target.value)}
-                  className="h-11 pl-10"
+                  appearance="search"
+                  className="h-11"
                 />
               </div>
             </Field>
@@ -444,7 +446,8 @@ function WoltOrdersContent() {
                   type="date"
                   value={toDate}
                   onChange={(event) => setToDate(event.target.value)}
-                  className="h-11 pl-10"
+                  appearance="search"
+                  className="h-11"
                 />
               </div>
             </Field>
@@ -500,7 +503,8 @@ function WoltOrdersContent() {
                   value={displayNumber}
                   onChange={(event) => setDisplayNumber(event.target.value)}
                   placeholder="Søg på ordrenummer"
-                  className="h-11 pl-10"
+                  appearance="search"
+                  className="h-11"
                   inputMode="search"
                 />
               </div>
@@ -541,7 +545,7 @@ function WoltOrdersContent() {
               <Skeleton className="h-48 w-full" />
             </div>
           ) : locations.length === 0 ? (
-            <Empty className="min-h-56 border-0">
+            <Empty appearance="borderless" className="min-h-56">
               <EmptyHeader>
                 <EmptyMedia variant="icon"><MapPinIcon aria-hidden="true" /></EmptyMedia>
                 <EmptyTitle>Ingen tilgængelige lokationer</EmptyTitle>
@@ -569,7 +573,7 @@ function WoltOrdersContent() {
 
 export function WoltOrdersPage() {
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-5 pb-8">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-5 pb-8">
       <header className="flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">Wolt</p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Wolt-ordrer</h1>

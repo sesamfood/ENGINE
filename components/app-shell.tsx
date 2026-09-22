@@ -672,7 +672,7 @@ function NavigationList() {
     <SidebarGroup>
       <SidebarGroupContent>
         <nav aria-label="Primær navigation">
-          <SidebarMenu className="gap-2">
+          <SidebarMenu appearance="spaced">
             {navigation.map((item) => {
               const Icon = navigationIcons[item.id];
               const active =
@@ -794,7 +794,8 @@ function ProfileMenu({
               size="lg"
               isActive={accountPageActive}
               aria-label="Åbn profilmenu"
-              className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:p-1!"
+              appearance="profile"
+              className="group-data-[collapsible=icon]:size-12!"
             />
           )
         }
@@ -828,7 +829,7 @@ function ProfileMenu({
         className="w-(--anchor-width) min-w-56"
       >
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="p-2">
+          <DropdownMenuLabel appearance="inset">
             <div className="flex items-center gap-3">
               <AccountAvatar
                 imageUrl={user?.image ?? undefined}
@@ -1018,7 +1019,7 @@ function SidebarAccount({
   const access = useAccess();
   const kioskModeControl = <KioskModeControl />;
   const accountMenu = (
-    <SidebarMenu className="gap-2">
+    <SidebarMenu appearance="spaced">
       <SidebarMenuItem>
         <FeedbackDialog permissions={access?.permissions} />
       </SidebarMenuItem>
@@ -1111,7 +1112,7 @@ function OrganizationBoundary({
       <main className="grid min-h-screen place-items-center p-6">
         <Alert variant="destructive" className="max-w-md">
           <AlertTitle>Siden kunne ikke indlæses</AlertTitle>
-          <AlertDescription className="flex flex-col items-start gap-3">
+          <AlertDescription appearance="spaced" className="flex flex-col items-start">
             Genindlæs siden, og prøv igen.
             <Button
               type="button"

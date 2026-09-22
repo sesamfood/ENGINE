@@ -33,7 +33,7 @@ export function OwnCheckDetail({ templateId, locationId, dateKey }: {
   const backHref = `/own-checks?${new URLSearchParams({ locationId })}`;
 
   if (locations === undefined || (canAccess && location && (!result || !dateContext))) {
-    return <Skeleton className="h-[34rem] w-full" />;
+    return <Skeleton className="h-136 w-full" />;
   }
 
   const item = result?.items.find((item) => item.templateId === templateId);
@@ -48,7 +48,7 @@ export function OwnCheckDetail({ templateId, locationId, dateKey }: {
         {location ? <p className="text-sm text-muted-foreground">{location.name}</p> : null}
       </div>
       {!canAccess || !location || !result || !item ? (
-        <Empty className="min-h-72 border">
+        <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
             <EmptyMedia variant="icon"><ClipboardCheckIcon /></EmptyMedia>
             <EmptyTitle>Kontrollen er ikke tilgængelig</EmptyTitle>

@@ -47,16 +47,28 @@ function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+const alertDescriptionAppearance = cva("", {
+  variants: {
+    appearance: {
+      spaced: "gap-3",
+      stacked: "space-y-1",
+    },
+  },
+})
+
 function AlertDescription({
+  appearance,
   className,
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof alertDescriptionAppearance>) {
   return (
     <div
       data-slot="alert-description"
       className={cn(
         "text-sm text-balance text-muted-foreground md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
-        className
+        alertDescriptionAppearance({ appearance }),
+        className,
       )}
       {...props}
     />

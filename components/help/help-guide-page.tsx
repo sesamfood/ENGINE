@@ -144,7 +144,7 @@ export function HelpGuidePage({ href }: { href: string }) {
                 {section.steps.map((step, stepIndex) => (
                   <li
                     key={step}
-                    className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-3"
+                    className="grid grid-cols-(--grid-cols-icon-content) items-start gap-3"
                   >
                     <span
                       aria-hidden="true"
@@ -190,7 +190,7 @@ export function HelpGuidePage({ href }: { href: string }) {
           <Accordion multiple className="mt-4">
             {guide.troubleshooting.map((item) => (
               <AccordionItem key={item.question} value={item.question}>
-                <AccordionTrigger className="min-h-12 gap-4">
+                <AccordionTrigger appearance="spaced" className="min-h-12">
                   {item.question}
                 </AccordionTrigger>
                 <AccordionContent>

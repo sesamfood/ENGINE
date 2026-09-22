@@ -96,7 +96,7 @@ export function PrinterSettings({
           Gælder denne enhed. Etiketstørrelsen gemmes automatisk.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent appearance="stacked" className="flex flex-col">
         <Alert>
           <PrinterIcon />
           <AlertTitle>Brother Smooth Print</AlertTitle>

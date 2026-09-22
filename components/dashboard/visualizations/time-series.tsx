@@ -143,7 +143,10 @@ export function TimeSeriesVisualization({
         {!compact && result.series.length > 1 ? (
           <ChartLegend
             content={
-              <ChartLegendContent className="max-h-16 flex-wrap gap-x-3 gap-y-1 overflow-x-hidden overflow-y-auto pt-2 [&>div]:min-w-0 [&>div]:max-w-full [&>div]:wrap-anywhere" />
+              <ChartLegendContent
+                appearance="compact"
+                className="max-h-16 flex-wrap overflow-x-hidden overflow-y-auto [&>div]:min-w-0 [&>div]:max-w-full [&>div]:wrap-anywhere"
+              />
             }
           />
         ) : null}

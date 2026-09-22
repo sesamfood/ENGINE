@@ -35,6 +35,7 @@ function BreakdownAxis({ compact }: { compact: boolean }) {
           maxLines={1}
           textAnchor="end"
           verticalAnchor="middle"
+          // eslint-disable-next-line shadcn/no-inline-styles -- Recharts reads this style to measure and truncate tick text.
           style={{ fontSize: 11 }}
           className="fill-muted-foreground"
         >

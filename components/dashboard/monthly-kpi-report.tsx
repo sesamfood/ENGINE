@@ -72,7 +72,7 @@ function ReportCell({ cell, row, column, currency }: {
   }
   const status = cell.estimated ? "Estimat" : cell.status === "provisional" ? "Foreløbig" : cell.status === "approved" ? "Godkendt" : null;
   return (
-    <TableCell className="py-4 text-right tabular-nums">
+    <TableCell appearance="metric" className="text-right">
       <div className="flex items-center justify-end gap-1">
         <span className={cell.value === null ? "text-muted-foreground" : undefined}>{formatted}</span>
         {cell.reason || cell.source ? <HelpTooltip label={`${row.label}, ${column.label.toLowerCase()}`} content={
@@ -124,7 +124,7 @@ function AccountingApprovalDialog({ candidates, month, locationId, now, revision
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!saving) { setOpen(next); if (!next) setConfirming(false); } }}>
       <DialogTrigger render={<Button variant="outline" className="min-h-11" />}><CheckIcon data-icon="inline-start" />Godkend e-conomic</DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
+      <DialogContent className="max-h-(--spacing-dialog-dynamic) overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>Godkend beløb fra e-conomic</DialogTitle>
           <DialogDescription>{candidates[0]?.locationName}, {new Date(`${month}-01T12:00:00Z`).toLocaleDateString("da-DK", { month: "long", year: "numeric", timeZone: "UTC" })}. Kontrollér beløbene mod de afsluttede regnskabs- og budgetrapporter.</DialogDescription>
@@ -145,7 +145,7 @@ function AccountingApprovalDialog({ candidates, month, locationId, now, revision
                 {candidates.map((candidate) => {
                   const key = candidateKey(candidate);
                   return (
-                    <Field key={key} orientation="horizontal" className="items-start rounded-lg border p-3">
+                    <Field key={key} orientation="horizontal" appearance="panel" className="items-start">
                       <Checkbox id={`economic-approval-${key}`} className="mt-1" checked={selected.includes(key)} disabled={saving}
                         onCheckedChange={(checked) => setSelected((current) => checked ? [...current, key] : current.filter((value) => value !== key))} />
                       <FieldContent>
@@ -233,12 +233,12 @@ function ReportData({ state, month, locationId, locationName, now, timeZone, pen
         <p>{report.updatedAt === null ? "Ingen synkronisering registreret" : `Ældste synkronisering ${new Date(report.updatedAt).toLocaleString("da-DK", { dateStyle: "short", timeStyle: "short", timeZone })}`}</p>
       </div>
       <div className="overflow-hidden rounded-xl border bg-card" aria-busy={loading}>
-        <Table className="min-w-[56rem]">
+        <Table className="min-w-224">
           <TableCaption className="sr-only">Månedsrapport for {month}, {locationName}</TableCaption>
           <TableHeader><TableRow><TableHead className="min-w-48">KPI</TableHead>{columns.map((column) => <TableHead key={column.key} className="text-right">{column.label}</TableHead>)}</TableRow></TableHeader>
           <TableBody>{report.rows.map((row) => (
             <TableRow key={row.id}>
-              <TableHead scope="row" className="py-4 font-medium"><div className="flex items-center gap-1">{row.label}{explanations[row.id] ? <HelpTooltip label={row.label} content={explanations[row.id]} /> : null}</div></TableHead>
+              <TableHead scope="row" appearance="metric"><div className="flex items-center gap-1">{row.label}{explanations[row.id] ? <HelpTooltip label={row.label} content={explanations[row.id]} /> : null}</div></TableHead>
               {columns.map((column) => <ReportCell key={column.key} cell={row[column.key]} row={row} column={column} currency={report.currency} />)}
             </TableRow>
           ))}</TableBody>
@@ -279,13 +279,13 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AppPageHeader><div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Månedsrapport</h1>
         <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard" />}><ArrowLeftIcon data-icon="inline-start" />Dashboard</Button>
       </div></AppPageHeader>
       {context.locations.length === 0 ? (
-        <Empty className="min-h-64 border"><EmptyHeader><EmptyTitle>Ingen lokationer</EmptyTitle><EmptyDescription>Du har ingen lokationer, der kan vises i rapporten.</EmptyDescription></EmptyHeader></Empty>
+        <Empty appearance="outlined" className="min-h-64"><EmptyHeader><EmptyTitle>Ingen lokationer</EmptyTitle><EmptyDescription>Du har ingen lokationer, der kan vises i rapporten.</EmptyDescription></EmptyHeader></Empty>
       ) : (
         <>
           <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 lg:flex-row lg:items-end lg:justify-between">

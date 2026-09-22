@@ -41,7 +41,7 @@ function HeaderContent({
   onLocationChange: (value: string) => void;
 }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Varemodtagelse

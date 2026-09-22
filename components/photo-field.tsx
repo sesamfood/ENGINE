@@ -87,10 +87,8 @@ export function PhotoField({
           disabled={disabled}
           aria-label={`Skift billede: ${label}`}
           onClick={() => uploadInput.current?.click()}
-          className={cn(
-            "aspect-video h-auto w-full rounded-lg bg-contain bg-center bg-no-repeat p-0",
-            className,
-          )}
+          appearance="photo"
+          className={cn("aspect-video h-auto w-full", className)}
         />
       ) : (
         <Button
@@ -99,10 +97,8 @@ export function PhotoField({
           disabled={disabled}
           aria-label={`Vælg billede: ${label}`}
           onClick={() => uploadInput.current?.click()}
-          className={cn(
-            "aspect-video h-auto w-full flex-col gap-3 rounded-lg p-0",
-            className,
-          )}
+          appearance="photoPlaceholder"
+          className={cn("aspect-video h-auto w-full flex-col", className)}
         >
           <FileImageIcon className="size-8" aria-hidden="true" />
           <span>Vælg billede</span>

@@ -126,11 +126,11 @@ export function CustomMetricLibrary() {
           {metrics.map((metric) => (
             <Card key={metric.id} className="flex h-full flex-col">
               <CardHeader>
-                <CardTitle className="truncate">{metric.name}</CardTitle>
-                <CardDescription className="line-clamp-3">
+                <CardTitle appearance="truncate">{metric.name}</CardTitle>
+                <CardDescription appearance="summary">
                   {metric.description || metricSummary(metric.spec)}
                 </CardDescription>
-                <CardAction className="flex items-center gap-1">
+                <CardAction appearance="compact" className="flex items-center">
                   <Button type="button" variant="ghost" size="icon" aria-label={`Redigér ${metric.name}`} onClick={() => openEdit(metric)}>
                     <PencilIcon />
                   </Button>
@@ -146,7 +146,7 @@ export function CustomMetricLibrary() {
                   </Button>
                 </CardAction>
               </CardHeader>
-              <CardContent className="mt-auto flex flex-wrap items-center gap-2">
+              <CardContent appearance="dense" className="mt-auto flex flex-wrap items-center">
                 <Badge variant="secondary">{metric.spec.kind === "ratio" ? "Forhold" : "Enkeltmåling"}</Badge>
                 <Badge variant={metric.sensitive ? "outline" : "secondary"}>
                   {metric.sensitive ? "Følsom" : "Ikke følsom"}
@@ -161,7 +161,7 @@ export function CustomMetricLibrary() {
           ))}
         </div>
       ) : (
-        <Empty className="min-h-80 border">
+        <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon"><ChartNoAxesCombinedIcon /></EmptyMedia>
             <EmptyTitle>Ingen tilpassede målinger</EmptyTitle>
@@ -186,7 +186,7 @@ export function CustomMetricLibrary() {
       />
 
       <AlertDialog open={Boolean(deletingMetric && customMetricAvailable(deletingMetric.spec, integrations))} onOpenChange={(open) => { if (!open && !deleting) setDeletingMetric(null); }}>
-        <AlertDialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg">
+        <AlertDialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Slet tilpasset måling?</AlertDialogTitle>
             <AlertDialogDescription>

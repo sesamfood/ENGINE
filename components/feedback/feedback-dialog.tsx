@@ -290,7 +290,8 @@ export function FeedbackDialog({
               size="lg"
               aria-label="Send feedback"
               tooltip="Send feedback"
-              className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
+              appearance="icon"
+              className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
             />
           )
         }
@@ -303,7 +304,7 @@ export function FeedbackDialog({
         ) : null}
       </DialogTrigger>
 
-      <DialogContent className="grid max-h-[calc(100vh-2rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
+      <DialogContent className="grid max-h-(--spacing-viewport-inset) min-h-0 grid-rows-(--grid-rows-panel) overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Send feedback</DialogTitle>
           <DialogDescription>

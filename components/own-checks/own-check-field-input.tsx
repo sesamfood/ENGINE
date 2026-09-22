@@ -79,7 +79,7 @@ export function OwnCheckFieldInput({
           onValueChange={(next) =>
             onChange({ key: field.key, type: "choice", value: next })
           }
-          className="gap-3"
+          appearance="spaced"
         >
           {field.options.map((option, index) => (
             <label

@@ -52,7 +52,6 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { setEmployeeLocation, useEmployeeLocation } from "@/lib/employee-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { cn } from "@/lib/utils";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import {
   AlertTriangleIcon,
@@ -145,7 +144,7 @@ function ScheduleTab({
 
   if (!hasLocations) {
     return (
-      <Empty className="min-h-72 border">
+      <Empty appearance="outlined" className="min-h-72">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <CalendarDaysIcon />
@@ -216,19 +215,19 @@ function ScheduleTab({
             </Alert>
           ) : null}
           <div className="hidden rounded-xl border md:block">
-            <Table className="min-w-[980px] table-fixed">
+            <Table className="min-w-(--spacing-schedule) table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-52 bg-muted/30">
+                  <TableHead appearance="muted" className="w-52">
                     Medarbejder
                   </TableHead>
                   {week.dates.map((date) => (
                     <TableHead
                       key={date}
-                      className={cn(
-                        "border-l text-center",
-                        date === dateKey(now, timeZone) && "bg-primary/5",
-                      )}
+                      appearance={
+                        date === dateKey(now, timeZone) ? "currentDay" : "day"
+                      }
+                      className="text-center"
                     >
                       <span className="capitalize">
                         {formatDate(date, { weekday: "short" })}
@@ -247,7 +246,7 @@ function ScheduleTab({
                   );
                   return (
                     <TableRow key={employee.id}>
-                      <TableCell className="bg-card align-top">
+                      <TableCell appearance="surface" className="align-top">
                         <div className="flex items-center gap-3">
                           <EmployeeAvatar
                             name={employee.displayName}
@@ -268,10 +267,12 @@ function ScheduleTab({
                       {week.dates.map((date) => (
                         <TableCell
                           key={date}
-                          className={cn(
-                            "h-24 border-l p-2 align-top",
-                            date === dateKey(now, timeZone) && "bg-primary/5",
-                          )}
+                          appearance={
+                            date === dateKey(now, timeZone)
+                              ? "currentDay"
+                              : "day"
+                          }
+                          className="h-24 align-top"
                         >
                           <div className="flex flex-col gap-2">
                             {employee.shifts
@@ -310,9 +311,10 @@ function ScheduleTab({
                 <ToggleGroupItem
                   key={date}
                   value={date}
-                  className="h-12 min-w-0 flex-col gap-0 px-1"
+                  appearance="day"
+                  className="h-12 min-w-0 flex-col"
                 >
-                  <span className="text-[10px] capitalize">
+                  <span className="text-2xs capitalize">
                     {formatDate(date, { weekday: "short" }).slice(0, 2)}
                   </span>
                   <span>{formatDate(date, { day: "numeric" })}</span>
@@ -328,7 +330,7 @@ function ScheduleTab({
               );
               return (
                 <Card key={employee.id} size="sm">
-                  <CardContent className="flex gap-3">
+                  <CardContent appearance="compact" className="flex">
                     <EmployeeAvatar
                       name={employee.displayName}
                       imageUrl={employee.imageUrl}
@@ -393,7 +395,7 @@ function DirectoryTab({
   }, [search]);
   if (!locationId) {
     return (
-      <Empty className="min-h-64 border">
+      <Empty appearance="outlined" className="min-h-64">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <UsersRoundIcon />
@@ -476,7 +478,7 @@ function DirectoryTab({
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden text-muted-foreground sm:table-cell">
+                    <TableCell appearance="muted" className="hidden sm:table-cell">
                       {employee.locations
                         .map((location) => location.name)
                         .join(", ") || "Ingen lokation"}
@@ -511,7 +513,7 @@ function DirectoryTab({
           <div className="flex flex-col gap-2 sm:hidden">
             {results.map((employee) => (
               <Card key={employee.id} size="sm">
-                <CardContent className="flex items-start gap-3">
+                <CardContent appearance="compact" className="flex items-start">
                   <EmployeeAvatar
                     name={employee.displayName}
                     imageUrl={employee.imageUrl}
@@ -546,7 +548,7 @@ function DirectoryTab({
           </div>
         </>
       ) : (
-        <Empty className="min-h-64 border">
+        <Empty appearance="outlined" className="min-h-64">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <UsersRoundIcon />
@@ -681,7 +683,7 @@ export function EmployeeScheduling() {
   const lastSync = context.lastShiftSyncAt ?? context.lastEmployeeSyncAt;
   const stale = Boolean(lastSync && now - lastSync > 45 * 60 * 1_000);
   const header = (
-    <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,20rem)] sm:items-end">
+    <div className="grid gap-5 sm:grid-cols-(--grid-cols-page-header) sm:items-end">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Personale
@@ -732,7 +734,7 @@ export function EmployeeScheduling() {
     );
   }
   return (
-    <main className="mx-auto flex w-full max-w-[96rem] flex-col gap-6">
+    <main className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
       <AppPageHeader>{header}</AppPageHeader>
 
       {!integrations?.workfeed ? null : context.lastError ? (
@@ -783,12 +785,12 @@ export function EmployeeScheduling() {
         {showSectionTabs ? (
           <TabsList className="w-full" aria-label="Medarbejdersektioner">
             {showSchedule ? (
-              <TabsTrigger value="schedule" className="px-5">
+              <TabsTrigger value="schedule" appearance="comfortable">
                 Vagtplan
               </TabsTrigger>
             ) : null}
             {showDirectory ? (
-              <TabsTrigger value="directory" className="px-5">
+              <TabsTrigger value="directory" appearance="comfortable">
                 Medarbejdere
               </TabsTrigger>
             ) : null}
@@ -797,7 +799,7 @@ export function EmployeeScheduling() {
         {showSchedule ? (
           <TabsContent
             value="schedule"
-            className={showSectionTabs ? "pt-3" : undefined}
+            appearance={showSectionTabs ? "compact" : undefined}
           >
             <ScheduleTab
               locationId={activeLocationId}
@@ -810,7 +812,7 @@ export function EmployeeScheduling() {
         {showDirectory ? (
           <TabsContent
             value="directory"
-            className={showSectionTabs ? "pt-3" : undefined}
+            appearance={showSectionTabs ? "compact" : undefined}
           >
             <DirectoryTab
               key={`${organizationId}:${activeLocationId}`}

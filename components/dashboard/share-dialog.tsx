@@ -130,7 +130,7 @@ export function ShareDialog({
           Del
         </DialogTrigger>
       ) : null}
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-(--spacing-dialog-compact) overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Del dashboard</DialogTitle>
           <DialogDescription>

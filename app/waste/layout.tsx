@@ -4,7 +4,7 @@ import { WasteNavigation } from "@/components/waste/waste-navigation";
 
 export default function WasteLayout({ children }: { children: React.ReactNode }) {
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 pb-20">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-20">
       <OrganizationAuthGate>
         <WasteHeader>{children}</WasteHeader>
         <WasteNavigation />

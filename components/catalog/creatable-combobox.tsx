@@ -702,9 +702,12 @@ export function CreatableMultiCombobox({
                           value={groupSelectionValue(group.value)}
                           disabled={selectableGroupValues.length === 0}
                           className="min-h-10"
-                          style={{
-                            paddingInlineStart: `${0.375 + groupDepth}rem`,
-                          }}
+                          indented
+                          style={
+                            {
+                              "--item-indent": `${0.375 + groupDepth}rem`,
+                            } as React.CSSProperties
+                          }
                         >
                           <FolderIcon aria-hidden="true" />
                           <span
@@ -728,11 +731,12 @@ export function CreatableMultiCombobox({
                       value={option.value}
                       disabled={option.disabled}
                       className="min-h-10"
+                      indented={selectableGroups}
                       style={
                         selectableGroups
-                          ? {
-                              paddingInlineStart: `${1.875 + groupDepth}rem`,
-                            }
+                          ? ({
+                              "--item-indent": `${1.875 + groupDepth}rem`,
+                            } as React.CSSProperties)
                           : undefined
                       }
                     >

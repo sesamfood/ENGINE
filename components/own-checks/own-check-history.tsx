@@ -74,7 +74,7 @@ export function OwnCheckHistory({ record }: { record: RecordResult }) {
       <CardHeader>
         <CardTitle>Ændringshistorik</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent appearance="stacked" className="flex flex-col">
         {revisions.map((revision, index) => (
           <div
             key={revision.id}

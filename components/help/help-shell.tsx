@@ -70,7 +70,7 @@ export function HelpShell({ children }: { children: ReactNode }) {
       </a>
 
       <header className="sticky top-0 z-20 border-b bg-background">
-        <div className="mx-auto flex min-h-16 w-full max-w-[96rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-16 w-full max-w-(--container-page) items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link
             href="/help"
             className="flex min-h-11 items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -108,7 +108,7 @@ export function HelpShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[96rem] grid-cols-[minmax(0,1fr)] gap-x-8 px-4 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] lg:px-8">
+      <div className="mx-auto grid w-full max-w-(--container-page) grid-cols-1 gap-x-8 px-4 sm:px-6 lg:grid-cols-(--grid-cols-help) lg:px-8">
         <HelpNavigation
           topics={helpFeatures.map((feature) => {
             const Icon = feature.icon;

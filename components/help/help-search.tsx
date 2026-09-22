@@ -116,7 +116,8 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
           <Button
             variant="outline"
             size="lg"
-            className="min-h-11 w-full justify-start gap-3"
+            appearance="spaced"
+            className="min-h-11 w-full justify-start"
           />
         }
         aria-label="Søg i hjælpen"
@@ -129,7 +130,8 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
         </kbd>
       </DialogTrigger>
       <DialogContent
-        className="gap-0 overflow-hidden p-2 sm:max-w-xl [&_[data-slot=dialog-close]]:top-4 [&_[data-slot=dialog-close]]:right-3 [&_[data-slot=dialog-close]]:size-11"
+        appearance="search"
+        className="overflow-hidden sm:max-w-xl [&_[data-slot=dialog-close]]:top-4 [&_[data-slot=dialog-close]]:right-3 [&_[data-slot=dialog-close]]:size-11"
         initialFocus={inputRef}
       >
         <DialogHeader className="sr-only">
@@ -142,7 +144,8 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
           label="Søgeord"
           shouldFilter={false}
           loop
-          className="[&_[data-slot=command-input-wrapper]]:pr-12 [&_[data-slot=input-group]]:h-12"
+          appearance="search"
+          className="[&_[data-slot=input-group]]:h-12"
         >
           <CommandInput
             ref={inputRef}
@@ -152,7 +155,7 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
             aria-label="Søgeord"
             className="min-h-11"
           />
-          <CommandList label="Søgeresultater" className="max-h-[min(55dvh,24rem)]">
+          <CommandList label="Søgeresultater" className="max-h-(--spacing-help-search)">
             <CommandEmpty>
               Ingen resultater. Prøv et andet søgeord.
             </CommandEmpty>
@@ -171,7 +174,8 @@ export function HelpSearch({ documents }: { documents: HelpSearchDocument[] }) {
                         (result.section ? `#${result.section.id}` : ""),
                     );
                   }}
-                  className="min-h-11 cursor-pointer gap-3 py-2 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+                  appearance="search"
+                  className="min-h-11 cursor-pointer"
                 >
                   <FileTextIcon aria-hidden="true" />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">

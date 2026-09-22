@@ -434,7 +434,7 @@ export function LocationCountSetup({
           if (!isBusy) onOpenChange(next);
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-(--spacing-dialog) overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Produkter og Områder</DialogTitle>
             <DialogDescription>
@@ -458,7 +458,7 @@ export function LocationCountSetup({
               <TabsTrigger value="areas">Områder</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="products" className="pt-4">
+            <TabsContent value="products" appearance="standard">
               <FieldGroup>
                 <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 flex-col gap-1">
@@ -520,7 +520,7 @@ export function LocationCountSetup({
                     ))}
                   </div>
                 ) : products.length === 0 ? (
-                  <Empty className="min-h-48 border">
+                  <Empty appearance="outlined" className="min-h-48">
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
                         <LayoutListIcon />
@@ -532,7 +532,7 @@ export function LocationCountSetup({
                     </EmptyHeader>
                   </Empty>
                 ) : filteredProducts.length === 0 ? (
-                  <Empty className="min-h-40 border">
+                  <Empty appearance="outlined" className="min-h-40">
                     <EmptyHeader>
                       <EmptyTitle>Ingen Produkter fundet</EmptyTitle>
                       <EmptyDescription>
@@ -542,7 +542,7 @@ export function LocationCountSetup({
                   </Empty>
                 ) : (
                   <div className="max-h-80 overflow-y-auto rounded-lg border p-2">
-                    <FieldGroup className="gap-1">
+                    <FieldGroup appearance="tight">
                       {filteredProducts.map((product) => {
                         const isIngredient = ingredientProductIds.includes(
                           product.id,
@@ -556,7 +556,8 @@ export function LocationCountSetup({
                             key={product.id}
                             orientation="horizontal"
                             data-disabled={isIngredient}
-                            className="min-h-11 rounded-md px-2 py-1 hover:bg-muted/50"
+                            appearance="option"
+                            className="min-h-11"
                           >
                             <Checkbox
                               id={inputId}
@@ -573,14 +574,15 @@ export function LocationCountSetup({
                             <FieldContent className="min-w-0">
                               <FieldLabel
                                 htmlFor={inputId}
-                                className="min-w-0 font-normal"
+                                appearance="regular"
+                                className="min-w-0"
                               >
                                 <span className="truncate">{product.name}</span>
                                 {isIngredient ? (
                                   <Badge variant="outline">Ingrediens</Badge>
                                 ) : null}
                               </FieldLabel>
-                              <FieldDescription className="truncate">
+                              <FieldDescription appearance="truncate">
                                 {product.categoryPath}
                               </FieldDescription>
                             </FieldContent>
@@ -593,7 +595,7 @@ export function LocationCountSetup({
               </FieldGroup>
             </TabsContent>
 
-            <TabsContent value="areas" className="pt-4">
+            <TabsContent value="areas" appearance="standard">
               <FieldGroup>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <div className="flex flex-col gap-1">
@@ -620,7 +622,7 @@ export function LocationCountSetup({
                     ))}
                   </div>
                 ) : areas.length === 0 ? (
-                  <Empty className="min-h-52 border">
+                  <Empty appearance="outlined" className="min-h-52">
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
                         <MapIcon />
@@ -642,7 +644,7 @@ export function LocationCountSetup({
                     </EmptyContent>
                   </Empty>
                 ) : (
-                  <FieldGroup className="gap-2">
+                  <FieldGroup appearance="dense">
                     {areas.map((area) => (
                       <div
                         key={area.id}
@@ -750,7 +752,7 @@ export function LocationCountSetup({
           if (!next && !savingOrder) setOrderingArea(null);
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-(--spacing-dialog) overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Produkter og rækkefølge</DialogTitle>
             <DialogDescription>
@@ -770,7 +772,7 @@ export function LocationCountSetup({
               <FieldSet>
                 <FieldLegend variant="label">Produkter i Området</FieldLegend>
                 {effectiveProducts.length === 0 ? (
-                  <Empty className="min-h-36 border">
+                  <Empty appearance="outlined" className="min-h-36">
                     <EmptyHeader>
                       <EmptyTitle>Ingen Produkter tilgængelige</EmptyTitle>
                       <EmptyDescription>
@@ -780,7 +782,7 @@ export function LocationCountSetup({
                   </Empty>
                 ) : (
                   <div className="max-h-64 overflow-y-auto rounded-lg border p-2">
-                    <FieldGroup className="gap-1">
+                    <FieldGroup appearance="tight">
                       {effectiveProducts.map((product) => {
                         const checked = areaOrder.includes(product.id);
                         const inputId = `count-area-product-${orderingArea?.id}-${product.id}`;
@@ -791,7 +793,8 @@ export function LocationCountSetup({
                           <Field
                             key={product.id}
                             orientation="horizontal"
-                            className="min-h-11 rounded-md px-2 py-1 hover:bg-muted/50"
+                            appearance="option"
+                            className="min-h-11"
                           >
                             <Checkbox
                               id={inputId}
@@ -806,14 +809,15 @@ export function LocationCountSetup({
                             <FieldContent className="min-w-0">
                               <FieldLabel
                                 htmlFor={inputId}
-                                className="min-w-0 font-normal"
+                                appearance="regular"
+                                className="min-w-0"
                               >
                                 <span className="truncate">{product.name}</span>
                                 {isIngredient ? (
                                   <Badge variant="outline">Ingrediens</Badge>
                                 ) : null}
                               </FieldLabel>
-                              <FieldDescription className="truncate">
+                              <FieldDescription appearance="truncate">
                                 {product.categoryPath}
                               </FieldDescription>
                             </FieldContent>
@@ -832,7 +836,7 @@ export function LocationCountSetup({
                   rækkefølge.
                 </FieldDescription>
                 {areaOrder.length === 0 ? (
-                  <Empty className="min-h-32 border">
+                  <Empty appearance="outlined" className="min-h-32">
                     <EmptyHeader>
                       <EmptyTitle>Ingen Produkter i Området</EmptyTitle>
                       <EmptyDescription>

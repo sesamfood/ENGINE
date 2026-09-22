@@ -73,10 +73,10 @@ function ExpensesContent() {
         aria-label="Udgiftssektioner"
         className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
       >
-        <TabsTrigger value="new" className="min-w-32 px-4">
+        <TabsTrigger value="new" appearance="standard" className="min-w-32">
           Opret udgift
         </TabsTrigger>
-        <TabsTrigger value="history" className="min-w-32 px-4">
+        <TabsTrigger value="history" appearance="standard" className="min-w-32">
           Udgifter
         </TabsTrigger>
       </TabsList>
@@ -105,7 +105,7 @@ function ExpensesContent() {
           <ExpenseHistory organizationId={organizationId} />
           {navigation ? (
             <AppBottomBar>
-              <div className="mx-auto w-full max-w-[96rem]">{navigation}</div>
+              <div className="mx-auto w-full max-w-(--container-page)">{navigation}</div>
             </AppBottomBar>
           ) : null}
         </TabsContent>
@@ -117,7 +117,7 @@ function ExpensesContent() {
 export default function ExpensesPage() {
   const pathname = usePathname();
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 pb-[calc(9rem+env(safe-area-inset-bottom))] sm:pb-[calc(6rem+env(safe-area-inset-bottom))]">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4 pb-(--spacing-safe-actions-tall) sm:pb-(--spacing-safe-actions-compact)">
       <AppPageHeader>
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary">

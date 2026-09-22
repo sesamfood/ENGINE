@@ -217,7 +217,7 @@ function MemberLocationPicker({
               onChange={(event) => setReason(event.target.value)}
             />
           </Field>
-          <FieldSet className="gap-2">
+          <FieldSet appearance="dense">
             <FieldLegend variant="label">Lokationer</FieldLegend>
             <label className="flex min-h-11 items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
               <Checkbox

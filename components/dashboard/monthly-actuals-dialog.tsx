@@ -156,7 +156,7 @@ export function MonthlyActualsDialog({ month, locations, selectedLocationId }: {
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!saving) { if (next) setNow(Date.now()); setOpen(next); } }}>
       <DialogTrigger render={<Button variant="outline" className="min-h-11" />}><ClipboardCheckIcon data-icon="inline-start" />Godkend månedstal</DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
+      <DialogContent className="max-h-(--spacing-dialog-dynamic) overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>Vareforbrug og Waste</DialogTitle>
           <DialogDescription>Godkend manuelle beløb for {new Date(`${month}-01T12:00:00Z`).toLocaleDateString("da-DK", { month: "long", year: "numeric", timeZone: "UTC" })}. Godkendelser gemmes med kilde og revisionshistorik.</DialogDescription>

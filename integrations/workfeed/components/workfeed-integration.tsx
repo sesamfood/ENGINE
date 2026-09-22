@@ -155,7 +155,7 @@ function ConnectionCard({
           </Badge>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent appearance="stacked" className="flex flex-col">
         <FieldGroup className="grid md:grid-cols-2">
           <Field>
             <div className="flex items-center gap-1">
@@ -206,7 +206,7 @@ function ConnectionCard({
           </p>
         ) : null}
       </CardContent>
-      <CardFooter className="flex-wrap justify-end gap-3">
+      <CardFooter appearance="spaced" className="flex-wrap justify-end">
         {settings.connected ? (
           <AlertDialog>
             <AlertDialogTrigger
@@ -364,7 +364,7 @@ function LocationMappings() {
           </CardAction>
         </CardHeader>
         <CollapsibleContent>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent appearance="stacked" className="flex flex-col">
             <div className="flex justify-end">
               <Button
                 variant="outline"

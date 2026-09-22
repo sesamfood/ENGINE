@@ -345,7 +345,7 @@ export function FeedbackSettings() {
         </CardHeader>
         <CardContent>
           {settings.recent.length === 0 ? (
-            <Empty className="border-0">
+            <Empty appearance="borderless">
               <EmptyHeader>
                 <EmptyTitle>Ingen feedback endnu</EmptyTitle>
                 <EmptyDescription>

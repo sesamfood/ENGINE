@@ -402,7 +402,7 @@ export function WasteReport() {
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardContent className="grid gap-4 pt-4 sm:grid-cols-3">
+        <CardContent appearance="summary" className="grid sm:grid-cols-3">
           <Field>
             <FieldLabel htmlFor="waste-from">Fra</FieldLabel>
             <Input
@@ -466,7 +466,7 @@ export function WasteReport() {
       ) : null}
 
       <Card>
-        <CardHeader className="sm:grid-cols-[1fr_auto]">
+        <CardHeader className="sm:grid-cols-(--grid-cols-input-action)">
           <CardTitle>Oversigt</CardTitle>
           {canExport ? (
             <Button
@@ -528,7 +528,7 @@ export function WasteReport() {
       </Card>
 
       <Card>
-        <CardHeader className="sm:grid-cols-[1fr_auto]">
+        <CardHeader className="sm:grid-cols-(--grid-cols-input-action)">
           <CardTitle>Registreringer</CardTitle>
           {canExport ? (
             <Button
@@ -565,7 +565,8 @@ export function WasteReport() {
                       role="button"
                       tabIndex={0}
                       aria-label={`Åbn Waste-registrering for ${row.productName} på ${row.locationName}`}
-                      className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
+                      appearance="selectable"
+                      className="cursor-pointer"
                       onClick={() => setSelected(row)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {

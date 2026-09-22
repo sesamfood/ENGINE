@@ -247,9 +247,9 @@ function FormLoading() {
   return (
     <div className="flex flex-col gap-6">
       <Skeleton className="h-10 w-72" />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Skeleton className="h-[34rem] w-full" />
-        <Skeleton className="h-[34rem] w-full" />
+      <div className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)">
+        <Skeleton className="h-136 w-full" />
+        <Skeleton className="h-136 w-full" />
       </div>
     </div>
   );
@@ -986,7 +986,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           disabled={isSaving || !onlinePosSettingsReady}
         />
       ) : null}
-      <div className="grid gap-6 xl:items-start xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="grid gap-6 xl:items-start xl:grid-cols-(--grid-cols-product-details)">
         <Card>
           <CardHeader>
             <CardTitle>Produktdetaljer</CardTitle>
@@ -1080,8 +1080,12 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       <span
                         role="img"
                         aria-label="Forhåndsvisning af produktbillede"
-                        className="block min-h-56 w-full bg-muted bg-contain bg-center bg-no-repeat"
-                        style={{ backgroundImage: `url("${shownImage}")` }}
+                        className="block min-h-56 w-full bg-muted bg-contain bg-center bg-no-repeat bg-(image:--preview-image)"
+                        style={
+                          {
+                            "--preview-image": `url("${shownImage}")`,
+                          } as React.CSSProperties
+                        }
                       />
                     ) : (
                       <span className="flex min-h-56 w-full flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
@@ -1155,12 +1159,12 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 <RadioGroup
                   value={defaultRow?.key}
                   onValueChange={setDefaultUnit}
-                  className="gap-3"
+                  appearance="spaced"
                 >
                   {unitRows.map((row) => (
                     <div
                       key={row.key}
-                      className="grid gap-3 rounded-xl border p-3 md:grid-cols-[auto_minmax(0,1fr)_minmax(9rem,0.6fr)_auto] md:items-start"
+                      className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-recipe) md:items-start"
                     >
                       <Field
                         orientation="horizontal"
@@ -1258,7 +1262,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 <FieldLegend className="sr-only">Ingredienser</FieldLegend>
                 <FieldGroup>
                   {ingredientRows.length === 0 ? (
-                    <Empty className="block w-auto min-w-auto flex-initial border p-5 text-start text-sm text-wrap text-muted-foreground">
+                    <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
                       Produktet har endnu ingen ingredienser.
                     </Empty>
                   ) : null}
@@ -1300,12 +1304,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         productLabel="Ingrediensprodukt"
                         removeLabel="Fjern ingrediens"
                       >
-                        <div className="grid gap-3 md:col-span-full md:row-start-2 md:grid-cols-[minmax(12rem,0.45fr)_minmax(0,1fr)] md:items-start">
+                        <div className="grid gap-3 md:col-span-full md:row-start-2 md:grid-cols-(--grid-cols-product-settings) md:items-start">
                           <Field
                             orientation="horizontal"
+                            appearance="outline"
                             className={cn(
-                              "min-h-11 items-center justify-between rounded-lg border px-3",
-                              showRemovalMapping && "md:mt-[calc(1.375em+0.5rem)]",
+                              "min-h-11 items-center justify-between",
+                              showRemovalMapping &&
+                                "md:mt-(--spacing-field-label)",
                             )}
                           >
                             <FieldLabel htmlFor={`${row.key}-removable`}>
@@ -1391,7 +1397,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                 </FieldLegend>
                 <FieldGroup>
                   {addableIngredientRows.length === 0 ? (
-                    <Empty className="block w-auto min-w-auto flex-initial border p-5 text-start text-sm text-wrap text-muted-foreground">
+                    <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
                       Der er endnu ingen ingredienser, der kan tilføjes.
                     </Empty>
                   ) : null}
@@ -1493,7 +1499,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             <Button
               variant="outline"
               size="lg"
-              className="min-h-11 flex-1 px-4 sm:flex-none"
+              appearance="standard"
+              className="min-h-11 flex-1 sm:flex-none"
               disabled
             >
               Annullér
@@ -1512,11 +1519,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           )}
           <Button
             size="lg"
-            className="min-h-11 flex-1 px-5 sm:flex-none"
+            appearance="wide"
+            className="min-h-11 flex-1 sm:flex-none"
             disabled={
-              isSaving ||
-              options === undefined ||
-              !onlinePosSettingsReady
+              isSaving || options === undefined || !onlinePosSettingsReady
             }
             onClick={save}
           >

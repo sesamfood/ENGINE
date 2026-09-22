@@ -1,5 +1,6 @@
 "use client"
 
+import { cva, type VariantProps } from "class-variance-authority"
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
@@ -53,20 +54,30 @@ function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
 }
 
+const dropdownMenuLabelAppearance = cva("", {
+  variants: {
+    appearance: {
+      inset: "p-2",
+    },
+  },
+})
+
 function DropdownMenuLabel({
+  appearance,
   className,
   inset,
   ...props
 }: MenuPrimitive.GroupLabel.Props & {
   inset?: boolean
-}) {
+} & VariantProps<typeof dropdownMenuLabelAppearance>) {
   return (
     <MenuPrimitive.GroupLabel
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
         "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
-        className
+        dropdownMenuLabelAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
@@ -145,7 +156,17 @@ function DropdownMenuSubContent({
   )
 }
 
+const dropdownMenuCheckboxItemAppearance = cva("", {
+  variants: {
+    appearance: {
+      leadingIndicator:
+        "pr-1.5 pl-8 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:right-auto [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:left-2",
+    },
+  },
+})
+
 function DropdownMenuCheckboxItem({
+  appearance,
   className,
   children,
   checked,
@@ -153,14 +174,15 @@ function DropdownMenuCheckboxItem({
   ...props
 }: MenuPrimitive.CheckboxItem.Props & {
   inset?: boolean
-}) {
+} & VariantProps<typeof dropdownMenuCheckboxItemAppearance>) {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
         "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
+        dropdownMenuCheckboxItemAppearance({ appearance }),
+        className,
       )}
       checked={checked}
       {...props}
@@ -170,8 +192,7 @@ function DropdownMenuCheckboxItem({
         data-slot="dropdown-menu-checkbox-item-indicator"
       >
         <MenuPrimitive.CheckboxItemIndicator>
-          <CheckIcon
-          />
+          <CheckIcon />
         </MenuPrimitive.CheckboxItemIndicator>
       </span>
       {children}

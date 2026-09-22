@@ -116,7 +116,7 @@ export function HelpNavigation({ topics }: { topics: NavigationTopic[] }) {
   );
 
   return (
-    <aside className="sticky top-16 z-10 -mx-4 border-b bg-background px-4 py-2 lg:top-24 lg:mx-0 lg:mt-10 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto lg:border-0 lg:p-0">
+    <aside className="sticky top-16 z-10 -mx-4 border-b bg-background px-4 py-2 lg:top-24 lg:mx-0 lg:mt-10 lg:max-h-(--spacing-help-sidebar) lg:self-start lg:overflow-y-auto lg:border-0 lg:p-0">
       <div className="hidden lg:block">{navigation}</div>
       <Collapsible
         open={mobileOpen}
@@ -138,7 +138,7 @@ export function HelpNavigation({ topics }: { topics: NavigationTopic[] }) {
           </span>
           <span className="truncate">{currentTopic?.label ?? "Hjem"}</span>
         </CollapsibleTrigger>
-        <CollapsibleContent className="max-h-[calc(100dvh-9rem)] overflow-y-auto pb-2">
+        <CollapsibleContent appearance="inset" className="max-h-(--spacing-help-navigation) overflow-y-auto">
           {navigation}
         </CollapsibleContent>
       </Collapsible>

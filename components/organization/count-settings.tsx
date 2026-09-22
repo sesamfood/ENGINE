@@ -202,7 +202,7 @@ export function CountSettings() {
           />
         </div>
       </CardHeader>
-        <CardContent className="flex flex-col gap-6">
+        <CardContent appearance="spacious" className="flex flex-col">
           <FieldGroup>
             <SettingsSwitchField
               label="Tillad Count uden for Count-vinduet"
@@ -379,7 +379,7 @@ export function CountSettings() {
             lokation. Vælg blandt organisationens aktiverede salgskilder.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent appearance="stacked" className="flex flex-col">
           {!sourceSettings ? (
             <Skeleton className="h-36 w-full" />
           ) : sourceSettings.locations.length === 0 ? (

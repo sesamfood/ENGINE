@@ -178,16 +178,6 @@ function dashboardCollision(widgets: WidgetInstance[]): CollisionDetection {
   };
 }
 
-function positionStyle(widget: WidgetInstance) {
-  const span = widgetSizeSpans[widget.size];
-  return {
-    "--dashboard-column-start": (widget.position?.column ?? 0) + 1,
-    "--dashboard-column-span": span.columns,
-    "--dashboard-row-start": (widget.position?.row ?? 0) + 1,
-    "--dashboard-row-span": span.rows,
-  } as CSSProperties;
-}
-
 function comparisonTooltipLabel(scope: DashboardScope, result?: MetricResult | Error) {
   if (!result || result instanceof Error || result.series.length <= 1) return undefined;
   return scope.locationIds === null
@@ -200,9 +190,9 @@ function DragPreview({ widget, metricLabel }: { widget: WidgetInstance; metricLa
     ? metricRegistry[widget.metric.id]?.label ?? "Måling"
     : "Tilpasset måling");
   return (
-    <Card className="h-full border-primary/50 bg-card/95 shadow-xl ring-2 ring-primary/20">
+    <Card appearance="dragPreview" className="h-full">
       <CardHeader>
-        <CardTitle className="truncate text-base">{label}</CardTitle>
+        <CardTitle appearance="widget">{label}</CardTitle>
       </CardHeader>
     </Card>
   );
@@ -227,13 +217,15 @@ function GridSlot({
       ref={setNodeRef}
       aria-hidden="true"
       className={cn(
-        "dashboard-grid-slot rounded-xl border border-dashed border-border bg-muted/25 transition-[background-color,border-color,box-shadow] duration-150",
+        "dashboard-grid-slot rounded-xl border border-dashed border-border bg-muted/25 transition-selection duration-150",
         isOver && "border-primary bg-primary/10 ring-2 ring-primary/20",
       )}
-      style={{
-        "--dashboard-column-start": column + 1,
-        "--dashboard-row-start": row + 1,
-      } as CSSProperties}
+      style={
+        {
+          "--dashboard-column-start": column + 1,
+          "--dashboard-row-start": row + 1,
+        } as CSSProperties
+      }
     />
   );
 }
@@ -278,7 +270,14 @@ function DropFootprint({
       <div
         aria-hidden="true"
         className="dashboard-grid-drop-preview rounded-xl border-2 border-primary bg-primary/15 shadow-sm ring-2 ring-primary/25"
-        style={positionStyle({ ...widget, position })}
+        style={
+          {
+            "--dashboard-column-start": position.column + 1,
+            "--dashboard-column-span": widgetSizeSpans[widget.size].columns,
+            "--dashboard-row-start": position.row + 1,
+            "--dashboard-row-span": widgetSizeSpans[widget.size].rows,
+          } as CSSProperties
+        }
       />
     </div>
   );
@@ -328,13 +327,22 @@ function DraggableWidget({
         droppable.setNodeRef(node);
       }}
       data-dashboard-widget
-      style={positionStyle(widget)}
+      style={
+        {
+          "--dashboard-column-start": (widget.position?.column ?? 0) + 1,
+          "--dashboard-column-span": widgetSizeSpans[widget.size].columns,
+          "--dashboard-row-start": (widget.position?.row ?? 0) + 1,
+          "--dashboard-row-span": widgetSizeSpans[widget.size].rows,
+        } as CSSProperties
+      }
       className={cn(
-        "dashboard-grid-item min-w-0 rounded-xl transition-[opacity,box-shadow,background-color] duration-150",
+        "dashboard-grid-item min-w-0 rounded-xl transition-widget duration-150",
         sizeClasses[widget.size],
         editable && "touch-none cursor-grab active:cursor-grabbing",
         draggable.isDragging && "opacity-20",
-        droppable.isOver && !draggable.isDragging && "bg-primary/5 ring-2 ring-primary ring-offset-2 ring-offset-background",
+        droppable.isOver &&
+          !draggable.isDragging &&
+          "bg-primary/5 ring-2 ring-primary ring-offset-2 ring-offset-background",
       )}
       {...dragProps}
     >

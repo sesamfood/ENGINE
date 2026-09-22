@@ -57,8 +57,8 @@ export function HelpIndex() {
                   href={`/help/${feature.slug}/overblik`}
                   className="group block h-full rounded-xl outline-none transition-shadow hover:ring-2 hover:ring-primary/30 focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
-                  <Card className="h-full gap-4 py-5">
-                    <CardHeader className="gap-3">
+                  <Card appearance="help" className="h-full">
+                    <CardHeader appearance="spaced">
                       <div className="flex items-center justify-between gap-4">
                         <Icon
                           className="size-5 text-muted-foreground"
@@ -73,7 +73,7 @@ export function HelpIndex() {
                         <h3>{feature.label}</h3>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="flex flex-1 flex-col gap-4">
+                    <CardContent appearance="stacked" className="flex flex-1 flex-col">
                       <p className="text-sm leading-6 text-muted-foreground">
                         {feature.summary}
                       </p>

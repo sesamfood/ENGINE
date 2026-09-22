@@ -263,7 +263,7 @@ function ConnectionCard({
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle className="flex items-center gap-1">
+        <CardTitle appearance="compact" className="flex items-center">
           {settings.connected
             ? `${settings.name} · ${settings.companyId}`
             : "Ny masterforbindelse"}
@@ -282,7 +282,7 @@ function ConnectionCard({
           </Badge>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6">
+      <CardContent appearance="spacious" className="flex flex-col">
         {!settings.connected || editingConnection ? (
           <FieldGroup>
             <Field>
@@ -351,7 +351,7 @@ function ConnectionCard({
           </p>
         ) : null}
       </CardContent>
-      <CardFooter className="flex-wrap justify-end gap-3">
+      <CardFooter appearance="spaced" className="flex-wrap justify-end">
         {settings.connected ? (
           <AlertDialog>
             <AlertDialogTrigger
@@ -557,7 +557,7 @@ function StoredSalesSample() {
           </CardAction>
         ) : null}
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent appearance="relaxed" className="flex flex-col">
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -723,7 +723,7 @@ function ProductMappings({
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent appearance="stacked" className="flex flex-col">
         <FieldGroup>
           <Field className="max-w-sm">
             <FieldLabel htmlFor={categoryFilterId}>Kategori</FieldLabel>
@@ -783,14 +783,14 @@ function ProductMappings({
             <TableHeader>
               <TableRow>
                 <TableHead>Lokalt produkt</TableHead>
-                <TableHead className="w-[60%]">OnlinePOS-produkt</TableHead>
+                <TableHead className="w-3/5">OnlinePOS-produkt</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredProducts.map((product) => {
                 return (
                   <TableRow key={product.id}>
-                    <TableCell className="font-medium">
+                    <TableCell appearance="label">
                       {product.name}
                     </TableCell>
                     <TableCell>
@@ -956,7 +956,7 @@ function SalesList() {
           </Button>
         </CardAction>
       </CardHeader>
-        <CardContent className="flex flex-col gap-5">
+        <CardContent appearance="relaxed" className="flex flex-col">
           {!context.connected ? (
           <Alert>
             <CircleAlertIcon />
@@ -1146,10 +1146,11 @@ function SalesList() {
                 <TableBody>
                   {results.map((order) => (
                     <TableRow
-                    key={order.id}
-                    className="cursor-pointer [&>td]:py-3"
-                    onClick={() => setSelectedOrderId(order.id)}
-                  >
+                      key={order.id}
+                      appearance="spaced"
+                      className="cursor-pointer"
+                      onClick={() => setSelectedOrderId(order.id)}
+                    >
                       <TableCell>
                       {orderAtFormatter.format(order.occurredAt)}
                     </TableCell>
@@ -1234,7 +1235,7 @@ export function OnlinePosIntegration() {
   return (
     <div>
       {settings.enabled ? (
-        <Tabs value={tab} onValueChange={setTab} className="gap-5">
+        <Tabs value={tab} onValueChange={setTab} appearance="spaced">
           <TabsList
             aria-label="OnlinePOS-sektioner"
             className="w-full justify-start"

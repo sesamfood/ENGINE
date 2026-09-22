@@ -146,7 +146,7 @@ export function WoltCredentials({
           Gem organisationens egne Wolt-nøgler, før du forbinder lokationer.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent appearance="relaxed" className="flex flex-col">
         {!canManage ? (
           <Alert>
             <AlertTitle>

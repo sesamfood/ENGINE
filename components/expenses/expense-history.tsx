@@ -236,19 +236,19 @@ function ExpenseDetails({ expenseId }: { expenseId: Id<"expenses"> }) {
             <TableBody>
               <TableRow>
                 <TableCell>Beløb ekskl. moms</TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell appearance="numeric" className="text-right">
                   {formatExpenseAmount(expense.netAmount, expense.currency)}
                 </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Moms · {expense.vatRate} %</TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell appearance="numeric" className="text-right">
                   {formatExpenseAmount(expense.vatAmount, expense.currency)}
                 </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Beløb inkl. moms</TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">
+                <TableCell appearance="total" className="text-right">
                   {formatExpenseAmount(expense.grossAmount, expense.currency)}
                 </TableCell>
               </TableRow>
@@ -401,7 +401,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
       {loading ? (
         <Skeleton className="h-64 w-full" />
       ) : !location ? (
-        <Empty className="border">
+        <Empty appearance="outlined">
           <EmptyHeader>
             <EmptyTitle>Ingen lokation valgt</EmptyTitle>
             <EmptyDescription>
@@ -410,7 +410,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
           </EmptyHeader>
         </Empty>
       ) : results.length === 0 ? (
-        <Empty className="border">
+        <Empty appearance="outlined">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ReceiptTextIcon />
@@ -440,7 +440,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
               <TableBody>
                 {results.map((expense) => (
                   <TableRow key={expense._id}>
-                    <TableCell className="max-w-60 whitespace-normal break-words font-medium">
+                    <TableCell appearance="label" className="max-w-60 whitespace-normal break-words">
                       {expense.supplier}
                     </TableCell>
                     <TableCell>
@@ -451,7 +451,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                     <TableCell>
                       {expenseCategoryLabel(expense)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell appearance="numeric" className="text-right">
                       {formatExpenseAmount(
                         expense.grossAmount,
                         expense.currency,
@@ -491,7 +491,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
                       {expenseCategoryLabel(expense)}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="flex flex-col gap-3">
+                  <CardContent appearance="compact" className="flex flex-col">
                     <p className="font-semibold tabular-nums">
                       {formatExpenseAmount(
                         expense.grossAmount,
@@ -537,7 +537,7 @@ export function ExpenseHistory({ organizationId }: { organizationId: string }) {
           if (!open) setSelectedExpenseId(null);
         }}
       >
-        <DialogContent className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-2xl">
+        <DialogContent className="max-h-(--spacing-dialog-dynamic) grid-rows-(--grid-rows-panel) sm:max-w-2xl">
           {selectedExpenseId ? (
             <ExpenseDetails
               key={selectedExpenseId}

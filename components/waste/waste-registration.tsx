@@ -157,7 +157,8 @@ function WasteUndoControls({
         type="button"
         variant="destructive"
         size="lg"
-        className="fixed right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 h-12 px-3 shadow-sm sm:right-4 sm:px-4"
+        appearance="floating"
+        className="fixed right-3 bottom-(--spacing-safe-inset) z-20 h-12 sm:right-4"
         disabled={undoingIds.length > 0}
         onClick={() => {
           if (registrations.length === 1) {
@@ -192,12 +193,13 @@ function WasteUndoControls({
               Muligheden forsvinder efter 30 sekunder.
             </DialogDescription>
           </DialogHeader>
-          <FieldGroup className="max-h-[60vh] overflow-y-auto pr-1">
+          <FieldGroup appearance="scrollable" className="max-h-(--spacing-product-picker) overflow-y-auto">
             {[...registrations].reverse().map((registration) => (
               <Field
                 key={registration.id}
                 orientation="horizontal"
-                className="min-h-16 rounded-lg border p-3"
+                appearance="panel"
+                className="min-h-16"
               >
                 <FieldContent>
                   <FieldLabel>{registration.productName}</FieldLabel>
@@ -214,7 +216,8 @@ function WasteUndoControls({
                 <Button
                   type="button"
                   variant="destructive"
-                  className="h-11 shrink-0 px-4"
+                  appearance="standard"
+                  className="h-11 shrink-0"
                   disabled={undoingIds.includes(registration.id)}
                   onClick={() => void onUndo([registration])}
                 >
@@ -580,11 +583,11 @@ export function WasteRegistration() {
           className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
           aria-label="Produktkategorier"
         >
-          <TabsTrigger value="all" className="min-w-20 shrink-0 px-4">
+          <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">
             Alle
           </TabsTrigger>
           {categories.map(([id, name]) => (
-            <TabsTrigger key={id} value={id} className="min-w-28 shrink-0 px-4">
+            <TabsTrigger key={id} value={id} appearance="standard" className="min-w-28 shrink-0">
               {name}
             </TabsTrigger>
           ))}
@@ -620,10 +623,13 @@ export function WasteRegistration() {
               return (
                 <Card
                   key={product.id}
-                  className={cn(
-                    "relative isolate h-full gap-0 py-0 [--card-spacing:--spacing(3)] transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm lg:[--card-spacing:--spacing(4)]",
-                    recent?.startsWith(`${product.id}:`) && "ring-2 ring-primary",
-                  )}
+                  appearance="product"
+                  interaction="product"
+                  highlight={
+                    recent?.startsWith(`${product.id}:`) ? "recent" : undefined
+                  }
+                  spacing="responsive"
+                  className="relative isolate h-full"
                 >
                   <div className="relative">
                     <ProductCardMedia
@@ -637,12 +643,12 @@ export function WasteRegistration() {
                       }
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                     />
-                    <CardHeader className="py-3 lg:py-4">
+                    <CardHeader appearance="product">
                       <div className="flex min-w-0 items-baseline gap-2">
-                        <CardTitle className="min-w-0 flex-1 truncate">
+                        <CardTitle appearance="truncate" className="min-w-0 flex-1">
                           {product.name}
                         </CardTitle>
-                        <CardDescription className="max-w-[45%] shrink-0 truncate">
+                        <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
                           {product.categories
                             .map((category) => category.name)
                             .join(" · ")}
@@ -652,7 +658,8 @@ export function WasteRegistration() {
                     <DialogTrigger
                       type="button"
                       data-card-trigger
-                      className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                      appearance="card"
+                      className="absolute inset-0 cursor-pointer"
                       aria-label={`Registrér en anden mængde Waste for ${product.name}`}
                       onClick={() => openProduct(product)}
                     />
@@ -660,7 +667,8 @@ export function WasteRegistration() {
                       type="button"
                       variant="ghost"
                       size="icon-lg"
-                      className="absolute right-1 top-1 z-10 size-11 rounded-full bg-background/85"
+                      appearance="imageAction"
+                      className="absolute right-1 top-1 z-10 size-11"
                       aria-label={
                         config?.pinnedAt
                           ? `Fjern ${product.name} fra fastgjorte produkter`
@@ -676,7 +684,7 @@ export function WasteRegistration() {
                       />
                     </Button>
                   </div>
-                  <CardContent className="grid grid-cols-2 gap-2 pb-3 lg:pb-4">
+                  <CardContent appearance="productGrid" className="grid grid-cols-2">
                     {shortcuts.map((shortcut, index) => {
                       const unit = product.units.find(
                         (item) => item.id === shortcut.unitId,
@@ -686,11 +694,13 @@ export function WasteRegistration() {
                         <Button
                           key={`${shortcut.unitId}:${shortcut.quantity}`}
                           variant={index === 0 ? "default" : "outline"}
-                          className={cn(
-                            "h-12 min-w-0 px-2",
-                            recent === key && "ring-3 ring-ring/40",
-                          )}
-                          onClick={() => register(product, shortcut, "shortcut")}
+                          appearance={
+                            recent === key ? "recentQuantity" : "quantity"
+                          }
+                          className="h-12 min-w-0"
+                          onClick={() =>
+                            register(product, shortcut, "shortcut")
+                          }
                         >
                           {formatQuantity(shortcut.quantity)} {unit?.name}
                         </Button>
@@ -737,11 +747,11 @@ export function WasteRegistration() {
                 )}
               </div>
               {editingShortcuts && shortcutDrafts ? (
-                <FieldGroup className="gap-4">
+                <FieldGroup appearance="standard">
                   {shortcutDrafts.map((shortcut, index) => (
                     <div
                       key={index}
-                      className="grid grid-cols-[1fr_10rem] gap-3"
+                      className="grid grid-cols-(--grid-cols-delivery-product) gap-3"
                     >
                       <Field>
                         <FieldLabel htmlFor={`waste-shortcut-${index}`}>
@@ -842,7 +852,7 @@ export function WasteRegistration() {
                   </div>
                 </FieldGroup>
               ) : (
-                <div className="grid grid-cols-[1fr_10rem] gap-3">
+                <div className="grid grid-cols-(--grid-cols-delivery-product) gap-3">
                   <Field>
                     <FieldLabel htmlFor="waste-quantity">Mængde</FieldLabel>
                     <Input

@@ -159,7 +159,8 @@ export function AdministrationHeader() {
               <TabsTrigger
                 key={item.value}
                 value={item.value}
-                className="min-w-36 px-6"
+                appearance="wide"
+                className="min-w-36"
               >
                 {item.label}
               </TabsTrigger>
@@ -186,7 +187,8 @@ export function AdministrationHeader() {
               <TabsTrigger
                 key={item.value}
                 value={item.value}
-                className="min-w-36 px-6"
+                appearance="wide"
+                className="min-w-36"
               >
                 {item.label}
               </TabsTrigger>

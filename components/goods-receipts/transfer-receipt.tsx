@@ -484,7 +484,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
         </Link>
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
         <aside className="flex flex-col gap-5">
           {settings.transferDeliveryNotePhotoEnabled ? (
             <Card>
@@ -616,7 +616,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                   </Badge>
                 </CardAction>
               </CardHeader>
-              <CardContent className="flex flex-col gap-5">
+              <CardContent appearance="relaxed" className="flex flex-col">
                 <ul>
                   {transfer.items.map((item, index) => {
                     const quantity = parseQuantity(quantities[item.id] ?? "");
@@ -649,7 +649,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                     }));
                     return (
                       <Fragment key={item.id}>
-                        <li className="grid gap-4 py-4 xl:grid-cols-[minmax(12rem,1fr)_minmax(6rem,0.35fr)_minmax(6rem,0.3fr)_auto] xl:items-center">
+                        <li className="grid gap-4 py-4 xl:grid-cols-(--grid-cols-delivery-line) xl:items-center">
                           <div className="flex min-w-0 items-center gap-3">
                             {item.imageUrl ? (
                               <Image
@@ -676,7 +676,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                             <Field>
                               <FieldLabel
                                 htmlFor={`goods-receipt-unit-${item.id}`}
-                                className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                                appearance="eyebrow"
                               >
                                 Enhed
                               </FieldLabel>
@@ -712,7 +712,7 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                               </Select>
                             </Field>
                             <Field>
-                              <FieldTitle className="text-xs uppercase tracking-wide text-muted-foreground">
+                              <FieldTitle appearance="eyebrow">
                                 Sendt
                               </FieldTitle>
                               <span className="flex h-11 items-center tabular-nums">
@@ -869,11 +869,12 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
             </Card>
 
             <AppBottomBar>
-              <div className="mx-auto flex w-full max-w-[96rem] justify-end">
+              <div className="mx-auto flex w-full max-w-(--container-page) justify-end">
                 <Button
                   type="submit"
                   size="lg"
-                  className="min-h-11 w-full px-5 sm:w-auto"
+                  appearance="wide"
+                  className="min-h-11 w-full sm:w-auto"
                   disabled={submitting}
                 >
                   <CheckIcon data-icon="inline-start" />
@@ -937,7 +938,7 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
 
   if (!access) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
         <Skeleton className="h-80 w-full" />
         <div className="flex flex-col gap-5">
           <Skeleton className="h-36 w-full" />
@@ -963,7 +964,7 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
     (receipt?.kind === "pending" && products === undefined)
   ) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
         <Skeleton className="h-80 w-full" />
         <div className="flex flex-col gap-5">
           <Skeleton className="h-36 w-full" />
@@ -975,7 +976,7 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
 
   if (receipt === null) {
     return (
-      <Empty className="min-h-80 border">
+      <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PackageIcon />
@@ -1000,7 +1001,7 @@ export function TransferReceipt({ transferId }: { transferId: string }) {
 
   if (receipt.kind === "registered") {
     return (
-      <Empty className="min-h-80 border">
+      <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PackageCheckIcon />

@@ -37,7 +37,7 @@ export function LiveMetricContent({ widget, state, compact = false }: {
   const Visualization = visualizationRegistry[widget.visualization];
   if (!data.locations.length) return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <Empty className="min-h-full p-2">
+      <Empty appearance="compact" className="min-h-full">
         <EmptyHeader><EmptyTitle>Ingen lokationer valgt</EmptyTitle><EmptyDescription>Vælg en lokation for at se den aktuelle værdi.</EmptyDescription></EmptyHeader>
       </Empty>
     </div>

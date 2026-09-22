@@ -45,14 +45,17 @@ export function SortableListRow({
   return (
     <li
       ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 1 : undefined,
-      }}
+      style={
+        {
+          "--drag-transform": CSS.Transform.toString(transform),
+          "--drag-transition": transition,
+        } as React.CSSProperties
+      }
       className={cn(
-        "flex min-h-14 items-center gap-2 rounded-lg border bg-background p-1 transition-[box-shadow,border-color] duration-150",
-        isDragging && "opacity-30",
+        "flex min-h-14 items-center gap-2 rounded-lg border bg-background p-1 transition-card duration-150",
+        transform && "transform-(--drag-transform)",
+        transition && "transition-drag!",
+        isDragging && "z-1 opacity-30",
         isOver &&
           !isDragging &&
           "border-primary bg-primary/5 ring-2 ring-primary/20",

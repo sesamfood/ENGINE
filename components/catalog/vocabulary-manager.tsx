@@ -438,7 +438,8 @@ function VocabularyList<Item extends VocabularyItem>({
         </div>
         <Button
           size="lg"
-          className="min-h-11 px-4"
+          appearance="standard"
+          className="min-h-11"
           onClick={() => openEditor("new")}
         >
           <PlusIcon data-icon="inline-start" />
@@ -455,7 +456,7 @@ function VocabularyList<Item extends VocabularyItem>({
       ) : null}
 
       {items?.length === 0 ? (
-        <Empty className="min-h-72 border">
+        <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ShapesIcon />
@@ -466,7 +467,7 @@ function VocabularyList<Item extends VocabularyItem>({
             <EmptyDescription>{config.emptyDescription}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button className="min-h-11 px-4" onClick={() => openEditor("new")}>
+            <Button appearance="standard" className="min-h-11" onClick={() => openEditor("new")}>
               <PlusIcon data-icon="inline-start" />
               Ny {config.singular}
             </Button>
@@ -486,7 +487,7 @@ function VocabularyList<Item extends VocabularyItem>({
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
+                  <TableCell appearance="label">{item.name}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       {renderActions(item)}
