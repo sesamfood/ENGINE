@@ -30,6 +30,7 @@ import {
 import { OnlinePosLocationConnections } from "./online-pos-location-connections";
 import { OnlinePosStockSettings } from "./online-pos-stock-settings";
 import { OnlinePosOrderDetail } from "./online-pos-order-detail";
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -1235,15 +1236,42 @@ export function OnlinePosIntegration() {
   return (
     <div>
       {settings.enabled ? (
-        <Tabs value={tab} onValueChange={setTab} appearance="spaced">
-          <TabsList
-            aria-label="OnlinePOS-sektioner"
-            className="w-full justify-start"
-          >
-            <TabsTrigger value="connection">Indstillinger</TabsTrigger>
-            <TabsTrigger value="mappings">Produktkoblinger</TabsTrigger>
-            <TabsTrigger value="sales">Salg</TabsTrigger>
-          </TabsList>
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          className="mb-(--spacing-safe-actions-compact)"
+        >
+          <AppBottomBar>
+            <div className="mx-auto w-full max-w-(--container-page)">
+              <TabsList
+                variant="line"
+                aria-label="OnlinePOS-sektioner"
+                className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
+              >
+                <TabsTrigger
+                  value="connection"
+                  appearance="standard"
+                  className="min-w-32"
+                >
+                  Indstillinger
+                </TabsTrigger>
+                <TabsTrigger
+                  value="mappings"
+                  appearance="standard"
+                  className="min-w-36"
+                >
+                  Produktkoblinger
+                </TabsTrigger>
+                <TabsTrigger
+                  value="sales"
+                  appearance="standard"
+                  className="min-w-24"
+                >
+                  Salg
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </AppBottomBar>
           <TabsContent value="connection">
             <div className="flex flex-col gap-5">
               <MasterConnections settings={settings} />
