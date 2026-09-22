@@ -1186,7 +1186,7 @@ export function TransferHistory() {
           className={
             isEditing
               ? "max-h-(--spacing-small-viewport-inset) overflow-y-auto sm:max-w-5xl"
-              : "sm:max-w-2xl"
+              : "sm:max-w-4xl"
           }
         >
           <DialogHeader>
@@ -1267,6 +1267,10 @@ export function TransferHistory() {
                       {transferDetail.receiptStatus === "registered" ? (
                         <TableHead className="text-right">Modtaget</TableHead>
                       ) : null}
+                      <TableHead className="text-right">Temperatur</TableHead>
+                      <TableHead className="text-right">
+                        Maks. temperatur
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1279,22 +1283,13 @@ export function TransferHistory() {
                         measured !== null &&
                         maximum !== null &&
                         measured > maximum;
-                      return [
-                        <TableRow key={`${first.productId}-temperature`}>
-                          <TableCell
-                            colSpan={
-                              transferDetail.receiptStatus === "registered"
-                                ? 4
-                                : 3
-                            }
-                          >
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className="font-medium">
-                                {first.productName}
-                              </span>
+                      return group.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell appearance="label">
+                            <div className="flex items-center gap-2">
+                              {item.productName}
                               {hasDeviation ? (
-                                <Badge variant="outline" appearance="warning"
-                                >
+                                <Badge variant="outline" appearance="warning">
                                   <TriangleAlertIcon
                                     aria-hidden="true"
                                     data-icon="inline-start"
@@ -1306,20 +1301,25 @@ export function TransferHistory() {
                                 </Badge>
                               ) : null}
                             </div>
-                            <p
-                              className={cn(
-                                "text-sm text-muted-foreground",
-                                hasDeviation && "text-warning",
-                              )}
-                            >
-                              Temperatur:{" "}
+                          </TableCell>
+                          <TableCell>{item.unitName}</TableCell>
+                          <TableCell appearance="numeric" className="text-right">
+                            {item.quantity}
+                          </TableCell>
+                          {transferDetail.receiptStatus === "registered" ? (
+                            <TableCell appearance="numeric" className="text-right">
+                              {item.receivedQuantity ?? 0}
+                              {item.receivedUnitName &&
+                              item.receivedUnitName !== item.unitName
+                                ? ` ${item.receivedUnitName}`
+                                : null}
+                            </TableCell>
+                          ) : null}
+                          <TableCell appearance="numeric" className="text-right">
+                            <span className={cn(hasDeviation && "text-warning")}>
                               {measured === null
                                 ? "Ikke registreret"
-                                : `${formatTemperature(measured)} °C`}{" "}
-                              · Maks. temperatur:{" "}
-                              {maximum === null
-                                ? "Ikke angivet"
-                                : `${formatTemperature(maximum)} °C`}
+                                : `${formatTemperature(measured)} °C`}
                               {hasDeviation &&
                               measured !== null &&
                               maximum !== null ? (
@@ -1328,30 +1328,15 @@ export function TransferHistory() {
                                   °C, maksimum {formatTemperature(maximum)} °C.
                                 </span>
                               ) : null}
-                            </p>
+                            </span>
                           </TableCell>
-                        </TableRow>,
-                        ...group.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell appearance="label">
-                              {item.productName}
-                            </TableCell>
-                            <TableCell>{item.unitName}</TableCell>
-                            <TableCell appearance="numeric" className="text-right">
-                              {item.quantity}
-                            </TableCell>
-                            {transferDetail.receiptStatus === "registered" ? (
-                              <TableCell appearance="numeric" className="text-right">
-                                {item.receivedQuantity ?? 0}
-                                {item.receivedUnitName &&
-                                item.receivedUnitName !== item.unitName
-                                  ? ` ${item.receivedUnitName}`
-                                  : null}
-                              </TableCell>
-                            ) : null}
-                          </TableRow>
-                        )),
-                      ];
+                          <TableCell appearance="numeric" className="text-right">
+                            {maximum === null
+                              ? "Ikke angivet"
+                              : `${formatTemperature(maximum)} °C`}
+                          </TableCell>
+                        </TableRow>
+                      ));
                     })}
                   </TableBody>
                 </Table>
