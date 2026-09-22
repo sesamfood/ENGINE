@@ -1,0 +1,1796 @@
+[
+  {
+    "file": "login.png",
+    "sameSize": true,
+    "changed": 1000,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1441,
+      1000
+    ],
+    "after": [
+      1441,
+      1000
+    ]
+  },
+  {
+    "file": "signup.png",
+    "sameSize": true,
+    "changed": 1000,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1441,
+      1000
+    ],
+    "after": [
+      1441,
+      1000
+    ]
+  },
+  {
+    "file": "forgot-password.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1441,
+      1000
+    ],
+    "after": [
+      1441,
+      1000
+    ]
+  },
+  {
+    "file": "reset-password.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1441,
+      1000
+    ],
+    "after": [
+      1441,
+      1000
+    ]
+  },
+  {
+    "file": "verify-email.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1441,
+      1000
+    ],
+    "after": [
+      1441,
+      1000
+    ]
+  },
+  {
+    "file": "help.png",
+    "sameSize": true,
+    "changed": 480,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1426,
+      1442
+    ],
+    "after": [
+      1426,
+      1442
+    ]
+  },
+  {
+    "file": "help--administration--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1604
+    ],
+    "after": [
+      1426,
+      1604
+    ]
+  },
+  {
+    "file": "help--administration--lokationer.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1878
+    ],
+    "after": [
+      1426,
+      1878
+    ]
+  },
+  {
+    "file": "help--administration--produkter.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1907
+    ],
+    "after": [
+      1426,
+      1907
+    ]
+  },
+  {
+    "file": "help--administration--udseende-og-sidemenu.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1503
+    ],
+    "after": [
+      1426,
+      1503
+    ]
+  },
+  {
+    "file": "help--administration--api.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1752
+    ],
+    "after": [
+      1426,
+      1752
+    ]
+  },
+  {
+    "file": "help--adgang-og-profil--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1577
+    ],
+    "after": [
+      1426,
+      1577
+    ]
+  },
+  {
+    "file": "help--adgang-og-profil--brugere-og-roller.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      2428
+    ],
+    "after": [
+      1426,
+      2428
+    ]
+  },
+  {
+    "file": "help--adgang-og-profil--kiosk.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1723
+    ],
+    "after": [
+      1426,
+      1723
+    ]
+  },
+  {
+    "file": "help--adgang-og-profil--profil-og-login.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1579
+    ],
+    "after": [
+      1426,
+      1579
+    ]
+  },
+  {
+    "file": "help--integrationer--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1283
+    ],
+    "after": [
+      1426,
+      1283
+    ]
+  },
+  {
+    "file": "help--dashboard--overblik.png",
+    "sameSize": true,
+    "changed": 66,
+    "changedStrong": 0,
+    "maxDelta": 3,
+    "before": [
+      1426,
+      1520
+    ],
+    "after": [
+      1426,
+      1520
+    ]
+  },
+  {
+    "file": "help--dashboard--widgets.png",
+    "sameSize": true,
+    "changed": 66,
+    "changedStrong": 0,
+    "maxDelta": 2,
+    "before": [
+      1426,
+      2679
+    ],
+    "after": [
+      1426,
+      2679
+    ]
+  },
+  {
+    "file": "help--dashboard--datapunkter.png",
+    "sameSize": true,
+    "changed": 66,
+    "changedStrong": 0,
+    "maxDelta": 3,
+    "before": [
+      1426,
+      3132
+    ],
+    "after": [
+      1426,
+      3132
+    ]
+  },
+  {
+    "file": "help--dashboard--deling.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1679
+    ],
+    "after": [
+      1426,
+      1679
+    ]
+  },
+  {
+    "file": "help--medarbejdere--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1459
+    ],
+    "after": [
+      1426,
+      1459
+    ]
+  },
+  {
+    "file": "help--transfer--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1307
+    ],
+    "after": [
+      1426,
+      1307
+    ]
+  },
+  {
+    "file": "help--transfer--opret.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      2447
+    ],
+    "after": [
+      1426,
+      2447
+    ]
+  },
+  {
+    "file": "help--transfer--historik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1639
+    ],
+    "after": [
+      1426,
+      1639
+    ]
+  },
+  {
+    "file": "help--varemodtagelse--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1330
+    ],
+    "after": [
+      1426,
+      1330
+    ]
+  },
+  {
+    "file": "help--varemodtagelse--transfer.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      2118
+    ],
+    "after": [
+      1426,
+      2118
+    ]
+  },
+  {
+    "file": "help--varemodtagelse--manuel.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1459
+    ],
+    "after": [
+      1426,
+      1459
+    ]
+  },
+  {
+    "file": "help--count--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1338
+    ],
+    "after": [
+      1426,
+      1338
+    ]
+  },
+  {
+    "file": "help--count--udfoer.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      2956
+    ],
+    "after": [
+      1426,
+      2956
+    ]
+  },
+  {
+    "file": "help--count--lager-og-rapport.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1839
+    ],
+    "after": [
+      1426,
+      1839
+    ]
+  },
+  {
+    "file": "help--waste--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1424
+    ],
+    "after": [
+      1426,
+      1424
+    ]
+  },
+  {
+    "file": "help--waste--registrering.png",
+    "sameSize": true,
+    "changed": 66,
+    "changedStrong": 0,
+    "maxDelta": 2,
+    "before": [
+      1426,
+      2223
+    ],
+    "after": [
+      1426,
+      2223
+    ]
+  },
+  {
+    "file": "help--waste--daarlig-levering.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1883
+    ],
+    "after": [
+      1426,
+      1883
+    ]
+  },
+  {
+    "file": "help--waste--rapport.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1583
+    ],
+    "after": [
+      1426,
+      1583
+    ]
+  },
+  {
+    "file": "help--staff-food--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1307
+    ],
+    "after": [
+      1426,
+      1307
+    ]
+  },
+  {
+    "file": "help--staff-food--registrering.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      2626
+    ],
+    "after": [
+      1426,
+      2626
+    ]
+  },
+  {
+    "file": "help--egenkontrol--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1404
+    ],
+    "after": [
+      1426,
+      1404
+    ]
+  },
+  {
+    "file": "help--egenkontrol--udfoer.png",
+    "sameSize": true,
+    "changed": 64,
+    "changedStrong": 0,
+    "maxDelta": 2,
+    "before": [
+      1426,
+      2799
+    ],
+    "after": [
+      1426,
+      2799
+    ]
+  },
+  {
+    "file": "help--egenkontrol--opfoelgning.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1655
+    ],
+    "after": [
+      1426,
+      1655
+    ]
+  },
+  {
+    "file": "help--egenkontrol--dokumentation.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1456
+    ],
+    "after": [
+      1426,
+      1456
+    ]
+  },
+  {
+    "file": "help--bestilling--overblik.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      1338
+    ],
+    "after": [
+      1426,
+      1338
+    ]
+  },
+  {
+    "file": "help--bestilling--forslag.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1426,
+      2324
+    ],
+    "after": [
+      1426,
+      2324
+    ]
+  },
+  {
+    "file": "administration--appearance.png",
+    "sameSize": true,
+    "changed": 48,
+    "changedStrong": 2,
+    "maxDelta": 4,
+    "bounds": [
+      23,
+      121,
+      24,
+      517
+    ],
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--api.png",
+    "sameSize": true,
+    "changed": 27,
+    "changedStrong": 1,
+    "maxDelta": 4,
+    "bounds": [
+      24,
+      517,
+      24,
+      517
+    ],
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--categories.png",
+    "sameSize": true,
+    "changed": 48,
+    "changedStrong": 2,
+    "maxDelta": 4,
+    "bounds": [
+      23,
+      121,
+      24,
+      517
+    ],
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--count.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1524
+    ],
+    "after": [
+      1425,
+      1524
+    ]
+  },
+  {
+    "file": "administration--dashboard.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--date-labels.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1044
+    ],
+    "after": [
+      1425,
+      1044
+    ]
+  },
+  {
+    "file": "administration--expenses.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1217
+    ],
+    "after": [
+      1425,
+      1217
+    ]
+  },
+  {
+    "file": "administration--feedback.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1050
+    ],
+    "after": [
+      1425,
+      1050
+    ]
+  },
+  {
+    "file": "administration--goods-receipts.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--integrations.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--invoices.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--kiosk.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1408
+    ],
+    "after": [
+      1425,
+      1408
+    ]
+  },
+  {
+    "file": "administration--locations.png",
+    "sameSize": true,
+    "changed": 48,
+    "changedStrong": 2,
+    "maxDelta": 4,
+    "bounds": [
+      23,
+      121,
+      24,
+      517
+    ],
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--menus.png",
+    "sameSize": true,
+    "changed": 21,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--metrics.png",
+    "sameSize": true,
+    "changed": 14,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--ordering.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--own-checks.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1068
+    ],
+    "after": [
+      1425,
+      1068
+    ]
+  },
+  {
+    "file": "administration.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1282
+    ],
+    "after": [
+      1425,
+      1282
+    ]
+  },
+  {
+    "file": "administration--products--new.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1457,
+      1175
+    ],
+    "after": [
+      1457,
+      1175
+    ]
+  },
+  {
+    "file": "administration--products.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1683
+    ],
+    "after": [
+      1425,
+      1683
+    ]
+  },
+  {
+    "file": "administration--schedule.png",
+    "sameSize": true,
+    "changed": 7,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--sidebar.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1265
+    ],
+    "after": [
+      1425,
+      1265
+    ]
+  },
+  {
+    "file": "administration--staff-food.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--transfers.png",
+    "sameSize": true,
+    "changed": 34,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--units.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--users.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--users--roles.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      2790
+    ],
+    "after": [
+      1425,
+      2790
+    ]
+  },
+  {
+    "file": "administration--waste.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1474
+    ],
+    "after": [
+      1425,
+      1474
+    ]
+  },
+  {
+    "file": "administration--wolt-orders.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "count.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "dashboard--monthly.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "count--stock.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      6407
+    ],
+    "after": [
+      1425,
+      6407
+    ]
+  },
+  {
+    "file": "date-labels.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "employees--directory.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1851
+    ],
+    "after": [
+      1425,
+      1851
+    ]
+  },
+  {
+    "file": "expenses--history.png",
+    "sameSize": true,
+    "changed": 7,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "employees.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      4310
+    ],
+    "after": [
+      1425,
+      4310
+    ]
+  },
+  {
+    "file": "expenses.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "goods-receipts--manual.png",
+    "sameSize": true,
+    "changed": 478,
+    "changedStrong": 472,
+    "maxDelta": 224,
+    "bounds": [
+      391,
+      732,
+      447,
+      742
+    ],
+    "before": [
+      1425,
+      1001
+    ],
+    "after": [
+      1425,
+      1001
+    ]
+  },
+  {
+    "file": "goods-receipts.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "invoices.png",
+    "sameSize": true,
+    "changed": 364,
+    "changedStrong": 360,
+    "maxDelta": 224,
+    "bounds": [
+      403,
+      405,
+      444,
+      415
+    ],
+    "before": [
+      1425,
+      1037
+    ],
+    "after": [
+      1425,
+      1037
+    ]
+  },
+  {
+    "file": "invoices--history.png",
+    "sameSize": true,
+    "changed": 21,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "own-checks--documentation.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "ordering.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      7730
+    ],
+    "after": [
+      1425,
+      7730
+    ]
+  },
+  {
+    "file": "own-checks--overview.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1485
+    ],
+    "after": [
+      1425,
+      1485
+    ]
+  },
+  {
+    "file": "own-checks--guidance.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "profile.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "own-checks.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1701
+    ],
+    "after": [
+      1425,
+      1701
+    ]
+  },
+  {
+    "file": "transfers--history.png",
+    "sameSize": true,
+    "changed": 77,
+    "changedStrong": 0,
+    "maxDelta": 1,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "staff-food.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "transfers.png",
+    "sameSize": true,
+    "changed": 354,
+    "changedStrong": 351,
+    "maxDelta": 224,
+    "bounds": [
+      403,
+      674,
+      444,
+      684
+    ],
+    "before": [
+      1457,
+      1000
+    ],
+    "after": [
+      1457,
+      1000
+    ]
+  },
+  {
+    "file": "waste--bad-delivery.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1338
+    ],
+    "after": [
+      1425,
+      1338
+    ]
+  },
+  {
+    "file": "waste.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      6359
+    ],
+    "after": [
+      1425,
+      6359
+    ]
+  },
+  {
+    "file": "waste--report.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "wolt-orders.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "help--integrationer--onlinepos.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1487
+    ],
+    "after": [
+      1425,
+      1487
+    ]
+  },
+  {
+    "file": "help--integrationer--onlinepos--forbindelser.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1399
+    ],
+    "after": [
+      1425,
+      1399
+    ]
+  },
+  {
+    "file": "help--integrationer--onlinepos--salg.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1673
+    ],
+    "after": [
+      1425,
+      1673
+    ]
+  },
+  {
+    "file": "help--integrationer--onlinepos--produktkoblinger.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1535
+    ],
+    "after": [
+      1425,
+      1535
+    ]
+  },
+  {
+    "file": "help--integrationer--onlinepos--lager.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1735
+    ],
+    "after": [
+      1425,
+      1735
+    ]
+  },
+  {
+    "file": "help--integrationer--onlinepos--vedligeholdelse.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      1299
+    ],
+    "after": [
+      1425,
+      1299
+    ]
+  },
+  {
+    "file": "help--integrationer--workfeed.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      2585
+    ],
+    "after": [
+      1425,
+      2585
+    ]
+  },
+  {
+    "file": "help--integrationer--wolt--ordrer.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "help--integrationer--wolt.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "help--medarbejdere--vagtplan.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1425,
+      2276
+    ],
+    "after": [
+      1425,
+      2276
+    ]
+  },
+  {
+    "file": "not-found.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--integrations--workfeed.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--integrations--onlinepos.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--integrations--economic.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "product--detail.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1457,
+      1295
+    ],
+    "after": [
+      1457,
+      1295
+    ]
+  },
+  {
+    "file": "share--visual-check-unavailable.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "administration--integrations--wolt.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "check--detail.png",
+    "sameSize": true,
+    "changed": 642,
+    "changedStrong": 614,
+    "maxDelta": 224,
+    "bounds": [
+      403,
+      349,
+      445,
+      447
+    ],
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "receipt--detail.png",
+    "sameSize": true,
+    "changed": 0,
+    "changedStrong": 0,
+    "maxDelta": 0,
+    "before": [
+      1440,
+      1000
+    ],
+    "after": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "file": "dashboard--detail.png",
+    "sameSize": true,
+    "changed": 483,
+    "changedStrong": 174,
+    "maxDelta": 12,
+    "bounds": [
+      614,
+      793,
+      807,
+      793
+    ],
+    "before": [
+      1425,
+      1122
+    ],
+    "after": [
+      1425,
+      1122
+    ]
+  }
+]

@@ -1,0 +1,748 @@
+{
+  "pairs": 116,
+  "baseline": "bbd84e2",
+  "viewport": [
+    1440,
+    1000
+  ],
+  "publicPages": 5,
+  "publicHelpPages": 37,
+  "authenticatedPages": 74,
+  "exactPixels": 92,
+  "minorRasterDifferences": 19,
+  "otherPixelDifferences": [
+    "goods-receipts--manual.png",
+    "invoices.png",
+    "transfers.png",
+    "check--detail.png",
+    "dashboard--detail.png"
+  ],
+  "unreachable": [
+    {
+      "route": "/onboarding",
+      "reason": "Existing organization member redirects to /transfers."
+    },
+    {
+      "route": "/invitation/[invitationId]",
+      "reason": "No pending invitations. Invalid link redirects this signed-in account to /transfers."
+    }
+  ],
+  "limited": [
+    {
+      "route": "/share/[token]",
+      "reason": "No sharing links exist. Captured unavailable-link state."
+    },
+    {
+      "route": "/administration/appearance",
+      "reason": "Existing next/image logo hostname error in both versions."
+    },
+    {
+      "route": "/waste/report",
+      "reason": "Existing Convex multiple paginated queries error in both versions."
+    }
+  ],
+  "redirects": [
+    "/",
+    "/dashboard",
+    "/help/[feature]"
+  ],
+  "pages": [
+    {
+      "route": "/administration",
+      "before": "before/administration.png",
+      "after": "after/administration.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/api",
+      "before": "before/administration--api.png",
+      "after": "after/administration--api.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/appearance",
+      "before": "before/administration--appearance.png",
+      "after": "after/administration--appearance.png",
+      "state": "Existing error state"
+    },
+    {
+      "route": "/administration/categories",
+      "before": "before/administration--categories.png",
+      "after": "after/administration--categories.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/count",
+      "before": "before/administration--count.png",
+      "after": "after/administration--count.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/dashboard",
+      "before": "before/administration--dashboard.png",
+      "after": "after/administration--dashboard.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/date-labels",
+      "before": "before/administration--date-labels.png",
+      "after": "after/administration--date-labels.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/expenses",
+      "before": "before/administration--expenses.png",
+      "after": "after/administration--expenses.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/feedback",
+      "before": "before/administration--feedback.png",
+      "after": "after/administration--feedback.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/goods-receipts",
+      "before": "before/administration--goods-receipts.png",
+      "after": "after/administration--goods-receipts.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/integrations",
+      "before": "before/administration--integrations.png",
+      "after": "after/administration--integrations.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/integrations/economic",
+      "before": "before/administration--integrations--economic.png",
+      "after": "after/administration--integrations--economic.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/integrations/onlinepos",
+      "before": "before/administration--integrations--onlinepos.png",
+      "after": "after/administration--integrations--onlinepos.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/integrations/wolt",
+      "before": "before/administration--integrations--wolt.png",
+      "after": "after/administration--integrations--wolt.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/integrations/workfeed",
+      "before": "before/administration--integrations--workfeed.png",
+      "after": "after/administration--integrations--workfeed.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/invoices",
+      "before": "before/administration--invoices.png",
+      "after": "after/administration--invoices.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/kiosk",
+      "before": "before/administration--kiosk.png",
+      "after": "after/administration--kiosk.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/locations",
+      "before": "before/administration--locations.png",
+      "after": "after/administration--locations.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/menus",
+      "before": "before/administration--menus.png",
+      "after": "after/administration--menus.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/metrics",
+      "before": "before/administration--metrics.png",
+      "after": "after/administration--metrics.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/ordering",
+      "before": "before/administration--ordering.png",
+      "after": "after/administration--ordering.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/own-checks",
+      "before": "before/administration--own-checks.png",
+      "after": "after/administration--own-checks.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/products",
+      "before": "before/administration--products.png",
+      "after": "after/administration--products.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/products/[productId]",
+      "before": "before/product--detail.png",
+      "after": "after/product--detail.png",
+      "state": "One existing record"
+    },
+    {
+      "route": "/administration/products/new",
+      "before": "before/administration--products--new.png",
+      "after": "after/administration--products--new.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/schedule",
+      "before": "before/administration--schedule.png",
+      "after": "after/administration--schedule.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/sidebar",
+      "before": "before/administration--sidebar.png",
+      "after": "after/administration--sidebar.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/staff-food",
+      "before": "before/administration--staff-food.png",
+      "after": "after/administration--staff-food.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/transfers",
+      "before": "before/administration--transfers.png",
+      "after": "after/administration--transfers.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/units",
+      "before": "before/administration--units.png",
+      "after": "after/administration--units.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/users",
+      "before": "before/administration--users.png",
+      "after": "after/administration--users.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/users/roles",
+      "before": "before/administration--users--roles.png",
+      "after": "after/administration--users--roles.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/waste",
+      "before": "before/administration--waste.png",
+      "after": "after/administration--waste.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/administration/wolt-orders",
+      "before": "before/administration--wolt-orders.png",
+      "after": "after/administration--wolt-orders.png",
+      "state": "Feature unavailable for this account"
+    },
+    {
+      "route": "/count",
+      "before": "before/count.png",
+      "after": "after/count.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/count/stock",
+      "before": "before/count--stock.png",
+      "after": "after/count--stock.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/dashboard/[dashboardId]",
+      "before": "before/dashboard--detail.png",
+      "after": "after/dashboard--detail.png",
+      "state": "One existing record"
+    },
+    {
+      "route": "/dashboard/monthly",
+      "before": "before/dashboard--monthly.png",
+      "after": "after/dashboard--monthly.png",
+      "state": "Existing error state"
+    },
+    {
+      "route": "/date-labels",
+      "before": "before/date-labels.png",
+      "after": "after/date-labels.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/employees",
+      "before": "before/employees.png",
+      "after": "after/employees.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/employees/directory",
+      "before": "before/employees--directory.png",
+      "after": "after/employees--directory.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/expenses",
+      "before": "before/expenses.png",
+      "after": "after/expenses.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/expenses/history",
+      "before": "before/expenses--history.png",
+      "after": "after/expenses--history.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/forgot-password",
+      "before": "before/forgot-password.png",
+      "after": "after/forgot-password.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/goods-receipts",
+      "before": "before/goods-receipts.png",
+      "after": "after/goods-receipts.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/goods-receipts/[transferId]",
+      "before": "before/receipt--detail.png",
+      "after": "after/receipt--detail.png",
+      "state": "Transfer already received"
+    },
+    {
+      "route": "/goods-receipts/manual",
+      "before": "before/goods-receipts--manual.png",
+      "after": "after/goods-receipts--manual.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help",
+      "before": "before/help.png",
+      "after": "after/help.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/adgang-og-profil/brugere-og-roller",
+      "before": "before/help--adgang-og-profil--brugere-og-roller.png",
+      "after": "after/help--adgang-og-profil--brugere-og-roller.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/adgang-og-profil/kiosk",
+      "before": "before/help--adgang-og-profil--kiosk.png",
+      "after": "after/help--adgang-og-profil--kiosk.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/adgang-og-profil/overblik",
+      "before": "before/help--adgang-og-profil--overblik.png",
+      "after": "after/help--adgang-og-profil--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/adgang-og-profil/profil-og-login",
+      "before": "before/help--adgang-og-profil--profil-og-login.png",
+      "after": "after/help--adgang-og-profil--profil-og-login.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/administration/api",
+      "before": "before/help--administration--api.png",
+      "after": "after/help--administration--api.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/administration/lokationer",
+      "before": "before/help--administration--lokationer.png",
+      "after": "after/help--administration--lokationer.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/administration/overblik",
+      "before": "before/help--administration--overblik.png",
+      "after": "after/help--administration--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/administration/produkter",
+      "before": "before/help--administration--produkter.png",
+      "after": "after/help--administration--produkter.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/administration/udseende-og-sidemenu",
+      "before": "before/help--administration--udseende-og-sidemenu.png",
+      "after": "after/help--administration--udseende-og-sidemenu.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/bestilling/forslag",
+      "before": "before/help--bestilling--forslag.png",
+      "after": "after/help--bestilling--forslag.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/bestilling/overblik",
+      "before": "before/help--bestilling--overblik.png",
+      "after": "after/help--bestilling--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/count/lager-og-rapport",
+      "before": "before/help--count--lager-og-rapport.png",
+      "after": "after/help--count--lager-og-rapport.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/count/overblik",
+      "before": "before/help--count--overblik.png",
+      "after": "after/help--count--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/count/udfoer",
+      "before": "before/help--count--udfoer.png",
+      "after": "after/help--count--udfoer.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/dashboard/datapunkter",
+      "before": "before/help--dashboard--datapunkter.png",
+      "after": "after/help--dashboard--datapunkter.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/dashboard/deling",
+      "before": "before/help--dashboard--deling.png",
+      "after": "after/help--dashboard--deling.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/dashboard/overblik",
+      "before": "before/help--dashboard--overblik.png",
+      "after": "after/help--dashboard--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/dashboard/widgets",
+      "before": "before/help--dashboard--widgets.png",
+      "after": "after/help--dashboard--widgets.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/egenkontrol/dokumentation",
+      "before": "before/help--egenkontrol--dokumentation.png",
+      "after": "after/help--egenkontrol--dokumentation.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/egenkontrol/opfoelgning",
+      "before": "before/help--egenkontrol--opfoelgning.png",
+      "after": "after/help--egenkontrol--opfoelgning.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/egenkontrol/overblik",
+      "before": "before/help--egenkontrol--overblik.png",
+      "after": "after/help--egenkontrol--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/egenkontrol/udfoer",
+      "before": "before/help--egenkontrol--udfoer.png",
+      "after": "after/help--egenkontrol--udfoer.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/onlinepos",
+      "before": "before/help--integrationer--onlinepos.png",
+      "after": "after/help--integrationer--onlinepos.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/onlinepos/forbindelser",
+      "before": "before/help--integrationer--onlinepos--forbindelser.png",
+      "after": "after/help--integrationer--onlinepos--forbindelser.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/onlinepos/lager",
+      "before": "before/help--integrationer--onlinepos--lager.png",
+      "after": "after/help--integrationer--onlinepos--lager.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/onlinepos/produktkoblinger",
+      "before": "before/help--integrationer--onlinepos--produktkoblinger.png",
+      "after": "after/help--integrationer--onlinepos--produktkoblinger.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/onlinepos/salg",
+      "before": "before/help--integrationer--onlinepos--salg.png",
+      "after": "after/help--integrationer--onlinepos--salg.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/onlinepos/vedligeholdelse",
+      "before": "before/help--integrationer--onlinepos--vedligeholdelse.png",
+      "after": "after/help--integrationer--onlinepos--vedligeholdelse.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/overblik",
+      "before": "before/help--integrationer--overblik.png",
+      "after": "after/help--integrationer--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/integrationer/wolt",
+      "before": "before/help--integrationer--wolt.png",
+      "after": "after/help--integrationer--wolt.png",
+      "state": "Feature unavailable for this account"
+    },
+    {
+      "route": "/help/integrationer/wolt/ordrer",
+      "before": "before/help--integrationer--wolt--ordrer.png",
+      "after": "after/help--integrationer--wolt--ordrer.png",
+      "state": "Feature unavailable for this account"
+    },
+    {
+      "route": "/help/integrationer/workfeed",
+      "before": "before/help--integrationer--workfeed.png",
+      "after": "after/help--integrationer--workfeed.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/medarbejdere/overblik",
+      "before": "before/help--medarbejdere--overblik.png",
+      "after": "after/help--medarbejdere--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/medarbejdere/vagtplan",
+      "before": "before/help--medarbejdere--vagtplan.png",
+      "after": "after/help--medarbejdere--vagtplan.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/staff-food/overblik",
+      "before": "before/help--staff-food--overblik.png",
+      "after": "after/help--staff-food--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/staff-food/registrering",
+      "before": "before/help--staff-food--registrering.png",
+      "after": "after/help--staff-food--registrering.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/transfer/historik",
+      "before": "before/help--transfer--historik.png",
+      "after": "after/help--transfer--historik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/transfer/opret",
+      "before": "before/help--transfer--opret.png",
+      "after": "after/help--transfer--opret.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/transfer/overblik",
+      "before": "before/help--transfer--overblik.png",
+      "after": "after/help--transfer--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/varemodtagelse/manuel",
+      "before": "before/help--varemodtagelse--manuel.png",
+      "after": "after/help--varemodtagelse--manuel.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/varemodtagelse/overblik",
+      "before": "before/help--varemodtagelse--overblik.png",
+      "after": "after/help--varemodtagelse--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/varemodtagelse/transfer",
+      "before": "before/help--varemodtagelse--transfer.png",
+      "after": "after/help--varemodtagelse--transfer.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/waste/daarlig-levering",
+      "before": "before/help--waste--daarlig-levering.png",
+      "after": "after/help--waste--daarlig-levering.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/waste/overblik",
+      "before": "before/help--waste--overblik.png",
+      "after": "after/help--waste--overblik.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/waste/rapport",
+      "before": "before/help--waste--rapport.png",
+      "after": "after/help--waste--rapport.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/help/waste/registrering",
+      "before": "before/help--waste--registrering.png",
+      "after": "after/help--waste--registrering.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/invoices",
+      "before": "before/invoices.png",
+      "after": "after/invoices.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/invoices/history",
+      "before": "before/invoices--history.png",
+      "after": "after/invoices--history.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/login",
+      "before": "before/login.png",
+      "after": "after/login.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/ordering",
+      "before": "before/ordering.png",
+      "after": "after/ordering.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/own-checks",
+      "before": "before/own-checks.png",
+      "after": "after/own-checks.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/own-checks/check/[templateId]",
+      "before": "before/check--detail.png",
+      "after": "after/check--detail.png",
+      "state": "One existing record"
+    },
+    {
+      "route": "/own-checks/documentation",
+      "before": "before/own-checks--documentation.png",
+      "after": "after/own-checks--documentation.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/own-checks/guidance",
+      "before": "before/own-checks--guidance.png",
+      "after": "after/own-checks--guidance.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/own-checks/overview",
+      "before": "before/own-checks--overview.png",
+      "after": "after/own-checks--overview.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/profile",
+      "before": "before/profile.png",
+      "after": "after/profile.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/reset-password",
+      "before": "before/reset-password.png",
+      "after": "after/reset-password.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/share/[token] \u2014 unavailable link",
+      "before": "before/share--visual-check-unavailable.png",
+      "after": "after/share--visual-check-unavailable.png",
+      "state": "No existing sharing link"
+    },
+    {
+      "route": "/signup",
+      "before": "before/signup.png",
+      "after": "after/signup.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/staff-food",
+      "before": "before/staff-food.png",
+      "after": "after/staff-food.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/transfers",
+      "before": "before/transfers.png",
+      "after": "after/transfers.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/transfers/history",
+      "before": "before/transfers--history.png",
+      "after": "after/transfers--history.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/verify-email",
+      "before": "before/verify-email.png",
+      "after": "after/verify-email.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/waste",
+      "before": "before/waste.png",
+      "after": "after/waste.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/waste/bad-delivery",
+      "before": "before/waste--bad-delivery.png",
+      "after": "after/waste--bad-delivery.png",
+      "state": "\u2014"
+    },
+    {
+      "route": "/waste/report",
+      "before": "before/waste--report.png",
+      "after": "after/waste--report.png",
+      "state": "Existing error state"
+    },
+    {
+      "route": "/wolt-orders",
+      "before": "before/wolt-orders.png",
+      "after": "after/wolt-orders.png",
+      "state": "Feature unavailable for this account"
+    },
+    {
+      "route": "404 page",
+      "before": "before/not-found.png",
+      "after": "after/not-found.png",
+      "state": "\u2014"
+    }
+  ],
+  "afterCommit": "e4bea036512974ac7811fc46372e051be5c07775"
+}
