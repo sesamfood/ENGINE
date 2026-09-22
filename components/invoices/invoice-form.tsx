@@ -833,7 +833,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     <div className="flex flex-col gap-6">
       <div
         inert={isSaving}
-        className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
+        className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)"
       >
         <Card>
           <CardHeader>
@@ -927,7 +927,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
           <CardHeader>
             <CardTitle>Produkter</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent appearance="stacked" className="flex flex-col">
             <FieldGroup>
               <Field data-invalid={Boolean(errors.items)}>
                 <FieldLabel>Tilføj produkt eller menu</FieldLabel>
@@ -985,7 +985,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
               </Field>
             </FieldGroup>
             {lines.length === 0 && menuRows.length === 0 ? (
-              <Empty className="border p-5">
+              <Empty appearance="inset">
                 <EmptyHeader>
                   <EmptyTitle>Ingen produkter tilføjet</EmptyTitle>
                   <EmptyDescription>
@@ -1015,9 +1015,9 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                   const menuError = errors[`menu:${menu.key}`];
                   return (
                     <li key={menu.key}>
-                      <Card className="border">
+                      <Card appearance="outline">
                         <CardHeader>
-                          <CardTitle className="flex flex-wrap items-center gap-2">
+                          <CardTitle appearance="inline" className="flex flex-wrap items-center">
                             <Badge variant="secondary">Menu</Badge>
                             {menu.name}
                           </CardTitle>
@@ -1045,7 +1045,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                             </Button>
                           </CardAction>
                         </CardHeader>
-                        <CardContent className="flex flex-col gap-5">
+                        <CardContent appearance="relaxed" className="flex flex-col">
                           <FieldGroup>
                             <Field
                               data-invalid={Boolean(
@@ -1130,7 +1130,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                               >
                                 <FieldGroup>
                                   <Field data-invalid={Boolean(error)}>
-                                    <FieldLabel className="flex flex-wrap items-center gap-2">
+                                    <FieldLabel appearance="inline" className="flex flex-wrap items-center">
                                       {group.title}
                                       <Badge variant="secondary">
                                         {selectedQuantity} af {group.quantity}{" "}
@@ -1222,7 +1222,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
         </Card>
       </div>
       <AppBottomBar>
-        <div className="mx-auto flex w-full max-w-[96rem] flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+        <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
           {navigation ? (
             <div className="min-w-0" inert={isSaving}>
               {navigation}

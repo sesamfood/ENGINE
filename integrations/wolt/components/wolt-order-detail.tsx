@@ -77,12 +77,12 @@ function OrderDetailContent({ order }: { order: WoltOrderDetailRecord }) {
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle appearance="inline" className="flex items-center">
             <ReceiptTextIcon aria-hidden="true" />
             Ordreoplysninger
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+        <CardContent appearance="compact" className="flex flex-col">
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">Lokation</dt>
@@ -140,7 +140,7 @@ function OrderDetailContent({ order }: { order: WoltOrderDetailRecord }) {
         <div className="flex flex-col gap-3">
           {order.items.map((item) => (
             <Card size="sm" key={item.id}>
-              <CardContent className="flex flex-col gap-3">
+              <CardContent appearance="compact" className="flex flex-col">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium">{item.name}</p>
@@ -237,7 +237,7 @@ export function WoltOrderDetail({
         side="right"
         className="w-full max-w-xl overflow-y-auto sm:max-w-xl"
       >
-        <SheetHeader className="border-b pr-12">
+        <SheetHeader appearance="separated">
           <SheetTitle>
             {order ? `Wolt-ordre ${order.displayNumber}` : "Wolt-ordre"}
           </SheetTitle>

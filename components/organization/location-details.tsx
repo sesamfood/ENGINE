@@ -216,7 +216,7 @@ function LocationDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-(--spacing-dialog) overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Lokationsoplysninger</DialogTitle>
           <DialogDescription>
@@ -231,7 +231,7 @@ function LocationDetailsDialog({
             ))}
           </div>
         ) : (
-          <FieldSet disabled={saving} className="gap-5">
+          <FieldSet disabled={saving} appearance="spaced">
             <LocationAddressSearch
               locationId={locationId}
               value={draft.googlePlaceId}
@@ -250,7 +250,7 @@ function LocationDetailsDialog({
                 });
               }}
             />
-            <FieldGroup className="gap-2">
+            <FieldGroup appearance="dense">
               <Field orientation="horizontal" data-disabled={forecastSwitchDisabled}>
                 <FieldLabel htmlFor="location-forecast-enabled">Vejr og helligdage i prognoser</FieldLabel>
                 <HelpTooltip label="prognoser" content="Prognoser bruger lokationens salg, vejr og helligdage. Det tilknyttede Google-sted giver koordinater og land. Regionskoden hentes fra OpenStreetMap ud fra koordinaterne. Google Places skal være konfigureret. Koordinater og landekode deles med vejr- og kalenderudbyderne. Salgstal deles ikke." />

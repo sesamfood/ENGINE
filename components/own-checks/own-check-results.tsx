@@ -130,14 +130,14 @@ export function OwnCheckResultFields({
             const violation = violations.get(field.key);
             return (
               <TableRow key={field.key}>
-                <TableCell className="font-medium">{field.label}</TableCell>
+                <TableCell appearance="label">{field.label}</TableCell>
                 <TableCell>
                   <div>{formatValue(field, valueMap.get(field.key))}</div>
                   {field.type === "attachment"
                     ? renderAttachments?.(field.key)
                     : null}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell appearance="muted">
                   {ownCheckLimitText(field)}
                 </TableCell>
                 <TableCell>

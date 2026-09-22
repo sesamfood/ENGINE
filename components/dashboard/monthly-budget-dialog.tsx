@@ -135,7 +135,7 @@ function BudgetForm({ budget, month, locationId, saving, onSavingChange, onClose
           </AlertDescription>
         </Alert>
       ) : null}
-      <FieldGroup className="grid gap-4 sm:grid-cols-2">
+      <FieldGroup appearance="standard" className="grid sm:grid-cols-2">
         {budgetFields.map(({ key, label, kind }) => {
           const category = economicBudgetComponents.find((component) => component === key);
           const usesEconomic = integrations?.economic && category !== undefined && economicBudgetCategories.includes(category);
@@ -210,7 +210,7 @@ export function MonthlyBudgetDialog({ month, locations, selectedLocationId }: {
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!saving) setOpen(next); }}>
       <DialogTrigger render={<Button variant="outline" className="min-h-11" />}><PencilIcon data-icon="inline-start" />Redigér budget</DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
+      <DialogContent className="max-h-(--spacing-dialog-dynamic) overflow-y-auto sm:max-w-xl" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>Månedsbudget</DialogTitle>
           <DialogDescription>Budgettet gælder hele {new Date(`${month}-01T12:00:00Z`).toLocaleDateString("da-DK", { month: "long", year: "numeric", timeZone: "UTC" })}.</DialogDescription>

@@ -25,7 +25,6 @@ type ScopeLocation = Location & {
   marketId: Id<"markets"> | null;
   operatorId: Id<"operators"> | null;
 };
-const checkboxItemClassName = "min-h-10 pr-1.5 pl-8 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:right-auto [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:left-2";
 
 export function ScopeSelector({
   scope,
@@ -166,7 +165,7 @@ export function ScopeSelector({
             <DropdownMenuGroup>
               <DropdownMenuLabel>Lokationer</DropdownMenuLabel>
               {currentLevel !== "location" ? (
-                <DropdownMenuCheckboxItem className={checkboxItemClassName} checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
+                <DropdownMenuCheckboxItem appearance="leadingIndicator" className="min-h-10" checked={allSelected} onCheckedChange={(checked) => { if (checked) selectAllLocations(); }}>
                   {currentLevel === "organization" ? "Alle lokationer" : `Alle i ${currentParentName ?? "gruppen"}`}
                 </DropdownMenuCheckboxItem>
               ) : null}
@@ -174,12 +173,18 @@ export function ScopeSelector({
             {currentLevel !== "location" ? <DropdownMenuSeparator /> : null}
             <DropdownMenuGroup className="max-h-64 overflow-y-auto">
               {selectedLocations.map((location) => (
-                <div key={location.id} role="presentation" className="group/location grid grid-cols-[minmax(0,1fr)_auto] gap-x-1">
+                <div key={location.id} role="presentation" className="group/location grid grid-cols-(--grid-cols-content-action) gap-x-1">
                   <DropdownMenuCheckboxItem
-                    className={checkboxItemClassName}
+                    appearance="leadingIndicator"
+                    className="min-h-10"
                     checked={selectedIds.includes(location.id)}
-                    disabled={selectedIds.includes(location.id) && selectedIds.length <= 1}
-                    onCheckedChange={(checked) => toggleLocation(location.id, checked)}
+                    disabled={
+                      selectedIds.includes(location.id) &&
+                      selectedIds.length <= 1
+                    }
+                    onCheckedChange={(checked) =>
+                      toggleLocation(location.id, checked)
+                    }
                   >
                     <span className="min-w-0 truncate">{location.name}</span>
                   </DropdownMenuCheckboxItem>

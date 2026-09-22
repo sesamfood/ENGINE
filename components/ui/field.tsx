@@ -7,44 +7,95 @@ import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
-function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
+const fieldSetAppearance = cva("", {
+  variants: {
+    appearance: {
+      compact: "gap-3",
+      panel: "gap-2 rounded-lg border p-3",
+      outline: "rounded-xl border p-4",
+      spaced: "gap-5",
+      dense: "gap-2",
+      padded: "gap-4 rounded-xl border p-4",
+    },
+  },
+})
+
+function FieldSet({
+  appearance,
+  className,
+  ...props
+}: React.ComponentProps<"fieldset"> & VariantProps<typeof fieldSetAppearance>) {
   return (
     <fieldset
       data-slot="field-set"
       className={cn(
         "flex flex-col gap-4 has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3",
-        className
+        fieldSetAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
   )
 }
 
+const fieldLegendAppearance = cva("", {
+  variants: {
+    appearance: {
+      small: "text-sm",
+      inline: "gap-1",
+    },
+  },
+})
+
 function FieldLegend({
+  appearance,
   className,
   variant = "legend",
   ...props
-}: React.ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
+}: React.ComponentProps<"legend"> & {
+  variant?: "legend" | "label"
+} & VariantProps<typeof fieldLegendAppearance>) {
   return (
     <legend
       data-slot="field-legend"
       data-variant={variant}
       className={cn(
         "mb-1.5 font-medium data-[variant=label]:text-sm data-[variant=legend]:text-base",
-        className
+        fieldLegendAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
   )
 }
 
-function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
+const fieldGroupAppearance = cva("", {
+  variants: {
+    appearance: {
+      compact: "gap-3",
+      panel: "gap-3 rounded-lg border p-3",
+      standard: "gap-4",
+      dense: "gap-2",
+      relaxed: "gap-5",
+      tight: "gap-1",
+      spacious: "gap-6",
+      scrollable: "pr-1",
+    },
+  },
+})
+
+function FieldGroup({
+  appearance,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof fieldGroupAppearance>) {
   return (
     <div
       data-slot="field-group"
       className={cn(
         "group/field-group @container/field-group flex w-full flex-col gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
-        className
+        fieldGroupAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
@@ -69,17 +120,35 @@ const fieldVariants = cva(
   }
 )
 
+const fieldAppearance = cva("", {
+  variants: {
+    appearance: {
+      outline: "rounded-lg border px-3",
+      surface: "rounded-lg border bg-background p-3",
+      panel: "rounded-lg border p-3",
+      option: "rounded-md px-2 py-1 hover:bg-muted/50",
+    },
+  },
+})
+
 function Field({
+  appearance,
   className,
   orientation = "vertical",
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof fieldVariants> &
+  VariantProps<typeof fieldAppearance>) {
   return (
     <div
       role="group"
       data-slot="field"
       data-orientation={orientation}
-      className={cn(fieldVariants({ orientation }), className)}
+      className={cn(
+        fieldVariants({ orientation }),
+        fieldAppearance({ appearance }),
+        className,
+      )}
       {...props}
     />
   )
@@ -98,37 +167,81 @@ function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+const fieldLabelAppearance = cva("", {
+  variants: {
+    appearance: {
+      emphasized: "text-base font-medium",
+      regular: "font-normal",
+      eyebrow:
+        "text-xs font-medium uppercase tracking-wide text-muted-foreground",
+      inline: "gap-2",
+      large: "text-base",
+    },
+  },
+})
+
 function FieldLabel({
+  appearance,
   className,
   ...props
-}: React.ComponentProps<typeof Label>) {
+}: React.ComponentProps<typeof Label> &
+  VariantProps<typeof fieldLabelAppearance>) {
   return (
     <Label
       data-slot="field-label"
       className={cn(
         "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border *:data-[slot=field]:p-2.5 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
-        className
+        fieldLabelAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
   )
 }
 
-function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
+const fieldTitleAppearance = cva("", {
+  variants: {
+    appearance: {
+      eyebrow: "text-xs uppercase tracking-wide text-muted-foreground",
+    },
+  },
+})
+
+function FieldTitle({
+  appearance,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof fieldTitleAppearance>) {
   return (
     <div
       data-slot="field-label"
       className={cn(
         "flex w-fit items-center gap-2 text-sm font-medium group-data-[disabled=true]/field:opacity-50",
-        className
+        fieldTitleAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
   )
 }
 
-function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
+const fieldDescriptionAppearance = cva("", {
+  variants: {
+    appearance: {
+      inline: "gap-2",
+      truncate: "truncate",
+      destructive: "text-destructive",
+    },
+  },
+})
+
+function FieldDescription({
+  appearance,
+  className,
+  ...props
+}: React.ComponentProps<"p"> &
+  VariantProps<typeof fieldDescriptionAppearance>) {
   return (
     <p
       data-slot="field-description"
@@ -136,7 +249,8 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
         "text-left text-sm leading-normal font-normal text-muted-foreground group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
         "last:mt-0 nth-last-2:-mt-1",
         "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
-        className
+        fieldDescriptionAppearance({ appearance }),
+        className,
       )}
       {...props}
     />

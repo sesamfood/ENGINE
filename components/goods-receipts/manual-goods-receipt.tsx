@@ -353,7 +353,7 @@ function ManualGoodsReceiptForm({
         </Link>
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
         <aside className="flex flex-col gap-5">
           <Card>
             <CardHeader>
@@ -465,9 +465,9 @@ function ManualGoodsReceiptForm({
                 </Badge>
               </CardAction>
             </CardHeader>
-            <CardContent className="flex flex-col gap-5">
+            <CardContent appearance="relaxed" className="flex flex-col">
               {lines.length === 0 ? (
-                <Empty className="min-h-32 border">
+                <Empty appearance="outlined" className="min-h-32">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
                       <PackageIcon />
@@ -564,11 +564,12 @@ function ManualGoodsReceiptForm({
           </Card>
 
           <AppBottomBar>
-            <div className="mx-auto flex w-full max-w-[96rem] justify-end">
+            <div className="mx-auto flex w-full max-w-(--container-page) justify-end">
               <Button
                 type="button"
                 size="lg"
-                className="min-h-11 w-full px-5 sm:w-auto"
+                appearance="wide"
+                className="min-h-11 w-full sm:w-auto"
                 disabled={submitting || lines.length === 0}
                 onClick={review}
               >
@@ -632,7 +633,7 @@ export function ManualGoodsReceipt() {
 
   if (!access) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
         <Skeleton className="h-80 w-full" />
         <div className="flex flex-col gap-5">
           <Skeleton className="h-36 w-full" />
@@ -655,7 +656,7 @@ export function ManualGoodsReceipt() {
 
   if (!locationId) {
     return (
-      <Empty className="min-h-80 border">
+      <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PackageCheckIcon />
@@ -679,7 +680,7 @@ export function ManualGoodsReceipt() {
 
   if (options === undefined || products === undefined) {
     return (
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-(--grid-cols-registration)">
         <Skeleton className="h-80 w-full" />
         <div className="flex flex-col gap-5">
           <Skeleton className="h-36 w-full" />

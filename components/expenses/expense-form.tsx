@@ -272,7 +272,7 @@ export function ExpenseForm({
         </Alert>
         {navigation ? (
           <AppBottomBar>
-            <div className="mx-auto w-full max-w-[96rem]">{navigation}</div>
+            <div className="mx-auto w-full max-w-(--container-page)">{navigation}</div>
           </AppBottomBar>
         ) : null}
       </>
@@ -525,7 +525,8 @@ export function ExpenseForm({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-auto min-h-44 w-full flex-col gap-3 whitespace-normal border-dashed p-5"
+                    appearance="upload"
+                    className="h-auto min-h-44 w-full flex-col whitespace-normal"
                     aria-controls="expense-attachment"
                     aria-describedby="expense-attachment-help"
                     aria-invalid={Boolean(errors.attachment)}
@@ -591,7 +592,7 @@ export function ExpenseForm({
             <CardHeader>
               <CardTitle>Kontering</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-5">
+            <CardContent appearance="relaxed" className="flex flex-col">
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableBody>
@@ -609,7 +610,7 @@ export function ExpenseForm({
                     </TableRow>
                     <TableRow>
                       <TableCell>Beløb inkl. moms</TableCell>
-                      <TableCell className="tabular-nums">
+                      <TableCell appearance="numeric">
                         {location && grossAmount !== null
                           ? formatExpenseAmount(grossAmount, location.currency)
                           : "Ikke angivet"}
@@ -667,7 +668,7 @@ export function ExpenseForm({
         </div>
       </fieldset>
       <AppBottomBar>
-        <div className="mx-auto flex w-full max-w-[96rem] flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+        <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
           {navigation ? (
             <div className="min-w-0" inert={saving}>
               {navigation}

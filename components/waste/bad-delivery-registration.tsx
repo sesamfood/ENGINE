@@ -142,7 +142,7 @@ export function BadDeliveryRegistration() {
   }, []);
 
   if (locations === undefined || (locationId && config === undefined)) {
-    return <Skeleton className="h-[34rem]" />;
+    return <Skeleton className="h-136" />;
   }
   if (!locations.length || !locationId) {
     return (
@@ -366,7 +366,7 @@ export function BadDeliveryRegistration() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FieldGroup className="grid gap-6 lg:grid-cols-2">
+          <FieldGroup appearance="spacious" className="grid lg:grid-cols-2">
             <PhotoField
               maxFileSize={MAX_FILE_SIZE}
               label="Dårlige produkter"
@@ -403,7 +403,7 @@ export function BadDeliveryRegistration() {
             </p>
           </CardAction>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent appearance="stacked" className="flex flex-col">
           <Field data-invalid={Boolean(errors.items)}>
             <FieldLabel>Tilføj produkt</FieldLabel>
             <CreatableCombobox
@@ -556,7 +556,7 @@ export function BadDeliveryRegistration() {
         open={confirming}
         onOpenChange={(open) => !submitting && setConfirming(open)}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-(--spacing-dialog) overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <div className="flex items-center gap-1">
               <DialogTitle>Bekræft dårlig levering</DialogTitle>
@@ -566,7 +566,7 @@ export function BadDeliveryRegistration() {
               />
             </div>
           </DialogHeader>
-          <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3 text-sm">
+          <dl className="grid grid-cols-(--grid-cols-integration) gap-3 text-sm">
             <dt className="text-muted-foreground">Lokation</dt>
             <dd>{selectedLocation.name}</dd>
             <dt className="text-muted-foreground">Kommentar</dt>

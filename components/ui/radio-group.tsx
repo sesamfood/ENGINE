@@ -1,15 +1,32 @@
 "use client"
 
+import { cva, type VariantProps } from "class-variance-authority"
 import { Radio as RadioPrimitive } from "@base-ui/react/radio"
 import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group"
 
 import { cn } from "@/lib/utils"
 
-function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
+const radioGroupAppearance = cva("", {
+  variants: {
+    appearance: {
+      spaced: "gap-3",
+    },
+  },
+})
+
+function RadioGroup({
+  appearance,
+  className,
+  ...props
+}: RadioGroupPrimitive.Props & VariantProps<typeof radioGroupAppearance>) {
   return (
     <RadioGroupPrimitive
       data-slot="radio-group"
-      className={cn("grid w-full gap-2", className)}
+      className={cn(
+        "grid w-full gap-2",
+        radioGroupAppearance({ appearance }),
+        className,
+      )}
       {...props}
     />
   )

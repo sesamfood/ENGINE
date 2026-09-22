@@ -106,9 +106,9 @@ export function LocationStock() {
     return (
       <div className={productGridClassName}>
         {Array.from({ length: 8 }, (_, index) => (
-          <Card key={index} className="gap-4 py-0">
-            <Skeleton className="aspect-video w-full rounded-none lg:aspect-[4/3]" />
-            <CardHeader className="pb-4">
+          <Card key={index} appearance="gallery">
+            <Skeleton appearance="square" className="aspect-video w-full lg:aspect-4/3" />
+            <CardHeader appearance="inset">
               <Skeleton className="h-5 w-2/3" />
               <Skeleton className="h-8 w-1/2" />
             </CardHeader>
@@ -120,7 +120,7 @@ export function LocationStock() {
 
   if (!locationId) {
     return (
-      <Empty className="min-h-72 border">
+      <Empty appearance="outlined" className="min-h-72">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <BoxesIcon />
@@ -136,7 +136,7 @@ export function LocationStock() {
 
   if (stock?.length === 0) {
     return (
-      <Empty className="min-h-72 border">
+      <Empty appearance="outlined" className="min-h-72">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <BoxesIcon />
@@ -180,23 +180,25 @@ export function LocationStock() {
           {stock?.map((row) => (
             <Card
               key={row.productId}
-              className="h-full gap-0 py-0 [--card-spacing:--spacing(3)] lg:[--card-spacing:--spacing(4)]"
+              appearance="product"
+              spacing="responsive"
+              className="h-full"
             >
               <ProductCardMedia
                 imageUrl={row.imageUrl}
                 alt={`Produktbillede af ${row.productName}`}
               />
-              <CardHeader className="py-3 lg:py-4">
+              <CardHeader appearance="product">
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <CardTitle className="min-w-0 flex-1 truncate">
+                  <CardTitle appearance="truncate" className="min-w-0 flex-1">
                     {row.productName}
                   </CardTitle>
-                  <CardDescription className="max-w-[45%] shrink-0 truncate">
+                  <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
                     {row.categoryName ?? "Uden kategori"}
                   </CardDescription>
                 </div>
               </CardHeader>
-              <CardContent className="flex flex-col gap-1 pb-3 lg:pb-4">
+              <CardContent appearance="stock" className="flex flex-col">
                 <p className="text-xl font-semibold tabular-nums">
                   {formatStockQuantity(
                     row.quantity,
@@ -227,11 +229,11 @@ export function LocationStock() {
             <TableBody>
               {stock?.map((row) => (
                 <TableRow key={row.productId}>
-                  <TableCell className="font-medium">
+                  <TableCell appearance="label">
                     {row.productName}
                   </TableCell>
                   <TableCell>{row.categoryName ?? "Uden kategori"}</TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell appearance="numeric" className="text-right">
                     {formatStockQuantity(
                       row.quantity,
                       row.defaultUnitName,

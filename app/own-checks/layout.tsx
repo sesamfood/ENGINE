@@ -4,7 +4,7 @@ import { OwnChecksNavigation } from "@/components/own-checks/own-checks-navigati
 
 export default function OwnChecksLayout({ children }: { children: React.ReactNode }) {
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 pb-20">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-20">
       <OrganizationAuthGate>
         <OwnChecksHeader />
         {children}

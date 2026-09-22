@@ -38,7 +38,7 @@ export function RangeSelector({
         </ToggleGroup>
       </div>
       {range.preset === "custom" ? (
-        <FieldGroup className="grid max-w-lg grid-cols-2 gap-3">
+        <FieldGroup appearance="compact" className="grid max-w-lg grid-cols-2">
           <Field>
             <FieldLabel htmlFor="dashboard-from">Fra</FieldLabel>
             <Input id="dashboard-from" type="date" value={range.from ?? ""} onChange={(event) => onChange({ ...range, from: event.target.value })} className="h-11" />

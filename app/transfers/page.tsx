@@ -84,12 +84,12 @@ function TransfersContent() {
           className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
         >
           {showNew ? (
-            <TabsTrigger value="new" className="min-w-36 px-6">
+            <TabsTrigger value="new" appearance="wide" className="min-w-36">
               Ny transfer
             </TabsTrigger>
           ) : null}
           {showHistory ? (
-            <TabsTrigger value="history" className="min-w-36 px-6">
+            <TabsTrigger value="history" appearance="wide" className="min-w-36">
               Transferhistorik
             </TabsTrigger>
           ) : null}
@@ -98,7 +98,7 @@ function TransfersContent() {
       {showNew && selectedTab === "new" ? (
         <TabsContent
           value="new"
-          className={showSectionTabs ? "pt-6" : undefined}
+          appearance={showSectionTabs ? "spaced" : undefined}
         >
           <TransferForm />
         </TabsContent>
@@ -106,7 +106,7 @@ function TransfersContent() {
       {showHistory && selectedTab === "history" ? (
         <TabsContent
           value="history"
-          className={showSectionTabs ? "pt-6" : undefined}
+          appearance={showSectionTabs ? "spaced" : undefined}
         >
           <TransferHistory />
         </TabsContent>
@@ -128,7 +128,7 @@ export default function TransfersPage() {
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4">
       <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <TransfersContent />

@@ -354,7 +354,7 @@ export function AddWidgetDialog({
           Tilføj widget
         </DialogTrigger>
       ) : null}
-      <DialogContent className="grid max-h-[calc(100vh-2rem)] min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-4xl">
+      <DialogContent className="grid max-h-(--spacing-viewport-inset) min-h-0 grid-rows-(--grid-rows-widget-dialog) overflow-hidden sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Tilføj widget</DialogTitle>
           <DialogDescription>
@@ -389,7 +389,7 @@ export function AddWidgetDialog({
                 <h2 className="text-sm font-medium">Hvad vil du følge?</h2>
                 <p className="text-sm text-muted-foreground">Søg i de indbyggede eller organisationens målinger.</p>
               </div>
-              <Command className="min-h-0 flex-1 rounded-lg border" shouldFilter>
+              <Command appearance="outline" className="min-h-0 flex-1" shouldFilter>
                 <CommandInput aria-label="Søg efter måling" placeholder="Søg efter måling..." />
                 <CommandList className="min-h-0 max-h-none flex-1">
                   <CommandEmpty>Ingen målinger fundet.</CommandEmpty>
@@ -397,7 +397,8 @@ export function AddWidgetDialog({
                     <CommandGroup
                       key={category.label}
                       heading={category.label}
-                      className="grid grid-cols-1 gap-2 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 [&>[cmdk-group-items]]:gap-2 sm:[&>[cmdk-group-items]]:grid-cols-2"
+                      appearance="cards"
+                      className="grid grid-cols-1 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 sm:[&>[cmdk-group-items]]:grid-cols-2"
                     >
                       {category.metrics.map((metric) => {
                         const selected = !customMetricId && metric.id === metricId;
@@ -407,10 +408,9 @@ export function AddWidgetDialog({
                             value={`${metric.label} ${metric.description}`}
                             onSelect={() => selectMetric(metric.id)}
                             aria-selected={selected}
-                            className={cn(
-                              "min-h-32 items-start rounded-lg border bg-card p-3 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
-                              selected && "border-primary bg-primary/5 ring-2 ring-primary/20",
-                            )}
+                            appearance="metric"
+                            highlighted={selected}
+                            className="min-h-32 items-start"
                           >
                             <div className="min-w-0 flex-1">
                               <p className="font-medium">{metric.label}</p>
@@ -430,7 +430,8 @@ export function AddWidgetDialog({
                   {customMetrics?.length ? (
                     <CommandGroup
                       heading="Organisationens målinger"
-                      className="grid grid-cols-1 gap-2 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 [&>[cmdk-group-items]]:gap-2 sm:[&>[cmdk-group-items]]:grid-cols-2"
+                      appearance="cards"
+                      className="grid grid-cols-1 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 sm:[&>[cmdk-group-items]]:grid-cols-2"
                     >
                       {customMetrics.map((metric) => {
                         const selected = metric.id === customMetricId;
@@ -440,10 +441,9 @@ export function AddWidgetDialog({
                               value={`${metric.name} ${metric.description ?? ""} tilpasset måling`}
                               onSelect={() => selectCustomMetric(metric.id)}
                               aria-selected={selected}
-                              className={cn(
-                                "min-h-28 items-start rounded-lg border bg-card p-3 pr-24 shadow-xs transition-[background-color,box-shadow,border-color] hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
-                                selected && "border-primary bg-primary/5 ring-2 ring-primary/20",
-                              )}
+                              appearance="customMetric"
+                              highlighted={selected}
+                              className="min-h-28 items-start"
                             >
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium">{metric.name}</p>
@@ -487,7 +487,8 @@ export function AddWidgetDialog({
                     <CommandItem
                       value="opret tilpasset måling builder"
                       onSelect={openCustomMetricBuilder}
-                      className="min-h-14 rounded-lg border border-dashed p-3 focus-visible:ring-3 focus-visible:ring-ring/50"
+                      appearance="create"
+                      className="min-h-14"
                     >
                       <PlusIcon />
                       <div className="min-w-0">
@@ -550,12 +551,15 @@ export function AddWidgetDialog({
                 <ToggleGroup
                   value={[visualization]}
                   onValueChange={(values) => {
-                    const next = availableVisualizations.find((item) => item === values[0]);
+                    const next = availableVisualizations.find(
+                      (item) => item === values[0],
+                    );
                     if (next) selectVisualization(next);
                   }}
                   spacing={3}
                   aria-label="Visualisering"
-                  className="grid w-full min-w-0 items-stretch gap-3 rounded-none sm:grid-cols-2"
+                  appearance="cards"
+                  className="grid w-full min-w-0 items-stretch sm:grid-cols-2"
                 >
                   {availableVisualizations.map((visualizationId) => {
                     const Visualization = visualizationRegistry[visualizationId];
@@ -571,10 +575,9 @@ export function AddWidgetDialog({
                             size="sm"
                             data-size="sm"
                             data-slot="card"
-                            className={cn(
-                              "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
-                              selected && "border-primary ring-2 ring-primary/25",
-                            )}
+                            appearance="choice"
+                            highlight={selected ? "choice" : undefined}
+                            className="cursor-pointer"
                           />
                         )}
                       >
@@ -627,7 +630,8 @@ export function AddWidgetDialog({
                 }}
                 spacing={3}
                 aria-label="Widgetstørrelse"
-                className="grid w-full min-w-0 items-stretch gap-3 rounded-none sm:grid-cols-2 lg:grid-cols-3"
+                appearance="cards"
+                className="grid w-full min-w-0 items-stretch sm:grid-cols-2 lg:grid-cols-3"
               >
                 {widgetSizes.map((nextSize) => {
                   const selected = size === nextSize;
@@ -643,10 +647,9 @@ export function AddWidgetDialog({
                           size="sm"
                           data-size="sm"
                           data-slot="card"
-                          className={cn(
-                            "cursor-pointer outline-none transition-[box-shadow,border-color] focus-visible:ring-3 focus-visible:ring-ring/50",
-                            selected && "border-primary ring-2 ring-primary/25",
-                          )}
+                          appearance="choice"
+                          highlight={selected ? "choice" : undefined}
+                          className="cursor-pointer"
                         />
                       )}
                     >

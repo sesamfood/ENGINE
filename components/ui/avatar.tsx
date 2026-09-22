@@ -1,53 +1,88 @@
 "use client"
 
+import { cva, type VariantProps } from "class-variance-authority"
 import * as React from "react"
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar"
 
 import { cn } from "@/lib/utils"
 
+const avatarAppearance = cva("", {
+  variants: {
+    appearance: {
+      rounded: "rounded-lg after:rounded-lg",
+    },
+  },
+})
+
 function Avatar({
+  appearance,
   className,
   size = "default",
   ...props
 }: AvatarPrimitive.Root.Props & {
   size?: "default" | "sm" | "lg"
-}) {
+} & VariantProps<typeof avatarAppearance>) {
   return (
     <AvatarPrimitive.Root
       data-slot="avatar"
       data-size={size}
       className={cn(
         "group/avatar relative flex size-8 shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten",
-        className
+        avatarAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
   )
 }
 
-function AvatarImage({ className, ...props }: AvatarPrimitive.Image.Props) {
+const avatarImageAppearance = cva("", {
+  variants: {
+    appearance: {
+      rounded: "rounded-lg",
+    },
+  },
+})
+
+function AvatarImage({
+  appearance,
+  className,
+  ...props
+}: AvatarPrimitive.Image.Props & VariantProps<typeof avatarImageAppearance>) {
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
       className={cn(
         "aspect-square size-full rounded-full object-cover",
-        className
+        avatarImageAppearance({ appearance }),
+        className,
       )}
       {...props}
     />
   )
 }
 
+const avatarFallbackAppearance = cva("", {
+  variants: {
+    appearance: {
+      rounded: "rounded-lg",
+    },
+  },
+})
+
 function AvatarFallback({
+  appearance,
   className,
   ...props
-}: AvatarPrimitive.Fallback.Props) {
+}: AvatarPrimitive.Fallback.Props &
+  VariantProps<typeof avatarFallbackAppearance>) {
   return (
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       className={cn(
         "flex size-full items-center justify-center rounded-full bg-muted text-sm text-muted-foreground group-data-[size=sm]/avatar:text-xs",
-        className
+        avatarFallbackAppearance({ appearance }),
+        className,
       )}
       {...props}
     />

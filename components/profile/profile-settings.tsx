@@ -94,7 +94,7 @@ export function ProfileSettings() {
             Dine personlige oplysninger.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+        <CardContent appearance="stacked" className="grid sm:grid-cols-2">
           <div>
             <p className="text-sm text-muted-foreground">Navn</p>
             <p className="font-medium">{session.data.user.name}</p>
@@ -106,14 +106,14 @@ export function ProfileSettings() {
         </CardContent>
       </Card>
 
-      <Card className="ring-destructive/30">
+      <Card appearance="danger">
         <CardHeader>
           <CardTitle>Slet konto</CardTitle>
           <CardDescription>
             Slet din personlige konto, dine sessioner og din adgang permanent.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col items-start gap-4">
+        <CardContent appearance="stacked" className="flex flex-col items-start">
           <p className="text-sm leading-6 text-muted-foreground">
             Er du den eneste bruger med rollen Administrator, skal du først give
             rollen til en anden bruger. Organisationens øvrige data slettes ikke.

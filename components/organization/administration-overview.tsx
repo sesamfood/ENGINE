@@ -365,9 +365,7 @@ export function AdministrationOverview() {
                   aria-label={`Åbn ${section.title.toLocaleLowerCase("da")}`}
                   className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
-                  <Card
-                    size="sm"
-                    className="h-full transition-colors group-hover:bg-muted/50 group-active:bg-muted/50"
+                  <Card size="sm" appearance="link" className="h-full"
                   >
                     <CardHeader>
                       <CardTitle>{section.title}</CardTitle>

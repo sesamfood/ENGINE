@@ -267,8 +267,12 @@ export function CategoryManager() {
       : "Kategorien bruges af produkter eller Staff food-regler og kan derfor ikke fjernes.";
     const row = (
       <div
-        className="flex min-h-14 min-w-max items-center gap-2 border-b px-2"
-        style={{ paddingInlineStart: `${category.depth * 1.5 + 0.5}rem` }}
+        className="flex min-h-14 min-w-max items-center gap-2 border-b px-2 ps-(--item-indent)!"
+        style={
+          {
+            "--item-indent": `${category.depth * 1.5 + 0.5}rem`,
+          } as React.CSSProperties
+        }
       >
         {category.hasChildren ? (
           <CollapsibleTrigger
@@ -421,7 +425,8 @@ export function CategoryManager() {
         </div>
         <Button
           size="lg"
-          className="min-h-11 px-4"
+          appearance="standard"
+          className="min-h-11"
           onClick={() => openCreate()}
         >
           <PlusIcon data-icon="inline-start" />
@@ -438,7 +443,7 @@ export function CategoryManager() {
       ) : null}
 
       {categories?.length === 0 ? (
-        <Empty className="min-h-72 border">
+        <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ShapesIcon />
@@ -449,7 +454,7 @@ export function CategoryManager() {
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button className="min-h-11 px-4" onClick={() => openCreate()}>
+            <Button appearance="standard" className="min-h-11" onClick={() => openCreate()}>
               <PlusIcon data-icon="inline-start" />
               Ny kategori
             </Button>

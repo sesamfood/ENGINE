@@ -330,7 +330,7 @@ export function KioskSettings() {
               <FieldLegend>Aktiverede sider</FieldLegend>
               <div data-slot="checkbox-group" className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {groups.map((group) => (
-                  <FieldSet key={group} className="rounded-xl border p-4">
+                  <FieldSet key={group} appearance="outline">
                     <FieldLegend variant="label">{group}</FieldLegend>
                     {kioskDestinations
                       .filter((page) => page.group === group)
@@ -394,7 +394,7 @@ export function KioskSettings() {
 
       <Card>
           <CardHeader><CardTitle>Kioskkonti</CardTitle><CardDescription>{availableAccounts.length} {availableAccounts.length === 1 ? "konto" : "konti"}</CardDescription></CardHeader>
-        <CardContent className="flex flex-col gap-3">
+        <CardContent appearance="compact" className="flex flex-col">
           {availableAccounts.length ? availableAccounts.map((account) => (
             <div key={account.memberId} className="flex flex-col gap-4 rounded-xl border p-4 lg:flex-row lg:items-center">
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{account.name}</p><Badge>Kiosk</Badge><Badge variant="secondary">{roleLabels[account.role]}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{account.username} · {account.locationName} · {account.activeSessionCount} aktive sessioner</p></div>

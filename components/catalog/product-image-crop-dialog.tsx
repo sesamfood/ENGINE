@@ -324,7 +324,7 @@ export function ProductImageCropDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl"
+        className="max-h-(--spacing-dynamic-viewport-inset) overflow-y-auto sm:max-w-3xl"
         showCloseButton={!processing}
         initialFocus={() => titleRef.current}
       >
@@ -343,7 +343,7 @@ export function ProductImageCropDialog({
             <FieldLabel htmlFor="product-image-crop-preview">
               Forhåndsvisning
             </FieldLabel>
-            <div className="mx-auto w-full max-w-[min(36rem,max(16rem,calc(100dvh-20rem)))] overflow-hidden rounded-xl border bg-muted">
+            <div className="mx-auto w-full max-w-(--container-image-crop) overflow-hidden rounded-xl border bg-muted">
               {loading ? (
                 <div className="flex aspect-square flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
                   <Spinner />

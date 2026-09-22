@@ -227,7 +227,7 @@ function FieldEditor({ draft, setDraft, disabled }: { draft: Draft; setDraft: Re
       <div className="flex flex-col gap-3">
         {draft.fields.map((field, index) => (
           <div key={`${field.key}-${index}`} className="rounded-xl border p-3">
-            <div className="grid gap-3 md:grid-cols-[1fr_10rem_auto]">
+            <div className="grid gap-3 md:grid-cols-(--grid-cols-sidebar-item)">
               <Field>
                 <FieldLabel htmlFor={`own-field-label-${index}`}>Feltnavn</FieldLabel>
                 <Input id={`own-field-label-${index}`} value={field.label} onChange={(event) => patchField(index, { label: event.target.value })} />
@@ -264,13 +264,13 @@ function FieldEditor({ draft, setDraft, disabled }: { draft: Draft; setDraft: Re
             </FieldGroup>
             {field.type === "choice" ? (
               <FieldSet className="mt-3">
-                <FieldLegend variant="label" className="flex items-center gap-1">
+                <FieldLegend variant="label" appearance="inline" className="flex items-center">
                   Valgmuligheder
                   <HelpTooltip label="Valgmuligheder" content="Tilføj mellem 2 og 20 svar. Aktivér I orden for de svar, der betyder, at kontrollen er i orden. Mindst ét svar skal være i orden." />
                 </FieldLegend>
-                <FieldGroup className="gap-3">
+                <FieldGroup appearance="compact">
                   {field.options.map((option, optionIndex) => (
-                    <FieldGroup key={option.value} className="gap-3 rounded-lg border p-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+                    <FieldGroup key={option.value} appearance="panel" className="sm:grid sm:grid-cols-(--grid-cols-content-actions) sm:items-end">
                       <Field>
                         <FieldLabel htmlFor={`own-field-option-label-${index}-${optionIndex}`}>Valgmulighed {optionIndex + 1}</FieldLabel>
                         <Input
@@ -408,7 +408,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
 
   return (
     <Dialog open={Boolean(mode)} onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{mode === "new" ? "Ny egenkontrol" : "Redigér egenkontrol"}</DialogTitle>
           <DialogDescription>Definér felter, frekvens og hvilke lokationer kontrollen gælder for.</DialogDescription>
@@ -430,7 +430,8 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
                 aria-label={imageUrl ? "Skift billede" : "Vælg billede"}
                 disabled={saving}
                 onClick={() => imageInputRef.current?.click()}
-                className="relative size-24 overflow-hidden bg-muted p-0 text-muted-foreground"
+                appearance="thumbnail"
+                className="relative size-24 overflow-hidden"
               >
                 {imageUrl ? <Image src={imageUrl} alt="Billede af kontrollen" fill unoptimized sizes="96px" className="object-cover" /> : <ImageIcon className="size-8" />}
               </Button>
@@ -528,7 +529,7 @@ function TemplateEditor({ mode, locations, onClose, onSaved }: { mode: EditorMod
 }
 
 function TemplateTable({ templates, onEdit, onAction }: { templates: Template[]; onEdit: (template: Template) => void; onAction: (template: Template, type: "archive" | "restore") => void }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Navn</TableHead><TableHead>Kontroltype</TableHead><TableHead>Frekvens</TableHead><TableHead>Lokationer</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Handlinger</TableHead></TableRow></TableHeader><TableBody>{templates.map((template) => <TableRow key={template.id}><TableCell className="font-medium">{template.name}<div className="text-xs text-muted-foreground">Version {template.version}</div></TableCell><TableCell>{controlTypes.find((item) => item.value === template.controlType)?.label}</TableCell><TableCell>{scheduleLabel(template.schedule)}{template.dueMinuteOfDay !== null ? <div className="text-xs text-muted-foreground">Kl. {minutesLabel(template.dueMinuteOfDay)}</div> : null}</TableCell><TableCell>{template.allLocations ? "Alle" : `${template.locationIds.length} valgt`}</TableCell><TableCell><Badge variant={template.status === "active" ? "secondary" : "outline"}>{template.status === "active" ? "Aktiv" : "Arkiveret"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1"><Button type="button" variant="ghost" size="icon" aria-label={`Redigér ${template.name}`} onClick={() => onEdit(template)} disabled={template.status !== "active"}><PencilIcon /><span className="sr-only">Redigér</span></Button>{template.status === "active" ? <Button type="button" variant="ghost" size="icon" aria-label={`Arkivér ${template.name}`} onClick={() => onAction(template, "archive")}><ArchiveIcon /></Button> : <Button type="button" variant="ghost" size="icon" aria-label={`Gendan ${template.name}`} onClick={() => onAction(template, "restore")}><RotateCcwIcon /></Button>}</div></TableCell></TableRow>)}</TableBody></Table></div>;
+  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Navn</TableHead><TableHead>Kontroltype</TableHead><TableHead>Frekvens</TableHead><TableHead>Lokationer</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Handlinger</TableHead></TableRow></TableHeader><TableBody>{templates.map((template) => <TableRow key={template.id}><TableCell appearance="label">{template.name}<div className="text-xs text-muted-foreground">Version {template.version}</div></TableCell><TableCell>{controlTypes.find((item) => item.value === template.controlType)?.label}</TableCell><TableCell>{scheduleLabel(template.schedule)}{template.dueMinuteOfDay !== null ? <div className="text-xs text-muted-foreground">Kl. {minutesLabel(template.dueMinuteOfDay)}</div> : null}</TableCell><TableCell>{template.allLocations ? "Alle" : `${template.locationIds.length} valgt`}</TableCell><TableCell><Badge variant={template.status === "active" ? "secondary" : "outline"}>{template.status === "active" ? "Aktiv" : "Arkiveret"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1"><Button type="button" variant="ghost" size="icon" aria-label={`Redigér ${template.name}`} onClick={() => onEdit(template)} disabled={template.status !== "active"}><PencilIcon /><span className="sr-only">Redigér</span></Button>{template.status === "active" ? <Button type="button" variant="ghost" size="icon" aria-label={`Arkivér ${template.name}`} onClick={() => onAction(template, "archive")}><ArchiveIcon /></Button> : <Button type="button" variant="ghost" size="icon" aria-label={`Gendan ${template.name}`} onClick={() => onAction(template, "restore")}><RotateCcwIcon /></Button>}</div></TableCell></TableRow>)}</TableBody></Table></div>;
 }
 
 export function OwnCheckTemplates() {
@@ -545,7 +546,7 @@ export function OwnCheckTemplates() {
   const [actionReason, setActionReason] = useState("");
   const [actionPending, setActionPending] = useState(false);
 
-  if (!access || (canManage && activeTemplates.status === "LoadingFirstPage")) return <Skeleton className="h-[30rem] w-full" />;
+  if (!access || (canManage && activeTemplates.status === "LoadingFirstPage")) return <Skeleton className="h-120 w-full" />;
   if (!canManage) {
     return <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at administrere egenkontroller.</AlertDescription></Alert>;
   }
@@ -578,16 +579,16 @@ export function OwnCheckTemplates() {
             <div className="flex flex-wrap gap-2"><Button type="button" size="lg" onClick={() => setEditor("new")}><PlusIcon data-icon="inline-start" />Ny egenkontrol</Button><Button type="button" variant="outline" onClick={() => setIncludeArchived((current) => !current)}>{includeArchived ? "Skjul arkiverede" : "Vis arkiverede"}</Button></div>
           </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-6">
+        <CardContent appearance="spacious" className="flex flex-col">
           <section className="flex flex-col gap-3">
             <h3 className="font-medium">Aktive egenkontroller</h3>
-            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty className="block w-auto min-w-auto flex-initial border p-8 text-wrap text-muted-foreground">Ingen aktive egenkontroller endnu.</Empty>}
+            {activeTemplates.results.length ? <TemplateTable templates={activeTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen aktive egenkontroller endnu.</Empty>}
             {activeTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => activeTemplates.loadMore(50)}>Vis flere aktive</Button> : null}
             {activeTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere aktive egenkontroller…</div> : null}
           </section>
           {includeArchived ? <section className="flex flex-col gap-3">
             <h3 className="font-medium">Arkiverede egenkontroller</h3>
-            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty className="block w-auto min-w-auto flex-initial border p-8 text-wrap text-muted-foreground">Ingen arkiverede egenkontroller endnu.</Empty>}
+            {archivedTemplates.status === "LoadingFirstPage" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter arkiverede egenkontroller…</div> : archivedTemplates.results.length ? <TemplateTable templates={archivedTemplates.results} onEdit={setEditor} onAction={(template, type) => setAction({ template, type })} /> : <Empty appearance="panel" className="block w-auto min-w-auto flex-initial">Ingen arkiverede egenkontroller endnu.</Empty>}
             {archivedTemplates.status === "CanLoadMore" ? <Button type="button" variant="outline" className="min-h-11 self-start" onClick={() => archivedTemplates.loadMore(50)}>Vis flere arkiverede</Button> : null}
             {archivedTemplates.status === "LoadingMore" ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />Henter flere arkiverede egenkontroller…</div> : null}
           </section> : null}

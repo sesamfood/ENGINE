@@ -139,7 +139,7 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
                     ) : null}
                   </div>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell appearance="numeric" className="text-right">
                   {quantityFormatter.format(item.quantity)}
                 </TableCell>
                 <TableCell>{item.unitName}</TableCell>
@@ -225,7 +225,7 @@ export function InvoiceHistory() {
       {loading ? (
         <Skeleton className="h-64 w-full" />
       ) : !location ? (
-        <Empty className="border">
+        <Empty appearance="outlined">
           <EmptyHeader>
             <EmptyTitle>Ingen lokation valgt</EmptyTitle>
             <EmptyDescription>
@@ -234,7 +234,7 @@ export function InvoiceHistory() {
           </EmptyHeader>
         </Empty>
       ) : results.length === 0 ? (
-        <Empty className="border">
+        <Empty appearance="outlined">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ReceiptTextIcon />
@@ -267,7 +267,7 @@ export function InvoiceHistory() {
               <TableBody>
                 {results.map((invoice) => (
                   <TableRow key={invoice.id}>
-                    <TableCell className="max-w-72 whitespace-normal break-words font-medium">
+                    <TableCell appearance="label" className="max-w-72 whitespace-normal break-words">
                       {invoice.title}
                     </TableCell>
                     <TableCell>
@@ -275,7 +275,7 @@ export function InvoiceHistory() {
                     </TableCell>
                     <TableCell>{invoice.locationName}</TableCell>
                     <TableCell>{invoice.registeredByName}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell appearance="numeric" className="text-right">
                       {invoice.itemCount}
                     </TableCell>
                     <TableCell>
@@ -312,7 +312,7 @@ export function InvoiceHistory() {
                       {invoice.locationName}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="flex flex-wrap items-center gap-2">
+                  <CardContent appearance="dense" className="flex flex-wrap items-center">
                     <p className="w-full text-muted-foreground">
                       Registreret af {invoice.registeredByName}
                     </p>
@@ -366,7 +366,7 @@ export function InvoiceHistory() {
           if (!open) setSelectedInvoiceId(null);
         }}
       >
-        <DialogContent className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-2xl">
+        <DialogContent className="max-h-(--spacing-dialog-dynamic) grid-rows-(--grid-rows-panel) sm:max-w-2xl">
           {selectedInvoiceId ? (
             <InvoiceDetails invoiceId={selectedInvoiceId} />
           ) : (

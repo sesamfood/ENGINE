@@ -328,12 +328,10 @@ function ProductCard({
       }}
     >
       <Card
-        className={cn(
-          "h-full gap-0 py-0 [--card-spacing:--spacing(3)] lg:[--card-spacing:--spacing(4)]",
-          !editingOrder &&
-            !disabled &&
-            "transition-shadow has-[button[data-card-trigger]:hover]:shadow-sm",
-        )}
+        appearance="product"
+        interaction={!editingOrder && !disabled ? "product" : undefined}
+        spacing="responsive"
+        className="h-full"
       >
         <div className="relative">
           <ProductCardMedia
@@ -343,12 +341,12 @@ function ProductCard({
           {editingOrder && dragHandle ? (
             <div className="absolute left-2 top-2">{dragHandle}</div>
           ) : null}
-          <CardHeader className="py-3 lg:py-4">
+          <CardHeader appearance="product">
             <div className="flex min-w-0 items-baseline gap-2">
-              <CardTitle className="min-w-0 flex-1 truncate">
+              <CardTitle appearance="truncate" className="min-w-0 flex-1">
                 {product.name}
               </CardTitle>
-              <CardDescription className="max-w-[45%] shrink-0 truncate">
+              <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
                 {product.categories
                   .map((category) => category.name)
                   .join(" · ") || "Uden kategori"}
@@ -359,14 +357,15 @@ function ProductCard({
             <DialogTrigger
               type="button"
               data-card-trigger
-              className="absolute inset-0 cursor-pointer rounded-t-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
+              appearance="card"
+              className="absolute inset-0 cursor-pointer disabled:cursor-not-allowed"
               aria-label={`Tæl ${product.name} i flere enheder`}
               disabled={disabled}
               onClick={openDialog}
             />
           ) : null}
         </div>
-        <CardContent className="flex flex-col gap-2 pb-3 lg:gap-3 lg:pb-4">
+        <CardContent appearance="product" className="flex flex-col">
           {selectedUnit ? (
             <>
               <UnavailableTooltip reason={disabledReason}>
@@ -509,12 +508,13 @@ function SingleProductCounter({
   }
 
   return (
-    <div className="flex min-h-[32rem] flex-col gap-3 md:grid md:min-h-[calc(100svh-20rem)] md:grid-cols-[3rem_minmax(0,1fr)_3rem] md:items-center md:gap-4">
+    <div className="flex min-h-128 flex-col gap-3 md:grid md:min-h-(--spacing-count-panel) md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
       <Button
         type="button"
         variant="outline"
         size="icon-lg"
-        className="hidden size-12 rounded-full md:inline-flex"
+        appearance="round"
+        className="hidden size-12 md:inline-flex"
         aria-label="Forrige Produkt"
         disabled={previousDisabled}
         onClick={onPrevious}
@@ -524,9 +524,10 @@ function SingleProductCounter({
 
       <Card
         key={product.id}
-        className="h-full min-h-0 gap-0 py-0 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
+        appearance="fullscreen"
+        className="h-full min-h-0"
       >
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
           <div className="relative min-h-56 overflow-hidden bg-muted lg:min-h-full">
             {product.imageUrl ? (
               <Image
@@ -545,7 +546,7 @@ function SingleProductCounter({
           </div>
 
           <div className="flex min-h-0 flex-col">
-            <CardHeader className="gap-3 px-5 py-5 sm:px-8 sm:py-7">
+            <CardHeader appearance="hero">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge variant="secondary" aria-live="polite">
                   {position + 1} af {productCount}
@@ -556,21 +557,22 @@ function SingleProductCounter({
                     .join(" · ")}
                 </CardDescription>
               </div>
-              <CardTitle className="text-3xl leading-tight tracking-tight sm:text-4xl">
+              <CardTitle appearance="hero">
                 {product.name}
               </CardTitle>
             </CardHeader>
 
-            <CardContent className="flex flex-1 flex-col justify-center px-5 pb-6 sm:px-8 sm:pb-8">
-              <FieldGroup className="gap-3">
+            <CardContent appearance="hero" className="flex flex-1 flex-col justify-center">
+              <FieldGroup appearance="compact">
                 {product.units.map((unit) => (
                   <Field
                     key={unit.id}
                     orientation="responsive"
                     data-disabled={disabled}
-                    className="rounded-lg border bg-background p-3 @md/field-group:items-center"
+                    appearance="surface"
+                    className="@md/field-group:items-center"
                   >
-                    <FieldLabel className="text-base font-medium @md/field-group:min-w-24">
+                    <FieldLabel appearance="emphasized" className="@md/field-group:min-w-24">
                       {unit.name}
                     </FieldLabel>
                     <UnavailableTooltip reason={disabledReason}>
@@ -599,7 +601,8 @@ function SingleProductCounter({
         type="button"
         variant="outline"
         size="icon-lg"
-        className="hidden size-12 rounded-full md:inline-flex"
+        appearance="round"
+        className="hidden size-12 md:inline-flex"
         aria-label={
           completionPending
             ? "Markerer Område som færdigt"
@@ -739,7 +742,7 @@ function CountAreaPicker({
   return (
     <section
       aria-labelledby="count-area-picker-title"
-      className="flex min-h-96 flex-col gap-6 md:min-h-[calc(100svh-15rem)]"
+      className="flex min-h-96 flex-col gap-6 md:min-h-(--spacing-stock-panel)"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h2
@@ -783,14 +786,15 @@ function CountAreaPicker({
             <Card
               key={countArea.id}
               size="sm"
-              className={cn(
-                "relative min-h-24 transition-shadow has-[button:hover]:shadow-sm",
-                statusKind === "complete"
-                  ? "bg-success/5 ring-success/30"
-                  : statusKind === "active"
-                    ? "bg-info/5 ring-info/30"
-                    : statusKind === "paused" && "bg-paused/5 ring-paused/30",
-              )}
+              appearance="countStatus"
+              status={
+                statusKind === "complete" ||
+                statusKind === "active" ||
+                statusKind === "paused"
+                  ? statusKind
+                  : undefined
+              }
+              className="relative min-h-24"
             >
               <CardHeader className="flex-1">
                 <CardTitle>{countArea.name}</CardTitle>
@@ -879,7 +883,7 @@ function OrderBuilder({
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-3xl">
+      <DialogContent className="max-h-(--spacing-dynamic-viewport-inset) overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Start forfra med rækkefølgen</DialogTitle>
           <DialogDescription>
@@ -1029,11 +1033,17 @@ function SortableProduct({
     <>
       <div
         ref={setNodeRef}
-        style={{
-          transform: CSS.Transform.toString(transform),
-          transition,
-          opacity: isDragging ? 0.5 : 1,
-        }}
+        className={cn(
+          transform && "transform-(--drag-transform)",
+          transition && "transition-drag!",
+          isDragging ? "opacity-50" : "opacity-100",
+        )}
+        style={
+          {
+            "--drag-transform": CSS.Transform.toString(transform),
+            "--drag-transition": transition,
+          } as React.CSSProperties
+        }
       >
         {children(
           <Button
@@ -1146,9 +1156,9 @@ function CountSkeleton() {
   return (
     <div className={productGridClassName}>
       {Array.from({ length: 8 }, (_, index) => (
-        <Card key={index} className="gap-4 py-0">
-          <Skeleton className="aspect-video w-full rounded-none lg:aspect-[4/3]" />
-          <CardHeader className="pb-4">
+        <Card key={index} appearance="gallery">
+          <Skeleton appearance="square" className="aspect-video w-full lg:aspect-4/3" />
+          <CardHeader appearance="inset">
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="h-11 w-full" />
             <Skeleton className="h-11 w-full" />
@@ -1840,7 +1850,7 @@ export function CountSheet() {
 
   if (locations.length === 0) {
     return (
-      <Empty className="min-h-80 border">
+      <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <BoxesIcon />
@@ -2000,14 +2010,15 @@ export function CountSheet() {
                   aria-label="Produktkategorier"
                   className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
                 >
-                  <TabsTrigger value="all" className="min-w-24 shrink-0 px-4">
+                  <TabsTrigger value="all" appearance="standard" className="min-w-24 shrink-0">
                     Alle
                   </TabsTrigger>
                   {categories?.map((category) => (
                     <TabsTrigger
                       key={category.id}
                       value={category.id}
-                      className="min-w-28 shrink-0 px-4"
+                      appearance="standard"
+                      className="min-w-28 shrink-0"
                     >
                       {category.name}
                     </TabsTrigger>
@@ -2020,7 +2031,7 @@ export function CountSheet() {
           {!products ? <CountSkeleton /> : null}
 
           {products && displayedProducts.length === 0 ? (
-            <Empty className="min-h-72 border">
+            <Empty appearance="outlined" className="min-h-72">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <PackageOpenIcon />
@@ -2147,7 +2158,8 @@ export function CountSheet() {
             {isClosed && state ? (
               <Badge
                 variant="secondary"
-                className="h-auto max-w-36 justify-end py-1 text-right whitespace-normal sm:max-w-none sm:whitespace-nowrap"
+                appearance="wrap"
+                className="h-auto max-w-36 justify-end text-right whitespace-normal sm:max-w-none sm:whitespace-nowrap"
               >
                 <LockKeyholeIcon data-icon="inline-start" />
                 <span>
@@ -2161,7 +2173,8 @@ export function CountSheet() {
                 type="button"
                 size="lg"
                 variant="outline"
-                className="min-h-11 shrink-0 px-4 sm:px-6"
+                appearance="responsive"
+                className="min-h-11 shrink-0"
                 disabled={exporting}
                 onClick={() => void exportWasteReport()}
               >
@@ -2177,7 +2190,8 @@ export function CountSheet() {
                 <Button
                   type="button"
                   size="lg"
-                  className="min-h-11 shrink-0 px-4 sm:px-6"
+                  appearance="responsive"
+                  className="min-h-11 shrink-0"
                   disabled={Boolean(disabledReason) || submitting}
                   onClick={() => setConfirmOpen(true)}
                 >

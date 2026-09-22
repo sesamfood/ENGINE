@@ -122,8 +122,8 @@ export function DashboardTabs({
       <div className="flex min-w-0 items-center gap-2" aria-label="Dashboardnavigation">
         <Tabs value={activeId} onValueChange={(value) => { if (value === "new") setCreateOpen(true); else onChange(value); }} className="min-w-0 flex-1">
           <TabsList className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden" aria-label="Dashboards">
-            {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} className="min-w-28 shrink-0 px-4">{dashboard.name}</TabsTrigger>)}
-            {canCreate ? <TabsTrigger value="new" className="min-w-12 shrink-0 px-4" aria-label="Opret dashboard"><PlusIcon /></TabsTrigger> : null}
+            {order.map((dashboard) => <TabsTrigger key={dashboard.id} value={String(dashboard.id)} appearance="standard" className="min-w-28 shrink-0">{dashboard.name}</TabsTrigger>)}
+            {canCreate ? <TabsTrigger value="new" appearance="standard" className="min-w-12 shrink-0" aria-label="Opret dashboard"><PlusIcon /></TabsTrigger> : null}
           </TabsList>
         </Tabs>
         {canManage && activeDashboard && String(activeDashboard.id) === activeId ? (

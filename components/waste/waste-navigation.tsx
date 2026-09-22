@@ -67,7 +67,7 @@ export function WasteNavigation() {
 
   return (
     <AppBottomBar>
-      <div className="mx-auto flex w-full max-w-[96rem] flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+      <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
         {showSectionTabs ? (
           <Tabs
             value={value}
@@ -87,19 +87,19 @@ export function WasteNavigation() {
               className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
             >
               {showRegister ? (
-                <TabsTrigger value="register" className="min-w-28 px-4">
+                <TabsTrigger value="register" appearance="standard" className="min-w-28">
                   <Trash2Icon data-icon="inline-start" />
                   Registrér
                 </TabsTrigger>
               ) : null}
               {showBadDelivery ? (
-                <TabsTrigger value="badDelivery" className="min-w-28 px-4">
+                <TabsTrigger value="badDelivery" appearance="standard" className="min-w-28">
                   <PackageXIcon data-icon="inline-start" />
                   Dårlig levering
                 </TabsTrigger>
               ) : null}
               {canReport ? (
-                <TabsTrigger value="report" className="min-w-28 px-4">
+                <TabsTrigger value="report" appearance="standard" className="min-w-28">
                   <ChartNoAxesColumnIcon data-icon="inline-start" />
                   Rapport
                 </TabsTrigger>

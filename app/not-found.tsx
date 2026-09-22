@@ -10,7 +10,7 @@ import {
 
 export default function NotFound() {
   return (
-    <Empty className="mx-auto min-h-80 w-full max-w-[96rem] border">
+    <Empty appearance="outlined" className="mx-auto min-h-80 w-full max-w-(--container-page)">
       <EmptyHeader>
         <EmptyTitle>Siden blev ikke fundet</EmptyTitle>
         <EmptyDescription>

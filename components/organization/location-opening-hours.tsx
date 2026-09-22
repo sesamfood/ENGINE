@@ -95,7 +95,7 @@ function HoursFields({
   onChange: (hours: DailyOpeningHours) => void;
 }) {
   return (
-    <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[7rem_minmax(7rem,1fr)_minmax(7rem,1fr)] sm:items-end">
+    <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-(--grid-cols-opening-hours) sm:items-end">
       <Field orientation="horizontal" className="min-h-11">
         <FieldContent>
           <FieldLabel htmlFor={`${id}-closed`}>Lukket</FieldLabel>
@@ -283,7 +283,7 @@ export function LocationOpeningHours({
         }
       }}
     >
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Åbningstider for {locationName}</DialogTitle>
           <DialogDescription>
@@ -327,11 +327,9 @@ export function LocationOpeningHours({
               </ToggleGroup>
               <FieldGroup>
                 {displayedWeekly?.map((hours) => (
-                  <Field
-                    key={hours.weekday}
-                    className="rounded-lg border p-3"
+                  <Field key={hours.weekday} appearance="panel"
                   >
-                    <FieldLabel className="text-base">
+                    <FieldLabel appearance="large">
                       {currentDraft.mode === "sameEveryDay"
                         ? "Alle dage"
                         : weekdays[hours.weekday]}
@@ -402,9 +400,7 @@ export function LocationOpeningHours({
               ) : (
                 <FieldGroup>
                   {currentDraft.specials.map((hours, index) => (
-                    <Field
-                      key={index}
-                      className="rounded-lg border p-3"
+                    <Field key={index} appearance="panel"
                     >
                       <div className="flex items-end gap-2">
                         <Field className="min-w-0 flex-1">

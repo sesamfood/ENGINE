@@ -93,7 +93,7 @@ export function InspectionReport({
             Kontroldokumentation for {header.locationName}
           </p>
         </CardHeader>
-        <CardContent className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent appearance="report" className="grid sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-muted-foreground">Periode</p>
             <p>
@@ -131,15 +131,13 @@ export function InspectionReport({
               return (
                 <Card
                   key={record.id}
-                  className={
-                    record.followUp === "open"
-                      ? "border-l-4 border-l-destructive"
-                      : undefined
+                  appearance={
+                    record.followUp === "open" ? "followUp" : undefined
                   }
                 >
-                  <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <CardHeader appearance="compact" className="sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <CardTitle className="text-base">{record.name}</CardTitle>
+                      <CardTitle appearance="standard">{record.name}</CardTitle>
                       <p className="text-sm text-muted-foreground">
                         {ownCheckControlTypeLabels[record.controlType]} ·
                         Planlagt kl. {formatTime(record.dueAt, header.timeZone)}{" "}
@@ -150,7 +148,7 @@ export function InspectionReport({
                     </div>
                     <OwnCheckStatusBadge status={ownCheckStatus(record)} />
                   </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
+                  <CardContent appearance="stacked" className="flex flex-col">
                     <OwnCheckExecutionTimes
                       startedAt={record.startedAt}
                       endedAt={record.endedAt}
@@ -247,7 +245,7 @@ export function InspectionReport({
             <Separator className="flex-1" />
           </div>
           <Card>
-            <CardContent className="p-0">
+            <CardContent appearance="flush">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -261,7 +259,7 @@ export function InspectionReport({
                   {missing.map((item) => (
                     <TableRow key={`${item.templateId}-${item.dueDateKey}`}>
                       <TableCell>{formatDate(item.dueDateKey)}</TableCell>
-                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell appearance="label">{item.name}</TableCell>
                       <TableCell>
                         {formatTime(item.dueAt, header.timeZone)}
                       </TableCell>

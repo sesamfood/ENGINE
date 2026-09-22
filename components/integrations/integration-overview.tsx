@@ -26,7 +26,6 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { integrationRegistry, type IntegrationId } from "@/integrations/registry";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { cn } from "@/lib/utils";
 
 export function IntegrationOverview() {
   const access = useAccess();
@@ -100,9 +99,10 @@ export function IntegrationOverview() {
           return (
             <Card
               key={entry.id}
-              className={cn("relative", canOpen && "transition-colors hover:bg-muted/50")}
+              appearance={canOpen ? "hover" : undefined}
+              className="relative"
             >
-              <CardHeader className="[container-type:normal]">
+              <CardHeader className="@container-normal">
                 <CardTitle>
                   {canOpen ? (
                     <Link

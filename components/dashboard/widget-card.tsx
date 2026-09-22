@@ -311,34 +311,31 @@ export function WidgetCard({
   }
 
   return (
-    <Card className={cn(
-      "relative h-full gap-2 overflow-hidden border-border/70 pb-2 shadow-sm transition-[box-shadow,border-color] duration-150",
-      compactLive && "gap-1 pt-1",
-      editable && "select-none",
-      (resizing || resizeActive) && "border-primary shadow-md ring-2 ring-primary/20",
-    )}>
-      <CardHeader className={cn("shrink-0 gap-0 pb-1", compactLive && "pb-0")}>
+    <Card appearance="widget" compact={compactLive} highlight={resizing || resizeActive ? "resize" : undefined} className={cn("relative h-full overflow-hidden", editable && "select-none")}>
+      <CardHeader appearance={compactLive ? "liveWidget" : "widget"} className="shrink-0">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-            <CardTitle title={metricLabel} className={cn("min-w-0 flex-1 basis-28 text-base", hasSourceSuffix ? "flex flex-wrap items-baseline gap-x-1" : "truncate")}>
+            <CardTitle title={metricLabel} appearance={hasSourceSuffix ? "widgetSource" : "widget"} className={cn("min-w-0 flex-1 basis-28", hasSourceSuffix ? "flex flex-wrap items-baseline" : "")}>
               {hasSourceSuffix ? <>
                 <span className="max-w-full truncate">{metricLabel.slice(0, -sourceSuffix.length)}</span>{" "}
                 <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
             {change !== null || result?.truncated || hasFreshness ? (
-              <CardDescription className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center gap-1 overflow-hidden">
+              <CardDescription appearance="inline" className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center overflow-hidden">
                 {change !== null ? (
                   <Tooltip>
                     <TooltipTrigger render={<span className="inline-flex min-w-0" />}>
                       <Badge
                         variant="secondary"
-                        className={cn(
-                          "max-w-full",
-                          !financial && (change >= 0
-                            ? "bg-primary/10 text-primary"
-                            : "bg-destructive/10 text-destructive"),
-                        )}
+                        appearance={
+                          financial
+                            ? undefined
+                            : change >= 0
+                              ? "positive"
+                              : "negative"
+                        }
+                        className="max-w-full"
                       >
                         {change >= 0 ? <ArrowUpRightIcon /> : <ArrowDownRightIcon />}
                         <span className="truncate">{new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(Math.abs(change))} {financial ? "procentpoint" : "%"}</span>
@@ -358,7 +355,7 @@ export function WidgetCard({
                 <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Indstillinger for ${metricLabel}`} />}>
                   <Settings2Icon />
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)]" onPointerDown={(event) => event.stopPropagation()}>
+                <PopoverContent align="end" className="w-80 max-w-(--container-viewport-inset)" onPointerDown={(event) => event.stopPropagation()}>
                   <PopoverHeader>
                     <PopoverTitle>Indstillinger for {metricLabel}</PopoverTitle>
                   </PopoverHeader>
@@ -368,7 +365,7 @@ export function WidgetCard({
                         <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${metricLabel}`} />}>
                           <ChartNoAxesCombinedIcon />
                         </DialogTrigger>
-                        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
+                        <DialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-5xl">
                           <DialogHeader>
                             <DialogTitle>Vælg visualisering</DialogTitle>
                             <DialogDescription>Samme data vist med alle kompatible visualiseringer.</DialogDescription>
@@ -376,12 +373,15 @@ export function WidgetCard({
                           <ToggleGroup
                             value={[widget.visualization]}
                             onValueChange={(values) => {
-                              const next = availableVisualizations.find((item) => item === values[0]);
+                              const next = availableVisualizations.find(
+                                (item) => item === values[0],
+                              );
                               if (next) chooseVisualization(next);
                             }}
                             spacing={3}
                             aria-label="Visualisering"
-                            className="grid w-full min-w-0 items-stretch gap-3 rounded-none md:grid-cols-2"
+                            appearance="cards"
+                            className="grid w-full min-w-0 items-stretch md:grid-cols-2"
                           >
                             {availableVisualizations.map((visualization) => {
                               const Visualization = visualizationRegistry[visualization];
@@ -396,10 +396,13 @@ export function WidgetCard({
                                       size="sm"
                                       data-size="sm"
                                       data-slot="card"
-                                      className={cn(
-                                        "cursor-pointer outline-none transition-[box-shadow] focus-visible:ring-3 focus-visible:ring-ring/50",
-                                        widget.visualization === visualization && "ring-2 ring-primary/30",
-                                      )}
+                                      appearance="visualization"
+                                      highlight={
+                                        widget.visualization === visualization
+                                          ? "visualization"
+                                          : undefined
+                                      }
+                                      className="cursor-pointer"
                                     />
                                   )}
                                 >
@@ -503,7 +506,7 @@ export function WidgetCard({
         {financial ? <CardDescription>Månedsrapport · {financialRange?.preset === "thisMonth" ? "Denne måned"
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}
       </CardHeader>
-      <CardContent data-widget-size={widget.size} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden pb-0", hasAttributions && "flex flex-col gap-2", editable && !definition?.live && "pb-9")}>
+      <CardContent data-widget-size={widget.size} appearance={editable && !definition?.live ? "editableWidget" : "widget"} attributed={hasAttributions} className={cn("min-h-0 min-w-0 flex-1 overflow-hidden", hasAttributions && "flex flex-col")}>
         {salesSource === "combined" ? (
           <Alert className="mb-3">
             <CircleAlertIcon />

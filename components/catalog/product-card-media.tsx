@@ -19,7 +19,7 @@ export function ProductCardMedia({
   sizes?: string;
 }) {
   return (
-    <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden bg-muted text-muted-foreground lg:aspect-[4/3]">
+    <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden bg-muted text-muted-foreground lg:aspect-4/3">
       {imageUrl ? (
         <Image
           src={imageUrl}

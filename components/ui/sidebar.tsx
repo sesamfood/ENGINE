@@ -452,12 +452,28 @@ function SidebarGroupContent({
   )
 }
 
-function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
+const sidebarMenuAppearance = cva("", {
+  variants: {
+    appearance: {
+      spaced: "gap-2",
+    },
+  },
+})
+
+function SidebarMenu({
+  appearance,
+  className,
+  ...props
+}: React.ComponentProps<"ul"> & VariantProps<typeof sidebarMenuAppearance>) {
   return (
     <ul
       data-slot="sidebar-menu"
       data-sidebar="menu"
-      className={cn("flex w-full min-w-0 flex-col gap-0", className)}
+      className={cn(
+        "flex w-full min-w-0 flex-col gap-0",
+        sidebarMenuAppearance({ appearance }),
+        className,
+      )}
       {...props}
     />
   )
@@ -496,7 +512,17 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
+const sidebarMenuButtonAppearance = cva("", {
+  variants: {
+    appearance: {
+      profile: "group-data-[collapsible=icon]:p-1!",
+      icon: "group-data-[collapsible=icon]:p-0!",
+    },
+  },
+})
+
 function SidebarMenuButton({
+  appearance,
   render,
   isActive = false,
   variant = "default",
@@ -508,15 +534,20 @@ function SidebarMenuButton({
   React.ComponentProps<"button"> & {
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
-  } & VariantProps<typeof sidebarMenuButtonVariants>) {
+  } & VariantProps<typeof sidebarMenuButtonVariants> &
+  VariantProps<typeof sidebarMenuButtonAppearance>) {
   const { isMobile, state } = useSidebar()
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
-        className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+        className: cn(
+          sidebarMenuButtonVariants({ variant, size }),
+          sidebarMenuButtonAppearance({ appearance }),
+          className,
+        ),
       },
-      props
+      props,
     ),
     render: !tooltip ? render : <TooltipTrigger render={render} />,
     state: {

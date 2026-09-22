@@ -187,7 +187,7 @@ export function OnboardingForm() {
     return (
       <Alert variant="destructive">
         <AlertTitle>Organisationer kunne ikke indlæses</AlertTitle>
-        <AlertDescription className="flex flex-col items-start gap-3">
+        <AlertDescription appearance="spaced" className="flex flex-col items-start">
           Kontrollér forbindelsen, og prøv igen.
           <Button
             type="button"
@@ -219,7 +219,7 @@ export function OnboardingForm() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <Tabs defaultValue="create" className="gap-5">
+      <Tabs defaultValue="create" appearance="spaced">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="create">Opret organisation</TabsTrigger>
           <TabsTrigger value="join">Tilmeld med kode</TabsTrigger>

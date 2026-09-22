@@ -19,13 +19,16 @@ export function HelpScreenshot({ screenshot }: { screenshot: Screenshot }) {
   return (
     <Dialog>
       <figure
-        className="mt-6 w-full"
-        style={{
-          maxWidth: `min(${screenshot.width}px, ${(28 * screenshot.width) / screenshot.height}rem)`,
-        }}
+        className="mt-6 w-full max-w-(--screenshot-max-width)"
+        style={
+          {
+            "--screenshot-max-width": `min(${screenshot.width}px, ${(28 * screenshot.width) / screenshot.height}rem)`,
+          } as React.CSSProperties
+        }
       >
         <DialogTrigger
-          className="block w-full cursor-zoom-in overflow-hidden rounded-xl border outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          appearance="image"
+          className="block w-full cursor-zoom-in overflow-hidden"
           aria-label={`${screenshot.alt}. Forstør billedet`}
         >
           <Image
@@ -43,7 +46,12 @@ export function HelpScreenshot({ screenshot }: { screenshot: Screenshot }) {
           </p>
           <DialogTrigger
             render={
-              <Button variant="link" size="sm" className="min-h-11 px-0" />
+              <Button
+                variant="link"
+                size="sm"
+                appearance="flush"
+                className="min-h-11"
+              />
             }
           >
             <Maximize2Icon data-icon="inline-start" aria-hidden="true" />
@@ -52,12 +60,14 @@ export function HelpScreenshot({ screenshot }: { screenshot: Screenshot }) {
         </figcaption>
       </figure>
       <DialogPortal>
-        <DialogOverlay className="bg-black/80 duration-200 motion-reduce:animate-none" />
+        <DialogOverlay appearance="image" />
         <DialogPrimitive.Popup
-          className="fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 outline-none transition-[scale,opacity] duration-200 ease-out data-starting-style:scale-90 data-starting-style:opacity-0 data-ending-style:scale-90 data-ending-style:opacity-0 motion-reduce:transition-none"
-          style={{
-            width: `min(calc(100vw - 2rem), calc((100dvh - 10rem) * ${screenshot.width / screenshot.height}))`,
-          }}
+          className="fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 outline-none transition-image duration-200 ease-out data-starting-style:scale-90 data-starting-style:opacity-0 data-ending-style:scale-90 data-ending-style:opacity-0 motion-reduce:transition-none w-(--screenshot-width)"
+          style={
+            {
+              "--screenshot-width": `min(calc(100vw - 2rem), calc((100dvh - 10rem) * ${screenshot.width / screenshot.height}))`,
+            } as React.CSSProperties
+          }
         >
           <DialogTitle className="sr-only">{screenshot.alt}</DialogTitle>
           <DialogClose
@@ -80,7 +90,7 @@ export function HelpScreenshot({ screenshot }: { screenshot: Screenshot }) {
             sizes="100vw"
             className="h-auto w-full rounded-lg bg-background shadow-2xl"
           />
-          <DialogDescription className="mt-3 max-h-16 overflow-y-auto rounded-lg bg-background px-3 py-2 text-xs leading-5">
+          <DialogDescription appearance="caption" className="mt-3 max-h-16 overflow-y-auto">
             {screenshot.caption}
           </DialogDescription>
         </DialogPrimitive.Popup>

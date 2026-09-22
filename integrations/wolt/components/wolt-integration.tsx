@@ -239,7 +239,7 @@ function LocationHealthCard({
           </Badge>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent appearance="relaxed" className="flex flex-col">
         {connection ? (
           <ConnectionHealth
             location={location}
@@ -259,7 +259,7 @@ function LocationHealthCard({
           </Alert>
         )}
 
-        <FieldGroup className="gap-3">
+        <FieldGroup appearance="compact">
           <Field data-disabled={!canUseWio}>
             <FieldLabel htmlFor={`wolt-partner-venue-${location.id}`}>
               WIO partner-venue-id
@@ -469,8 +469,8 @@ function ObservedMappingRow({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <FieldGroup className="gap-3 sm:grid sm:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-(--grid-cols-content-action) lg:items-end">
+        <FieldGroup appearance="compact" className="sm:grid sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor={`wolt-mapping-scope-${row.key}`}>
               Gælder for
@@ -630,7 +630,7 @@ function ObservedItemMappings({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle appearance="inline" className="flex items-center">
           <Link2Icon aria-hidden="true" />
           Observerede Wolt-produkter
         </CardTitle>
@@ -638,7 +638,7 @@ function ObservedItemMappings({
           Vælg et lokalt Produkt for hver observeret Wolt-vare. Ingen forslag gemmes automatisk.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent appearance="relaxed" className="flex flex-col">
         <FieldGroup className="sm:max-w-sm">
           <Field>
             <FieldLabel htmlFor="wolt-observed-location">Lokation</FieldLabel>
@@ -691,7 +691,7 @@ function ObservedItemMappings({
             <Skeleton className="h-28 w-full" />
           </div>
         ) : observed.rows.length === 0 ? (
-          <Empty className="min-h-48 border-0">
+          <Empty appearance="borderless" className="min-h-48">
             <EmptyHeader>
               <EmptyMedia variant="icon"><ServerCogIcon aria-hidden="true" /></EmptyMedia>
               <EmptyTitle>Ingen observerede Wolt-produkter</EmptyTitle>

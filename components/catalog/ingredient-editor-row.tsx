@@ -86,7 +86,7 @@ export function IngredientEditorRow({
   const quantityError = errors[`${row.key}-quantity`];
   const unitError = errors[`${row.key}-unit`];
   return (
-    <div className="grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(0,1fr)_8rem_minmax(8rem,0.55fr)_auto] md:items-start">
+    <div className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-mapping) md:items-start">
       <div className="flex min-w-0 flex-col gap-3 md:col-start-1 md:row-start-1">
         <Field data-invalid={Boolean(productError)}>
           <FieldLabel>Produkt</FieldLabel>

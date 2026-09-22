@@ -72,7 +72,7 @@ export function OnlinePosStockSettings() {
       <CardHeader>
         <CardTitle>Lagersynkronisering</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent appearance="stacked" className="flex flex-col">
         <FieldGroup>
           <SettingsSwitchField
             label="Opdatér lageret fra salg"

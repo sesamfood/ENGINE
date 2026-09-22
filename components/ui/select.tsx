@@ -1,5 +1,6 @@
 "use client"
 
+import { cva, type VariantProps } from "class-variance-authority"
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
@@ -18,11 +19,27 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   )
 }
 
-function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
+const selectValueAppearance = cva("", {
+  variants: {
+    appearance: {
+      truncate: "truncate",
+    },
+  },
+})
+
+function SelectValue({
+  appearance,
+  className,
+  ...props
+}: SelectPrimitive.Value.Props & VariantProps<typeof selectValueAppearance>) {
   return (
     <SelectPrimitive.Value
       data-slot="select-value"
-      className={cn("flex flex-1 text-left", className)}
+      className={cn(
+        "flex flex-1 text-left",
+        selectValueAppearance({ appearance }),
+        className,
+      )}
       {...props}
     />
   )
@@ -111,14 +128,16 @@ function SelectLabel({
 function SelectItem({
   className,
   children,
+  indented = false,
   ...props
-}: SelectPrimitive.Item.Props) {
+}: SelectPrimitive.Item.Props & { indented?: boolean }) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
         "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
-        className
+        indented && "ps-(--item-indent)!",
+        className,
       )}
       {...props}
     >

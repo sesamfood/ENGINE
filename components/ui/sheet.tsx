@@ -1,5 +1,6 @@
 "use client"
 
+import { cva, type VariantProps } from "class-variance-authority"
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
@@ -86,11 +87,27 @@ function SheetContent({
   )
 }
 
-function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
+const sheetHeaderAppearance = cva("", {
+  variants: {
+    appearance: {
+      separated: "border-b pr-12",
+    },
+  },
+})
+
+function SheetHeader({
+  appearance,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof sheetHeaderAppearance>) {
   return (
     <div
       data-slot="sheet-header"
-      className={cn("flex flex-col gap-0.5 p-4", className)}
+      className={cn(
+        "flex flex-col gap-0.5 p-4",
+        sheetHeaderAppearance({ appearance }),
+        className,
+      )}
       {...props}
     />
   )

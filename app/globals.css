@@ -53,6 +53,98 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --grid-cols-product-mapping: minmax(0,1fr) 8rem minmax(8rem,0.55fr) auto;
+  --grid-cols-product-details: minmax(0,0.9fr) minmax(0,1.1fr);
+  --grid-cols-recipe: auto minmax(0,1fr) minmax(9rem,0.6fr) auto;
+  --grid-cols-product-settings: minmax(12rem,0.45fr) minmax(0,1fr);
+  --grid-cols-page-header: minmax(0,1fr) minmax(14rem,20rem);
+  --grid-cols-step-navigation: 3rem minmax(0,1fr) 3rem;
+  --grid-cols-stock: minmax(0,1.1fr) minmax(20rem,0.9fr);
+  --grid-cols-metric-condition: minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr) auto;
+  --grid-cols-content-action: minmax(0,1fr) auto;
+  --grid-cols-compact-metrics: repeat(auto-fit,minmax(min(100%,5rem),1fr));
+  --grid-cols-metrics: repeat(auto-fit,minmax(min(100%,8rem),1fr));
+  --grid-cols-settings-header: minmax(0,1fr) minmax(12rem,18rem);
+  --grid-cols-date-labels: minmax(0,1fr) 19rem;
+  --grid-cols-date-labels-wide: minmax(0,1fr) 22rem;
+  --grid-cols-printer-preview: minmax(0,1.4fr) minmax(0,1fr);
+  --grid-cols-registration: minmax(17rem,22rem) minmax(0,1fr);
+  --grid-cols-delivery-details: minmax(12rem,1fr) minmax(20rem,1fr);
+  --grid-cols-delivery-line: minmax(12rem,1fr) minmax(6rem,0.35fr) minmax(6rem,0.3fr) auto;
+  --grid-cols-icon-content: 2rem minmax(0,1fr);
+  --grid-cols-help: 16rem minmax(0,1fr);
+  --grid-cols-opening-hours: 7rem minmax(7rem,1fr) minmax(7rem,1fr);
+  --grid-cols-appearance: minmax(0,24rem) 1fr;
+  --grid-cols-label-value: 8rem 1fr;
+  --grid-cols-own-check-template: minmax(0,1fr) 20rem;
+  --grid-cols-sidebar-item: 1fr 10rem auto;
+  --grid-cols-content-actions: minmax(0,1fr) auto auto;
+  --grid-cols-staff-food-limit: minmax(0,1fr) 10rem;
+  --grid-cols-inspection: 1fr 18rem;
+  --grid-cols-check-field: minmax(8rem,1fr) auto auto;
+  --grid-cols-quantity-control: 2.75rem 1fr 2.75rem;
+  --grid-cols-integration: minmax(0,1fr) minmax(0,2fr);
+  --grid-cols-input-action: 1fr auto;
+  --grid-cols-delivery-product: 1fr 10rem;
+  --grid-cols-connection: minmax(0,1fr) minmax(0,1fr) auto;
+  --grid-cols-order-item: minmax(0,1fr) 8rem auto;
+  --grid-rows-widget-dialog: auto auto minmax(0, 1fr) auto;
+  --grid-rows-panel: auto minmax(0, 1fr) auto;
+  --container-page: 96rem;
+  --container-dashboard: 120rem;
+  --spacing-schedule: 980px;
+  --text-2xs: 10px;
+  --spacing-viewport-inset: calc(100vh - 2rem);
+  --spacing-dynamic-viewport-inset: calc(100dvh - 2rem);
+  --spacing-small-viewport-inset: calc(100svh - 2rem);
+  --spacing-help-sidebar: calc(100dvh - 7rem);
+  --spacing-help-navigation: calc(100dvh - 9rem);
+  --spacing-count-panel: calc(100svh - 20rem);
+  --spacing-stock-panel: calc(100svh - 15rem);
+  --spacing-dialog-dynamic: 90dvh;
+  --spacing-dialog: 90vh;
+  --spacing-dialog-tall: 92vh;
+  --spacing-dialog-compact: 85vh;
+  --spacing-product-picker: 60vh;
+  --spacing-help-search: min(55dvh, 24rem);
+  --container-viewport-inset: calc(100vw - 2rem);
+  --container-image-crop: min(36rem, max(16rem, calc(100dvh - 20rem)));
+  --spacing-gauge: min(14rem, 100cqw);
+  --spacing-field-label: calc(1.375em + 0.5rem);
+  --spacing-panel-inset: calc(100% - 2rem);
+  --spacing-panel-wide-inset: calc(100% - 4rem);
+  --spacing-safe-actions-tall: calc(9rem + env(safe-area-inset-bottom));
+  --spacing-safe-actions: calc(8rem + env(safe-area-inset-bottom));
+  --spacing-safe-actions-compact: calc(6rem + env(safe-area-inset-bottom));
+  --spacing-safe-inset: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@utility transition-card {
+  transition-property: box-shadow, border-color;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+@utility transition-selection {
+  transition-property: background-color, border-color, box-shadow;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+@utility transition-widget {
+  transition-property: opacity, box-shadow, background-color;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+@utility transition-image {
+  transition-property: scale, opacity;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+@utility transition-drag {
+  transition: var(--drag-transition);
 }
 
 .dashboard-grid {

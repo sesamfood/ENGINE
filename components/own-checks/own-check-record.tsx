@@ -313,7 +313,7 @@ export function OwnCheckRecord({
           <CardHeader>
             <CardTitle>Instruktioner</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent appearance="stacked" className="flex flex-col">
             {record.imageUrl ? (
               <div className="relative h-64 w-full">
                 <Image
@@ -335,7 +335,7 @@ export function OwnCheckRecord({
         </Card>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
+      <div className="grid gap-4 lg:grid-cols-(--grid-cols-inspection)">
         <Card>
           <CardHeader>
             <CardTitle>Kontrolpunkter</CardTitle>
@@ -343,7 +343,7 @@ export function OwnCheckRecord({
               {record.description || "Ingen yderligere beskrivelse."}
             </p>
           </CardHeader>
-          <CardContent className="flex flex-col gap-5">
+          <CardContent appearance="relaxed" className="flex flex-col">
             <OwnCheckResultFields
               fields={record.fields}
               values={values}
@@ -365,7 +365,7 @@ export function OwnCheckRecord({
             <CardHeader>
               <CardTitle>Registrering</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm">
+            <CardContent appearance="details" className="flex flex-col">
               <OwnCheckExecutionTimes
                 startedAt={record.entry.startedAt}
                 endedAt={record.entry.endedAt}
@@ -406,7 +406,7 @@ export function OwnCheckRecord({
               <CardHeader>
                 <CardTitle>Note</CardTitle>
               </CardHeader>
-              <CardContent className="whitespace-pre-wrap text-sm">
+              <CardContent appearance="text" className="whitespace-pre-wrap">
                 {record.entry.note}
               </CardContent>
             </Card>
@@ -415,14 +415,14 @@ export function OwnCheckRecord({
       </div>
 
       {record.entry.deviation ? (
-        <Card className="border-destructive/40">
+        <Card appearance="error">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
+            <CardTitle appearance="destructive" className="flex items-center">
               <WrenchIcon className="size-4" />
               Afvigelse
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-1 text-sm">
+          <CardContent appearance="tightText" className="flex flex-col">
             <p className="whitespace-pre-wrap">
               {record.entry.deviation.description}
             </p>
@@ -442,7 +442,7 @@ export function OwnCheckRecord({
           <CardHeader>
             <CardTitle>Korrigerende handling</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-1 text-sm">
+          <CardContent appearance="tightText" className="flex flex-col">
             <p className="whitespace-pre-wrap">
               {record.entry.correctiveAction.description}
             </p>
@@ -467,7 +467,7 @@ export function OwnCheckRecord({
           <CardHeader>
             <CardTitle>Handlinger</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent appearance="stacked" className="flex flex-col">
             {canCorrect &&
             record.entry.hasDeviation &&
             record.entry.status !== "approved" ? (
@@ -580,7 +580,7 @@ export function OwnCheckRecord({
           if (!uploading && !saving) setEditing(open);
         }}
       >
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Ret egenkontrol</DialogTitle>
             <DialogDescription>

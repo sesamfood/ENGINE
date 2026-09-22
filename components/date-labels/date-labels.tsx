@@ -148,7 +148,7 @@ export function DateLabels() {
   return (
     <div className="flex flex-col gap-6">
       <AppPageHeader>
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)] sm:items-end">
+        <div className="grid gap-4 sm:grid-cols-(--grid-cols-settings-header) sm:items-end">
           <div className="flex flex-col gap-1">
             <p className="text-sm font-semibold uppercase tracking-widest text-primary">
               Datomærkning
@@ -351,7 +351,7 @@ function LabelWorkspace({
 
   return (
     <>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid items-start gap-6 lg:grid-cols-(--grid-cols-date-labels) 2xl:grid-cols-(--grid-cols-date-labels-wide)">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <ToggleGroup
@@ -401,7 +401,7 @@ function LabelWorkspace({
               ))}
             </div>
           ) : visibleProducts.length === 0 ? (
-            <Empty className="border">
+            <Empty appearance="outlined">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <PackageOpenIcon />
@@ -424,10 +424,11 @@ function LabelWorkspace({
                 <Card
                   key={product.id}
                   size="sm"
-                  className={cn(
-                    "relative gap-3 pt-0",
-                    selection?.id === product.id && "outline-2 outline-primary",
-                  )}
+                  appearance="dateLabel"
+                  highlight={
+                    selection?.id === product.id ? "selection" : undefined
+                  }
+                  className="relative"
                 >
                   <ProductCardMedia
                     imageUrl={product.imageUrl}
@@ -696,7 +697,7 @@ function PrintPanel({
         </CardAction>
         <CardDescription>{product.name}</CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent appearance="relaxed" className="flex flex-col">
         <div className="flex items-center gap-3">
           <div className="w-20 shrink-0 overflow-hidden rounded-md">
             <ProductCardMedia
@@ -719,7 +720,7 @@ function PrintPanel({
           <div
             className={cn(
               "grid gap-3",
-              includeTime && "grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]",
+              includeTime && "grid-cols-(--grid-cols-printer-preview)",
             )}
           >
             <Field data-invalid={Boolean(dateError)}>
@@ -830,8 +831,12 @@ function PrintPanel({
                 "</style>",
                 "@media screen { .label { width: 100%; height: 100vh; } }</style>",
               )}
-              className="w-full rounded-sm border-0"
-              style={{ aspectRatio: `${size.width} / ${size.height}` }}
+              className="w-full rounded-sm border-0 aspect-(--preview-aspect)"
+              style={
+                {
+                  "--preview-aspect": `${size.width} / ${size.height}`,
+                } as React.CSSProperties
+              }
             />
           </div>
         ) : null}
@@ -841,7 +846,7 @@ function PrintPanel({
           </Alert>
         ) : null}
       </CardContent>
-      <CardFooter className="flex flex-col gap-2">
+      <CardFooter appearance="compact" className="flex flex-col">
         <Button
           className="min-h-12 w-full"
           disabled={

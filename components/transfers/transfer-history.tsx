@@ -462,11 +462,17 @@ function ExportColumnRow({
   return (
     <li
       ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 1 : undefined,
-      }}
+      className={cn(
+        transform && "transform-(--drag-transform)",
+        transition && "transition-drag!",
+        isDragging && "z-1",
+      )}
+      style={
+        {
+          "--drag-transform": CSS.Transform.toString(transform),
+          "--drag-transition": transition,
+        } as React.CSSProperties
+      }
     >
       <button
         ref={setActivatorNodeRef}
@@ -474,7 +480,7 @@ function ExportColumnRow({
         {...attributes}
         {...listeners}
         className={cn(
-          "flex min-h-11 w-full touch-none items-center gap-2 rounded-lg border bg-background px-2 text-left shadow-sm transition-[box-shadow,border-color] duration-150 select-none",
+          "flex min-h-11 w-full touch-none items-center gap-2 rounded-lg border bg-background px-2 text-left shadow-sm transition-card duration-150 select-none",
           dragActive ? "cursor-grabbing" : "cursor-grab active:cursor-grabbing",
           isDragging && "opacity-30",
           isOver &&
@@ -947,7 +953,8 @@ export function TransferHistory() {
           <Button
             variant="outline"
             size="lg"
-            className="min-h-11 px-4"
+            appearance="standard"
+            className="min-h-11"
             disabled={Boolean(rangeError)}
             onClick={() => setIsExportOpen(true)}
           >
@@ -974,7 +981,7 @@ export function TransferHistory() {
       ) : null}
 
       {!rangeError && !loading && transfers.length === 0 ? (
-        <Empty className="min-h-72 border">
+        <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ArrowLeftRightIcon />
@@ -1015,7 +1022,8 @@ export function TransferHistory() {
                   role="button"
                   tabIndex={0}
                   aria-label={`Åbn transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}${transfer.hasTemperatureDeviation ? " med temperaturafvigelse" : ""}`}
-                  className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
+                  appearance="selectable"
+                  className="cursor-pointer"
                   onClick={() => openTransfer(transfer.id)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -1052,10 +1060,10 @@ export function TransferHistory() {
                   <TableCell>{transfer.fromLocationName}</TableCell>
                   <TableCell>{transfer.toLocationName}</TableCell>
                   <TableCell>{transfer.responsibleName}</TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell appearance="numeric" className="text-right">
                     {transfer.totalQuantity}
                   </TableCell>
-                  <TableCell className="max-w-56 truncate">
+                  <TableCell appearance="truncate" className="max-w-56">
                     {transfer.comment ?? "—"}
                   </TableCell>
                 </TableRow>
@@ -1072,7 +1080,8 @@ export function TransferHistory() {
           <Button
             variant="outline"
             size="lg"
-            className="min-h-11 px-5"
+            appearance="wide"
+            className="min-h-11"
             disabled={paginationStatus === "LoadingMore"}
             onClick={() => loadMore(25)}
           >
@@ -1100,7 +1109,7 @@ export function TransferHistory() {
 
           <FieldGroup>
             <FieldSet>
-              <FieldLegend variant="label" className="flex items-center gap-1">
+              <FieldLegend variant="label" appearance="inline" className="flex items-center">
                 Kolonner
                 <HelpTooltip
                   label="Kolonner"
@@ -1117,7 +1126,7 @@ export function TransferHistory() {
             </FieldSet>
 
             <FieldSet>
-              <FieldLegend variant="label" className="flex items-center gap-1">
+              <FieldLegend variant="label" appearance="inline" className="flex items-center">
                 Enheder
                 <HelpTooltip
                   label="Enheder"
@@ -1176,7 +1185,7 @@ export function TransferHistory() {
         <DialogContent
           className={
             isEditing
-              ? "max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-5xl"
+              ? "max-h-(--spacing-small-viewport-inset) overflow-y-auto sm:max-w-5xl"
               : "sm:max-w-2xl"
           }
         >
@@ -1284,9 +1293,7 @@ export function TransferHistory() {
                                 {first.productName}
                               </span>
                               {hasDeviation ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-warning"
+                                <Badge variant="outline" appearance="warning"
                                 >
                                   <TriangleAlertIcon
                                     aria-hidden="true"
@@ -1326,15 +1333,15 @@ export function TransferHistory() {
                         </TableRow>,
                         ...group.map((item) => (
                           <TableRow key={item.id}>
-                            <TableCell className="font-medium">
+                            <TableCell appearance="label">
                               {item.productName}
                             </TableCell>
                             <TableCell>{item.unitName}</TableCell>
-                            <TableCell className="text-right tabular-nums">
+                            <TableCell appearance="numeric" className="text-right">
                               {item.quantity}
                             </TableCell>
                             {transferDetail.receiptStatus === "registered" ? (
-                              <TableCell className="text-right tabular-nums">
+                              <TableCell appearance="numeric" className="text-right">
                                 {item.receivedQuantity ?? 0}
                                 {item.receivedUnitName &&
                                 item.receivedUnitName !== item.unitName
@@ -1369,7 +1376,8 @@ export function TransferHistory() {
               <Button
                 variant="destructive"
                 size="lg"
-                className="min-h-11 px-5"
+                appearance="wide"
+                className="min-h-11"
                 onClick={() => setIsDeleteOpen(true)}
               >
                 <Trash2Icon data-icon="inline-start" />
@@ -1377,7 +1385,8 @@ export function TransferHistory() {
               </Button>
               <Button
                 size="lg"
-                className="min-h-11 px-5"
+                appearance="wide"
+                className="min-h-11"
                 onClick={() => setIsEditing(true)}
               >
                 <PencilIcon data-icon="inline-start" />

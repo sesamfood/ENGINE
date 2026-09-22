@@ -307,7 +307,7 @@ function Planner() {
   }));
 
   const header = (
-    <FieldGroup className="gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Bestilling
@@ -451,7 +451,7 @@ function Planner() {
           </AlertDescription>
         </Alert>
       ) : !locationId ? (
-        <Empty className="min-h-72 border">
+        <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>
             <EmptyTitle>Ingen lokationer</EmptyTitle>
             <EmptyDescription>
@@ -467,7 +467,7 @@ function Planner() {
               <CardTitle>Bestillingsforslag</CardTitle>
             </CardHeader>
             <CardContent>
-              <FieldGroup className="gap-5 sm:flex-row sm:items-end">
+              <FieldGroup appearance="relaxed" className="sm:flex-row sm:items-end">
                 <Field className="sm:max-w-48" data-invalid={!validCoverage}>
                   <div className="flex items-center gap-1">
                     <FieldLabel htmlFor="ordering-days">
@@ -644,7 +644,7 @@ function Planner() {
               ))}
             </div>
           ) : !visible.length ? (
-            <Empty className="min-h-64 border">
+            <Empty appearance="outlined" className="min-h-64">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <ShoppingCartIcon />
@@ -670,7 +670,7 @@ function Planner() {
                 <TableBody>
                   {visible.map((row) => (
                     <TableRow key={row.id} className="h-20">
-                      <TableCell className="min-w-44 py-3 whitespace-normal">
+                      <TableCell appearance="spaced" className="min-w-44 whitespace-normal">
                         <div className="flex items-center gap-3">
                           <Avatar className="size-14">
                             <AvatarImage

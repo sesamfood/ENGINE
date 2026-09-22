@@ -142,7 +142,7 @@ function NoticeAudit({
         <h3 className="font-medium">{title}</h3>
         {noticeBadge(notice.status)}
       </div>
-      <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2 text-sm">
+      <dl className="grid grid-cols-(--grid-cols-integration) gap-2 text-sm">
         <dt className="text-muted-foreground">Forsøgt</dt>
         <dd>{notice.attemptedAt ? formatter.format(notice.attemptedAt) : "–"}</dd>
         <dt className="text-muted-foreground">Sendt</dt>
@@ -302,7 +302,7 @@ export function BadDeliveriesReportSection({
   return (
     <>
       <Card>
-        <CardHeader className="sm:grid-cols-[1fr_auto]">
+        <CardHeader className="sm:grid-cols-(--grid-cols-input-action)">
           <CardTitle>Dårlige leveringer</CardTitle>
           {canExport ? (
             <Button
@@ -343,7 +343,8 @@ export function BadDeliveriesReportSection({
                       role="button"
                       tabIndex={0}
                       aria-label={`Åbn registrering af dårlig levering på ${row.locationName}`}
-                      className="cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
+                      appearance="selectable"
+                      className="cursor-pointer"
                       onClick={() => setSelectedId(row.id)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -397,7 +398,7 @@ export function BadDeliveriesReportSection({
         open={Boolean(selectedId)}
         onOpenChange={(open) => !open && setSelectedId(undefined)}
       >
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-4xl">
           {!detail ? (
             <Skeleton className="h-96" />
           ) : (
@@ -434,10 +435,12 @@ export function BadDeliveriesReportSection({
                               ? "Foto af dårlige produkter"
                               : "Foto af følgeseddel"
                           }
-                          className="aspect-video w-full rounded-lg bg-contain bg-center bg-no-repeat"
-                          style={{
-                            backgroundImage: `url("${attachment.url}")`,
-                          }}
+                          className="aspect-video w-full rounded-lg bg-contain bg-center bg-no-repeat bg-(image:--preview-image)"
+                          style={
+                            {
+                              "--preview-image": `url("${attachment.url}")`,
+                            } as React.CSSProperties
+                          }
                         />
                       ) : (
                         <span className="text-sm text-muted-foreground">
@@ -471,7 +474,7 @@ export function BadDeliveriesReportSection({
                 </TableBody>
               </Table>
 
-              <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3 text-sm">
+              <dl className="grid grid-cols-(--grid-cols-integration) gap-3 text-sm">
                 <dt className="text-muted-foreground">Registreret af</dt>
                 <dd>{detail.registeredByName}</dd>
                 <dt className="text-muted-foreground">Kommentar</dt>

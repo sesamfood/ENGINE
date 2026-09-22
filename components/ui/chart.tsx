@@ -1,5 +1,6 @@
 "use client"
 
+import { cva, type VariantProps } from "class-variance-authority"
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
@@ -94,7 +95,7 @@ function ChartContainer({
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme ?? config.color
+    ([, config]) => config.theme ?? config.color,
   )
 
   if (!colorConfig.length) {
@@ -102,6 +103,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   }
 
   return (
+    // eslint-disable-next-line shadcn/no-inline-styles -- Each chart supplies its own light and dark theme variables.
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
@@ -117,7 +119,7 @@ ${colorConfig
   })
   .join("\n")}
 }
-`
+`,
           )
           .join("\n"),
       }}
@@ -125,7 +127,9 @@ ${colorConfig
   )
 }
 
-function ChartTooltip(props: React.ComponentProps<typeof RechartsPrimitive.Tooltip>) {
+function ChartTooltip(
+  props: React.ComponentProps<typeof RechartsPrimitive.Tooltip>,
+) {
   const { chartElement, chartId } = useChart()
   const coordinate = RechartsPrimitive.useActiveTooltipCoordinate()
   const chartWidth = RechartsPrimitive.useChartWidth()
@@ -134,19 +138,26 @@ function ChartTooltip(props: React.ComponentProps<typeof RechartsPrimitive.Toolt
   const [portal, setPortal] = React.useState<HTMLDivElement | null>(null)
   const x = props.position?.x ?? coordinate?.x ?? 0
   const y = props.position?.y ?? coordinate?.y ?? 0
-  const anchor = React.useMemo(() => ({
-    contextElement: chartElement ?? undefined,
-    getBoundingClientRect() {
-      const wrapper = chartElement?.querySelector<HTMLElement>(".recharts-wrapper") ?? chartElement
-      const rect = wrapper?.getBoundingClientRect()
-      return new DOMRect(
-        (rect?.left ?? 0) + x * (rect?.width ?? 0) / Math.max(chartWidth ?? 1, 1),
-        (rect?.top ?? 0) + y * (rect?.height ?? 0) / Math.max(chartHeight ?? 1, 1),
-        0,
-        0,
-      )
-    },
-  }), [chartElement, chartWidth, chartHeight, x, y])
+  const anchor = React.useMemo(
+    () => ({
+      contextElement: chartElement ?? undefined,
+      getBoundingClientRect() {
+        const wrapper =
+          chartElement?.querySelector<HTMLElement>(".recharts-wrapper") ??
+          chartElement
+        const rect = wrapper?.getBoundingClientRect()
+        return new DOMRect(
+          (rect?.left ?? 0) +
+            (x * (rect?.width ?? 0)) / Math.max(chartWidth ?? 1, 1),
+          (rect?.top ?? 0) +
+            (y * (rect?.height ?? 0)) / Math.max(chartHeight ?? 1, 1),
+          0,
+          0,
+        )
+      },
+    }),
+    [chartElement, chartWidth, chartHeight, x, y],
+  )
 
   if (props.portal) return <RechartsPrimitive.Tooltip {...props} />
 
@@ -164,8 +175,16 @@ function ChartTooltip(props: React.ComponentProps<typeof RechartsPrimitive.Toolt
             positionMethod="fixed"
             side="right"
             align="start"
-            sideOffset={typeof props.offset === "number" ? props.offset : props.offset?.x ?? 10}
-            alignOffset={typeof props.offset === "number" ? props.offset : props.offset?.y ?? 10}
+            sideOffset={
+              typeof props.offset === "number"
+                ? props.offset
+                : (props.offset?.x ?? 10)
+            }
+            alignOffset={
+              typeof props.offset === "number"
+                ? props.offset
+                : (props.offset?.y ?? 10)
+            }
             collisionBoundary={[]}
             className="pointer-events-none isolate z-50"
           >
@@ -218,7 +237,9 @@ function ChartTooltipContent({
     const key = `${labelKey ?? item?.dataKey ?? item?.name ?? "value"}`
     const itemConfig = getPayloadConfigFromPayload(config, item, key)
     if (tooltipTitle !== undefined) {
-      return <div className={cn("font-medium", labelClassName)}>{tooltipTitle}</div>
+      return (
+        <div className={cn("font-medium", labelClassName)}>{tooltipTitle}</div>
+      )
     }
     const value =
       !labelKey && typeof label === "string"
@@ -259,7 +280,7 @@ function ChartTooltipContent({
     <div
       className={cn(
         "grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
-        className
+        className,
       )}
     >
       {!nestLabel ? tooltipLabel : null}
@@ -276,7 +297,7 @@ function ChartTooltipContent({
                 key={index}
                 className={cn(
                   "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
-                  indicator === "dot" && "items-center"
+                  indicator === "dot" && "items-center",
                 )}
               >
                 {formatter && item?.value !== undefined && item.name ? (
@@ -296,7 +317,7 @@ function ChartTooltipContent({
                               "w-0 border-[1.5px] border-dashed bg-transparent":
                                 indicator === "dashed",
                               "my-0.5": nestLabel && indicator === "dashed",
-                            }
+                            },
                           )}
                           style={
                             {
@@ -310,7 +331,7 @@ function ChartTooltipContent({
                     <div
                       className={cn(
                         "flex min-w-0 flex-1 justify-between gap-3 leading-none",
-                        nestLabel ? "items-end" : "items-center"
+                        nestLabel ? "items-end" : "items-center",
                       )}
                     >
                       <div className="grid gap-1.5">
@@ -339,7 +360,16 @@ function ChartTooltipContent({
 
 const ChartLegend = RechartsPrimitive.Legend
 
+const chartLegendContentAppearance = cva("", {
+  variants: {
+    appearance: {
+      compact: "gap-x-3 gap-y-1 pt-2",
+    },
+  },
+})
+
 function ChartLegendContent({
+  appearance,
   className,
   hideIcon = false,
   payload,
@@ -348,7 +378,8 @@ function ChartLegendContent({
 }: React.ComponentProps<"div"> & {
   hideIcon?: boolean
   nameKey?: string
-} & RechartsPrimitive.DefaultLegendContentProps) {
+} & RechartsPrimitive.DefaultLegendContentProps &
+  VariantProps<typeof chartLegendContentAppearance>) {
   const { config } = useChart()
 
   if (!payload?.length) {
@@ -360,7 +391,8 @@ function ChartLegendContent({
       className={cn(
         "flex items-center justify-center gap-4",
         verticalAlign === "top" ? "pb-3" : "pt-3",
-        className
+        chartLegendContentAppearance({ appearance }),
+        className,
       )}
     >
       {payload
@@ -373,17 +405,19 @@ function ChartLegendContent({
             <div
               key={index}
               className={cn(
-                "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground"
+                "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground",
               )}
             >
               {itemConfig?.icon && !hideIcon ? (
                 <itemConfig.icon />
               ) : (
                 <div
-                  className="h-2 w-2 shrink-0 rounded-[2px]"
-                  style={{
-                    backgroundColor: item.color,
-                  }}
+                  className="h-2 w-2 shrink-0 rounded-[2px] bg-(--swatch-color)"
+                  style={
+                    {
+                      "--swatch-color": item.color,
+                    } as React.CSSProperties
+                  }
                 />
               )}
               {itemConfig?.label}

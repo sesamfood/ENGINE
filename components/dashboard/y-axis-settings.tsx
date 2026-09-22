@@ -64,7 +64,7 @@ export function YAxisSettings({
   }
 
   return (
-    <FieldGroup className="grid gap-4 sm:grid-cols-2">
+    <FieldGroup appearance="standard" className="grid sm:grid-cols-2">
       <Field data-invalid={invalidBounds || undefined}>
         <FieldLabel htmlFor={`${idPrefix}-min`}>Minimum på Y-akse</FieldLabel>
         <YAxisInput

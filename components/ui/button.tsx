@@ -40,16 +40,48 @@ const buttonVariants = cva(
   }
 )
 
+const buttonAppearance = cva("", {
+  variants: {
+    appearance: {
+      standard: "px-4",
+      compact: "px-3",
+      wide: "px-5",
+      round: "rounded-full",
+      responsive: "px-4 sm:px-6",
+      metricLink: "truncate px-0 text-xs text-muted-foreground",
+      upload: "gap-3 border-dashed p-5",
+      flush: "px-0",
+      spaced: "gap-3",
+      image: "p-0",
+      thumbnail: "bg-muted p-0 text-muted-foreground",
+      photo: "rounded-lg bg-contain bg-center bg-no-repeat p-0",
+      photoPlaceholder: "gap-3 rounded-lg p-0",
+      square: "rounded-none",
+      floating: "px-3 shadow-sm sm:px-4",
+      imageAction: "rounded-full bg-background/85",
+      quantity: "px-2",
+      recentQuantity: "px-2 ring-3 ring-ring/40",
+    },
+  },
+})
+
 function Button({
+  appearance,
   className,
   variant = "default",
   size = "default",
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> &
+  VariantProps<typeof buttonAppearance>) {
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(
+        buttonVariants({ variant, size }),
+        buttonAppearance({ appearance }),
+        className,
+      )}
       {...props}
     />
   )

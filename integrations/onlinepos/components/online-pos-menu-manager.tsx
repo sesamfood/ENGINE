@@ -147,12 +147,7 @@ function MenuCard({
   return (
     <DialogTrigger
       nativeButton={false}
-      render={
-        <Card
-          size="sm"
-          className="cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        />
-      }
+      render={<Card size="sm" appearance="menu" className="cursor-pointer" />}
       aria-label={
         hasUnmappedProducts
           ? `Redigér ${menu.name}. ${productCountLabel}. Nogle produkter mangler OnlinePOS-kobling.`
@@ -161,7 +156,7 @@ function MenuCard({
       onClick={() => onEdit(menu)}
     >
       <CardHeader className="items-center">
-        <CardTitle className="min-w-0 truncate">{menu.name}</CardTitle>
+        <CardTitle appearance="truncate" className="min-w-0">{menu.name}</CardTitle>
         <CardDescription>{productCountLabel}</CardDescription>
         {hasUnmappedProducts ? (
           <CardAction className="self-center">
@@ -591,7 +586,8 @@ function MasterMenuManager({
               <Button
                 type="button"
                 size="lg"
-                className="min-h-11 px-4 active:translate-y-px"
+                appearance="standard"
+                className="min-h-11 active:translate-y-px"
               />
             }
             disabled={!menuData.enabled}
@@ -623,7 +619,7 @@ function MasterMenuManager({
         ) : null}
 
         {menuData.menus.length === 0 ? (
-          <Empty className="min-h-72 border">
+          <Empty appearance="outlined" className="min-h-72">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <UtensilsIcon aria-hidden="true" />
@@ -638,7 +634,8 @@ function MasterMenuManager({
                 render={
                   <Button
                     type="button"
-                    className="min-h-11 px-4 active:translate-y-px"
+                    appearance="standard"
+                    className="min-h-11 active:translate-y-px"
                   />
                 }
                 disabled={!menuData.enabled}
@@ -657,7 +654,7 @@ function MasterMenuManager({
           </div>
         )}
 
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-(--spacing-dynamic-viewport-inset) overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="mt-3">
               {editor?.kind === "edit" ? "Redigér menu" : "Ny menu"}
@@ -799,12 +796,10 @@ function MasterMenuManager({
                 };
               });
               return (
-                <FieldSet
-                  key={group.id}
-                  className="gap-4 rounded-xl border p-4"
+                <FieldSet key={group.id} appearance="padded"
                 >
                   <FieldLegend>Gruppe {index + 1}</FieldLegend>
-                  <FieldGroup className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+                  <FieldGroup appearance="standard" className="grid items-start sm:grid-cols-(--grid-cols-order-item)">
                     <Field data-disabled={productFieldDisabled}>
                       <FieldLabel
                         className="min-h-8"

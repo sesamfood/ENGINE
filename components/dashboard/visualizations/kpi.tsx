@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import {
   Popover,
   PopoverContent,
@@ -24,10 +25,10 @@ export function KpiVisualization({
   const visibleSeries = result.series.slice(0, compact ? 2 : 3);
   const hiddenSeries = result.series.length - visibleSeries.length;
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto [container-type:inline-size]">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto @container">
       <p
-        className="mt-auto shrink-0 whitespace-nowrap font-semibold leading-tight tracking-tight tabular-nums"
-        style={{ fontSize }}
+        className="text-(length:--metric-font-size) mt-auto shrink-0 whitespace-nowrap font-semibold leading-tight tracking-tight tabular-nums"
+        style={{ "--metric-font-size": fontSize } as CSSProperties}
       >
         {label}
       </p>
@@ -54,7 +55,8 @@ export function KpiVisualization({
                     type="button"
                     variant="link"
                     size="xs"
-                    className="h-5 max-w-full min-w-0 justify-start truncate px-0 text-xs text-muted-foreground"
+                    appearance="metricLink"
+                    className="h-5 max-w-full min-w-0 justify-start"
                     aria-label={`Vis alle ${result.series.length} grupper`}
                   />
                 }

@@ -67,7 +67,7 @@ export function PendingTransfers() {
 
   if (!locationId) {
     return (
-      <Empty className="min-h-80 border">
+      <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PackageCheckIcon />
@@ -93,7 +93,7 @@ export function PendingTransfers() {
 
   if (result.transfers.length === 0) {
     return (
-      <Empty className="min-h-80 border">
+      <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PackageCheckIcon />
@@ -150,7 +150,7 @@ export function PendingTransfers() {
             aria-label={`Registrér transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
             className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <Card className="h-full transition-colors group-hover:bg-muted/50 group-active:bg-muted/50">
+            <Card appearance="link" className="h-full">
               <CardHeader>
                 <CardTitle>
                   {transfer.fromLocationName} → {transfer.toLocationName}
@@ -162,7 +162,7 @@ export function PendingTransfers() {
                   <Badge variant="secondary">Transfer</Badge>
                 </CardAction>
               </CardHeader>
-              <CardFooter className="justify-between font-medium">
+              <CardFooter appearance="emphasized" className="justify-between">
                 <span>Registrér modtagelse</span>
                 <ArrowRightIcon aria-hidden="true" />
               </CardFooter>

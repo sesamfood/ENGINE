@@ -224,7 +224,7 @@ export function RolePermissions() {
   return (
     <div className="max-w-6xl">
       <Card className="overflow-visible">
-        <CardHeader className="flex-row items-start justify-between gap-4">
+        <CardHeader appearance="relaxed" className="flex-row items-start justify-between">
           <div className="flex flex-col gap-1.5">
             <CardTitle>Roller og adgang</CardTitle>
             <CardDescription>
@@ -237,8 +237,8 @@ export function RolePermissions() {
           </Button>
         </CardHeader>
         <CardContent className="overflow-x-auto md:[&_[data-slot=table-container]]:overflow-visible">
-          <Table className="min-w-[42rem]">
-            <TableHeader className="sticky top-16 bg-card md:top-24">
+          <Table className="min-w-168">
+            <TableHeader appearance="surface" className="sticky top-16 md:top-24">
               <TableRow>
                 <TableHead>Handling</TableHead>
                 {rows.map((role) => (
@@ -262,7 +262,7 @@ export function RolePermissions() {
             </TableHeader>
             <TableBody>
               <TableRow>
-                <TableCell className="font-medium">Datavisning</TableCell>
+                <TableCell appearance="label">Datavisning</TableCell>
                 {rows.map((role) => (
                   <TableCell key={role.role}>
                     <Select
@@ -296,23 +296,24 @@ export function RolePermissions() {
               </TableRow>
               {permissionCatalog.map((group) => (
                 <Fragment key={group.group}>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableRow appearance="section">
                     <TableCell
                       colSpan={rows.length + 1}
-                      className="font-semibold"
+                      appearance="heading"
                     >
                       {group.group}
                     </TableCell>
                   </TableRow>
                   {group.permissions.filter((permission) => permission.id !== "expenses.exportEconomic" || integrations?.economic).map((permission) => (
                     <TableRow key={permission.id}>
-                      <TableCell className="font-medium">
+                      <TableCell appearance="label">
                         {permission.label}
                       </TableCell>
                       {rows.map((role) => (
                         <TableCell
                           key={role.role}
-                          className="text-center [&:has([role=checkbox])]:pr-2"
+                          appearance="checkbox"
+                          className="text-center"
                         >
                           <Checkbox
                             className="mx-auto"
@@ -338,7 +339,7 @@ export function RolePermissions() {
             </TableBody>
           </Table>
         </CardContent>
-        <CardFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-end">
+        <CardFooter appearance="spaced" className="flex-col items-stretch sm:flex-row sm:items-end">
           <Field className="sm:max-w-md sm:flex-1">
             <FieldLabel htmlFor="role-change-reason">Begrundelse</FieldLabel>
             <Input

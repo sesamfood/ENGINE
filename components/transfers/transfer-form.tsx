@@ -679,7 +679,7 @@ export function TransferForm({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)">
         <Card>
           <CardHeader>
             <CardTitle>Detaljer</CardTitle>
@@ -793,7 +793,7 @@ export function TransferForm({
               </p>
             </CardAction>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent appearance="stacked" className="flex flex-col">
             <Field data-invalid={Boolean(errors.items)}>
               <FieldLabel>Tilføj produkt</FieldLabel>
               <CreatableCombobox
@@ -809,7 +809,7 @@ export function TransferForm({
             </Field>
 
             {lines.length === 0 ? (
-              <Empty className="block w-auto min-w-auto flex-initial border p-5 text-start text-wrap text-sm text-muted-foreground">
+              <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
                 Ingen produkter tilføjet endnu.
               </Empty>
             ) : (
@@ -1069,7 +1069,8 @@ export function TransferForm({
               type="button"
               variant="outline"
               size="lg"
-              className="min-h-11 px-5"
+              appearance="wide"
+              className="min-h-11"
               disabled={isSaving}
               onClick={onCancel}
             >
@@ -1079,7 +1080,8 @@ export function TransferForm({
           <Button
             type="button"
             size="lg"
-            className="min-h-11 px-5"
+            appearance="wide"
+            className="min-h-11"
             disabled={isSaving || locations === undefined}
             onClick={save}
           >

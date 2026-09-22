@@ -79,12 +79,12 @@ function InvoicesContent() {
       className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
     >
       {showNew ? (
-        <TabsTrigger value="new" className="min-w-36 px-4">
+        <TabsTrigger value="new" appearance="standard" className="min-w-36">
           Ny kvittering
         </TabsTrigger>
       ) : null}
       {showHistory ? (
-        <TabsTrigger value="history" className="min-w-36 px-4">
+        <TabsTrigger value="history" appearance="standard" className="min-w-36">
           Registrerede kvitteringer
         </TabsTrigger>
       ) : null}
@@ -110,7 +110,7 @@ function InvoicesContent() {
           <InvoiceHistory />
           {sectionTabs ? (
             <AppBottomBar>
-              <div className="mx-auto w-full max-w-[96rem]">{sectionTabs}</div>
+              <div className="mx-auto w-full max-w-(--container-page)">{sectionTabs}</div>
             </AppBottomBar>
           ) : null}
         </TabsContent>
@@ -132,7 +132,7 @@ export default function InvoicesPage() {
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-[96rem] flex-col gap-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:pb-[calc(6rem+env(safe-area-inset-bottom))]">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4 pb-(--spacing-safe-actions) sm:pb-(--spacing-safe-actions-compact)">
       <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <InvoicesContent />

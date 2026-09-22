@@ -34,7 +34,7 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
     <AppBottomBar>
       <div
         className={cn(
-          "mx-auto flex w-full max-w-[96rem] items-center gap-3",
+          "mx-auto flex w-full max-w-(--container-page) items-center gap-3",
           showSectionTabs ? "justify-between" : "justify-end",
         )}
       >
@@ -54,13 +54,13 @@ export function CountNavigation({ action }: { action?: ReactNode }) {
               className="h-12 max-w-full justify-start"
             >
               {showCount ? (
-                <TabsTrigger value="count" className="min-w-28 px-4">
+                <TabsTrigger value="count" appearance="standard" className="min-w-28">
                   <ClipboardListIcon data-icon="inline-start" />
                   Count
                 </TabsTrigger>
               ) : null}
               {showStock ? (
-                <TabsTrigger value="stock" className="min-w-24 px-4">
+                <TabsTrigger value="stock" appearance="standard" className="min-w-24">
                   <BoxesIcon data-icon="inline-start" />
                   Lager
                 </TabsTrigger>

@@ -246,8 +246,8 @@ function PermissionFields({
             ),
           )
           .map((group) => (
-          <FieldSet key={group.group} className="gap-2 rounded-lg border p-3">
-            <FieldLegend variant="label" className="text-sm">
+          <FieldSet key={group.group} appearance="panel">
+            <FieldLegend variant="label" appearance="small">
               {group.group}
             </FieldLegend>
             {group.permissions
@@ -413,8 +413,8 @@ function PolicyFields({
         </Field>
 
         {draft.locationPolicy.kind === "selected" ? (
-          <FieldSet className="gap-2 rounded-lg border p-3">
-            <FieldLegend variant="label" className="text-sm">
+          <FieldSet appearance="panel">
+            <FieldLegend variant="label" appearance="small">
               Lokationer
             </FieldLegend>
             {options.locations.map((location) => {
@@ -539,7 +539,7 @@ function SecretDialog({
                   value={secret.secret}
                   readOnly
                   autoComplete="off"
-                  className="font-mono text-sm"
+                  appearance="code"
                 />
                 <Button
                   type="button"
@@ -807,7 +807,7 @@ export function ApiKeyManagement() {
   return (
     <div className="flex max-w-6xl flex-col gap-5">
       <Card>
-        <CardHeader className="flex-row items-start justify-between gap-4">
+        <CardHeader appearance="relaxed" className="flex-row items-start justify-between">
           <div className="flex flex-col gap-1.5">
             <CardTitle>API-nøgler</CardTitle>
             <CardDescription>
@@ -826,7 +826,7 @@ export function ApiKeyManagement() {
             Ny API-nøgle
           </Button>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent appearance="stacked" className="flex flex-col">
           {loadingKeys ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Spinner />
@@ -834,7 +834,7 @@ export function ApiKeyManagement() {
             </div>
           ) : null}
           {keys.length === 0 && !loadingKeys ? (
-            <Empty className="border">
+            <Empty appearance="outlined">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <KeyRoundIcon />
@@ -855,14 +855,14 @@ export function ApiKeyManagement() {
             <>
               <div className="flex flex-col gap-3 md:hidden">
                 {keys.map((keyRow) => (
-                  <Card key={keyRow.id} className="border shadow-none">
-                    <CardHeader className="gap-3">
+                  <Card key={keyRow.id} appearance="flatOutline">
+                    <CardHeader appearance="spaced">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-col gap-1">
-                          <CardTitle className="truncate text-base">
+                          <CardTitle appearance="widget">
                             {keyRow.name}
                           </CardTitle>
-                          <CardDescription className="font-mono">
+                          <CardDescription appearance="code">
                             {keyRow.start || keyRow.prefix}
                           </CardDescription>
                         </div>
@@ -928,8 +928,8 @@ export function ApiKeyManagement() {
                   <TableBody>
                     {keys.map((keyRow) => (
                       <TableRow key={keyRow.id}>
-                        <TableCell className="font-medium">{keyRow.name}</TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell appearance="label">{keyRow.name}</TableCell>
+                        <TableCell appearance="code">
                           {keyRow.start || keyRow.prefix}
                         </TableCell>
                         <TableCell>{roleName(keyRow.role, options)}</TableCell>
@@ -983,7 +983,7 @@ export function ApiKeyManagement() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-(--spacing-dialog) max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Opret API-nøgle</DialogTitle>
             <DialogDescription>
@@ -1052,7 +1052,7 @@ export function ApiKeyManagement() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-(--spacing-dialog) max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Redigér API-adgang</DialogTitle>
             <DialogDescription>

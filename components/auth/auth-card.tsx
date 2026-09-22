@@ -25,9 +25,9 @@ export function AuthCard({
         <div className="flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <StoreIcon aria-hidden="true" />
         </div>
-        <Card className="w-full [--card-spacing:--spacing(6)]">
+        <Card spacing="relaxed" className="w-full">
           <CardHeader>
-            <CardTitle className="text-2xl">{title}</CardTitle>
+            <CardTitle appearance="auth">{title}</CardTitle>
             <CardDescription>{description}</CardDescription>
           </CardHeader>
           <CardContent>{children}</CardContent>

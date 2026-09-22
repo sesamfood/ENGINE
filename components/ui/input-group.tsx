@@ -116,16 +116,27 @@ function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
+const inputGroupInputAppearance = cva("", {
+  variants: {
+    appearance: {
+      numeric: "tabular-nums",
+    },
+  },
+})
+
 function InputGroupInput({
+  appearance,
   className,
   ...props
-}: React.ComponentProps<"input">) {
+}: React.ComponentProps<"input"> &
+  VariantProps<typeof inputGroupInputAppearance>) {
   return (
     <Input
       data-slot="input-group-control"
       className={cn(
         "flex-1 rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
-        className
+        inputGroupInputAppearance({ appearance }),
+        className,
       )}
       {...props}
     />

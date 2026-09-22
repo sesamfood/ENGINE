@@ -287,7 +287,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
     >
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-1">
+          <CardTitle appearance="compact" className="flex items-center">
             Kategorier
             <HelpTooltip
               label="udgiftskategorier"
@@ -487,7 +487,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
                       />
                       {mapping.enabled ? (
                         <>
-                          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                          <FieldGroup appearance="standard" className="grid sm:grid-cols-2">
                             <Field data-disabled={disabled}>
                               <div className="flex items-center gap-1">
                                 <FieldLabel htmlFor={`expense-journal-${connection.id}`}>Kassekladdenummer</FieldLabel>
@@ -517,7 +517,7 @@ function ExpenseSettingsControl({ organizationId }: { organizationId: string }) 
                                 <HelpTooltip label="udgiftskonti" content="Angiv mindst én udgiftskonto. Kategorier uden en konto kan stadig registreres her, men kan ikke oprettes i e-conomic." />
                               </span>
                             </FieldLegend>
-                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                            <FieldGroup appearance="standard" className="grid sm:grid-cols-2">
                               {mapping.accountMappings.map((account) => (
                                 <Field key={account.categoryId} data-disabled={disabled}>
                                   <FieldLabel htmlFor={`expense-account-${connection.id}-${account.categoryId}`}>

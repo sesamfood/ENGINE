@@ -51,7 +51,7 @@ export function ProductUnitLine({
   return (
     <div
       className={cn(
-        "grid gap-3 sm:grid-cols-[minmax(8rem,1fr)_auto_auto] sm:items-start",
+        "grid gap-3 sm:grid-cols-(--grid-cols-check-field) sm:items-start",
         className,
       )}
     >

@@ -73,7 +73,7 @@ function OrderDetailContent({
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle appearance="inline" className="flex items-center">
             <ReceiptTextIcon aria-hidden="true" />
             Ordreoplysninger
           </CardTitle>
@@ -132,7 +132,7 @@ function OrderDetailContent({
                 <CardHeader>
                   <CardTitle>{line.productName || "Ukendt produkt"}</CardTitle>
                   <CardDescription
-                    className="truncate"
+                    appearance="truncate"
                     title={line.externalProductId}
                   >
                     OnlinePOS-produkt-id: {line.externalProductId || "—"}
@@ -175,7 +175,7 @@ function OrderDetailContent({
                         {line.menuItems.map((menuItem) => (
                           <li
                             key={menuItem.id}
-                            className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
+                            className="grid gap-3 px-3 py-3 sm:grid-cols-(--grid-cols-content-action) sm:items-start"
                           >
                             <div className="min-w-0">
                               <div className="flex min-w-0 items-center gap-2">
@@ -237,7 +237,7 @@ function OrderDetailContent({
             ))}
           </div>
         ) : (
-          <Empty className="min-h-32 border-0">
+          <Empty appearance="borderless" className="min-h-32">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <PackageIcon aria-hidden="true" />
@@ -286,7 +286,7 @@ export function OnlinePosOrderDetail({
         side="right"
         className="w-full max-w-xl overflow-y-auto sm:max-w-xl"
       >
-        <SheetHeader className="border-b pr-12">
+        <SheetHeader appearance="separated">
           <SheetTitle>
             {order ? `OnlinePOS-ordre ${order.orderNumber}` : "OnlinePOS-ordre"}
           </SheetTitle>

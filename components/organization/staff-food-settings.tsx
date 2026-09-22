@@ -462,7 +462,7 @@ export function StaffFoodSettings() {
     <div className="flex max-w-5xl flex-col gap-8">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-1">
+          <CardTitle appearance="compact" className="flex items-center">
             Regler for Staff food
             <HelpTooltip
               label="Regler for Staff food"
@@ -496,7 +496,7 @@ export function StaffFoodSettings() {
                       {tier.allowances.length} kategorigruppe
                       {tier.allowances.length === 1 ? "" : "r"}
                     </CardDescription>
-                    <CardAction className="flex gap-2">
+                    <CardAction appearance="standard" className="flex">
                       <Button
                         size="icon-lg"
                         className="size-11"
@@ -517,7 +517,7 @@ export function StaffFoodSettings() {
                       </Button>
                     </CardAction>
                   </CardHeader>
-                  <CardContent className="flex flex-wrap gap-2">
+                  <CardContent appearance="dense" className="flex flex-wrap">
                     {tier.allowances.map((allowance) => (
                       <Badge key={allowance.categoryId} variant="secondary">
                         {allowance.amount} i alt fra {allowance.categoryName} ·{" "}
@@ -529,7 +529,7 @@ export function StaffFoodSettings() {
               ))}
             </div>
           ) : (
-            <Empty className="min-h-64 border">
+            <Empty appearance="outlined" className="min-h-64">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <UtensilsIcon />
@@ -639,8 +639,8 @@ export function StaffFoodSettings() {
       </Card>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="grid max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:w-[calc(100%-4rem)] sm:max-w-5xl">
-          <DialogHeader className="px-5 pt-5">
+        <DialogContent appearance="flush" className="grid max-h-(--spacing-viewport-inset) w-(--spacing-panel-inset) grid-rows-(--grid-rows-panel) overflow-hidden sm:w-(--spacing-panel-wide-inset) sm:max-w-5xl">
+          <DialogHeader appearance="inset">
             <DialogTitle>
               {editingId ? "Redigér regel" : "Ny regel"}
             </DialogTitle>
@@ -755,8 +755,8 @@ export function StaffFoodSettings() {
                       </Button>
                     </CardAction>
                   </CardHeader>
-                  <CardContent className="flex flex-col gap-5">
-                    <FieldGroup className="grid sm:grid-cols-[minmax(0,1fr)_10rem]">
+                  <CardContent appearance="relaxed" className="flex flex-col">
+                    <FieldGroup className="grid sm:grid-cols-(--grid-cols-staff-food-limit)">
                       <Field data-invalid={!allowance.categoryIds.length}>
                         <FieldLabel htmlFor={`staff-food-category-${index}`}>
                           Kategorier
@@ -790,7 +790,8 @@ export function StaffFoodSettings() {
                             aria-invalid={!allowance.categoryIds.length}
                           >
                             <SelectValue
-                              className="min-w-0 truncate"
+                              appearance="truncate"
+                              className="min-w-0"
                               placeholder="Vælg kategorier"
                             />
                           </SelectTrigger>
@@ -801,9 +802,12 @@ export function StaffFoodSettings() {
                                   key={category.value}
                                   value={category.value}
                                   className="min-h-11"
-                                  style={{
-                                    paddingInlineStart: `${category.depth * 1.5 + 0.5}rem`,
-                                  }}
+                                  indented
+                                  style={
+                                    {
+                                      "--item-indent": `${category.depth * 1.5 + 0.5}rem`,
+                                    } as React.CSSProperties
+                                  }
                                   title={category.path}
                                   aria-label={category.path}
                                   disabled={allowances.some(
@@ -959,7 +963,7 @@ export function StaffFoodSettings() {
             })}
 
             {!allowances.length ? (
-              <Empty className="min-h-44 border">
+              <Empty appearance="outlined" className="min-h-44">
                 <EmptyHeader>
                   <EmptyTitle>Tilføj en kategorigruppe</EmptyTitle>
                   <EmptyDescription>
@@ -969,7 +973,7 @@ export function StaffFoodSettings() {
               </Empty>
             ) : null}
           </div>
-          <DialogFooter className="m-0 px-5 pt-4 pb-5">
+          <DialogFooter appearance="inset" className="m-0">
             <Button variant="outline" onClick={() => setEditorOpen(false)}>
               Annullér
             </Button>

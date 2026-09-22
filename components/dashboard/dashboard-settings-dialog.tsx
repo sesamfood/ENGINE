@@ -198,7 +198,7 @@ export function DashboardSettingsDialog({
             <SettingsIcon />
           </DialogTrigger>
         ) : null}
-        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Dashboardindstillinger</DialogTitle>
             <DialogDescription>Styr navn, adgang og standarder for {dashboard.name}.</DialogDescription>
@@ -255,7 +255,7 @@ export function DashboardSettingsDialog({
             <FieldSet>
               <FieldLegend variant="label">Adgang</FieldLegend>
               <FieldDescription>Vælg roller, der må se dashboardet. Ingen valgte roller betyder alle roller.</FieldDescription>
-              <FieldGroup className="gap-2">
+              <FieldGroup appearance="dense">
                 {roles.map((role) => (
                   <Field key={role.role} orientation="horizontal">
                     <Checkbox
@@ -269,7 +269,7 @@ export function DashboardSettingsDialog({
                     />
                     <FieldLabel
                       htmlFor={`dashboard-access-${dashboard.id}-${role.role}`}
-                      className="font-normal"
+                      appearance="regular"
                     >
                       {role.name}
                     </FieldLabel>
@@ -283,7 +283,7 @@ export function DashboardSettingsDialog({
               <FieldDescription>
                 Disse roller åbner dashboardet som standard.
               </FieldDescription>
-              <FieldGroup className="gap-2">
+              <FieldGroup appearance="dense">
                 {roles.map((role) => {
                   const allowed =
                     roleIds.length === 0 || roleIds.includes(role.role);
@@ -301,7 +301,7 @@ export function DashboardSettingsDialog({
                       />
                       <FieldLabel
                         htmlFor={`dashboard-role-default-${dashboard.id}-${role.role}`}
-                        className="font-normal"
+                        appearance="regular"
                       >
                         {role.name}
                       </FieldLabel>
@@ -317,7 +317,7 @@ export function DashboardSettingsDialog({
                 En lokation kan kun have ét standarddashboard.
               </FieldDescription>
               <div className="max-h-44 overflow-y-auto rounded-lg border p-3">
-                <FieldGroup className="gap-2">
+                <FieldGroup appearance="dense">
                   {locations.map((location) => (
                     <Field key={location.id} orientation="horizontal">
                       <Checkbox
@@ -327,7 +327,7 @@ export function DashboardSettingsDialog({
                       />
                       <FieldLabel
                         htmlFor={`dashboard-location-default-${dashboard.id}-${location.id}`}
-                        className="font-normal"
+                        appearance="regular"
                       >
                         {location.name}
                       </FieldLabel>
@@ -345,7 +345,7 @@ export function DashboardSettingsDialog({
               />
               <FieldLabel
                 htmlFor={`dashboard-organization-default-${dashboard.id}`}
-                className="font-normal"
+                appearance="regular"
               >
                 Standard for organisationen
               </FieldLabel>

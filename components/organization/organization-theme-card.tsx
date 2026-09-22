@@ -99,7 +99,8 @@ function ColorField({
           type="color"
           value={valid ? value : "#000000"}
           aria-label={`Vælg ${label.toLocaleLowerCase("da")}`}
-          className="h-11 w-14 shrink-0 p-1"
+          appearance="swatch"
+          className="h-11 w-14 shrink-0"
           onChange={(event) => onChange(event.target.value.toUpperCase())}
         />
         <Input
@@ -109,7 +110,8 @@ function ColorField({
           spellCheck={false}
           aria-label={`${label} som hex-kode`}
           aria-invalid={!valid}
-          className="h-11 font-mono uppercase"
+          appearance="hex"
+          className="h-11"
           onChange={(event) => onChange(event.target.value.toUpperCase())}
         />
       </div>
@@ -122,6 +124,7 @@ function ColorField({
 
 function ThemePreview({ theme }: { theme: OrganizationTheme }) {
   const colors = resolveOrganizationTheme(theme);
+  const themeVariables = getOrganizationThemeCssVariables(theme);
   const swatch = [
     colors.chart1,
     colors.chart2,
@@ -133,8 +136,43 @@ function ThemePreview({ theme }: { theme: OrganizationTheme }) {
   return (
     <Card
       size="sm"
-      style={getOrganizationThemeCssVariables(theme) as CSSProperties}
-      className="bg-background text-foreground"
+      style={
+        {
+          "--background": themeVariables["--background"],
+          "--foreground": themeVariables["--foreground"],
+          "--card": themeVariables["--card"],
+          "--card-foreground": themeVariables["--card-foreground"],
+          "--popover": themeVariables["--popover"],
+          "--popover-foreground": themeVariables["--popover-foreground"],
+          "--primary": themeVariables["--primary"],
+          "--primary-foreground": themeVariables["--primary-foreground"],
+          "--secondary": themeVariables["--secondary"],
+          "--secondary-foreground": themeVariables["--secondary-foreground"],
+          "--muted": themeVariables["--muted"],
+          "--muted-foreground": themeVariables["--muted-foreground"],
+          "--accent": themeVariables["--accent"],
+          "--accent-foreground": themeVariables["--accent-foreground"],
+          "--border": themeVariables["--border"],
+          "--input": themeVariables["--input"],
+          "--ring": themeVariables["--ring"],
+          "--chart-1": themeVariables["--chart-1"],
+          "--chart-2": themeVariables["--chart-2"],
+          "--chart-3": themeVariables["--chart-3"],
+          "--chart-4": themeVariables["--chart-4"],
+          "--chart-5": themeVariables["--chart-5"],
+          "--sidebar": themeVariables["--sidebar"],
+          "--sidebar-foreground": themeVariables["--sidebar-foreground"],
+          "--sidebar-primary": themeVariables["--sidebar-primary"],
+          "--sidebar-primary-foreground":
+            themeVariables["--sidebar-primary-foreground"],
+          "--sidebar-accent": themeVariables["--sidebar-accent"],
+          "--sidebar-accent-foreground":
+            themeVariables["--sidebar-accent-foreground"],
+          "--sidebar-border": themeVariables["--sidebar-border"],
+          "--sidebar-ring": themeVariables["--sidebar-ring"],
+        } as CSSProperties
+      }
+      appearance="themePreview"
     >
       <CardHeader>
         <CardTitle>Forhåndsvisning</CardTitle>
@@ -142,7 +180,7 @@ function ThemePreview({ theme }: { theme: OrganizationTheme }) {
           Knapper, flader og tekst følger organisationens farver.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent appearance="stacked" className="flex flex-col">
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">
             Farveskala fra primærfarven
@@ -153,8 +191,8 @@ function ThemePreview({ theme }: { theme: OrganizationTheme }) {
                 key={`${index}-${color}`}
                 role="img"
                 aria-label={`Farvetrin ${index + 1}: ${color}`}
-                className="h-10"
-                style={{ backgroundColor: color }}
+                className="h-10 bg-(--swatch-color)"
+                style={{ "--swatch-color": color } as React.CSSProperties}
               />
             ))}
           </div>
@@ -234,7 +272,7 @@ export function OrganizationThemeCard({
           Vælg en automatisk farveskala eller styr de enkelte farver selv.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <CardContent appearance="spacious" className="grid lg:grid-cols-(--grid-cols-own-check-template)">
         <FieldGroup>
           <Field>
             <FieldTitle id="theme-mode-label">Tilstand</FieldTitle>
@@ -298,7 +336,7 @@ export function OrganizationThemeCard({
 
         <ThemePreview theme={previewTheme} />
       </CardContent>
-      <CardFooter className="flex-col-reverse items-stretch gap-3 sm:flex-row sm:justify-between">
+      <CardFooter appearance="spaced" className="flex-col-reverse items-stretch sm:flex-row sm:justify-between">
         <Button
           type="button"
           variant="outline"

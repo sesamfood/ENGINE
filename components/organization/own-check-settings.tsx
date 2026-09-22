@@ -99,7 +99,7 @@ export function OwnCheckSettings() {
           <CardTitle>Indstillinger for egenkontrol</CardTitle>
           <CardDescription>Vælg organisationens regler for efterregistrering, godkendelse og Count.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-6">
+        <CardContent appearance="spacious" className="flex flex-col">
           <FieldGroup>
             <Field>
               <div className="flex items-center gap-1">
@@ -129,7 +129,7 @@ export function OwnCheckSettings() {
               }}
               description={
                 <FieldDescription
-                  className={blockCount ? "text-destructive" : undefined}
+                  appearance={blockCount ? "destructive" : undefined}
                 >
                   Advarsel: Egenkontroller kan ikke udføres, mens en Count låser
                   lokationen.

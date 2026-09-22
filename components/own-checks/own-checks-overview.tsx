@@ -219,10 +219,10 @@ export function OwnChecksOverview() {
     });
   }
 
-  if (loading) return <Skeleton className="h-[40rem] w-full" />;
+  if (loading) return <Skeleton className="h-160 w-full" />;
   if (!locations?.length || !locationId)
     return (
-      <Empty className="min-h-72 border">
+      <Empty appearance="outlined" className="min-h-72">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <ClipboardCheckIcon />
@@ -238,7 +238,7 @@ export function OwnChecksOverview() {
   return (
     <div className="flex flex-col gap-6">
       <h2 className="text-lg font-semibold">Oversigt</h2>
-      <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <FieldGroup appearance="standard" className="grid sm:grid-cols-2 xl:grid-cols-3">
         {!isLocked ? (
           <Field>
             <FieldLabel htmlFor="own-overview-location">Lokation</FieldLabel>
@@ -411,11 +411,8 @@ export function OwnChecksOverview() {
                     <TableRow
                       key={`${row.locationId}-${row.templateId}-${row.dueDateKey}`}
                       tabIndex={row.entry ? 0 : undefined}
-                      className={cn(
-                        "h-14",
-                        row.entry &&
-                          "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                      )}
+                      appearance={row.entry ? "interactive" : undefined}
+                      className={cn("h-14", row.entry && "cursor-pointer")}
                       onClick={() =>
                         row.entry && setSelectedEntryId(row.entry.id)
                       }
@@ -430,7 +427,7 @@ export function OwnChecksOverview() {
                       }}
                     >
                       <TableCell>{formatDate(row.dueDateKey)}</TableCell>
-                      <TableCell className="font-medium">{row.name}</TableCell>
+                      <TableCell appearance="label">{row.name}</TableCell>
                       <TableCell>{row.locationName}</TableCell>
                       <TableCell>
                         {ownCheckControlTypeLabels[row.controlType]}
@@ -465,7 +462,7 @@ export function OwnChecksOverview() {
             </div>
           </>
         ) : (
-          <Empty className="min-h-72 border">
+          <Empty appearance="outlined" className="min-h-72">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <ClipboardCheckIcon />
@@ -497,7 +494,7 @@ export function OwnChecksOverview() {
         open={Boolean(selectedEntryId)}
         onOpenChange={(open) => !open && setSelectedEntryId(null)}
       >
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-(--spacing-dialog-tall) overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="sr-only">Egenkontroldetaljer</DialogTitle>
             <DialogDescription className="sr-only">

@@ -199,7 +199,7 @@ export function LocationAddressSearch({
           </ComboboxContent>
         </Combobox>
         {error && <FieldError id="location-address-error">{error}</FieldError>}
-        {selecting && <FieldDescription role="status" className="flex items-center gap-2"><Spinner /> Henter sted…</FieldDescription>}
+        {selecting && <FieldDescription role="status" appearance="inline" className="flex items-center"><Spinner /> Henter sted…</FieldDescription>}
         {!configured && <FieldDescription>Google Places er ikke konfigureret. Du kan stadig redigere lokationens øvrige oplysninger.</FieldDescription>}
       </Field>
       {value && (

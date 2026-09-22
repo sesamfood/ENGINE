@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle"
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group"
-import { type VariantProps } from "class-variance-authority"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { toggleVariants } from "@/components/ui/toggle"
@@ -20,7 +20,16 @@ const ToggleGroupContext = React.createContext<
   orientation: "horizontal",
 })
 
+const toggleGroupAppearance = cva("", {
+  variants: {
+    appearance: {
+      cards: "gap-3 rounded-none",
+    },
+  },
+})
+
 function ToggleGroup({
+  appearance,
   className,
   variant,
   size,
@@ -32,7 +41,7 @@ function ToggleGroup({
   VariantProps<typeof toggleVariants> & {
     spacing?: number
     orientation?: "horizontal" | "vertical"
-  }) {
+  } & VariantProps<typeof toggleGroupAppearance>) {
   return (
     <ToggleGroupPrimitive
       data-slot="toggle-group"
@@ -43,7 +52,8 @@ function ToggleGroup({
       style={{ "--gap": spacing } as React.CSSProperties}
       className={cn(
         "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
-        className
+        toggleGroupAppearance({ appearance }),
+        className,
       )}
       {...props}
     >
@@ -56,13 +66,24 @@ function ToggleGroup({
   )
 }
 
+const toggleGroupItemAppearance = cva("", {
+  variants: {
+    appearance: {
+      day: "gap-0 px-1",
+    },
+  },
+})
+
 function ToggleGroupItem({
+  appearance,
   className,
   children,
   variant = "default",
   size = "default",
   ...props
-}: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
+}: TogglePrimitive.Props &
+  VariantProps<typeof toggleVariants> &
+  VariantProps<typeof toggleGroupItemAppearance>) {
   const context = React.useContext(ToggleGroupContext)
 
   return (
@@ -77,7 +98,8 @@ function ToggleGroupItem({
           variant: context.variant || variant,
           size: context.size || size,
         }),
-        className
+        toggleGroupItemAppearance({ appearance }),
+        className,
       )}
       {...props}
     >
