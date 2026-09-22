@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader } from "@/components/app-page-header";
 import { OrganizationAuthGate } from "@/components/catalog/organization-auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -71,44 +72,49 @@ function TransfersContent() {
     );
   }
 
+  const navigation = showSectionTabs ? (
+    <TabsList
+      variant="line"
+      aria-label="Transfersektioner"
+      className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
+    >
+      {showNew ? (
+        <TabsTrigger value="new" appearance="standard" className="min-w-36">
+          Ny transfer
+        </TabsTrigger>
+      ) : null}
+      {showHistory ? (
+        <TabsTrigger value="history" appearance="standard" className="min-w-36">
+          Transferhistorik
+        </TabsTrigger>
+      ) : null}
+    </TabsList>
+  ) : null;
+
   return (
     <Tabs
       value={selectedTab}
       onValueChange={(value) =>
-        router.push(value === "history" ? "/transfers/history" : "/transfers")
+        router.push(value === "history" ? "/transfers/history" : "/transfers", {
+          scroll: false,
+        })
       }
     >
-      {showSectionTabs ? (
-        <TabsList
-          aria-label="Transfersektioner"
-          className="h-14 w-full justify-start overflow-x-auto overflow-y-hidden"
-        >
-          {showNew ? (
-            <TabsTrigger value="new" appearance="wide" className="min-w-36">
-              Ny transfer
-            </TabsTrigger>
-          ) : null}
-          {showHistory ? (
-            <TabsTrigger value="history" appearance="wide" className="min-w-36">
-              Transferhistorik
-            </TabsTrigger>
-          ) : null}
-        </TabsList>
-      ) : null}
       {showNew && selectedTab === "new" ? (
-        <TabsContent
-          value="new"
-          appearance={showSectionTabs ? "spaced" : undefined}
-        >
-          <TransferForm />
+        <TabsContent value="new">
+          <TransferForm navigation={navigation} />
         </TabsContent>
       ) : null}
       {showHistory && selectedTab === "history" ? (
-        <TabsContent
-          value="history"
-          appearance={showSectionTabs ? "spaced" : undefined}
-        >
+        <TabsContent value="history">
           <TransferHistory />
+          {navigation ? (
+            <AppBottomBar>
+              <div className="mx-auto w-full max-w-(--container-page)">
+                {navigation}
+              </div>
+            </AppBottomBar>
+          ) : null}
         </TabsContent>
       ) : null}
     </Tabs>
@@ -128,7 +134,7 @@ export default function TransfersPage() {
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4">
+    <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-4 pb-(--spacing-safe-actions) sm:pb-(--spacing-safe-actions-compact)">
       <AppPageHeader>{header}</AppPageHeader>
       <OrganizationAuthGate>
         <TransfersContent />
