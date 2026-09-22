@@ -6,6 +6,8 @@ import { dateKey, addDays, dateTimeFormatter } from "@/lib/date";
 
 import { selectedLocationId } from "@/lib/location-preference";
 
+import { AppBottomBar } from "@/components/app-bottom-bar";
+import { cn } from "@/lib/utils";
 import { AppPageHeader } from "@/components/app-page-header";
 
 import { EmployeeAvatar } from "@/components/employees/employee-avatar";
@@ -734,7 +736,12 @@ export function EmployeeScheduling() {
     );
   }
   return (
-    <main className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6">
+    <main
+      className={cn(
+        "mx-auto flex w-full max-w-(--container-page) flex-col gap-6",
+        showSectionTabs && "pb-(--spacing-safe-actions-compact)",
+      )}
+    >
       <AppPageHeader>{header}</AppPageHeader>
 
       {!integrations?.workfeed ? null : context.lastError ? (
@@ -779,28 +786,42 @@ export function EmployeeScheduling() {
         onValueChange={(value) =>
           router.push(
             value === "directory" ? "/employees/directory" : "/employees",
+            { scroll: false },
           )
         }
       >
         {showSectionTabs ? (
-          <TabsList className="w-full" aria-label="Medarbejdersektioner">
-            {showSchedule ? (
-              <TabsTrigger value="schedule" appearance="comfortable">
-                Vagtplan
-              </TabsTrigger>
-            ) : null}
-            {showDirectory ? (
-              <TabsTrigger value="directory" appearance="comfortable">
-                Medarbejdere
-              </TabsTrigger>
-            ) : null}
-          </TabsList>
+          <AppBottomBar>
+            <div className="mx-auto w-full max-w-(--container-page)">
+              <TabsList
+                variant="line"
+                aria-label="Medarbejdersektioner"
+                className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
+              >
+                {showSchedule ? (
+                  <TabsTrigger
+                    value="schedule"
+                    appearance="standard"
+                    className="min-w-32"
+                  >
+                    Vagtplan
+                  </TabsTrigger>
+                ) : null}
+                {showDirectory ? (
+                  <TabsTrigger
+                    value="directory"
+                    appearance="standard"
+                    className="min-w-32"
+                  >
+                    Medarbejdere
+                  </TabsTrigger>
+                ) : null}
+              </TabsList>
+            </div>
+          </AppBottomBar>
         ) : null}
         {showSchedule ? (
-          <TabsContent
-            value="schedule"
-            appearance={showSectionTabs ? "compact" : undefined}
-          >
+          <TabsContent value="schedule">
             <ScheduleTab
               locationId={activeLocationId}
               hasLocations={Boolean(locations.length)}
@@ -810,10 +831,7 @@ export function EmployeeScheduling() {
           </TabsContent>
         ) : null}
         {showDirectory ? (
-          <TabsContent
-            value="directory"
-            appearance={showSectionTabs ? "compact" : undefined}
-          >
+          <TabsContent value="directory">
             <DirectoryTab
               key={`${organizationId}:${activeLocationId}`}
               locationId={activeLocationId}
