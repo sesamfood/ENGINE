@@ -9,6 +9,7 @@ import { ProductLineGroup } from "@/components/product-line-group";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { useKiosk } from "@/components/app-shell";
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import {
   CreatableCombobox,
   type ComboboxOption,
@@ -45,11 +46,10 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { cn } from "@/lib/utils";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { PlusIcon, SaveIcon, TriangleAlertIcon } from "lucide-react";
 import posthog from "posthog-js";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 type LocationOption = {
@@ -191,10 +191,12 @@ export function TransferForm({
   transfer,
   onSaved,
   onCancel,
+  navigation,
 }: {
   transfer?: EditableTransfer;
   onSaved?: () => void;
   onCancel?: () => void;
+  navigation?: ReactNode;
 }) {
   const convex = useConvex();
   const { data: session } = authClient.useSession();
@@ -677,6 +679,39 @@ export function TransferForm({
     await submit(confirmation.validated, confirmation.deviations);
   }
 
+  const actions = (
+    <div className="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
+      {onCancel ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          appearance="wide"
+          className="min-h-11"
+          disabled={isSaving}
+          onClick={onCancel}
+        >
+          Annullér
+        </Button>
+      ) : null}
+      <Button
+        type="button"
+        size="lg"
+        appearance="wide"
+        className="min-h-11"
+        disabled={isSaving || locations === undefined}
+        onClick={save}
+      >
+        {isSaving ? (
+          <Spinner data-icon="inline-start" />
+        ) : (
+          <SaveIcon data-icon="inline-start" />
+        )}
+        {transfer ? "Gem ændringer" : "Gem transfer"}
+      </Button>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-6 xl:grid-cols-(--grid-cols-product-details)">
@@ -1055,45 +1090,22 @@ export function TransferForm({
         </AlertDialogContent>
       </AlertDialog>
 
-      <div
-        className={cn(
-          "sticky bottom-0 flex flex-col gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-end",
-          transfer
-            ? "-mx-4 px-4"
-            : "-mx-4 px-4 sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12",
-        )}
-      >
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
-          {onCancel ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              appearance="wide"
-              className="min-h-11"
-              disabled={isSaving}
-              onClick={onCancel}
-            >
-              Annullér
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            size="lg"
-            appearance="wide"
-            className="min-h-11"
-            disabled={isSaving || locations === undefined}
-            onClick={save}
-          >
-            {isSaving ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <SaveIcon data-icon="inline-start" />
-            )}
-            {transfer ? "Gem ændringer" : "Gem transfer"}
-          </Button>
+      {transfer ? (
+        <div className="sticky bottom-0 -mx-4 flex flex-col gap-3 border-t bg-background/95 px-4 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-end">
+          {actions}
         </div>
-      </div>
+      ) : (
+        <AppBottomBar>
+          <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center">
+            {navigation ? (
+              <div className="min-w-0" inert={isSaving}>
+                {navigation}
+              </div>
+            ) : null}
+            {actions}
+          </div>
+        </AppBottomBar>
+      )}
     </div>
   );
 }
