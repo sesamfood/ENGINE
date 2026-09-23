@@ -99,6 +99,22 @@ Integrations are built-in modules deployed with the app. Follow [integrations/RE
 - Reuse existing components and patterns before adding new ones.
 - Avoid adding dependencies when the existing stack or platform can solve the problem clearly.
 
+## App development skills
+
+Before changing an area below, read and use its skill. Load only the skills relevant to the task; combine them when a change crosses areas.
+
+| Work | Skill |
+| ---- | ----- |
+| Add or change a provider, connection, sync, webhook, or integration setting | [app-integrations](.agents/skills/app-integrations/SKILL.md) |
+| Write or update help guides, instructions, troubleshooting, or screenshots | [app-help-pages](.agents/skills/app-help-pages/SKILL.md) |
+| Change the help landing page, navigation, search, routes, visibility, or rendering | [app-help-system](.agents/skills/app-help-system/SKILL.md) |
+| Create or change screens, forms, controls, layout, or interaction | [app-ui](.agents/skills/app-ui/SKILL.md) |
+| Add or extend a product feature across data, permissions, navigation, and UI | [app-features](.agents/skills/app-features/SKILL.md) |
+
+These skills add repository workflows to the existing framework skills. Use `shadcn` for UI work and `convex-expert` for Convex code; use the relevant Better Auth skill when changing authentication or organization access. Use `writing-for-agents` when editing these skills or agent instructions.
+
+Paths in the app skills are relative to the repository root unless written as Markdown links. Use existing checks appropriate to the change. Add tests only when explicitly requested.
+
 # Model use
 
 DISREGARD THIS SECTION

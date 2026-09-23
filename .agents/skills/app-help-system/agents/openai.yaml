@@ -1,0 +1,3 @@
+interface:
+  display_name: "App Help System"
+  short_description: "Maintain help navigation, search, and rendering"
