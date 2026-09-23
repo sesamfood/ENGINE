@@ -1,6 +1,6 @@
 # UI scanability screenshots
 
-All 26 findings from the [source review](https://l2hkhnjfexwi.postplan.dev) are covered by the before/after pairs below.
+All 26 findings from the [source review](https://l2hkhnjfexwi.postplan.dev) are covered by the before/after pairs below. Use pair numbers **1–43** to choose which changes to keep.
 
 These are browser captures of the actual React components. A temporary Vite harness supplies deterministic session, query and action fixtures; it does not connect to customer data or provider accounts. Both versions use the same fixture data, interactions, viewport, timezone and app fonts. Live authentication and provider flows remain unverified.
 
@@ -11,459 +11,545 @@ Validation: production build and TypeScript, ESLint, all 86 existing tests, and 
 
 | Finding | Screenshot coverage |
 | --- | --- |
-| 1 | [Ordering warnings and quantity columns](#operations-ordering) |
-| 2 | [Overdue checks and due dates](#own-checks-overdue) |
-| 3 | [Changed permissions and save controls](#permissions) · [Permission context while scrolling](#permissions-scroll) |
-| 4 | [User search, roles and location access](#members) |
-| 5 | [Count product names](#operations-count) · [Waste product names and action emphasis](#operations-waste) · [Stock product names, search and categories](#operations-stock) |
-| 6 | [Metric picker and selected calculation help](#metric-picker) |
-| 7 | [Sent and received quantity labels](#operations-receipt) |
-| 8 | [Named location actions](#locations) |
-| 9 | [Active and archived catalogue views](#catalog-status) |
-| 10 | [Shared dashboard location and period context](#shared-dashboard) · [Named widget actions and period override](#dashboard-widget-settings) |
-| 11 | [Readable labels in small comparison widgets](#compact-charts) · [Disclosed chart group limits](#chart-groups-limit) |
-| 12 | [Waste product names and action emphasis](#operations-waste) · [Staff food action emphasis](#operations-staff-food) · [Label preparation actions](#operations-labels) |
-| 13 | [Ordering warnings and quantity columns](#operations-ordering) · [Waste quantity alignment and details](#operations-waste-report) · [Bad-delivery quantity alignment and details](#operations-bad-detail) |
-| 14 | [Waste quantity alignment and details](#operations-waste-report) · [Bad-delivery quantity alignment and details](#operations-bad-detail) · [Transfer details and temperature exceptions](#operations-transfer-history) |
-| 15 | [Stock product names, search and categories](#operations-stock) |
-| 16 | [Label preparation actions](#operations-labels) · [Label preparation and print preview](#operations-label-preview) |
-| 17 | [Activation and connection status](#integrations) |
-| 18 | [OnlinePOS connection attention list](#onlinepos-connections) · [OnlinePOS product mapping filter](#onlinepos-mappings) · [Visible missing menu mappings](#onlinepos-menus) · [Workfeed mapping attention list](#workfeed-mappings) · [e-conomic agreement attention list](#economic-connections) · [Wolt connection attention list](#wolt-connections) · [Wolt mapping state and editing](#wolt-mappings) |
-| 19 | [Product unit rows](#recipe-units) · [Shared ingredient columns and quieter guidance](#recipe-ingredients) |
-| 20 | [Transfer product groups](#operations-transfer) · [Invoice products within menu boundaries](#operations-invoice) · [Bad-delivery product groups](#operations-bad-registration) |
-| 21 | [Pending transfers grouped by date](#operations-pending) |
-| 22 | [Visible single-location action](#dashboard-location-picker) · [Named widget actions and period override](#dashboard-widget-settings) |
-| 23 | [Today selected and scheduled employees first](#employee-schedule) |
-| 24 | [Open deviations and follow-up actions first](#own-check-follow-up) |
-| 25 | [Order columns, quiet mapping state and product IDs](#wolt-order) |
-| 26 | [Password confirmation errors](#password-mismatch) · [Expired password link recovery](#password-expired) · [Form-level password network errors](#password-network) |
+| 1 | [1. Ordering warnings and quantity columns](#operations-ordering) |
+| 2 | [2. Overdue checks and due dates](#own-checks-overdue) |
+| 3 | [3. Changed permissions and save controls](#permissions) · [4. Permission context while scrolling](#permissions-scroll) |
+| 4 | [5. User search, roles and location access](#members) |
+| 5 | [6. Count product names](#operations-count) · [7. Waste product names and action emphasis](#operations-waste) · [8. Stock product names, search and categories](#operations-stock) |
+| 6 | [9. Metric picker and selected calculation help](#metric-picker) |
+| 7 | [10. Sent and received quantity labels](#operations-receipt) |
+| 8 | [11. Named location actions](#locations) |
+| 9 | [12. Active and archived catalogue views](#catalog-status) |
+| 10 | [13. Shared dashboard location and period context](#shared-dashboard) · [37. Named widget actions and period override](#dashboard-widget-settings) |
+| 11 | [14. Readable labels in small comparison widgets](#compact-charts) · [15. Disclosed chart group limits](#chart-groups-limit) |
+| 12 | [7. Waste product names and action emphasis](#operations-waste) · [16. Staff food action emphasis](#operations-staff-food) · [17. Label preparation actions](#operations-labels) |
+| 13 | [1. Ordering warnings and quantity columns](#operations-ordering) · [19. Waste quantity alignment and details](#operations-waste-report) · [20. Bad-delivery quantity alignment and details](#operations-bad-detail) |
+| 14 | [19. Waste quantity alignment and details](#operations-waste-report) · [20. Bad-delivery quantity alignment and details](#operations-bad-detail) · [21. Transfer details and temperature exceptions](#operations-transfer-history) |
+| 15 | [8. Stock product names, search and categories](#operations-stock) |
+| 16 | [17. Label preparation actions](#operations-labels) · [18. Label preparation and print preview](#operations-label-preview) |
+| 17 | [22. Activation and connection status](#integrations) |
+| 18 | [23. OnlinePOS connection attention list](#onlinepos-connections) · [24. OnlinePOS product mapping filter](#onlinepos-mappings) · [25. Visible missing menu mappings](#onlinepos-menus) · [26. Workfeed mapping attention list](#workfeed-mappings) · [27. e-conomic agreement attention list](#economic-connections) · [28. Wolt connection attention list](#wolt-connections) · [29. Wolt mapping state and editing](#wolt-mappings) |
+| 19 | [30. Product unit rows](#recipe-units) · [31. Shared ingredient columns and quieter guidance](#recipe-ingredients) |
+| 20 | [32. Transfer product groups](#operations-transfer) · [33. Invoice products within menu boundaries](#operations-invoice) · [34. Bad-delivery product groups](#operations-bad-registration) |
+| 21 | [35. Pending transfers grouped by date](#operations-pending) |
+| 22 | [36. Visible single-location action](#dashboard-location-picker) · [37. Named widget actions and period override](#dashboard-widget-settings) |
+| 23 | [38. Today selected and scheduled employees first](#employee-schedule) |
+| 24 | [39. Open deviations and follow-up actions first](#own-check-follow-up) |
+| 25 | [40. Order columns, quiet mapping state and product IDs](#wolt-order) |
+| 26 | [41. Password confirmation errors](#password-mismatch) · [42. Expired password link recovery](#password-expired) · [43. Form-level password network errors](#password-network) |
 
 <a id="operations-ordering"></a>
 <details>
-<summary>Ordering warnings and quantity columns — findings 1, 13</summary>
+<summary>1. Ordering warnings and quantity columns</summary>
 
-| Before | After |
+Audit findings: 1, 13.
+
+| Before 1 | After 1 |
 | --- | --- |
-| ![Before: Ordering warnings and quantity columns](images/operations/operations-ordering-before.png) | ![After: Ordering warnings and quantity columns](images/operations/operations-ordering-after.png) |
+| ![Before 1: Ordering warnings and quantity columns](images/operations/operations-ordering-before.png) | ![After 1: Ordering warnings and quantity columns](images/operations/operations-ordering-after.png) |
 
 </details>
 
 <a id="own-checks-overdue"></a>
 <details>
-<summary>Overdue checks and due dates — findings 2</summary>
+<summary>2. Overdue checks and due dates</summary>
 
-| Before | After |
+Audit findings: 2.
+
+| Before 2 | After 2 |
 | --- | --- |
-| ![Before: Overdue checks and due dates](images/dashboard/own-checks-overdue-before.png) | ![After: Overdue checks and due dates](images/dashboard/own-checks-overdue-after.png) |
+| ![Before 2: Overdue checks and due dates](images/dashboard/own-checks-overdue-before.png) | ![After 2: Overdue checks and due dates](images/dashboard/own-checks-overdue-after.png) |
 
 </details>
 
 <a id="permissions"></a>
 <details>
-<summary>Changed permissions and save controls — findings 3</summary>
+<summary>3. Changed permissions and save controls</summary>
 
-| Before | After |
+Audit findings: 3.
+
+| Before 3 | After 3 |
 | --- | --- |
-| ![Before: Changed permissions and save controls](images/root/permissions-before.png) | ![After: Changed permissions and save controls](images/root/permissions-after.png) |
+| ![Before 3: Changed permissions and save controls](images/root/permissions-before.png) | ![After 3: Changed permissions and save controls](images/root/permissions-after.png) |
 
 </details>
 
 <a id="permissions-scroll"></a>
 <details>
-<summary>Permission context while scrolling — findings 3</summary>
+<summary>4. Permission context while scrolling</summary>
 
-| Before | After |
+Audit findings: 3.
+
+| Before 4 | After 4 |
 | --- | --- |
-| ![Before: Permission context while scrolling](images/root/permissions-scroll-before.png) | ![After: Permission context while scrolling](images/root/permissions-scroll-after.png) |
+| ![Before 4: Permission context while scrolling](images/root/permissions-scroll-before.png) | ![After 4: Permission context while scrolling](images/root/permissions-scroll-after.png) |
 
 </details>
 
 <a id="members"></a>
 <details>
-<summary>User search, roles and location access — findings 4</summary>
+<summary>5. User search, roles and location access</summary>
 
-| Before | After |
+Audit findings: 4.
+
+| Before 5 | After 5 |
 | --- | --- |
-| ![Before: User search, roles and location access](images/root/members-before.png) | ![After: User search, roles and location access](images/root/members-after.png) |
+| ![Before 5: User search, roles and location access](images/root/members-before.png) | ![After 5: User search, roles and location access](images/root/members-after.png) |
 
 </details>
 
 <a id="operations-count"></a>
 <details>
-<summary>Count product names — findings 5</summary>
+<summary>6. Count product names</summary>
 
-| Before | After |
+Audit findings: 5.
+
+| Before 6 | After 6 |
 | --- | --- |
-| ![Before: Count product names](images/operations/operations-count-before.png) | ![After: Count product names](images/operations/operations-count-after.png) |
+| ![Before 6: Count product names](images/operations/operations-count-before.png) | ![After 6: Count product names](images/operations/operations-count-after.png) |
 
 </details>
 
 <a id="operations-waste"></a>
 <details>
-<summary>Waste product names and action emphasis — findings 5, 12</summary>
+<summary>7. Waste product names and action emphasis</summary>
 
-| Before | After |
+Audit findings: 5, 12.
+
+| Before 7 | After 7 |
 | --- | --- |
-| ![Before: Waste product names and action emphasis](images/operations/operations-waste-before.png) | ![After: Waste product names and action emphasis](images/operations/operations-waste-after.png) |
+| ![Before 7: Waste product names and action emphasis](images/operations/operations-waste-before.png) | ![After 7: Waste product names and action emphasis](images/operations/operations-waste-after.png) |
 
 </details>
 
 <a id="operations-stock"></a>
 <details>
-<summary>Stock product names, search and categories — findings 5, 15</summary>
+<summary>8. Stock product names, search and categories</summary>
 
-| Before | After |
+Audit findings: 5, 15.
+
+| Before 8 | After 8 |
 | --- | --- |
-| ![Before: Stock product names, search and categories](images/operations/operations-stock-before.png) | ![After: Stock product names, search and categories](images/operations/operations-stock-after.png) |
+| ![Before 8: Stock product names, search and categories](images/operations/operations-stock-before.png) | ![After 8: Stock product names, search and categories](images/operations/operations-stock-after.png) |
 
 </details>
 
 <a id="metric-picker"></a>
 <details>
-<summary>Metric picker and selected calculation help — findings 6</summary>
+<summary>9. Metric picker and selected calculation help</summary>
 
-| Before | After |
+Audit findings: 6.
+
+| Before 9 | After 9 |
 | --- | --- |
-| ![Before: Metric picker and selected calculation help](images/dashboard/metric-picker-before.png) | ![After: Metric picker and selected calculation help](images/dashboard/metric-picker-after.png) |
+| ![Before 9: Metric picker and selected calculation help](images/dashboard/metric-picker-before.png) | ![After 9: Metric picker and selected calculation help](images/dashboard/metric-picker-after.png) |
 
 </details>
 
 <a id="operations-receipt"></a>
 <details>
-<summary>Sent and received quantity labels — findings 7</summary>
+<summary>10. Sent and received quantity labels</summary>
 
-| Before | After |
+Audit findings: 7.
+
+| Before 10 | After 10 |
 | --- | --- |
-| ![Before: Sent and received quantity labels](images/operations/operations-receipt-before.png) | ![After: Sent and received quantity labels](images/operations/operations-receipt-after.png) |
+| ![Before 10: Sent and received quantity labels](images/operations/operations-receipt-before.png) | ![After 10: Sent and received quantity labels](images/operations/operations-receipt-after.png) |
 
 </details>
 
 <a id="locations"></a>
 <details>
-<summary>Named location actions — findings 8</summary>
+<summary>11. Named location actions</summary>
 
-| Before | After |
+Audit findings: 8.
+
+| Before 11 | After 11 |
 | --- | --- |
-| ![Before: Named location actions](images/administration-focused/locations-before.png) | ![After: Named location actions](images/administration-focused/locations-after.png) |
+| ![Before 11: Named location actions](images/administration-focused/locations-before.png) | ![After 11: Named location actions](images/administration-focused/locations-after.png) |
 
 </details>
 
 <a id="catalog-status"></a>
 <details>
-<summary>Active and archived catalogue views — findings 9</summary>
+<summary>12. Active and archived catalogue views</summary>
 
-| Before | After |
+Audit findings: 9.
+
+| Before 12 | After 12 |
 | --- | --- |
-| ![Before: Active and archived catalogue views](images/administration-focused/catalog-status-before.png) | ![After: Active and archived catalogue views](images/administration-focused/catalog-status-after.png) |
+| ![Before 12: Active and archived catalogue views](images/administration-focused/catalog-status-before.png) | ![After 12: Active and archived catalogue views](images/administration-focused/catalog-status-after.png) |
 
 </details>
 
 <a id="shared-dashboard"></a>
 <details>
-<summary>Shared dashboard location and period context — findings 10</summary>
+<summary>13. Shared dashboard location and period context</summary>
 
-| Before | After |
+Audit findings: 10.
+
+| Before 13 | After 13 |
 | --- | --- |
-| ![Before: Shared dashboard location and period context](images/dashboard/shared-dashboard-before.png) | ![After: Shared dashboard location and period context](images/dashboard/shared-dashboard-after.png) |
+| ![Before 13: Shared dashboard location and period context](images/dashboard/shared-dashboard-before.png) | ![After 13: Shared dashboard location and period context](images/dashboard/shared-dashboard-after.png) |
 
 </details>
 
 <a id="compact-charts"></a>
 <details>
-<summary>Readable labels in small comparison widgets — findings 11</summary>
+<summary>14. Readable labels in small comparison widgets</summary>
 
-| Before | After |
+Audit findings: 11.
+
+| Before 14 | After 14 |
 | --- | --- |
-| ![Before: Readable labels in small comparison widgets](images/dashboard/compact-charts-before.png) | ![After: Readable labels in small comparison widgets](images/dashboard/compact-charts-after.png) |
+| ![Before 14: Readable labels in small comparison widgets](images/dashboard/compact-charts-before.png) | ![After 14: Readable labels in small comparison widgets](images/dashboard/compact-charts-after.png) |
 
 </details>
 
 <a id="chart-groups-limit"></a>
 <details>
-<summary>Disclosed chart group limits — findings 11</summary>
+<summary>15. Disclosed chart group limits</summary>
 
-| Before | After |
+Audit findings: 11.
+
+| Before 15 | After 15 |
 | --- | --- |
-| ![Before: Disclosed chart group limits](images/dashboard/chart-groups-limit-before.png) | ![After: Disclosed chart group limits](images/dashboard/chart-groups-limit-after.png) |
+| ![Before 15: Disclosed chart group limits](images/dashboard/chart-groups-limit-before.png) | ![After 15: Disclosed chart group limits](images/dashboard/chart-groups-limit-after.png) |
 
 </details>
 
 <a id="operations-staff-food"></a>
 <details>
-<summary>Staff food action emphasis — findings 12</summary>
+<summary>16. Staff food action emphasis</summary>
 
-| Before | After |
+Audit findings: 12.
+
+| Before 16 | After 16 |
 | --- | --- |
-| ![Before: Staff food action emphasis](images/operations/operations-staff-food-before.png) | ![After: Staff food action emphasis](images/operations/operations-staff-food-after.png) |
+| ![Before 16: Staff food action emphasis](images/operations/operations-staff-food-before.png) | ![After 16: Staff food action emphasis](images/operations/operations-staff-food-after.png) |
 
 </details>
 
 <a id="operations-labels"></a>
 <details>
-<summary>Label preparation actions — findings 12, 16</summary>
+<summary>17. Label preparation actions</summary>
 
-| Before | After |
+Audit findings: 12, 16.
+
+| Before 17 | After 17 |
 | --- | --- |
-| ![Before: Label preparation actions](images/operations/operations-labels-before.png) | ![After: Label preparation actions](images/operations/operations-labels-after.png) |
+| ![Before 17: Label preparation actions](images/operations/operations-labels-before.png) | ![After 17: Label preparation actions](images/operations/operations-labels-after.png) |
 
 </details>
 
 <a id="operations-label-preview"></a>
 <details>
-<summary>Label preparation and print preview — findings 16</summary>
+<summary>18. Label preparation and print preview</summary>
 
-| Before | After |
+Audit findings: 16.
+
+| Before 18 | After 18 |
 | --- | --- |
-| ![Before: Label preparation and print preview](images/operations/operations-label-preview-before.png) | ![After: Label preparation and print preview](images/operations/operations-label-preview-after.png) |
+| ![Before 18: Label preparation and print preview](images/operations/operations-label-preview-before.png) | ![After 18: Label preparation and print preview](images/operations/operations-label-preview-after.png) |
 
 </details>
 
 <a id="operations-waste-report"></a>
 <details>
-<summary>Waste quantity alignment and details — findings 13, 14</summary>
+<summary>19. Waste quantity alignment and details</summary>
 
-| Before | After |
+Audit findings: 13, 14.
+
+| Before 19 | After 19 |
 | --- | --- |
-| ![Before: Waste quantity alignment and details](images/operations/operations-waste-report-before.png) | ![After: Waste quantity alignment and details](images/operations/operations-waste-report-after.png) |
+| ![Before 19: Waste quantity alignment and details](images/operations/operations-waste-report-before.png) | ![After 19: Waste quantity alignment and details](images/operations/operations-waste-report-after.png) |
 
 </details>
 
 <a id="operations-bad-detail"></a>
 <details>
-<summary>Bad-delivery quantity alignment and details — findings 13, 14</summary>
+<summary>20. Bad-delivery quantity alignment and details</summary>
 
-| Before | After |
+Audit findings: 13, 14.
+
+| Before 20 | After 20 |
 | --- | --- |
-| ![Before: Bad-delivery quantity alignment and details](images/operations/operations-bad-detail-before.png) | ![After: Bad-delivery quantity alignment and details](images/operations/operations-bad-detail-after.png) |
+| ![Before 20: Bad-delivery quantity alignment and details](images/operations/operations-bad-detail-before.png) | ![After 20: Bad-delivery quantity alignment and details](images/operations/operations-bad-detail-after.png) |
 
 </details>
 
 <a id="operations-transfer-history"></a>
 <details>
-<summary>Transfer details and temperature exceptions — findings 14</summary>
+<summary>21. Transfer details and temperature exceptions</summary>
 
-| Before | After |
+Audit findings: 14.
+
+| Before 21 | After 21 |
 | --- | --- |
-| ![Before: Transfer details and temperature exceptions](images/operations/operations-transfer-history-before.png) | ![After: Transfer details and temperature exceptions](images/operations/operations-transfer-history-after.png) |
+| ![Before 21: Transfer details and temperature exceptions](images/operations/operations-transfer-history-before.png) | ![After 21: Transfer details and temperature exceptions](images/operations/operations-transfer-history-after.png) |
 
 </details>
 
 <a id="integrations"></a>
 <details>
-<summary>Activation and connection status — findings 17</summary>
+<summary>22. Activation and connection status</summary>
 
-| Before | After |
+Audit findings: 17.
+
+| Before 22 | After 22 |
 | --- | --- |
-| ![Before: Activation and connection status](images/root/integrations-before.png) | ![After: Activation and connection status](images/root/integrations-after.png) |
+| ![Before 22: Activation and connection status](images/root/integrations-before.png) | ![After 22: Activation and connection status](images/root/integrations-after.png) |
 
 </details>
 
 <a id="onlinepos-connections"></a>
 <details>
-<summary>OnlinePOS connection attention list — findings 18</summary>
+<summary>23. OnlinePOS connection attention list</summary>
 
-| Before | After |
+Audit findings: 18.
+
+| Before 23 | After 23 |
 | --- | --- |
-| ![Before: OnlinePOS connection attention list](images/administration-focused/onlinepos-connections-before.png) | ![After: OnlinePOS connection attention list](images/administration-focused/onlinepos-connections-after.png) |
+| ![Before 23: OnlinePOS connection attention list](images/administration-focused/onlinepos-connections-before.png) | ![After 23: OnlinePOS connection attention list](images/administration-focused/onlinepos-connections-after.png) |
 
 </details>
 
 <a id="onlinepos-mappings"></a>
 <details>
-<summary>OnlinePOS product mapping filter — findings 18</summary>
+<summary>24. OnlinePOS product mapping filter</summary>
 
-| Before | After |
+Audit findings: 18.
+
+| Before 24 | After 24 |
 | --- | --- |
-| ![Before: OnlinePOS product mapping filter](images/administration-focused/onlinepos-mappings-before.png) | ![After: OnlinePOS product mapping filter](images/administration-focused/onlinepos-mappings-after.png) |
+| ![Before 24: OnlinePOS product mapping filter](images/administration-focused/onlinepos-mappings-before.png) | ![After 24: OnlinePOS product mapping filter](images/administration-focused/onlinepos-mappings-after.png) |
 
 </details>
 
 <a id="onlinepos-menus"></a>
 <details>
-<summary>Visible missing menu mappings — findings 18</summary>
+<summary>25. Visible missing menu mappings</summary>
 
-| Before | After |
+Audit findings: 18.
+
+| Before 25 | After 25 |
 | --- | --- |
-| ![Before: Visible missing menu mappings](images/administration-focused/onlinepos-menus-before.png) | ![After: Visible missing menu mappings](images/administration-focused/onlinepos-menus-after.png) |
+| ![Before 25: Visible missing menu mappings](images/administration-focused/onlinepos-menus-before.png) | ![After 25: Visible missing menu mappings](images/administration-focused/onlinepos-menus-after.png) |
 
 </details>
 
 <a id="workfeed-mappings"></a>
 <details>
-<summary>Workfeed mapping attention list — findings 18</summary>
+<summary>26. Workfeed mapping attention list</summary>
 
-| Before | After |
+Audit findings: 18.
+
+| Before 26 | After 26 |
 | --- | --- |
-| ![Before: Workfeed mapping attention list](images/administration-focused/workfeed-mappings-before.png) | ![After: Workfeed mapping attention list](images/administration-focused/workfeed-mappings-after.png) |
+| ![Before 26: Workfeed mapping attention list](images/administration-focused/workfeed-mappings-before.png) | ![After 26: Workfeed mapping attention list](images/administration-focused/workfeed-mappings-after.png) |
 
 </details>
 
 <a id="economic-connections"></a>
 <details>
-<summary>e-conomic agreement attention list — findings 18</summary>
+<summary>27. e-conomic agreement attention list</summary>
 
-| Before | After |
+Audit findings: 18.
+
+| Before 27 | After 27 |
 | --- | --- |
-| ![Before: e-conomic agreement attention list](images/administration-focused/economic-connections-before.png) | ![After: e-conomic agreement attention list](images/administration-focused/economic-connections-after.png) |
+| ![Before 27: e-conomic agreement attention list](images/administration-focused/economic-connections-before.png) | ![After 27: e-conomic agreement attention list](images/administration-focused/economic-connections-after.png) |
 
 </details>
 
 <a id="wolt-connections"></a>
 <details>
-<summary>Wolt connection attention list — findings 18</summary>
+<summary>28. Wolt connection attention list</summary>
 
-| Before | After |
+Audit findings: 18.
+
+| Before 28 | After 28 |
 | --- | --- |
-| ![Before: Wolt connection attention list](images/administration-focused/wolt-connections-before.png) | ![After: Wolt connection attention list](images/administration-focused/wolt-connections-after.png) |
+| ![Before 28: Wolt connection attention list](images/administration-focused/wolt-connections-before.png) | ![After 28: Wolt connection attention list](images/administration-focused/wolt-connections-after.png) |
 
 </details>
 
 <a id="wolt-mappings"></a>
 <details>
-<summary>Wolt mapping state and editing — findings 18</summary>
+<summary>29. Wolt mapping state and editing</summary>
 
-| Before | After |
+Audit findings: 18.
+
+| Before 29 | After 29 |
 | --- | --- |
-| ![Before: Wolt mapping state and editing](images/administration-focused/wolt-mappings-before.png) | ![After: Wolt mapping state and editing](images/administration-focused/wolt-mappings-after.png) |
+| ![Before 29: Wolt mapping state and editing](images/administration-focused/wolt-mappings-before.png) | ![After 29: Wolt mapping state and editing](images/administration-focused/wolt-mappings-after.png) |
 
 </details>
 
 <a id="recipe-units"></a>
 <details>
-<summary>Product unit rows — findings 19</summary>
+<summary>30. Product unit rows</summary>
 
-| Before | After |
+Audit findings: 19.
+
+| Before 30 | After 30 |
 | --- | --- |
-| ![Before: Product unit rows](images/administration-focused/recipe-units-before.png) | ![After: Product unit rows](images/administration-focused/recipe-units-after.png) |
+| ![Before 30: Product unit rows](images/administration-focused/recipe-units-before.png) | ![After 30: Product unit rows](images/administration-focused/recipe-units-after.png) |
 
 </details>
 
 <a id="recipe-ingredients"></a>
 <details>
-<summary>Shared ingredient columns and quieter guidance — findings 19</summary>
+<summary>31. Shared ingredient columns and quieter guidance</summary>
 
-| Before | After |
+Audit findings: 19.
+
+| Before 31 | After 31 |
 | --- | --- |
-| ![Before: Shared ingredient columns and quieter guidance](images/administration-focused/recipe-ingredients-before.png) | ![After: Shared ingredient columns and quieter guidance](images/administration-focused/recipe-ingredients-after.png) |
+| ![Before 31: Shared ingredient columns and quieter guidance](images/administration-focused/recipe-ingredients-before.png) | ![After 31: Shared ingredient columns and quieter guidance](images/administration-focused/recipe-ingredients-after.png) |
 
 </details>
 
 <a id="operations-transfer"></a>
 <details>
-<summary>Transfer product groups — findings 20</summary>
+<summary>32. Transfer product groups</summary>
 
-| Before | After |
+Audit findings: 20.
+
+| Before 32 | After 32 |
 | --- | --- |
-| ![Before: Transfer product groups](images/operations/operations-transfer-before.png) | ![After: Transfer product groups](images/operations/operations-transfer-after.png) |
+| ![Before 32: Transfer product groups](images/operations/operations-transfer-before.png) | ![After 32: Transfer product groups](images/operations/operations-transfer-after.png) |
 
 </details>
 
 <a id="operations-invoice"></a>
 <details>
-<summary>Invoice products within menu boundaries — findings 20</summary>
+<summary>33. Invoice products within menu boundaries</summary>
 
-| Before | After |
+Audit findings: 20.
+
+| Before 33 | After 33 |
 | --- | --- |
-| ![Before: Invoice products within menu boundaries](images/operations/operations-invoice-before.png) | ![After: Invoice products within menu boundaries](images/operations/operations-invoice-after.png) |
+| ![Before 33: Invoice products within menu boundaries](images/operations/operations-invoice-before.png) | ![After 33: Invoice products within menu boundaries](images/operations/operations-invoice-after.png) |
 
 </details>
 
 <a id="operations-bad-registration"></a>
 <details>
-<summary>Bad-delivery product groups — findings 20</summary>
+<summary>34. Bad-delivery product groups</summary>
 
-| Before | After |
+Audit findings: 20.
+
+| Before 34 | After 34 |
 | --- | --- |
-| ![Before: Bad-delivery product groups](images/operations/operations-bad-registration-before.png) | ![After: Bad-delivery product groups](images/operations/operations-bad-registration-after.png) |
+| ![Before 34: Bad-delivery product groups](images/operations/operations-bad-registration-before.png) | ![After 34: Bad-delivery product groups](images/operations/operations-bad-registration-after.png) |
 
 </details>
 
 <a id="operations-pending"></a>
 <details>
-<summary>Pending transfers grouped by date — findings 21</summary>
+<summary>35. Pending transfers grouped by date</summary>
 
-| Before | After |
+Audit findings: 21.
+
+| Before 35 | After 35 |
 | --- | --- |
-| ![Before: Pending transfers grouped by date](images/operations/operations-pending-before.png) | ![After: Pending transfers grouped by date](images/operations/operations-pending-after.png) |
+| ![Before 35: Pending transfers grouped by date](images/operations/operations-pending-before.png) | ![After 35: Pending transfers grouped by date](images/operations/operations-pending-after.png) |
 
 </details>
 
 <a id="dashboard-location-picker"></a>
 <details>
-<summary>Visible single-location action — findings 22</summary>
+<summary>36. Visible single-location action</summary>
 
-| Before | After |
+Audit findings: 22.
+
+| Before 36 | After 36 |
 | --- | --- |
-| ![Before: Visible single-location action](images/dashboard/dashboard-location-picker-before.png) | ![After: Visible single-location action](images/dashboard/dashboard-location-picker-after.png) |
+| ![Before 36: Visible single-location action](images/dashboard/dashboard-location-picker-before.png) | ![After 36: Visible single-location action](images/dashboard/dashboard-location-picker-after.png) |
 
 </details>
 
 <a id="dashboard-widget-settings"></a>
 <details>
-<summary>Named widget actions and period override — findings 10, 22</summary>
+<summary>37. Named widget actions and period override</summary>
 
-| Before | After |
+Audit findings: 10, 22.
+
+| Before 37 | After 37 |
 | --- | --- |
-| ![Before: Named widget actions and period override](images/dashboard/dashboard-widget-settings-before.png) | ![After: Named widget actions and period override](images/dashboard/dashboard-widget-settings-after.png) |
+| ![Before 37: Named widget actions and period override](images/dashboard/dashboard-widget-settings-before.png) | ![After 37: Named widget actions and period override](images/dashboard/dashboard-widget-settings-after.png) |
 
 </details>
 
 <a id="employee-schedule"></a>
 <details>
-<summary>Today selected and scheduled employees first — findings 23</summary>
+<summary>38. Today selected and scheduled employees first</summary>
 
-| Before | After |
+Audit findings: 23.
+
+| Before 38 | After 38 |
 | --- | --- |
-| ![Before: Today selected and scheduled employees first](images/dashboard/employee-schedule-before.png) | ![After: Today selected and scheduled employees first](images/dashboard/employee-schedule-after.png) |
+| ![Before 38: Today selected and scheduled employees first](images/dashboard/employee-schedule-before.png) | ![After 38: Today selected and scheduled employees first](images/dashboard/employee-schedule-after.png) |
 
 </details>
 
 <a id="own-check-follow-up"></a>
 <details>
-<summary>Open deviations and follow-up actions first — findings 24</summary>
+<summary>39. Open deviations and follow-up actions first</summary>
 
-| Before | After |
+Audit findings: 24.
+
+| Before 39 | After 39 |
 | --- | --- |
-| ![Before: Open deviations and follow-up actions first](images/dashboard/own-check-follow-up-before.png) | ![After: Open deviations and follow-up actions first](images/dashboard/own-check-follow-up-after.png) |
+| ![Before 39: Open deviations and follow-up actions first](images/dashboard/own-check-follow-up-before.png) | ![After 39: Open deviations and follow-up actions first](images/dashboard/own-check-follow-up-after.png) |
 
 </details>
 
 <a id="wolt-order"></a>
 <details>
-<summary>Order columns, quiet mapping state and product IDs — findings 25</summary>
+<summary>40. Order columns, quiet mapping state and product IDs</summary>
 
-| Before | After |
+Audit findings: 25.
+
+| Before 40 | After 40 |
 | --- | --- |
-| ![Before: Order columns, quiet mapping state and product IDs](images/administration-focused/wolt-order-before.png) | ![After: Order columns, quiet mapping state and product IDs](images/administration-focused/wolt-order-after.png) |
+| ![Before 40: Order columns, quiet mapping state and product IDs](images/administration-focused/wolt-order-before.png) | ![After 40: Order columns, quiet mapping state and product IDs](images/administration-focused/wolt-order-after.png) |
 
 </details>
 
 <a id="password-mismatch"></a>
 <details>
-<summary>Password confirmation errors — findings 26</summary>
+<summary>41. Password confirmation errors</summary>
 
-| Before | After |
+Audit findings: 26.
+
+| Before 41 | After 41 |
 | --- | --- |
-| ![Before: Password confirmation errors](images/dashboard/password-mismatch-before.png) | ![After: Password confirmation errors](images/dashboard/password-mismatch-after.png) |
+| ![Before 41: Password confirmation errors](images/dashboard/password-mismatch-before.png) | ![After 41: Password confirmation errors](images/dashboard/password-mismatch-after.png) |
 
 </details>
 
 <a id="password-expired"></a>
 <details>
-<summary>Expired password link recovery — findings 26</summary>
+<summary>42. Expired password link recovery</summary>
 
-| Before | After |
+Audit findings: 26.
+
+| Before 42 | After 42 |
 | --- | --- |
-| ![Before: Expired password link recovery](images/dashboard/password-expired-before.png) | ![After: Expired password link recovery](images/dashboard/password-expired-after.png) |
+| ![Before 42: Expired password link recovery](images/dashboard/password-expired-before.png) | ![After 42: Expired password link recovery](images/dashboard/password-expired-after.png) |
 
 </details>
 
 <a id="password-network"></a>
 <details>
-<summary>Form-level password network errors — findings 26</summary>
+<summary>43. Form-level password network errors</summary>
 
-| Before | After |
+Audit findings: 26.
+
+| Before 43 | After 43 |
 | --- | --- |
-| ![Before: Form-level password network errors](images/dashboard/password-network-before.png) | ![After: Form-level password network errors](images/dashboard/password-network-after.png) |
+| ![Before 43: Form-level password network errors](images/dashboard/password-network-before.png) | ![After 43: Form-level password network errors](images/dashboard/password-network-after.png) |
 
 </details>
