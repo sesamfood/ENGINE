@@ -3,10 +3,10 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { useEffect, useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -26,6 +26,35 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { integrationRegistry, type IntegrationId } from "@/integrations/registry";
 import { getUserErrorMessage } from "@/lib/user-errors";
+
+function ConnectionSummary({ integration }: { integration: IntegrationId }) {
+  const workfeed = useQuery(api.workfeed.getSettings, integration === "workfeed" ? {} : "skip");
+  const onlinePos = useQuery(api.onlinePos.getSettings, integration === "onlinepos" ? {} : "skip");
+  const economic = useQuery(api.economic.getSettings, integration === "economic" ? {} : "skip");
+  const wolt = useQuery(api.wolt.getIntegrationOverview, integration === "wolt" ? {} : "skip");
+  let label = "Henter forbindelsesstatus…";
+  let attention = false;
+  if (workfeed) {
+    label = workfeed.connected ? "Forbundet til Workfeed" : "Mangler forbindelse";
+    attention = !workfeed.connected;
+  }
+  if (onlinePos) {
+    label = onlinePos.masters.length ? `${onlinePos.masters.length} masterforbindelse${onlinePos.masters.length === 1 ? "" : "r"}` : "Mangler masterforbindelse";
+    attention = onlinePos.masters.length === 0;
+  }
+  if (economic) {
+    const reconnect = economic.connections.filter((connection) => connection.requiresReconnect).length;
+    const connected = economic.connections.filter((connection) => connection.enabled && !connection.requiresReconnect).length;
+    attention = reconnect > 0 || connected === 0;
+    label = reconnect ? `${reconnect} aftale${reconnect === 1 ? " kræver" : "r kræver"} ny forbindelse` : connected ? `${connected} forbundet aftale${connected === 1 ? "" : "r"}` : "Mangler aktiv forbindelse";
+  }
+  if (wolt) {
+    const incomplete = wolt.locations.filter((location) => !location.connection || location.connection.state !== "ready" || location.connection.deadLetterCount > 0 || location.connection.lastError).length;
+    attention = incomplete > 0 || wolt.locations.length === 0;
+    label = incomplete ? `${incomplete} lokation${incomplete === 1 ? " kræver" : "er kræver"} handling` : wolt.locations.length ? `${wolt.locations.length} ${wolt.locations.length === 1 ? "forbundet lokation" : "forbundne lokationer"}` : "Ingen forbundne lokationer";
+  }
+  return <p className={attention ? "flex items-center gap-2 text-sm font-medium" : "text-sm text-muted-foreground"}>{attention ? <TriangleAlertIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" /> : null}{label}</p>;
+}
 
 export function IntegrationOverview() {
   const access = useAccess();
@@ -131,10 +160,11 @@ export function IntegrationOverview() {
                 </CardAction>
               </CardHeader>
               <CardContent className="flex flex-1 items-center justify-between">
-                <Badge variant={enabled ? "default" : "secondary"}>
-                  {enabled ? "Aktiveret" : "Deaktiveret"}
-                </Badge>
-                {canOpen ? <ArrowRightIcon className="size-4 text-muted-foreground" aria-hidden="true" /> : null}
+                <div className="flex flex-col items-start gap-2">
+                  <Badge variant="secondary">{enabled ? "Aktiveret" : "Deaktiveret"}</Badge>
+                  {canOpen ? <ConnectionSummary integration={entry.id} /> : null}
+                </div>
+                {canOpen ? <span className="flex items-center gap-2 text-sm">Indstillinger<ArrowRightIcon className="size-4" aria-hidden="true" /></span> : null}
               </CardContent>
               {!canOpen ? (
                 <CardFooter>

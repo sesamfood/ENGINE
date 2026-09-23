@@ -17,6 +17,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { TableVisualization } from "./table";
 import { DEFAULT_CURRENCY, type MetricResult } from "@/lib/dashboard/types";
 import {
   chartDateTicks,
@@ -106,6 +107,7 @@ export function TimeSeriesVisualization({
       </div>
     );
   }
+  if (compact && result.series.length > 1) return <TableVisualization result={{ ...result, breakdown: undefined }} compact />;
   const model = chartModel(result);
   const domain = chartValueDomain(model, yAxisMin, yAxisMax);
   return (

@@ -125,6 +125,7 @@ const tableHeadAppearance = cva("", {
   variants: {
     appearance: {
       metric: "py-4 font-medium",
+      frozenLabel: "sticky left-0 z-30 bg-card",
       muted: "bg-muted/30",
       day: "border-l",
       currentDay: "border-l bg-primary/5",
@@ -166,6 +167,9 @@ const tableCellAppearance = cva("", {
       truncate: "truncate",
       labelTruncate: "truncate font-medium",
       compactLabel: "truncate font-medium py-1.5",
+      compactLabelWrap: "font-medium py-1.5 whitespace-normal break-words",
+      frozenLabel: "sticky left-0 z-10 bg-card font-medium whitespace-normal",
+      changed: "bg-primary/10",
       compactNumeric: "tabular-nums py-1.5",
       day: "border-l p-2",
       currentDay: "border-l p-2 bg-primary/5",

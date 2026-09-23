@@ -23,6 +23,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Empty,
   EmptyDescription,
@@ -134,7 +135,7 @@ function ScheduleTab({
   const [now, setNow] = useState(() => Date.now());
   const currentMonday = mondayFor(now, timeZone);
   const [weekStart, setWeekStart] = useState(currentMonday);
-  const [selectedDate, setSelectedDate] = useState(currentMonday);
+  const [selectedDate, setSelectedDate] = useState(() => dateKey(now, timeZone));
   const week = useQuery(
     api.employees.listWeek,
     locationId ? { locationId, weekStart } : "skip",
@@ -160,9 +161,12 @@ function ScheduleTab({
     );
   }
 
+  const scheduledEmployees = week?.employees.filter((employee) => employee.shifts.some((shift) => shift.date === selectedDate)) ?? [];
+  const offDutyEmployees = week?.employees.filter((employee) => !employee.shifts.some((shift) => shift.date === selectedDate)) ?? [];
+
   const selectWeek = (value: string) => {
     setWeekStart(value);
-    setSelectedDate(value);
+    setSelectedDate(value === currentMonday ? dateKey(now, timeZone) : value);
   };
   const goToWeek = (value: string) => {
     const date = new Date(`${value}T00:00:00Z`);
@@ -323,11 +327,11 @@ function ScheduleTab({
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
-            {week.employees.map((employee) => {
+            {scheduledEmployees.map((employee) => {
               const shifts = employee.shifts.filter(
                 (shift) => shift.date === selectedDate,
               );
-              const working = employee.shifts.some(
+              const working = selectedDate === dateKey(now, timeZone) && employee.shifts.some(
                 (shift) => shift.startsAt <= now && shift.endsAt > now,
               );
               return (
@@ -366,6 +370,28 @@ function ScheduleTab({
                 </Card>
               );
             })}
+            {!scheduledEmployees.length ? (
+              <p className="py-4 text-sm text-muted-foreground">Ingen vagter denne dag.</p>
+            ) : null}
+            {offDutyEmployees.length > 0 ? (
+              <Accordion>
+                <AccordionItem value="off-duty">
+                  <AccordionTrigger className="min-h-11">
+                    Ingen vagt · {offDutyEmployees.length}
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <ul className="flex flex-col gap-3">
+                      {offDutyEmployees.map((employee) => (
+                        <li key={employee.id} className="flex items-center gap-3">
+                          <EmployeeAvatar name={employee.displayName} imageUrl={employee.imageUrl} />
+                          <span>{employee.displayName}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            ) : null}
           </div>
         </>
       )}

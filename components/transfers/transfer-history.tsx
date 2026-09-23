@@ -107,11 +107,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type TransferListRow = {
@@ -1013,48 +1008,28 @@ export function TransferHistory() {
                   </span>
                 </TableHead>
                 <TableHead>Kommentar</TableHead>
+                <TableHead><span className="sr-only">Detaljer</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {transfers.map((transfer) => (
                 <TableRow
                   key={transfer.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Åbn transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}${transfer.hasTemperatureDeviation ? " med temperaturafvigelse" : ""}`}
                   appearance="selectable"
                   className="cursor-pointer"
                   onClick={() => openTransfer(transfer.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openTransfer(transfer.id);
-                    }
-                  }}
                 >
                   <TableCell>
-                    <span className="flex items-center gap-1">
-                      {transfer.hasTemperatureDeviation ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <span className="inline-flex text-warning" />
-                            }
-                          >
-                            <TriangleAlertIcon
-                              aria-hidden="true"
-                              className="size-4"
-                            />
-                            <span className="sr-only">Temperaturafvigelse</span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Transferen har en temperaturafvigelse
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : null}
+                    <span className="flex flex-col items-start gap-1">
                       <span>
                         {dateTimeFormatter.format(transfer.transferredAt)}
                       </span>
+                      {transfer.hasTemperatureDeviation ? (
+                        <Badge variant="outline" appearance="warning">
+                          <TriangleAlertIcon aria-hidden="true" data-icon="inline-start" />
+                          Temperaturafvigelse
+                        </Badge>
+                      ) : null}
                     </span>
                   </TableCell>
                   <TableCell>{transfer.fromLocationName}</TableCell>
@@ -1065,6 +1040,19 @@ export function TransferHistory() {
                   </TableCell>
                   <TableCell appearance="truncate" className="max-w-56">
                     {transfer.comment ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      className="min-h-11"
+                      aria-label={`Se transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openTransfer(transfer.id);
+                      }}
+                    >
+                      Se transfer
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

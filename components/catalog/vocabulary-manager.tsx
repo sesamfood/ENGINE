@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -274,52 +275,18 @@ function LocationManager() {
         onRemove={(item) => remove({ locationId: item.id })}
         renderActions={(item) => (
           <>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-lg"
-                    aria-label={`Redigér stamdata for ${item.name}`}
-                    onClick={() => setDetailsLocation(item)}
-                  />
-                }
-              >
-                <Building2Icon />
-              </TooltipTrigger>
-              <TooltipContent>Stamdata</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-lg"
-                    aria-label={`Redigér åbningstider for ${item.name}`}
-                    onClick={() => setOpeningHoursLocation(item)}
-                  />
-                }
-              >
-                <Clock3Icon />
-              </TooltipTrigger>
-              <TooltipContent>Åbningstider</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-lg"
-                    className="size-11"
-                    aria-label={`Produkter og Områder for ${item.name}`}
-                    onClick={() => setCountSetupLocation(item)}
-                  />
-                }
-              >
-                <Settings2Icon />
-              </TooltipTrigger>
-              <TooltipContent>Produkter og Områder</TooltipContent>
-            </Tooltip>
+            <Button variant="outline" size="lg" className="min-h-11" aria-label={`Redigér stamdata for ${item.name}`} onClick={() => setDetailsLocation(item)}>
+              <Building2Icon data-icon="inline-start" />
+              Stamdata
+            </Button>
+            <Button variant="outline" size="lg" className="min-h-11" aria-label={`Redigér åbningstider for ${item.name}`} onClick={() => setOpeningHoursLocation(item)}>
+              <Clock3Icon data-icon="inline-start" />
+              Åbningstider
+            </Button>
+            <Button variant="outline" size="lg" className="min-h-11" aria-label={`Produkter og områder for ${item.name}`} onClick={() => setCountSetupLocation(item)}>
+              <Settings2Icon data-icon="inline-start" />
+              Produkter og områder
+            </Button>
           </>
         )}
       />
@@ -478,18 +445,18 @@ function VocabularyList<Item extends VocabularyItem>({
       {items && items.length > 0 ? (
         <div className="overflow-hidden rounded-xl border">
           <Table>
-            <TableHeader>
+            <TableHeader className={cn(kind === "location" && "hidden lg:table-header-group")}>
               <TableRow>
                 <TableHead>Navn</TableHead>
-                <TableHead className="w-48 text-right">Handlinger</TableHead>
+                <TableHead className={cn("text-right", kind === "location" ? "w-2/3" : "w-48")}>Handlinger</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((item) => (
-                <TableRow key={item.id}>
+                <TableRow key={item.id} className={cn(kind === "location" && "flex flex-col lg:table-row")}>
                   <TableCell appearance="label">{item.name}</TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-1">
+                    <div className={cn("flex gap-2", kind === "location" ? "flex-wrap lg:justify-end" : "justify-end")}>
                       {renderActions(item)}
                       <Tooltip>
                         <TooltipTrigger

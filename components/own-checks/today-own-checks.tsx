@@ -56,11 +56,13 @@ function CheckRow({
   locationId,
   timeZone,
   now,
+  showDate,
 }: {
   item: PlanItem;
   locationId: Id<"locations">;
   timeZone: string;
   now: number;
+  showDate?: boolean;
 }) {
   const overdue = item.status === "notCompleted" && now > item.dueAt;
   return (
@@ -88,6 +90,7 @@ function CheckRow({
         </span>
         <span className="block whitespace-normal text-sm text-muted-foreground">
           {ownCheckControlTypeLabels[item.controlType]} ·{" "}
+          {showDate ? `${new Intl.DateTimeFormat("da-DK", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${item.dueDateKey}T12:00:00Z`))} · ` : null}
           {timeLabel(item, timeZone)}
         </span>
       </span>
@@ -110,6 +113,7 @@ function CheckSection({
   timeZone,
   now,
   icon,
+  showDates,
 }: {
   title: string;
   items: PlanItem[];
@@ -117,6 +121,7 @@ function CheckSection({
   timeZone: string;
   now: number;
   icon: React.ReactNode;
+  showDates?: boolean;
 }) {
   if (!items.length) return null;
   return (
@@ -138,6 +143,7 @@ function CheckSection({
             timeZone={timeZone}
             now={now}
             locationId={locationId}
+            showDate={showDates}
           />
         ))}
       </CardContent>
@@ -246,6 +252,17 @@ export function TodayOwnChecks({
           icon={<AlertTriangleIcon />}
           locationId={locationId}
         />
+        {result.backlog.length ? (
+          <CheckSection
+            title="Manglende fra tidligere dage"
+            items={result.backlog}
+            showDates
+            timeZone={result.timeZone}
+            now={now}
+            icon={<AlertTriangleIcon />}
+            locationId={locationId}
+          />
+        ) : null}
         <CheckSection
           title="Udført i dag"
           items={done}
@@ -254,16 +271,6 @@ export function TodayOwnChecks({
           icon={<CheckCircle2Icon />}
           locationId={locationId}
         />
-        {result.backlog.length ? (
-          <CheckSection
-            title="Manglende fra tidligere dage"
-            items={result.backlog}
-            timeZone={result.timeZone}
-            now={now}
-            icon={<AlertTriangleIcon />}
-            locationId={locationId}
-          />
-        ) : null}
         {!pending.length &&
         !deviations.length &&
         !done.length &&

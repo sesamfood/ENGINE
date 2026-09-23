@@ -2,7 +2,7 @@
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { BoxesIcon, Grid2X2Icon, ListIcon } from "lucide-react";
+import { BoxesIcon, Grid2X2Icon, ListIcon, SearchIcon } from "lucide-react";
 import {
   ProductCardMedia,
   productGridClassName,
@@ -10,6 +10,7 @@ import {
 import { useCountState } from "./count-state-provider";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -19,12 +20,15 @@ import {
 } from "@/components/ui/card";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -37,6 +41,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import { useKiosk, usePermission } from "@/components/app-shell";
 import { dateTimeFormatter, DEFAULT_TIME_ZONE } from "@/lib/date";
+import { searchProducts } from "@/lib/product-search";
 
 const quantityFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
@@ -73,6 +78,8 @@ function formatStockQuantity(
 
 export function LocationStock() {
   const [view, setView] = useState<"grid" | "detail">("grid");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
   const { locations, locationId, state } = useCountState();
   const dateFormatter = dateTimeFormatter("da-DK", {
     dateStyle: "short",
@@ -89,6 +96,18 @@ export function LocationStock() {
   const stock = useCompleteCatalog(
     api.count.listLocationStockPage,
     canView && locationId ? { locationId } : "skip",
+  );
+  const categories = [...new Set((stock ?? []).map((row) => row.categoryName ?? "Uden kategori"))]
+    .sort((a, b) => a.localeCompare(b, "da"));
+  const activeCategory = categories.some((name) => `category:${name}` === category)
+    ? category
+    : "all";
+  const visibleStock = searchProducts(
+    (stock ?? []).filter((row) =>
+      activeCategory === "all" || `category:${row.categoryName ?? "Uden kategori"}` === activeCategory,
+    ),
+    search,
+    (row) => ({ name: row.productName, categoryPath: row.categoryName ?? "Uden kategori" }),
   );
 
   if (!canView) {
@@ -152,7 +171,16 @@ export function LocationStock() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex justify-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <InputGroup className="h-11 min-w-0 flex-1">
+          <InputGroupAddon><SearchIcon aria-hidden="true" /></InputGroupAddon>
+          <InputGroupInput
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Søg efter produkt eller kategori"
+            aria-label="Søg i lageret"
+          />
+        </InputGroup>
         <ToggleGroup
           value={[view]}
           onValueChange={(value) => {
@@ -174,10 +202,39 @@ export function LocationStock() {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+      <Tabs value={activeCategory} onValueChange={setCategory} className="min-w-0">
+        <TabsList
+          aria-label="Produktkategorier"
+          className="h-12 w-full justify-start overflow-x-auto overflow-y-hidden"
+        >
+          <TabsTrigger value="all" appearance="standard" className="min-w-20 shrink-0">Alle</TabsTrigger>
+          {categories.map((name) => (
+            <TabsTrigger key={name} value={`category:${name}`} appearance="standard" className="min-w-28 shrink-0">
+              {name}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      <p role="status" className="text-sm text-muted-foreground">
+        {visibleStock.length} af {stock?.length ?? 0} produkter
+      </p>
 
-      {view === "grid" ? (
+      {visibleStock.length === 0 ? (
+        <Empty appearance="outlined" className="min-h-64">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><SearchIcon /></EmptyMedia>
+            <EmptyTitle>Ingen produkter fundet</EmptyTitle>
+            <EmptyDescription>Prøv et andet søgeord eller en anden kategori.</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="outline" className="min-h-11" onClick={() => { setSearch(""); setCategory("all"); }}>
+              Nulstil filtre
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : view === "grid" ? (
         <div className={productGridClassName}>
-          {stock?.map((row) => (
+          {visibleStock.map((row) => (
             <Card
               key={row.productId}
               appearance="product"
@@ -189,11 +246,11 @@ export function LocationStock() {
                 alt={`Produktbillede af ${row.productName}`}
               />
               <CardHeader appearance="product">
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <CardTitle appearance="truncate" className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <CardTitle appearance="productName">
                     {row.productName}
                   </CardTitle>
-                  <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
+                  <CardDescription>
                     {row.categoryName ?? "Uden kategori"}
                   </CardDescription>
                 </div>
@@ -227,7 +284,7 @@ export function LocationStock() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {stock?.map((row) => (
+              {visibleStock.map((row) => (
                 <TableRow key={row.productId}>
                   <TableCell appearance="label">
                     {row.productName}

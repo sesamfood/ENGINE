@@ -1,6 +1,7 @@
 import { PackageOpenIcon } from "lucide-react";
 import Image from "next/image";
 import type { ReactNode } from "react";
+import { Separator } from "@/components/ui/separator";
 
 export function ProductLineGroup({
   productName,
@@ -16,7 +17,8 @@ export function ProductLineGroup({
   children: ReactNode;
 }) {
   return (
-    <li className="flex flex-col gap-3 rounded-xl border p-3">
+    <li className="group/product-line flex flex-col gap-3">
+      <Separator className="group-first/product-line:hidden" />
       <div className="flex items-center gap-3">
         <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
           {imageUrl ? (
@@ -32,7 +34,7 @@ export function ProductLineGroup({
           )}
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <p className="min-w-0 flex-1 truncate font-medium">{productName}</p>
+          <p className="min-w-0 flex-1 break-words font-medium">{productName}</p>
           {status}
         </div>
         {action}

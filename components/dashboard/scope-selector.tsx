@@ -189,7 +189,7 @@ export function ScopeSelector({
                     <span className="min-w-0 truncate">{location.name}</span>
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuItem
-                    className="invisible min-h-10 justify-center group-focus-within/location:visible group-hover/location:visible"
+                    className="min-h-11 justify-center"
                     aria-label={`Vælg kun ${location.name}`}
                     onClick={() => selectOnlyLocation(location.id)}
                   >

@@ -15,6 +15,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   ShoppingCartIcon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -532,23 +533,6 @@ function Planner() {
                           lagerbeholdning trækkes fra. Indgående leverancer er
                           ikke medregnet.
                         </p>
-                        {context?.warning ? <p>{context.warning}</p> : null}
-                        {operationalHistory.staffFood.unresolvedCount +
-                          operationalHistory.waste.unresolvedCount >
-                        0 ? (
-                          <p>
-                            Nogle Staff food- eller Waste-registreringer mangler
-                            produkt- eller enhedskoblinger. Forslagene kan være
-                            for lave.
-                          </p>
-                        ) : null}
-                        {history.unmappedQuantity > 0 ? (
-                          <p>
-                            {numberFormatter.format(history.unmappedQuantity)}{" "}
-                            solgte enheder mangler produkt- eller
-                            enhedskoblinger. Forslagene kan være for lave.
-                          </p>
-                        ) : null}
                         {context ? <p>{context.environment.message}</p> : null}
                         <p>
                           Vejr fra{" "}
@@ -621,6 +605,41 @@ function Planner() {
               </AlertDescription>
             </Alert>
           ) : null}
+          {!loading &&
+          (context?.warning ||
+            operationalHistory.staffFood.unresolvedCount > 0 ||
+            operationalHistory.waste.unresolvedCount > 0 ||
+            history.unmappedQuantity > 0) ? (
+            <Alert>
+              <TriangleAlertIcon />
+              <AlertTitle>Kontrollér datagrundlaget</AlertTitle>
+              <AlertDescription>
+                <ul className="flex list-disc flex-col gap-1 pl-5">
+                  {context?.warning ? <li>{context.warning}</li> : null}
+                  {operationalHistory.staffFood.unresolvedCount > 0 ? (
+                    <li>
+                      {numberFormatter.format(operationalHistory.staffFood.unresolvedCount)}{" "}
+                      Staff food-registreringer mangler produkt- eller enhedskoblinger.
+                      Forslagene kan være for lave.
+                    </li>
+                  ) : null}
+                  {operationalHistory.waste.unresolvedCount > 0 ? (
+                    <li>
+                      {numberFormatter.format(operationalHistory.waste.unresolvedCount)}{" "}
+                      Waste-registreringer mangler produkt- eller enhedskoblinger.
+                      Forslagene kan være for lave.
+                    </li>
+                  ) : null}
+                  {history.unmappedQuantity > 0 ? (
+                    <li>
+                      {numberFormatter.format(history.unmappedQuantity)} solgte enheder
+                      mangler produkt- eller enhedskoblinger. Forslagene kan være for lave.
+                    </li>
+                  ) : null}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <div className="flex flex-wrap items-center gap-4">
             <InputGroup className="h-11 w-full sm:max-w-80">
               <InputGroupAddon>
@@ -661,9 +680,9 @@ function Planner() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Produkt</TableHead>
-                    <TableHead>Lager</TableHead>
-                    <TableHead>Forventet forbrug</TableHead>
-                    <TableHead>Forslag</TableHead>
+                    <TableHead className="text-right">Lager</TableHead>
+                    <TableHead className="text-right">Forventet forbrug</TableHead>
+                    <TableHead className="text-right">Forslag</TableHead>
                     <TableHead className="w-44">Bestil</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -694,7 +713,7 @@ function Planner() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell appearance="numeric" className="text-right">
                         {row.stock === null
                           ? "Ukendt"
                           : numberFormatter.format(row.stock)}
@@ -702,7 +721,7 @@ function Planner() {
                           {row.unitName}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell appearance="numeric" className="text-right">
                         {row.forecast.demand === null
                           ? "Intet forbrugsgrundlag"
                           : numberFormatter.format(row.forecast.demand)}
@@ -724,7 +743,7 @@ function Planner() {
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell>
+                      <TableCell appearance="numeric" className="text-right">
                         {row.forecast.suggested === null
                           ? "Angiv manuelt"
                           : numberFormatter.format(row.forecast.suggested)}

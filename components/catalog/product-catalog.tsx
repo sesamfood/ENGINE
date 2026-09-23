@@ -55,6 +55,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -462,8 +463,8 @@ export function ProductCatalog() {
     setBulkCategoryId(null);
   }
 
-  function toggleStatus() {
-    const nextStatus = status === "active" ? "archived" : "active";
+  function changeStatus(nextStatus: ProductStatus) {
+    if (nextStatus === status) return;
     setSelectedIds([]);
     setBulkCategoryId(null);
     router.replace(
@@ -510,6 +511,20 @@ export function ProductCatalog() {
   return (
     <div className="flex flex-col gap-7">
       <div className="sticky top-16 z-30 -mx-4 bg-background px-4 py-3 md:top-24 md:py-4">
+        <ToggleGroup
+          aria-label="Produktstatus"
+          variant="outline"
+          size="lg"
+          value={[status]}
+          onValueChange={(values) => {
+            const value = values[0];
+            if (value === "active" || value === "archived") changeStatus(value);
+          }}
+          className="mb-3"
+        >
+          <ToggleGroupItem value="active" className="min-h-11">Aktive</ToggleGroupItem>
+          <ToggleGroupItem value="archived" className="min-h-11">Arkiverede</ToggleGroupItem>
+        </ToggleGroup>
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative min-w-0 flex-1">
             <SearchIcon
@@ -587,10 +602,7 @@ export function ProductCatalog() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
-            <ProductImportExport
-              status={status}
-              onToggleStatus={toggleStatus}
-            />
+            <ProductImportExport />
             <Button
               size="lg"
               appearance="standard"

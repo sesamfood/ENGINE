@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -224,7 +225,7 @@ export function RolePermissions() {
   return (
     <div className="max-w-6xl">
       <Card className="overflow-visible">
-        <CardHeader appearance="relaxed" className="flex-row items-start justify-between">
+        <CardHeader appearance="relaxed" className="flex flex-col items-start justify-between sm:flex-row">
           <div className="flex flex-col gap-1.5">
             <CardTitle>Roller og adgang</CardTitle>
             <CardDescription>
@@ -236,15 +237,16 @@ export function RolePermissions() {
             Ny rolle
           </Button>
         </CardHeader>
-        <CardContent className="overflow-x-auto md:[&_[data-slot=table-container]]:overflow-visible">
+        <CardContent className="max-h-128 overflow-auto [&_[data-slot=table-container]]:overflow-visible">
           <Table className="min-w-168">
-            <TableHeader appearance="surface" className="sticky top-16 md:top-24">
+            <TableHeader appearance="surface" className="sticky top-0 z-20">
               <TableRow>
-                <TableHead>Handling</TableHead>
+                <TableHead appearance="frozenLabel">Handling</TableHead>
                 {rows.map((role) => (
                   <TableHead key={role.role} className="min-w-36 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <span>{role.name}</span>
+                      {changedRoles.some((changed) => changed.role === role.role) ? <Badge variant="secondary">Ændret</Badge> : null}
                       {!role.isSystem ? (
                         <Button
                           variant="ghost"
@@ -262,9 +264,9 @@ export function RolePermissions() {
             </TableHeader>
             <TableBody>
               <TableRow>
-                <TableCell appearance="label">Datavisning</TableCell>
+                <TableCell appearance="frozenLabel">Datavisning</TableCell>
                 {rows.map((role) => (
-                  <TableCell key={role.role}>
+                  <TableCell key={role.role} appearance={role.granularity !== currentGranularity[role.role] ? "changed" : undefined}>
                     <Select
                       items={granularityItems}
                       value={currentGranularity[role.role] ?? "detail"}
@@ -291,6 +293,7 @@ export function RolePermissions() {
                         </SelectGroup>
                       </SelectContent>
                     </Select>
+                    {role.granularity !== currentGranularity[role.role] ? <span className="text-xs font-medium">Ændret</span> : null}
                   </TableCell>
                 ))}
               </TableRow>
@@ -306,13 +309,13 @@ export function RolePermissions() {
                   </TableRow>
                   {group.permissions.filter((permission) => permission.id !== "expenses.exportEconomic" || integrations?.economic).map((permission) => (
                     <TableRow key={permission.id}>
-                      <TableCell appearance="label">
+                      <TableCell appearance="frozenLabel" className="min-w-48">
                         {permission.label}
                       </TableCell>
                       {rows.map((role) => (
                         <TableCell
                           key={role.role}
-                          appearance="checkbox"
+                          appearance={role.permissions.includes(permission.id) !== (currentDraft[role.role] ?? []).includes(permission.id) ? "changed" : "checkbox"}
                           className="text-center"
                         >
                           <Checkbox
@@ -330,6 +333,11 @@ export function RolePermissions() {
                               )
                             }
                           />
+                          {role.permissions.includes(permission.id) !== (currentDraft[role.role] ?? []).includes(permission.id) ? (
+                            <span className="block text-xs font-medium">
+                              {(currentDraft[role.role] ?? []).includes(permission.id) ? "Tilføjet" : "Fjernet"}
+                            </span>
+                          ) : null}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -339,7 +347,10 @@ export function RolePermissions() {
             </TableBody>
           </Table>
         </CardContent>
-        <CardFooter appearance="spaced" className="flex-col items-stretch sm:flex-row sm:items-end">
+        <CardFooter appearance="stickyActions" className="flex-col items-stretch sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-1" aria-live="polite">
+            <span className="text-sm font-medium">{changedRoles.length ? `${changedRoles.length} ${changedRoles.length === 1 ? "rolle ændret" : "roller ændret"}` : "Ingen ændringer"}</span>
+          </div>
           <Field className="sm:max-w-md sm:flex-1">
             <FieldLabel htmlFor="role-change-reason">Begrundelse</FieldLabel>
             <Input

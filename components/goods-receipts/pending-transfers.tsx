@@ -8,16 +8,7 @@ import Link from "next/link";
 import { useAccess, usePermission } from "@/components/app-shell";
 import { useGoodsReceiptContext } from "@/components/goods-receipts/goods-receipt-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Empty,
   EmptyContent,
@@ -27,11 +18,14 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 
-const dateTimeFormatter = sharedDateTimeFormatter("da-DK", {
-  dateStyle: "medium",
+const dateFormatter = sharedDateTimeFormatter("da-DK", {
+  dateStyle: "long",
+});
+const timeFormatter = sharedDateTimeFormatter("da-DK", {
   timeStyle: "short",
 });
 
@@ -46,9 +40,9 @@ export function PendingTransfers() {
 
   if (!access) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-col gap-3">
         {Array.from({ length: 6 }, (_, index) => (
-          <Skeleton key={index} className="h-48 w-full" />
+          <Skeleton key={index} className="h-16 w-full" />
         ))}
       </div>
     );
@@ -83,9 +77,9 @@ export function PendingTransfers() {
 
   if (result === undefined) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-col gap-3">
         {Array.from({ length: 6 }, (_, index) => (
-          <Skeleton key={index} className="h-48 w-full" />
+          <Skeleton key={index} className="h-16 w-full" />
         ))}
       </div>
     );
@@ -116,6 +110,14 @@ export function PendingTransfers() {
     );
   }
 
+  const dateGroups = new Map<string, typeof result.transfers>();
+  for (const transfer of [...result.transfers].sort((a, b) => a.transferredAt - b.transferredAt)) {
+    const date = dateFormatter.format(transfer.transferredAt);
+    const transfers = dateGroups.get(date) ?? [];
+    transfers.push(transfer);
+    dateGroups.set(date, transfers);
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -142,32 +144,35 @@ export function PendingTransfers() {
         </Alert>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {result.transfers.map((transfer) => (
-          <Link
-            key={transfer.id}
-            href={`/goods-receipts/${transfer.id}`}
-            aria-label={`Registrér transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}`}
-            className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <Card appearance="link" className="h-full">
-              <CardHeader>
-                <CardTitle>
-                  {transfer.fromLocationName} → {transfer.toLocationName}
-                </CardTitle>
-                <CardDescription>
-                  {dateTimeFormatter.format(transfer.transferredAt)}
-                </CardDescription>
-                <CardAction>
-                  <Badge variant="secondary">Transfer</Badge>
-                </CardAction>
-              </CardHeader>
-              <CardFooter appearance="emphasized" className="justify-between">
-                <span>Registrér modtagelse</span>
-                <ArrowRightIcon aria-hidden="true" />
-              </CardFooter>
-            </Card>
-          </Link>
+      <div className="flex flex-col gap-6">
+        {[...dateGroups].map(([date, transfers]) => (
+          <section key={date} className="flex flex-col gap-2" aria-label={`Transfers fra ${date}`}>
+            <h3 className="font-semibold">{date}</h3>
+            <ul className="flex flex-col gap-1">
+              {transfers.map((transfer, index) => (
+                <li key={transfer.id} className="flex flex-col gap-1">
+                  {index > 0 ? <Separator /> : null}
+                  <Link
+                    href={`/goods-receipts/${transfer.id}`}
+                    aria-label={`Registrér transfer fra ${transfer.fromLocationName} til ${transfer.toLocationName}, ${date} kl. ${timeFormatter.format(transfer.transferredAt)}`}
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "lg" }),
+                      "grid h-auto min-h-16 w-full justify-stretch gap-2 px-3 py-3 sm:grid-cols-3",
+                    )}
+                  >
+                    <span className="min-w-0 whitespace-normal">{transfer.fromLocationName}</span>
+                    <time dateTime={new Date(transfer.transferredAt).toISOString()} className="text-sm text-muted-foreground sm:text-center">
+                      Kl. {timeFormatter.format(transfer.transferredAt)}
+                    </time>
+                    <span className="flex items-center gap-2 sm:justify-end">
+                      Registrér modtagelse
+                      <ArrowRightIcon aria-hidden="true" />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
       </div>
     </div>

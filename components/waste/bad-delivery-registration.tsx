@@ -587,7 +587,7 @@ export function BadDeliveryRegistration() {
             <TableHeader>
               <TableRow>
                 <TableHead>Produkt</TableHead>
-                <TableHead>Mængde</TableHead>
+                <TableHead className="text-right">Mængde</TableHead>
                 <TableHead>Enhed</TableHead>
               </TableRow>
             </TableHeader>
@@ -595,7 +595,7 @@ export function BadDeliveryRegistration() {
               {lines.map((line) => (
                 <TableRow key={line.key}>
                   <TableCell>{line.productName}</TableCell>
-                  <TableCell>{line.quantity}</TableCell>
+                  <TableCell appearance="numeric" className="text-right">{line.quantity}</TableCell>
                   <TableCell>
                     {line.units.find((unit) => unit.id === line.unitId)?.name}
                   </TableCell>
