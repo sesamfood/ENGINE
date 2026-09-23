@@ -7,8 +7,6 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useConvex, useMutation } from "convex/react";
 import {
-  ArchiveIcon,
-  ArchiveRestoreIcon,
   DownloadIcon,
   MoreHorizontalIcon,
   UploadIcon,
@@ -31,7 +29,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldTitle } from "@/components/ui/field";
@@ -42,15 +39,7 @@ import type {
   ProductExportRow,
 } from "@/lib/product-archive";
 
-type ProductStatus = "active" | "archived";
-
-export function ProductImportExport({
-  status,
-  onToggleStatus,
-}: {
-  status: ProductStatus;
-  onToggleStatus: () => void;
-}) {
+export function ProductImportExport() {
   const convex = useConvex();
   const inputRef = useRef<HTMLInputElement>(null);
   const [archive, setArchive] = useState<ParsedProductArchive | null>(null);
@@ -321,15 +310,7 @@ export function ProductImportExport({
               Importér
             </DropdownMenuItem>
           </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem onClick={onToggleStatus}>
-              {status === "active" ? <ArchiveIcon /> : <ArchiveRestoreIcon />}
-              {status === "active"
-                ? "Arkiverede produkter"
-                : "Aktive produkter"}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
+
         </DropdownMenuContent>
       </DropdownMenu>
       <input

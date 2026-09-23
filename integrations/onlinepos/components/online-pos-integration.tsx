@@ -85,6 +85,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
@@ -599,6 +600,7 @@ function ProductMappings({
 }) {
   const categoryFilterId = useId();
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [mappingFilter, setMappingFilter] = useState("all");
   const categories = useQuery(api.catalog.listCategoryOptions);
   const mappingOptions = useQuery(api.onlinePos.listMappingOptions, {
     integrationId,
@@ -685,7 +687,7 @@ function ProductMappings({
   const categoriesById = new Map(
     categories.map((category) => [category.id, category]),
   );
-  const filteredProducts = selectedCategory
+  const categoryProducts = selectedCategory
     ? mappingOptions.products.filter((product) =>
         product.categoryIds.some((categoryId) => {
           let category = categoriesById.get(categoryId);
@@ -699,10 +701,12 @@ function ProductMappings({
         }),
       )
     : mappingOptions.products;
+  const missingCount = categoryProducts.filter((product) => product.onlinePosProductId === null).length;
+  const filteredProducts = categoryProducts.filter((product) => mappingFilter !== "missing" || product.onlinePosProductId === null);
 
   return (
     <Card className="w-full">
-      <CardHeader>
+      <CardHeader className="flex flex-col sm:grid">
         <CardTitle>Produktkoblinger</CardTitle>
         <CardDescription>
           Søg efter et produkt i OnlinePOS, og vælg det produkt, hvert lokalt
@@ -725,6 +729,10 @@ function ProductMappings({
         </CardAction>
       </CardHeader>
       <CardContent appearance="stacked" className="flex flex-col">
+        <ToggleGroup variant="outline" value={[mappingFilter]} onValueChange={(values) => { if (values[0]) setMappingFilter(values[0]); }} aria-label="Status for OnlinePOS-produktkoblinger">
+          <ToggleGroupItem value="all" className="min-h-11">Alle</ToggleGroupItem>
+          <ToggleGroupItem value="missing" className="min-h-11">Ikke koblet ({missingCount})</ToggleGroupItem>
+        </ToggleGroup>
         <FieldGroup>
           <Field className="max-w-sm">
             <FieldLabel htmlFor={categoryFilterId}>Kategori</FieldLabel>
@@ -773,15 +781,15 @@ function ProductMappings({
         ) : filteredProducts.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>Ingen produkter i kategorien</EmptyTitle>
+              <EmptyTitle>Ingen produkter med det valgte filter</EmptyTitle>
               <EmptyDescription>
-                Vælg en anden kategori, eller vis alle kategorier.
+                Vælg en anden kategori, eller vis alle produktkoblinger.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : onlinePosProducts ? (
           <Table>
-            <TableHeader>
+            <TableHeader className="hidden sm:table-header-group">
               <TableRow>
                 <TableHead>Lokalt produkt</TableHead>
                 <TableHead className="w-3/5">OnlinePOS-produkt</TableHead>
@@ -790,7 +798,7 @@ function ProductMappings({
             <TableBody>
               {filteredProducts.map((product) => {
                 return (
-                  <TableRow key={product.id}>
+                  <TableRow key={product.id} className="flex flex-col sm:table-row">
                     <TableCell appearance="label">
                       {product.name}
                     </TableCell>

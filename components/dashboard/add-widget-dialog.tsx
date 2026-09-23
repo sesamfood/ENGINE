@@ -415,9 +415,6 @@ export function AddWidgetDialog({
                             <div className="min-w-0 flex-1">
                               <p className="font-medium">{metric.label}</p>
                               <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>
-                              <p className="mt-2 text-xs">
-                                <span className="font-medium">Formel:</span> {metric.id === "cogsPercent" ? "Lagerreguleret vareforbrug ÷ nettoomsætning × 100." : metric.id === "labourPercent" ? "Lønomkostninger ÷ nettoomsætning × 100." : metric.formula}
-                              </p>
                               <p className="mt-1 text-xs text-muted-foreground">
                                 <span className="font-medium text-foreground">Datakilder:</span> {metric.source === "economic" ? "Månedsrapport" : metric.sourceTables.join(", ")}
                               </p>

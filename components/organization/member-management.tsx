@@ -141,7 +141,9 @@ function MemberLocationPicker({
       ? "Alle lokationer"
       : scope === "operator"
         ? (operator?.name ?? "Vælg operatør")
-        : `${selectedIds.length} lokation${selectedIds.length === 1 ? "" : "er"}`;
+        : selectedIds.length
+          ? `${locations.find((location) => location.id === selectedIds[0])?.name ?? "Ukendt lokation"}${selectedIds.length > 1 ? ` + ${selectedIds.length - 1}` : ""}`
+          : "Ingen lokationer";
 
   async function save(
     scopeValue: "all" | "selected" | "operator",
@@ -296,6 +298,9 @@ export function MemberManagement() {
   const { data: organization, isPending: organizationPending } =
     authClient.useActiveOrganization();
   const [members, setMembers] = useState<Member[]>([]);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -346,8 +351,21 @@ export function MemberManagement() {
           return;
         }
 
+        const loadedMembers = [...(memberResult.data?.members ?? [])];
+        const total = memberResult.data?.total ?? loadedMembers.length;
+        while (loadedMembers.length < total) {
+          const next = await authClient.organization.listMembers({
+            query: { organizationId, limit: 100, offset: loadedMembers.length },
+          });
+          if (!active) return;
+          if (next.error || !next.data?.members.length) {
+            setError("Brugerne kunne ikke indlæses. Prøv igen.");
+            return;
+          }
+          loadedMembers.push(...next.data.members);
+        }
         setError(undefined);
-        setMembers(memberResult.data?.members ?? []);
+        setMembers(loadedMembers);
         setInvitations(
           (invitationResult.data ?? []).filter(
             (invitation) => invitation.status === "pending",
@@ -504,6 +522,24 @@ export function MemberManagement() {
   const accessRows = memberLocationAccess?.access ?? [];
   const assignmentLocations = memberLocationAccess?.locations ?? [];
   const assignmentOperators = memberLocationAccess?.operators ?? [];
+  const effectiveRoleFilter = roles.includes(roleFilter) ? roleFilter : "all";
+  const effectiveLocationFilter = assignmentLocations.some((location) => location.id === locationFilter) ? locationFilter : "all";
+  const search = memberSearch.trim().toLocaleLowerCase("da");
+  const visibleMembers = members.filter((member) => {
+    if (search && !`${member.user.name} ${member.user.email}`.toLocaleLowerCase("da").includes(search)) return false;
+    if (effectiveRoleFilter !== "all" && !member.role.split(",").includes(effectiveRoleFilter)) return false;
+    if (effectiveLocationFilter === "all") return true;
+    const kiosk = kioskAccounts?.find((account) => account.userId === member.userId);
+    if (kiosk) return kiosk.locationId === effectiveLocationFilter;
+    const memberAccess = accessRows.find((row) => row.userId === member.userId);
+    if (!memberAccess || memberAccess.scope === "all") return true;
+    if (memberAccess.scope === "operator") {
+      return assignmentLocations.some((location) => location.id === effectiveLocationFilter && location.operatorId === memberAccess.operatorId);
+    }
+    return memberAccess.locationIds.some((id) => id === effectiveLocationFilter);
+  });
+  const filterRoles = [{ value: "all", label: "Alle roller" }, ...roleItems];
+  const filterLocations = [{ value: "all", label: "Alle lokationer" }, ...assignmentLocations.map((location) => ({value: location.id, label: location.name}))];
 
   return (
     <div className="flex flex-col gap-6">
@@ -591,7 +627,27 @@ export function MemberManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Brugere</CardTitle>
-          <CardDescription>{members.length} aktive brugere</CardDescription>
+          <CardDescription aria-live="polite">Viser {visibleMembers.length} af {members.length} brugere</CardDescription>
+          <FieldGroup className="mt-3 md:flex-row">
+            <Field>
+              <FieldLabel htmlFor="member-search">Søg efter bruger</FieldLabel>
+              <Input id="member-search" type="search" placeholder="Navn eller e-mail" value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} />
+            </Field>
+            <Field className="md:max-w-48">
+              <FieldLabel htmlFor="member-role-filter">Rolle</FieldLabel>
+              <Select items={filterRoles} value={effectiveRoleFilter} onValueChange={(value) => value && setRoleFilter(value)}>
+                <SelectTrigger id="member-role-filter" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{filterRoles.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
+            </Field>
+            <Field className="md:max-w-60">
+              <FieldLabel htmlFor="member-location-filter">Lokation</FieldLabel>
+              <Select items={filterLocations} value={effectiveLocationFilter} onValueChange={(value) => value && setLocationFilter(value)}>
+                <SelectTrigger id="member-location-filter" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{filterLocations.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {loading ||
@@ -615,7 +671,8 @@ export function MemberManagement() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {members.map((member) => {
+                {visibleMembers.length === 0 ? <TableRow><TableCell colSpan={4}>Ingen brugere matcher din søgning.</TableCell></TableRow> : null}
+                {visibleMembers.map((member) => {
                   const kioskAccount = kioskAccounts?.find(
                     (account) => account.userId === member.userId,
                   );

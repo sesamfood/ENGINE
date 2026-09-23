@@ -236,11 +236,11 @@ export function RolePermissions() {
             Ny rolle
           </Button>
         </CardHeader>
-        <CardContent className="overflow-x-auto md:[&_[data-slot=table-container]]:overflow-visible">
+        <CardContent appearance="flush" className="mx-(--card-spacing) max-h-128 overflow-auto [&_[data-slot=table-container]]:overflow-visible">
           <Table className="min-w-168">
-            <TableHeader appearance="surface" className="sticky top-16 md:top-24">
+            <TableHeader appearance="surface" className="sticky top-0 z-20">
               <TableRow>
-                <TableHead>Handling</TableHead>
+                <TableHead appearance="frozenLabel">Handling</TableHead>
                 {rows.map((role) => (
                   <TableHead key={role.role} className="min-w-36 text-center">
                     <div className="flex items-center justify-center gap-1">
@@ -262,7 +262,7 @@ export function RolePermissions() {
             </TableHeader>
             <TableBody>
               <TableRow>
-                <TableCell appearance="label">Datavisning</TableCell>
+                <TableCell appearance="frozenLabel">Datavisning</TableCell>
                 {rows.map((role) => (
                   <TableCell key={role.role}>
                     <Select
@@ -306,7 +306,7 @@ export function RolePermissions() {
                   </TableRow>
                   {group.permissions.filter((permission) => permission.id !== "expenses.exportEconomic" || integrations?.economic).map((permission) => (
                     <TableRow key={permission.id}>
-                      <TableCell appearance="label">
+                      <TableCell appearance="frozenLabel" className="min-w-48">
                         {permission.label}
                       </TableCell>
                       {rows.map((role) => (

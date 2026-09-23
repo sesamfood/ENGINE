@@ -287,133 +287,8 @@ export function OwnCheckRecord({
     }
   }
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3 border-b pb-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="font-heading text-xl font-semibold">
-            {record.entry.name}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {record.entry.locationName} ·{" "}
-            {ownCheckControlTypeLabels[record.entry.controlType]} ·{" "}
-            {formatDate(record.entry.dueDateKey)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Planlagt {formatDateTime(record.entry.dueAt, record.timeZone)} ·
-            Udført {formatDateTime(record.entry.performedAt, record.timeZone)}{" "}
-            af {record.entry.performedByName}
-          </p>
-        </div>
-        <OwnCheckStatusBadge status={ownCheckStatus(record.entry)} />
-      </div>
-
-      {record.instructions || record.imageUrl ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Instruktioner</CardTitle>
-          </CardHeader>
-          <CardContent appearance="stacked" className="flex flex-col">
-            {record.imageUrl ? (
-              <div className="relative h-64 w-full">
-                <Image
-                  src={record.imageUrl}
-                  alt={`Billede af ${record.entry.name}`}
-                  fill
-                  unoptimized
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  className="rounded-lg object-contain"
-                />
-              </div>
-            ) : null}
-            {record.instructions ? (
-              <div className="whitespace-pre-wrap break-words text-sm">
-                <InstructionContent value={record.instructions} />
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <div className="grid gap-4 lg:grid-cols-(--grid-cols-inspection)">
-        <Card>
-          <CardHeader>
-            <CardTitle>Kontrolpunkter</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {record.description || "Ingen yderligere beskrivelse."}
-            </p>
-          </CardHeader>
-          <CardContent appearance="relaxed" className="flex flex-col">
-            <OwnCheckResultFields
-              fields={record.fields}
-              values={values}
-              renderAttachments={(fieldKey) => (
-                <OwnCheckAttachments
-                  attachments={record.attachments}
-                  fieldKey={fieldKey}
-                  revision={record.entry.revision}
-                />
-              )}
-            />
-            <OwnCheckProductTemperatures
-              productTemperatures={record.entry.productTemperatures}
-            />
-          </CardContent>
-        </Card>
-        <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Registrering</CardTitle>
-            </CardHeader>
-            <CardContent appearance="details" className="flex flex-col">
-              <OwnCheckExecutionTimes
-                startedAt={record.entry.startedAt}
-                endedAt={record.entry.endedAt}
-                timeZone={record.timeZone}
-              />
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Registreret af</span>
-                <span className="text-right">
-                  {record.entry.performedByName}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Revision</span>
-                <span>{record.entry.revision}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Opfølgning</span>
-                <span>
-                  {record.entry.followUp === "open"
-                    ? "Åben"
-                    : record.entry.followUp === "resolved"
-                      ? "Løst"
-                      : "Ingen"}
-                </span>
-              </div>
-              {record.entry.approvedByName ? (
-                <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Godkendt af</span>
-                  <span className="text-right">
-                    {record.entry.approvedByName}
-                  </span>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-          {record.entry.note ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Note</CardTitle>
-              </CardHeader>
-              <CardContent appearance="text" className="whitespace-pre-wrap">
-                {record.entry.note}
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
-      </div>
-
+  const followUpContent = (
+    <div className="flex flex-col gap-4">
       {record.entry.deviation ? (
         <Card appearance="error">
           <CardHeader>
@@ -568,6 +443,139 @@ export function OwnCheckRecord({
           </CardContent>
         </Card>
       ) : null}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-3 border-b pb-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="font-heading text-xl font-semibold">
+            {record.entry.name}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {record.entry.locationName} ·{" "}
+            {ownCheckControlTypeLabels[record.entry.controlType]} ·{" "}
+            {formatDate(record.entry.dueDateKey)}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Planlagt {formatDateTime(record.entry.dueAt, record.timeZone)} ·
+            Udført {formatDateTime(record.entry.performedAt, record.timeZone)}{" "}
+            af {record.entry.performedByName}
+          </p>
+        </div>
+        <OwnCheckStatusBadge status={ownCheckStatus(record.entry)} />
+      </div>
+
+      {record.entry.followUp === "open" ? followUpContent : null}
+
+      {record.instructions || record.imageUrl ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Instruktioner</CardTitle>
+          </CardHeader>
+          <CardContent appearance="stacked" className="flex flex-col">
+            {record.imageUrl ? (
+              <div className="relative h-64 w-full">
+                <Image
+                  src={record.imageUrl}
+                  alt={`Billede af ${record.entry.name}`}
+                  fill
+                  unoptimized
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  className="rounded-lg object-contain"
+                />
+              </div>
+            ) : null}
+            {record.instructions ? (
+              <div className="whitespace-pre-wrap break-words text-sm">
+                <InstructionContent value={record.instructions} />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-(--grid-cols-inspection)">
+        <Card>
+          <CardHeader>
+            <CardTitle>Kontrolpunkter</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {record.description || "Ingen yderligere beskrivelse."}
+            </p>
+          </CardHeader>
+          <CardContent appearance="relaxed" className="flex flex-col">
+            <OwnCheckResultFields
+              fields={record.fields}
+              values={values}
+              renderAttachments={(fieldKey) => (
+                <OwnCheckAttachments
+                  attachments={record.attachments}
+                  fieldKey={fieldKey}
+                  revision={record.entry.revision}
+                />
+              )}
+            />
+            <OwnCheckProductTemperatures
+              productTemperatures={record.entry.productTemperatures}
+            />
+          </CardContent>
+        </Card>
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Registrering</CardTitle>
+            </CardHeader>
+            <CardContent appearance="details" className="flex flex-col">
+              <OwnCheckExecutionTimes
+                startedAt={record.entry.startedAt}
+                endedAt={record.entry.endedAt}
+                timeZone={record.timeZone}
+              />
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Registreret af</span>
+                <span className="text-right">
+                  {record.entry.performedByName}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Revision</span>
+                <span>{record.entry.revision}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Opfølgning</span>
+                <span>
+                  {record.entry.followUp === "open"
+                    ? "Åben"
+                    : record.entry.followUp === "resolved"
+                      ? "Løst"
+                      : "Ingen"}
+                </span>
+              </div>
+              {record.entry.approvedByName ? (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Godkendt af</span>
+                  <span className="text-right">
+                    {record.entry.approvedByName}
+                  </span>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+          {record.entry.note ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Note</CardTitle>
+              </CardHeader>
+              <CardContent appearance="text" className="whitespace-pre-wrap">
+                {record.entry.note}
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      </div>
+
+      {record.entry.followUp !== "open" ? followUpContent : null}
 
       <OwnCheckHistory
         key={`${entryId}:${record.entry.revision}`}

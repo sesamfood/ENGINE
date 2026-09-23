@@ -29,8 +29,8 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardFooter,
   CardHeader,
+  CardDescription,
   CardTitle,
 } from "@/components/ui/card";
 import {
@@ -49,6 +49,8 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -71,6 +73,7 @@ export function OnlinePosLocationConnections() {
   const disconnectLocation = useMutation(api.onlinePos.disconnectLocation);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("all");
   const [connectingIds, setConnectingIds] = useState<Set<Id<"locations">>>(
     new Set(),
   );
@@ -82,6 +85,8 @@ export function OnlinePosLocationConnections() {
     return <Skeleton className="h-96 w-full" />;
   }
   const { locations } = connections;
+  const missingCount = locations.filter((location) => !location.connected).length;
+  const visibleLocations = locations.filter((location) => filter !== "attention" || !location.connected);
 
   function getDraft(location: (typeof locations)[number]) {
     return (
@@ -215,7 +220,7 @@ export function OnlinePosLocationConnections() {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <Card className="w-full">
-        <CardHeader>
+        <CardHeader className="flex flex-col sm:grid">
           <CardTitle appearance="compact" className="flex items-center">
             Lokationsindstillinger
             <HelpTooltip
@@ -223,7 +228,9 @@ export function OnlinePosLocationConnections() {
               content="Tilføj firma-id og token til hver lokation. Forbindelsen henter kun salg for den pågældende lokation."
             />
           </CardTitle>
-          <CardAction>
+          <CardDescription>{locations.length - missingCount} af {locations.length} lokationer forbundet</CardDescription>
+          <CardAction appearance="standard" className="flex flex-wrap items-center">
+            {missingCount > 0 ? <Button variant="outline" className="min-h-11" onClick={() => { setFilter("attention"); setOpen(true); }}>{missingCount} mangler forbindelse</Button> : null}
             <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
               {open ? "Skjul" : "Vis"}
               {open ? (
@@ -236,6 +243,10 @@ export function OnlinePosLocationConnections() {
         </CardHeader>
         <CollapsibleContent>
           <CardContent appearance="stacked" className="flex flex-col">
+            <ToggleGroup variant="outline" value={[filter]} onValueChange={(values) => { if (values[0]) setFilter(values[0]); }} aria-label="OnlinePOS-forbindelser">
+              <ToggleGroupItem value="all" className="min-h-11">Alle</ToggleGroupItem>
+              <ToggleGroupItem value="attention" className="min-h-11">Kræver handling ({missingCount})</ToggleGroupItem>
+            </ToggleGroup>
             {connections.limitReached ? (
               <Alert>
                 <AlertTitle>Kun de første 200 lokationer vises</AlertTitle>
@@ -255,28 +266,27 @@ export function OnlinePosLocationConnections() {
                 </EmptyHeader>
               </Empty>
             ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {locations.map((location) => {
+              <div className="flex flex-col gap-4">
+                {visibleLocations.length === 0 ? <p className="text-sm text-muted-foreground">Alle lokationer er forbundet.</p> : null}
+                {visibleLocations.map((location) => {
                   const draft = getDraft(location);
                   const connecting = connectingIds.has(location.id);
                   const disconnecting = disconnectingIds.has(location.id);
                   return (
-                    <Card key={location.id} size="sm">
-                      <CardHeader>
-                        <CardTitle>{location.name}</CardTitle>
-                        <CardAction>
-                          <Badge
-                            variant={
-                              location.connected ? "default" : "secondary"
-                            }
-                          >
-                            {location.connected
-                              ? "Forbundet"
-                              : "Ikke forbundet"}
-                          </Badge>
-                        </CardAction>
-                      </CardHeader>
-                      <CardContent appearance="stacked" className="flex flex-col">
+                    <Collapsible key={location.id}><div className="flex flex-col gap-3">
+                      <div className="grid gap-3 sm:grid-cols-(--grid-cols-content-actions) sm:items-center">
+                        <div className="min-w-0">
+                          <h3 className="font-medium">{location.name}</h3>
+                          {location.companyId ? <p className="text-sm text-muted-foreground">Firma-id {location.companyId}</p> : null}
+                        </div>
+                        <Badge variant={location.connected ? "secondary" : "outline"}>{location.connected ? "Forbundet" : "Ikke forbundet"}</Badge>
+                        <CollapsibleTrigger render={<Button variant="outline" className="min-h-11" aria-label={`${location.connected ? "Redigér" : "Forbind"} ${location.name}`} />}>
+                          {location.connected ? "Redigér forbindelse" : "Forbind"}
+                          <ChevronDownIcon data-icon="inline-end" />
+                        </CollapsibleTrigger>
+                      </div>
+                      <CollapsibleContent><div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-4">
                         <FieldGroup className="grid sm:grid-cols-2">
                           <OnlinePosMasterSelect
                             masters={settings.masters}
@@ -350,8 +360,8 @@ export function OnlinePosLocationConnections() {
                             {connectedAtFormatter.format(location.connectedAt)}
                           </p>
                         ) : null}
-                      </CardContent>
-                      <CardFooter appearance="spaced" className="flex-wrap justify-end">
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2">
                         {location.connected ? (
                           <AlertDialog>
                             <AlertDialogTrigger
@@ -404,8 +414,10 @@ export function OnlinePosLocationConnections() {
                           )}
                           {location.connected ? "Opdatér" : "Forbind"}
                         </Button>
-                      </CardFooter>
-                    </Card>
+                      </div>
+                      </div></CollapsibleContent>
+                      <Separator />
+                    </div></Collapsible>
                   );
                 })}
               </div>
