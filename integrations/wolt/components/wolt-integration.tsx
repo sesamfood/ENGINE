@@ -7,6 +7,7 @@ import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { authClient } from "@/lib/auth-client";
 import {
+  ChevronDownIcon,
   CircleAlertIcon,
   CloudOffIcon,
   ExternalLinkIcon,
@@ -41,7 +42,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -66,6 +66,9 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -80,6 +83,10 @@ import type {
 } from "./wolt-types";
 
 type WoltLocation = WoltIntegrationOverview["locations"][number];
+function locationNeedsAttention(location: WoltLocation) {
+  return !location.connection || location.connection.state !== "ready" || location.connection.deadLetterCount > 0 || Boolean(location.connection.lastError);
+}
+
 type ProductOption = { id: Id<"products">; name: string; categoryPath: string };
 
 type MatchChoice = {
@@ -116,7 +123,7 @@ function ConnectionHealth({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={woltHealthVariant(connection.state)}>
+        <Badge variant={connection.state === "ready" ? "secondary" : woltHealthVariant(connection.state)}>
           {woltHealthLabel(connection.state)}
         </Badge>
         <Badge variant="outline">
@@ -227,19 +234,25 @@ function LocationHealthCard({
   const retryBusy = busyKey === `retry:${location.id}`;
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{location.name}</CardTitle>
-        <CardDescription>
-          Forbindelse og modtagelse af Wolt-events for lokationen.
-        </CardDescription>
-        <CardAction>
-          <Badge variant={connection ? woltHealthVariant(connection.state) : "secondary"}>
+    <Collapsible><div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-(--grid-cols-content-actions) sm:items-center">
+        <div className="min-w-0">
+          <h3 className="font-medium">{location.name}</h3>
+          {connection?.lastSuccessAt ? <p className="text-sm text-muted-foreground">Senest hentet {formatWoltDateTime(connection.lastSuccessAt)}</p> : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={connection?.state === "ready" ? "secondary" : connection ? woltHealthVariant(connection.state) : "outline"}>
             {connection ? woltHealthLabel(connection.state) : "Ikke forbundet"}
           </Badge>
-        </CardAction>
-      </CardHeader>
-      <CardContent appearance="relaxed" className="flex flex-col">
+          {connection?.deadLetterCount ? <Badge variant="destructive">{connection.deadLetterCount} fejlede events</Badge> : null}
+          {connection?.lastError ? <Badge variant="destructive">Seneste fejl</Badge> : null}
+        </div>
+        <CollapsibleTrigger render={<Button variant="outline" className="min-h-11" aria-label={`Forbindelse for ${location.name}`} />}>
+          {locationNeedsAttention(location) ? "Løs forbindelse" : "Indstillinger"}
+          <ChevronDownIcon data-icon="inline-end" />
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent><div className="flex flex-col gap-4">
         {connection ? (
           <ConnectionHealth
             location={location}
@@ -391,8 +404,9 @@ function LocationHealthCard({
             </AlertDialog>
           ) : null}
         </div>
-      </CardContent>
-    </Card>
+      </div></CollapsibleContent>
+      <Separator />
+    </div></Collapsible>
   );
 }
 
@@ -450,9 +464,10 @@ function ObservedMappingRow({
     label: product.name,
   }));
   const currentMapping = row.mapping;
+  const changed = !currentMapping || currentMapping.productId !== selectedProductId || currentMapping.locationOverride !== (mappingScope !== "all") || row.conflict;
 
   return (
-    <article className="flex flex-col gap-4 rounded-xl border p-4">
+    <Collapsible defaultOpen={!currentMapping || row.conflict}><div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="truncate font-medium" title={row.name}>{row.name}</h3>
@@ -462,13 +477,18 @@ function ObservedMappingRow({
         <div className="flex flex-wrap items-center gap-2">
           {row.conflict ? <Badge variant="destructive">Konflikt</Badge> : null}
           {currentMapping ? (
-            <Badge variant="default">Koblet{currentMapping.locationOverride ? " lokalt" : " globalt"}</Badge>
+            <Badge variant="secondary">Koblet{currentMapping.locationOverride ? " lokalt" : " globalt"}</Badge>
           ) : (
             <Badge variant="secondary">Ikke koblet</Badge>
           )}
+          <CollapsibleTrigger render={<Button variant="outline" className="min-h-11" aria-label={`Redigér kobling for ${row.name}`} />}>
+            {currentMapping ? "Redigér kobling" : "Kobl produkt"}
+            <ChevronDownIcon data-icon="inline-end" />
+          </CollapsibleTrigger>
         </div>
       </div>
-
+      {currentMapping ? <p className="text-sm text-muted-foreground">{currentMapping.productName}</p> : null}
+      <CollapsibleContent><div className="flex flex-col gap-3">
       <div className="grid gap-4 lg:grid-cols-(--grid-cols-content-action) lg:items-end">
         <FieldGroup appearance="compact" className="sm:grid sm:grid-cols-2">
           <Field>
@@ -509,9 +529,6 @@ function ObservedMappingRow({
                 Kun {row.locationName}
               </p>
             )}
-            <FieldDescription>
-              En global kobling bruges på tværs af lokationer.
-            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Lokalt produkt</FieldLabel>
@@ -538,7 +555,7 @@ function ObservedMappingRow({
               </p>
             )}
             <FieldDescription>
-              Forslagene er kun navneforslag. Gem manuelt på {match.label} ({match.matchValue}).
+              Koblingsnøgle: {match.label} ({match.matchValue}).
             </FieldDescription>
           </Field>
         </FieldGroup>
@@ -547,7 +564,7 @@ function ObservedMappingRow({
             type="button"
             size="lg"
             className="min-h-11"
-            disabled={!selectedProductId || saving}
+            disabled={!selectedProductId || !changed || saving}
             onClick={onSave}
           >
             {saving ? (
@@ -594,7 +611,9 @@ function ObservedMappingRow({
       <p className="text-xs text-muted-foreground">
         Senest observeret {formatWoltDateTime(row.lastObservedAt)}
       </p>
-    </article>
+      </div></CollapsibleContent>
+      <Separator />
+    </div></Collapsible>
   );
 }
 
@@ -627,6 +646,10 @@ function ObservedItemMappings({
   onSave: (row: WoltObservedItem, productId: Id<"products">, scope: Id<"locations"> | "all") => void;
   onDelete: (row: WoltObservedItem) => void;
 }) {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const missingCount = observed?.rows.filter((row) => !row.mapping).length ?? 0;
+  const conflictCount = observed?.rows.filter((row) => row.conflict).length ?? 0;
+  const visibleRows = observed?.rows.filter((row) => statusFilter === "missing" ? !row.mapping : statusFilter === "conflict" ? row.conflict : true) ?? [];
   return (
     <Card>
       <CardHeader>
@@ -635,10 +658,15 @@ function ObservedItemMappings({
           Observerede Wolt-produkter
         </CardTitle>
         <CardDescription>
-          Vælg et lokalt Produkt for hver observeret Wolt-vare. Ingen forslag gemmes automatisk.
+          Vælg et lokalt Produkt for hver observeret Wolt-vare. Navneforslag skal gemmes manuelt. Globale koblinger bruges på tværs af lokationer.
         </CardDescription>
       </CardHeader>
       <CardContent appearance="relaxed" className="flex flex-col">
+        <ToggleGroup variant="outline" className="flex-wrap" value={[statusFilter]} onValueChange={(values) => { if (values[0]) setStatusFilter(values[0]); }} aria-label="Status for Wolt-produktkoblinger">
+          <ToggleGroupItem value="all" className="min-h-11">Alle</ToggleGroupItem>
+          <ToggleGroupItem value="missing" className="min-h-11">Ikke koblet ({missingCount})</ToggleGroupItem>
+          <ToggleGroupItem value="conflict" className="min-h-11">Konflikt ({conflictCount})</ToggleGroupItem>
+        </ToggleGroup>
         <FieldGroup className="sm:max-w-sm">
           <Field>
             <FieldLabel htmlFor="wolt-observed-location">Lokation</FieldLabel>
@@ -702,7 +730,8 @@ function ObservedItemMappings({
           </Empty>
         ) : (
           <div className="flex flex-col gap-3">
-            {observed.rows.map((row) => {
+            {visibleRows.length === 0 ? <p className="text-sm text-muted-foreground">Ingen produkter med den valgte status.</p> : null}
+            {visibleRows.map((row) => {
               const selectedProductId =
                 mappingDrafts[row.key] ?? row.mapping?.productId ?? null;
               const defaultScope = row.mapping?.locationOverride || !canUseWio
@@ -788,6 +817,7 @@ export function WoltIntegration() {
   const saveProductMapping = useMutation(api.wolt.saveProductMapping);
   const deleteProductMapping = useMutation(api.wolt.deleteProductMapping);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [connectionFilter, setConnectionFilter] = useState("all");
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, Id<"products"> | undefined>>({});
   const [mappingScopes, setMappingScopes] = useState<Record<string, Id<"locations"> | "all" | undefined>>({});
 
@@ -952,6 +982,8 @@ export function WoltIntegration() {
     return <Skeleton className="h-96 w-full max-w-6xl" />;
   }
 
+  const attentionCount = overview.locations.filter(locationNeedsAttention).length;
+  const visibleLocations = overview.locations.filter((location) => connectionFilter !== "attention" || locationNeedsAttention(location));
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -987,8 +1019,13 @@ export function WoltIntegration() {
         </Alert>
       ) : null}
       {overview.locations.length ? (
-        <div className="grid gap-5 xl:grid-cols-2">
-          {overview.locations.map((location) => (
+        <section className="flex flex-col gap-4" aria-label="Wolt-forbindelser">
+          <ToggleGroup variant="outline" value={[connectionFilter]} onValueChange={(values) => { if (values[0]) setConnectionFilter(values[0]); }} aria-label="Wolt-forbindelser">
+            <ToggleGroupItem value="all" className="min-h-11">Alle lokationer</ToggleGroupItem>
+            <ToggleGroupItem value="attention" className="min-h-11">Kræver handling ({attentionCount})</ToggleGroupItem>
+          </ToggleGroup>
+          {visibleLocations.length === 0 ? <p className="text-sm text-muted-foreground">Ingen forbindelser kræver handling.</p> : null}
+          {visibleLocations.map((location) => (
             <LocationHealthCard
               key={`${location.id}:${location.partnerVenueId ?? ""}`}
               location={location}
@@ -1004,7 +1041,7 @@ export function WoltIntegration() {
               onRetry={() => void retry(location.id)}
             />
           ))}
-        </div>
+        </section>
       ) : (
         <Empty className="min-h-48">
           <EmptyHeader>

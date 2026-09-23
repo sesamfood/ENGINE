@@ -1,0 +1,388 @@
+{
+  "baseline": "54a1d5b0cdfc727887345014b682281519f9cc2b",
+  "fixtureClock": "2026-09-23T12:00:00Z",
+  "timeZone": "Europe/Copenhagen",
+  "pairs": [
+    {
+      "group": "dashboard",
+      "slug": "own-checks-overdue",
+      "title": "Overdue checks and due dates",
+      "findings": [
+        2
+      ],
+      "before": "images/dashboard/own-checks-overdue-before.png",
+      "beforeSize": [
+        1280,
+        1401
+      ],
+      "after": "images/dashboard/own-checks-overdue-after.png",
+      "afterSize": [
+        1280,
+        1401
+      ],
+      "number": 2
+    },
+    {
+      "group": "root",
+      "slug": "permissions-scroll",
+      "title": "Frozen permission labels and role headings",
+      "findings": [
+        3
+      ],
+      "before": "images/root/permissions-scroll-before.png",
+      "beforeSize": [
+        1024,
+        900
+      ],
+      "after": "images/root/permissions-scroll-after.png",
+      "afterSize": [
+        1024,
+        900
+      ],
+      "number": 4
+    },
+    {
+      "group": "root",
+      "slug": "members",
+      "title": "User search, roles and location access",
+      "findings": [
+        4
+      ],
+      "before": "images/root/members-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/root/members-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 5
+    },
+    {
+      "group": "dashboard",
+      "slug": "metric-picker",
+      "title": "Metric cards without formulas",
+      "findings": [
+        6
+      ],
+      "before": "images/dashboard/metric-picker-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/dashboard/metric-picker-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 9
+    },
+    {
+      "group": "administration-focused",
+      "slug": "locations",
+      "title": "Named location actions",
+      "findings": [
+        8
+      ],
+      "before": "images/administration-focused/locations-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/administration-focused/locations-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 11
+    },
+    {
+      "group": "administration-focused",
+      "slug": "catalog-status",
+      "title": "Catalogue status beside search",
+      "findings": [
+        9
+      ],
+      "before": "images/administration-focused/catalog-status-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/administration-focused/catalog-status-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 12
+    },
+    {
+      "group": "operations",
+      "slug": "operations-staff-food",
+      "title": "Staff food action emphasis",
+      "findings": [
+        12
+      ],
+      "before": "images/operations/operations-staff-food-before.png",
+      "beforeSize": [
+        1280,
+        1048
+      ],
+      "after": "images/operations/operations-staff-food-after.png",
+      "afterSize": [
+        1280,
+        1048
+      ],
+      "number": 16
+    },
+    {
+      "group": "operations",
+      "slug": "operations-label-preview",
+      "title": "Label preparation wording and print preview",
+      "findings": [
+        16
+      ],
+      "before": "images/operations/operations-label-preview-before.png",
+      "beforeSize": [
+        1280,
+        1285
+      ],
+      "after": "images/operations/operations-label-preview-after.png",
+      "afterSize": [
+        1280,
+        1285
+      ],
+      "number": 18
+    },
+    {
+      "group": "operations",
+      "slug": "operations-bad-detail",
+      "title": "Bad-delivery quantity alignment and details",
+      "findings": [
+        13,
+        14
+      ],
+      "before": "images/operations/operations-bad-detail-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/operations/operations-bad-detail-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 20
+    },
+    {
+      "group": "root",
+      "slug": "integrations",
+      "title": "Activation and connection status",
+      "findings": [
+        17
+      ],
+      "before": "images/root/integrations-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/root/integrations-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 22
+    },
+    {
+      "group": "administration-focused",
+      "slug": "onlinepos-connections",
+      "title": "OnlinePOS connection attention list",
+      "findings": [
+        18
+      ],
+      "before": "images/administration-focused/onlinepos-connections-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/administration-focused/onlinepos-connections-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 23
+    },
+    {
+      "group": "administration-focused",
+      "slug": "onlinepos-mappings",
+      "title": "OnlinePOS product mapping filter",
+      "findings": [
+        18
+      ],
+      "before": "images/administration-focused/onlinepos-mappings-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/administration-focused/onlinepos-mappings-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 24
+    },
+    {
+      "group": "administration-focused",
+      "slug": "economic-connections",
+      "title": "e-conomic agreement attention list",
+      "findings": [
+        18
+      ],
+      "before": "images/administration-focused/economic-connections-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/administration-focused/economic-connections-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 27
+    },
+    {
+      "group": "administration-focused",
+      "slug": "wolt-connections",
+      "title": "Wolt connection attention list",
+      "findings": [
+        18
+      ],
+      "before": "images/administration-focused/wolt-connections-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/administration-focused/wolt-connections-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 28
+    },
+    {
+      "group": "administration-focused",
+      "slug": "wolt-mappings",
+      "title": "Wolt mapping state and editing",
+      "findings": [
+        18
+      ],
+      "before": "images/administration-focused/wolt-mappings-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/administration-focused/wolt-mappings-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 29
+    },
+    {
+      "group": "dashboard",
+      "slug": "employee-schedule",
+      "title": "Today selected and scheduled employees first",
+      "findings": [
+        23
+      ],
+      "before": "images/dashboard/employee-schedule-before.png",
+      "beforeSize": [
+        744,
+        2360
+      ],
+      "after": "images/dashboard/employee-schedule-after.png",
+      "afterSize": [
+        744,
+        1130
+      ],
+      "number": 38
+    },
+    {
+      "group": "dashboard",
+      "slug": "own-check-follow-up",
+      "title": "Open follow-up first with visible instructions",
+      "findings": [
+        24
+      ],
+      "before": "images/dashboard/own-check-follow-up-before.png",
+      "beforeSize": [
+        1280,
+        1717
+      ],
+      "after": "images/dashboard/own-check-follow-up-after.png",
+      "afterSize": [
+        1280,
+        1713
+      ],
+      "number": 39
+    },
+    {
+      "group": "dashboard",
+      "slug": "password-mismatch",
+      "title": "Password confirmation errors",
+      "findings": [
+        26
+      ],
+      "before": "images/dashboard/password-mismatch-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/dashboard/password-mismatch-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 41
+    },
+    {
+      "group": "dashboard",
+      "slug": "password-expired",
+      "title": "Expired password link recovery",
+      "findings": [
+        26
+      ],
+      "before": "images/dashboard/password-expired-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/dashboard/password-expired-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 42
+    },
+    {
+      "group": "dashboard",
+      "slug": "password-network",
+      "title": "Form-level password network errors",
+      "findings": [
+        26
+      ],
+      "before": "images/dashboard/password-network-before.png",
+      "beforeSize": [
+        1280,
+        1000
+      ],
+      "after": "images/dashboard/password-network-after.png",
+      "afterSize": [
+        1280,
+        1000
+      ],
+      "number": 43
+    }
+  ]
+}

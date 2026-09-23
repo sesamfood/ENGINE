@@ -26,8 +26,10 @@ export function ResetPasswordForm({
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
+  const [confirmationError, setConfirmationError] = useState<string>();
+  const [expiredLink, setExpiredLink] = useState(false);
 
-  if (!token || invalid) {
+  if (!token || invalid || expiredLink) {
     return (
       <div className="flex flex-col gap-5">
         <Alert variant="destructive">
@@ -49,13 +51,14 @@ export function ResetPasswordForm({
     event.preventDefault();
     setPending(true);
     setError(undefined);
+    setConfirmationError(undefined);
 
     try {
       const form = new FormData(event.currentTarget);
       const password = String(form.get("password"));
       const confirmation = String(form.get("confirmation"));
       if (password !== confirmation) {
-        setError("Adgangskoderne er ikke ens.");
+        setConfirmationError("Adgangskoderne er ikke ens.");
         return;
       }
 
@@ -64,7 +67,11 @@ export function ResetPasswordForm({
         token,
       });
       if (result.error) {
-        setError("Linket er ugyldigt eller udløbet. Bed om et nyt link.");
+        if (result.error.code === "INVALID_TOKEN") {
+          setExpiredLink(true);
+        } else {
+          setError("Adgangskoden kunne ikke ændres. Prøv igen.");
+        }
         return;
       }
 
@@ -87,7 +94,7 @@ export function ResetPasswordForm({
         </Alert>
       ) : null}
       <FieldGroup>
-        <Field data-invalid={Boolean(error)}>
+        <Field>
           <FieldLabel htmlFor="new-password">Ny adgangskode</FieldLabel>
           <Input
             id="new-password"
@@ -97,11 +104,10 @@ export function ResetPasswordForm({
             minLength={12}
             maxLength={256}
             required
-            aria-invalid={Boolean(error)}
           />
           <FieldDescription>Brug mindst 12 tegn.</FieldDescription>
         </Field>
-        <Field data-invalid={Boolean(error)}>
+        <Field data-invalid={Boolean(confirmationError)}>
           <FieldLabel htmlFor="confirm-password">Gentag adgangskode</FieldLabel>
           <Input
             id="confirm-password"
@@ -111,9 +117,11 @@ export function ResetPasswordForm({
             minLength={12}
             maxLength={256}
             required
-            aria-invalid={Boolean(error)}
+            aria-invalid={Boolean(confirmationError)}
+            aria-describedby={confirmationError ? "confirm-password-error" : undefined}
+            onChange={() => setConfirmationError(undefined)}
           />
-          <FieldError>{error}</FieldError>
+          <FieldError id="confirm-password-error">{confirmationError}</FieldError>
         </Field>
       </FieldGroup>
       <Button type="submit" size="lg" disabled={pending}>

@@ -19,6 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -754,13 +755,7 @@ function AgreementCard({
           Aftale {connection.agreementNumber} · {connection.currency}
         </CardDescription>
         <CardAction appearance="spaced" className="flex items-center">
-          <Badge
-            variant={
-              connection.enabled && !connection.requiresReconnect
-                ? "default"
-                : "secondary"
-            }
-          >
+          <Badge variant="secondary">
             {connection.requiresReconnect
               ? "Forbind igen"
               : connection.enabled
@@ -902,6 +897,7 @@ function OrganizationIntegration({
     canManageEconomic ? {} : "skip",
   );
   const [adding, setAdding] = useState(false);
+  const [filter, setFilter] = useState("all");
 
   if (
     !access ||
@@ -912,9 +908,17 @@ function OrganizationIntegration({
   if (!canManageEconomic || !settings) return null;
 
   const connected = settings.connections.length > 0;
+  const needsAttention = (connection: (typeof settings.connections)[number]) => connection.requiresReconnect || connection.locationMappings.length === 0 || connection.accountMappings.length === 0;
+  const attentionCount = settings.connections.filter(needsAttention).length;
+  const visibleConnections = settings.connections.filter((connection) => filter !== "attention" || needsAttention(connection));
   return (
     <div className="flex flex-col gap-5">
-      {settings.connections.map((connection) => (
+      {connected ? <ToggleGroup variant="outline" value={[filter]} onValueChange={(values) => { if (values[0]) setFilter(values[0]); }} aria-label="e-conomic-aftaler">
+        <ToggleGroupItem value="all" className="min-h-11">Alle aftaler</ToggleGroupItem>
+        <ToggleGroupItem value="attention" className="min-h-11">Kræver handling ({attentionCount})</ToggleGroupItem>
+      </ToggleGroup> : null}
+      {connected && visibleConnections.length === 0 ? <p className="text-sm text-muted-foreground">Ingen aftaler kræver handling.</p> : null}
+      {visibleConnections.map((connection) => (
         <AgreementCard
           key={connection.id}
           connection={connection}

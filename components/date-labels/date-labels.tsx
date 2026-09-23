@@ -470,10 +470,10 @@ function LabelWorkspace({
                     <Button
                       className="min-h-11 w-full"
                       onClick={() => selectProduct(product)}
-                      aria-label={`Print etiket for ${product.name}`}
+                      aria-label={`Klargør etiket for ${product.name}`}
                     >
                       <PrinterIcon data-icon="inline-start" />
-                      Print etiket
+                      Klargør etiket
                     </Button>
                   </CardFooter>
                 </Card>

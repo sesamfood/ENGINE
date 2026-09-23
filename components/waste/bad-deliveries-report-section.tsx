@@ -330,33 +330,25 @@ export function BadDeliveriesReportSection({
                     <TableHead>Tidspunkt</TableHead>
                     <TableHead>Lokation</TableHead>
                     <TableHead>Registreret af</TableHead>
-                    <TableHead>Produktlinjer</TableHead>
+                    <TableHead className="text-right">Produktlinjer</TableHead>
                     <TableHead>Lager</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead><span className="sr-only">Detaljer</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(results as Row[]).map((row) => (
                     <TableRow
                       key={row.id}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Åbn registrering af dårlig levering på ${row.locationName}`}
                       appearance="selectable"
                       className="cursor-pointer"
                       onClick={() => setSelectedId(row.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setSelectedId(row.id);
-                        }
-                      }}
                     >
                       <TableCell>{formatter.format(row.registeredAt)}</TableCell>
                       <TableCell>{row.locationName}</TableCell>
                       <TableCell>{row.registeredByName}</TableCell>
-                      <TableCell>{row.itemCount}</TableCell>
+                      <TableCell appearance="numeric" className="text-right">{row.itemCount}</TableCell>
                       <TableCell>{row.deductFromStock ? "Trukket" : "Uændret"}</TableCell>
                       <TableCell>{noticeBadge(row.initialNoticeStatus)}</TableCell>
                       <TableCell>
@@ -365,6 +357,19 @@ export function BadDeliveriesReportSection({
                         >
                           {row.status === "active" ? "Aktiv" : "Annulleret"}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          className="min-h-11"
+                          aria-label={`Se dårlig levering på ${row.locationName}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedId(row.id);
+                          }}
+                        >
+                          Se registrering
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -455,18 +460,18 @@ export function BadDeliveriesReportSection({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Produkt</TableHead>
-                    <TableHead>Mængde</TableHead>
+                    <TableHead className="text-right">Mængde</TableHead>
                     <TableHead>Enhed</TableHead>
-                    <TableHead>Standardmængde</TableHead>
+                    <TableHead className="text-right">Standardmængde</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {detail.items.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell>{item.productName}</TableCell>
-                      <TableCell>{formatQuantity(item.quantity)}</TableCell>
+                      <TableCell appearance="numeric" className="text-right">{formatQuantity(item.quantity)}</TableCell>
                       <TableCell>{item.unitName}</TableCell>
-                      <TableCell>
+                      <TableCell appearance="numeric" className="text-right">
                         {formatQuantity(item.defaultQuantity)} {item.defaultUnitName}
                       </TableCell>
                     </TableRow>

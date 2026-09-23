@@ -711,6 +711,7 @@ export function StaffFoodRegistration() {
                                     <CardFooter appearance="product" className="mt-auto">
                                       <Button
                                         size="lg"
+                                        variant={quantity ? "default" : "outline"}
                                         className="h-12 w-full"
                                         disabled={!canAdd && !quantity}
                                         onClick={() =>

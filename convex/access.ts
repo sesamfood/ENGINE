@@ -652,7 +652,11 @@ export const listMemberLocationAccess = query({
   args: {},
   returns: v.object({
     access: v.array(memberLocationAccessValidator),
-    locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
+    locations: v.array(v.object({
+      id: v.id("locations"),
+      name: v.string(),
+      operatorId: v.union(v.id("operators"), v.null()),
+    })),
     operators: v.array(v.object({ id: v.id("operators"), name: v.string() })),
   }),
   handler: async (ctx) => {
@@ -684,7 +688,9 @@ export const listMemberLocationAccess = query({
         locationIds,
         operatorId: operatorId ?? null,
       })),
-      locations: locations.map(({ _id, name }) => ({ id: _id, name })),
+      locations: locations.map(({ _id, name, operatorId }) => ({
+        id: _id, name, operatorId: operatorId ?? null,
+      })),
       operators: operators.map(({ _id, name }) => ({ id: _id, name })),
     };
   },
