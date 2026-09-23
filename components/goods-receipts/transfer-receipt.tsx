@@ -722,14 +722,17 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                             </Field>
                           </div>
 
-                          <Field data-invalid={Boolean(errors[item.id])} className="xl:justify-self-end">
-                            <FieldLabel
-                              htmlFor={`goods-receipt-quantity-${item.id}`}
-                              appearance="eyebrow"
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start xl:justify-end">
+                            <Field
+                              className="sm:w-auto"
+                              data-invalid={Boolean(errors[item.id])}
                             >
-                              Modtaget
-                            </FieldLabel>
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                              <FieldLabel
+                                htmlFor={`goods-receipt-quantity-${item.id}`}
+                                className="sr-only"
+                              >
+                                Modtaget mængde for {item.productName}
+                              </FieldLabel>
                               <QuantityInput
                                 id={`goods-receipt-quantity-${item.id}`}
                                 label={`Modtaget mængde for ${item.productName}`}
@@ -750,21 +753,21 @@ function TransferReceiptForm({ receipt }: { receipt: PendingReceipt }) {
                                   });
                                 }}
                               />
-                              <Button
-                                type="button"
-                                variant={fullyReceived ? "secondary" : "outline"}
-                                size="lg"
-                                className="min-h-11"
-                                aria-label={`Alt modtaget for ${item.productName}`}
-                                disabled={fullyReceived}
-                                onClick={() => setQuantity(item.id, maximum)}
-                              >
-                                <CheckIcon data-icon="inline-start" />
-                                Alt modtaget
-                              </Button>
-                            </div>
-                            <FieldError>{errors[item.id]}</FieldError>
-                          </Field>
+                              <FieldError>{errors[item.id]}</FieldError>
+                            </Field>
+                            <Button
+                              type="button"
+                              variant={fullyReceived ? "secondary" : "outline"}
+                              size="lg"
+                              className="min-h-11"
+                              aria-label={`Alt modtaget for ${item.productName}`}
+                              disabled={fullyReceived}
+                              onClick={() => setQuantity(item.id, maximum)}
+                            >
+                              <CheckIcon data-icon="inline-start" />
+                              Alt modtaget
+                            </Button>
+                          </div>
                         </li>
                         {index < transfer.items.length - 1 ||
                         additionalLines.length > 0 ? (

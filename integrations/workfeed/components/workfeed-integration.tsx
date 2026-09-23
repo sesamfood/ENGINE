@@ -61,8 +61,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Separator } from "@/components/ui/separator";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -266,7 +264,6 @@ function LocationMappings() {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState("all");
   const [savingIds, setSavingIds] = useState<Set<Id<"locations">>>(new Set());
 
   async function load() {
@@ -345,20 +342,17 @@ function LocationMappings() {
   }
 
   if (!mappings) return <Skeleton className="h-72 w-full" />;
-  const missingCount = mappings.locations.filter((location) => !location.departmentId).length;
-  const visibleLocations = mappings.locations.filter((location) => filter !== "attention" || !location.departmentId);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <Card size="sm">
-        <CardHeader className="flex flex-col sm:grid">
+        <CardHeader>
           <CardTitle>Lokationer og afdelinger</CardTitle>
           <CardDescription>
             Kobl hver lokation til den afdeling, der har lokationens vagtplan i
-            Workfeed. {mappings.locations.length - missingCount} af {mappings.locations.length} lokationer koblet.
+            Workfeed.
           </CardDescription>
-          <CardAction appearance="standard" className="flex flex-wrap">
-            {missingCount > 0 ? <Button variant="outline" className="min-h-11" onClick={() => { setFilter("attention"); setOpen(true); }}>{missingCount} mangler kobling</Button> : null}
+          <CardAction>
             <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
               {open ? "Skjul" : "Vis"}
               {open ? (
@@ -371,11 +365,7 @@ function LocationMappings() {
         </CardHeader>
         <CollapsibleContent>
           <CardContent appearance="stacked" className="flex flex-col">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <ToggleGroup variant="outline" value={[filter]} onValueChange={(values) => { if (values[0]) setFilter(values[0]); }} aria-label="Workfeed-koblinger">
-                <ToggleGroupItem value="all" className="min-h-11">Alle</ToggleGroupItem>
-                <ToggleGroupItem value="attention" className="min-h-11">Kræver handling ({missingCount})</ToggleGroupItem>
-              </ToggleGroup>
+            <div className="flex justify-end">
               <Button
                 variant="outline"
                 size="sm"
@@ -422,9 +412,8 @@ function LocationMappings() {
                 </EmptyHeader>
               </Empty>
             ) : (
-              <div className="flex flex-col gap-4">
-                {visibleLocations.length === 0 ? <p className="text-sm text-muted-foreground">Alle lokationer er koblet.</p> : null}
-                {visibleLocations.map((location) => {
+              <div className="grid gap-4 lg:grid-cols-2">
+                {mappings.locations.map((location) => {
                   const value =
                     drafts[location.id] ?? location.departmentId ?? "";
                   const options =
@@ -445,18 +434,17 @@ function LocationMappings() {
                   const connected = Boolean(value);
 
                   return (
-                    <div key={location.id} className="grid gap-3 md:grid-cols-2 md:items-start">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <h3 className="font-medium">{location.name}</h3>
-                        <div>
+                    <Card key={location.id} size="sm">
+                      <CardHeader>
+                        <CardTitle>{location.name}</CardTitle>
+                        <CardAction>
                           {connected ? (
                             <AlertDialog>
                               <AlertDialogTrigger
                                 render={
                                   <Button
                                     variant="outline"
-                                    size="lg"
-                                    className="min-h-11"
+                                    size="sm"
                                     disabled={saving}
                                   />
                                 }
@@ -494,9 +482,9 @@ function LocationMappings() {
                           ) : (
                             <Badge variant="secondary">Ikke koblet</Badge>
                           )}
-                        </div>
-                      </div>
-                      <div>
+                        </CardAction>
+                      </CardHeader>
+                      <CardContent>
                         <FieldGroup>
                           <Field data-disabled={!departments || saving}>
                             <FieldLabel htmlFor={`workfeed-${location.id}`}>
@@ -546,9 +534,8 @@ function LocationMappings() {
                             </Select>
                           </Field>
                         </FieldGroup>
-                      </div>
-                    <Separator className="md:col-span-2" />
-                    </div>
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>

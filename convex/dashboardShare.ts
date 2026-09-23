@@ -22,7 +22,6 @@ import {
   queryMetricComputer,
   resolveBuiltinSalesSource,
   resolveDashboardRange,
-  resolveMetricParams,
 } from "./lib/dashboardMetrics";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
 import {
@@ -223,45 +222,15 @@ export const unlock = action({
 });
 
 export const getSharedConfig = query({
-  args: { token: v.string(), accessKey: v.string(), now: v.optional(v.number()) },
-  returns: dashboardConfigValidator.extend({
-    context: v.object({
-      locationNames: v.array(v.string()),
-      locationCount: v.number(),
-      anonymous: v.boolean(),
-      from: v.number(),
-      to: v.number(),
-      timeZone: v.string(),
-      truncated: v.boolean(),
-    }),
-  }),
+  args: { token: v.string(), accessKey: v.string() },
+  returns: dashboardConfigValidator,
   handler: async (ctx, args) => {
     const share = await requireShare(ctx, args.token, args.accessKey);
-    // Older clients omit now and do not display the added period context.
-    const params = await resolveMetricParams(
-      ctx, share.organizationId, share.scope, share.range, args.now ?? share._creationTime,
-      undefined,
-      {
-        granularity: share.granularity ?? "detail",
-        anonymousSeed: share.token,
-        salesDetailAllowed: share.salesDetailAllowed ?? true,
-      },
-    );
-    const anonymous = share.granularity === "anonymous";
     return {
       widgets: share.widgets,
       scope: share.scope,
       range: share.range,
       updatedAt: share._creationTime,
-      context: {
-        locationNames: anonymous ? [] : params.locations.map((location) => location.name),
-        locationCount: params.locations.length,
-        anonymous,
-        from: params.from,
-        to: params.to,
-        timeZone: params.timeZone,
-        truncated: Boolean(params.scopeTruncated),
-      },
     };
   },
 });

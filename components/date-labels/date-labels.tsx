@@ -468,7 +468,6 @@ function LabelWorkspace({
                   </CardContent>
                   <CardFooter>
                     <Button
-                      variant="outline"
                       className="min-h-11 w-full"
                       onClick={() => selectProduct(product)}
                       aria-label={`Klargør etiket for ${product.name}`}

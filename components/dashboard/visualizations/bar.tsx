@@ -12,7 +12,6 @@ import {
   formatMetricValue,
   isMixedCurrency,
 } from "./utils";
-import { TableVisualization } from "./table";
 import { TimeSeriesVisualization, type TimeSeriesProps } from "./time-series";
 
 function BreakdownAxis({ compact }: { compact: boolean }) {
@@ -62,23 +61,19 @@ export function BarVisualization({
     );
   }
   if (result.breakdown?.length) {
-    if (compact) return <TableVisualization result={result} compact />;
     const config = { value: { label: "Værdi", color: "var(--chart-1)" } } satisfies ChartConfig;
-    const data = result.breakdown.slice(0, 8);
+    const data = result.breakdown.slice(0, compact ? 4 : 8);
     const domain = chartValueDomainFromValues(data.map((item) => item.value), yAxisMin, yAxisMax);
     return (
-      <div className="flex h-full min-h-0 flex-col gap-1">
-        <ChartContainer config={config} className="min-h-0 w-full flex-1 aspect-auto">
-          <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: compact ? 0 : 8, right: compact ? 4 : 16 }}>
-            <CartesianGrid horizontal={false} />
-            <XAxis type="number" hide={compact} domain={domain} tickFormatter={(value) => formatMetricValue(Number(value), result)} />
-            <BreakdownAxis compact={compact} />
-            <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            <Bar dataKey="value" fill="var(--color-value)" radius={4} />
-          </BarChart>
-        </ChartContainer>
-        {result.breakdown.length > data.length ? <p role="status" className="shrink-0 text-xs text-muted-foreground">Viser {data.length} af {result.breakdown.length} grupper.</p> : null}
-      </div>
+      <ChartContainer config={config} className="h-full min-h-0 w-full aspect-auto">
+        <BarChart accessibilityLayer data={data} layout="vertical" margin={{ left: compact ? 0 : 8, right: compact ? 4 : 16 }}>
+          <CartesianGrid horizontal={false} />
+          <XAxis type="number" hide={compact} domain={domain} tickFormatter={(value) => formatMetricValue(Number(value), result)} />
+          <BreakdownAxis compact={compact} />
+          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+          <Bar dataKey="value" fill="var(--color-value)" radius={4} />
+        </BarChart>
+      </ChartContainer>
     );
   }
   return (

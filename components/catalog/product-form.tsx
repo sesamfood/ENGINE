@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/compress-image";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 
 type UnitRow = {
@@ -1163,8 +1162,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   appearance="spaced"
                 >
                   {unitRows.map((row) => (
-                    <Fragment key={row.key}>
-                    <div className="grid gap-3 md:grid-cols-(--grid-cols-recipe) md:items-start">
+                    <div
+                      key={row.key}
+                      className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-recipe) md:items-start"
+                    >
                       <Field
                         orientation="horizontal"
                         className="min-h-11 md:w-auto md:self-center"
@@ -1236,8 +1237,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         <Trash2Icon />
                       </Button>
                     </div>
-                    <Separator />
-                    </Fragment>
                   ))}
                 </RadioGroup>
                 <FieldError>{errors.units}</FieldError>
@@ -1267,18 +1266,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       Produktet har endnu ingen ingredienser.
                     </Empty>
                   ) : null}
-                  {ingredientRows.length > 0 ? (
-                    <div aria-hidden="true" className="hidden gap-3 text-sm font-medium md:grid md:grid-cols-(--grid-cols-product-mapping)">
-                      <span>Produkt</span><span>Mængde</span><span>Enhed</span><span className="w-9" />
-                    </div>
-                  ) : null}
-                  {canManageIntegrations && ingredientRows.some((row) => row.removable) && ingredientRemovalSettings && !ingredientRemovalSettings.enabled ? (
-                    <FieldDescription>
-                      {ingredientRemovalSettings.connected
-                        ? "Aktivér OnlinePOS-integrationen for at tilføje koblinger."
-                        : "Forbind OnlinePOS-integrationen for at tilføje koblinger."}
-                    </FieldDescription>
-                  ) : null}
                   {ingredientRows.map((row) => {
                     const selectedProduct = recipeProductOptions.find(
                       (option) => option.id === row.productId,
@@ -1287,6 +1274,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       row.removable &&
                       canManageIntegrations &&
                       ingredientRemovalSettings?.enabled === true;
+                    const showIntegrationGuidance =
+                      row.removable &&
+                      canManageIntegrations &&
+                      ingredientRemovalSettings !== undefined &&
+                      !ingredientRemovalSettings.enabled;
                     return (
                       <IngredientEditorRow
                         key={row.key}
@@ -1315,6 +1307,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         <div className="grid gap-3 md:col-span-full md:row-start-2 md:grid-cols-(--grid-cols-product-settings) md:items-start">
                           <Field
                             orientation="horizontal"
+                            appearance="outline"
                             className={cn(
                               "min-h-11 items-center justify-between",
                               showRemovalMapping &&
@@ -1364,6 +1357,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                               />
                             </Field>
                           ) : null}
+                          {showIntegrationGuidance ? (
+                            <FieldDescription className="md:col-span-full">
+                              {ingredientRemovalSettings.connected
+                                ? "Aktivér OnlinePOS-integrationen for at tilføje en kobling."
+                                : "Forbind OnlinePOS-integrationen for at tilføje en kobling."}
+                            </FieldDescription>
+                          ) : null}
                         </div>
                       </IngredientEditorRow>
                     );
@@ -1401,18 +1401,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       Der er endnu ingen ingredienser, der kan tilføjes.
                     </Empty>
                   ) : null}
-                  {addableIngredientRows.length > 0 ? (
-                    <div aria-hidden="true" className="hidden gap-3 text-sm font-medium md:grid md:grid-cols-(--grid-cols-product-mapping)">
-                      <span>Produkt</span><span>Mængde</span><span>Enhed</span><span className="w-9" />
-                    </div>
-                  ) : null}
-                  {canManageIntegrations && addableIngredientRows.some((row) => row.productId !== null) && ingredientAdditionSettings && !ingredientAdditionSettings.enabled ? (
-                    <FieldDescription>
-                      {ingredientAdditionSettings.connected
-                        ? "Aktivér OnlinePOS-integrationen for at tilføje koblinger."
-                        : "Forbind OnlinePOS-integrationen for at tilføje koblinger."}
-                    </FieldDescription>
-                  ) : null}
                   {addableIngredientRows.map((row) => {
                     const selectedProduct = addableProductOptions.find(
                       (option) => option.id === row.productId,
@@ -1421,6 +1409,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       row.productId !== null &&
                       canManageIntegrations &&
                       ingredientAdditionSettings?.enabled === true;
+                    const showIntegrationGuidance =
+                      row.productId !== null &&
+                      canManageIntegrations &&
+                      ingredientAdditionSettings !== undefined &&
+                      !ingredientAdditionSettings.enabled;
                     return (
                       <IngredientEditorRow
                         key={row.key}
@@ -1471,6 +1464,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                                   }
                                 />
                               </Field>
+                            ) : null}
+                            {showIntegrationGuidance ? (
+                              <FieldDescription>
+                                {ingredientAdditionSettings.connected
+                                  ? "Aktivér OnlinePOS-integrationen for at tilføje en kobling."
+                                  : "Forbind OnlinePOS-integrationen for at tilføje en kobling."}
+                              </FieldDescription>
                             ) : null}
                           </>
                         }

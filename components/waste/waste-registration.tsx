@@ -644,11 +644,11 @@ export function WasteRegistration() {
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                     />
                     <CardHeader appearance="product">
-                      <div className="flex min-w-0 flex-col gap-1">
-                        <CardTitle appearance="productName">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <CardTitle appearance="truncate" className="min-w-0 flex-1">
                           {product.name}
                         </CardTitle>
-                        <CardDescription>
+                        <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
                           {product.categories
                             .map((category) => category.name)
                             .join(" · ")}
@@ -685,7 +685,7 @@ export function WasteRegistration() {
                     </Button>
                   </div>
                   <CardContent appearance="productGrid" className="grid grid-cols-2">
-                    {shortcuts.map((shortcut) => {
+                    {shortcuts.map((shortcut, index) => {
                       const unit = product.units.find(
                         (item) => item.id === shortcut.unitId,
                       );
@@ -693,7 +693,7 @@ export function WasteRegistration() {
                       return (
                         <Button
                           key={`${shortcut.unitId}:${shortcut.quantity}`}
-                          variant={recent === key ? "default" : "outline"}
+                          variant={index === 0 ? "default" : "outline"}
                           appearance={
                             recent === key ? "recentQuantity" : "quantity"
                           }

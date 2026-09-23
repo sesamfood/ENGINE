@@ -15,7 +15,6 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { usePermission } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Dialog,
   DialogContent,
@@ -470,6 +469,33 @@ export function OwnCheckRecord({
 
       {record.entry.followUp === "open" ? followUpContent : null}
 
+      {record.instructions || record.imageUrl ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Instruktioner</CardTitle>
+          </CardHeader>
+          <CardContent appearance="stacked" className="flex flex-col">
+            {record.imageUrl ? (
+              <div className="relative h-64 w-full">
+                <Image
+                  src={record.imageUrl}
+                  alt={`Billede af ${record.entry.name}`}
+                  fill
+                  unoptimized
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  className="rounded-lg object-contain"
+                />
+              </div>
+            ) : null}
+            {record.instructions ? (
+              <div className="whitespace-pre-wrap break-words text-sm">
+                <InstructionContent value={record.instructions} />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-(--grid-cols-inspection)">
         <Card>
           <CardHeader>
@@ -550,35 +576,6 @@ export function OwnCheckRecord({
       </div>
 
       {record.entry.followUp !== "open" ? followUpContent : null}
-
-      {record.instructions || record.imageUrl ? (
-        <Accordion>
-          <AccordionItem value="instructions">
-            <AccordionTrigger className="min-h-11">Instruktioner</AccordionTrigger>
-            <AccordionContent>
-              <div className="flex flex-col gap-4">
-                {record.imageUrl ? (
-                  <div className="relative h-64 w-full">
-                    <Image
-                      src={record.imageUrl}
-                      alt={`Billede af ${record.entry.name}`}
-                      fill
-                      unoptimized
-                      sizes="(max-width: 768px) 100vw, 50vw"
-                      className="rounded-lg object-contain"
-                    />
-                  </div>
-                ) : null}
-                {record.instructions ? (
-                  <div className="whitespace-pre-wrap break-words text-sm">
-                    <InstructionContent value={record.instructions} />
-                  </div>
-                ) : null}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      ) : null}
 
       <OwnCheckHistory
         key={`${entryId}:${record.entry.revision}`}

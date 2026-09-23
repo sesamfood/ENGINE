@@ -33,7 +33,7 @@ function SharedDashboardContent({ token }: { token: string }) {
   const now = useDashboardNow();
   const config = useQuery(
     api.dashboardShare.getSharedConfig,
-    accessKey ? { token, accessKey, now } : "skip",
+    accessKey ? { token, accessKey } : "skip",
   );
 
   useEffect(() => {
@@ -169,15 +169,6 @@ function SharedDashboardContent({ token }: { token: string }) {
         <header className="flex flex-col gap-2">
           <p className="text-sm font-semibold uppercase tracking-widest text-primary">Delt dashboard</p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{meta.name}</h1>
-          <p className="text-sm">
-            {new Intl.DateTimeFormat("da-DK", { dateStyle: "long", timeZone: config.context.timeZone }).formatRange(config.context.from, config.context.to - 1)}
-          </p>
-          <p className="text-sm">
-            Lokationer: {config.context.anonymous
-              ? `${config.context.locationCount} ${config.context.locationCount === 1 ? "lokation" : "lokationer"}`
-              : config.context.locationNames.join(", ") || "Ingen lokationer"}
-          </p>
-          {config.context.truncated ? <p className="text-sm text-muted-foreground">Lokationsvalget er afgrænset.</p> : null}
           <p className="text-sm text-muted-foreground">Tilgængeligt til {new Intl.DateTimeFormat("da-DK", { dateStyle: "long", timeStyle: "short" }).format(meta.expiresAt)}</p>
         </header>
         <DashboardGrid widgets={config.widgets} scope={config.scope} range={config.range} now={now} publicAccess={{ token, accessKey }} />

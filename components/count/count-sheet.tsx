@@ -342,11 +342,11 @@ function ProductCard({
             <div className="absolute left-2 top-2">{dragHandle}</div>
           ) : null}
           <CardHeader appearance="product">
-            <div className="flex min-w-0 flex-col gap-1">
-              <CardTitle appearance="productName">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <CardTitle appearance="truncate" className="min-w-0 flex-1">
                 {product.name}
               </CardTitle>
-              <CardDescription>
+              <CardDescription appearance="truncate" className="max-w-9/20 shrink-0">
                 {product.categories
                   .map((category) => category.name)
                   .join(" · ") || "Uden kategori"}

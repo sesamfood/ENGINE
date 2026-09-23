@@ -5,7 +5,7 @@ import { customMetricAvailable, metricSourceAvailable, salesSourceOptions } from
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -47,7 +47,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLiveMetrics } from "./use-live-metrics";
 import { useFinancialMetrics } from "./use-financial-metrics";
@@ -398,6 +397,8 @@ export function AddWidgetDialog({
                     <CommandGroup
                       key={category.label}
                       heading={category.label}
+                      appearance="cards"
+                      className="grid grid-cols-1 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 sm:[&>[cmdk-group-items]]:grid-cols-2"
                     >
                       {category.metrics.map((metric) => {
                         const selected = !customMetricId && metric.id === metricId;
@@ -407,15 +408,17 @@ export function AddWidgetDialog({
                             value={`${metric.label} ${metric.description}`}
                             onSelect={() => selectMetric(metric.id)}
                             aria-selected={selected}
-                            appearance="search"
+                            appearance="metric"
                             highlighted={selected}
-                            className="min-h-14 items-start"
+                            className="min-h-32 items-start"
                           >
                             <div className="min-w-0 flex-1">
                               <p className="font-medium">{metric.label}</p>
-                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{metric.description}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{metric.description}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">Datakilder:</span> {metric.source === "economic" ? "Månedsrapport" : metric.sourceTables.join(", ")}
+                              </p>
                             </div>
-                            {selected ? <CheckIcon aria-label="Valgt" /> : null}
                           </CommandItem>
                         );
                       })}
@@ -424,18 +427,20 @@ export function AddWidgetDialog({
                   {customMetrics?.length ? (
                     <CommandGroup
                       heading="Organisationens målinger"
+                      appearance="cards"
+                      className="grid grid-cols-1 **:[[cmdk-group-heading]]:col-span-full [&>[cmdk-group-items]]:grid [&>[cmdk-group-items]]:grid-cols-1 sm:[&>[cmdk-group-items]]:grid-cols-2"
                     >
                       {customMetrics.map((metric) => {
                         const selected = metric.id === customMetricId;
                         return (
-                          <div key={metric.id} className="flex items-start gap-2 [&:not(:has([cmdk-item]))]:hidden">
+                          <div key={metric.id} className="relative">
                             <CommandItem
                               value={`${metric.name} ${metric.description ?? ""} tilpasset måling`}
                               onSelect={() => selectCustomMetric(metric.id)}
                               aria-selected={selected}
-                              appearance="search"
+                              appearance="customMetric"
                               highlighted={selected}
-                              className="min-h-14 min-w-0 flex-1 items-start"
+                              className="min-h-28 items-start"
                             >
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium">{metric.name}</p>
@@ -445,7 +450,7 @@ export function AddWidgetDialog({
                                 </p>
                               </div>
                             </CommandItem>
-                            <div className="flex shrink-0 gap-1">
+                            <div className="absolute top-2 right-2 flex gap-1">
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -491,20 +496,6 @@ export function AddWidgetDialog({
                   </CommandGroup>
                 </CommandList>
               </Command>
-              {!customMetricId && selectedMetricAvailable ? (
-                <div className="flex shrink-0 flex-col gap-1" aria-live="polite">
-                  <div className="flex items-center gap-1">
-                    <p className="text-sm font-medium">{definition.label}</p>
-                    <HelpTooltip label={`Beregning for ${definition.label}`} content={
-                      <div className="flex max-w-sm flex-col gap-2">
-                        <p>{definition.formula}</p>
-                        <p>Datakilder: {definition.source === "economic" ? "Månedsrapport" : definition.sourceTables.join(", ")}</p>
-                      </div>
-                    } />
-                  </div>
-                  <p className="text-sm text-muted-foreground">{definition.description}</p>
-                </div>
-              ) : null}
             </div>
           ) : null}
 

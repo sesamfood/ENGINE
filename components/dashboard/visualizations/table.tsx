@@ -24,7 +24,7 @@ export function TableVisualization({ result, compact = false }: { result: Metric
         <TableBody>
           {rows.slice(0, 20).map((row) => (
             <TableRow key={row.key}>
-              <TableCell title={row.label} appearance={compact ? "compactLabelWrap" : "labelTruncate"} className="max-w-0">{row.label}</TableCell>
+              <TableCell title={row.label} appearance={compact ? "compactLabel" : "labelTruncate"} className="max-w-0">{row.label}</TableCell>
               <TableCell appearance={compact ? "compactNumeric" : "numeric"} className="w-px text-right whitespace-nowrap">{formatMetricValue(row.value, result)}</TableCell>
             </TableRow>
           ))}

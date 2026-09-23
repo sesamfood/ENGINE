@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ChevronDownIcon,
   CircleAlertIcon,
   Clock3Icon,
   PackageIcon,
@@ -14,8 +13,6 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Card,
   CardContent,
@@ -54,7 +51,7 @@ function MappingBadge({ item }: { item: WoltOrderDetailRecord["items"][number] }
   }
   if (item.mapping) {
     return (
-      <Badge variant="secondary">
+      <Badge variant="default">
         Koblet{item.mapping.locationOverride ? " for lokationen" : ""}
       </Badge>
     );
@@ -140,41 +137,36 @@ function OrderDetailContent({ order }: { order: WoltOrderDetailRecord }) {
             Varer
           </h2>
         </div>
-        <div className="flex flex-col gap-4">
-          <div aria-hidden="true" className="hidden gap-3 text-xs text-muted-foreground sm:grid sm:grid-cols-(--grid-cols-order-values)">
-            <span>Produkt</span><span className="text-right">Antal</span><span className="text-right">Beløb</span>
-          </div>
+        <div className="flex flex-col gap-3">
           {order.items.map((item) => (
-            <div key={item.id} className="flex flex-col gap-3">
-              <div className="grid grid-cols-(--grid-cols-content-action) gap-3 sm:grid-cols-(--grid-cols-order-values)">
-                <div className="min-w-0">
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-muted-foreground">{formatWoltMoney(item.unitPrice, order.currency)} pr. stk.</p>
+            <Card size="sm" key={item.id}>
+              <CardContent appearance="compact" className="flex flex-col">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{item.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {item.quantity} stk. · {formatWoltMoney(item.unitPrice, order.currency)} pr. stk.
+                    </p>
+                  </div>
+                  <p className="shrink-0 font-semibold">
+                    {formatWoltMoney(item.lineTotal, order.currency)}
+                  </p>
                 </div>
-                <p className="row-start-2 text-sm tabular-nums sm:col-start-2 sm:row-start-1 sm:text-right">{item.quantity} stk.</p>
-                <p className="col-start-2 row-start-1 text-right font-semibold tabular-nums sm:col-start-3">{formatWoltMoney(item.lineTotal, order.currency)}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <MappingBadge item={item} />
-                {item.mapping ? <span className="text-sm text-muted-foreground">{item.mapping.productName}</span> : null}
-              </div>
-              {item.gtin || item.posId || item.sku ? (
-                <Collapsible>
-                  <CollapsibleTrigger render={<Button variant="ghost" className="min-h-11" aria-label={`Produkt-id’er for ${item.name}`} />}>
-                    Produkt-id’er
-                    <ChevronDownIcon data-icon="inline-end" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <dl className="flex flex-col gap-1 py-2">
-                      <Identifier label="GTIN" value={item.gtin} />
-                      <Identifier label="POS-id" value={item.posId} />
-                      <Identifier label="SKU" value={item.sku} />
-                    </dl>
-                  </CollapsibleContent>
-                </Collapsible>
-              ) : null}
-              <Separator />
-            </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <MappingBadge item={item} />
+                  {item.mapping ? (
+                    <span className="truncate text-sm text-muted-foreground">
+                      {item.mapping.productName}
+                    </span>
+                  ) : null}
+                </div>
+                <dl className="flex flex-col gap-1 border-t pt-2">
+                  <Identifier label="GTIN" value={item.gtin} />
+                  <Identifier label="POS-id" value={item.posId} />
+                  <Identifier label="SKU" value={item.sku} />
+                </dl>
+              </CardContent>
+            </Card>
           ))}
         </div>
         {order.mappingTruncated ? (

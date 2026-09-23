@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -87,11 +86,10 @@ export function IngredientEditorRow({
   const quantityError = errors[`${row.key}-quantity`];
   const unitError = errors[`${row.key}-unit`];
   return (
-    <div className="flex flex-col gap-4">
-    <div className="grid gap-3 md:grid-cols-(--grid-cols-product-mapping) md:items-start">
+    <div className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-mapping) md:items-start">
       <div className="flex min-w-0 flex-col gap-3 md:col-start-1 md:row-start-1">
         <Field data-invalid={Boolean(productError)}>
-          <FieldLabel className="md:sr-only">Produkt</FieldLabel>
+          <FieldLabel>Produkt</FieldLabel>
           <CreatableCombobox
             productSearch
             options={options}
@@ -120,7 +118,7 @@ export function IngredientEditorRow({
         className="md:col-start-2 md:row-start-1"
         data-invalid={Boolean(quantityError)}
       >
-        <FieldLabel className="md:sr-only" htmlFor={`${row.key}-quantity`}>Mængde</FieldLabel>
+        <FieldLabel htmlFor={`${row.key}-quantity`}>Mængde</FieldLabel>
         <Input
           id={`${row.key}-quantity`}
           type="number"
@@ -138,7 +136,7 @@ export function IngredientEditorRow({
         className="md:col-start-3 md:row-start-1"
         data-invalid={Boolean(unitError)}
       >
-        <FieldLabel className="md:sr-only" htmlFor={`${row.key}-unit`}>Enhed</FieldLabel>
+        <FieldLabel htmlFor={`${row.key}-unit`}>Enhed</FieldLabel>
         <Select
           items={(selectedProduct?.units ?? []).map((unit) => ({
             value: unit.id,
@@ -176,14 +174,12 @@ export function IngredientEditorRow({
         type="button"
         variant="ghost"
         size="icon-lg"
-        className="md:col-start-4 md:row-start-1"
+        className="md:col-start-4 md:row-start-1 md:mt-6"
         aria-label={removeLabel}
         onClick={onRemove}
       >
         <Trash2Icon />
       </Button>
-    </div>
-    <Separator />
     </div>
   );
 }

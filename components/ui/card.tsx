@@ -135,7 +135,6 @@ const cardTitleAppearance = cva("", {
     appearance: {
       auth: "text-2xl",
       truncate: "truncate",
-      productName: "line-clamp-2 min-h-[2lh]",
       hero: "text-3xl leading-tight tracking-tight sm:text-4xl",
       widget: "truncate text-base",
       inline: "gap-2",
@@ -275,7 +274,6 @@ const cardFooterAppearance = cva("", {
       compact: "gap-2",
       emphasized: "font-medium",
       spaced: "gap-3",
-      stickyActions: "sticky bottom-0 z-20 gap-3 border-t bg-card shadow-sm",
       product: "border-t-0 p-3 pt-0",
       flush: "p-0",
     },

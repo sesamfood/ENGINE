@@ -4,26 +4,6 @@
   "timeZone": "Europe/Copenhagen",
   "pairs": [
     {
-      "group": "operations",
-      "slug": "operations-ordering",
-      "title": "Ordering warnings and quantity columns",
-      "findings": [
-        1,
-        13
-      ],
-      "before": "images/operations/operations-ordering-before.png",
-      "beforeSize": [
-        1280,
-        1074
-      ],
-      "after": "images/operations/operations-ordering-after.png",
-      "afterSize": [
-        1280,
-        1202
-      ],
-      "number": 1
-    },
-    {
       "group": "dashboard",
       "slug": "own-checks-overdue",
       "title": "Overdue checks and due dates",
@@ -44,27 +24,8 @@
     },
     {
       "group": "root",
-      "slug": "permissions",
-      "title": "Changed permissions and save controls",
-      "findings": [
-        3
-      ],
-      "before": "images/root/permissions-before.png",
-      "beforeSize": [
-        1280,
-        2667
-      ],
-      "after": "images/root/permissions-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 3
-    },
-    {
-      "group": "root",
       "slug": "permissions-scroll",
-      "title": "Permission context while scrolling",
+      "title": "Frozen permission labels and role headings",
       "findings": [
         3
       ],
@@ -100,68 +61,9 @@
       "number": 5
     },
     {
-      "group": "operations",
-      "slug": "operations-count",
-      "title": "Count product names",
-      "findings": [
-        5
-      ],
-      "before": "images/operations/operations-count-before.png",
-      "beforeSize": [
-        1280,
-        1194
-      ],
-      "after": "images/operations/operations-count-after.png",
-      "afterSize": [
-        1280,
-        1286
-      ],
-      "number": 6
-    },
-    {
-      "group": "operations",
-      "slug": "operations-waste",
-      "title": "Waste product names and action emphasis",
-      "findings": [
-        5,
-        12
-      ],
-      "before": "images/operations/operations-waste-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/operations/operations-waste-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 7
-    },
-    {
-      "group": "operations",
-      "slug": "operations-stock",
-      "title": "Stock product names, search and categories",
-      "findings": [
-        5,
-        15
-      ],
-      "before": "images/operations/operations-stock-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/operations/operations-stock-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 8
-    },
-    {
       "group": "dashboard",
       "slug": "metric-picker",
-      "title": "Metric picker and selected calculation help",
+      "title": "Metric cards without formulas",
       "findings": [
         6
       ],
@@ -176,25 +78,6 @@
         1000
       ],
       "number": 9
-    },
-    {
-      "group": "operations",
-      "slug": "operations-receipt",
-      "title": "Sent and received quantity labels",
-      "findings": [
-        7
-      ],
-      "before": "images/operations/operations-receipt-before.png",
-      "beforeSize": [
-        1283,
-        1116
-      ],
-      "after": "images/operations/operations-receipt-after.png",
-      "afterSize": [
-        1280,
-        1116
-      ],
-      "number": 10
     },
     {
       "group": "administration-focused",
@@ -218,7 +101,7 @@
     {
       "group": "administration-focused",
       "slug": "catalog-status",
-      "title": "Active and archived catalogue views",
+      "title": "Catalogue status beside search",
       "findings": [
         9
       ],
@@ -233,63 +116,6 @@
         1000
       ],
       "number": 12
-    },
-    {
-      "group": "dashboard",
-      "slug": "shared-dashboard",
-      "title": "Shared dashboard location and period context",
-      "findings": [
-        10
-      ],
-      "before": "images/dashboard/shared-dashboard-before.png",
-      "beforeSize": [
-        1280,
-        1048
-      ],
-      "after": "images/dashboard/shared-dashboard-after.png",
-      "afterSize": [
-        1280,
-        1048
-      ],
-      "number": 13
-    },
-    {
-      "group": "dashboard",
-      "slug": "compact-charts",
-      "title": "Readable labels in small comparison widgets",
-      "findings": [
-        11
-      ],
-      "before": "images/dashboard/compact-charts-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/dashboard/compact-charts-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 14
-    },
-    {
-      "group": "dashboard",
-      "slug": "chart-groups-limit",
-      "title": "Disclosed chart group limits",
-      "findings": [
-        11
-      ],
-      "before": "images/dashboard/chart-groups-limit-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/dashboard/chart-groups-limit-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 15
     },
     {
       "group": "operations",
@@ -312,28 +138,8 @@
     },
     {
       "group": "operations",
-      "slug": "operations-labels",
-      "title": "Label preparation actions",
-      "findings": [
-        12,
-        16
-      ],
-      "before": "images/operations/operations-labels-before.png",
-      "beforeSize": [
-        1280,
-        1285
-      ],
-      "after": "images/operations/operations-labels-after.png",
-      "afterSize": [
-        1280,
-        1285
-      ],
-      "number": 17
-    },
-    {
-      "group": "operations",
       "slug": "operations-label-preview",
-      "title": "Label preparation and print preview",
+      "title": "Label preparation wording and print preview",
       "findings": [
         16
       ],
@@ -348,26 +154,6 @@
         1285
       ],
       "number": 18
-    },
-    {
-      "group": "operations",
-      "slug": "operations-waste-report",
-      "title": "Waste quantity alignment and details",
-      "findings": [
-        13,
-        14
-      ],
-      "before": "images/operations/operations-waste-report-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/operations/operations-waste-report-after.png",
-      "afterSize": [
-        1280,
-        1125
-      ],
-      "number": 19
     },
     {
       "group": "operations",
@@ -388,25 +174,6 @@
         1000
       ],
       "number": 20
-    },
-    {
-      "group": "operations",
-      "slug": "operations-transfer-history",
-      "title": "Transfer details and temperature exceptions",
-      "findings": [
-        14
-      ],
-      "before": "images/operations/operations-transfer-history-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/operations/operations-transfer-history-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 21
     },
     {
       "group": "root",
@@ -467,44 +234,6 @@
     },
     {
       "group": "administration-focused",
-      "slug": "onlinepos-menus",
-      "title": "Visible missing menu mappings",
-      "findings": [
-        18
-      ],
-      "before": "images/administration-focused/onlinepos-menus-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/administration-focused/onlinepos-menus-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 25
-    },
-    {
-      "group": "administration-focused",
-      "slug": "workfeed-mappings",
-      "title": "Workfeed mapping attention list",
-      "findings": [
-        18
-      ],
-      "before": "images/administration-focused/workfeed-mappings-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/administration-focused/workfeed-mappings-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 26
-    },
-    {
-      "group": "administration-focused",
       "slug": "economic-connections",
       "title": "e-conomic agreement attention list",
       "findings": [
@@ -561,159 +290,6 @@
       "number": 29
     },
     {
-      "group": "administration-focused",
-      "slug": "recipe-units",
-      "title": "Product unit rows",
-      "findings": [
-        19
-      ],
-      "before": "images/administration-focused/recipe-units-before.png",
-      "beforeSize": [
-        594,
-        391
-      ],
-      "after": "images/administration-focused/recipe-units-after.png",
-      "afterSize": [
-        594,
-        365
-      ],
-      "number": 30
-    },
-    {
-      "group": "administration-focused",
-      "slug": "recipe-ingredients",
-      "title": "Shared ingredient columns and quieter guidance",
-      "findings": [
-        19
-      ],
-      "before": "images/administration-focused/recipe-ingredients-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/administration-focused/recipe-ingredients-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 31
-    },
-    {
-      "group": "operations",
-      "slug": "operations-transfer",
-      "title": "Transfer product groups",
-      "findings": [
-        20
-      ],
-      "before": "images/operations/operations-transfer-before.png",
-      "beforeSize": [
-        1280,
-        1275
-      ],
-      "after": "images/operations/operations-transfer-after.png",
-      "afterSize": [
-        1280,
-        1210
-      ],
-      "number": 32
-    },
-    {
-      "group": "operations",
-      "slug": "operations-invoice",
-      "title": "Invoice products within menu boundaries",
-      "findings": [
-        20
-      ],
-      "before": "images/operations/operations-invoice-before.png",
-      "beforeSize": [
-        1280,
-        1361
-      ],
-      "after": "images/operations/operations-invoice-after.png",
-      "afterSize": [
-        1280,
-        1257
-      ],
-      "number": 33
-    },
-    {
-      "group": "operations",
-      "slug": "operations-bad-registration",
-      "title": "Bad-delivery product groups",
-      "findings": [
-        20
-      ],
-      "before": "images/operations/operations-bad-registration-before.png",
-      "beforeSize": [
-        1280,
-        1573
-      ],
-      "after": "images/operations/operations-bad-registration-after.png",
-      "afterSize": [
-        1280,
-        1521
-      ],
-      "number": 34
-    },
-    {
-      "group": "operations",
-      "slug": "operations-pending",
-      "title": "Pending transfers grouped by date",
-      "findings": [
-        21
-      ],
-      "before": "images/operations/operations-pending-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/operations/operations-pending-after.png",
-      "afterSize": [
-        1280,
-        1105
-      ],
-      "number": 35
-    },
-    {
-      "group": "dashboard",
-      "slug": "dashboard-location-picker",
-      "title": "Visible single-location action",
-      "findings": [
-        22
-      ],
-      "before": "images/dashboard/dashboard-location-picker-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/dashboard/dashboard-location-picker-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 36
-    },
-    {
-      "group": "dashboard",
-      "slug": "dashboard-widget-settings",
-      "title": "Named widget actions and period override",
-      "findings": [
-        10,
-        22
-      ],
-      "before": "images/dashboard/dashboard-widget-settings-before.png",
-      "beforeSize": [
-        1280,
-        1000
-      ],
-      "after": "images/dashboard/dashboard-widget-settings-after.png",
-      "afterSize": [
-        1280,
-        1000
-      ],
-      "number": 37
-    },
-    {
       "group": "dashboard",
       "slug": "employee-schedule",
       "title": "Today selected and scheduled employees first",
@@ -735,7 +311,7 @@
     {
       "group": "dashboard",
       "slug": "own-check-follow-up",
-      "title": "Open deviations and follow-up actions first",
+      "title": "Open follow-up first with visible instructions",
       "findings": [
         24
       ],
@@ -747,28 +323,9 @@
       "after": "images/dashboard/own-check-follow-up-after.png",
       "afterSize": [
         1280,
-        1507
+        1713
       ],
       "number": 39
-    },
-    {
-      "group": "administration-focused",
-      "slug": "wolt-order",
-      "title": "Order columns, quiet mapping state and product IDs",
-      "findings": [
-        25
-      ],
-      "before": "images/administration-focused/wolt-order-before.png",
-      "beforeSize": [
-        384,
-        1000
-      ],
-      "after": "images/administration-focused/wolt-order-after.png",
-      "afterSize": [
-        384,
-        1000
-      ],
-      "number": 40
     },
     {
       "group": "dashboard",

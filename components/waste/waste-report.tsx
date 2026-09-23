@@ -508,11 +508,11 @@ export function WasteReport() {
                   <TableRow key={`${row.location}:${row.product}:${row.unit}`}>
                     <TableCell>{row.location}</TableCell>
                     <TableCell>{row.product}</TableCell>
-                    <TableCell appearance="numeric" className="text-right">
+                    <TableCell className="text-right">
                       {formatNumber(row.quantity)}
                     </TableCell>
                     <TableCell>{row.unit}</TableCell>
-                    <TableCell appearance="numeric" className="text-right">{row.count}</TableCell>
+                    <TableCell className="text-right">{row.count}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -553,19 +553,27 @@ export function WasteReport() {
                     <TableHead>Lokation</TableHead>
                     <TableHead>Medarbejder</TableHead>
                     <TableHead>Produkt</TableHead>
-                    <TableHead className="text-right">Mængde</TableHead>
+                    <TableHead>Mængde</TableHead>
                     <TableHead>Kilde</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead><span className="sr-only">Detaljer</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(results as Row[]).map((row) => (
                     <TableRow
                       key={row.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Åbn Waste-registrering for ${row.productName} på ${row.locationName}`}
                       appearance="selectable"
                       className="cursor-pointer"
                       onClick={() => setSelected(row)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelected(row);
+                        }
+                      }}
                     >
                       <TableCell>
                         {formatter.format(row.registeredAt)}
@@ -573,7 +581,7 @@ export function WasteReport() {
                       <TableCell>{row.locationName}</TableCell>
                       <TableCell>{row.registeredByName}</TableCell>
                       <TableCell>{row.productName}</TableCell>
-                      <TableCell appearance="numeric" className="text-right">
+                      <TableCell>
                         {formatNumber(row.quantity)} {row.unitName}
                       </TableCell>
                       <TableCell>
@@ -591,19 +599,6 @@ export function WasteReport() {
                         >
                           {row.status === "active" ? "Aktiv" : "Annulleret"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="outline"
-                          className="min-h-11"
-                          aria-label={`Se Waste-registrering for ${row.productName} på ${row.locationName}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelected(row);
-                          }}
-                        >
-                          Se registrering
-                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

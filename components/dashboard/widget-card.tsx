@@ -362,8 +362,8 @@ export function WidgetCard({
                   <div className="flex flex-wrap items-center gap-2">
                     {availableVisualizations.length ? (
                       <Dialog open={visualizationOpen} onOpenChange={setVisualizationOpen}>
-                        <DialogTrigger render={<Button type="button" variant="outline" className="min-h-11" aria-label={`Skift visualisering for ${metricLabel}`} />}>
-                          <ChartNoAxesCombinedIcon data-icon="inline-start" />Visualisering
+                        <DialogTrigger render={<Button type="button" variant="ghost" size="icon-lg" className="size-11" aria-label={`Skift visualisering for ${metricLabel}`} />}>
+                          <ChartNoAxesCombinedIcon />
                         </DialogTrigger>
                         <DialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-5xl">
                           <DialogHeader>
@@ -448,12 +448,13 @@ export function WidgetCard({
                     {onEditCustomMetric ? (
                       <Button
                         type="button"
-                        variant="outline"
-                        className="min-h-11"
+                        variant="ghost"
+                        size="icon-lg"
+                        className="size-11"
                         aria-label={`Redigér ${metricLabel}`}
                         onClick={onEditCustomMetric}
                       >
-                        <PencilIcon data-icon="inline-start" />Redigér måling
+                        <PencilIcon />
                       </Button>
                     ) : null}
                     {definition && supportsSalesSource(definition.id) && onSalesSourceChange ? (
@@ -492,8 +493,8 @@ export function WidgetCard({
                         </SelectGroup>
                       </SelectContent>
                     </Select> : null}
-                    <Button type="button" variant="destructive" className="min-h-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
-                      <MinusIcon data-icon="inline-start" />Fjern widget
+                    <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
+                      <MinusIcon />
                     </Button>
                   </div>
                 </PopoverContent>
@@ -501,9 +502,6 @@ export function WidgetCard({
             </div>
           ) : null}
         </div>
-        {!definition?.live && !financial && widget.range ? (
-          <CardDescription>{widgetRangeOptions.find((option) => option.value === widget.range)?.label}</CardDescription>
-        ) : null}
         {definition?.live && !compactLive ? <CardDescription>{definition.live.currentLabel}</CardDescription> : null}
         {financial ? <CardDescription>Månedsrapport · {financialRange?.preset === "thisMonth" ? "Denne måned"
           : financialRange?.preset === "custom" ? financialRange.from?.slice(0, 7) : "Vælg en kalendermåned"}</CardDescription> : null}

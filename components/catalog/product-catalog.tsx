@@ -511,22 +511,8 @@ export function ProductCatalog() {
   return (
     <div className="flex flex-col gap-7">
       <div className="sticky top-16 z-30 -mx-4 bg-background px-4 py-3 md:top-24 md:py-4">
-        <ToggleGroup
-          aria-label="Produktstatus"
-          variant="outline"
-          size="lg"
-          value={[status]}
-          onValueChange={(values) => {
-            const value = values[0];
-            if (value === "active" || value === "archived") changeStatus(value);
-          }}
-          className="mb-3"
-        >
-          <ToggleGroupItem value="active" className="min-h-11">Aktive</ToggleGroupItem>
-          <ToggleGroupItem value="archived" className="min-h-11">Arkiverede</ToggleGroupItem>
-        </ToggleGroup>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="relative min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-48 flex-1">
             <SearchIcon
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
@@ -540,6 +526,20 @@ export function ProductCatalog() {
               className="h-11"
             />
           </div>
+          <ToggleGroup
+            aria-label="Produktstatus"
+            variant="outline"
+            size="lg"
+            value={[status]}
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value === "active" || value === "archived") changeStatus(value);
+            }}
+            className="shrink-0"
+          >
+            <ToggleGroupItem value="active" className="min-h-11">Aktive</ToggleGroupItem>
+            <ToggleGroupItem value="archived" className="min-h-11">Arkiverede</ToggleGroupItem>
+          </ToggleGroup>
           <div className="flex flex-row flex-wrap items-center gap-3 md:flex-none">
             <Button
               type="button"

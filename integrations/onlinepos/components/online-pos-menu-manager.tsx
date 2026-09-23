@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -54,7 +55,11 @@ import { Input } from "@/components/ui/input";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -134,8 +139,7 @@ function MenuCard({
   menu: OnlinePosMenu;
   onEdit: (menu: OnlinePosMenu) => void;
 }) {
-  const unmappedCount = menu.products.filter((product) => !product.mapped).length;
-  const hasUnmappedProducts = unmappedCount > 0;
+  const hasUnmappedProducts = menu.products.some((product) => !product.mapped);
   const productCountLabel = `${menu.products.length.toLocaleString("da-DK")} ${
     menu.products.length === 1 ? "produkt" : "produkter"
   }`;
@@ -151,16 +155,23 @@ function MenuCard({
       }
       onClick={() => onEdit(menu)}
     >
-      <CardHeader>
+      <CardHeader className="items-center">
         <CardTitle appearance="truncate" className="min-w-0">{menu.name}</CardTitle>
         <CardDescription>{productCountLabel}</CardDescription>
         {hasUnmappedProducts ? (
-          <div>
-            <Badge variant="outline">
-              <CircleAlertIcon aria-hidden="true" />
-              {unmappedCount} {unmappedCount === 1 ? "produkt mangler" : "produkter mangler"} kobling
-            </Badge>
-          </div>
+          <CardAction className="self-center">
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className="inline-flex text-warning" />}
+              >
+                <CircleAlertIcon aria-hidden="true" />
+                <span className="sr-only">Produkter mangler kobling</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Et eller flere produkter mangler en OnlinePOS-kobling.
+              </TooltipContent>
+            </Tooltip>
+          </CardAction>
         ) : null}
       </CardHeader>
     </DialogTrigger>
