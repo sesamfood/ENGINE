@@ -4,6 +4,8 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { paginator } from "convex-helpers/server/pagination";
+import schema from "./schema";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -2181,7 +2183,7 @@ async function reportDailySummariesInRange(
       MAX_REPORT_SUMMARY_DOCUMENTS + 1,
     );
     if (!options) return { rows: [], complete: false };
-    const result = await ctx.db
+    const result = await paginator(ctx.db, schema)
       .query("wasteReportDailySummaries")
       .withIndex(
         "by_organizationId_and_locationId_and_dayStartAt",
@@ -2205,7 +2207,7 @@ async function reportDailySummariesInRange(
       const remaining = MAX_REPORT_SUMMARY_DOCUMENTS - rows.length;
       const options = await reportPaginationOptions(ctx, remaining + 1);
       if (!options) return { rows, complete: false };
-      const result = await ctx.db
+      const result = await paginator(ctx.db, schema)
         .query("wasteReportDailySummaries")
         .withIndex(
           "by_organizationId_and_locationId_and_dayStartAt",
@@ -2229,7 +2231,7 @@ async function reportDailySummariesInRange(
     MAX_REPORT_SUMMARY_DOCUMENTS + 1,
   );
   if (!options) return { rows: [], complete: false };
-  const result = await ctx.db
+  const result = await paginator(ctx.db, schema)
     .query("wasteReportDailySummaries")
     .withIndex("by_organizationId_and_dayStartAt", (q) =>
       q
@@ -2259,7 +2261,7 @@ async function activeReportRegistrationsInRange(
   if (isSingleLocationFilter(locationFilter)) {
     const options = await reportPaginationOptions(ctx, limit + 1);
     if (!options) return { rows: [], complete: false };
-    const result = await ctx.db
+    const result = await paginator(ctx.db, schema)
       .query("wasteRegistrations")
       .withIndex("by_org_location_status_time", (q) =>
         q
@@ -2282,7 +2284,7 @@ async function activeReportRegistrationsInRange(
       const remaining = limit - rows.length;
       const options = await reportPaginationOptions(ctx, remaining + 1);
       if (!options) return { rows, complete: false };
-      const result = await ctx.db
+      const result = await paginator(ctx.db, schema)
         .query("wasteRegistrations")
         .withIndex("by_org_location_status_time", (q) =>
           q
@@ -2303,7 +2305,7 @@ async function activeReportRegistrationsInRange(
   }
   const options = await reportPaginationOptions(ctx, limit + 1);
   if (!options) return { rows: [], complete: false };
-  const result = await ctx.db
+  const result = await paginator(ctx.db, schema)
     .query("wasteRegistrations")
     .withIndex("by_org_status_time", (q) =>
       q
