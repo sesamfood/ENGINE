@@ -12,7 +12,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -31,7 +30,15 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -45,6 +52,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
+import { dateKey, DEFAULT_TIME_ZONE, inclusiveDateRangeDays } from "@/lib/date";
 import { selectedLocationId } from "@/lib/location-preference";
 import { downloadOrderCsv } from "@/lib/ordering-csv";
 import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
@@ -58,7 +66,7 @@ const dateFormatter = new Intl.DateTimeFormat("da-DK", {
 const timestampFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "short",
   timeStyle: "short",
-  timeZone: "Europe/Copenhagen",
+  timeZone: DEFAULT_TIME_ZONE,
 });
 const numberFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
@@ -199,12 +207,20 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
   );
 }
 
-function HistoryList({ locationId }: { locationId: Id<"locations"> }) {
+function HistoryList({
+  locationId,
+  fromDate,
+  toDate,
+}: {
+  locationId: Id<"locations">;
+  fromDate: string;
+  toDate: string;
+}) {
   const [selectedOrderId, setSelectedOrderId] =
     useState<Id<"orders"> | null>(null);
   const { results, status, loadMore } = usePaginatedQuery(
     api.ordering.listHistory,
-    { locationId },
+    { locationId, range: { fromDate, toDate } },
     { initialNumItems: PAGE_SIZE },
   );
 
@@ -218,9 +234,9 @@ function HistoryList({ locationId }: { locationId: Id<"locations"> }) {
             <EmptyMedia variant="icon">
               <HistoryIcon />
             </EmptyMedia>
-            <EmptyTitle>Ingen bestillinger endnu</EmptyTitle>
+            <EmptyTitle>Ingen bestillinger i perioden</EmptyTitle>
             <EmptyDescription>
-              Bestillinger vises her, når du vælger Afgiv bestilling.
+              Vælg en anden periode, eller afgiv en ny bestilling.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -234,14 +250,26 @@ function HistoryList({ locationId }: { locationId: Id<"locations"> }) {
                   <TableHead>Dækker perioden</TableHead>
                   <TableHead>Afgivet af</TableHead>
                   <TableHead className="text-right">Produkter</TableHead>
-                  <TableHead>
-                    <span className="sr-only">Se bestilling</span>
-                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {results.map((order) => (
-                  <TableRow key={order._id}>
+                  <TableRow
+                    key={order._id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Åbn bestilling fra ${timestampFormatter.format(order.createdAt)}`}
+                    aria-haspopup="dialog"
+                    appearance="selectable"
+                    className="h-14 cursor-pointer"
+                    onClick={() => setSelectedOrderId(order._id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedOrderId(order._id);
+                      }
+                    }}
+                  >
                     <TableCell>
                       {timestampFormatter.format(order.createdAt)}
                     </TableCell>
@@ -254,16 +282,6 @@ function HistoryList({ locationId }: { locationId: Id<"locations"> }) {
                     <TableCell appearance="numeric" className="text-right">
                       {numberFormatter.format(order.itemCount)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        className="min-h-11"
-                        aria-label={`Se bestilling fra ${timestampFormatter.format(order.createdAt)}`}
-                        onClick={() => setSelectedOrderId(order._id)}
-                      >
-                        Se bestilling
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -272,7 +290,21 @@ function HistoryList({ locationId }: { locationId: Id<"locations"> }) {
           <ul className="flex flex-col gap-3 lg:hidden">
             {results.map((order) => (
               <li key={order._id}>
-                <Card>
+                <Card
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Åbn bestilling fra ${timestampFormatter.format(order.createdAt)}`}
+                  aria-haspopup="dialog"
+                  appearance="menu"
+                  className="cursor-pointer"
+                  onClick={() => setSelectedOrderId(order._id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedOrderId(order._id);
+                    }
+                  }}
+                >
                   <CardHeader>
                     <CardTitle>
                       {timestampFormatter.format(order.createdAt)}
@@ -289,16 +321,6 @@ function HistoryList({ locationId }: { locationId: Id<"locations"> }) {
                       </p>
                     </div>
                   </CardContent>
-                  <CardFooter>
-                    <Button
-                      variant="outline"
-                      className="min-h-11 w-full"
-                      aria-label={`Se bestilling fra ${timestampFormatter.format(order.createdAt)}`}
-                      onClick={() => setSelectedOrderId(order._id)}
-                    >
-                      Se bestilling
-                    </Button>
-                  </CardFooter>
                 </Card>
               </li>
             ))}
@@ -342,6 +364,18 @@ function HistoryList({ locationId }: { locationId: Id<"locations"> }) {
 
 function History({ organizationId }: { organizationId: string }) {
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
+  const [fromDate, setFromDate] = useState(
+    () => `${dateKey(Date.now(), DEFAULT_TIME_ZONE).slice(0, 8)}01`,
+  );
+  const [toDate, setToDate] = useState(
+    () => dateKey(Date.now(), DEFAULT_TIME_ZONE),
+  );
+  const rangeDays = inclusiveDateRangeDays(fromDate, toDate);
+  const rangeError = !Number.isFinite(rangeDays)
+    ? "Vælg både fra- og til-dato"
+    : rangeDays < 1
+      ? "Fra-dato skal være før eller samme dag som til-dato"
+      : null;
   const storedLocationId = useOrderingLocation(organizationId);
   const locationId = selectedLocationId({
     locations,
@@ -375,8 +409,51 @@ function History({ organizationId }: { organizationId: string }) {
           </Field>
         </div>
       </AppPageHeader>
+      <FieldSet className="max-w-lg">
+        <FieldLegend>Afgivet i perioden</FieldLegend>
+        <FieldGroup className="grid sm:grid-cols-2">
+          <Field data-invalid={Boolean(rangeError)}>
+            <FieldLabel htmlFor="ordering-history-from">Fra dato</FieldLabel>
+            <Input
+              id="ordering-history-from"
+              type="date"
+              className="h-11"
+              value={fromDate}
+              max={toDate || undefined}
+              onChange={(event) => setFromDate(event.target.value)}
+              aria-invalid={Boolean(rangeError)}
+              aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
+              required
+            />
+          </Field>
+          <Field data-invalid={Boolean(rangeError)}>
+            <FieldLabel htmlFor="ordering-history-to">Til dato</FieldLabel>
+            <Input
+              id="ordering-history-to"
+              type="date"
+              className="h-11"
+              value={toDate}
+              min={fromDate || undefined}
+              onChange={(event) => setToDate(event.target.value)}
+              aria-invalid={Boolean(rangeError)}
+              aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
+              required
+            />
+          </Field>
+        </FieldGroup>
+        {rangeError ? (
+          <FieldError id="ordering-history-range-error">{rangeError}</FieldError>
+        ) : null}
+      </FieldSet>
       {locationId ? (
-        <HistoryList key={locationId} locationId={locationId} />
+        !rangeError ? (
+          <HistoryList
+            key={`${locationId}:${fromDate}:${toDate}`}
+            locationId={locationId}
+            fromDate={fromDate}
+            toDate={toDate}
+          />
+        ) : null
       ) : (
         <Empty appearance="outlined" className="min-h-72">
           <EmptyHeader>

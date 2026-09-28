@@ -1665,7 +1665,8 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Kontrollér Lokation og mængder. Vælg Afgiv bestilling, og bekræft. Alle Produkter med mængder over nul medtages, også uden for søgningen. Der kan højst medtages 500 Produkter.",
               "Bestillingen gemmes med de valgte mængder og åbnes i Bestillingshistorik. Den sendes ikke automatisk til en leverandør.",
-              "Vælg Se bestilling for at se Produkter, enheder, mængder og hvem der afgav bestillingen. Vælg Eksportér CSV, hvis du vil hente bestillingen som fil.",
+              "Vælg Fra dato og Til dato under Afgivet i perioden for at filtrere efter bestillingernes afgivelsesdato. Historikken viser som udgangspunkt den aktuelle måned.",
+              "Tryk på en bestilling for at se Produkter, enheder, mængder og hvem der afgav bestillingen. Vælg Eksportér CSV, hvis du vil hente bestillingen som fil.",
             ],
           },
           {

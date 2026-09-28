@@ -4,7 +4,12 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v, type Infer } from "convex/values";
-import { parseDateKey } from "../lib/date";
+import {
+  addDays,
+  DEFAULT_TIME_ZONE,
+  parseDateKey,
+  zonedStart,
+} from "../lib/date";
 import {
   MAX_ORDER_QUANTITY,
   ORDER_HISTORY_DAYS,
@@ -589,16 +594,39 @@ export const placeOrder = mutation({
 export const listHistory = query({
   args: {
     locationId: v.id("locations"),
+    range: v.optional(v.object({ fromDate: v.string(), toDate: v.string() })),
     paginationOpts: paginationOptsValidator,
   },
   returns: paginationResultValidator(historySummaryValidator),
   handler: async (ctx, args) => {
     const { organizationId } = await requirePlanner(ctx, args.locationId);
+    let range: { from: number; to: number } | undefined;
+    if (args.range) {
+      const { fromDate, toDate } = args.range;
+      try {
+        range = {
+          from: zonedStart(fromDate, DEFAULT_TIME_ZONE),
+          to: zonedStart(addDays(toDate, 1), DEFAULT_TIME_ZONE),
+        };
+      } catch {
+        throw new ConvexError("Datoerne er ugyldige");
+      }
+      if (fromDate > toDate) {
+        throw new ConvexError(
+          "Startdatoen skal være før eller samme dag som slutdatoen",
+        );
+      }
+    }
     const result = await ctx.db
       .query("orders")
-      .withIndex("by_organizationId_and_locationId_and_createdAt", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", args.locationId),
-      )
+      .withIndex("by_organizationId_and_locationId_and_createdAt", (q) => {
+        const byLocation = q
+          .eq("organizationId", organizationId)
+          .eq("locationId", args.locationId);
+        return range
+          ? byLocation.gte("createdAt", range.from).lt("createdAt", range.to)
+          : byLocation;
+      })
       .order("desc")
       .paginate(args.paginationOpts);
     return { ...result, page: result.page.map(historySummary) };
