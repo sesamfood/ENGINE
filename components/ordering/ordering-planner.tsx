@@ -6,6 +6,7 @@ import { selectedLocationId } from "@/lib/location-preference";
 
 import { useLastDefined } from "@/lib/use-last-defined";
 
+import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader } from "@/components/app-page-header";
 
 import { useConvex, useMutation, useQuery } from "convex/react";
@@ -461,7 +462,7 @@ function Planner() {
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 pb-72 sm:pb-56 lg:pb-40">
           <Card>
             <CardHeader>
               <CardTitle>Bestillingsforslag</CardTitle>
@@ -736,47 +737,50 @@ function Planner() {
               </Table>
             </div>
           )}
-          <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4">
-            <div>
-              <p className="font-medium">
-                {planned.length} produkter i bestillingen
-              </p>
-              <p className="text-sm text-muted-foreground">
-                CSV indeholder alle medtagne produkter med mængder over 0, også
-                uden for søgningen.
-              </p>
+          <AppBottomBar>
+            <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <div className="min-w-0 sm:flex-1">
+                <p className="font-medium">
+                  {planned.length} produkter i bestillingen
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  CSV indeholder alle medtagne produkter med mængder over 0, også
+                  uden for søgningen.
+                </p>
+              </div>
+              <Button
+                size="lg"
+                className="h-12 w-full sm:w-auto sm:min-w-52"
+                disabled={
+                  !canExport ||
+                  loading ||
+                  !validSettings ||
+                  invalidQuantity ||
+                  planned.length === 0 ||
+                  planned.length > 500 ||
+                  exporting
+                }
+                onClick={() => void exportPlan()}
+              >
+                {exporting ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <DownloadIcon data-icon="inline-start" />
+                )}
+                Eksportér CSV
+              </Button>
+              {!canExport ? (
+                <p className="w-full text-sm text-muted-foreground">
+                  Du mangler adgang til at eksportere bestillinger.
+                </p>
+              ) : null}
+              {planned.length > 500 ? (
+                <FieldError className="w-full">
+                  Eksportér højst 500 produkter ad gangen.
+                </FieldError>
+              ) : null}
             </div>
-            <Button
-              size="lg"
-              disabled={
-                !canExport ||
-                loading ||
-                !validSettings ||
-                invalidQuantity ||
-                planned.length === 0 ||
-                planned.length > 500 ||
-                exporting
-              }
-              onClick={() => void exportPlan()}
-            >
-              {exporting ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <DownloadIcon data-icon="inline-start" />
-              )}
-              Eksportér CSV
-            </Button>
-            {!canExport ? (
-              <p className="w-full text-sm text-muted-foreground">
-                Du mangler adgang til at eksportere bestillinger.
-              </p>
-            ) : null}
-            {planned.length > 500 ? (
-              <FieldError className="w-full">
-                Eksportér højst 500 produkter ad gangen.
-              </FieldError>
-            ) : null}
-          </div>
+          </AppBottomBar>
         </div>
       )}
     </>
