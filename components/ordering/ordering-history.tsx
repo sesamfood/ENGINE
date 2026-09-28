@@ -1,6 +1,7 @@
 "use client";
 
 import { useConvex, usePaginatedQuery, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { DownloadIcon, HistoryIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -53,6 +54,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { dateKey, DEFAULT_TIME_ZONE, inclusiveDateRangeDays } from "@/lib/date";
+import { downloadCsv } from "@/lib/download-csv";
 import { selectedLocationId } from "@/lib/location-preference";
 import { downloadOrderCsv } from "@/lib/ordering-csv";
 import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
@@ -364,6 +366,11 @@ function HistoryList({
 
 function History({ organizationId }: { organizationId: string }) {
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
+  const convex = useConvex();
+  const canExport = usePermission("ordering.export");
+  const [exporting, setExporting] = useState(false);
+  const exportInFlight = useRef(false);
+  const mounted = useRef(true);
   const [fromDate, setFromDate] = useState(
     () => `${dateKey(Date.now(), DEFAULT_TIME_ZONE).slice(0, 8)}01`,
   );
@@ -383,6 +390,89 @@ function History({ organizationId }: { organizationId: string }) {
     lockedId,
     isLocked,
   });
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  async function exportPeriod() {
+    if (!canExport || !locationId || rangeError || exportInFlight.current) return;
+    exportInFlight.current = true;
+    setExporting(true);
+    try {
+      const rows: string[][] = [];
+      let cursor: string | null = null;
+      let isDone = false;
+
+      while (!isDone) {
+        const result: FunctionReturnType<typeof api.ordering.listHistory> =
+          await convex.query(api.ordering.listHistory, {
+            locationId,
+            range: { fromDate, toDate },
+            paginationOpts: { numItems: 5, maximumRowsRead: 5, cursor },
+          });
+        if (!mounted.current) return;
+        const orders = await Promise.all(
+          result.page.map((order) =>
+            convex.query(api.ordering.exportHistory, { orderId: order._id }),
+          ),
+        );
+        if (!mounted.current) return;
+        for (const order of orders) {
+          rows.push(
+            ...order.rows.map((row) => [
+              order._id,
+              timestampFormatter.format(order.createdAt),
+              order.createdByName,
+              order.locationName,
+              order.fromDate,
+              order.toDate,
+              row.productId,
+              row.productName,
+              String(row.quantity).replace(".", ","),
+              row.unitName,
+            ]),
+          );
+        }
+        cursor = result.continueCursor;
+        isDone = result.isDone;
+      }
+
+      if (!rows.length) {
+        toast.info("Ingen bestillinger i den valgte periode");
+        return;
+      }
+      downloadCsv(
+        `bestillinger-${fromDate}-${toDate}-${locationId}.csv`,
+        [
+          "Bestilling-id",
+          "Afgivet",
+          "Afgivet af",
+          "Lokation",
+          "Fra dato",
+          "Til dato",
+          "Produkt-id",
+          "Produkt",
+          "Mængde",
+          "Enhed",
+        ],
+        rows,
+      );
+      toast.success("Bestillingerne er eksporteret som CSV");
+    } catch (error) {
+      if (mounted.current) {
+        toast.error(
+          getUserErrorMessage(error, "Perioden kunne ikke eksporteres"),
+        );
+      }
+    } finally {
+      exportInFlight.current = false;
+      if (mounted.current) setExporting(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5 pb-(--spacing-safe-actions-compact)">
@@ -405,46 +495,65 @@ function History({ organizationId }: { organizationId: string }) {
               onValueChange={(value) => setOrderingLocation(organizationId, value)}
               locked={isLocked}
               lockedName={lockedName}
+              disabled={exporting || !locations.length}
             />
           </Field>
         </div>
       </AppPageHeader>
-      <FieldSet className="max-w-lg">
-        <FieldLegend>Afgivet i perioden</FieldLegend>
-        <FieldGroup className="grid sm:grid-cols-2">
-          <Field data-invalid={Boolean(rangeError)}>
-            <FieldLabel htmlFor="ordering-history-from">Fra dato</FieldLabel>
-            <Input
-              id="ordering-history-from"
-              type="date"
-              className="h-11"
-              value={fromDate}
-              max={toDate || undefined}
-              onChange={(event) => setFromDate(event.target.value)}
-              aria-invalid={Boolean(rangeError)}
-              aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
-              required
-            />
-          </Field>
-          <Field data-invalid={Boolean(rangeError)}>
-            <FieldLabel htmlFor="ordering-history-to">Til dato</FieldLabel>
-            <Input
-              id="ordering-history-to"
-              type="date"
-              className="h-11"
-              value={toDate}
-              min={fromDate || undefined}
-              onChange={(event) => setToDate(event.target.value)}
-              aria-invalid={Boolean(rangeError)}
-              aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
-              required
-            />
-          </Field>
-        </FieldGroup>
-        {rangeError ? (
-          <FieldError id="ordering-history-range-error">{rangeError}</FieldError>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <FieldSet className="w-full max-w-lg" disabled={exporting}>
+          <FieldLegend>Afgivet i perioden</FieldLegend>
+          <FieldGroup className="grid sm:grid-cols-2">
+            <Field data-invalid={Boolean(rangeError)}>
+              <FieldLabel htmlFor="ordering-history-from">Fra dato</FieldLabel>
+              <Input
+                id="ordering-history-from"
+                type="date"
+                className="h-11"
+                value={fromDate}
+                max={toDate || undefined}
+                onChange={(event) => setFromDate(event.target.value)}
+                aria-invalid={Boolean(rangeError)}
+                aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
+                required
+              />
+            </Field>
+            <Field data-invalid={Boolean(rangeError)}>
+              <FieldLabel htmlFor="ordering-history-to">Til dato</FieldLabel>
+              <Input
+                id="ordering-history-to"
+                type="date"
+                className="h-11"
+                value={toDate}
+                min={fromDate || undefined}
+                onChange={(event) => setToDate(event.target.value)}
+                aria-invalid={Boolean(rangeError)}
+                aria-describedby={rangeError ? "ordering-history-range-error" : undefined}
+                required
+              />
+            </Field>
+          </FieldGroup>
+          {rangeError ? (
+            <FieldError id="ordering-history-range-error">{rangeError}</FieldError>
+          ) : null}
+        </FieldSet>
+        {canExport ? (
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-11 shrink-0"
+            disabled={exporting || !locationId || Boolean(rangeError)}
+            onClick={() => void exportPeriod()}
+          >
+            {exporting ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <DownloadIcon data-icon="inline-start" />
+            )}
+            Eksportér CSV
+          </Button>
         ) : null}
-      </FieldSet>
+      </div>
       {locationId ? (
         !rangeError ? (
           <HistoryList
