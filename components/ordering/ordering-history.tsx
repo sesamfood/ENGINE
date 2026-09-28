@@ -8,6 +8,16 @@ import { toast } from "sonner";
 import { AppPageHeader } from "@/components/app-page-header";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -73,6 +83,12 @@ const timestampFormatter = new Intl.DateTimeFormat("da-DK", {
 const numberFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
 });
+
+type PeriodExport = {
+  filename: string;
+  rows: string[][];
+  orderCount: number;
+};
 
 function formatPeriod(fromDate: string, toDate: string) {
   return `${dateFormatter.format(new Date(`${fromDate}T00:00:00Z`))} til ${dateFormatter.format(new Date(`${toDate}T00:00:00Z`))}`;
@@ -369,6 +385,8 @@ function History({ organizationId }: { organizationId: string }) {
   const convex = useConvex();
   const canExport = usePermission("ordering.export");
   const [exporting, setExporting] = useState(false);
+  const [pendingExport, setPendingExport] = useState<PeriodExport | null>(null);
+  const exportBusy = exporting || pendingExport !== null;
   const exportInFlight = useRef(false);
   const mounted = useRef(true);
   const [fromDate, setFromDate] = useState(
@@ -398,12 +416,45 @@ function History({ organizationId }: { organizationId: string }) {
     };
   }, []);
 
+  function downloadPeriodExport(data: PeriodExport) {
+    if (!canExport) return;
+    try {
+      downloadCsv(
+        data.filename,
+        [
+          "Bestilling-id",
+          "Afgivet",
+          "Afgivet af",
+          "Lokation",
+          "Fra dato",
+          "Til dato",
+          "Produkt-id",
+          "Produkt",
+          "Mængde",
+          "Enhed",
+        ],
+        data.rows,
+      );
+      setPendingExport(null);
+      toast.success("Bestillingerne er eksporteret som CSV");
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Perioden kunne ikke eksporteres"));
+    }
+  }
+
   async function exportPeriod() {
-    if (!canExport || !locationId || rangeError || exportInFlight.current) return;
+    if (
+      !canExport ||
+      !locationId ||
+      rangeError ||
+      exportInFlight.current ||
+      pendingExport
+    ) return;
     exportInFlight.current = true;
     setExporting(true);
     try {
       const rows: string[][] = [];
+      let orderCount = 0;
       let cursor: string | null = null;
       let isDone = false;
 
@@ -421,6 +472,7 @@ function History({ organizationId }: { organizationId: string }) {
           ),
         );
         if (!mounted.current) return;
+        orderCount += orders.length;
         for (const order of orders) {
           rows.push(
             ...order.rows.map((row) => [
@@ -445,23 +497,16 @@ function History({ organizationId }: { organizationId: string }) {
         toast.info("Ingen bestillinger i den valgte periode");
         return;
       }
-      downloadCsv(
-        `bestillinger-${fromDate}-${toDate}-${locationId}.csv`,
-        [
-          "Bestilling-id",
-          "Afgivet",
-          "Afgivet af",
-          "Lokation",
-          "Fra dato",
-          "Til dato",
-          "Produkt-id",
-          "Produkt",
-          "Mængde",
-          "Enhed",
-        ],
+      const data = {
+        filename: `bestillinger-${fromDate}-${toDate}-${locationId}.csv`,
         rows,
-      );
-      toast.success("Bestillingerne er eksporteret som CSV");
+        orderCount,
+      };
+      if (orderCount > 1) {
+        setPendingExport(data);
+      } else {
+        downloadPeriodExport(data);
+      }
     } catch (error) {
       if (mounted.current) {
         toast.error(
@@ -495,13 +540,13 @@ function History({ organizationId }: { organizationId: string }) {
               onValueChange={(value) => setOrderingLocation(organizationId, value)}
               locked={isLocked}
               lockedName={lockedName}
-              disabled={exporting || !locations.length}
+              disabled={exportBusy || !locations.length}
             />
           </Field>
         </div>
       </AppPageHeader>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <FieldSet className="w-full max-w-lg" disabled={exporting}>
+        <FieldSet className="w-full max-w-lg" disabled={exportBusy}>
           <FieldLegend>Afgivet i perioden</FieldLegend>
           <FieldGroup className="grid sm:grid-cols-2">
             <Field data-invalid={Boolean(rangeError)}>
@@ -542,7 +587,7 @@ function History({ organizationId }: { organizationId: string }) {
             variant="outline"
             size="lg"
             className="h-11 shrink-0"
-            disabled={exporting || !locationId || Boolean(rangeError)}
+            disabled={exportBusy || !locationId || Boolean(rangeError)}
             onClick={() => void exportPeriod()}
           >
             {exporting ? (
@@ -573,6 +618,35 @@ function History({ organizationId }: { organizationId: string }) {
           </EmptyHeader>
         </Empty>
       )}
+      <AlertDialog
+        open={pendingExport !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingExport(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eksportér alle bestillinger?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dette eksporterer alle {pendingExport?.orderCount} bestillinger i
+              den valgte periode for den valgte lokation i én CSV-fil. Du kan
+              eksportere en enkelt bestilling ved at vælge den i listen og
+              derefter vælge Eksportér CSV.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annullér</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!canExport}
+              onClick={() => {
+                if (pendingExport) downloadPeriodExport(pendingExport);
+              }}
+            >
+              Eksportér alle
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
