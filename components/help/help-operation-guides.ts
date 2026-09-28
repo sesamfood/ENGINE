@@ -1577,14 +1577,14 @@ export const operationFeatures: HelpFeature[] = [
     slug: "bestilling",
     label: "Bestilling",
     summary:
-      "Beregn et forslag ud fra forbrug og lager, og eksportér en bestillingsplan.",
+      "Beregn et forslag ud fra forbrug og lager, og gem bestillingen i historikken.",
     icon: ShoppingCartIcon,
     guides: [
       {
         slug: "overblik",
         label: "Overblik",
         summary:
-          "Beregn et forslag ud fra forbrug og lager, og eksportér en bestillingsplan.",
+          "Beregn et forslag ud fra forbrug og lager, og gem bestillingen i historikken.",
         appHref: "/ordering",
         appLinkLabel: "Åbn Bestilling",
         sections: [
@@ -1592,7 +1592,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Bestilling",
             paragraphs: [
-              "Bestilling beregner et forslag ud fra forventet forbrug, lager, åbningstider og en buffer. Du gennemgår og retter mængderne, før planen eksporteres som CSV.",
+              "Bestilling beregner et forslag ud fra forventet forbrug, lager, åbningstider og en buffer. Du gennemgår og retter mængderne, før du afgiver bestillingen. Bestillingshistorik gemmer de afgivne bestillinger. CSV-eksport er en separat handling.",
             ],
           },
           {
@@ -1600,7 +1600,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Fra opsætning til daglig brug",
             steps: [
               "Kontrollér datagrundlaget, og vælg Lokation, dækning og buffer.",
-              "Gennemgå forslag og advarsler, ret mængderne, og eksportér planen. CSV-filen sender ikke en bestilling til en leverandør.",
+              "Gennemgå forslag og advarsler, ret mængderne, og vælg Afgiv bestilling. Hverken denne handling eller CSV-eksport sender automatisk noget til en leverandør.",
             ],
           },
           {
@@ -1608,7 +1608,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Før du starter",
             bullets: [
               "Produkter, enheder, ingredienser og produktkoblinger skal være korrekte. Lager og åbningstider skal være ajour.",
-              "Din rolle skal give adgang til planlægning og eksport.",
+              "Din rolle skal give adgang til planlægning. At afgive bestillinger og eksportere CSV kræver hver sin adgang.",
               "Indgående leverancer indgår ikke i forslaget. Tag højde for allerede bestilte Produkter.",
             ],
           },
@@ -1616,9 +1616,9 @@ export const operationFeatures: HelpFeature[] = [
       },
       {
         slug: "forslag",
-        label: "Beregn og eksportér et forslag",
+        label: "Beregn og afgiv en bestilling",
         summary:
-          "Klargør forbrugsgrundlaget, tilpas dækning og buffer, og eksportér mængderne som CSV.",
+          "Tilpas dækning og buffer, afgiv en bestilling, og find den i bestillingshistorikken. CSV kan eksporteres særskilt.",
         appHref: "/ordering",
         appLinkLabel: "Åbn Bestilling",
         sections: [
@@ -1660,12 +1660,21 @@ export const operationFeatures: HelpFeature[] = [
             ],
           },
           {
+            id: "afgiv",
+            title: "Afgiv bestillingen",
+            steps: [
+              "Kontrollér Lokation og mængder. Vælg Afgiv bestilling, og bekræft. Alle Produkter med mængder over nul medtages, også uden for søgningen. Der kan højst medtages 500 Produkter.",
+              "Bestillingen gemmes med de valgte mængder og åbnes i Bestillingshistorik. Den sendes ikke automatisk til en leverandør.",
+              "Vælg Se bestilling for at se Produkter, enheder, mængder og hvem der afgav bestillingen. Vælg Eksportér CSV, hvis du vil hente bestillingen som fil.",
+            ],
+          },
+          {
             id: "csv",
             title: "Eksportér planen",
             steps: [
               "Kontrollér antallet af Produkter i bestillingen. CSV medtager alle mængder over nul, også Produkter uden for den aktuelle søgning.",
               "Vælg Eksportér CSV. Du skal have eksportadgang, og der kan højst eksporteres 500 Produkter ad gangen.",
-              "Kontrollér Lokation, datoer, Produkter, enheder og mængder i filen. Eksporten er en plan; den sender ikke en bestilling til en leverandør.",
+              "Kontrollér Lokation, datoer, Produkter, enheder og mængder i filen. CSV-eksport opretter ikke en bestilling i historikken og sender ikke noget til en leverandør.",
             ],
           },
         ],

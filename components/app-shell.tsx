@@ -1220,7 +1220,8 @@ export function AppShell({
   const showIntegrationsBack = pathname.startsWith("/administration/integrations/");
   const showCountHeader =
     pathname === "/count" || pathname.startsWith("/count/");
-  const showOrderingHeader = pathname === "/ordering";
+  const showOrderingHeader =
+    pathname === "/ordering" || pathname.startsWith("/ordering/");
   const showWasteHeader =
     pathname === "/waste" || pathname.startsWith("/waste/");
   const showOwnChecksHeader =

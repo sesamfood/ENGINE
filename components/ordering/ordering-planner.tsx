@@ -10,6 +10,7 @@ import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader } from "@/components/app-page-header";
 
 import { useConvex, useMutation, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import {
   DownloadIcon,
   PackageOpenIcon,
@@ -17,7 +18,7 @@ import {
   SearchIcon,
   ShoppingCartIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   useAccess,
@@ -26,6 +27,16 @@ import {
 } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,10 +67,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
-import { downloadCsv } from "@/lib/download-csv";
+import { downloadOrderCsv } from "@/lib/ordering-csv";
+import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
 import {
   forecastOrder,
   parseOrderQuantity,
@@ -71,29 +82,39 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 const numberFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
 });
-const csvNumber = (quantity: number) => String(quantity).replace(".", ",");
 const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
 
-export function OrderingPlanner() {
+export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
   const { data: session } = authClient.useSession();
+  const organizationId = session?.session.activeOrganizationId;
+  if (!organizationId) return <Skeleton className="h-96 w-full" />;
   return (
     <Planner
-      key={`${session?.session.activeOrganizationId}:${session?.user.id}`}
+      key={`${organizationId}:${session.user.id}`}
+      organizationId={organizationId}
+      navigation={navigation}
     />
   );
 }
 
-function Planner() {
+function Planner({
+  navigation,
+  organizationId,
+}: {
+  navigation?: ReactNode;
+  organizationId: string;
+}) {
   const access = useAccess();
   const canPlan =
     usePermission("ordering.plan") && !access?.kiosk?.kioskModeEnabled;
   const canExport = usePermission("ordering.export");
+  const canPlace = usePermission("ordering.place");
+  const router = useRouter();
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
-  const [selectedLocation, setSelectedLocation] =
-    useState<Id<"locations"> | null>(null);
+  const storedLocationId = useOrderingLocation(organizationId);
   const locationId = selectedLocationId({
     locations,
-    storedId: selectedLocation,
+    storedId: storedLocationId,
     lockedId,
     isLocked,
   });
@@ -103,7 +124,12 @@ function Planner() {
   const [search, setSearch] = useState("");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const busy = exporting || placing;
+  const submitting = useRef(false);
   const convex = useConvex();
+  const placeOrder = useMutation(api.ordering.placeOrder);
   const refreshEnvironment = useMutation(api.forecasts.requestRefresh);
   const settings = useQuery(
     api.orderingSettings.getSettings,
@@ -326,11 +352,11 @@ function Planner() {
             value={locationId}
             locked={isLocked}
             lockedName={lockedName}
-            disabled={exporting || !locations.length}
+            disabled={busy || !locations.length}
             onValueChange={(value) => {
               const location = locations.find((item) => item.id === value);
               if (location) {
-                setSelectedLocation(location.id);
+                setOrderingLocation(organizationId, location.id);
                 setAsOf(currentMinute());
               }
             }}
@@ -348,9 +374,11 @@ function Planner() {
       !validSettings ||
       invalidQuantity ||
       !planned.length ||
-      exporting
+      busy
     )
       return;
+    if (submitting.current) return;
+    submitting.current = true;
     setExporting(true);
     try {
       const result = await convex.query(api.ordering.prepareExport, {
@@ -368,27 +396,12 @@ function Planner() {
         ),
       });
       if (!mounted.current) return;
-      downloadCsv(
-        `bestilling-${context.today}-${locationId}.csv`,
-        [
-          "Lokation",
-          "Fra dato",
-          "Til dato",
-          "Produkt-id",
-          "Produkt",
-          "Enhed",
-          "Mængde",
-        ],
-        result.rows.map((row) => [
-          result.locationName,
-          context.today,
-          shiftOrderDate(context.today, coverageDays - 1),
-          row.productId,
-          row.productName,
-          row.unitName,
-          csvNumber(row.quantity),
-        ]),
-      );
+      downloadOrderCsv({
+        ...result,
+        locationId,
+        fromDate: context.today,
+        toDate: shiftOrderDate(context.today, coverageDays - 1),
+      });
       toast.success("Bestillingen er eksporteret som CSV");
     } catch (error) {
       if (mounted.current)
@@ -396,7 +409,49 @@ function Planner() {
           getUserErrorMessage(error, "Bestillingen kunne ikke eksporteres"),
         );
     } finally {
+      submitting.current = false;
       if (mounted.current) setExporting(false);
+    }
+  }
+
+  async function submitOrder() {
+    if (
+      !canPlace ||
+      !locationId ||
+      !context ||
+      loading ||
+      !validSettings ||
+      invalidQuantity ||
+      !planned.length ||
+      planned.length > 500 ||
+      submitting.current
+    ) return;
+    submitting.current = true;
+    setPlacing(true);
+    try {
+      await placeOrder({
+        locationId,
+        fromDate: context.today,
+        coverageDays,
+        bufferPercent,
+        lines: planned.flatMap((row) =>
+          row.quantity === null
+            ? []
+            : [{ productId: row.id, unitId: row.unitId, quantity: row.quantity }],
+        ),
+      });
+      if (!mounted.current) return;
+      setOrderingLocation(organizationId, locationId);
+      setConfirming(false);
+      toast.success("Bestillingen er gemt i bestillingshistorikken");
+      router.push("/ordering/history");
+    } catch (error) {
+      if (mounted.current) {
+        toast.error(getUserErrorMessage(error, "Bestillingen kunne ikke afgives"));
+      }
+    } finally {
+      submitting.current = false;
+      if (mounted.current) setPlacing(false);
     }
   }
 
@@ -411,7 +466,7 @@ function Planner() {
           value={row.input}
           inputMode="decimal"
           className="h-11"
-          disabled={exporting}
+          disabled={busy}
           aria-invalid={row.quantity === null}
           onChange={(event) =>
             setOverrides((current) => ({
@@ -425,7 +480,7 @@ function Planner() {
             type="button"
             variant="ghost"
             size="sm"
-            disabled={exporting}
+            disabled={busy}
             onClick={() =>
               setOverrides((current) => {
                 const next = { ...current };
@@ -487,7 +542,7 @@ function Planner() {
                     step={1}
                     value={coverageInput}
                     className="h-11"
-                    disabled={exporting}
+                    disabled={busy}
                     aria-invalid={!validCoverage}
                     onChange={(event) => setCoverageInput(event.target.value)}
                   />
@@ -509,7 +564,7 @@ function Planner() {
                     max={100}
                     value={bufferInput}
                     className="h-11"
-                    disabled={exporting}
+                    disabled={busy}
                     aria-invalid={!validBuffer}
                     onChange={(event) => setBufferInput(event.target.value)}
                   />
@@ -587,7 +642,7 @@ function Planner() {
                   <Button
                     variant="outline"
                     size="lg"
-                    disabled={exporting || loading}
+                    disabled={busy || loading}
                     onClick={async () => {
                       setAsOf(currentMinute());
                       if (!locationId) return;
@@ -737,52 +792,114 @@ function Planner() {
               </Table>
             </div>
           )}
+          {!canExport ? (
+            <p className="text-sm text-muted-foreground">
+              Du mangler adgang til at eksportere bestillinger.
+            </p>
+          ) : null}
+          {!canPlace ? (
+            <p className="text-sm text-muted-foreground">
+              Du mangler adgang til at afgive bestillinger.
+            </p>
+          ) : null}
+          {planned.length > 500 ? (
+            <FieldError>Vælg højst 500 produkter ad gangen.</FieldError>
+          ) : null}
           <AppBottomBar>
-            <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-              <div className="min-w-0 sm:flex-1">
+            <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-2">
+              <div className="flex items-center gap-1">
                 <p className="font-medium">
                   {planned.length} produkter i bestillingen
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  CSV indeholder alle medtagne produkter med mængder over 0, også
-                  uden for søgningen.
-                </p>
+                <HelpTooltip
+                  label="produkter i bestillingen"
+                  content="Bestillingen og CSV-filen indeholder alle medtagne produkter med mængder over 0, også uden for søgningen."
+                />
               </div>
-              <Button
-                size="lg"
-                className="h-12 w-full sm:w-auto sm:min-w-52"
-                disabled={
-                  !canExport ||
-                  loading ||
-                  !validSettings ||
-                  invalidQuantity ||
-                  planned.length === 0 ||
-                  planned.length > 500 ||
-                  exporting
-                }
-                onClick={() => void exportPlan()}
-              >
-                {exporting ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <DownloadIcon data-icon="inline-start" />
-                )}
-                Eksportér CSV
-              </Button>
-              {!canExport ? (
-                <p className="w-full text-sm text-muted-foreground">
-                  Du mangler adgang til at eksportere bestillinger.
-                </p>
-              ) : null}
-              {planned.length > 500 ? (
-                <FieldError className="w-full">
-                  Eksportér højst 500 produkter ad gangen.
-                </FieldError>
-              ) : null}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                {navigation ? <div className="min-w-0" inert={busy}>{navigation}</div> : null}
+                <div className="flex flex-wrap gap-2 sm:ml-auto">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="h-12 flex-1 sm:flex-none"
+                    disabled={
+                      !canExport ||
+                      loading ||
+                      !validSettings ||
+                      invalidQuantity ||
+                      planned.length === 0 ||
+                      planned.length > 500 ||
+                      busy
+                    }
+                    onClick={() => void exportPlan()}
+                  >
+                    {exporting ? (
+                      <Spinner data-icon="inline-start" />
+                    ) : (
+                      <DownloadIcon data-icon="inline-start" />
+                    )}
+                    Eksportér CSV
+                  </Button>
+                  <Button
+                    size="lg"
+                    className="h-12 flex-1 sm:flex-none"
+                    disabled={
+                      !canPlace ||
+                      loading ||
+                      !validSettings ||
+                      invalidQuantity ||
+                      planned.length === 0 ||
+                      planned.length > 500 ||
+                      busy
+                    }
+                    onClick={() => setConfirming(true)}
+                  >
+                    Afgiv bestilling
+                  </Button>
+                </div>
+              </div>
             </div>
           </AppBottomBar>
+          <AlertDialog
+            open={confirming}
+            onOpenChange={(open) => {
+              if (!submitting.current) setConfirming(open);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Afgiv bestillingen?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Bestillingen med {planned.length} produkter gemmes i
+                  bestillingshistorikken for {locations.find((location) => location.id === locationId)?.name}.
+                  Den sendes ikke automatisk til en leverandør.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={placing}>Annullér</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={placing}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void submitOrder();
+                  }}
+                >
+                  {placing ? <Spinner data-icon="inline-start" /> : null}
+                  Afgiv bestilling
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
+      {canPlan && !locationId && navigation ? (
+        <AppBottomBar>
+          <div className="mx-auto w-full max-w-(--container-page)">
+            {navigation}
+          </div>
+        </AppBottomBar>
+      ) : null}
     </>
   );
 }
