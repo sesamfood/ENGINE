@@ -3,16 +3,29 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
+import {
+  addDays,
+  DEFAULT_TIME_ZONE,
+  parseDateKey,
+  zonedStart,
+} from "../lib/date";
 import {
   MAX_ORDER_QUANTITY,
   ORDER_HISTORY_DAYS,
   orderDate,
   shiftOrderDate,
 } from "../lib/ordering-forecast";
-import { query, type QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireLocationAccess, requirePermission } from "./lib/auth";
+import { recordAudit } from "./lib/audit";
+import schema from "./schema";
 import { getLocationProductAccess } from "./lib/locationProducts";
 import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
@@ -25,10 +38,18 @@ import {
   usesGoogleForecastLocation,
 } from "./lib/forecastValidators";
 
-async function requirePlanner(ctx: QueryCtx, locationId: Id<"locations">) {
+async function requireOrdering(ctx: QueryCtx | MutationCtx) {
   const auth = await requirePermission(ctx, "ordering.plan");
   if (auth.kioskModeEnabled)
     throw new ConvexError("Du har ikke adgang til bestilling i kiosktilstand");
+  return auth;
+}
+
+async function requirePlanner(
+  ctx: QueryCtx | MutationCtx,
+  locationId: Id<"locations">,
+) {
+  const auth = await requireOrdering(ctx);
   requireLocationAccess(auth, locationId);
   const location = await ctx.db.get("locations", locationId);
   if (!location || location.organizationId !== auth.organizationId) {
@@ -400,80 +421,254 @@ export const listOperationalConsumption = query({
   },
 });
 
+const orderInputValidator = v.object({
+  locationId: v.id("locations"),
+  lines: v.array(
+    v.object({
+      productId: v.id("products"),
+      unitId: v.id("units"),
+      quantity: v.number(),
+    }),
+  ),
+});
+
+const orderRowValidator = schema.doc("orderLines").pick(
+  "productId",
+  "productName",
+  "unitName",
+  "quantity",
+);
+const historySummaryValidator = schema.doc("orders").pick(
+  "_id",
+  "locationName",
+  "createdAt",
+  "createdByName",
+  "fromDate",
+  "toDate",
+  "bufferPercent",
+  "itemCount",
+);
+const historyDetailValidator = historySummaryValidator.extend({
+  locationId: v.id("locations"),
+  rows: v.array(orderRowValidator),
+});
+
+async function prepareOrder(
+  ctx: QueryCtx | MutationCtx,
+  args: Infer<typeof orderInputValidator>,
+) {
+  const auth = await requirePlanner(ctx, args.locationId);
+  const { organizationId } = auth;
+  if (
+    args.lines.length === 0 ||
+    args.lines.length > 500 ||
+    new Set(args.lines.map((line) => line.productId)).size !==
+      args.lines.length
+  ) {
+    throw new ConvexError("Vælg mellem 1 og 500 forskellige produkter");
+  }
+  const access = await getLocationProductAccess(
+    ctx,
+    organizationId,
+    args.locationId,
+  );
+  const rows = await Promise.all(
+    args.lines.map(async (line) => {
+      if (
+        !Number.isFinite(line.quantity) ||
+        line.quantity <= 0 ||
+        line.quantity > MAX_ORDER_QUANTITY ||
+        Number(line.quantity.toFixed(6)) !== line.quantity
+      ) {
+        throw new ConvexError("Bestillingsmængden er ugyldig");
+      }
+      const product = await ctx.db.get("products", line.productId);
+      if (
+        !product ||
+        product.organizationId !== organizationId ||
+        product.status !== "active" ||
+        product.defaultUnitId !== line.unitId ||
+        (access.kind === "selected" &&
+          !access.effectiveProductIds.has(product._id))
+      ) {
+        throw new ConvexError(
+          "Et produkt er ikke længere tilgængeligt på lokationen. Opdatér planen.",
+        );
+      }
+      const unit = await ctx.db.get("units", product.defaultUnitId);
+      if (!unit || unit.organizationId !== organizationId)
+        throw new ConvexError("Produktets enhed blev ikke fundet");
+      return {
+        productId: product._id,
+        productName: product.name,
+        unitName: unit.name,
+        quantity: line.quantity,
+      };
+    }),
+  );
+  return { auth, rows };
+}
+
 export const prepareExport = query({
-  args: {
-    locationId: v.id("locations"),
-    lines: v.array(
-      v.object({
-        productId: v.id("products"),
-        unitId: v.id("units"),
-        quantity: v.number(),
-      }),
-    ),
-  },
+  args: orderInputValidator.fields,
   returns: v.object({
     locationName: v.string(),
-    rows: v.array(
-      v.object({
-        productId: v.id("products"),
-        productName: v.string(),
-        unitName: v.string(),
-        quantity: v.number(),
-      }),
-    ),
+    rows: v.array(orderRowValidator),
   }),
   handler: async (ctx, args) => {
-    const { organizationId, location } = await requirePlanner(
-      ctx,
-      args.locationId,
-    );
     await requirePermission(ctx, "ordering.export");
+    const { auth, rows } = await prepareOrder(ctx, args);
+    return { locationName: auth.location.name, rows };
+  },
+});
+
+function historySummary(order: Doc<"orders">) {
+  return {
+    _id: order._id,
+    locationName: order.locationName,
+    createdAt: order.createdAt,
+    createdByName: order.createdByName,
+    fromDate: order.fromDate,
+    toDate: order.toDate,
+    bufferPercent: order.bufferPercent,
+    itemCount: order.itemCount,
+  };
+}
+
+export const placeOrder = mutation({
+  args: orderInputValidator.extend({
+    fromDate: v.string(),
+    coverageDays: v.number(),
+    bufferPercent: v.number(),
+  }).fields,
+  returns: v.id("orders"),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "ordering.place");
+    const { auth, rows } = await prepareOrder(ctx, args);
     if (
-      args.lines.length === 0 ||
-      args.lines.length > 500 ||
-      new Set(args.lines.map((line) => line.productId)).size !==
-        args.lines.length
+      !Number.isInteger(args.coverageDays) ||
+      args.coverageDays < 1 ||
+      args.coverageDays > 28 ||
+      !Number.isFinite(args.bufferPercent) ||
+      args.bufferPercent < 0 ||
+      args.bufferPercent > 100
     ) {
-      throw new ConvexError("Eksportér mellem 1 og 500 forskellige produkter");
+      throw new ConvexError("Dækning eller buffer er ugyldig");
     }
-    const access = await getLocationProductAccess(
-      ctx,
-      organizationId,
-      args.locationId,
-    );
-    const rows = await Promise.all(
-      args.lines.map(async (line) => {
-        if (
-          !Number.isFinite(line.quantity) ||
-          line.quantity <= 0 ||
-          line.quantity > MAX_ORDER_QUANTITY
-        ) {
-          throw new ConvexError("Bestillingsmængden er ugyldig");
-        }
-        const product = await ctx.db.get("products", line.productId);
-        if (
-          !product ||
-          product.organizationId !== organizationId ||
-          product.status !== "active" ||
-          product.defaultUnitId !== line.unitId ||
-          (access.kind === "selected" &&
-            !access.effectiveProductIds.has(product._id))
-        ) {
-          throw new ConvexError(
-            "Et produkt er ikke længere tilgængeligt på lokationen. Opdatér planen.",
-          );
-        }
-        const unit = await ctx.db.get("units", product.defaultUnitId);
-        if (!unit || unit.organizationId !== organizationId)
-          throw new ConvexError("Produktets enhed blev ikke fundet");
-        return {
-          productId: product._id,
-          productName: product.name,
-          unitName: unit.name,
-          quantity: line.quantity,
+    try {
+      parseDateKey(args.fromDate);
+    } catch {
+      throw new ConvexError("Datoen er ugyldig");
+    }
+    const order = {
+      organizationId: auth.organizationId,
+      locationId: args.locationId,
+      locationName: auth.location.name,
+      createdAt: Date.now(),
+      createdBy: auth.userIdentifier,
+      createdByName: auth.userName,
+      fromDate: args.fromDate,
+      toDate: shiftOrderDate(args.fromDate, args.coverageDays - 1),
+      bufferPercent: args.bufferPercent,
+      itemCount: rows.length,
+    };
+    const orderId = await ctx.db.insert("orders", order);
+    for (const row of rows) {
+      await ctx.db.insert("orderLines", {
+        organizationId: auth.organizationId,
+        orderId,
+        ...row,
+      });
+    }
+    await recordAudit(ctx, auth, {
+      action: "ordering.place",
+      entityTable: "orders",
+      entityId: orderId,
+      locationId: args.locationId,
+      summary: `Bestilling afgivet med ${rows.length} produkter`,
+    });
+    return orderId;
+  },
+});
+
+export const listHistory = query({
+  args: {
+    locationId: v.id("locations"),
+    range: v.optional(v.object({ fromDate: v.string(), toDate: v.string() })),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(historySummaryValidator),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requirePlanner(ctx, args.locationId);
+    let range: { from: number; to: number } | undefined;
+    if (args.range) {
+      const { fromDate, toDate } = args.range;
+      try {
+        range = {
+          from: zonedStart(fromDate, DEFAULT_TIME_ZONE),
+          to: zonedStart(addDays(toDate, 1), DEFAULT_TIME_ZONE),
         };
-      }),
-    );
-    return { locationName: location.name, rows };
+      } catch {
+        throw new ConvexError("Datoerne er ugyldige");
+      }
+      if (fromDate > toDate) {
+        throw new ConvexError(
+          "Startdatoen skal være før eller samme dag som slutdatoen",
+        );
+      }
+    }
+    const result = await ctx.db
+      .query("orders")
+      .withIndex("by_organizationId_and_locationId_and_createdAt", (q) => {
+        const byLocation = q
+          .eq("organizationId", organizationId)
+          .eq("locationId", args.locationId);
+        return range
+          ? byLocation.gte("createdAt", range.from).lt("createdAt", range.to)
+          : byLocation;
+      })
+      .order("desc")
+      .paginate(args.paginationOpts);
+    return { ...result, page: result.page.map(historySummary) };
+  },
+});
+
+async function readHistory(ctx: QueryCtx, orderId: Id<"orders">) {
+  const auth = await requireOrdering(ctx);
+  const order = await ctx.db.get("orders", orderId);
+  if (!order || order.organizationId !== auth.organizationId) return null;
+  requireLocationAccess(auth, order.locationId);
+  const lines = await ctx.db
+    .query("orderLines")
+    .withIndex("by_organizationId_and_orderId", (q) =>
+      q.eq("organizationId", auth.organizationId).eq("orderId", orderId),
+    )
+    .take(500);
+  return {
+    ...historySummary(order),
+    locationId: order.locationId,
+    rows: lines.map(({ productId, productName, unitName, quantity }) => ({
+      productId,
+      productName,
+      unitName,
+      quantity,
+    })),
+  };
+}
+
+export const getHistory = query({
+  args: { orderId: v.id("orders") },
+  returns: v.union(historyDetailValidator, v.null()),
+  handler: async (ctx, args) => await readHistory(ctx, args.orderId),
+});
+
+export const exportHistory = query({
+  args: { orderId: v.id("orders") },
+  returns: historyDetailValidator,
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "ordering.export");
+    const order = await readHistory(ctx, args.orderId);
+    if (!order) throw new ConvexError("Bestillingen blev ikke fundet");
+    return order;
   },
 });

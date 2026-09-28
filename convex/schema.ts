@@ -1100,6 +1100,32 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
+  orders: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    locationName: v.string(),
+    createdAt: v.number(),
+    createdBy: v.string(),
+    createdByName: v.string(),
+    fromDate: v.string(),
+    toDate: v.string(),
+    bufferPercent: v.number(),
+    itemCount: v.number(),
+  }).index("by_organizationId_and_locationId_and_createdAt", [
+    "organizationId",
+    "locationId",
+    "createdAt",
+  ]),
+
+  orderLines: defineTable({
+    organizationId: v.string(),
+    orderId: v.id("orders"),
+    productId: v.id("products"),
+    productName: v.string(),
+    unitName: v.string(),
+    quantity: v.number(),
+  }).index("by_organizationId_and_orderId", ["organizationId", "orderId"]),
+
   goodsReceiptSettings: defineTable({
     organizationId: v.string(),
     transferDeliveryNotePhotoEnabled: v.boolean(),
