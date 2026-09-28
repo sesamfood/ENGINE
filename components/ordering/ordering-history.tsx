@@ -168,8 +168,8 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Produkt</TableHead>
-                <TableHead>Enhed</TableHead>
                 <TableHead className="text-right">Mængde</TableHead>
+                <TableHead>Enhed</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -181,10 +181,10 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
                   >
                     {row.productName}
                   </TableCell>
-                  <TableCell>{row.unitName}</TableCell>
                   <TableCell appearance="numeric" className="text-right">
                     {numberFormatter.format(row.quantity)}
                   </TableCell>
+                  <TableCell>{row.unitName}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
