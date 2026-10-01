@@ -133,6 +133,7 @@ export const listLocations = query({
             stock,
             locationProduct,
             countArea,
+            countExclusion,
           ] = await Promise.all([
             ctx.db
               .query("transfers")
@@ -190,6 +191,16 @@ export const listLocations = query({
                     .eq("locationId", location._id),
               )
               .first(),
+            ctx.db
+              .query("countExcludedProducts")
+              .withIndex(
+                "by_organizationId_and_locationId_and_productId",
+                (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("locationId", location._id),
+              )
+              .first(),
           ]);
           return {
             id: location._id,
@@ -200,7 +211,8 @@ export const listLocations = query({
                 count ||
                 stock ||
                 locationProduct ||
-                countArea,
+                countArea ||
+                countExclusion,
             ),
           };
         }),

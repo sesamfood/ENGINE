@@ -18,6 +18,7 @@ import {
 } from "./lib/countAreas";
 import { getLocationCountWindow } from "./lib/countWindow";
 import { getLocationProductAccess } from "./lib/locationProducts";
+import { getCountExcludedProductIds } from "./lib/countExclusions";
 
 const MAX_NAME_LENGTH = 100;
 const MAX_COUNT_ITEMS = 5_000;
@@ -97,13 +98,14 @@ export const listForCount = query({
     const auth = await requireCounter(ctx, "count.register");
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, auth.organizationId, args.locationId);
-    const [areas, access] = await Promise.all([
+    const [areas, access, excludedProductIds] = await Promise.all([
       listCountAreas(ctx, auth.organizationId, args.locationId),
       getLocationProductAccess(
         ctx,
         auth.organizationId,
         args.locationId,
       ),
+      getCountExcludedProductIds(ctx, auth.organizationId, args.locationId),
     ]);
     return await Promise.all(
       areas.map(async (area) => {
@@ -117,7 +119,11 @@ export const listForCount = query({
           name: area.name,
           productIds: order
             .map((row) => row.productId)
-            .filter((productId) => productIsAvailable(access, productId)),
+            .filter(
+              (productId) =>
+                productIsAvailable(access, productId) &&
+                !excludedProductIds.has(productId),
+            ),
         };
       }),
     );
@@ -136,11 +142,10 @@ export const listForManagement = query({
       auth.organizationId,
       args.locationId,
     );
-    const access = await getLocationProductAccess(
-      ctx,
-      auth.organizationId,
-      args.locationId,
-    );
+    const [access, excludedProductIds] = await Promise.all([
+      getLocationProductAccess(ctx, auth.organizationId, args.locationId),
+      getCountExcludedProductIds(ctx, auth.organizationId, args.locationId),
+    ]);
     return await Promise.all(
       areas.map(async (area) => {
         const order = await getCountAreaProductOrder(
@@ -153,7 +158,11 @@ export const listForManagement = query({
           name: area.name,
           productIds: order
             .map((row) => row.productId)
-            .filter((productId) => productIsAvailable(access, productId)),
+            .filter(
+              (productId) =>
+                productIsAvailable(access, productId) &&
+                !excludedProductIds.has(productId),
+            ),
         };
       }),
     );

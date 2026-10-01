@@ -2,6 +2,7 @@
 
 import { searchProducts } from "@/lib/product-search";
 
+import { CountExclusionList } from "./count-exclusion-list";
 import { SortableListRow } from "./sortable-list-row";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
@@ -94,7 +95,7 @@ import {
 
 type ProductId = Id<"products">;
 type ProductMode = "all" | "selected";
-type ActiveTab = "products" | "areas";
+type ActiveTab = "products" | "areas" | "excluded";
 type CountArea = {
   id: Id<"countAreas">;
   name: string;
@@ -188,7 +189,12 @@ export function LocationCountSetup({
     api.countAreas.listForManagement,
     open ? { locationId } : "skip",
   );
+  const exclusions = useQuery(
+    api.countExclusions.getLocation,
+    open ? { locationId } : "skip",
+  );
   const setConfiguration = useMutation(api.locationProducts.setConfiguration);
+  const setExclusions = useMutation(api.countExclusions.setLocation);
   const createArea = useMutation(api.countAreas.create);
   const renameArea = useMutation(api.countAreas.rename);
   const removeCountArea = useMutation(api.countAreas.remove);
@@ -202,6 +208,11 @@ export function LocationCountSetup({
     selectedProductIds: new Set(),
   }));
   const [savingProducts, setSavingProducts] = useState(false);
+  const [exclusionDraft, setExclusionDraft] = useState<{
+    locationId: Id<"locations">;
+    productIds: Set<ProductId>;
+  } | null>(null);
+  const [savingExclusions, setSavingExclusions] = useState(false);
   const [editingArea, setEditingArea] = useState<CountArea | "new" | null>(
     null,
   );
@@ -260,11 +271,26 @@ export function LocationCountSetup({
       ...configuration.ingredientProductIds,
     ]);
   }, [configuration, products]);
-  const effectiveProducts = useMemo(
-    () =>
-      products?.filter((product) => effectiveProductIds.has(product.id)) ?? [],
-    [effectiveProductIds, products],
+  const excludedProductIds =
+    exclusionDraft?.locationId === locationId
+      ? exclusionDraft.productIds
+      : new Set(exclusions?.locationProductIds ?? []);
+  const organizationExcludedProductIds = useMemo(
+    () => new Set(exclusions?.organizationProductIds ?? []),
+    [exclusions],
   );
+  const effectiveProducts = useMemo(() => {
+    const savedExcluded = new Set([
+      ...(exclusions?.organizationProductIds ?? []),
+      ...(exclusions?.locationProductIds ?? []),
+    ]);
+    return (
+      products?.filter(
+        (product) =>
+          effectiveProductIds.has(product.id) && !savedExcluded.has(product.id),
+      ) ?? []
+    );
+  }, [effectiveProductIds, exclusions, products]);
   const productNamesById = useMemo(
     () =>
       new Map<string, string>(
@@ -296,7 +322,12 @@ export function LocationCountSetup({
     }),
     [productNamesById],
   );
-  const isBusy = savingProducts || savingArea || deletingArea || savingOrder;
+  const isBusy =
+    savingProducts ||
+    savingExclusions ||
+    savingArea ||
+    deletingArea ||
+    savingOrder;
 
   function toggleProduct(productId: ProductId, checked: boolean) {
     setProductDraft((current) => {
@@ -337,6 +368,19 @@ export function LocationCountSetup({
       toast.error(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
     } finally {
       setSavingProducts(false);
+    }
+  }
+
+  async function saveExclusions() {
+    setSavingExclusions(true);
+    try {
+      await setExclusions({ locationId, productIds: [...excludedProductIds] });
+      setExclusionDraft(null);
+      toast.success("Produkter udeladt fra Count er gemt");
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
+    } finally {
+      setSavingExclusions(false);
     }
   }
 
@@ -445,17 +489,22 @@ export function LocationCountSetup({
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
-              if (value === "products" || value === "areas") {
+              if (
+                value === "products" ||
+                value === "areas" ||
+                value === "excluded"
+              ) {
                 setActiveTab(value);
               }
             }}
           >
             <TabsList
-              className="grid h-11 w-full grid-cols-2"
+              className="grid h-11 w-full grid-cols-3"
               aria-label="Produkter og Områder"
             >
               <TabsTrigger value="products">Produkter</TabsTrigger>
               <TabsTrigger value="areas">Områder</TabsTrigger>
+              <TabsTrigger value="excluded">Udelad fra Count</TabsTrigger>
             </TabsList>
 
             <TabsContent value="products" appearance="standard">
@@ -719,6 +768,36 @@ export function LocationCountSetup({
                 )}
               </FieldGroup>
             </TabsContent>
+
+            <TabsContent value="excluded" appearance="standard">
+              <FieldGroup>
+                <div className="flex min-w-0 flex-col gap-1 rounded-lg border bg-muted/30 p-3">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">Udelad fra Count</p>
+                    <Badge variant="secondary">
+                      {excludedProductIds.size} udeladte
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Valgte Produkter vises ikke i Count på {locationName}. De
+                    kan stadig bruges i Transfer og Waste.
+                  </p>
+                </div>
+                <CountExclusionList
+                  id={`location-count-exclusions-${locationId}`}
+                  products={products}
+                  excludedProductIds={excludedProductIds}
+                  lockedProductIds={organizationExcludedProductIds}
+                  disabled={exclusions === undefined || savingExclusions}
+                  onToggle={(productId, excluded) => {
+                    const next = new Set(excludedProductIds);
+                    if (excluded) next.add(productId);
+                    else next.delete(productId);
+                    setExclusionDraft({ locationId, productIds: next });
+                  }}
+                />
+              </FieldGroup>
+            </TabsContent>
           </Tabs>
 
           <DialogFooter>
@@ -740,6 +819,21 @@ export function LocationCountSetup({
               >
                 {savingProducts ? <Spinner data-icon="inline-start" /> : null}
                 Gem Produktvalg
+              </Button>
+            ) : activeTab === "excluded" ? (
+              <Button
+                type="button"
+                className="min-h-11"
+                disabled={
+                  savingExclusions ||
+                  exclusionDraft?.locationId !== locationId
+                }
+                onClick={() => void saveExclusions()}
+              >
+                {savingExclusions ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                Gem udeladte Produkter
               </Button>
             ) : null}
           </DialogFooter>

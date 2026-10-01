@@ -34,6 +34,10 @@ import {
   requireLocationProduct,
 } from "./lib/locationProducts";
 import {
+  getCountExcludedProductIds,
+  requireCountedProduct,
+} from "./lib/countExclusions";
+import {
   activeProductCatalogValidator,
   catalogPaginationOptions,
   listActiveProductPage,
@@ -531,12 +535,21 @@ export const listCatalogPage = query({
     const auth = await requireCounter(ctx, "count.register");
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, auth.organizationId, args.locationId);
-    return await listActiveProductPage(
-      ctx,
-      auth.organizationId,
-      args.paginationOpts,
-      args.locationId,
-    );
+    const [result, excludedProductIds] = await Promise.all([
+      listActiveProductPage(
+        ctx,
+        auth.organizationId,
+        args.paginationOpts,
+        args.locationId,
+      ),
+      getCountExcludedProductIds(ctx, auth.organizationId, args.locationId),
+    ]);
+    return {
+      ...result,
+      page: result.page.filter(
+        (product) => !excludedProductIds.has(product.id),
+      ),
+    };
   },
 });
 
@@ -547,11 +560,15 @@ export const listCatalog = query({
     const auth = await requireCounter(ctx, "count.register");
     requireLocationAccess(auth, args.locationId);
     await requireLocation(ctx, auth.organizationId, args.locationId);
-    return await listLocationActiveProductCatalog(
-      ctx,
-      auth.organizationId,
-      args.locationId,
-    );
+    const [products, excludedProductIds] = await Promise.all([
+      listLocationActiveProductCatalog(
+        ctx,
+        auth.organizationId,
+        args.locationId,
+      ),
+      getCountExcludedProductIds(ctx, auth.organizationId, args.locationId),
+    ]);
+    return products.filter((product) => !excludedProductIds.has(product.id));
   },
 });
 
@@ -598,6 +615,12 @@ export const setCountQuantity = mutation({
       throw new ConvexError("Produktet eller enheden blev ikke fundet");
     }
     await requireLocationProduct(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+    );
+    await requireCountedProduct(
       ctx,
       organizationId,
       location._id,
@@ -798,6 +821,12 @@ export const markCountAreaProductCounted = mutation({
       throw new ConvexError("Produktet bruges ikke i det valgte Område");
     }
     await requireLocationProduct(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+    );
+    await requireCountedProduct(
       ctx,
       organizationId,
       location._id,

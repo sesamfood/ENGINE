@@ -849,7 +849,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Klargør lokationen til optælling",
             steps: [
               "Kontrollér Produkternes standardenheder og omregninger. Angiv lokationens åbningstider og særlige datoer under Administration → Lokationer.",
-              "Åbn lokationens Produkter og Områder. Vælg alle aktive Produkter eller en afgrænset liste. Produktvalget bruges også af Waste.",
+              "Åbn lokationens Produkter og Områder. Vælg alle aktive Produkter eller en afgrænset liste. Produktvalget bruges også af Waste. Under Udelad fra Count vælger du Produkter, som ikke skal tælles på lokationen.",
               "Opret eventuelle Count-områder, og vælg deres Produkter og rækkefølge, så optællingen følger den fysiske rute.",
             ],
           },
@@ -858,7 +858,7 @@ export const operationFeatures: HelpFeature[] = [
             title: "Planlæg Count-vinduet",
             steps: [
               "Åbn Administration → Count, og vælg Count-frekvens. Ved månedlig Count vælger du Count-dag. Ved interval vælger du Interval i dage og Første Count-dato.",
-              "Vælg, om Count må registreres uden for Count-vinduet, om Count skal afsluttes før åbning, og om andre funktioner skal låses. Gem Count-indstillinger.",
+              "Vælg, om Count må registreres uden for Count-vinduet, om Count skal afsluttes før åbning, og om andre funktioner skal låses. Gem Count-indstillinger. Under Udelad fra Count vælger du Produkter, som ikke tælles på nogen lokation.",
               "Åbn Count på den relevante Lokation, og kontrollér dato, vindue, områder og produktliste.",
             ],
             bullets: [
@@ -912,7 +912,7 @@ export const operationFeatures: HelpFeature[] = [
           {
             question: "Et Produkt mangler i området",
             answer:
-              "Ryd søgningen, kontrollér kategorien, og kontrollér områdets produktvalg og rækkefølge under Administration → Lokationer → Produkter og Områder.",
+              "Ryd søgningen, kontrollér kategorien, og kontrollér områdets produktvalg og rækkefølge under Administration → Lokationer → Produkter og Områder. Kontrollér også, om Produktet er udeladt fra Count.",
           },
         ],
         relatedLinks: [

@@ -920,6 +920,22 @@ export default defineSchema({
       "productId",
     ]),
 
+  // Rows without locationId apply to every location in the organization.
+  countExcludedProducts: defineTable({
+    organizationId: v.string(),
+    locationId: v.optional(v.id("locations")),
+    productId: v.id("products"),
+  })
+    .index("by_organizationId_and_locationId_and_productId", [
+      "organizationId",
+      "locationId",
+      "productId",
+    ])
+    .index("by_organizationId_and_productId", [
+      "organizationId",
+      "productId",
+    ]),
+
   countAreas: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
