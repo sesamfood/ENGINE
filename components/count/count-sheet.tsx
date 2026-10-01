@@ -1152,7 +1152,31 @@ function SortableProduct({
   );
 }
 
-function CountSkeleton() {
+function CountSkeleton({ single = false }: { single?: boolean }) {
+  if (single) {
+    return (
+      <div className="flex min-h-128 flex-col gap-3 md:grid md:min-h-(--spacing-count-panel) md:grid-cols-(--grid-cols-step-navigation) md:items-center md:gap-4">
+        <div className="hidden size-12 md:block" />
+        <Card appearance="fullscreen" className="h-full min-h-0">
+          <div className="grid min-h-0 flex-1 lg:grid-cols-(--grid-cols-stock)">
+            <Skeleton appearance="square" className="min-h-56 lg:min-h-full" />
+            <CardHeader appearance="hero">
+              <Skeleton className="h-5 w-16" />
+              <Skeleton className="h-8 w-2/3" />
+              <Skeleton className="h-11 w-full" />
+              <Skeleton className="h-11 w-full" />
+            </CardHeader>
+          </div>
+        </Card>
+        <div className="hidden size-12 md:block" />
+        <div className="flex gap-3 md:hidden">
+          <Skeleton className="h-12 flex-1" />
+          <Skeleton className="h-12 flex-1" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={productGridClassName}>
       {Array.from({ length: 8 }, (_, index) => (
@@ -1846,7 +1870,7 @@ export function CountSheet() {
     );
   }
 
-  if (!locations) return <CountSkeleton />;
+  if (!locations) return <CountSkeleton single={viewMode === "single"} />;
 
   if (locations.length === 0) {
     return (
@@ -2028,7 +2052,9 @@ export function CountSheet() {
             </>
           ) : null}
 
-          {!products ? <CountSkeleton /> : null}
+          {!products ? (
+            <CountSkeleton single={!editingOrder && viewMode === "single"} />
+          ) : null}
 
           {products && displayedProducts.length === 0 ? (
             <Empty appearance="outlined" className="min-h-72">
