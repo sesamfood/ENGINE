@@ -95,7 +95,7 @@ export const administrationFeatures: HelpFeature[] = [
           {
             question: "Hvorfor mangler et Produkt på en Lokation?",
             answer:
-              "Kontrollér, at Produktet er aktivt i produktkataloget og valgt under lokationens Produkter og Områder. Kontrollér også Områdets produktvalg, hvis det kun mangler i en del af Count.",
+              "Kontrollér, at Produktet er aktivt i produktkataloget og valgt under lokationens Produkter og Områder. Kontrollér også Områdets produktvalg, hvis det kun mangler i en del af Count, og at Produktet ikke er udeladt fra Count på lokationen eller under Count-indstillinger.",
           },
         ],
         relatedLinks: [

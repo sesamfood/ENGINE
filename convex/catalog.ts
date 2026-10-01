@@ -855,26 +855,33 @@ async function scrubProductFromCountOrder(
 ) {
   const maxCountAreaRows =
     MAX_LOCATIONS_PER_ORGANIZATION * MAX_COUNT_AREAS;
-  const [locations, locationProducts, countAreaProducts] = await Promise.all([
-    ctx.db
-      .query("locations")
-      .withIndex("by_organizationId_and_normalizedName", (q) =>
-        q.eq("organizationId", organizationId),
-      )
-      .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
-    ctx.db
-      .query("locationProducts")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", productId),
-      )
-      .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
-    ctx.db
-      .query("countAreaProducts")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", productId),
-      )
-      .take(maxCountAreaRows + 1),
-  ]);
+  const [locations, locationProducts, countAreaProducts, countExclusions] =
+    await Promise.all([
+      ctx.db
+        .query("locations")
+        .withIndex("by_organizationId_and_normalizedName", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
+      ctx.db
+        .query("locationProducts")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("productId", productId),
+        )
+        .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
+      ctx.db
+        .query("countAreaProducts")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("productId", productId),
+        )
+        .take(maxCountAreaRows + 1),
+      ctx.db
+        .query("countExcludedProducts")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("productId", productId),
+        )
+        .take(MAX_LOCATIONS_PER_ORGANIZATION + 2),
+    ]);
   if (locations.length > MAX_LOCATIONS_PER_ORGANIZATION) {
     throw new ConvexError("Organisationen har for mange lokationer");
   }
@@ -883,6 +890,9 @@ async function scrubProductFromCountOrder(
   }
   if (countAreaProducts.length > maxCountAreaRows) {
     throw new ConvexError("Produktet bruges i for mange Områder");
+  }
+  if (countExclusions.length > MAX_LOCATIONS_PER_ORGANIZATION + 1) {
+    throw new ConvexError("Produktet er udeladt fra Count for mange steder");
   }
   for (const location of locations) {
     if (!location.countProductOrder?.includes(productId)) continue;
@@ -897,6 +907,9 @@ async function scrubProductFromCountOrder(
   }
   for (const row of countAreaProducts) {
     await ctx.db.delete("countAreaProducts", row._id);
+  }
+  for (const row of countExclusions) {
+    await ctx.db.delete("countExcludedProducts", row._id);
   }
 }
 

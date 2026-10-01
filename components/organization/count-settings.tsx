@@ -2,6 +2,7 @@
 
 import { useIntegrations } from "@/integrations/use-integrations";
 
+import { OrganizationCountExclusions } from "./count-exclusion-list";
 import { SettingsSwitchField } from "./settings-switch-field";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
@@ -370,6 +371,8 @@ export function CountSettings() {
         </Button>
       </CardFooter>
       </Card>
+
+      <OrganizationCountExclusions />
 
       {availableSources.length > 0 ? <Card className="max-w-3xl">
         <CardHeader>
