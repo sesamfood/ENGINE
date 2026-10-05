@@ -1,7 +1,7 @@
 "use client";
 
-import { searchProducts } from "@/lib/product-search";
 
+import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
 import { CountExclusionList } from "./count-exclusion-list";
 import { SortableListRow } from "./sortable-list-row";
 
@@ -32,7 +32,6 @@ import {
   MapIcon,
   PencilIcon,
   PlusIcon,
-  SearchIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -51,7 +50,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +68,6 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
   FieldLegend,
@@ -78,11 +75,6 @@ import {
   FieldLabel,
   FieldSet,
 } from "@/components/ui/field";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -193,6 +185,10 @@ export function LocationCountSetup({
     api.countExclusions.getLocation,
     open ? { locationId } : "skip",
   );
+  const categories = useQuery(
+    api.catalog.listCategoryOptions,
+    open ? {} : "skip",
+  );
   const setConfiguration = useMutation(api.locationProducts.setConfiguration);
   const setExclusions = useMutation(api.countExclusions.setLocation);
   const createArea = useMutation(api.countAreas.create);
@@ -201,7 +197,6 @@ export function LocationCountSetup({
   const setAreaProductOrder = useMutation(api.countAreas.setProductOrder);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("products");
-  const [search, setSearch] = useState("");
   const [productDraft, setProductDraft] = useState<ProductDraft>(() => ({
     locationId: null,
     mode: "all",
@@ -258,9 +253,16 @@ export function LocationCountSetup({
     configuration?.kind === "selected"
       ? configuration.ingredientProductIds
       : [];
-  const filteredProducts = useMemo(() => {
-    return searchProducts(products ?? [], search, (product) => product);
-  }, [products, search]);
+  const productOptions =
+    products?.map((product) => {
+      const isIngredient = ingredientProductIds.includes(product.id);
+      return {
+        value: product.id,
+        label: isIngredient ? `${product.name} · Ingrediens` : product.name,
+        categoryIds: product.categoryIds,
+        disabled: isIngredient,
+      };
+    }) ?? [];
   const effectiveProductIds = useMemo(() => {
     if (!products || !configuration) return new Set<ProductId>();
     if (configuration.kind === "all") {
@@ -329,20 +331,6 @@ export function LocationCountSetup({
     deletingArea ||
     savingOrder;
 
-  function toggleProduct(productId: ProductId, checked: boolean) {
-    setProductDraft((current) => {
-      const base =
-        current.locationId === locationId
-          ? current
-          : (serverProductDraft ?? {
-              ...allProductDraft(locationId),
-            });
-      const next = new Set(base.selectedProductIds);
-      if (checked) next.add(productId);
-      else next.delete(productId);
-      return { locationId, mode: "selected", selectedProductIds: next };
-    });
-  }
 
   async function saveProducts() {
     setSavingProducts(true);
@@ -439,16 +427,6 @@ export function LocationCountSetup({
     setOrderError("");
   }
 
-  function toggleAreaProduct(productId: ProductId, checked: boolean) {
-    setOrderError("");
-    setAreaOrder((current) => {
-      if (checked) {
-        return current.includes(productId) ? current : [...current, productId];
-      }
-      return current.filter((id) => id !== productId);
-    });
-  }
-
   async function saveAreaOrder() {
     if (!orderingArea) return;
     setSavingOrder(true);
@@ -542,32 +520,8 @@ export function LocationCountSetup({
                   </Button>
                 </div>
 
-                <Field>
-                  <FieldLabel
-                    htmlFor={`location-products-search-${locationId}`}
-                  >
-                    Søg efter Produkt
-                  </FieldLabel>
-                  <InputGroup className="min-h-11">
-                    <InputGroupAddon align="inline-start">
-                      <SearchIcon />
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      id={`location-products-search-${locationId}`}
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Søg efter navn eller kategori"
-                      aria-label="Søg efter Produkt eller kategori"
-                    />
-                  </InputGroup>
-                </Field>
-
-                {products === undefined ? (
-                  <div className="flex flex-col gap-2 rounded-lg border p-2">
-                    {Array.from({ length: 5 }, (_, index) => (
-                      <Skeleton key={index} className="h-11 w-full" />
-                    ))}
-                  </div>
+                {products === undefined || categories === undefined ? (
+                  <Skeleton className="h-11 w-full" />
                 ) : products.length === 0 ? (
                   <Empty appearance="outlined" className="min-h-48">
                     <EmptyHeader>
@@ -580,66 +534,28 @@ export function LocationCountSetup({
                       </EmptyDescription>
                     </EmptyHeader>
                   </Empty>
-                ) : filteredProducts.length === 0 ? (
-                  <Empty appearance="outlined" className="min-h-40">
-                    <EmptyHeader>
-                      <EmptyTitle>Ingen Produkter fundet</EmptyTitle>
-                      <EmptyDescription>
-                        Prøv et andet søgeord.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
                 ) : (
-                  <div className="max-h-80 overflow-y-auto rounded-lg border p-2">
-                    <FieldGroup appearance="tight">
-                      {filteredProducts.map((product) => {
-                        const isIngredient = ingredientProductIds.includes(
-                          product.id,
-                        );
-                        const checked =
-                          mode === "selected" &&
-                          (selectedProductIds.has(product.id) || isIngredient);
-                        const inputId = `location-product-${locationId}-${product.id}`;
-                        return (
-                          <Field
-                            key={product.id}
-                            orientation="horizontal"
-                            data-disabled={isIngredient}
-                            appearance="option"
-                            className="min-h-11"
-                          >
-                            <Checkbox
-                              id={inputId}
-                              className="self-center mt-0!"
-                              checked={checked}
-                              disabled={
-                                isIngredient || configuration === undefined
-                              }
-                              aria-label={`Vælg ${product.name}`}
-                              onCheckedChange={(next) =>
-                                toggleProduct(product.id, next === true)
-                              }
-                            />
-                            <FieldContent className="min-w-0">
-                              <FieldLabel
-                                htmlFor={inputId}
-                                appearance="regular"
-                                className="min-w-0"
-                              >
-                                <span className="truncate">{product.name}</span>
-                                {isIngredient ? (
-                                  <Badge variant="outline">Ingrediens</Badge>
-                                ) : null}
-                              </FieldLabel>
-                              <FieldDescription appearance="truncate">
-                                {product.categoryPath}
-                              </FieldDescription>
-                            </FieldContent>
-                          </Field>
-                        );
-                      })}
-                    </FieldGroup>
-                  </div>
+                  <Field data-disabled={configuration === undefined}>
+                    <FieldLabel>Valgte Produkter</FieldLabel>
+                    <ProductCategoryCombobox
+                      categories={categories}
+                      products={productOptions}
+                      values={mode === "selected" ? [...selectedProductIds] : []}
+                      onValuesChange={(values) =>
+                        setProductDraft({
+                          locationId,
+                          mode: "selected",
+                          selectedProductIds: new Set(values as ProductId[]),
+                        })
+                      }
+                      disabled={configuration === undefined}
+                      ariaLabel="Produkter på lokationen"
+                    />
+                    <FieldDescription>
+                      Vælg en kategorilinje for at vælge eller fravælge alle
+                      Produkter i kategorien.
+                    </FieldDescription>
+                  </Field>
                 )}
               </FieldGroup>
             </TabsContent>
@@ -784,17 +700,13 @@ export function LocationCountSetup({
                   </p>
                 </div>
                 <CountExclusionList
-                  id={`location-count-exclusions-${locationId}`}
                   products={products}
                   excludedProductIds={excludedProductIds}
                   lockedProductIds={organizationExcludedProductIds}
                   disabled={exclusions === undefined || savingExclusions}
-                  onToggle={(productId, excluded) => {
-                    const next = new Set(excludedProductIds);
-                    if (excluded) next.add(productId);
-                    else next.delete(productId);
-                    setExclusionDraft({ locationId, productIds: next });
-                  }}
+                  onChange={(productIds) =>
+                    setExclusionDraft({ locationId, productIds })
+                  }
                 />
               </FieldGroup>
             </TabsContent>
@@ -855,7 +767,9 @@ export function LocationCountSetup({
             </DialogDescription>
           </DialogHeader>
 
-          {configuration === undefined || products === undefined ? (
+          {configuration === undefined ||
+          products === undefined ||
+          categories === undefined ? (
             <div className="flex flex-col gap-2">
               {Array.from({ length: 6 }, (_, index) => (
                 <Skeleton key={index} className="h-11 w-full" />
@@ -875,51 +789,21 @@ export function LocationCountSetup({
                     </EmptyHeader>
                   </Empty>
                 ) : (
-                  <div className="max-h-64 overflow-y-auto rounded-lg border p-2">
-                    <FieldGroup appearance="tight">
-                      {effectiveProducts.map((product) => {
-                        const checked = areaOrder.includes(product.id);
-                        const inputId = `count-area-product-${orderingArea?.id}-${product.id}`;
-                        const isIngredient = ingredientProductIds.includes(
-                          product.id,
-                        );
-                        return (
-                          <Field
-                            key={product.id}
-                            orientation="horizontal"
-                            appearance="option"
-                            className="min-h-11"
-                          >
-                            <Checkbox
-                              id={inputId}
-                              className="self-center mt-0!"
-                              checked={checked}
-                              disabled={savingOrder}
-                              aria-label={`Vælg ${product.name}`}
-                              onCheckedChange={(next) =>
-                                toggleAreaProduct(product.id, next === true)
-                              }
-                            />
-                            <FieldContent className="min-w-0">
-                              <FieldLabel
-                                htmlFor={inputId}
-                                appearance="regular"
-                                className="min-w-0"
-                              >
-                                <span className="truncate">{product.name}</span>
-                                {isIngredient ? (
-                                  <Badge variant="outline">Ingrediens</Badge>
-                                ) : null}
-                              </FieldLabel>
-                              <FieldDescription appearance="truncate">
-                                {product.categoryPath}
-                              </FieldDescription>
-                            </FieldContent>
-                          </Field>
-                        );
-                      })}
-                    </FieldGroup>
-                  </div>
+                  <ProductCategoryCombobox
+                    categories={categories}
+                    products={effectiveProducts.map((product) => ({
+                      value: product.id,
+                      label: product.name,
+                      categoryIds: product.categoryIds,
+                    }))}
+                    values={areaOrder}
+                    onValuesChange={(values) => {
+                      setOrderError("");
+                      setAreaOrder(values as ProductId[]);
+                    }}
+                    disabled={savingOrder}
+                    ariaLabel={`Produkter i ${orderingArea?.name ?? "Området"}`}
+                  />
                 )}
               </FieldSet>
 
@@ -987,9 +871,12 @@ export function LocationCountSetup({
                               position={index + 1}
                               productId={product.id}
                               productName={product.name}
-                              onRemove={() =>
-                                toggleAreaProduct(product.id, false)
-                              }
+                              onRemove={() => {
+                                setOrderError("");
+                                setAreaOrder((current) =>
+                                  current.filter((id) => id !== product.id),
+                                );
+                              }}
                             />
                           );
                         })}

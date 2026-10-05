@@ -18,6 +18,7 @@ const MAX_FALLBACK_PAGE_SIZE = 25;
 export const activeProductSearchOptionValidator = v.object({
   id: v.id("products"),
   name: v.string(),
+  categoryIds: v.array(v.id("categories")),
   categoryPath: v.string(),
 });
 
@@ -157,13 +158,17 @@ export async function listActiveProductSearchOptionsPage(
   return {
     ...result,
     page: await Promise.all(
-      result.page.map(async (product) => ({
-        id: product._id,
-        name: product.name,
-        categoryPath: (await getProductCategoryIds(ctx, product))
-          .flatMap((id) => paths.get(id) ?? [])
-          .join(" · "),
-      })),
+      result.page.map(async (product) => {
+        const categoryIds = await getProductCategoryIds(ctx, product);
+        return {
+          id: product._id,
+          name: product.name,
+          categoryIds,
+          categoryPath: categoryIds
+            .flatMap((id) => paths.get(id) ?? [])
+            .join(" · "),
+        };
+      }),
     ),
   };
 }
@@ -172,7 +177,12 @@ export async function listActiveProductSearchOptions(
   ctx: QueryCtx,
   organizationId: string,
 ): Promise<
-  Array<{ id: Id<"products">; name: string; categoryPath: string }>
+  Array<{
+    id: Id<"products">;
+    name: string;
+    categoryIds: Id<"categories">[];
+    categoryPath: string;
+  }>
 > {
   const [products, categories] = await Promise.all([
     ctx.db
@@ -208,6 +218,7 @@ export async function listActiveProductSearchOptions(
       return {
         id: product._id,
         name: product.name,
+        categoryIds,
         categoryPath: categoryIds
           .flatMap((categoryId) => {
             const item = categoriesById.get(categoryId);
