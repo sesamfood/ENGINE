@@ -16,6 +16,7 @@ export function SortableListRow({
   label,
   disabled = false,
   position,
+  description,
   children,
   actions,
   className,
@@ -26,6 +27,7 @@ export function SortableListRow({
   label: string;
   disabled?: boolean;
   position?: number;
+  description?: string;
   children?: ReactNode;
   actions?: ReactNode;
   className?: string;
@@ -85,7 +87,16 @@ export function SortableListRow({
             {position}
           </span>
         ) : null}
-        <span className={cn("min-w-0 flex-1 truncate font-medium", children && "sr-only")}>{label}</span>
+        {description ? (
+          <span className="flex min-w-0 flex-1 flex-col py-1">
+            <span className="truncate font-medium">{label}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {description}
+            </span>
+          </span>
+        ) : (
+          <span className={cn("min-w-0 flex-1 truncate font-medium", children && "sr-only")}>{label}</span>
+        )}
       </button>
       {children}
       {actions}

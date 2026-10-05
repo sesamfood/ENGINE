@@ -11,8 +11,9 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   pointerWithin,
+  TouchSensor,
   type Announcements,
   type UniqueIdentifier,
   useDroppable,
@@ -269,7 +270,11 @@ export function LocationCountSetup({
   );
   const [deletingArea, setDeletingArea] = useState(false);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    // Press and hold on touch so swiping a card still scrolls the column.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -710,8 +715,10 @@ export function LocationCountSetup({
         id={itemId(column, productId)}
         label={name}
         position={position}
+        description={details.join(" · ")}
         disabled={isBusy}
         roleDescription="Produkt, der kan flyttes"
+        handleClassName="touch-manipulation"
         actions={
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -771,16 +778,7 @@ export function LocationCountSetup({
             </DropdownMenuContent>
           </DropdownMenu>
         }
-      >
-        <span className="flex min-w-0 flex-1 flex-col py-1">
-          <span className="truncate font-medium">{name}</span>
-          {details.length > 0 ? (
-            <span className="truncate text-xs text-muted-foreground">
-              {details.join(" · ")}
-            </span>
-          ) : null}
-        </span>
-      </SortableListRow>
+      />
     );
   }
 
@@ -934,10 +932,7 @@ export function LocationCountSetup({
                   setShowCopyHint(
                     countKeys.length > 1 &&
                       isCountColumn(parseItemId(active.id).column) &&
-                      !(
-                        "pointerType" in activatorEvent &&
-                        activatorEvent.pointerType !== "mouse"
-                      ),
+                      !activatorEvent.type.startsWith("touch"),
                   );
                 }}
                 onDragCancel={() => {
