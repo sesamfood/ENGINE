@@ -966,7 +966,7 @@ export function LocationCountSetup({
                   }
                 }}
               >
-                <div className="-mx-4 flex min-h-0 flex-1 snap-x gap-3 overflow-x-auto px-4 pb-1">
+                <div className="-mx-4 flex min-h-0 flex-1 snap-x gap-3 overflow-x-auto px-4 pb-1 select-none">
                   <BoardColumn
                     column="unused"
                     title="Ikke brugt"
