@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { getLocationCountWindow } from "./countWindow";
 
 const MAX_PRODUCTS = 500;
 const MAX_INGREDIENTS_PER_PRODUCT = 500;
@@ -109,4 +110,97 @@ export async function requireLocationProduct(
     }
   }
   throw new ConvexError("Produktet bruges ikke på den valgte lokation");
+}
+
+// An empty list makes every active Produkt available. Returns whether anything changed.
+export async function setLocationProducts(
+  ctx: MutationCtx,
+  organizationId: string,
+  location: Doc<"locations">,
+  productIds: Id<"products">[],
+) {
+  if (
+    productIds.length > MAX_PRODUCTS ||
+    new Set(productIds).size !== productIds.length
+  ) {
+    throw new ConvexError("Produktvalget er ugyldigt");
+  }
+
+  const products = await Promise.all(
+    productIds.map((productId) => ctx.db.get("products", productId)),
+  );
+  if (
+    products.some(
+      (product) =>
+        !product ||
+        product.organizationId !== organizationId ||
+        product.status !== "active",
+    )
+  ) {
+    throw new ConvexError("Et Produkt blev ikke fundet");
+  }
+
+  const current = await ctx.db
+    .query("locationProducts")
+    .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", location._id),
+    )
+    .take(MAX_PRODUCTS + 1);
+  if (current.length > MAX_PRODUCTS) {
+    throw new ConvexError("Lokationen har for mange valgte Produkter");
+  }
+
+  const nextIds = new Set(productIds);
+  const currentIds = new Set(current.map((row) => row.productId));
+  if (
+    nextIds.size === currentIds.size &&
+    productIds.every((productId) => currentIds.has(productId))
+  ) {
+    return false;
+  }
+  const countWindow = await getLocationCountWindow(
+    ctx,
+    organizationId,
+    location,
+    Date.now(),
+  );
+  const currentCount = await ctx.db
+    .query("counts")
+    .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("locationId", location._id)
+        .eq("periodKey", countWindow.periodKey),
+    )
+    .unique();
+  if (currentCount?.status === "open") {
+    const countItem = await ctx.db
+      .query("countItems")
+      .withIndex("by_organizationId_and_countId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("countId", currentCount._id),
+      )
+      .first();
+    if (countItem) {
+      throw new ConvexError(
+        "Produktvalget kan ikke ændres, mens der er en åben Count",
+      );
+    }
+  }
+  for (const row of current) {
+    if (!nextIds.has(row.productId)) {
+      await ctx.db.delete("locationProducts", row._id);
+    }
+  }
+  for (const productId of productIds) {
+    if (currentIds.has(productId)) continue;
+    await ctx.db.insert("locationProducts", {
+      organizationId,
+      locationId: location._id,
+      productId,
+    });
+  }
+
+  return true;
 }
