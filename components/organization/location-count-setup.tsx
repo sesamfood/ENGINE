@@ -925,6 +925,11 @@ export function LocationCountSetup({
               <DndContext
                 sensors={sensors}
                 collisionDetection={boardCollision}
+                // The default scrolls far too fast across a wide board.
+                autoScroll={{
+                  acceleration: 3,
+                  threshold: { x: 0.08, y: 0.15 },
+                }}
                 accessibility={{ announcements }}
                 onDragStart={({ active, activatorEvent }) => {
                   setDragging(active.id);
