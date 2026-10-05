@@ -77,14 +77,22 @@ export async function paginateActiveProducts(
 ) {
   const access = locationId
     ? await getLocationProductAccess(ctx, organizationId, locationId)
-    : { kind: "all" as const };
+    : { kind: "all" as const, unusedProductIds: new Set<Id<"products">>() };
   const products = ctx.db
     .query("products")
     .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
       q.eq("organizationId", organizationId).eq("status", "active"),
     );
   const eligible = access.kind === "all"
-    ? products
+    ? access.unusedProductIds.size === 0
+      ? products
+      : products.filter((q) =>
+          q.and(
+            ...[...access.unusedProductIds].map((id) =>
+              q.neq(q.field("_id"), id),
+            ),
+          ),
+        )
     : products.filter((q) =>
         q.or(
           ...[...access.effectiveProductIds].map((id) =>
@@ -359,7 +367,10 @@ export async function listLocationActiveProductCatalog(
 ) {
   const access = await getLocationProductAccess(ctx, organizationId, locationId);
   if (access.kind === "all") {
-    return await listActiveProductCatalog(ctx, organizationId);
+    const catalog = await listActiveProductCatalog(ctx, organizationId);
+    return catalog.filter(
+      (product) => !access.unusedProductIds.has(product.id),
+    );
   }
   const products = (
     await Promise.all(

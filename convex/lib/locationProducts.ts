@@ -9,20 +9,23 @@ const MAX_INGREDIENTS_PER_PRODUCT = 500;
 type LocationProductCtx = QueryCtx | MutationCtx;
 
 export type LocationProductAccess =
-  | { kind: "all" }
+  | { kind: "all"; unusedProductIds: ReadonlySet<Id<"products">> }
   | {
       kind: "selected";
       selectedProductIds: ReadonlySet<Id<"products">>;
       effectiveProductIds: ReadonlySet<Id<"products">>;
     };
 
-async function selectedProductIds(
+type ProductListTable = "locationProducts" | "locationUnusedProducts";
+
+async function listRows(
   ctx: LocationProductCtx,
+  table: ProductListTable,
   organizationId: string,
   locationId: Id<"locations">,
 ) {
   const rows = await ctx.db
-    .query("locationProducts")
+    .query(table)
     .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
       q.eq("organizationId", organizationId).eq("locationId", locationId),
     )
@@ -30,7 +33,30 @@ async function selectedProductIds(
   if (rows.length > MAX_PRODUCTS) {
     throw new ConvexError("Lokationen har for mange valgte Produkter");
   }
+  return rows;
+}
+
+async function selectedProductIds(
+  ctx: LocationProductCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const rows = await listRows(
+    ctx,
+    "locationProducts",
+    organizationId,
+    locationId,
+  );
   return rows.map((row) => row.productId);
+}
+
+export function locationHasProduct(
+  access: LocationProductAccess,
+  productId: Id<"products">,
+) {
+  return access.kind === "all"
+    ? !access.unusedProductIds.has(productId)
+    : access.effectiveProductIds.has(productId);
 }
 
 export async function getLocationProductAccess(
@@ -39,7 +65,18 @@ export async function getLocationProductAccess(
   locationId: Id<"locations">,
 ): Promise<LocationProductAccess> {
   const selectedIds = await selectedProductIds(ctx, organizationId, locationId);
-  if (selectedIds.length === 0) return { kind: "all" };
+  if (selectedIds.length === 0) {
+    const unusedRows = await listRows(
+      ctx,
+      "locationUnusedProducts",
+      organizationId,
+      locationId,
+    );
+    return {
+      kind: "all",
+      unusedProductIds: new Set(unusedRows.map((row) => row.productId)),
+    };
+  }
 
   const selected = new Set(selectedIds);
   const effective = new Set(selectedIds);
@@ -80,7 +117,21 @@ export async function requireLocationProduct(
   productId: Id<"products">,
 ) {
   const selectedIds = await selectedProductIds(ctx, organizationId, locationId);
-  if (selectedIds.length === 0) return;
+  if (selectedIds.length === 0) {
+    const unused = await ctx.db
+      .query("locationUnusedProducts")
+      .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", locationId)
+          .eq("productId", productId),
+      )
+      .first();
+    if (unused) {
+      throw new ConvexError("Produktet bruges ikke på den valgte lokation");
+    }
+    return;
+  }
   const selected = new Set(selectedIds);
   if (selected.has(productId)) return;
 
@@ -112,22 +163,55 @@ export async function requireLocationProduct(
   throw new ConvexError("Produktet bruges ikke på den valgte lokation");
 }
 
-// An empty list makes every active Produkt available. Returns whether anything changed.
+// Without productIds every active Produkt is available except unusedProductIds.
+// Returns whether anything changed.
 export async function setLocationProducts(
   ctx: MutationCtx,
   organizationId: string,
   location: Doc<"locations">,
-  productIds: Id<"products">[],
+  {
+    productIds,
+    unusedProductIds,
+  }: { productIds: Id<"products">[]; unusedProductIds: Id<"products">[] },
 ) {
   if (
     productIds.length > MAX_PRODUCTS ||
-    new Set(productIds).size !== productIds.length
+    unusedProductIds.length > MAX_PRODUCTS ||
+    new Set(productIds).size !== productIds.length ||
+    new Set(unusedProductIds).size !== unusedProductIds.length ||
+    (productIds.length > 0 && unusedProductIds.length > 0)
   ) {
     throw new ConvexError("Produktvalget er ugyldigt");
   }
 
+  const lists = [
+    { table: "locationProducts" as const, productIds },
+    { table: "locationUnusedProducts" as const, productIds: unusedProductIds },
+  ];
+  const changes = await Promise.all(
+    lists.map(async (list) => {
+      const current = await listRows(
+        ctx,
+        list.table,
+        organizationId,
+        location._id,
+      );
+      const currentIds = new Set(current.map((row) => row.productId));
+      const nextIds = new Set(list.productIds);
+      return {
+        table: list.table,
+        removed: current.filter((row) => !nextIds.has(row.productId)),
+        added: list.productIds.filter((id) => !currentIds.has(id)),
+      };
+    }),
+  );
+  if (changes.every((change) => !change.removed.length && !change.added.length)) {
+    return false;
+  }
+
+  const added = changes.flatMap((change) => change.added);
   const products = await Promise.all(
-    productIds.map((productId) => ctx.db.get("products", productId)),
+    added.map((productId) => ctx.db.get("products", productId)),
   );
   if (
     products.some(
@@ -140,24 +224,6 @@ export async function setLocationProducts(
     throw new ConvexError("Et Produkt blev ikke fundet");
   }
 
-  const current = await ctx.db
-    .query("locationProducts")
-    .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
-      q.eq("organizationId", organizationId).eq("locationId", location._id),
-    )
-    .take(MAX_PRODUCTS + 1);
-  if (current.length > MAX_PRODUCTS) {
-    throw new ConvexError("Lokationen har for mange valgte Produkter");
-  }
-
-  const nextIds = new Set(productIds);
-  const currentIds = new Set(current.map((row) => row.productId));
-  if (
-    nextIds.size === currentIds.size &&
-    productIds.every((productId) => currentIds.has(productId))
-  ) {
-    return false;
-  }
   const countWindow = await getLocationCountWindow(
     ctx,
     organizationId,
@@ -188,19 +254,17 @@ export async function setLocationProducts(
       );
     }
   }
-  for (const row of current) {
-    if (!nextIds.has(row.productId)) {
-      await ctx.db.delete("locationProducts", row._id);
+  for (const change of changes) {
+    for (const row of change.removed) {
+      await ctx.db.delete(change.table, row._id);
+    }
+    for (const productId of change.added) {
+      await ctx.db.insert(change.table, {
+        organizationId,
+        locationId: location._id,
+        productId,
+      });
     }
   }
-  for (const productId of productIds) {
-    if (currentIds.has(productId)) continue;
-    await ctx.db.insert("locationProducts", {
-      organizationId,
-      locationId: location._id,
-      productId,
-    });
-  }
-
   return true;
 }

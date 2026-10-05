@@ -855,8 +855,13 @@ async function scrubProductFromCountOrder(
 ) {
   const maxCountAreaRows =
     MAX_LOCATIONS_PER_ORGANIZATION * MAX_COUNT_AREAS;
-  const [locations, locationProducts, countAreaProducts, countExclusions] =
-    await Promise.all([
+  const [
+    locations,
+    locationProducts,
+    unusedLocationProducts,
+    countAreaProducts,
+    countExclusions,
+  ] = await Promise.all([
       ctx.db
         .query("locations")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -865,6 +870,12 @@ async function scrubProductFromCountOrder(
         .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
       ctx.db
         .query("locationProducts")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId).eq("productId", productId),
+        )
+        .take(MAX_LOCATIONS_PER_ORGANIZATION + 1),
+      ctx.db
+        .query("locationUnusedProducts")
         .withIndex("by_organizationId_and_productId", (q) =>
           q.eq("organizationId", organizationId).eq("productId", productId),
         )
@@ -885,7 +896,10 @@ async function scrubProductFromCountOrder(
   if (locations.length > MAX_LOCATIONS_PER_ORGANIZATION) {
     throw new ConvexError("Organisationen har for mange lokationer");
   }
-  if (locationProducts.length > MAX_LOCATIONS_PER_ORGANIZATION) {
+  if (
+    locationProducts.length > MAX_LOCATIONS_PER_ORGANIZATION ||
+    unusedLocationProducts.length > MAX_LOCATIONS_PER_ORGANIZATION
+  ) {
     throw new ConvexError("Produktet bruges på for mange lokationer");
   }
   if (countAreaProducts.length > maxCountAreaRows) {
@@ -904,6 +918,9 @@ async function scrubProductFromCountOrder(
   }
   for (const row of locationProducts) {
     await ctx.db.delete("locationProducts", row._id);
+  }
+  for (const row of unusedLocationProducts) {
+    await ctx.db.delete("locationUnusedProducts", row._id);
   }
   for (const row of countAreaProducts) {
     await ctx.db.delete("countAreaProducts", row._id);

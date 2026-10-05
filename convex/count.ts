@@ -31,6 +31,7 @@ import { setStock, toDefaultUnit } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
   getLocationProductAccess,
+  locationHasProduct,
   requireLocationProduct,
 } from "./lib/locationProducts";
 import {
@@ -1108,7 +1109,7 @@ export const listLocationStockPage = query({
       stock ? [[stock.productId, stock] as const] : [],
     ));
     const products = result.page.filter((product) =>
-      access.kind === "all" || access.effectiveProductIds.has(product._id) ||
+      locationHasProduct(access, product._id) ||
       (stockByProductId.get(product._id)?.quantity ?? 0) > 0,
     );
     return {
@@ -1153,14 +1154,11 @@ export const listLocationStock = query({
       }
       stockByProductId.set(stock.productId, stock);
     }
-    const products =
-      productAccess.kind === "all"
-        ? allProducts
-        : allProducts.filter(
-            (product) =>
-              productAccess.effectiveProductIds.has(product._id) ||
-              (stockByProductId.get(product._id)?.quantity ?? 0) > 0,
-          );
+    const products = allProducts.filter(
+      (product) =>
+        locationHasProduct(productAccess, product._id) ||
+        (stockByProductId.get(product._id)?.quantity ?? 0) > 0,
+    );
     return await hydrateLocationStock(ctx, organizationId, products, stockByProductId);
   },
 });

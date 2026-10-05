@@ -9,7 +9,10 @@ import {
 } from "./lib/locationProducts";
 
 const configurationValidator = v.union(
-  v.object({ kind: v.literal("all") }),
+  v.object({
+    kind: v.literal("all"),
+    unusedProductIds: v.array(v.id("products")),
+  }),
   v.object({
     kind: v.literal("selected"),
     selectedProductIds: v.array(v.id("products")),
@@ -29,7 +32,12 @@ export const getConfiguration = query({
       auth.organizationId,
       args.locationId,
     );
-    if (access.kind === "all") return access;
+    if (access.kind === "all") {
+      return {
+        kind: "all" as const,
+        unusedProductIds: [...access.unusedProductIds],
+      };
+    }
     return {
       kind: "selected" as const,
       selectedProductIds: [...access.selectedProductIds],
@@ -59,7 +67,7 @@ export const setConfiguration = mutation({
       ctx,
       organizationId,
       location,
-      args.productIds,
+      { productIds: args.productIds, unusedProductIds: [] },
     );
     if (!changed) return null;
     await recordAudit(ctx, auth, {

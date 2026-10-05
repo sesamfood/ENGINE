@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -296,7 +297,9 @@ export function LocationCountSetup({
     }
     const effective = new Set(
       configuration.kind === "all"
-        ? sortedProducts.map((product) => product.id)
+        ? sortedProducts
+            .map((product) => product.id)
+            .filter((id) => !configuration.unusedProductIds.includes(id))
         : [
             ...configuration.selectedProductIds,
             ...configuration.ingredientProductIds,
@@ -343,9 +346,10 @@ export function LocationCountSetup({
   ]);
 
   const board = draft ?? saved;
+  const hasAreas = Boolean(areas && areas.length > 0);
   const countKeys: CountColumnKey[] =
-    areas && areas.length > 0 ? areas.map((area) => area.id) : ["location"];
-  const unused = board?.autoInclude ? new Set<ProductId>() : board?.unused;
+    areas && hasAreas ? areas.map((area) => area.id) : ["location"];
+  const unused = board?.unused;
 
   function columnIds(key: CountColumnKey) {
     return (board?.columns.get(key) ?? saved?.columns.get(key) ?? []).filter(
@@ -407,7 +411,6 @@ export function LocationCountSetup({
     if (from === to && !isCountColumn(to)) return;
     update((next) => {
       if (to === "unused") {
-        next.autoInclude = false;
         next.unused.add(productId);
       } else {
         next.unused.delete(productId);
@@ -435,6 +438,15 @@ export function LocationCountSetup({
     });
   }
 
+  function removeFromColumn(productId: ProductId, key: CountColumnKey) {
+    update((next) => {
+      next.columns.set(
+        key,
+        (next.columns.get(key) ?? []).filter((id) => id !== productId),
+      );
+    });
+  }
+
   function requestClose() {
     if (isBusy) return;
     if (isDirty) setConfirmDiscard(true);
@@ -448,6 +460,7 @@ export function LocationCountSetup({
       : sortedProducts
           .map((product) => product.id)
           .filter((id) => !board.unused.has(id));
+    const unusedProductIds = board.autoInclude ? unusedIds : [];
     if (!board.autoInclude && productIds.length === 0) {
       toast.error("Vælg mindst ét Produkt til lokationen");
       return;
@@ -468,7 +481,13 @@ export function LocationCountSetup({
       }));
     setSaving(true);
     try {
-      await saveSetup({ locationId, productIds, excludedProductIds, orders });
+      await saveSetup({
+        locationId,
+        productIds,
+        unusedProductIds,
+        excludedProductIds,
+        orders,
+      });
       setDraft(null);
       toast.success("Count-opsætningen er gemt");
     } catch (error) {
@@ -592,16 +611,18 @@ export function LocationCountSetup({
       : ingredientIds.has(productId)
         ? "Ingrediens"
         : null;
-    const moveTargets = (
-      ["unused", "waste", ...countKeys] as ColumnKey[]
-    ).filter((key) => key !== column);
-    const copyTargets = isCountColumn(column)
-      ? countKeys.filter(
-          (key) =>
-            key !== column &&
-            !(countColumns.get(key) ?? []).includes(productId),
-        )
+    const memberOf = countKeys.filter((key) =>
+      (countColumns.get(key) ?? []).includes(productId),
+    );
+    const alsoIn = isCountColumn(column)
+      ? memberOf.filter((key) => key !== column)
       : [];
+    const details = [
+      note,
+      alsoIn.length > 0
+        ? `Også i ${alsoIn.map((key) => columnTitles.get(key)).join(", ")}`
+        : null,
+    ].filter(Boolean);
     return (
       <SortableListRow
         key={itemId(column, productId)}
@@ -619,58 +640,62 @@ export function LocationCountSetup({
                   variant="ghost"
                   size="icon-lg"
                   className="size-11"
-                  aria-label={`Flyt ${name} til`}
+                  aria-label={`Placér ${name}`}
                   disabled={isBusy}
                 />
               }
             >
               <EllipsisVerticalIcon />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-52">
+            <DropdownMenuContent align="end" className="min-w-56">
               <DropdownMenuGroup>
-                <DropdownMenuLabel>Flyt til</DropdownMenuLabel>
-                {moveTargets.map((key) => (
-                  <DropdownMenuItem
+                <DropdownMenuLabel>
+                  {hasAreas ? "Tælles i" : "Count"}
+                </DropdownMenuLabel>
+                {countKeys.map((key) => (
+                  <DropdownMenuCheckboxItem
                     key={key}
                     className="min-h-11"
-                    disabled={
-                      (isCountColumn(key) && locked) ||
-                      (key === "unused" && ingredientIds.has(productId))
+                    closeOnClick={false}
+                    checked={memberOf.includes(key)}
+                    disabled={locked}
+                    onCheckedChange={(checked) =>
+                      checked
+                        ? moveProduct(productId, column, key, { copy: true })
+                        : removeFromColumn(productId, key)
                     }
-                    onClick={() => moveProduct(productId, column, key)}
                   >
                     {columnTitles.get(key)}
-                  </DropdownMenuItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuGroup>
-              {copyTargets.length > 0 ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>Tilføj også til</DropdownMenuLabel>
-                    {copyTargets.map((key) => (
-                      <DropdownMenuItem
-                        key={key}
-                        className="min-h-11"
-                        onClick={() =>
-                          moveProduct(productId, column, key, { copy: true })
-                        }
-                      >
-                        {columnTitles.get(key)}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                </>
-              ) : null}
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Tælles ikke</DropdownMenuLabel>
+                {(["waste", "unused"] as const)
+                  .filter((key) => key !== column)
+                  .map((key) => (
+                    <DropdownMenuItem
+                      key={key}
+                      className="min-h-11"
+                      disabled={
+                        key === "unused" && ingredientIds.has(productId)
+                      }
+                      onClick={() => moveProduct(productId, column, key)}
+                    >
+                      Flyt til {columnTitles.get(key)}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         }
       >
         <span className="flex min-w-0 flex-1 flex-col py-1">
           <span className="truncate font-medium">{name}</span>
-          {note ? (
+          {details.length > 0 ? (
             <span className="truncate text-xs text-muted-foreground">
-              {note}
+              {details.join(" · ")}
             </span>
           ) : null}
         </span>
@@ -695,7 +720,6 @@ export function LocationCountSetup({
   }
 
   const draggedProduct = dragging ? parseItemId(dragging).productId : null;
-  const hasAreas = Boolean(areas && areas.length > 0);
 
   return (
     <>
@@ -757,7 +781,6 @@ export function LocationCountSetup({
                     onCheckedChange={(checked) =>
                       update((next) => {
                         next.autoInclude = checked;
-                        if (checked) next.unused.clear();
                       })
                     }
                   />
@@ -769,7 +792,7 @@ export function LocationCountSetup({
                   </label>
                   <HelpTooltip
                     label="Brug nye Produkter automatisk"
-                    content="Når den er slået til, bruges alle aktive Produkter på lokationen, også dem der oprettes senere. Nye Produkter lander i Kun Waste. Flytter du et Produkt til Ikke brugt, slås den fra."
+                    content="Når den er slået til, bruges nye Produkter automatisk på lokationen og lander i Kun Waste. Produkter i Ikke brugt forbliver fravalgt. Når den er slået fra, bruges kun de Produkter, der ligger uden for Ikke brugt nu."
                   />
                 </div>
               </div>

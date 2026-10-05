@@ -19,6 +19,7 @@ import {
 import { getLocationCountWindow } from "./lib/countWindow";
 import {
   getLocationProductAccess,
+  locationHasProduct,
   setLocationProducts,
 } from "./lib/locationProducts";
 import {
@@ -74,13 +75,6 @@ async function getCurrentOpenCount(
   return count?.status === "open" ? count : null;
 }
 
-function productIsAvailable(
-  access: Awaited<ReturnType<typeof getLocationProductAccess>>,
-  productId: Id<"products">,
-) {
-  return access.kind === "all" || access.effectiveProductIds.has(productId);
-}
-
 async function filteredOrder(
   ctx: CountAreaContext,
   organizationId: string,
@@ -93,7 +87,7 @@ async function filteredOrder(
     locationId,
   );
   return productIds.filter((productId) =>
-    productIsAvailable(access, productId),
+    locationHasProduct(access, productId),
   );
 }
 
@@ -127,7 +121,7 @@ export const listForCount = query({
             .map((row) => row.productId)
             .filter(
               (productId) =>
-                productIsAvailable(access, productId) &&
+                locationHasProduct(access, productId) &&
                 !excludedProductIds.has(productId),
             ),
         };
@@ -166,7 +160,7 @@ export const listForManagement = query({
             .map((row) => row.productId)
             .filter(
               (productId) =>
-                productIsAvailable(access, productId) &&
+                locationHasProduct(access, productId) &&
                 !excludedProductIds.has(productId),
             ),
         };
@@ -428,7 +422,7 @@ async function writeProductOrder(
     organizationId,
     location._id,
   );
-  if (productIds.some((productId) => !productIsAvailable(access, productId))) {
+  if (productIds.some((productId) => !locationHasProduct(access, productId))) {
     throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
   }
   if (productIds.length <= MAX_COUNT_AREA_PRODUCTS) {
@@ -614,6 +608,7 @@ export const saveSetup = mutation({
   args: {
     locationId: v.id("locations"),
     productIds: v.array(v.id("products")),
+    unusedProductIds: v.array(v.id("products")),
     excludedProductIds: v.array(v.id("products")),
     orders: v.array(
       v.object({
@@ -641,7 +636,10 @@ export const saveSetup = mutation({
     }
 
     if (
-      await setLocationProducts(ctx, organizationId, location, args.productIds)
+      await setLocationProducts(ctx, organizationId, location, {
+        productIds: args.productIds,
+        unusedProductIds: args.unusedProductIds,
+      })
     ) {
       await recordAudit(ctx, auth, {
         action: "locations.productsChanged",
@@ -649,9 +647,11 @@ export const saveSetup = mutation({
         entityId: location._id,
         locationId: location._id,
         summary:
-          args.productIds.length === 0
-            ? `Alle Produkter blev gjort tilgængelige på ${location.name}`
-            : `${args.productIds.length} Produkter blev valgt til ${location.name}`,
+          args.productIds.length > 0
+            ? `${args.productIds.length} Produkter blev valgt til ${location.name}`
+            : args.unusedProductIds.length > 0
+              ? `Alle Produkter undtagen ${args.unusedProductIds.length} bruges på ${location.name}`
+              : `Alle Produkter blev gjort tilgængelige på ${location.name}`,
       });
     }
     if (
