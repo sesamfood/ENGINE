@@ -16,6 +16,7 @@ export function SortableListRow({
   label,
   disabled = false,
   position,
+  description,
   children,
   actions,
   className,
@@ -26,6 +27,7 @@ export function SortableListRow({
   label: string;
   disabled?: boolean;
   position?: number;
+  description?: string;
   children?: ReactNode;
   actions?: ReactNode;
   className?: string;
@@ -52,7 +54,7 @@ export function SortableListRow({
         } as React.CSSProperties
       }
       className={cn(
-        "flex min-h-14 items-center gap-2 rounded-lg border bg-background p-1 transition-card duration-150",
+        "flex min-h-14 items-center gap-2 rounded-lg border bg-background p-1 transition-card duration-150 has-[[data-drag-handle]:focus-visible]:border-ring has-[[data-drag-handle]:focus-visible]:ring-3 has-[[data-drag-handle]:focus-visible]:ring-ring/50",
         transform && "transform-(--drag-transform)",
         transition && "transition-drag!",
         isDragging && "z-1 opacity-30",
@@ -65,13 +67,14 @@ export function SortableListRow({
       <button
         ref={setActivatorNodeRef}
         type="button"
+        data-drag-handle
         disabled={disabled}
         {...attributes}
         {...listeners}
         aria-label={`Flyt ${label}`}
         aria-roledescription={roleDescription}
         className={cn(
-          "flex min-h-12 min-w-0 flex-1 touch-none cursor-grab items-center gap-2 rounded-md px-1 py-0 text-left outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing disabled:pointer-events-none disabled:cursor-default disabled:opacity-50",
+          "flex min-h-12 min-w-0 flex-1 touch-none cursor-grab items-center gap-2 rounded-md px-1 py-0 text-left outline-none select-none active:cursor-grabbing disabled:pointer-events-none disabled:cursor-default disabled:opacity-50",
           children && "flex-none",
           handleClassName,
         )}
@@ -84,7 +87,16 @@ export function SortableListRow({
             {position}
           </span>
         ) : null}
-        <span className={cn("min-w-0 flex-1 truncate font-medium", children && "sr-only")}>{label}</span>
+        {description ? (
+          <span className="flex min-w-0 flex-1 flex-col py-1">
+            <span className="truncate font-medium">{label}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {description}
+            </span>
+          </span>
+        ) : (
+          <span className={cn("min-w-0 flex-1 truncate font-medium", children && "sr-only")}>{label}</span>
+        )}
       </button>
       {children}
       {actions}

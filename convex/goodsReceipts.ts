@@ -16,7 +16,10 @@ import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummary,
 } from "./lib/dashboardSummaries";
-import { getLocationProductAccess } from "./lib/locationProducts";
+import {
+  getLocationProductAccess,
+  locationHasProduct,
+} from "./lib/locationProducts";
 import {
   activeProductCatalogValidator,
   listActiveProductPage,
@@ -178,8 +181,7 @@ async function resolveCatalogReceiptItems({
 
   for (const item of items) {
     if (
-      productAccess.kind === "selected" &&
-      !productAccess.effectiveProductIds.has(item.productId)
+      !locationHasProduct(productAccess, item.productId)
     ) {
       throw new ConvexError("Produktet bruges ikke på den valgte lokation");
     }

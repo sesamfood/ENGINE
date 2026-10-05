@@ -17,8 +17,15 @@ import {
   requireCountArea,
 } from "./lib/countAreas";
 import { getLocationCountWindow } from "./lib/countWindow";
-import { getLocationProductAccess } from "./lib/locationProducts";
-import { getCountExcludedProductIds } from "./lib/countExclusions";
+import {
+  getLocationProductAccess,
+  locationHasProduct,
+  setLocationProducts,
+} from "./lib/locationProducts";
+import {
+  getCountExcludedProductIds,
+  setCountExclusions,
+} from "./lib/countExclusions";
 
 const MAX_NAME_LENGTH = 100;
 const MAX_COUNT_ITEMS = 5_000;
@@ -68,13 +75,6 @@ async function getCurrentOpenCount(
   return count?.status === "open" ? count : null;
 }
 
-function productIsAvailable(
-  access: Awaited<ReturnType<typeof getLocationProductAccess>>,
-  productId: Id<"products">,
-) {
-  return access.kind === "all" || access.effectiveProductIds.has(productId);
-}
-
 async function filteredOrder(
   ctx: CountAreaContext,
   organizationId: string,
@@ -87,7 +87,7 @@ async function filteredOrder(
     locationId,
   );
   return productIds.filter((productId) =>
-    productIsAvailable(access, productId),
+    locationHasProduct(access, productId),
   );
 }
 
@@ -121,7 +121,7 @@ export const listForCount = query({
             .map((row) => row.productId)
             .filter(
               (productId) =>
-                productIsAvailable(access, productId) &&
+                locationHasProduct(access, productId) &&
                 !excludedProductIds.has(productId),
             ),
         };
@@ -160,7 +160,7 @@ export const listForManagement = query({
             .map((row) => row.productId)
             .filter(
               (productId) =>
-                productIsAvailable(access, productId) &&
+                locationHasProduct(access, productId) &&
                 !excludedProductIds.has(productId),
             ),
         };
@@ -403,6 +403,155 @@ export const remove = mutation({
   },
 });
 
+async function writeProductOrder(
+  ctx: MutationCtx,
+  organizationId: string,
+  location: Doc<"locations">,
+  countAreaId: Id<"countAreas"> | null,
+  productIds: Id<"products">[],
+) {
+  if (
+    productIds.length >
+      (countAreaId === null ? MAX_COUNT_ITEMS : MAX_COUNT_AREA_PRODUCTS) ||
+    new Set(productIds).size !== productIds.length
+  ) {
+    throw new ConvexError("Produktrækkefølgen er ugyldig");
+  }
+  const access = await getLocationProductAccess(
+    ctx,
+    organizationId,
+    location._id,
+  );
+  if (productIds.some((productId) => !locationHasProduct(access, productId))) {
+    throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
+  }
+  if (productIds.length <= MAX_COUNT_AREA_PRODUCTS) {
+    const products = await Promise.all(
+      productIds.map((productId) => ctx.db.get("products", productId)),
+    );
+    if (products.some((product) =>
+      !product || product.organizationId !== organizationId || product.status !== "active",
+    )) {
+      throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
+    }
+  } else {
+    const remaining = new Set(productIds);
+    async function requireScanHeadroom() {
+      const metrics = await ctx.meta.getTransactionMetrics();
+      // Reserve room for the next document, location update, and audit record.
+      if (
+        metrics.documentsRead.remaining < 2_000 ||
+        metrics.bytesRead.remaining < 2 * 1024 * 1024 ||
+        metrics.databaseQueries.remaining < 100
+      ) {
+        throw new ConvexError("Der er for mange Produkter til at gemme rækkefølgen sikkert");
+      }
+    }
+    await requireScanHeadroom();
+    for await (const product of ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId).eq("status", "active"),
+      )) {
+      remaining.delete(product._id);
+      if (remaining.size === 0) break;
+      await requireScanHeadroom();
+    }
+    if (remaining.size > 0) {
+      throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
+    }
+  }
+
+  if (!countAreaId) {
+    const areas = await listCountAreas(ctx, organizationId, location._id);
+    if (areas.length > 0) throw new ConvexError("Vælg et Område");
+    await ctx.db.patch("locations", location._id, {
+      countProductOrder: productIds,
+    });
+  } else {
+    const area = await requireCountArea(
+      ctx,
+      organizationId,
+      location._id,
+      countAreaId,
+    );
+    const current = await getCountAreaProductOrder(
+      ctx,
+      organizationId,
+      area._id,
+    );
+    const currentCount = await getCurrentOpenCount(
+      ctx,
+      organizationId,
+      location,
+    );
+    const nextProductIds = new Set(productIds);
+    if (currentCount) {
+      const countItems = await ctx.db
+        .query("countItems")
+        .withIndex("by_organizationId_and_countId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("countId", currentCount._id),
+        )
+        .take(MAX_COUNT_ITEMS + 1);
+      if (countItems.length > MAX_COUNT_ITEMS) {
+        throw new ConvexError("Count har for mange enhedslinjer");
+      }
+      if (
+        countItems.some(
+          (item) =>
+            item.countAreaId === area._id &&
+            !nextProductIds.has(item.productId),
+        )
+      ) {
+        throw new ConvexError(
+          "Produkter med optalte mængder kan ikke fjernes fra Området",
+        );
+      }
+    }
+    for (const row of current) {
+      await ctx.db.delete("countAreaProducts", row._id);
+    }
+    for (const [position, productId] of productIds.entries()) {
+      await ctx.db.insert("countAreaProducts", {
+        organizationId,
+        locationId: location._id,
+        countAreaId: area._id,
+        productId,
+        position,
+      });
+    }
+    if (currentCount?.completedCountAreaIds?.includes(area._id)) {
+      await ctx.db.patch("counts", currentCount._id, {
+        completedCountAreaIds: currentCount.completedCountAreaIds.filter(
+          (countAreaId) => countAreaId !== area._id,
+        ),
+      });
+    }
+    if (currentCount) {
+      const progress = await ctx.db
+        .query("countAreaProgress")
+        .withIndex(
+          "by_organizationId_and_countId_and_countAreaId",
+          (q) =>
+            q
+              .eq("organizationId", organizationId)
+              .eq("countId", currentCount._id)
+              .eq("countAreaId", area._id),
+        )
+        .unique();
+      if (progress) {
+        await ctx.db.patch("countAreaProgress", progress._id, {
+          countedProductIds: progress.countedProductIds.filter(
+            (productId) => nextProductIds.has(productId),
+          ),
+        });
+      }
+    }
+  }
+}
+
 export const setProductOrder = mutation({
   args: {
     locationId: v.id("locations"),
@@ -419,146 +568,13 @@ export const setProductOrder = mutation({
       organizationId,
       args.locationId,
     );
-    if (
-      args.productIds.length >
-        (args.countAreaId === null ? MAX_COUNT_ITEMS : MAX_COUNT_AREA_PRODUCTS) ||
-      new Set(args.productIds).size !== args.productIds.length
-    ) {
-      throw new ConvexError("Produktrækkefølgen er ugyldig");
-    }
-    const access = await getLocationProductAccess(
+    await writeProductOrder(
       ctx,
       organizationId,
-      location._id,
+      location,
+      args.countAreaId,
+      args.productIds,
     );
-    if (args.productIds.some((productId) => !productIsAvailable(access, productId))) {
-      throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
-    }
-    if (args.productIds.length <= MAX_COUNT_AREA_PRODUCTS) {
-      const products = await Promise.all(
-        args.productIds.map((productId) => ctx.db.get("products", productId)),
-      );
-      if (products.some((product) =>
-        !product || product.organizationId !== organizationId || product.status !== "active",
-      )) {
-        throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
-      }
-    } else {
-      const remaining = new Set(args.productIds);
-      async function requireScanHeadroom() {
-        const metrics = await ctx.meta.getTransactionMetrics();
-        // Reserve room for the next document, location update, and audit record.
-        if (
-          metrics.documentsRead.remaining < 2_000 ||
-          metrics.bytesRead.remaining < 2 * 1024 * 1024 ||
-          metrics.databaseQueries.remaining < 100
-        ) {
-          throw new ConvexError("Der er for mange Produkter til at gemme rækkefølgen sikkert");
-        }
-      }
-      await requireScanHeadroom();
-      for await (const product of ctx.db
-        .query("products")
-        .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
-          q.eq("organizationId", organizationId).eq("status", "active"),
-        )) {
-        remaining.delete(product._id);
-        if (remaining.size === 0) break;
-        await requireScanHeadroom();
-      }
-      if (remaining.size > 0) {
-        throw new ConvexError("Et Produkt er ikke tilgængeligt på lokationen");
-      }
-    }
-
-    if (!args.countAreaId) {
-      const areas = await listCountAreas(ctx, organizationId, location._id);
-      if (areas.length > 0) throw new ConvexError("Vælg et Område");
-      await ctx.db.patch("locations", location._id, {
-        countProductOrder: args.productIds,
-      });
-    } else {
-      const area = await requireCountArea(
-        ctx,
-        organizationId,
-        location._id,
-        args.countAreaId,
-      );
-      const current = await getCountAreaProductOrder(
-        ctx,
-        organizationId,
-        area._id,
-      );
-      const currentCount = await getCurrentOpenCount(
-        ctx,
-        organizationId,
-        location,
-      );
-      const nextProductIds = new Set(args.productIds);
-      if (currentCount) {
-        const countItems = await ctx.db
-          .query("countItems")
-          .withIndex("by_organizationId_and_countId", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("countId", currentCount._id),
-          )
-          .take(MAX_COUNT_ITEMS + 1);
-        if (countItems.length > MAX_COUNT_ITEMS) {
-          throw new ConvexError("Count har for mange enhedslinjer");
-        }
-        if (
-          countItems.some(
-            (item) =>
-              item.countAreaId === area._id &&
-              !nextProductIds.has(item.productId),
-          )
-        ) {
-          throw new ConvexError(
-            "Produkter med optalte mængder kan ikke fjernes fra Området",
-          );
-        }
-      }
-      for (const row of current) {
-        await ctx.db.delete("countAreaProducts", row._id);
-      }
-      for (const [position, productId] of args.productIds.entries()) {
-        await ctx.db.insert("countAreaProducts", {
-          organizationId,
-          locationId: location._id,
-          countAreaId: area._id,
-          productId,
-          position,
-        });
-      }
-      if (currentCount?.completedCountAreaIds?.includes(area._id)) {
-        await ctx.db.patch("counts", currentCount._id, {
-          completedCountAreaIds: currentCount.completedCountAreaIds.filter(
-            (countAreaId) => countAreaId !== area._id,
-          ),
-        });
-      }
-      if (currentCount) {
-        const progress = await ctx.db
-          .query("countAreaProgress")
-          .withIndex(
-            "by_organizationId_and_countId_and_countAreaId",
-            (q) =>
-              q
-                .eq("organizationId", organizationId)
-                .eq("countId", currentCount._id)
-                .eq("countAreaId", area._id),
-          )
-          .unique();
-        if (progress) {
-          await ctx.db.patch("countAreaProgress", progress._id, {
-            countedProductIds: progress.countedProductIds.filter(
-              (productId) => nextProductIds.has(productId),
-            ),
-          });
-        }
-      }
-    }
     await recordAudit(ctx, auth, {
       action: "count.areaOrderChanged",
       entityTable: args.countAreaId ? "countAreas" : "locations",
@@ -568,6 +584,110 @@ export const setProductOrder = mutation({
         ? "Produktrækkefølgen for Området blev ændret"
         : "Produktrækkefølgen for lokationen blev ændret",
     });
+    return null;
+  },
+});
+
+export const getLocationProductOrder = query({
+  args: { locationId: v.id("locations") },
+  returns: v.array(v.id("products")),
+  handler: async (ctx, args) => {
+    const auth = await requireLocationManager(ctx);
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      auth.organizationId,
+      args.locationId,
+    );
+    return location.countProductOrder ?? [];
+  },
+});
+
+// Saves the whole Count setup board in one transaction.
+export const saveSetup = mutation({
+  args: {
+    locationId: v.id("locations"),
+    productIds: v.array(v.id("products")),
+    unusedProductIds: v.array(v.id("products")),
+    excludedProductIds: v.array(v.id("products")),
+    orders: v.array(
+      v.object({
+        countAreaId: v.union(v.id("countAreas"), v.null()),
+        productIds: v.array(v.id("products")),
+      }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireLocationManager(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    if (
+      args.orders.length > MAX_COUNT_AREAS ||
+      new Set(args.orders.map((order) => order.countAreaId)).size !==
+        args.orders.length
+    ) {
+      throw new ConvexError("Count-opsætningen er ugyldig");
+    }
+
+    if (
+      await setLocationProducts(ctx, organizationId, location, {
+        productIds: args.productIds,
+        unusedProductIds: args.unusedProductIds,
+      })
+    ) {
+      await recordAudit(ctx, auth, {
+        action: "locations.productsChanged",
+        entityTable: "locations",
+        entityId: location._id,
+        locationId: location._id,
+        summary:
+          args.productIds.length > 0
+            ? `${args.productIds.length} Produkter blev valgt til ${location.name}`
+            : args.unusedProductIds.length > 0
+              ? `Alle Produkter undtagen ${args.unusedProductIds.length} bruges på ${location.name}`
+              : `Alle Produkter blev gjort tilgængelige på ${location.name}`,
+      });
+    }
+    if (
+      await setCountExclusions(
+        ctx,
+        organizationId,
+        location._id,
+        args.excludedProductIds,
+      )
+    ) {
+      await recordAudit(ctx, auth, {
+        action: "locations.countExclusionsChanged",
+        entityTable: "locations",
+        entityId: location._id,
+        locationId: location._id,
+        summary: `${args.excludedProductIds.length} Produkter er udeladt fra Count på ${location.name}`,
+      });
+    }
+    for (const order of args.orders) {
+      await writeProductOrder(
+        ctx,
+        organizationId,
+        location,
+        order.countAreaId,
+        order.productIds,
+      );
+      await recordAudit(ctx, auth, {
+        action: "count.areaOrderChanged",
+        entityTable: order.countAreaId ? "countAreas" : "locations",
+        entityId: order.countAreaId ?? location._id,
+        locationId: location._id,
+        summary: order.countAreaId
+          ? "Produktrækkefølgen for Området blev ændret"
+          : "Produktrækkefølgen for lokationen blev ændret",
+      });
+    }
     return null;
   },
 });

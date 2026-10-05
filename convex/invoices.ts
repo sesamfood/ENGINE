@@ -22,7 +22,10 @@ import {
 import { recordAudit } from "./lib/audit";
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { requireOrganizationLocation } from "./lib/locations";
-import { getLocationProductAccess } from "./lib/locationProducts";
+import {
+  getLocationProductAccess,
+  locationHasProduct,
+} from "./lib/locationProducts";
 import { createProductStockResolver } from "./lib/productStock";
 import { addStock, normalizeStock, toDefaultUnit } from "./lib/stock";
 import {
@@ -126,6 +129,8 @@ export const listMenus = query({
   },
 });
 
+const MAX_ACCESS_PRODUCTS = 500;
+
 export const getProductAccess = query({
   args: { locationId: v.id("locations") },
   returns: v.union(v.null(), v.array(v.id("products"))),
@@ -142,7 +147,20 @@ export const getProductAccess = query({
       auth.organizationId,
       args.locationId,
     );
-    return access.kind === "all" ? null : [...access.effectiveProductIds];
+    if (access.kind === "selected") return [...access.effectiveProductIds];
+    if (access.unusedProductIds.size === 0) return null;
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("status", "active"),
+      )
+      .take(MAX_ACCESS_PRODUCTS + 1);
+    if (products.length > MAX_ACCESS_PRODUCTS) {
+      throw new ConvexError("Der er for mange aktive Produkter");
+    }
+    return products
+      .map((product) => product._id)
+      .filter((id) => locationHasProduct(access, id));
   },
 });
 
@@ -368,8 +386,7 @@ export const create = mutation({
     > = [];
     for (const item of items) {
       if (
-        productAccess.kind === "selected" &&
-        !productAccess.effectiveProductIds.has(item.productId)
+        !locationHasProduct(productAccess, item.productId)
       ) {
         throw new ConvexError("Produktet bruges ikke på den valgte lokation");
       }

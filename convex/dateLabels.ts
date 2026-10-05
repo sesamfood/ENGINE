@@ -12,6 +12,7 @@ import {
 import { requireOrganizationLocation } from "./lib/locations";
 import {
   getLocationProductAccess,
+  locationHasProduct,
   requireLocationProduct,
 } from "./lib/locationProducts";
 import {
@@ -260,7 +261,7 @@ export const saveSettings = mutation({
         !product ||
         product.organizationId !== auth.organizationId ||
         product.status !== "active" ||
-        (access.kind === "selected" && !access.effectiveProductIds.has(id))
+        !locationHasProduct(access, id)
       )
         throw new ConvexError("Produktet er ikke tilgængeligt på lokationen");
     }

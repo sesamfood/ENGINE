@@ -1,25 +1,27 @@
 "use client";
 
-
-import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
-import { CountExclusionList } from "./count-exclusion-list";
 import { SortableListRow } from "./sortable-list-row";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
+  AutoScrollActivator,
   closestCorners,
+  type CollisionDetection,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  pointerWithin,
+  TouchSensor,
   type Announcements,
-  type ScreenReaderInstructions,
+  type UniqueIdentifier,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -27,14 +29,17 @@ import {
 
 import { useMutation, useQuery } from "convex/react";
 import {
+  ChevronRightIcon,
+  EllipsisVerticalIcon,
+  GripVerticalIcon,
   LayoutListIcon,
-  ListOrderedIcon,
-  MapIcon,
   PencilIcon,
   PlusIcon,
+  SearchIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -49,6 +54,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -59,8 +69,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -68,93 +87,125 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
-  FieldDescription,
   FieldError,
-  FieldLegend,
   FieldGroup,
   FieldLabel,
-  FieldSet,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 type ProductId = Id<"products">;
-type ProductMode = "all" | "selected";
-type ActiveTab = "products" | "areas" | "excluded";
+type AreaId = Id<"countAreas">;
+type CountColumnKey = AreaId | "location";
+type ColumnKey = "unused" | "waste" | CountColumnKey;
 type CountArea = {
-  id: Id<"countAreas">;
+  id: AreaId;
   name: string;
   productIds: ProductId[];
 };
-type ProductDraft = {
-  locationId: Id<"locations"> | null;
-  mode: ProductMode;
-  selectedProductIds: Set<ProductId>;
+type Board = {
+  autoInclude: boolean;
+  unused: Set<ProductId>;
+  columns: Map<CountColumnKey, ProductId[]>;
 };
 
-const areaOrderScreenReaderInstructions: ScreenReaderInstructions = {
-  draggable:
-    "Tryk på mellemrum for at vælge Produktet. Flyt det med piletasterne. Tryk på mellemrum igen for at placere det, eller Escape for at annullere.",
-};
+const MAX_AREA_PRODUCTS = 500;
+const COLUMN_PREFIX = "column:";
 
-function allProductDraft(locationId: Id<"locations">): ProductDraft {
-  return {
-    locationId,
-    mode: "all",
-    selectedProductIds: new Set(),
-  };
+function itemId(column: ColumnKey, productId: ProductId) {
+  return `${column}|${productId}`;
 }
 
-function SortableAreaProductRow({
-  areaName,
-  disabled,
-  position,
-  productId,
-  productName,
-  onRemove,
-}: {
-  areaName: string;
-  disabled: boolean;
-  position: number;
-  productId: ProductId;
-  productName: string;
-  onRemove: () => void;
-}) {
+function parseItemId(id: UniqueIdentifier) {
+  const [column, productId] = String(id).split("|");
+  return { column: column as ColumnKey, productId: productId as ProductId };
+}
+
+function targetColumn(id: UniqueIdentifier) {
+  const value = String(id);
+  return value.startsWith(COLUMN_PREFIX)
+    ? (value.slice(COLUMN_PREFIX.length) as ColumnKey)
+    : parseItemId(value).column;
+}
+
+function isCountColumn(column: ColumnKey): column is CountColumnKey {
+  return column !== "unused" && column !== "waste";
+}
+
+function sameIds(left: ProductId[], right: ProductId[]) {
   return (
-    <SortableListRow
-      id={productId}
-      label={productName}
-      disabled={disabled}
-      position={position}
-      roleDescription="Produkt, der kan flyttes"
-      actions={
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-lg"
-                className="size-11"
-                aria-label={`Fjern ${productName} fra ${areaName}`}
-                disabled={disabled}
-                onClick={onRemove}
-              />
-            }
-          >
-            <Trash2Icon />
-          </TooltipTrigger>
-          <TooltipContent>Fjern Produkt</TooltipContent>
-        </Tooltip>
-      }
-    />
+    left.length === right.length &&
+    left.every((id, index) => id === right[index])
+  );
+}
+
+// Prefer the card under the pointer, then the column, then the nearest card for keyboard drags.
+const boardCollision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  if (hits.length === 0) return closestCorners(args);
+  const card = hits.find((hit) => !String(hit.id).startsWith(COLUMN_PREFIX));
+  return [card ?? hits[0]];
+};
+
+function BoardColumn({
+  column,
+  title,
+  description,
+  count,
+  tone,
+  actions,
+  sortableIds,
+  children,
+}: {
+  column: ColumnKey;
+  title: string;
+  description: string;
+  count: number;
+  tone: "muted" | "neutral" | "count";
+  actions?: ReactNode;
+  sortableIds: string[];
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `${COLUMN_PREFIX}${column}`,
+  });
+  return (
+    <section
+      ref={setNodeRef}
+      aria-label={title}
+      className={cn(
+        "flex w-72 shrink-0 snap-start flex-col rounded-xl border transition-colors",
+        tone === "muted" && "border-dashed bg-muted/20",
+        tone === "neutral" && "bg-muted/40",
+        tone === "count" && "bg-card",
+        isOver && "border-primary ring-2 ring-primary/20",
+      )}
+    >
+      <header className="flex min-h-14 items-start justify-between gap-2 border-b p-3 pr-1">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="truncate font-medium">{title}</h3>
+            <Badge variant={tone === "count" ? "default" : "secondary"}>
+              {count}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        {actions}
+      </header>
+      <SortableContext
+        items={sortableIds}
+        strategy={verticalListSortingStrategy}
+      >
+        <ol className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto p-2">
+          {children}
+        </ol>
+      </SortableContext>
+    </section>
   );
 }
 
@@ -189,25 +240,26 @@ export function LocationCountSetup({
     api.catalog.listCategoryOptions,
     open ? {} : "skip",
   );
-  const setConfiguration = useMutation(api.locationProducts.setConfiguration);
-  const setExclusions = useMutation(api.countExclusions.setLocation);
+  const locationOrder = useQuery(
+    api.countAreas.getLocationProductOrder,
+    open ? { locationId } : "skip",
+  );
+  const saveSetup = useMutation(api.countAreas.saveSetup);
   const createArea = useMutation(api.countAreas.create);
   const renameArea = useMutation(api.countAreas.rename);
   const removeCountArea = useMutation(api.countAreas.remove);
   const setAreaProductOrder = useMutation(api.countAreas.setProductOrder);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("products");
-  const [productDraft, setProductDraft] = useState<ProductDraft>(() => ({
-    locationId: null,
-    mode: "all",
-    selectedProductIds: new Set(),
-  }));
-  const [savingProducts, setSavingProducts] = useState(false);
-  const [exclusionDraft, setExclusionDraft] = useState<{
-    locationId: Id<"locations">;
-    productIds: Set<ProductId>;
-  } | null>(null);
-  const [savingExclusions, setSavingExclusions] = useState(false);
+  const [draft, setDraft] = useState<Board | null>(null);
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [dragging, setDragging] = useState<UniqueIdentifier | null>(null);
+  const [copyDrag, setCopyDrag] = useState(false);
+  const [showCopyHint, setShowCopyHint] = useState(false);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [editingArea, setEditingArea] = useState<CountArea | "new" | null>(
     null,
   );
@@ -218,158 +270,329 @@ export function LocationCountSetup({
     null,
   );
   const [deletingArea, setDeletingArea] = useState(false);
-  const [orderingArea, setOrderingArea] = useState<CountArea | null>(null);
-  const [areaOrder, setAreaOrder] = useState<ProductId[]>([]);
-  const [orderError, setOrderError] = useState("");
-  const [savingOrder, setSavingOrder] = useState(false);
-  const areaOrderSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    // Press and hold on touch so swiping a card still scrolls the column.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
-  const serverProductDraft: ProductDraft | null = configuration
-    ? {
-        locationId,
-        mode: configuration.kind,
-        selectedProductIds: new Set(
-          configuration.kind === "selected"
-            ? configuration.selectedProductIds
-            : [],
-        ),
-      }
-    : null;
-  const currentProductDraft =
-    productDraft.locationId === locationId
-      ? productDraft
-      : (serverProductDraft ?? {
-          ...allProductDraft(locationId),
-        });
-  const mode = currentProductDraft.mode;
-  const selectedProductIds = currentProductDraft.selectedProductIds;
-
-  const ingredientProductIds =
-    configuration?.kind === "selected"
-      ? configuration.ingredientProductIds
-      : [];
-  const productOptions =
-    products?.map((product) => {
-      const isIngredient = ingredientProductIds.includes(product.id);
-      return {
-        value: product.id,
-        label: isIngredient ? `${product.name} · Ingrediens` : product.name,
-        categoryIds: product.categoryIds,
-        disabled: isIngredient,
-      };
-    }) ?? [];
-  const effectiveProductIds = useMemo(() => {
-    if (!products || !configuration) return new Set<ProductId>();
-    if (configuration.kind === "all") {
-      return new Set(products.map((product) => product.id));
-    }
-    return new Set([
-      ...configuration.selectedProductIds,
-      ...configuration.ingredientProductIds,
-    ]);
-  }, [configuration, products]);
-  const excludedProductIds =
-    exclusionDraft?.locationId === locationId
-      ? exclusionDraft.productIds
-      : new Set(exclusions?.locationProductIds ?? []);
-  const organizationExcludedProductIds = useMemo(
+  const sortedProducts = useMemo(
+    () =>
+      [...(products ?? [])].sort((left, right) =>
+        left.name.localeCompare(right.name, "da"),
+      ),
+    [products],
+  );
+  const productNames = useMemo(
+    () => new Map(sortedProducts.map((product) => [product.id, product.name])),
+    [sortedProducts],
+  );
+  const organizationExcluded = useMemo(
     () => new Set(exclusions?.organizationProductIds ?? []),
     [exclusions],
   );
-  const effectiveProducts = useMemo(() => {
-    const savedExcluded = new Set([
-      ...(exclusions?.organizationProductIds ?? []),
-      ...(exclusions?.locationProductIds ?? []),
-    ]);
-    return (
-      products?.filter(
-        (product) =>
-          effectiveProductIds.has(product.id) && !savedExcluded.has(product.id),
-      ) ?? []
-    );
-  }, [effectiveProductIds, exclusions, products]);
-  const productNamesById = useMemo(
+  const ingredientIds = useMemo(
     () =>
-      new Map<string, string>(
-        effectiveProducts.map((product) => [product.id, product.name]),
+      new Set(
+        configuration?.kind === "selected"
+          ? configuration.ingredientProductIds
+          : [],
       ),
-    [effectiveProducts],
+    [configuration],
   );
-  const areaOrderAnnouncements = useMemo<Announcements>(
-    () => ({
-      onDragStart({ active }) {
-        const name = productNamesById.get(String(active.id)) ?? "Produktet";
-        return `${name} er valgt.`;
-      },
-      onDragOver({ active, over }) {
-        if (!over) return;
-        const name = productNamesById.get(String(active.id)) ?? "Produktet";
-        const overName =
-          productNamesById.get(String(over.id)) ?? "den nye placering";
-        return `${name} flyttes til ${overName}.`;
-      },
-      onDragEnd({ active }) {
-        const name = productNamesById.get(String(active.id)) ?? "Produktet";
-        return `${name} er placeret.`;
-      },
-      onDragCancel({ active }) {
-        const name = productNamesById.get(String(active.id)) ?? "Produktet";
-        return `Flytning af ${name} blev annulleret.`;
-      },
-    }),
-    [productNamesById],
+
+  const saved = useMemo<Board | null>(() => {
+    if (
+      !configuration ||
+      !products ||
+      !areas ||
+      !exclusions ||
+      !locationOrder
+    ) {
+      return null;
+    }
+    const effective = new Set(
+      configuration.kind === "all"
+        ? sortedProducts
+            .map((product) => product.id)
+            .filter((id) => !configuration.unusedProductIds.includes(id))
+        : [
+            ...configuration.selectedProductIds,
+            ...configuration.ingredientProductIds,
+          ],
+    );
+    const columns = new Map<CountColumnKey, ProductId[]>();
+    if (areas.length > 0) {
+      for (const area of areas) columns.set(area.id, area.productIds);
+    } else {
+      const excluded = new Set([
+        ...exclusions.organizationProductIds,
+        ...exclusions.locationProductIds,
+      ]);
+      const position = new Map(locationOrder.map((id, index) => [id, index]));
+      const fallback = locationOrder.length;
+      columns.set(
+        "location",
+        sortedProducts
+          .map((product) => product.id)
+          .filter((id) => effective.has(id) && !excluded.has(id))
+          .sort(
+            (left, right) =>
+              (position.get(left) ?? fallback) -
+              (position.get(right) ?? fallback),
+          ),
+      );
+    }
+    return {
+      autoInclude: configuration.kind === "all",
+      unused: new Set(
+        sortedProducts
+          .map((product) => product.id)
+          .filter((id) => !effective.has(id)),
+      ),
+      columns,
+    };
+  }, [
+    areas,
+    configuration,
+    exclusions,
+    locationOrder,
+    products,
+    sortedProducts,
+  ]);
+
+  const board = draft ?? saved;
+  const hasAreas = Boolean(areas && areas.length > 0);
+  const countKeys: CountColumnKey[] =
+    areas && hasAreas ? areas.map((area) => area.id) : ["location"];
+  const unused = board?.unused;
+
+  function columnIds(key: CountColumnKey) {
+    return (board?.columns.get(key) ?? saved?.columns.get(key) ?? []).filter(
+      (id) =>
+        productNames.has(id) &&
+        !unused?.has(id) &&
+        !organizationExcluded.has(id),
+    );
+  }
+
+  const countColumns = new Map(countKeys.map((key) => [key, columnIds(key)]));
+  const counted = new Set([...countColumns.values()].flat());
+  const unusedIds = sortedProducts
+    .map((product) => product.id)
+    .filter((id) => unused?.has(id));
+  const wasteIds = sortedProducts
+    .map((product) => product.id)
+    .filter((id) => !unused?.has(id) && !counted.has(id));
+  const columnTitles = new Map<ColumnKey, string>([
+    ["unused", "Ikke brugt"],
+    ["waste", "Kun Waste"],
+    ["location", "Count"],
+    ...(areas ?? []).map((area) => [area.id, area.name] as const),
+  ]);
+  const query = search.trim().toLocaleLowerCase("da");
+  const categoryOrder = new Map(
+    (categories ?? []).map((category, index) => [category.id, index]),
   );
-  const isBusy =
-    savingProducts ||
-    savingExclusions ||
-    savingArea ||
-    deletingArea ||
-    savingOrder;
+  const categoryNames = new Map(
+    (categories ?? []).map((category) => [category.id, category.path]),
+  );
+  const productCategory = new Map(
+    sortedProducts.map((product) => [product.id, product.categoryIds[0]]),
+  );
 
+  // Shift tracks the live modifier so a drag can switch between move and add.
+  useEffect(() => {
+    if (!dragging) return;
+    const sync = (event: KeyboardEvent | PointerEvent) =>
+      setCopyDrag(event.shiftKey);
+    window.addEventListener("keydown", sync);
+    window.addEventListener("keyup", sync);
+    window.addEventListener("pointermove", sync);
+    return () => {
+      window.removeEventListener("keydown", sync);
+      window.removeEventListener("keyup", sync);
+      window.removeEventListener("pointermove", sync);
+    };
+  }, [dragging]);
 
-  async function saveProducts() {
-    setSavingProducts(true);
-    try {
-      const productIds = mode === "selected" ? [...selectedProductIds] : [];
-      await setConfiguration({ locationId, productIds });
-      if (productIds.length === 0) {
-        setProductDraft({
-          locationId,
-          mode: "all",
-          selectedProductIds: new Set(),
-        });
-        toast.success("Alle aktive Produkter bruges på Count og Waste");
+  function groupKey(column: ColumnKey, productId: ProductId) {
+    return `${column}|${productCategory.get(productId) ?? "none"}`;
+  }
+
+  function isGroupOpen(key: string) {
+    return query !== "" || openGroups.has(key);
+  }
+
+  function setGroupOpen(key: string, open: boolean) {
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  // Ikke brugt and Kun Waste are grouped by each Produkt's first category.
+  function categoryGroups(column: ColumnKey, ids: ProductId[]) {
+    const groups = new Map<string, ProductId[]>();
+    for (const id of ids) {
+      const key = groupKey(column, id);
+      groups.set(key, [...(groups.get(key) ?? []), id]);
+    }
+    return [...groups]
+      .map(([key, groupIds]) => {
+        const categoryId = productCategory.get(groupIds[0]);
+        return {
+          key,
+          ids: groupIds,
+          label:
+            (categoryId && categoryNames.get(categoryId)) || "Uden kategori",
+          order: (categoryId && categoryOrder.get(categoryId)) ?? Infinity,
+        };
+      })
+      .sort((left, right) => left.order - right.order);
+  }
+
+  function visibleGroupedIds(column: ColumnKey, ids: ProductId[]) {
+    return ids.filter((id) => matches(id) && isGroupOpen(groupKey(column, id)));
+  }
+  const matches = (id: ProductId) =>
+    !query ||
+    (productNames.get(id) ?? "").toLocaleLowerCase("da").includes(query);
+  const isDirty = draft !== null;
+  const isBusy = saving || savingArea || deletingArea;
+
+  function update(change: (next: Board) => void) {
+    if (!board) return;
+    const next: Board = {
+      autoInclude: board.autoInclude,
+      unused: new Set(board.unused),
+      columns: new Map(countColumns),
+    };
+    change(next);
+    setDraft(next);
+  }
+
+  function moveProduct(
+    productId: ProductId,
+    from: ColumnKey,
+    to: ColumnKey,
+    { index, copy = false }: { index?: number; copy?: boolean } = {},
+  ) {
+    if (isCountColumn(to) && organizationExcluded.has(productId)) {
+      toast.error("Produktet er udeladt fra Count for hele organisationen");
+      return;
+    }
+    if (to === "unused" && ingredientIds.has(productId)) {
+      toast.error(
+        "Produktet er ingrediens i et valgt Produkt og kan ikke fravælges",
+      );
+      return;
+    }
+    if (from === to && !isCountColumn(to)) return;
+    update((next) => {
+      if (to === "unused") {
+        next.unused.add(productId);
       } else {
-        setProductDraft({
-          locationId,
-          mode: "selected",
-          selectedProductIds: new Set(productIds),
-        });
-        toast.success("Produktvalget er gemt");
+        next.unused.delete(productId);
       }
+      if (!isCountColumn(to)) {
+        for (const [key, ids] of next.columns) {
+          next.columns.set(
+            key,
+            ids.filter((id) => id !== productId),
+          );
+        }
+        return;
+      }
+      if (!copy && isCountColumn(from) && from !== to) {
+        next.columns.set(
+          from,
+          (next.columns.get(from) ?? []).filter((id) => id !== productId),
+        );
+      }
+      const target = (next.columns.get(to) ?? []).filter(
+        (id) => id !== productId,
+      );
+      target.splice(index ?? target.length, 0, productId);
+      next.columns.set(to, target);
+    });
+  }
+
+  function removeFromColumn(productId: ProductId, key: CountColumnKey) {
+    update((next) => {
+      next.columns.set(
+        key,
+        (next.columns.get(key) ?? []).filter((id) => id !== productId),
+      );
+    });
+  }
+
+  function requestClose() {
+    if (isBusy) return;
+    if (isDirty) setConfirmDiscard(true);
+    else onOpenChange(false);
+  }
+
+  async function save() {
+    if (!board || !saved || !exclusions) return;
+    const productIds = board.autoInclude
+      ? []
+      : sortedProducts
+          .map((product) => product.id)
+          .filter((id) => !board.unused.has(id));
+    const unusedProductIds = board.autoInclude ? unusedIds : [];
+    if (!board.autoInclude && productIds.length === 0) {
+      toast.error("Vælg mindst ét Produkt til lokationen");
+      return;
+    }
+    const waste = new Set(wasteIds);
+    // With Områder, only placement decides Count; keep existing exclusions that still apply.
+    const excludedProductIds =
+      areas && areas.length > 0
+        ? exclusions.locationProductIds.filter((id) => waste.has(id))
+        : wasteIds.filter((id) => !organizationExcluded.has(id));
+    const orders = countKeys
+      .filter(
+        (key) => !sameIds(countColumns.get(key) ?? [], columnIdsSaved(key)),
+      )
+      .map((key) => ({
+        countAreaId: key === "location" ? null : key,
+        productIds: countColumns.get(key) ?? [],
+      }));
+    setSaving(true);
+    try {
+      await saveSetup({
+        locationId,
+        productIds,
+        unusedProductIds,
+        excludedProductIds,
+        orders,
+      });
+      setDraft(null);
+      toast.success("Count-opsætningen er gemt");
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-opsætningen kunne ikke gemmes. Prøv igen.",
+        ),
+      );
     } finally {
-      setSavingProducts(false);
+      setSaving(false);
     }
   }
 
-  async function saveExclusions() {
-    setSavingExclusions(true);
-    try {
-      await setExclusions({ locationId, productIds: [...excludedProductIds] });
-      setExclusionDraft(null);
-      toast.success("Produkter udeladt fra Count er gemt");
-    } catch (error) {
-      toast.error(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
-    } finally {
-      setSavingExclusions(false);
-    }
+  function columnIdsSaved(key: CountColumnKey) {
+    return (saved?.columns.get(key) ?? []).filter(
+      (id) => productNames.has(id) && !organizationExcluded.has(id),
+    );
   }
 
   function openNewArea() {
@@ -393,7 +616,16 @@ export function LocationCountSetup({
     setAreaError("");
     try {
       if (editingArea === "new") {
-        await createArea({ locationId, name: areaName });
+        const seed = areas?.length === 0 ? columnIdsSaved("location") : [];
+        const countAreaId = await createArea({ locationId, name: areaName });
+        // The first Område takes over the Produkter that were counted without Områder.
+        if (seed.length > 0 && seed.length <= MAX_AREA_PRODUCTS) {
+          await setAreaProductOrder({
+            locationId,
+            countAreaId,
+            productIds: seed,
+          });
+        }
         toast.success("Området er oprettet");
       } else if (editingArea) {
         await renameArea({ countAreaId: editingArea.id, name: areaName });
@@ -401,7 +633,12 @@ export function LocationCountSetup({
       }
       setEditingArea(null);
     } catch (error) {
-      setAreaError(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
+      setAreaError(
+        getUserErrorMessage(
+          error,
+          "Count-opsætningen kunne ikke opdateres. Prøv igen.",
+        ),
+      );
     } finally {
       setSavingArea(false);
     }
@@ -415,502 +652,483 @@ export function LocationCountSetup({
       toast.success("Området er fjernet");
       setPendingAreaDelete(null);
     } catch (error) {
-      toast.error(getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen."));
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Count-opsætningen kunne ikke opdateres. Prøv igen.",
+        ),
+      );
     } finally {
       setDeletingArea(false);
     }
   }
 
-  function openAreaOrder(area: CountArea) {
-    setOrderingArea(area);
-    setAreaOrder([...area.productIds]);
-    setOrderError("");
+  const announcements: Announcements = {
+    onDragStart({ active }) {
+      const { productId } = parseItemId(active.id);
+      return `${productNames.get(productId) ?? "Produktet"} er valgt.`;
+    },
+    onDragOver({ active, over }) {
+      if (!over) return;
+      const { productId } = parseItemId(active.id);
+      return `${productNames.get(productId) ?? "Produktet"} er over ${columnTitles.get(targetColumn(over.id)) ?? "en kolonne"}.`;
+    },
+    onDragEnd({ active, over }) {
+      const { productId } = parseItemId(active.id);
+      const name = productNames.get(productId) ?? "Produktet";
+      return over
+        ? `${name} er ${copyDrag ? "tilføjet" : "flyttet"} til ${columnTitles.get(targetColumn(over.id)) ?? "kolonnen"}.`
+        : `${name} blev ikke flyttet.`;
+    },
+    onDragCancel({ active }) {
+      const { productId } = parseItemId(active.id);
+      return `Flytning af ${productNames.get(productId) ?? "Produktet"} blev annulleret.`;
+    },
+  };
+
+  function renderCard(
+    column: ColumnKey,
+    productId: ProductId,
+    position?: number,
+  ) {
+    const name = productNames.get(productId) ?? "";
+    const locked = organizationExcluded.has(productId);
+    const note = locked
+      ? "Udeladt for hele organisationen"
+      : ingredientIds.has(productId)
+        ? "Ingrediens"
+        : null;
+    const memberOf = countKeys.filter((key) =>
+      (countColumns.get(key) ?? []).includes(productId),
+    );
+    const alsoIn = isCountColumn(column)
+      ? memberOf.filter((key) => key !== column)
+      : [];
+    const details = [
+      note,
+      alsoIn.length > 0
+        ? `Også i ${alsoIn.map((key) => columnTitles.get(key)).join(", ")}`
+        : null,
+    ].filter(Boolean);
+    return (
+      <SortableListRow
+        key={itemId(column, productId)}
+        id={itemId(column, productId)}
+        label={name}
+        position={position}
+        description={details.join(" · ")}
+        disabled={isBusy}
+        roleDescription="Produkt, der kan flyttes"
+        handleClassName="touch-manipulation"
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="size-11"
+                  aria-label={`Placér ${name}`}
+                  disabled={isBusy}
+                />
+              }
+            >
+              <EllipsisVerticalIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>
+                  {hasAreas ? "Tælles i" : "Count"}
+                </DropdownMenuLabel>
+                {countKeys.map((key) => (
+                  <DropdownMenuCheckboxItem
+                    key={key}
+                    className="min-h-11"
+                    closeOnClick={false}
+                    checked={memberOf.includes(key)}
+                    disabled={locked}
+                    onCheckedChange={(checked) =>
+                      checked
+                        ? moveProduct(productId, column, key, { copy: true })
+                        : removeFromColumn(productId, key)
+                    }
+                  >
+                    {columnTitles.get(key)}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Tælles ikke</DropdownMenuLabel>
+                {(["waste", "unused"] as const)
+                  .filter((key) => key !== column)
+                  .map((key) => (
+                    <DropdownMenuItem
+                      key={key}
+                      className="min-h-11"
+                      disabled={
+                        key === "unused" && ingredientIds.has(productId)
+                      }
+                      onClick={() => moveProduct(productId, column, key)}
+                    >
+                      Flyt til {columnTitles.get(key)}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+    );
   }
 
-  async function saveAreaOrder() {
-    if (!orderingArea) return;
-    setSavingOrder(true);
-    setOrderError("");
-    try {
-      await setAreaProductOrder({
-        locationId,
-        countAreaId: orderingArea.id,
-        productIds: areaOrder,
-      });
-      toast.success("Produktordenen for Området er gemt");
-      setOrderingArea(null);
-    } catch (error) {
-      const message = getUserErrorMessage(error, "Count-opsætningen kunne ikke opdateres. Prøv igen.");
-      setOrderError(message);
-      toast.error(message);
-    } finally {
-      setSavingOrder(false);
+  function renderCards(column: ColumnKey, ids: ProductId[], numbered: boolean) {
+    const visible = ids
+      .map((id, index) => ({ id, position: index + 1 }))
+      .filter(({ id }) => matches(id));
+    if (visible.length === 0) {
+      return (
+        <li className="flex min-h-20 items-center justify-center rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
+          {ids.length === 0 ? "Træk Produkter hertil" : "Ingen match"}
+        </li>
+      );
     }
+    return visible.map(({ id, position }) =>
+      renderCard(column, id, numbered ? position : undefined),
+    );
   }
+
+  function renderGroupedCards(column: ColumnKey, ids: ProductId[]) {
+    const visible = ids.filter(matches);
+    if (visible.length === 0) {
+      return (
+        <li className="flex min-h-20 items-center justify-center rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
+          {ids.length === 0 ? "Træk Produkter hertil" : "Ingen match"}
+        </li>
+      );
+    }
+    return categoryGroups(column, visible).map((group) => {
+      const expanded = isGroupOpen(group.key);
+      return (
+        <li key={group.key}>
+          <Collapsible
+            open={expanded}
+            onOpenChange={(next) => setGroupOpen(group.key, next)}
+          >
+            <CollapsibleTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11 w-full"
+                  aria-label={`${expanded ? "Skjul" : "Vis"} ${group.label}`}
+                />
+              }
+            >
+              <ChevronRightIcon
+                className={cn("transition-transform", expanded && "rotate-90")}
+              />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {group.label}
+              </span>
+              <Badge variant="secondary">{group.ids.length}</Badge>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ol className="flex flex-col gap-2 pt-2">
+                {group.ids.map((id) => renderCard(column, id))}
+              </ol>
+            </CollapsibleContent>
+          </Collapsible>
+        </li>
+      );
+    });
+  }
+
+  const draggedProduct = dragging ? parseItemId(dragging).productId : null;
 
   return (
     <>
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!isBusy) onOpenChange(next);
+          if (!next) requestClose();
         }}
       >
-        <DialogContent className="max-h-(--spacing-dialog) overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="flex h-(--spacing-dialog) flex-col sm:max-w-7xl">
           <DialogHeader>
             <DialogTitle>Produkter og Områder</DialogTitle>
             <DialogDescription>
-              Vælg de Produkter og Områder, som bruges på {locationName}.
+              Placér Produkterne for {locationName}. Rækkefølgen i et Område er
+              rækkefølgen i Count.
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              if (
-                value === "products" ||
-                value === "areas" ||
-                value === "excluded"
-              ) {
-                setActiveTab(value);
-              }
-            }}
-          >
-            <TabsList
-              className="grid h-11 w-full grid-cols-3"
-              aria-label="Produkter og Områder"
-            >
-              <TabsTrigger value="products">Produkter</TabsTrigger>
-              <TabsTrigger value="areas">Områder</TabsTrigger>
-              <TabsTrigger value="excluded">Udelad fra Count</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="products" appearance="standard">
-              <FieldGroup>
-                <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">Produktvalg</p>
-                      <Badge variant="secondary">
-                        {mode === "all"
-                          ? "Alle aktive"
-                          : `${selectedProductIds.size} valgte`}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {mode === "all"
-                        ? "Alle aktive Produkter bruges på Count og Waste."
-                        : "Kun de valgte Produkter bruges på Count og Waste."}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant={mode === "all" ? "secondary" : "outline"}
-                    className="min-h-11 shrink-0"
-                    disabled={configuration === undefined}
-                    onClick={() => {
-                      setProductDraft({
-                        locationId,
-                        mode: "all",
-                        selectedProductIds: new Set(),
-                      });
-                    }}
-                  >
-                    Brug alle aktive Produkter
-                  </Button>
+          {!board || !areas ? (
+            <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
+              {Array.from({ length: 4 }, (_, index) => (
+                <Skeleton key={index} className="h-full w-72 shrink-0" />
+              ))}
+            </div>
+          ) : sortedProducts.length === 0 ? (
+            <Empty appearance="outlined" className="min-h-48">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <LayoutListIcon />
+                </EmptyMedia>
+                <EmptyTitle>Ingen aktive Produkter</EmptyTitle>
+                <EmptyDescription>
+                  Opret eller aktivér et Produkt i Produktkataloget først.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative min-w-48 flex-1">
+                  <SearchIcon
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Søg efter produkter"
+                    aria-label="Søg efter produkter"
+                    appearance="search"
+                    className="h-11"
+                  />
                 </div>
+                <div className="flex min-h-11 items-center gap-2">
+                  <Switch
+                    id={`count-setup-auto-${locationId}`}
+                    checked={board.autoInclude}
+                    disabled={isBusy}
+                    onCheckedChange={(checked) =>
+                      update((next) => {
+                        next.autoInclude = checked;
+                      })
+                    }
+                  />
+                  <label
+                    htmlFor={`count-setup-auto-${locationId}`}
+                    className="text-sm font-medium"
+                  >
+                    Brug nye Produkter automatisk
+                  </label>
+                  <HelpTooltip
+                    label="Brug nye Produkter automatisk"
+                    content="Når den er slået til, bruges nye Produkter automatisk på lokationen og lander i Kun Waste. Produkter i Ikke brugt forbliver fravalgt. Når den er slået fra, bruges kun de Produkter, der ligger uden for Ikke brugt nu."
+                  />
+                </div>
+              </div>
 
-                {products === undefined || categories === undefined ? (
-                  <Skeleton className="h-11 w-full" />
-                ) : products.length === 0 ? (
-                  <Empty appearance="outlined" className="min-h-48">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <LayoutListIcon />
-                      </EmptyMedia>
-                      <EmptyTitle>Ingen aktive Produkter</EmptyTitle>
-                      <EmptyDescription>
-                        Opret eller aktivér et Produkt i Produktkataloget først.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                ) : (
-                  <Field data-disabled={configuration === undefined}>
-                    <FieldLabel>Valgte Produkter</FieldLabel>
-                    <ProductCategoryCombobox
-                      categories={categories}
-                      products={productOptions}
-                      values={mode === "selected" ? [...selectedProductIds] : []}
-                      onValuesChange={(values) =>
-                        setProductDraft({
-                          locationId,
-                          mode: "selected",
-                          selectedProductIds: new Set(values as ProductId[]),
-                        })
-                      }
-                      disabled={configuration === undefined}
-                      ariaLabel="Produkter på lokationen"
-                    />
-                    <FieldDescription>
-                      Vælg en kategorilinje for at vælge eller fravælge alle
-                      Produkter i kategorien.
-                    </FieldDescription>
-                  </Field>
-                )}
-              </FieldGroup>
-            </TabsContent>
-
-            <TabsContent value="areas" appearance="standard">
-              <FieldGroup>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="font-medium">Områder</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Du kan ændre Produktrækkefølgen her eller på Count-siden,
-                      når du har valgt Området.
-                    </p>
-                  </div>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={boardCollision}
+                // Measure from the pointer; the wide card would otherwise start deep in the zone.
+                autoScroll={{
+                  activator: AutoScrollActivator.Pointer,
+                  acceleration: 2,
+                  threshold: { x: 0.1, y: 0.15 },
+                }}
+                accessibility={{ announcements }}
+                onDragStart={({ active, activatorEvent }) => {
+                  setDragging(active.id);
+                  // Shift only helps with a keyboard, and only between Områder.
+                  setShowCopyHint(
+                    countKeys.length > 1 &&
+                      isCountColumn(parseItemId(active.id).column) &&
+                      !activatorEvent.type.startsWith("touch"),
+                  );
+                }}
+                onDragCancel={() => {
+                  setDragging(null);
+                  setCopyDrag(false);
+                }}
+                onDragEnd={({ active, over }) => {
+                  setDragging(null);
+                  setCopyDrag(false);
+                  if (!over) return;
+                  const source = parseItemId(active.id);
+                  const to = targetColumn(over.id);
+                  const overId = String(over.id);
+                  const index =
+                    isCountColumn(to) && !overId.startsWith(COLUMN_PREFIX)
+                      ? (countColumns.get(to) ?? []).indexOf(
+                          parseItemId(overId).productId,
+                        )
+                      : undefined;
+                  moveProduct(source.productId, source.column, to, {
+                    index: index === -1 ? undefined : index,
+                    copy: copyDrag,
+                  });
+                  if (!isCountColumn(to)) {
+                    setGroupOpen(groupKey(to, source.productId), true);
+                  }
+                }}
+              >
+                <div
+                  className={cn(
+                    "-mx-4 flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-1 select-none",
+                    // Snapping fights auto-scroll while dragging.
+                    !dragging && "snap-x",
+                  )}
+                >
+                  <BoardColumn
+                    column="unused"
+                    title="Ikke brugt"
+                    description="Bruges ikke på lokationen."
+                    count={unusedIds.length}
+                    tone="muted"
+                    sortableIds={visibleGroupedIds("unused", unusedIds).map(
+                      (id) => itemId("unused", id),
+                    )}
+                  >
+                    {renderGroupedCards("unused", unusedIds)}
+                  </BoardColumn>
+                  <BoardColumn
+                    column="waste"
+                    title="Kun Waste"
+                    description="Bruges i Waste, men tælles ikke."
+                    count={wasteIds.length}
+                    tone="neutral"
+                    sortableIds={visibleGroupedIds("waste", wasteIds).map(
+                      (id) => itemId("waste", id),
+                    )}
+                  >
+                    {renderGroupedCards("waste", wasteIds)}
+                  </BoardColumn>
+                  {countKeys.map((key) => {
+                    const ids = countColumns.get(key) ?? [];
+                    const area = areas.find(
+                      (candidate) => candidate.id === key,
+                    );
+                    return (
+                      <BoardColumn
+                        key={key}
+                        column={key}
+                        title={columnTitles.get(key) ?? ""}
+                        description={
+                          area
+                            ? "Tælles i denne rækkefølge."
+                            : "Tælles i denne rækkefølge. Opret Områder for at dele Count op."
+                        }
+                        count={ids.length}
+                        tone="count"
+                        sortableIds={ids.map((id) => itemId(key, id))}
+                        actions={
+                          area ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-lg"
+                                    className="size-11 shrink-0"
+                                    aria-label={`Indstillinger for ${area.name}`}
+                                    disabled={isBusy}
+                                  />
+                                }
+                              >
+                                <EllipsisVerticalIcon />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="min-w-44"
+                              >
+                                <DropdownMenuItem
+                                  className="min-h-11"
+                                  onClick={() => openRenameArea(area)}
+                                >
+                                  <PencilIcon />
+                                  Omdøb
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  className="min-h-11"
+                                  onClick={() => setPendingAreaDelete(area)}
+                                >
+                                  <Trash2Icon />
+                                  Fjern Område
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null
+                        }
+                      >
+                        {renderCards(key, ids, true)}
+                      </BoardColumn>
+                    );
+                  })}
                   <Button
                     type="button"
-                    className="min-h-11 shrink-0"
+                    variant="outline"
+                    className="h-auto min-h-24 w-48 shrink-0 snap-start flex-col"
+                    disabled={isBusy}
                     onClick={openNewArea}
                   >
-                    <PlusIcon data-icon="inline-start" />
-                    Nyt Område
+                    <PlusIcon />
+                    {hasAreas ? "Nyt Område" : "Opdel i Områder"}
                   </Button>
                 </div>
-
-                {areas === undefined ? (
-                  <div className="flex flex-col gap-2">
-                    {Array.from({ length: 3 }, (_, index) => (
-                      <Skeleton key={index} className="h-14 w-full" />
-                    ))}
-                  </div>
-                ) : areas.length === 0 ? (
-                  <Empty appearance="outlined" className="min-h-52">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <MapIcon />
-                      </EmptyMedia>
-                      <EmptyTitle>Ingen Områder endnu</EmptyTitle>
-                      <EmptyDescription>
-                        Opret et Område, før du starter en Count på lokationen.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                    <EmptyContent>
-                      <Button
-                        type="button"
-                        className="min-h-11"
-                        onClick={openNewArea}
-                      >
-                        <PlusIcon data-icon="inline-start" />
-                        Nyt Område
-                      </Button>
-                    </EmptyContent>
-                  </Empty>
-                ) : (
-                  <FieldGroup appearance="dense">
-                    {areas.map((area) => (
-                      <div
-                        key={area.id}
-                        className="flex min-h-14 items-center justify-between gap-3 rounded-lg border px-3 py-2"
-                      >
-                        <div className="flex min-w-0 flex-col gap-1">
-                          <p className="truncate font-medium">{area.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {area.productIds.length === 0
-                              ? "Produktorden er ikke sat"
-                              : `${area.productIds.length} Produkter i ordenen`}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 gap-1">
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-lg"
-                                  className="size-11"
-                                  aria-label={`Produkter og rækkefølge for ${area.name}`}
-                                  onClick={() => openAreaOrder(area)}
-                                />
-                              }
-                            >
-                              <ListOrderedIcon />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Produkter og rækkefølge
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-lg"
-                                  className="size-11"
-                                  aria-label={`Redigér ${area.name}`}
-                                  onClick={() => openRenameArea(area)}
-                                />
-                              }
-                            >
-                              <PencilIcon />
-                            </TooltipTrigger>
-                            <TooltipContent>Redigér Område</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-lg"
-                                  className="size-11"
-                                  aria-label={`Fjern ${area.name}`}
-                                  onClick={() => setPendingAreaDelete(area)}
-                                />
-                              }
-                            >
-                              <Trash2Icon />
-                            </TooltipTrigger>
-                            <TooltipContent>Fjern Område</TooltipContent>
-                          </Tooltip>
-                        </div>
+                {/* The dialog is transformed, which would offset a fixed overlay. */}
+                {createPortal(
+                  <DragOverlay zIndex={60}>
+                    {draggedProduct ? (
+                      <div className="flex min-h-14 items-center gap-2 rounded-lg border bg-background p-1 pr-3 shadow-lg">
+                        <span className="flex size-11 items-center justify-center text-muted-foreground">
+                          <GripVerticalIcon aria-hidden="true" />
+                        </span>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium">
+                            {productNames.get(draggedProduct)}
+                          </span>
+                          {showCopyHint && !copyDrag ? (
+                            <span className="text-xs text-muted-foreground">
+                              Hold Shift for at kopiere til et andet Område
+                            </span>
+                          ) : null}
+                        </span>
+                        {showCopyHint && copyDrag ? (
+                          <Badge className="ml-auto">
+                            <PlusIcon data-icon="inline-start" />
+                            Kopiér
+                          </Badge>
+                        ) : null}
                       </div>
-                    ))}
-                  </FieldGroup>
+                    ) : null}
+                  </DragOverlay>,
+                  document.body,
                 )}
-              </FieldGroup>
-            </TabsContent>
+              </DndContext>
+            </>
+          )}
 
-            <TabsContent value="excluded" appearance="standard">
-              <FieldGroup>
-                <div className="flex min-w-0 flex-col gap-1 rounded-lg border bg-muted/30 p-3">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">Udelad fra Count</p>
-                    <Badge variant="secondary">
-                      {excludedProductIds.size} udeladte
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Valgte Produkter vises ikke i Count på {locationName}. De
-                    kan stadig bruges i Transfer og Waste.
-                  </p>
-                </div>
-                <CountExclusionList
-                  products={products}
-                  excludedProductIds={excludedProductIds}
-                  lockedProductIds={organizationExcludedProductIds}
-                  disabled={exclusions === undefined || savingExclusions}
-                  onChange={(productIds) =>
-                    setExclusionDraft({ locationId, productIds })
-                  }
-                />
-              </FieldGroup>
-            </TabsContent>
-          </Tabs>
-
-          <DialogFooter>
+          <DialogFooter className="items-center">
+            {isDirty ? (
+              <p className="mr-auto text-sm text-muted-foreground">
+                Du har ændringer, der ikke er gemt.
+              </p>
+            ) : null}
             <Button
               type="button"
               variant="outline"
               className="min-h-11"
               disabled={isBusy}
-              onClick={() => onOpenChange(false)}
+              onClick={() => (isDirty ? setDraft(null) : onOpenChange(false))}
             >
-              Luk
-            </Button>
-            {activeTab === "products" ? (
-              <Button
-                type="button"
-                className="min-h-11"
-                disabled={savingProducts || configuration === undefined}
-                onClick={() => void saveProducts()}
-              >
-                {savingProducts ? <Spinner data-icon="inline-start" /> : null}
-                Gem Produktvalg
-              </Button>
-            ) : activeTab === "excluded" ? (
-              <Button
-                type="button"
-                className="min-h-11"
-                disabled={
-                  savingExclusions ||
-                  exclusionDraft?.locationId !== locationId
-                }
-                onClick={() => void saveExclusions()}
-              >
-                {savingExclusions ? (
-                  <Spinner data-icon="inline-start" />
-                ) : null}
-                Gem udeladte Produkter
-              </Button>
-            ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(orderingArea)}
-        onOpenChange={(next) => {
-          if (!next && !savingOrder) setOrderingArea(null);
-        }}
-      >
-        <DialogContent className="max-h-(--spacing-dialog) overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Produkter og rækkefølge</DialogTitle>
-            <DialogDescription>
-              Vælg Produkter til {orderingArea?.name}, og placér dem i den
-              rækkefølge, de skal tælles i.
-            </DialogDescription>
-          </DialogHeader>
-
-          {configuration === undefined ||
-          products === undefined ||
-          categories === undefined ? (
-            <div className="flex flex-col gap-2">
-              {Array.from({ length: 6 }, (_, index) => (
-                <Skeleton key={index} className="h-11 w-full" />
-              ))}
-            </div>
-          ) : (
-            <FieldGroup>
-              <FieldSet>
-                <FieldLegend variant="label">Produkter i Området</FieldLegend>
-                {effectiveProducts.length === 0 ? (
-                  <Empty appearance="outlined" className="min-h-36">
-                    <EmptyHeader>
-                      <EmptyTitle>Ingen Produkter tilgængelige</EmptyTitle>
-                      <EmptyDescription>
-                        Vælg aktive Produkter for lokationen først.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                ) : (
-                  <ProductCategoryCombobox
-                    categories={categories}
-                    products={effectiveProducts.map((product) => ({
-                      value: product.id,
-                      label: product.name,
-                      categoryIds: product.categoryIds,
-                    }))}
-                    values={areaOrder}
-                    onValuesChange={(values) => {
-                      setOrderError("");
-                      setAreaOrder(values as ProductId[]);
-                    }}
-                    disabled={savingOrder}
-                    ariaLabel={`Produkter i ${orderingArea?.name ?? "Området"}`}
-                  />
-                )}
-              </FieldSet>
-
-              <FieldSet>
-                <FieldLegend variant="label">Rækkefølge</FieldLegend>
-                <FieldDescription>
-                  Træk Produkterne for at ændre rækkefølgen. Du kan gemme en tom
-                  rækkefølge.
-                </FieldDescription>
-                {areaOrder.length === 0 ? (
-                  <Empty appearance="outlined" className="min-h-32">
-                    <EmptyHeader>
-                      <EmptyTitle>Ingen Produkter i Området</EmptyTitle>
-                      <EmptyDescription>
-                        Markér Produkter ovenfor for at tilføje dem.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                ) : (
-                  <DndContext
-                    accessibility={{
-                      announcements: areaOrderAnnouncements,
-                      screenReaderInstructions:
-                        areaOrderScreenReaderInstructions,
-                    }}
-                    collisionDetection={closestCorners}
-                    sensors={areaOrderSensors}
-                    onDragEnd={({ active, over }) => {
-                      setOrderError("");
-                      if (!over || active.id === over.id) return;
-
-                      const activeId = String(active.id);
-                      const overId = String(over.id);
-                      setAreaOrder((current) => {
-                        const from = current.findIndex(
-                          (id) => String(id) === activeId,
-                        );
-                        const to = current.findIndex(
-                          (id) => String(id) === overId,
-                        );
-                        return from < 0 || to < 0
-                          ? current
-                          : arrayMove(current, from, to);
-                      });
-                    }}
-                  >
-                    <SortableContext
-                      items={areaOrder}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <ol
-                        className="flex flex-col gap-2"
-                        aria-label="Produktrækkefølge"
-                      >
-                        {areaOrder.map((productId, index) => {
-                          const product = effectiveProducts.find(
-                            (candidate) => candidate.id === productId,
-                          );
-                          if (!product || !orderingArea) return null;
-                          return (
-                            <SortableAreaProductRow
-                              key={product.id}
-                              areaName={orderingArea.name}
-                              disabled={savingOrder}
-                              position={index + 1}
-                              productId={product.id}
-                              productName={product.name}
-                              onRemove={() => {
-                                setOrderError("");
-                                setAreaOrder((current) =>
-                                  current.filter((id) => id !== product.id),
-                                );
-                              }}
-                            />
-                          );
-                        })}
-                      </ol>
-                    </SortableContext>
-                  </DndContext>
-                )}
-              </FieldSet>
-              <FieldError>{orderError}</FieldError>
-            </FieldGroup>
-          )}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-11"
-              disabled={savingOrder}
-              onClick={() => setOrderingArea(null)}
-            >
-              Annullér
+              {isDirty ? "Fortryd" : "Luk"}
             </Button>
             <Button
               type="button"
               className="min-h-11"
-              disabled={
-                savingOrder ||
-                configuration === undefined ||
-                products === undefined
-              }
-              onClick={() => void saveAreaOrder()}
+              disabled={!isDirty || isBusy}
+              onClick={() => void save()}
             >
-              {savingOrder ? <Spinner data-icon="inline-start" /> : null}
-              Gem rækkefølge
+              {saving ? <Spinner data-icon="inline-start" /> : null}
+              Gem
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -928,8 +1146,9 @@ export function LocationCountSetup({
               {editingArea === "new" ? "Nyt Område" : "Redigér Område"}
             </DialogTitle>
             <DialogDescription>
-              Giv Området et navn. Produktordenen kan ændres her eller på
-              Count-siden.
+              {editingArea === "new" && !hasAreas
+                ? "Giv Området et navn. Produkterne, der tælles nu, flyttes til Området."
+                : "Giv Området et navn."}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -987,7 +1206,8 @@ export function LocationCountSetup({
             <AlertDialogTitle>Fjern Området?</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingAreaDelete?.name} og dens Produktrækkefølge fjernes
-              permanent.
+              permanent. Produkterne flyttes til Kun Waste, medmindre de også
+              ligger i et andet Område.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1002,6 +1222,32 @@ export function LocationCountSetup({
             >
               {deletingArea ? <Spinner data-icon="inline-start" /> : null}
               Fjern Område
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kassér ændringer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dine ændringer til Produkter og Områder er ikke gemt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">
+              Fortsæt redigering
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="min-h-11"
+              onClick={() => {
+                setConfirmDiscard(false);
+                onOpenChange(false);
+              }}
+            >
+              Kassér
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,15 +1,18 @@
 import { requireOrganizationLocation as requireLocation } from "./lib/locations";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireLocationAccess, requireLocationManager } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
-import { getLocationCountWindow } from "./lib/countWindow";
-import { getLocationProductAccess } from "./lib/locationProducts";
-
-const MAX_PRODUCTS = 500;
+import {
+  getLocationProductAccess,
+  setLocationProducts,
+} from "./lib/locationProducts";
 
 const configurationValidator = v.union(
-  v.object({ kind: v.literal("all") }),
+  v.object({
+    kind: v.literal("all"),
+    unusedProductIds: v.array(v.id("products")),
+  }),
   v.object({
     kind: v.literal("selected"),
     selectedProductIds: v.array(v.id("products")),
@@ -29,7 +32,12 @@ export const getConfiguration = query({
       auth.organizationId,
       args.locationId,
     );
-    if (access.kind === "all") return access;
+    if (access.kind === "all") {
+      return {
+        kind: "all" as const,
+        unusedProductIds: [...access.unusedProductIds],
+      };
+    }
     return {
       kind: "selected" as const,
       selectedProductIds: [...access.selectedProductIds],
@@ -55,89 +63,13 @@ export const setConfiguration = mutation({
       organizationId,
       args.locationId,
     );
-    if (
-      args.productIds.length > MAX_PRODUCTS ||
-      new Set(args.productIds).size !== args.productIds.length
-    ) {
-      throw new ConvexError("Produktvalget er ugyldigt");
-    }
-
-    const products = await Promise.all(
-      args.productIds.map((productId) => ctx.db.get("products", productId)),
-    );
-    if (
-      products.some(
-        (product) =>
-          !product ||
-          product.organizationId !== organizationId ||
-          product.status !== "active",
-      )
-    ) {
-      throw new ConvexError("Et Produkt blev ikke fundet");
-    }
-
-    const current = await ctx.db
-      .query("locationProducts")
-      .withIndex("by_organizationId_and_locationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("locationId", location._id),
-      )
-      .take(MAX_PRODUCTS + 1);
-    if (current.length > MAX_PRODUCTS) {
-      throw new ConvexError("Lokationen har for mange valgte Produkter");
-    }
-
-    const nextIds = new Set(args.productIds);
-    const currentIds = new Set(current.map((row) => row.productId));
-    if (
-      nextIds.size === currentIds.size &&
-      args.productIds.every((productId) => currentIds.has(productId))
-    ) {
-      return null;
-    }
-    const countWindow = await getLocationCountWindow(
+    const changed = await setLocationProducts(
       ctx,
       organizationId,
       location,
-      Date.now(),
+      { productIds: args.productIds, unusedProductIds: [] },
     );
-    const currentCount = await ctx.db
-      .query("counts")
-      .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("locationId", location._id)
-          .eq("periodKey", countWindow.periodKey),
-      )
-      .unique();
-    if (currentCount?.status === "open") {
-      const countItem = await ctx.db
-        .query("countItems")
-        .withIndex("by_organizationId_and_countId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("countId", currentCount._id),
-        )
-        .first();
-      if (countItem) {
-        throw new ConvexError(
-          "Produktvalget kan ikke ændres, mens der er en åben Count",
-        );
-      }
-    }
-    for (const row of current) {
-      if (!nextIds.has(row.productId)) {
-        await ctx.db.delete("locationProducts", row._id);
-      }
-    }
-    for (const productId of args.productIds) {
-      if (currentIds.has(productId)) continue;
-      await ctx.db.insert("locationProducts", {
-        organizationId,
-        locationId: location._id,
-        productId,
-      });
-    }
-
+    if (!changed) return null;
     await recordAudit(ctx, auth, {
       action: "locations.productsChanged",
       entityTable: "locations",

@@ -26,7 +26,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireLocationAccess, requirePermission } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
 import schema from "./schema";
-import { getLocationProductAccess } from "./lib/locationProducts";
+import {
+  getLocationProductAccess,
+  locationHasProduct,
+} from "./lib/locationProducts";
 import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
@@ -90,8 +93,7 @@ export const listProducts = query({
       )
       .paginate(catalogPaginationOptions(args.paginationOpts, 25));
     const products = result.page.filter(
-      (product) =>
-        access.kind === "all" || access.effectiveProductIds.has(product._id),
+      (product) => locationHasProduct(access, product._id),
     );
     return {
       ...result,
@@ -488,8 +490,7 @@ async function prepareOrder(
         product.organizationId !== organizationId ||
         product.status !== "active" ||
         product.defaultUnitId !== line.unitId ||
-        (access.kind === "selected" &&
-          !access.effectiveProductIds.has(product._id))
+        !locationHasProduct(access, product._id)
       ) {
         throw new ConvexError(
           "Et produkt er ikke længere tilgængeligt på lokationen. Opdatér planen.",
