@@ -27,6 +27,7 @@ import {
 
 import { useMutation, useQuery } from "convex/react";
 import {
+  ChevronRightIcon,
   EllipsisVerticalIcon,
   GripVerticalIcon,
   LayoutListIcon,
@@ -35,7 +36,7 @@ import {
   SearchIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -51,6 +52,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -228,6 +234,10 @@ export function LocationCountSetup({
     api.countExclusions.getLocation,
     open ? { locationId } : "skip",
   );
+  const categories = useQuery(
+    api.catalog.listCategoryOptions,
+    open ? {} : "skip",
+  );
   const locationOrder = useQuery(
     api.countAreas.getLocationProductOrder,
     open ? { locationId } : "skip",
@@ -243,6 +253,10 @@ export function LocationCountSetup({
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [dragging, setDragging] = useState<UniqueIdentifier | null>(null);
+  const [copyDrag, setCopyDrag] = useState(false);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [editingArea, setEditingArea] = useState<CountArea | "new" | null>(
     null,
   );
@@ -375,6 +389,72 @@ export function LocationCountSetup({
     ...(areas ?? []).map((area) => [area.id, area.name] as const),
   ]);
   const query = search.trim().toLocaleLowerCase("da");
+  const categoryOrder = new Map(
+    (categories ?? []).map((category, index) => [category.id, index]),
+  );
+  const categoryNames = new Map(
+    (categories ?? []).map((category) => [category.id, category.path]),
+  );
+  const productCategory = new Map(
+    sortedProducts.map((product) => [product.id, product.categoryIds[0]]),
+  );
+
+  // Shift tracks the live modifier so a drag can switch between move and add.
+  useEffect(() => {
+    if (!dragging) return;
+    const sync = (event: KeyboardEvent | PointerEvent) =>
+      setCopyDrag(event.shiftKey);
+    window.addEventListener("keydown", sync);
+    window.addEventListener("keyup", sync);
+    window.addEventListener("pointermove", sync);
+    return () => {
+      window.removeEventListener("keydown", sync);
+      window.removeEventListener("keyup", sync);
+      window.removeEventListener("pointermove", sync);
+    };
+  }, [dragging]);
+
+  function groupKey(column: ColumnKey, productId: ProductId) {
+    return `${column}|${productCategory.get(productId) ?? "none"}`;
+  }
+
+  function isGroupOpen(key: string) {
+    return query !== "" || openGroups.has(key);
+  }
+
+  function setGroupOpen(key: string, open: boolean) {
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  // Ikke brugt and Kun Waste are grouped by each Produkt's first category.
+  function categoryGroups(column: ColumnKey, ids: ProductId[]) {
+    const groups = new Map<string, ProductId[]>();
+    for (const id of ids) {
+      const key = groupKey(column, id);
+      groups.set(key, [...(groups.get(key) ?? []), id]);
+    }
+    return [...groups]
+      .map(([key, groupIds]) => {
+        const categoryId = productCategory.get(groupIds[0]);
+        return {
+          key,
+          ids: groupIds,
+          label:
+            (categoryId && categoryNames.get(categoryId)) || "Uden kategori",
+          order: (categoryId && categoryOrder.get(categoryId)) ?? Infinity,
+        };
+      })
+      .sort((left, right) => left.order - right.order);
+  }
+
+  function visibleGroupedIds(column: ColumnKey, ids: ProductId[]) {
+    return ids.filter((id) => matches(id) && isGroupOpen(groupKey(column, id)));
+  }
   const matches = (id: ProductId) =>
     !query ||
     (productNames.get(id) ?? "").toLocaleLowerCase("da").includes(query);
@@ -590,7 +670,7 @@ export function LocationCountSetup({
       const { productId } = parseItemId(active.id);
       const name = productNames.get(productId) ?? "Produktet";
       return over
-        ? `${name} er flyttet til ${columnTitles.get(targetColumn(over.id)) ?? "kolonnen"}.`
+        ? `${name} er ${copyDrag ? "tilføjet" : "flyttet"} til ${columnTitles.get(targetColumn(over.id)) ?? "kolonnen"}.`
         : `${name} blev ikke flyttet.`;
     },
     onDragCancel({ active }) {
@@ -719,6 +799,52 @@ export function LocationCountSetup({
     );
   }
 
+  function renderGroupedCards(column: ColumnKey, ids: ProductId[]) {
+    const visible = ids.filter(matches);
+    if (visible.length === 0) {
+      return (
+        <li className="flex min-h-20 items-center justify-center rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
+          {ids.length === 0 ? "Træk Produkter hertil" : "Ingen match"}
+        </li>
+      );
+    }
+    return categoryGroups(column, visible).map((group) => {
+      const expanded = isGroupOpen(group.key);
+      return (
+        <li key={group.key}>
+          <Collapsible
+            open={expanded}
+            onOpenChange={(next) => setGroupOpen(group.key, next)}
+          >
+            <CollapsibleTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11 w-full"
+                  aria-label={`${expanded ? "Skjul" : "Vis"} ${group.label}`}
+                />
+              }
+            >
+              <ChevronRightIcon
+                className={cn("transition-transform", expanded && "rotate-90")}
+              />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {group.label}
+              </span>
+              <Badge variant="secondary">{group.ids.length}</Badge>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ol className="flex flex-col gap-2 pt-2">
+                {group.ids.map((id) => renderCard(column, id))}
+              </ol>
+            </CollapsibleContent>
+          </Collapsible>
+        </li>
+      );
+    });
+  }
+
   const draggedProduct = dragging ? parseItemId(dragging).productId : null;
 
   return (
@@ -797,14 +923,25 @@ export function LocationCountSetup({
                 </div>
               </div>
 
+              {hasAreas ? (
+                <p className="hidden text-sm text-muted-foreground lg:block">
+                  Hold Shift nede, mens du trækker, for at tilføje et Produkt
+                  til flere Områder i stedet for at flytte det.
+                </p>
+              ) : null}
+
               <DndContext
                 sensors={sensors}
                 collisionDetection={boardCollision}
                 accessibility={{ announcements }}
                 onDragStart={({ active }) => setDragging(active.id)}
-                onDragCancel={() => setDragging(null)}
+                onDragCancel={() => {
+                  setDragging(null);
+                  setCopyDrag(false);
+                }}
                 onDragEnd={({ active, over }) => {
                   setDragging(null);
+                  setCopyDrag(false);
                   if (!over) return;
                   const source = parseItemId(active.id);
                   const to = targetColumn(over.id);
@@ -817,7 +954,11 @@ export function LocationCountSetup({
                       : undefined;
                   moveProduct(source.productId, source.column, to, {
                     index: index === -1 ? undefined : index,
+                    copy: copyDrag,
                   });
+                  if (!isCountColumn(to)) {
+                    setGroupOpen(groupKey(to, source.productId), true);
+                  }
                 }}
               >
                 <div className="-mx-4 flex min-h-0 flex-1 snap-x gap-3 overflow-x-auto px-4 pb-1">
@@ -827,9 +968,11 @@ export function LocationCountSetup({
                     description="Bruges ikke på lokationen."
                     count={unusedIds.length}
                     tone="muted"
-                    sortableIds={unusedIds.map((id) => itemId("unused", id))}
+                    sortableIds={visibleGroupedIds("unused", unusedIds).map(
+                      (id) => itemId("unused", id),
+                    )}
                   >
-                    {renderCards("unused", unusedIds, false)}
+                    {renderGroupedCards("unused", unusedIds)}
                   </BoardColumn>
                   <BoardColumn
                     column="waste"
@@ -837,9 +980,11 @@ export function LocationCountSetup({
                     description="Bruges i Waste, men tælles ikke."
                     count={wasteIds.length}
                     tone="neutral"
-                    sortableIds={wasteIds.map((id) => itemId("waste", id))}
+                    sortableIds={visibleGroupedIds("waste", wasteIds).map(
+                      (id) => itemId("waste", id),
+                    )}
                   >
-                    {renderCards("waste", wasteIds, false)}
+                    {renderGroupedCards("waste", wasteIds)}
                   </BoardColumn>
                   {countKeys.map((key) => {
                     const ids = countColumns.get(key) ?? [];
@@ -926,6 +1071,12 @@ export function LocationCountSetup({
                         <span className="truncate font-medium">
                           {productNames.get(draggedProduct)}
                         </span>
+                        {copyDrag && hasAreas ? (
+                          <Badge className="ml-auto">
+                            <PlusIcon data-icon="inline-start" />
+                            Tilføj
+                          </Badge>
+                        ) : null}
                       </div>
                     ) : null}
                   </DragOverlay>,
