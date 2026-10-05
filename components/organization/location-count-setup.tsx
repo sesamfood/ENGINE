@@ -254,6 +254,7 @@ export function LocationCountSetup({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [dragging, setDragging] = useState<UniqueIdentifier | null>(null);
   const [copyDrag, setCopyDrag] = useState(false);
+  const [showCopyHint, setShowCopyHint] = useState(false);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -923,18 +924,22 @@ export function LocationCountSetup({
                 </div>
               </div>
 
-              {hasAreas ? (
-                <p className="hidden text-sm text-muted-foreground lg:block">
-                  Hold Shift nede, mens du trækker, for at tilføje et Produkt
-                  til flere Områder i stedet for at flytte det.
-                </p>
-              ) : null}
-
               <DndContext
                 sensors={sensors}
                 collisionDetection={boardCollision}
                 accessibility={{ announcements }}
-                onDragStart={({ active }) => setDragging(active.id)}
+                onDragStart={({ active, activatorEvent }) => {
+                  setDragging(active.id);
+                  // Shift only helps with a keyboard, and only between Områder.
+                  setShowCopyHint(
+                    countKeys.length > 1 &&
+                      isCountColumn(parseItemId(active.id).column) &&
+                      !(
+                        "pointerType" in activatorEvent &&
+                        activatorEvent.pointerType !== "mouse"
+                      ),
+                  );
+                }}
                 onDragCancel={() => {
                   setDragging(null);
                   setCopyDrag(false);
@@ -1068,13 +1073,20 @@ export function LocationCountSetup({
                         <span className="flex size-11 items-center justify-center text-muted-foreground">
                           <GripVerticalIcon aria-hidden="true" />
                         </span>
-                        <span className="truncate font-medium">
-                          {productNames.get(draggedProduct)}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium">
+                            {productNames.get(draggedProduct)}
+                          </span>
+                          {showCopyHint && !copyDrag ? (
+                            <span className="text-xs text-muted-foreground">
+                              Hold Shift for at kopiere til et andet Område
+                            </span>
+                          ) : null}
                         </span>
-                        {copyDrag && hasAreas ? (
+                        {showCopyHint && copyDrag ? (
                           <Badge className="ml-auto">
                             <PlusIcon data-icon="inline-start" />
-                            Tilføj
+                            Kopiér
                           </Badge>
                         ) : null}
                       </div>
