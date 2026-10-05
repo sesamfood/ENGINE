@@ -7,7 +7,6 @@ import {
   FolderIcon,
   PencilIcon,
   PlusIcon,
-  SearchIcon,
   Trash2Icon,
   UtensilsIcon,
 } from "lucide-react";
@@ -35,7 +34,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -62,11 +60,6 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -80,11 +73,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
 import { LocationField } from "@/components/location-field";
 import { useLocationAccess, usePermission } from "@/components/app-shell";
 import { downloadCsv } from "@/lib/download-csv";
 import { addDays, dateKey, DEFAULT_TIME_ZONE, zonedStart } from "@/lib/date";
-import { searchProducts } from "@/lib/product-search";
 
 type Settings = NonNullable<
   ReturnType<typeof useQuery<typeof api.staffFood.getSettings>>
@@ -171,9 +164,6 @@ export function StaffFoodSettings() {
   );
   const [minimumHours, setMinimumHours] = useState("4");
   const [allowances, setAllowances] = useState<AllowanceDraft[]>([]);
-  const [productSearches, setProductSearches] = useState<
-    Record<string, string>
-  >({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Tier | null>(null);
   const [todayTimestamp] = useState(() => Date.now());
@@ -236,6 +226,7 @@ export function StaffFoodSettings() {
     const items: {
       value: SettingsCategory["id"];
       label: string;
+      parentCategoryId: SettingsCategory["parentCategoryId"];
       path: string;
       depth: number;
     }[] = [];
@@ -246,6 +237,7 @@ export function StaffFoodSettings() {
       items.push({
         value: category.id,
         label: category.name,
+        parentCategoryId: category.parentCategoryId,
         path: categoryPaths.get(category.id) ?? category.name,
         depth,
       });
@@ -257,6 +249,17 @@ export function StaffFoodSettings() {
     for (const category of categories) visit(category, 0);
     return items;
   }, [settings?.categories, categoryPaths]);
+  const comboboxCategories = useMemo(
+    () =>
+      categoryItems.map((item) => ({
+        id: item.value,
+        name: item.label,
+        parentCategoryId: item.parentCategoryId,
+        path: item.path,
+        depth: item.depth,
+      })),
+    [categoryItems],
+  );
   const minimumMinutes = Number(minimumHours) * 60;
   const minimumValid =
     Number.isFinite(minimumMinutes) &&
@@ -275,7 +278,6 @@ export function StaffFoodSettings() {
         productIds: allowance.products.map((product) => product.id),
       })) ?? [],
     );
-    setProductSearches({});
     setEditorOpen(true);
   }
 
@@ -696,43 +698,38 @@ export function StaffFoodSettings() {
               const amount = Number(allowance.amount);
               const amountValid =
                 Number.isInteger(amount) && amount >= 1 && amount <= 20;
-              const otherProductIds = new Set(
-                allowances.flatMap((item, allowanceIndex) =>
-                  allowanceIndex === index ? [] : item.productIds,
-                ),
-              );
-              const products = searchProducts(
-                productCatalog.filter(
-                  (product) =>
-                    product.categoryIds.some((categoryId) =>
-                      categoryIds.has(categoryId),
-                    ) &&
-                    (product.status === "active" ||
-                      allowance.productIds.includes(product.id)),
-                ),
-                productSearches[allowance.id] ?? "",
-                (product) => ({
-                  name: product.name,
-                  categoryPath: product.categoryIds
-                    .map((id) => categoryPaths.get(id) ?? "")
-                    .join(" · "),
-                }),
-              );
-              const selectableProducts = products.filter(
-                (product) =>
-                  product.status === "active" &&
-                  (!otherProductIds.has(product.id) ||
-                    allowance.productIds.includes(product.id)),
-              );
-              const selectableIds = new Set(
-                selectableProducts.map((product) => product.id),
-              );
-              const selectedVisibleCount = selectableProducts.filter(
-                (product) => allowance.productIds.includes(product.id),
-              ).length;
-              const allVisibleSelected =
-                selectableProducts.length > 0 &&
-                selectedVisibleCount === selectableProducts.length;
+              const allowanceProducts = productCatalog.flatMap((product) => {
+                if (
+                  !product.categoryIds.some((categoryId) =>
+                    categoryIds.has(categoryId),
+                  ) ||
+                  (product.status !== "active" &&
+                    !allowance.productIds.includes(product.id))
+                ) {
+                  return [];
+                }
+                const otherIndex = allowances.findIndex(
+                  (item, allowanceIndex) =>
+                    allowanceIndex !== index &&
+                    item.productIds.includes(product.id),
+                );
+                const reason =
+                  product.status === "archived"
+                    ? "Arkiveret"
+                    : otherIndex >= 0
+                      ? `Valgt i kategorigruppe ${otherIndex + 1}`
+                      : null;
+                return [
+                  {
+                    value: product.id,
+                    label: reason ? `${product.name} · ${reason}` : product.name,
+                    categoryIds: product.categoryIds,
+                    disabled:
+                      otherIndex >= 0 &&
+                      !allowance.productIds.includes(product.id),
+                  },
+                ];
+              });
               return (
                 <Card key={allowance.id}>
                   <CardHeader>
@@ -868,86 +865,20 @@ export function StaffFoodSettings() {
                           content="Et produkt kan kun være valgt i én kategorigruppe."
                         />
                       </FieldLegend>
-                      <InputGroup className="h-10">
-                        <InputGroupInput
-                          value={productSearches[allowance.id] ?? ""}
-                          onChange={(event) =>
-                            setProductSearches((current) => ({
-                              ...current,
-                              [allowance.id]: event.target.value,
-                            }))
+                      {allowanceProducts.length ? (
+                        <ProductCategoryCombobox
+                          categories={comboboxCategories.filter((category) =>
+                            categoryIds.has(category.id),
+                          )}
+                          products={allowanceProducts}
+                          values={allowance.productIds}
+                          onValuesChange={(values) =>
+                            updateAllowance(index, {
+                              productIds: values as Id<"products">[],
+                            })
                           }
-                          placeholder="Søg i kategorierne"
-                          aria-label="Søg efter produkter"
+                          ariaLabel={`Tilladte produkter i kategorigruppe ${index + 1}`}
                         />
-                        <InputGroupAddon align="inline-start">
-                          <SearchIcon />
-                        </InputGroupAddon>
-                      </InputGroup>
-                      {products.length ? (
-                        <div className="grid max-h-64 gap-2 overflow-y-auto rounded-lg border p-3 sm:grid-cols-2">
-                          <label className="col-span-full flex min-h-11 cursor-pointer items-center gap-3 border-b px-2 pb-2 font-medium">
-                            <Checkbox
-                              checked={allVisibleSelected}
-                              indeterminate={
-                                selectedVisibleCount > 0 && !allVisibleSelected
-                              }
-                              disabled={!selectableProducts.length}
-                              onCheckedChange={(next) =>
-                                updateAllowance(index, {
-                                  productIds: next
-                                    ? Array.from(
-                                        new Set([
-                                          ...allowance.productIds,
-                                          ...selectableIds,
-                                        ]),
-                                      )
-                                    : allowance.productIds.filter(
-                                        (id) => !selectableIds.has(id),
-                                      ),
-                                })
-                              }
-                            />
-                            <span className="flex-1">Vælg alle</span>
-                            <span className="text-sm font-normal text-muted-foreground">
-                              {selectableProducts.length}
-                            </span>
-                          </label>
-                          {products.map((product) => {
-                            const checked = allowance.productIds.includes(
-                              product.id,
-                            );
-                            const disabled =
-                              otherProductIds.has(product.id) && !checked;
-                            return (
-                              <label
-                                key={product.id}
-                                data-disabled={disabled || undefined}
-                                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-muted/50 data-disabled:cursor-not-allowed data-disabled:opacity-50"
-                              >
-                                <Checkbox
-                                  checked={checked}
-                                  disabled={disabled}
-                                  onCheckedChange={(next) =>
-                                    updateAllowance(index, {
-                                      productIds: next
-                                        ? [...allowance.productIds, product.id]
-                                        : allowance.productIds.filter(
-                                            (id) => id !== product.id,
-                                          ),
-                                    })
-                                  }
-                                />
-                                <span className="min-w-0 flex-1 truncate text-sm">
-                                  {product.name}
-                                </span>
-                                {product.status === "archived" ? (
-                                  <Badge variant="outline">Arkiveret</Badge>
-                                ) : null}
-                              </label>
-                            );
-                          })}
-                        </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
                           Ingen produkter fundet i de valgte kategorier.

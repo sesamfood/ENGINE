@@ -2,14 +2,13 @@
 
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { SearchIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { getUserErrorMessage } from "@/lib/user-errors";
-import { Badge } from "@/components/ui/badge";
+import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,137 +18,68 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { searchProducts } from "@/lib/product-search";
 
 type ProductOption = FunctionReturnType<
   typeof api.catalog.listActiveProductSearchOptionsPage
 >["page"][number];
 
-// Checked products are excluded from Count. Locked products are excluded for
+// Selected products are excluded from Count. Locked products are excluded for
 // the whole organization and cannot be changed here.
 export function CountExclusionList({
-  id,
   products,
   excludedProductIds,
   lockedProductIds,
   disabled,
-  onToggle,
+  onChange,
 }: {
-  id: string;
   products: ProductOption[] | undefined;
   excludedProductIds: ReadonlySet<Id<"products">>;
   lockedProductIds?: ReadonlySet<Id<"products">>;
   disabled: boolean;
-  onToggle: (productId: Id<"products">, excluded: boolean) => void;
+  onChange: (productIds: Set<Id<"products">>) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const filteredProducts = useMemo(
-    () => searchProducts(products ?? [], search, (product) => product),
-    [products, search],
+  const categories = useQuery(api.catalog.listCategoryOptions, {});
+  const productOptions = useMemo(
+    () =>
+      products?.map((product) => {
+        const locked = lockedProductIds?.has(product.id) ?? false;
+        return {
+          value: product.id,
+          label: locked
+            ? `${product.name} · Udeladt for hele organisationen`
+            : product.name,
+          categoryIds: product.categoryIds,
+          disabled: locked,
+        };
+      }),
+    [lockedProductIds, products],
   );
 
+  if (productOptions === undefined || categories === undefined) {
+    return <Skeleton className="h-11 w-full" />;
+  }
   return (
-    <FieldGroup>
-      <Field>
-        <FieldLabel htmlFor={`${id}-search`}>Søg efter Produkt</FieldLabel>
-        <InputGroup className="min-h-11">
-          <InputGroupAddon align="inline-start">
-            <SearchIcon />
-          </InputGroupAddon>
-          <InputGroupInput
-            id={`${id}-search`}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Søg efter navn eller kategori"
-          />
-        </InputGroup>
-      </Field>
-
-      {products === undefined ? (
-        <div className="flex flex-col gap-2 rounded-lg border p-2">
-          {Array.from({ length: 5 }, (_, index) => (
-            <Skeleton key={index} className="h-11 w-full" />
-          ))}
-        </div>
-      ) : filteredProducts.length === 0 ? (
-        <Empty appearance="outlined" className="min-h-40">
-          <EmptyHeader>
-            <EmptyTitle>Ingen Produkter fundet</EmptyTitle>
-            <EmptyDescription>
-              {products.length === 0
-                ? "Opret eller aktivér et Produkt i Produktkataloget først."
-                : "Prøv et andet søgeord."}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <div className="max-h-80 overflow-y-auto rounded-lg border p-2">
-          <FieldGroup appearance="tight">
-            {filteredProducts.map((product) => {
-              const locked = lockedProductIds?.has(product.id) ?? false;
-              const inputId = `${id}-${product.id}`;
-              return (
-                <Field
-                  key={product.id}
-                  orientation="horizontal"
-                  data-disabled={locked}
-                  appearance="option"
-                  className="min-h-11"
-                >
-                  <Checkbox
-                    id={inputId}
-                    className="self-center mt-0!"
-                    checked={locked || excludedProductIds.has(product.id)}
-                    disabled={locked || disabled}
-                    aria-label={`Udelad ${product.name} fra Count`}
-                    onCheckedChange={(next) =>
-                      onToggle(product.id, next === true)
-                    }
-                  />
-                  <FieldContent className="min-w-0">
-                    <FieldLabel
-                      htmlFor={inputId}
-                      appearance="regular"
-                      className="min-w-0"
-                    >
-                      <span className="truncate">{product.name}</span>
-                      {locked ? (
-                        <Badge variant="outline">Hele organisationen</Badge>
-                      ) : null}
-                    </FieldLabel>
-                    <FieldDescription appearance="truncate">
-                      {product.categoryPath}
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
-              );
-            })}
-          </FieldGroup>
-        </div>
-      )}
-    </FieldGroup>
+    <Field data-disabled={disabled}>
+      <FieldLabel>Udeladte Produkter</FieldLabel>
+      <ProductCategoryCombobox
+        categories={categories}
+        products={productOptions}
+        values={[...excludedProductIds]}
+        onValuesChange={(values) =>
+          onChange(new Set(values as Id<"products">[]))
+        }
+        disabled={disabled}
+        ariaLabel="Produkter udeladt fra Count"
+      />
+      <FieldDescription>
+        Vælg en kategorilinje for at vælge eller fravælge alle Produkter i
+        kategorien.
+      </FieldDescription>
+    </Field>
   );
 }
 
@@ -200,16 +130,10 @@ export function OrganizationCountExclusions() {
       </CardHeader>
       <CardContent>
         <CountExclusionList
-          id="organization-count-exclusions"
           products={products}
           excludedProductIds={excludedProductIds}
           disabled={savedProductIds === undefined || saving}
-          onToggle={(productId, excluded) => {
-            const next = new Set(excludedProductIds);
-            if (excluded) next.add(productId);
-            else next.delete(productId);
-            setDraft(next);
-          }}
+          onChange={setDraft}
         />
       </CardContent>
       <CardFooter className="justify-end">
