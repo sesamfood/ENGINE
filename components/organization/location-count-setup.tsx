@@ -6,6 +6,7 @@ import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
+  AutoScrollActivator,
   closestCorners,
   type CollisionDetection,
   DndContext,
@@ -925,10 +926,11 @@ export function LocationCountSetup({
               <DndContext
                 sensors={sensors}
                 collisionDetection={boardCollision}
-                // The default scrolls far too fast across a wide board.
+                // Measure from the pointer; the wide card would otherwise start deep in the zone.
                 autoScroll={{
-                  acceleration: 3,
-                  threshold: { x: 0.08, y: 0.15 },
+                  activator: AutoScrollActivator.Pointer,
+                  acceleration: 2,
+                  threshold: { x: 0.1, y: 0.15 },
                 }}
                 accessibility={{ announcements }}
                 onDragStart={({ active, activatorEvent }) => {
@@ -966,7 +968,13 @@ export function LocationCountSetup({
                   }
                 }}
               >
-                <div className="-mx-4 flex min-h-0 flex-1 snap-x gap-3 overflow-x-auto px-4 pb-1 select-none">
+                <div
+                  className={cn(
+                    "-mx-4 flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-1 select-none",
+                    // Snapping fights auto-scroll while dragging.
+                    !dragging && "snap-x",
+                  )}
+                >
                   <BoardColumn
                     column="unused"
                     title="Ikke brugt"
