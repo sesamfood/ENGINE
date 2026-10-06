@@ -2,9 +2,9 @@
 
 import { useIntegrations } from "@/integrations/use-integrations";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
-import { useAction, useMutation, useQueries, useQuery } from "convex/react";
+import { useAction, useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowLeftIcon, CheckIcon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -262,8 +262,13 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
   const selectedLocation = context.locations.find((location) => location.id === locationSelection);
   const locationIds = selectedLocation ? [selectedLocation.id] : null;
   const validMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(month) && month >= "1900-01" && month <= currentMonth;
-  const states: Record<string, ReportState | Error | undefined> = useQueries(validMonth && context.locations.length > 0
-    ? { report: { query: api.economicReports.getReportState, args: { month, locationIds, now } } } : {});
+  const selectedLocationId = selectedLocation?.id ?? null;
+  const hasLocations = context.locations.length > 0;
+  // useQueries needs a stable object; a new one each render loops forever.
+  const reportQueries = useMemo((): RequestForQueries => validMonth && hasLocations
+    ? { report: { query: api.economicReports.getReportState, args: { month, locationIds: selectedLocationId ? [selectedLocationId] : null, now } } } : {},
+  [validMonth, hasLocations, month, selectedLocationId, now]);
+  const states: Record<string, ReportState | Error | undefined> = useQueries(reportQueries);
   const state = states.report;
   const requestSync = useMutation(api.monthlyKpi.requestSync);
 
