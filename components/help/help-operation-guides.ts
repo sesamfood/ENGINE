@@ -261,6 +261,14 @@ export const operationFeatures: HelpFeature[] = [
               "Et tal kan være Estimat, Foreløbig eller Godkendt. Løn er et estimat ud fra vagter, indtil et godkendt beløb findes.",
               "Rapporten kræver adgang til Månedsrapport og datavisningen Detaljer.",
             ],
+            screenshot: {
+              src: "/help/screenshots/manedsrapport.webp",
+              alt: "Månedsrapport for én Lokation med nøgletal i rækker og kolonnerne Faktisk, Budget, Afvigelse, Sidste måned og År til dato",
+              caption:
+                "Budgettet er angivet, men der er endnu ingen faktiske tal. Spørgsmålstegnet viser kilden eller årsagen. Eksempeldata.",
+              width: 1032,
+              height: 866,
+            },
           },
           {
             id: "budget",
