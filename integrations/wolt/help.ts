@@ -4,7 +4,7 @@ const woltOrdersGuide: HelpGuide = {
   slug: "ordrer",
   label: "Find og læs en Wolt-ordre",
   summary:
-    "Når Wolt er forbundet, kan du finde ordrer og læse produktlinjer, beløb og statushistorik. Her følger du en ordre fra listen til detaljerne.",
+    "Find Wolt-ordrer, og læs produktlinjer, beløb og statushistorik.",
   appHref: "/wolt-orders",
   appLinkLabel: "Åbn Wolt-ordrer",
   sections: [
@@ -13,45 +13,27 @@ const woltOrdersGuide: HelpGuide = {
       title: "Find ordren",
       steps: [
         "Åbn Wolt-ordrer, og vælg Fra dato, Til dato og Lokation. Perioden må højst være 90 dage.",
-        "Afgræns eventuelt med Status eller Ordretype, eller søg på Ordrenummer.",
-        "Åbn ordren i listen. Brug Vis flere ordrer, hvis den ikke er på den første side.",
+        "Afgræns eventuelt med Status, Ordretype eller Ordrenummer.",
+        "Åbn ordren. Brug Vis flere ordrer, hvis den ikke er på første side.",
       ],
     },
     {
       id: "detaljer",
-      title: "Læs ordredetaljerne",
+      title: "Ordredetaljer",
       bullets: [
-        "Kontrollér Netto kurv, antal Produkter, ordretype og status. Ordreoplysninger viser også bruttobeløb og tidspunkter for oprettelse og seneste opdatering.",
-        "Hver produktlinje viser antal, stykpris, linjebeløb og det koblede lokale Produkt.",
-        "Koblet for lokationen betyder, at koblingen er lokal. Ikke koblet eller Konflikt kræver kontrol af produktkoblingerne under Integrationer → Wolt.",
-        "Statushistorik viser Wolt-status med både tidspunktet hos Wolt og tidspunktet, hvor appen modtog hændelsen.",
-        "Visningen indeholder ikke forbrugeroplysninger. Ordredetaljer og statushistorik slettes efter 400 dage, selv om én søgning højst kan omfatte 90 dage.",
-      ],
-    },
-    {
-      id: "status",
-      title: "Læs advarsler om manglende data",
-      paragraphs: [
-        "Advarsler kan vise lokationer uden forbindelse, uden nylig aktivitet, med godkendelsesfejl eller med hændelser, der venter eller er fejlet. Kontrollér disse lokationer under Integrationer → Wolt. Hvis koblingslisten er afkortet, kunne alle produktkoblinger ikke vurderes i ordredetaljerne.",
+        "Ordren viser Netto kurv, bruttobeløb, antal varer, ordretype, status og tidspunkter.",
+        "Hver produktlinje viser antal, priser og det koblede lokale Produkt. Ikke koblet eller Konflikt kræver en produktkobling under Integrationer → Wolt.",
+        "Statushistorik viser tidspunktet hos Wolt og tidspunktet, appen modtog ændringen.",
+        "Visningen indeholder ingen forbrugeroplysninger. Ordrer gemmes i 400 dage.",
+        "Advarsler peger på lokationer uden forbindelse, uden nylig aktivitet eller med fejl. Kontrollér dem under Integrationer → Wolt.",
       ],
     },
   ],
   troubleshooting: [
     {
-      question: "Hvorfor kan jeg ikke finde en ordre?",
+      question: "Kan jeg acceptere eller afvise ordren her?",
       answer:
-        "Ryd status-, ordretype- og nummerfiltre, og kontrollér periode og Lokation. Ved en ny SSIO-forbindelse skal du kontrollere med en ordre modtaget efter godkendelsen.",
-    },
-    {
-      question: "Kan jeg behandle ordren her?",
-      answer:
-        "Wolt-ordrer bruges til at se ordrer og deres historik. Visningen har ingen handling til at acceptere, afvise eller refundere en ordre.",
-    },
-  ],
-  relatedLinks: [
-    {
-      href: "/help/integrationer/wolt",
-      label: "Wolt-forbindelser og produktkoblinger",
+        "Nej. Wolt-ordrer viser kun ordrer og deres historik.",
     },
   ],
 };
@@ -61,81 +43,74 @@ export const woltGuide: HelpGuide = {
   slug: "wolt",
   label: "Wolt",
   summary:
-    "Forbind Wolt pr. Lokation, kobl Wolt-produkter til produktkataloget, og kontrollér, at nye ordrer kommer ind.",
+    "Forbind Wolt pr. Lokation, kobl Wolt-produkter til jeres Produkter, og kontrollér, at ordrer kommer ind.",
   appHref: "/administration/integrations/wolt",
   appLinkLabel: "Åbn Wolt-indstillinger",
   sections: [
     {
       id: "adgang",
-      title: "Vælg forbindelsesmåde",
+      title: "Før du starter",
       bullets: [
-        "Opret lokationer og Produkter først. Din rolle skal kunne administrere integrationer, og du skal have adgang til lokationen.",
-        "SSIO forbinder en Lokation gennem godkendelse hos Wolt. Du kan bruge SSIO på de lokationer, du har adgang til.",
-        "WIO bruger et partner-venue-id fra Wolt. WIO-opsætning, fælles produktkoblinger og aktivering af en allerede forbundet integration kræver adgang til alle lokationer.",
-        "Integrationen læser ordredata. Den bruges ikke til at acceptere, annullere eller ændre ordrer hos Wolt.",
+        "Opret lokationer og Produkter. Din rolle skal kunne administrere integrationer.",
+        "Integrationen læser ordredata. Den kan ikke acceptere, annullere eller ændre ordrer hos Wolt.",
+        "Siden Wolt-ordrer slås til under Administration → Wolt-ordrer.",
+      ],
+    },
+    {
+      id: "noegler",
+      title: "Gem organisationens Wolt-nøgler",
+      steps: [
+        "Åbn Administration → Integrationer → Wolt, og aktivér integrationen.",
+        "Vælg Wolt-miljø, og angiv Klient-id, klienthemmelighed og webhook-hemmelighed fra Wolt. Ved WIO angiver du også WIO API-nøgle og WIO-returadresser.",
+        "Vælg Gem Wolt-nøgler. Gemte nøgler vises ikke igen.",
       ],
     },
     {
       id: "ssio",
-      title: "Forbind med SSIO",
+      title: "Forbind en Lokation med SSIO",
       steps: [
-        "Åbn Administration → Integrationer → Wolt. Aktivér integrationen, og åbn dens indstillinger.",
-        "Find lokationen, og vælg Start SSIO. Fuldfør godkendelsen hos Wolt for det rigtige salgssted.",
-        "Når du vender tilbage, behandles godkendelsen, og status opdateres automatisk. Kontrollér lokationens forbindelsesstatus og Venue-id.",
-        "Kontrollér forbindelsen med en ny ordre efter godkendelsen. SSIO henter nye events fra tilslutningen og importerer ikke automatisk tidligere ordrer.",
+        "Vælg Start SSIO ved lokationen, og godkend det rigtige salgssted hos Wolt.",
+        "Kontrollér forbindelsesstatus og Venue-id, når du vender tilbage.",
+        "Kontrollér med en ny ordre. SSIO henter ikke ordrer fra før godkendelsen.",
       ],
-      screenshot: {
-        src: "/help/screenshots/wolt-ordrer.webp",
-        alt: "Wolt-indstillingerne for organisationen",
-        caption:
-          "Aktivér integrationen i oversigten, og åbn indstillingerne.",
-        width: 1066,
-        height: 74,
-      },
     },
     {
       id: "wio",
-      title: "Forbind med WIO",
+      title: "Forbind en Lokation med WIO",
       steps: [
-        "Find den Lokation, Wolt har oprettet WIO-forbindelsen til.",
-        "Indtast WIO partner-venue-id fra Wolt, og vælg Gem. En indtastet værdi er ikke gemt, før du trykker på knappen.",
-        "Kontrollér forbindelsesstatus, når Wolt har sendt opsætningsdata. Et gemt partner-venue-id er koblingen til lokationen, ikke i sig selv bevis på en færdig forbindelse.",
+        "Indtast WIO partner-venue-id fra Wolt ved lokationen, og vælg Gem.",
+        "Kontrollér forbindelsesstatus, når Wolt har sendt opsætningsdata.",
+      ],
+      bullets: [
+        "WIO-opsætning og fælles produktkoblinger kræver adgang til alle lokationer.",
       ],
     },
     {
       id: "produkter",
-      title: "Kobl de observerede Wolt-produkter",
+      title: "Kobl Wolt-produkter",
       steps: [
-        "Find Observerede Wolt-produkter under forbindelserne. Produktlinjerne vises, når systemet har modtaget Wolt-ordrer.",
-        "Filtrér eventuelt på Lokation. Kontrollér produktnavn og de viste id'er, og vælg det tilsvarende lokale Produkt.",
-        "Vælg Gælder for. Brug Alle lokationer, når koblingen er fælles, eller en bestemt Lokation, når den skal gælde lokalt.",
-        "Vælg Gem på produktlinjen. Kontrollér den gemte kobling ved at åbne en ordre med Produktet.",
+        "Find Observerede Wolt-produkter. Listen fyldes, når der kommer ordrer.",
+        "Vælg det lokale Produkt, og vælg Gælder for: Alle lokationer eller én Lokation. Vælg Gem.",
       ],
       bullets: [
-        "Navneforslag gemmes aldrig automatisk. Koblingen bruger den bedst tilgængelige identifikation i rækkefølgen GTIN, POS-id, SKU og navn.",
-        "For samme id eller navn går en lokal kobling forud for en fælles kobling. Hvis du fjerner den lokale kobling, kan den fælles kobling blive brugt igen.",
-        "Kun aktive lokale Produkter kan vælges. Opret et manglende Produkt under Administration → Produkter.",
+        "Koblingen bruger GTIN, POS-id, SKU eller navn i den rækkefølge. Navneforslag gemmes ikke automatisk.",
+        "En kobling for én Lokation går forud for en fælles kobling.",
       ],
     },
     {
       id: "status",
       title: "Kontrollér forbindelsen",
-      steps: [
-        "Åbn Wolt-ordrer, og find en ny ordre fra lokationen. Kontrollér produktkoblinger, beløb og statushistorik. Undersiden Find og læs en Wolt-ordre gennemgår ordredetaljerne.",
-        "Gå tilbage til Integrationer for at kontrollere Seneste webhook, Seneste hentning, Kø, fejlede events og Seneste fejl for lokationen.",
-      ],
       bullets: [
-        "Webhook viser, hvornår Wolt sidst har meldt en ændring. Seneste hentning viser, hvornår systemet sidst har hentet ordredata. En tom kø betyder ikke, at der har været ordrer.",
-        "Ved Godkendelse kræves skal du bruge Godkend SSIO igen. Når forbindelsen er Klar og fejlen er rettet, kan du vælge Prøv fejlede events igen.",
+        "Seneste webhook viser, hvornår Wolt sidst meldte en ændring. Seneste hentning viser, hvornår ordredata sidst blev hentet.",
+        "Ved Godkendelse kræves vælger du Godkend SSIO igen. Når forbindelsen er Klar, kan du vælge Prøv fejlede events igen.",
       ],
     },
     {
       id: "afbryd",
       title: "Sæt på pause eller afbryd",
       bullets: [
-        "Deaktivér Wolt for at stoppe hentning af nye ordrer for organisationen. Ordrehistorikken bevares i op til 400 dage og vises, når integrationen aktiveres igen.",
-        "Afbryd forbindelse stopper nye events for den valgte Lokation. Eksisterende ordredata og historik bevares inden for opbevaringsperioden.",
-        "Fjern WIO-id fjerner koblingen til partner-venue-id'et. Nye WIO-events kan ikke kobles til lokationen, før et id er gemt igen.",
+        "Deaktivér integrationen for at stoppe nye ordrer. Historikken bevares.",
+        "Afbryd forbindelse stopper nye ordrer for én Lokation. Fjern WIO-id fjerner koblingen til partner-venue-id'et.",
       ],
     },
   ],
@@ -143,27 +118,16 @@ export const woltGuide: HelpGuide = {
     {
       question: "Lokationen er forbundet, men der er ingen ordrer",
       answer:
-        "Kontrollér, at integrationen er aktiv, og at Venue-id tilhører den rigtige Lokation. Brug en ordre fra efter SSIO-godkendelsen, og fjern eventuelle ordre- og statusfiltre. Se derefter Seneste webhook, Seneste hentning og Seneste fejl.",
+        "Kontrollér, at integrationen er aktiv, og at Venue-id tilhører lokationen. Brug en ordre fra efter godkendelsen, ryd filtrene, og se Seneste webhook og Seneste fejl.",
     },
     {
-      question: "En produktkobling mangler på en ordre",
+      question: "En ordrelinje er ikke koblet",
       answer:
-        "Kontrollér, at du har valgt Gem, og at Gælder for omfatter ordren. Gennemgå også en eventuel lokal kobling for samme id eller navn. Hvis navne eller id'er er ændret hos Wolt, skal den nye observerede produktlinje kontrolleres.",
-    },
-    {
-      question: "Prøv fejlede events igen er låst",
-      answer:
-        "Forbindelsen skal være Klar, og der skal være fejlede events. Løs Seneste fejl eller godkend forbindelsen igen først. Et nyt forsøg sætter de fejlede events i kø til behandling.",
+        "Kontrollér, at koblingen er gemt, og at Gælder for omfatter lokationen. Har Wolt ændret navn eller id, skal den nye observerede linje kobles.",
     },
   ],
   relatedLinks: [
-    {
-      href: "/help/integrationer/wolt/ordrer",
-      label: "Læs Wolt-ordrer og statushistorik",
-    },
     { href: "/wolt-orders", label: "Åbn Wolt-ordrer" },
-    { href: "/administration/products", label: "Administrér Produkter" },
-    { href: "/help/count/overblik", label: "Brug Wolt som salgskilde i Count" },
   ],
   children: [woltOrdersGuide],
 };

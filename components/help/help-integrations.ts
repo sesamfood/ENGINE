@@ -1,6 +1,7 @@
 import { PlugIcon } from "lucide-react";
 import type { HelpFeature, HelpGuide } from "./help-types";
 
+import { economicGuide } from "@/integrations/economic/help";
 import { onlinePosGuide } from "@/integrations/onlinepos/help";
 import { workfeedGuide } from "@/integrations/workfeed/help";
 import { woltGuide } from "@/integrations/wolt/help";
@@ -9,44 +10,42 @@ const integrationOverview: HelpGuide = {
   slug: "overblik",
   label: "Overblik",
   summary:
-    "Integrationer henter salg, ordrer og medarbejderdata fra de systemer, organisationen allerede bruger.",
+    "Integrationer henter salg, ordrer, vagter og regnskabstal fra de systemer, organisationen allerede bruger.",
   appHref: "/administration/integrations",
   appLinkLabel: "Åbn Integrationer",
   sections: [
     {
       id: "vaelg-integration",
-      title: "Vælg den integration, I bruger",
+      title: "Aktivér en integration",
+      steps: [
+        "Åbn Administration → Integrationer, og aktivér integrationen med kontakten.",
+        "Åbn integrationen, og indtast organisationens egne adgangsoplysninger.",
+        "Følg integrationens guide for at koble lokationer, Produkter eller konti.",
+      ],
       bullets: [
-        "Åbn Administration → Integrationer. Aktivér den integration, organisationen vil bruge, og åbn dens indstillinger.",
-        "Indtast organisationens egne nøgler. Guider og indstillinger for den enkelte integration vises, når den er aktiveret.",
+        "Guider til en integration vises her, når den er aktiveret.",
       ],
     },
     {
       id: "foer-du-forbinder",
-      title: "Klargør data og adgang først",
+      title: "Før du forbinder",
       paragraphs: [
-        "Opret lokationer og de Produkter, der skal kobles til leverandørens data. Din rolle skal kunne administrere integrationer. Fælles opsætning kræver normalt adgang til alle lokationer. Hver integrationsguide beskriver de nødvendige adgangsoplysninger og rettigheder.",
+        "Opret lokationer og Produkter først. Din rolle skal kunne administrere integrationer, og fælles opsætning kræver normalt adgang til alle lokationer.",
       ],
     },
     {
       id: "kontroller",
-      title: "Fra forbindelse til data i den daglige drift",
-      paragraphs: [
-        "Følg integrationens guide for at forbinde kontoen, tilknytte lokationer og kontrollere produkt- eller afdelingskoblinger. Sammenlign derefter en kendt ordre eller vagt med leverandørens system. Aktiv status alene viser ikke, om data er hentet og koblet korrekt.",
-        "Deaktivering skjuler integrationen i appen og sætter opdateringer på pause. Fjernelse og kontoskift kan også slette koblinger eller historik. Følg vejledningen for den enkelte integration, før du ændrer forbindelsen.",
+      title: "Kontrollér og vedligehold",
+      bullets: [
+        "Sammenlign en kendt ordre, vagt eller postering med leverandørens system. Status Aktiv viser ikke, om data er koblet korrekt.",
+        "Deaktivering skjuler integrationen og stopper nye opdateringer. Adgangsoplysninger, koblinger og historik bevares.",
+        "Fjernelse eller skift af konto kan slette koblinger og historik. Læs integrationens guide først.",
       ],
     },
   ],
   relatedLinks: [
     { href: "/help/administration/lokationer", label: "Klargør lokationer" },
-    {
-      href: "/help/administration/produkter",
-      label: "Klargør produktkataloget",
-    },
-    {
-      href: "/help/adgang-og-profil/brugere-og-roller",
-      label: "Kontrollér roller og adgang",
-    },
+    { href: "/help/administration/produkter", label: "Klargør Produkter" },
   ],
 };
 
@@ -54,12 +53,13 @@ export const integrationFeature: HelpFeature = {
   slug: "integrationer",
   label: "Integrationer",
   summary:
-    "Aktivér organisationens integrationer, og opsæt forbindelser med jeres egne nøgler.",
+    "Forbind salg, vagtplaner, ordrer og regnskab med organisationens egne nøgler.",
   icon: PlugIcon,
   guides: [
     integrationOverview,
     onlinePosGuide,
     workfeedGuide,
     woltGuide,
+    economicGuide,
   ],
 };
