@@ -174,6 +174,11 @@ const timeFormatter = sharedDateTimeFormatter("da-DK", {
   timeStyle: "short",
 });
 
+const monthFormatter = sharedDateTimeFormatter("da-DK", {
+  month: "long",
+  year: "numeric",
+});
+
 type ExportColumn = {
   key: string;
   label: string;
@@ -237,6 +242,43 @@ const exportColumns: ExportColumn[] = [
   { key: "comment", label: "Kommentar", value: (row) => row.comment ?? "" },
 ];
 
+// Per-transfer columns are dropped when lines are grouped by month.
+const groupedColumnKeys = new Set([
+  "date",
+  "fromLocation",
+  "toLocation",
+  "product",
+  "unit",
+  "quantity",
+]);
+const monthColumn: ExportColumn = {
+  key: "date",
+  label: "Måned",
+  value: (row) => monthFormatter.format(row.transferredAt),
+};
+
+function groupExportRows(rows: ExportRow[]) {
+  const groups = new Map<string, ExportRow>();
+  for (const row of rows) {
+    const date = new Date(row.transferredAt);
+    const key = JSON.stringify([
+      date.getFullYear(),
+      date.getMonth(),
+      row.fromLocationName,
+      row.toLocationName,
+      row.productName,
+      row.unitName,
+    ]);
+    const group = groups.get(key);
+    if (group) {
+      group.quantity = Math.round((group.quantity + row.quantity) * 1e6) / 1e6;
+    } else {
+      groups.set(key, { ...row });
+    }
+  }
+  return [...groups.values()];
+}
+
 const exportColumnByKey = new Map(
   exportColumns.map((column) => [column.key, column]),
 );
@@ -247,6 +289,7 @@ type ExportPrefs = {
   order: string[];
   enabled: string[];
   inDefaultUnit: boolean;
+  grouped: boolean;
 };
 
 function normalizeExportPrefs(value: unknown): ExportPrefs {
@@ -254,6 +297,7 @@ function normalizeExportPrefs(value: unknown): ExportPrefs {
     order: [...defaultColumnOrder],
     enabled: [...defaultColumnOrder],
     inDefaultUnit: false,
+    grouped: false,
   };
   if (!value || typeof value !== "object") return defaults;
   const rawOrder =
@@ -283,6 +327,7 @@ function normalizeExportPrefs(value: unknown): ExportPrefs {
     enabled: enabledRaw,
     inDefaultUnit:
       "inDefaultUnit" in value ? Boolean(value.inDefaultUnit) : false,
+    grouped: "grouped" in value ? Boolean(value.grouped) : false,
   };
 }
 
@@ -775,6 +820,7 @@ export function TransferHistory() {
   const columnOrder = exportPrefs.order;
   const enabledColumns = exportPrefs.enabled;
   const inDefaultUnit = exportPrefs.inDefaultUnit;
+  const grouped = exportPrefs.grouped;
 
   function updateExportPrefs(patch: Partial<ExportPrefs>) {
     setExportPrefs({ ...exportPrefs, ...patch });
@@ -840,7 +886,9 @@ export function TransferHistory() {
   const selectedColumns = columnOrder
     .filter((key) => enabledColumns.includes(key))
     .map((key) => exportColumnByKey.get(key))
-    .filter((column): column is ExportColumn => column !== undefined);
+    .filter((column): column is ExportColumn => column !== undefined)
+    .filter((column) => !grouped || groupedColumnKeys.has(column.key))
+    .map((column) => (grouped && column.key === "date" ? monthColumn : column));
 
   async function exportToCsv() {
     if (rangeError || startAt === null || endAt === null) {
@@ -880,7 +928,12 @@ export function TransferHistory() {
         toast.error("Ingen transfers i den valgte periode");
         return;
       }
-      downloadTransfersCsv(rows, fromDate, toDate, selectedColumns);
+      downloadTransfersCsv(
+        grouped ? groupExportRows(rows) : rows,
+        fromDate,
+        toDate,
+        selectedColumns,
+      );
       setIsExportOpen(false);
     } catch (caught) {
       toast.error(
@@ -1144,6 +1197,30 @@ export function TransferHistory() {
                 <FieldContent>
                   <FieldLabel htmlFor="export-default-unit">
                     Omregn til produktets standardenhed
+                  </FieldLabel>
+                </FieldContent>
+              </Field>
+            </FieldSet>
+
+            <FieldSet>
+              <FieldLegend variant="label" appearance="inline" className="flex items-center">
+                Sammenlægning
+                <HelpTooltip
+                  label="Sammenlægning"
+                  content="Alle transfers af samme produkt mellem de samme to lokationer i en måned lægges sammen på én linje. Kun kolonnerne Dato (som måned), lokationer, produkt, enhed og antal kommer med. Omregn til standardenhed for at samle linjer med forskellige enheder."
+                />
+              </FieldLegend>
+              <Field orientation="horizontal">
+                <Checkbox
+                  id="export-grouped"
+                  checked={grouped}
+                  onCheckedChange={(checked) =>
+                    updateExportPrefs({ grouped: checked })
+                  }
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="export-grouped">
+                    Saml pr. måned, produkt og lokationer
                   </FieldLabel>
                 </FieldContent>
               </Field>
