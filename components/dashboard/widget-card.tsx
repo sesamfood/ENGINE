@@ -152,6 +152,26 @@ function FreshnessNotice({
   );
 }
 
+function WarningNotice({ warning }: { warning: NonNullable<MetricResult["warning"]> }) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={<Button type="button" variant="ghost" size="icon-sm" className="shrink-0" aria-label={warning.title} />}
+      >
+        <CircleAlertIcon className="text-destructive" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <PopoverHeader>
+          <PopoverTitle>{warning.title}</PopoverTitle>
+        </PopoverHeader>
+        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+          {warning.items.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function nearestSize(session: ResizeSession, clientX: number, clientY: number) {
   const wantedWidth = Math.max(session.cellWidth, session.width + clientX - session.startX);
   const wantedHeight = Math.max(session.rowHeight, session.height + clientY - session.startY);
@@ -322,7 +342,7 @@ export function WidgetCard({
                 <span translate="no" className="max-w-full truncate text-sm font-normal tracking-normal">{sourceSuffix.trimStart()}</span>
               </> : metricLabel}
             </CardTitle>
-            {change !== null || result?.truncated || hasFreshness ? (
+            {change !== null || result?.truncated || hasFreshness || result?.warning ? (
               <CardDescription appearance="inline" className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center overflow-hidden">
                 {change !== null ? (
                   <Tooltip>
@@ -347,6 +367,7 @@ export function WidgetCard({
                 ) : null}
                 {result?.truncated ? <Badge variant="outline" className="max-w-full"><span className="truncate">Begrænset data</span></Badge> : null}
                 {hasFreshness ? <FreshnessNotice freshness={freshness!} /> : null}
+                {result?.warning ? <WarningNotice warning={result.warning} /> : null}
               </CardDescription>
             ) : null}
           </div>
