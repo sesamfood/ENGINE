@@ -31,15 +31,16 @@ export type FinancialMonthResult = {
   currency: string | null;
   reason: string | null;
   syncedAt: number | null;
+  connected: boolean;
 };
 
 async function financialContext(ctx: QueryCtx, args: LocationArgs): Promise<
-  { ready: true; value: FinancialContext } | { ready: false; reason: string }
+  { ready: true; value: FinancialContext } | { ready: false; reason: string; connected: boolean }
 > {
-  if (!await isIntegrationEnabled(ctx, args.organizationId, "onlinepos")) return { ready: false, reason: "Der er ingen salgsdata for perioden" };
+  if (!await isIntegrationEnabled(ctx, args.organizationId, "onlinepos")) return { ready: false, reason: "Der er ingen salgsdata for perioden", connected: false };
   const location = await ctx.db.get("locations", args.locationId);
   if (!location || location.organizationId !== args.organizationId) {
-    return { ready: false, reason: "Lokationen blev ikke fundet" };
+    return { ready: false, reason: "Lokationen blev ikke fundet", connected: false };
   }
   const [master, connection, reset, sync, timeZone, currency] = await Promise.all([
     getOnlinePosOrganizationSettings(ctx, args.organizationId),
@@ -49,8 +50,8 @@ async function financialContext(ctx: QueryCtx, args: LocationArgs): Promise<
     resolveTimeZone(ctx, args.organizationId, args.locationId),
     resolveLocationCurrency(ctx, args.organizationId, location),
   ]);
-  if (!master?.enabled || !connection) return { ready: false, reason: "Lokationen er ikke forbundet til en aktiv OnlinePOS-integration" };
-  if (reset || sync?.dayStartRerollToken) return { ready: false, reason: "Lokationens salgsdata er ved at blive genopbygget" };
+  if (!master?.enabled || !connection) return { ready: false, reason: "Lokationen er ikke forbundet til en aktiv OnlinePOS-integration", connected: false };
+  if (reset || sync?.dayStartRerollToken) return { ready: false, reason: "Lokationens salgsdata er ved at blive genopbygget", connected: true };
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([
     connection._id, connection.companyId, connection.token, connection.connectedAt,
     connection.updatedAt, master._id, timeZone, currency,
@@ -104,8 +105,8 @@ function getMonth(ctx: QueryCtx, args: LocationArgs & { month: string }) {
     .unique();
 }
 
-function unavailable(reason: string, currency: string | null = null, syncedAt: number | null = null): FinancialMonthResult {
-  return { netRevenue: null, transactionCount: null, currency, reason, syncedAt };
+function unavailable(reason: string, currency: string | null = null, syncedAt: number | null = null, connected = true): FinancialMonthResult {
+  return { netRevenue: null, transactionCount: null, currency, reason, syncedAt, connected };
 }
 
 export async function readFinancialMonths(ctx: QueryCtx, args: LocationArgs & {
@@ -114,7 +115,7 @@ export async function readFinancialMonths(ctx: QueryCtx, args: LocationArgs & {
   if (args.months.length > MAX_MONTHS) throw new ConvexError("Der kan højst læses 13 måneder ad gangen");
   for (const period of args.months) { requireMonth(period.month); requireDate(period.through); }
   const context = await financialContext(ctx, args);
-  if (!context.ready) return args.months.map(() => unavailable(context.reason));
+  if (!context.ready) return args.months.map(() => unavailable(context.reason, null, null, context.connected));
   const { sourceKey, currency } = context.value;
   return Promise.all(args.months.map(async (period) => {
     const expectedThrough = monthThrough(period.month, period.through);
@@ -131,7 +132,7 @@ export async function readFinancialMonths(ctx: QueryCtx, args: LocationArgs & {
     const included = snapshot.days.filter((day) => day.date <= expectedThrough);
     return { netRevenue: included.reduce((sum, day) => sum + day.netRevenue, 0),
       transactionCount: included.reduce((sum, day) => sum + day.transactionCount, 0),
-      currency, reason: null, syncedAt: snapshot.syncedAt };
+      currency, reason: null, syncedAt: snapshot.syncedAt, connected: true };
   }));
 }
 

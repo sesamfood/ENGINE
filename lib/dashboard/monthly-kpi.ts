@@ -40,6 +40,8 @@ export type MonthlyKpiInputs = {
     periods: (MonthlyKpiAmounts & { month: string })[];
     budget: MonthlyKpiAmounts & { guestScore: MonthlyKpiCell };
     economicBudgetCategories: EconomicBudgetComponent[];
+    labourConnected: boolean;
+    salesConnected: boolean;
   }[];
   updatedAt: number | null;
   revision: string;
@@ -126,39 +128,50 @@ export function kpiVariance(actual: MonthlyKpiCell, budget: MonthlyKpiCell) {
   return combinedCell(actual.value - budget.value, [actual, budget]);
 }
 
+// Sources behind labour %. e-conomic payroll counts as a labour source.
+export function labourSources(location: MonthlyKpiInputs["locations"][number]) {
+  return [
+    ...location.salesConnected ? ["OnlinePOS"] : [],
+    ...location.labourConnected || location.periods.some((period) => period.labour.value !== null) ? ["Workfeed"] : [],
+  ];
+}
+
 export function buildMonthlyKpiReport(inputs: MonthlyKpiInputs) {
-  const total = (component: MonthlyKpiComponent, months: string[]) => months.length === 0
+  type Locations = MonthlyKpiInputs["locations"];
+  const total = (locations: Locations, component: MonthlyKpiComponent, months: string[]) => months.length === 0
     ? kpiCell(null, "Perioden har endnu ingen afsluttede dage")
-    : sumKpiCells(inputs.locations.flatMap((location) => months.map((month) => {
+    : sumKpiCells(locations.flatMap((location) => months.map((month) => {
       const value = location.periods.find((period) => period.month === month)?.[component]
         ?? kpiCell(null, "Perioden har endnu ingen afsluttede dage");
       const request = inputs.periods.find((period) => period.month === month);
       return value.value !== null && request && request.through !== kpiMonthEnd(month)
         ? { ...value, status: "provisional" as const } : value;
     })));
-  const amounts = (months: string[]): MonthlyKpiAmounts => ({
-    sales: total("sales", months), transactions: total("transactions", months),
-    labour: total("labour", months), cogs: total("cogs", months), waste: total("waste", months),
-    rent: total("rent", months), utilities: total("utilities", months), other: total("other", months),
+  const amounts = (locations: Locations, months: string[]): MonthlyKpiAmounts => Object.fromEntries(
+    monthlyKpiComponents.map((component) => [component, total(locations, component, months)]),
+  ) as MonthlyKpiAmounts;
+  const yearMonths = inputs.periods.map((period) => period.month).filter((month) => month.slice(0, 4) === inputs.month.slice(0, 4));
+  const amountSets = (locations: Locations) => ({
+    actual: amounts(locations, [inputs.month]),
+    previous: amounts(locations, [previousKpiMonth(inputs.month)]),
+    year: amounts(locations, yearMonths),
+    budget: Object.fromEntries(monthlyKpiComponents.map((component) =>
+      [component, sumKpiCells(locations.map((location) => location.budget[component]))],
+    )) as MonthlyKpiAmounts,
   });
-  const actual = amounts([inputs.month]);
-  const previous = amounts([previousKpiMonth(inputs.month)]);
-  const year = amounts(inputs.periods.map((period) => period.month).filter((month) => month.slice(0, 4) === inputs.month.slice(0, 4)));
-  const budgetTotal = (component: MonthlyKpiComponent) => sumKpiCells(inputs.locations.map((location) => location.budget[component]));
-  const budget: MonthlyKpiAmounts = {
-    sales: budgetTotal("sales"), transactions: budgetTotal("transactions"), labour: budgetTotal("labour"),
-    cogs: budgetTotal("cogs"), waste: budgetTotal("waste"), rent: budgetTotal("rent"),
-    utilities: budgetTotal("utilities"), other: budgetTotal("other"),
-  };
+  const all = amountSets(inputs.locations);
+  // Labour % covers only locations with both sources, unless none have both.
+  const labourLocations = inputs.locations.filter((location) => labourSources(location).length === 2);
+  const labour = labourLocations.length ? amountSets(labourLocations) : all;
   const money = (cell: MonthlyKpiCell): MonthlyKpiCell => ({ ...cell, value: cell.value === null ? null : cell.value / 100 });
   const profit = (value: MonthlyKpiAmounts, costs: MonthlyKpiComponent[]) =>
     sumKpiCells([value.sales, ...costs.map((component) => ({ ...value[component], value: value[component].value === null ? null : -value[component].value }))]);
   const row = (id: MonthlyKpiRow["id"], label: string, unit: MonthlyKpiRow["unit"],
-    compute: (value: MonthlyKpiAmounts) => MonthlyKpiCell): MonthlyKpiRow => {
-    const actualCell = compute(actual);
-    const budgetCell = compute(budget);
+    compute: (value: MonthlyKpiAmounts) => MonthlyKpiCell, sets = all): MonthlyKpiRow => {
+    const actualCell = compute(sets.actual);
+    const budgetCell = compute(sets.budget);
     return { id, label, unit, actual: actualCell, budget: budgetCell, variance: kpiVariance(actualCell, budgetCell),
-      lastMonth: compute(previous), ytd: compute(year) };
+      lastMonth: compute(sets.previous), ytd: compute(sets.year) };
   };
   const costRatio = (component: MonthlyKpiComponent) => (value: MonthlyKpiAmounts) => ratioKpiCells(value[component], value.sales, 100);
   const rows = [
@@ -166,7 +179,7 @@ export function buildMonthlyKpiReport(inputs: MonthlyKpiInputs) {
     row("salesOrderCount", "Transaktioner", "count", (value) => value.transactions),
     row("averageBasket", "Gennemsnitlig kurv", "currency", (value) => ratioKpiCells(value.sales, value.transactions, 0.01)),
     row("cogsPercent", "Vareforbrug", "percent", costRatio("cogs")),
-    row("labourPercent", "Lønprocent", "percent", costRatio("labour")),
+    row("labourPercent", "Lønprocent", "percent", costRatio("labour"), labour),
     row("grossMarginPercent", "Bruttoavance", "percent", (value) => ratioKpiCells(profit(value, ["cogs"]), value.sales, 100)),
     row("wastePercent", "Waste", "percent", costRatio("waste")),
     row("rentPercent", "Husleje", "percent", costRatio("rent")),
