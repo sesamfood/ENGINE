@@ -66,7 +66,10 @@ async function request(path: string, fields: string, body?: unknown) {
     });
     if (response.status === 404) throw new GooglePlacesError("notFound");
     if (response.status === 429) throw new GooglePlacesError("rateLimited");
-    if (!response.ok) throw new GooglePlacesError("unavailable");
+    if (!response.ok) {
+      console.error(`Google Places ${path.split("?")[0]} failed: ${response.status} ${(await response.text()).slice(0, 500)}`);
+      throw new GooglePlacesError("unavailable");
+    }
     if (Number(response.headers.get("Content-Length")) > 100_000) throw new GooglePlacesError("unavailable");
     const text = await response.text();
     if (text.length > 100_000) throw new GooglePlacesError("unavailable");
