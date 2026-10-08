@@ -33,6 +33,7 @@ type LaborMonthResult = {
   currency: string | null;
   reason: string | null;
   syncedAt: number | null;
+  connected: boolean;
 };
 
 const sourceValidator = v.object({
@@ -181,7 +182,7 @@ async function readStatus(
   through: string,
 ): Promise<LaborMonthResult> {
   if (sourceResult.kind === "unavailable") {
-    return { amount: null, currency: null, reason: sourceResult.reason, syncedAt: null };
+    return { amount: null, currency: null, reason: sourceResult.reason, syncedAt: null, connected: false };
   }
   const { source } = sourceResult;
   const unavailable = (reason: string): LaborMonthResult => ({
@@ -189,6 +190,7 @@ async function readStatus(
     currency: source.currency,
     reason,
     syncedAt: status?.lastSuccessAt ?? null,
+    connected: true,
   });
   if (through >= dateKey(Date.now(), source.timeZone)) {
     return unavailable("Løndata omfatter kun afsluttede dage");
@@ -233,6 +235,7 @@ async function readStatus(
     currency: status.currency,
     reason: null,
     syncedAt: status.lastSuccessAt ?? null,
+    connected: true,
   };
 }
 
@@ -250,7 +253,7 @@ export async function readLaborMonths(
   const sourceResult = await currentSource(ctx, args.organizationId, args.locationId);
   if (sourceResult.kind === "unavailable") {
     return args.months.map(() => ({
-      amount: null, currency: null, reason: sourceResult.reason, syncedAt: null,
+      amount: null, currency: null, reason: sourceResult.reason, syncedAt: null, connected: false,
     }));
   }
   return Promise.all(args.months.map(async (month) => readStatus(

@@ -154,14 +154,14 @@ export async function readInputs(ctx: QueryCtx, args: { month: string; locationI
     }
     return {
       id: location.id, name: location.name, currency: location.currency, periods,
-      budget: amounts, economicBudgetCategories,
+      budget: amounts, economicBudgetCategories, labourConnected: labour.every((item) => item.connected),
       syncedAt: [...sales.map((item) => item.syncedAt), ...labour.map((item) => item.syncedAt)],
     };
   }));
   const syncedAt = entries.flatMap((entry) => entry.syncedAt).filter((value): value is number => value !== null);
   const inputs = {
     organizationId: auth.organizationId, month, through: commonCutoff(month, now, timeZones), currency,
-    periods: requests, locations: entries.map(({ id, name, currency, periods, budget, economicBudgetCategories }) => ({ id, name, currency, periods, budget, economicBudgetCategories })),
+    periods: requests, locations: entries.map(({ id, name, currency, periods, budget, economicBudgetCategories, labourConnected }) => ({ id, name, currency, periods, budget, economicBudgetCategories, labourConnected })),
     updatedAt: syncedAt.length ? Math.min(...syncedAt) : null,
   };
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(inputs)));

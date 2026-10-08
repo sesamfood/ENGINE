@@ -23,6 +23,7 @@ export const monthlyKpiInputsValidator = v.object({
     periods: v.array(monthlyKpiAmountsValidator.extend({ month: v.string() })),
     budget: monthlyKpiAmountsValidator.extend({ guestScore: monthlyKpiCellValidator }),
     economicBudgetCategories: v.array(economicCategoryValidator),
+    labourConnected: v.boolean(),
   })),
   updatedAt: nullableKpiNumber, revision: v.string(),
 });
