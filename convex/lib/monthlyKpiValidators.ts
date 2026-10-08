@@ -24,6 +24,7 @@ export const monthlyKpiInputsValidator = v.object({
     budget: monthlyKpiAmountsValidator.extend({ guestScore: monthlyKpiCellValidator }),
     economicBudgetCategories: v.array(economicCategoryValidator),
     labourConnected: v.boolean(),
+    salesConnected: v.boolean(),
   })),
   updatedAt: nullableKpiNumber, revision: v.string(),
 });

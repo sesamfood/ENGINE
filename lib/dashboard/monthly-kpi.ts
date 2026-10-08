@@ -41,6 +41,7 @@ export type MonthlyKpiInputs = {
     budget: MonthlyKpiAmounts & { guestScore: MonthlyKpiCell };
     economicBudgetCategories: EconomicBudgetComponent[];
     labourConnected: boolean;
+    salesConnected: boolean;
   }[];
   updatedAt: number | null;
   revision: string;
@@ -127,6 +128,14 @@ export function kpiVariance(actual: MonthlyKpiCell, budget: MonthlyKpiCell) {
   return combinedCell(actual.value - budget.value, [actual, budget]);
 }
 
+// Sources behind labour %. e-conomic payroll counts as a labour source.
+export function labourSources(location: MonthlyKpiInputs["locations"][number]) {
+  return [
+    ...location.salesConnected ? ["OnlinePOS"] : [],
+    ...location.labourConnected || location.periods.some((period) => period.labour.value !== null) ? ["Workfeed"] : [],
+  ];
+}
+
 export function buildMonthlyKpiReport(inputs: MonthlyKpiInputs) {
   type Locations = MonthlyKpiInputs["locations"];
   const total = (locations: Locations, component: MonthlyKpiComponent, months: string[]) => months.length === 0
@@ -151,9 +160,8 @@ export function buildMonthlyKpiReport(inputs: MonthlyKpiInputs) {
     )) as MonthlyKpiAmounts,
   });
   const all = amountSets(inputs.locations);
-  // Labour % covers only locations with a labour source, unless none have one.
-  const labourLocations = inputs.locations.filter((location) => location.labourConnected
-    || location.periods.some((period) => period.labour.value !== null));
+  // Labour % covers only locations with both sources, unless none have both.
+  const labourLocations = inputs.locations.filter((location) => labourSources(location).length === 2);
   const labour = labourLocations.length ? amountSets(labourLocations) : all;
   const money = (cell: MonthlyKpiCell): MonthlyKpiCell => ({ ...cell, value: cell.value === null ? null : cell.value / 100 });
   const profit = (value: MonthlyKpiAmounts, costs: MonthlyKpiComponent[]) =>

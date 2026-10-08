@@ -196,6 +196,7 @@ export const metricResultValidator = v.object({
   series: v.array(metricSeriesValidator),
   emptyMessage: v.optional(v.string()),
   partialMessage: v.optional(v.string()),
+  warning: v.optional(v.object({ title: v.string(), description: v.string() })),
   breakdown: v.optional(
     v.array(
       v.object({ key: v.string(), label: v.string(), value: v.number() }),

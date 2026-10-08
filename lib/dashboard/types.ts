@@ -135,6 +135,7 @@ export type MetricResult = {
   series: MetricSeries[];
   emptyMessage?: string;
   partialMessage?: string;
+  warning?: { title: string; description: string };
   breakdown?: { key: string; label: string; value: number }[];
   target?: number;
   scaleMax?: number;

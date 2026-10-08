@@ -517,6 +517,13 @@ export function WidgetCard({
             </AlertDescription>
           </Alert>
         ) : null}
+        {result?.warning ? (
+          <Alert className="mb-3">
+            <CircleAlertIcon />
+            <AlertTitle>{result.warning.title}</AlertTitle>
+            <AlertDescription>{result.warning.description}</AlertDescription>
+          </Alert>
+        ) : null}
         {hasAttributions ? <>
           <div className="min-h-0 flex-1">{children}</div>
           <MetricSourceAttribution widget={widget} data={live.data} showSource={false} />
