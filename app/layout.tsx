@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UpdateAvailableNotice } from "@/components/update-available-notice";
 import { getToken } from "@/lib/auth-server";
+import { pageTitlePrefix } from "@/lib/page-title";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -19,7 +20,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SESAM ENGINE",
+  title: {
+    default: `${pageTitlePrefix}SESAM ENGINE`,
+    template: `${pageTitlePrefix}%s`,
+  },
   applicationName: "ENGINE",
   description: "Administrér den daglige drift i din restaurantorganisation.",
   appleWebApp: {
