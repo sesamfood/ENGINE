@@ -256,11 +256,11 @@ export const getWidgetMetrics = action({
       ].filter((value): value is string => Boolean(value)))];
       const skipped = request.metricId === "labourPercent" ? data.inputs.locations.flatMap((location) => {
         const sources = labourSources(location);
-        return sources.length === 1 ? [`${location.name} mangler ${sources[0] === "OnlinePOS" ? "Workfeed" : "OnlinePOS"}.`] : [];
+        return sources.length === 1 ? [`${location.name} mangler ${sources[0] === "OnlinePOS" ? "Workfeed" : "OnlinePOS"}`] : [];
       }) : [];
       return { key: request.key, result: {
         unit: "percent", series,
-        ...(skipped.length ? { warning: { title: "Lokationer er ikke medregnet", description: skipped.join(" ") } } : {}), headlineTotal: row.actual.value, headlinePrevious: row.lastMonth.value,
+        ...(skipped.length ? { truncated: true, warning: { title: "Lokationer er ikke medregnet", items: skipped } } : {}), headlineTotal: row.actual.value, headlinePrevious: row.lastMonth.value,
         partialMessage: details.join(" · "), ...(row.budget.value !== null && row.budget.value > 0 ? { target: row.budget.value } : {}),
       } };
     });
