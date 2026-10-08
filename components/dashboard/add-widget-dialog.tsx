@@ -63,10 +63,10 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { customMetricVisualizations, ratioMetricVisualizations } from "@/lib/dashboard/datasets";
-import { metricRegistry, metrics, sizeLabels, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
+import { metricRegistry, metrics, sizeLabels, supportsSalesSource, visualizationLabels, widgetSizePresets } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
-import { widgetSizes, type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
+import { type DashboardRange, type DashboardScope, type MetricId, type MetricResult, type SalesSource, type VisualizationId, type WidgetInstance, type WidgetSize } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import type { CustomMetricDefinition } from "./custom-metric-definition";
 import { visualizationHasYAxis, YAxisSettings } from "./y-axis-settings";
@@ -77,7 +77,7 @@ type Step = 1 | 2 | 3;
 
 const stepLabels = ["Måling", "Visualisering", "Størrelse"] as const;
 
-const sizePreviewClasses: Record<WidgetSize, string> = {
+const sizePreviewClasses: Record<keyof typeof sizeLabels, string> = {
   "1x1": "aspect-5/4 w-14",
   "1x2": "aspect-5/8 w-14",
   "2x1": "aspect-5/2 w-28",
@@ -622,7 +622,7 @@ export function AddWidgetDialog({
               <ToggleGroup
                 value={[size]}
                 onValueChange={(values) => {
-                  const next = widgetSizes.find((item) => item === values[0]);
+                  const next = widgetSizePresets.find((item) => item === values[0]);
                   if (next) setSize(next);
                 }}
                 spacing={3}
@@ -630,7 +630,7 @@ export function AddWidgetDialog({
                 appearance="cards"
                 className="grid w-full min-w-0 items-stretch sm:grid-cols-2 lg:grid-cols-3"
               >
-                {widgetSizes.map((nextSize) => {
+                {widgetSizePresets.map((nextSize) => {
                   const selected = size === nextSize;
                   const span = widgetSizeSpans[nextSize];
                   return (

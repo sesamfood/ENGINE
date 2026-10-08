@@ -45,7 +45,12 @@ export const visualizationIds = [
   "table",
 ] as const;
 
-export const widgetSizes = ["1x1", "1x2", "2x1", "2x2", "4x2"] as const;
+const widgetColumnSpans = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const widgetRowSpans = [1, 2, 3, 4] as const;
+
+export type WidgetSize = `${(typeof widgetColumnSpans)[number]}x${(typeof widgetRowSpans)[number]}`;
+
+export const widgetSizes = widgetRowSpans.flatMap((rows) => widgetColumnSpans.map((columns): WidgetSize => `${columns}x${rows}`));
 
 export const rangePresets = [
   "today",
@@ -58,7 +63,6 @@ export const rangePresets = [
 
 export type MetricId = (typeof metricIds)[number];
 export type VisualizationId = (typeof visualizationIds)[number];
-export type WidgetSize = (typeof widgetSizes)[number];
 export type RangePreset = (typeof rangePresets)[number];
 export type WidgetRangePreset = Exclude<RangePreset, "custom">;
 export const salesSources = ["onlinePos", "wolt", "combined"] as const;
