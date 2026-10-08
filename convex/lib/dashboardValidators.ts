@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { salesSourceValidator } from "./salesSources";
+import { widgetSizes } from "../../lib/dashboard/types";
 
 export { salesSourceValidator } from "./salesSources";
 
@@ -54,13 +55,7 @@ export const visualizationValidator = v.union(
   v.literal("table"),
 );
 
-export const widgetSizeValidator = v.union(
-  v.literal("1x1"),
-  v.literal("1x2"),
-  v.literal("2x1"),
-  v.literal("2x2"),
-  v.literal("4x2"),
-);
+export const widgetSizeValidator = v.union(...widgetSizes.map((size) => v.literal(size)));
 
 export const widgetRangePresetValidator = v.union(
   v.literal("today"),

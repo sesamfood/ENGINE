@@ -298,10 +298,11 @@ export function WidgetCard({
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
     event.preventDefault();
     event.stopPropagation();
-    const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
-    const index = widgetSizes.indexOf(widget.size);
-    const size = widgetSizes[Math.max(0, Math.min(widgetSizes.length - 1, index + direction))];
-    if (size !== widget.size) onResize?.(size, true);
+    const span = widgetSizeSpans[widget.size];
+    const columns = span.columns + (event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0);
+    const rows = span.rows + (event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0);
+    const size = widgetSizes.find((item) => item === `${columns}x${rows}`);
+    if (size && size !== widget.size) onResize?.(size, true);
   }
 
   function chooseVisualization(visualization: VisualizationId) {
@@ -530,7 +531,7 @@ export function WidgetCard({
           aria-valuemin={0}
           aria-valuemax={widgetSizes.length - 1}
           aria-valuenow={widgetSizes.indexOf(widget.size)}
-          aria-valuetext={widget.size}
+          aria-valuetext={`${widgetSizeSpans[widget.size].columns} × ${widgetSizeSpans[widget.size].rows}`}
           className="absolute right-0 bottom-0 size-11 touch-none cursor-nwse-resize rounded-br-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           onPointerDown={startResize}
           onPointerMove={moveResize}

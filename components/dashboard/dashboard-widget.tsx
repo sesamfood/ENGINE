@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
+import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { WidgetCard } from "./widget-card";
 import { LiveMetricContent } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
@@ -47,7 +48,7 @@ export function DashboardWidget({
   onRemove?: () => void;
 }) {
   const Visualization = visualizationRegistry[widget.visualization];
-  const compact = widget.size === "1x1" || widget.size === "2x1";
+  const compact = widgetSizeSpans[widget.size].rows === 1;
 
   return (
     <WidgetCard

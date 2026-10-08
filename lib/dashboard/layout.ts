@@ -1,14 +1,11 @@
-import type { WidgetInstance, WidgetSize } from "./types";
+import { widgetSizes, type WidgetInstance, type WidgetSize } from "./types";
 
 export const dashboardColumns = 8;
 
-export const widgetSizeSpans: Record<WidgetSize, { columns: number; rows: number }> = {
-  "1x1": { columns: 1, rows: 1 },
-  "1x2": { columns: 1, rows: 2 },
-  "2x1": { columns: 2, rows: 1 },
-  "2x2": { columns: 2, rows: 2 },
-  "4x2": { columns: 4, rows: 2 },
-};
+export const widgetSizeSpans = Object.fromEntries(widgetSizes.map((size) => {
+  const [columns, rows] = size.split("x").map(Number);
+  return [size, { columns, rows }];
+})) as Record<WidgetSize, { columns: number; rows: number }>;
 
 function cells(position: { column: number; row: number }, size: WidgetSize) {
   const span = widgetSizeSpans[size];

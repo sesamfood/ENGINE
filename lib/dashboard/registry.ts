@@ -422,13 +422,15 @@ export const visualizationLabels: Record<VisualizationId, string> = {
   table: "Tabel",
 };
 
-export const sizeLabels: Record<WidgetSize, string> = {
+export const sizeLabels = {
   "1x1": "Lille",
   "1x2": "Høj",
   "2x1": "Bred",
   "2x2": "Stor",
   "4x2": "Ekstra bred",
-};
+} satisfies Partial<Record<WidgetSize, string>>;
+
+export const widgetSizePresets = Object.keys(sizeLabels) as (keyof typeof sizeLabels)[];
 
 export const defaultWidgets: WidgetInstance[] = [
   {

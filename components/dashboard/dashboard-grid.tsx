@@ -42,14 +42,6 @@ import type { YAxisValues } from "./y-axis-settings";
 
 const CustomMetricBuilder = dynamic(() => import("./custom-metric-builder").then((module) => module.CustomMetricBuilder));
 
-const sizeClasses: Record<WidgetSize, string> = {
-  "1x1": "col-span-1 row-span-1",
-  "1x2": "col-span-1 row-span-2",
-  "2x1": "col-span-1 row-span-1 sm:col-span-2",
-  "2x2": "col-span-1 row-span-2 sm:col-span-2",
-  "4x2": "col-span-1 row-span-2 sm:col-span-2 lg:col-span-4",
-};
-
 const METRIC_BATCH_SIZE = 3;
 
 function metricBatchKey(
@@ -337,7 +329,6 @@ function DraggableWidget({
       }
       className={cn(
         "dashboard-grid-item min-w-0 rounded-xl transition-widget duration-150",
-        sizeClasses[widget.size],
         editable && "touch-none cursor-grab active:cursor-grabbing",
         draggable.isDragging && "opacity-20",
         droppable.isOver &&

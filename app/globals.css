@@ -154,6 +154,11 @@
   gap: 1rem;
 }
 
+.dashboard-grid-item {
+  grid-column: span min(var(--dashboard-column-span), var(--dashboard-visible-columns));
+  grid-row: span var(--dashboard-row-span);
+}
+
 @media (min-width: 40rem) {
   .dashboard-grid {
     --dashboard-visible-columns: 2;
