@@ -40,7 +40,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -97,7 +102,10 @@ export function SupplierSettings() {
       setDraft(null);
     } catch (caught) {
       setError(
-        getUserErrorMessage(caught, "Leverandøren kunne ikke gemmes. Prøv igen."),
+        getUserErrorMessage(
+          caught,
+          "Leverandøren kunne ikke gemmes. Prøv igen.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -113,7 +121,10 @@ export function SupplierSettings() {
       setPendingDelete(null);
     } catch (caught) {
       toast.error(
-        getUserErrorMessage(caught, "Leverandøren kunne ikke slettes. Prøv igen."),
+        getUserErrorMessage(
+          caught,
+          "Leverandøren kunne ikke slettes. Prøv igen.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -165,7 +176,7 @@ export function SupplierSettings() {
                   <TableCell className="whitespace-normal">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{supplier.name}</span>
-                      {supplier.catalog === "gssupply" ? (
+                      {supplier.managed ? (
                         <Badge variant="secondary">GS Supply</Badge>
                       ) : null}
                     </div>
@@ -185,14 +196,16 @@ export function SupplierSettings() {
                       >
                         <PencilIcon />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-lg"
-                        aria-label={`Slet ${supplier.name}`}
-                        onClick={() => setPendingDelete(supplier)}
-                      >
-                        <Trash2Icon />
-                      </Button>
+                      {supplier.managed ? null : (
+                        <Button
+                          variant="ghost"
+                          size="icon-lg"
+                          aria-label={`Slet ${supplier.name}`}
+                          onClick={() => setPendingDelete(supplier)}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -230,13 +243,17 @@ export function SupplierSettings() {
                   disabled={saving}
                   onChange={(event) =>
                     setDraft((current) =>
-                      current ? { ...current, name: event.target.value } : current,
+                      current
+                        ? { ...current, name: event.target.value }
+                        : current,
                     )
                   }
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="supplier-email">E-mail til bestillinger</FieldLabel>
+                <FieldLabel htmlFor="supplier-email">
+                  E-mail til bestillinger
+                </FieldLabel>
                 <Input
                   id="supplier-email"
                   type="email"
@@ -245,7 +262,9 @@ export function SupplierSettings() {
                   disabled={saving}
                   onChange={(event) =>
                     setDraft((current) =>
-                      current ? { ...current, email: event.target.value } : current,
+                      current
+                        ? { ...current, email: event.target.value }
+                        : current,
                     )
                   }
                 />
@@ -262,7 +281,11 @@ export function SupplierSettings() {
               >
                 Annullér
               </Button>
-              <Button type="submit" size="lg" disabled={saving || !draft?.name.trim()}>
+              <Button
+                type="submit"
+                size="lg"
+                disabled={saving || !draft?.name.trim()}
+              >
                 {saving ? <Spinner data-icon="inline-start" /> : null}
                 Gem leverandør
               </Button>
@@ -282,9 +305,6 @@ export function SupplierSettings() {
             <AlertDialogDescription>
               Leverandøren kan ikke længere vælges i nye bestillinger. Tidligere
               bestillinger beholder leverandørens navn.
-              {pendingDelete?.catalog === "gssupply"
-                ? " GS Supply-kataloget skal kobles til en ny leverandør bagefter."
-                : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

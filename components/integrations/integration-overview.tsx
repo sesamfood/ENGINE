@@ -55,9 +55,8 @@ function ConnectionSummary({ integration }: { integration: IntegrationId }) {
     label = incomplete ? `${incomplete} lokation${incomplete === 1 ? " kræver" : "er kræver"} handling` : wolt.locations.length ? `${wolt.locations.length} ${wolt.locations.length === 1 ? "forbundet lokation" : "forbundne lokationer"}` : "Ingen forbundne lokationer";
   }
   if (gsSupply) {
-    attention = !gsSupply.connection?.supplierId;
-    const supplier = gsSupply.suppliers.find((item) => item.id === gsSupply.connection?.supplierId);
-    label = !gsSupply.connection ? "Mangler forbindelse" : supplier ? `Bestillinger hos ${supplier.name}` : "Mangler leverandør";
+    attention = !gsSupply.connection?.supplierName;
+    label = !gsSupply.connection ? "Mangler forbindelse" : gsSupply.connection.supplierName ? `Bestillinger hos ${gsSupply.connection.supplierName}` : "Mangler leverandør";
   }
   return <p className={attention ? "flex items-center gap-2 text-sm font-medium" : "text-sm text-muted-foreground"}>{attention ? <TriangleAlertIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" /> : null}{label}</p>;
 }

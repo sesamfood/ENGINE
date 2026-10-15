@@ -29,6 +29,8 @@ const supplierValidator = v.object({
   name: v.string(),
   email: v.union(v.string(), v.null()),
   catalog: v.union(v.literal("gssupply"), v.null()),
+  // Created and controlled by an integration, so it can't be deleted here.
+  managed: v.boolean(),
 });
 
 export const list = query({
@@ -43,7 +45,7 @@ export const list = query({
     ) {
       throw new ConvexError("Du har ikke adgang");
     }
-    const [suppliers, gsSupplySupplierId] = await Promise.all([
+    const [suppliers, gsSupplySupplierId, connection] = await Promise.all([
       ctx.db
         .query("suppliers")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -51,6 +53,7 @@ export const list = query({
         )
         .take(MAX_SUPPLIERS),
       getGsSupplySupplierId(ctx, auth.organizationId),
+      getGsSupplyConnection(ctx, auth.organizationId),
     ]);
     return suppliers.map((supplier) => ({
       id: supplier._id,
@@ -58,6 +61,7 @@ export const list = query({
       email: supplier.email ?? null,
       catalog:
         supplier._id === gsSupplySupplierId ? ("gssupply" as const) : null,
+      managed: supplier._id === connection?.supplierId,
     }));
   },
 });
@@ -155,14 +159,13 @@ export const remove = mutation({
     if (!supplier || supplier.organizationId !== auth.organizationId) {
       throw new ConvexError("Leverandøren blev ikke fundet");
     }
-    // Orders keep the supplier name, so history stays readable.
     const connection = await getGsSupplyConnection(ctx, auth.organizationId);
     if (connection?.supplierId === supplier._id) {
-      await ctx.db.patch("gsSupplyConnections", connection._id, {
-        supplierId: undefined,
-        updatedAt: Date.now(),
-      });
+      throw new ConvexError(
+        "Leverandøren styres af GS Supply-integrationen og kan ikke slettes",
+      );
     }
+    // Orders keep the supplier name, so history stays readable.
     await ctx.db.delete("suppliers", supplier._id);
     await recordAudit(ctx, auth, {
       action: "supplier.deleted",

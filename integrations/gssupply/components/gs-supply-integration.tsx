@@ -2,7 +2,6 @@
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -27,26 +26,14 @@ import {
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { GsSupplyCatalogLinks } from "./gs-supply-catalog-links";
-
-const NO_SUPPLIER = "none";
 
 export function GsSupplyIntegration() {
   const settings = useQuery(api.integrations.gssupply.api.getSettings);
@@ -55,13 +42,7 @@ export function GsSupplyIntegration() {
     <div className="flex flex-col gap-5">
       <ConnectionCard settings={settings} />
       {settings.connection ? (
-        <>
-          <SupplierCard
-            supplierId={settings.connection.supplierId}
-            suppliers={settings.suppliers}
-          />
-          <GsSupplyCatalogLinks />
-        </>
+        <GsSupplyCatalogLinks />
       ) : null}
     </div>
   );
@@ -236,85 +217,3 @@ function ConnectionCard({
   );
 }
 
-function SupplierCard({
-  supplierId,
-  suppliers,
-}: {
-  supplierId: Id<"suppliers"> | null;
-  suppliers: { id: Id<"suppliers">; name: string }[];
-}) {
-  const setSupplier = useMutation(api.integrations.gssupply.api.setSupplier);
-  const [saving, setSaving] = useState(false);
-  const items = [
-    { value: NO_SUPPLIER, label: "Ingen leverandør" },
-    ...suppliers.map((supplier) => ({
-      value: supplier.id,
-      label: supplier.name,
-    })),
-  ];
-
-  async function change(value: string | null) {
-    if (!value) return;
-    setSaving(true);
-    try {
-      await setSupplier({
-        supplierId: value === NO_SUPPLIER ? null : (value as Id<"suppliers">),
-      });
-      toast.success("Leverandøren er gemt");
-    } catch (error) {
-      toast.error(
-        getUserErrorMessage(
-          error,
-          "Leverandøren kunne ikke gemmes. Prøv igen.",
-        ),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Leverandør</CardTitle>
-        <CardDescription>
-          Bestillinger hos denne leverandør bruger GS Supply-kataloget med
-          priser, lager og leveringstid.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <FieldGroup>
-          <Field className="max-w-sm">
-            <FieldLabel htmlFor="gs-supply-supplier">Leverandør</FieldLabel>
-            <Select
-              items={items}
-              value={supplierId ?? NO_SUPPLIER}
-              onValueChange={(value) => void change(value)}
-              disabled={saving}
-            >
-              <SelectTrigger id="gs-supply-supplier" className="h-11 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {items.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <FieldDescription>
-              Opret og redigér leverandører under{" "}
-              <Link className="underline" href="/administration/ordering">
-                Administration → Bestilling
-              </Link>
-              .
-            </FieldDescription>
-          </Field>
-        </FieldGroup>
-      </CardContent>
-    </Card>
-  );
-}

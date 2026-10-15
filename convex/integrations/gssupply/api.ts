@@ -45,7 +45,6 @@ import {
 } from "./lib/links";
 
 const MAX_PRODUCTS = 500;
-const MAX_SUPPLIERS = 100;
 const MAX_UNITS = 1000;
 const PRODUCT_NUMBER = /^[\w.-]{1,50}$/;
 
@@ -97,37 +96,27 @@ export const getSettings = query({
     connection: v.union(
       v.object({
         catalogUrlPreview: v.string(),
-        supplierId: v.union(v.id("suppliers"), v.null()),
+        supplierName: v.union(v.string(), v.null()),
         connectedAt: v.number(),
       }),
       v.null(),
     ),
-    suppliers: v.array(v.object({ id: v.id("suppliers"), name: v.string() })),
   }),
   handler: async (ctx) => {
     const auth = await requireManager(ctx);
-    const [connection, suppliers] = await Promise.all([
-      getGsSupplyConnection(ctx, auth.organizationId),
-      ctx.db
-        .query("suppliers")
-        .withIndex("by_organizationId_and_normalizedName", (q) =>
-          q.eq("organizationId", auth.organizationId),
-        )
-        .take(MAX_SUPPLIERS),
-    ]);
+    const connection = await getGsSupplyConnection(ctx, auth.organizationId);
+    const supplier = connection?.supplierId
+      ? await ctx.db.get("suppliers", connection.supplierId)
+      : null;
     return {
       organizationId: auth.organizationId,
       connection: connection
         ? {
             catalogUrlPreview: connection.catalogUrlPreview,
-            supplierId: connection.supplierId ?? null,
+            supplierName: supplier?.name ?? null,
             connectedAt: connection.connectedAt,
           }
         : null,
-      suppliers: suppliers.map((supplier) => ({
-        id: supplier._id,
-        name: supplier.name,
-      })),
     };
   },
 });
@@ -218,35 +207,6 @@ export const disconnect = mutation({
       entityTable: "gsSupplyConnections",
       entityId: connection._id,
       summary: "GS Supply-kataloget er afbrudt",
-    });
-    return null;
-  },
-});
-
-export const setSupplier = mutation({
-  args: { supplierId: v.union(v.id("suppliers"), v.null()) },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireManager(ctx);
-    const connection = await getGsSupplyConnection(ctx, auth.organizationId);
-    if (!connection) throw new ConvexError("Forbind GS Supply først");
-    if (args.supplierId) {
-      const supplier = await ctx.db.get("suppliers", args.supplierId);
-      if (!supplier || supplier.organizationId !== auth.organizationId) {
-        throw new ConvexError("Leverandøren blev ikke fundet");
-      }
-    }
-    await ctx.db.patch("gsSupplyConnections", connection._id, {
-      supplierId: args.supplierId ?? undefined,
-      updatedAt: Date.now(),
-    });
-    await recordAudit(ctx, auth, {
-      action: "gssupply.supplierChanged",
-      entityTable: "gsSupplyConnections",
-      entityId: connection._id,
-      summary: args.supplierId
-        ? "GS Supply er koblet til en leverandør"
-        : "GS Supply er ikke længere koblet til en leverandør",
     });
     return null;
   },
