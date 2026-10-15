@@ -941,6 +941,9 @@ function Planner({
                     <TableHead>Produkt</TableHead>
                     <TableHead>Lager</TableHead>
                     <TableHead className="whitespace-normal">Forventet forbrug</TableHead>
+                    {catalogSupplier ? (
+                      <TableHead className="whitespace-normal">Pris pr. pakke</TableHead>
+                    ) : null}
                     <TableHead>Forslag</TableHead>
                     <TableHead className="w-32">Bestil</TableHead>
                   </TableRow>
@@ -969,13 +972,6 @@ function Planner({
                               <Badge variant="secondary">
                                 Har ingredienser
                               </Badge>
-                            ) : null}
-                            {catalogSupplier ? (
-                              <CatalogItemDetails
-                                item={row.catalogItem}
-                                catalogLoaded={Boolean(catalog)}
-                                quantity={row.quantity}
-                              />
                             ) : null}
                           </div>
                         </div>
@@ -1010,6 +1006,15 @@ function Planner({
                           </div>
                         ) : null}
                       </TableCell>
+                      {catalogSupplier ? (
+                        <TableCell className="whitespace-normal">
+                          <CatalogItemDetails
+                            item={row.catalogItem}
+                            catalogLoaded={Boolean(catalog)}
+                            quantity={row.quantity}
+                          />
+                        </TableCell>
+                      ) : null}
                       <TableCell className="whitespace-normal">
                         {row.suggested === null
                           ? "Angiv manuelt"
@@ -1205,6 +1210,7 @@ function CatalogItemsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Vare</TableHead>
+              <TableHead className="whitespace-normal">Pris pr. pakke</TableHead>
               <TableHead className="w-32 whitespace-normal">Bestil pakker</TableHead>
             </TableRow>
           </TableHeader>
@@ -1224,13 +1230,15 @@ function CatalogItemsTable({
                       <div className="text-sm text-muted-foreground">
                         {row.productNumber} · {row.category}
                       </div>
-                      <CatalogItemDetails
-                        item={row}
-                        catalogLoaded
-                        quantity={row.quantity}
-                      />
                     </div>
                   </div>
+                </TableCell>
+                <TableCell className="whitespace-normal">
+                  <CatalogItemDetails
+                    item={row}
+                    catalogLoaded
+                    quantity={row.quantity}
+                  />
                 </TableCell>
                 <TableCell>
                   <Field data-invalid={row.quantity === null} className="min-w-24">
@@ -1258,7 +1266,7 @@ function CatalogItemsTable({
   );
 }
 
-/** Price, pack size and supplier warnings for a catalog item, shown under its name. */
+/** Price, pack size and supplier warnings for a catalog item. */
 function CatalogItemDetails({
   item,
   catalogLoaded,
@@ -1276,8 +1284,8 @@ function CatalogItemDetails({
   const ordered = quantity ?? 0;
   return (
     <>
-      <div className="text-sm text-muted-foreground">
-        {priceFormatter.format(item.price)} kr. ·{" "}
+      {priceFormatter.format(item.price)}
+      <div className="text-xs text-muted-foreground">
         {numberFormatter.format(item.unitAmount)} pr. pakke
       </div>
       {item.leadTimeDays > 1 ? (
