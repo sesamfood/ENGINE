@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import {
   action,
   internalMutation,
@@ -255,7 +255,11 @@ export const getCatalogUrl = internalMutation({
     const connection = await getGsSupplyConnection(ctx, organizationId);
     if (!connection) return null;
     const key = await ensureOrganizationCredentialKey(ctx, organizationId);
-    return decryptCredential(connection.encryptedCatalogUrl, organizationId, key);
+    return decryptCredential(
+      connection.encryptedCatalogUrl,
+      organizationId,
+      key,
+    );
   },
 });
 
@@ -372,6 +376,62 @@ export const getProductLink = query({
   },
 });
 
+async function validateLink(
+  ctx: MutationCtx,
+  product: Doc<"products">,
+  link: { productNumber: string; productName: string; unitId: Id<"units"> },
+) {
+  const productNumber = link.productNumber.trim();
+  const productName = link.productName.trim().slice(0, 300);
+  if (!PRODUCT_NUMBER.test(productNumber) || !productName) {
+    throw new ConvexError("GS Supply-produktet er ugyldigt");
+  }
+  if ((await getProductUnitFactor(ctx, product, link.unitId)) === null) {
+    throw new ConvexError("Vælg en af produktets enheder");
+  }
+  return { productNumber, productName, unitId: link.unitId };
+}
+
+async function linkForNumber(
+  ctx: MutationCtx,
+  organizationId: string,
+  productNumber: string,
+) {
+  return ctx.db
+    .query("gsSupplyProductLinks")
+    .withIndex("by_organizationId_and_productNumber", (q) =>
+      q.eq("organizationId", organizationId).eq("productNumber", productNumber),
+    )
+    .first();
+}
+
+async function requireLinkCapacity(ctx: MutationCtx, organizationId: string) {
+  const links = await ctx.db
+    .query("gsSupplyProductLinks")
+    .withIndex("by_organizationId_and_productId", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .take(MAX_LINKS);
+  if (links.length >= MAX_LINKS) {
+    throw new ConvexError(
+      `Der kan højst være ${MAX_LINKS} GS Supply-koblinger`,
+    );
+  }
+}
+
+async function requireProduct(
+  ctx: MutationCtx,
+  organizationId: string,
+  productId: Id<"products">,
+) {
+  const product = await ctx.db.get("products", productId);
+  if (!product || product.organizationId !== organizationId) {
+    throw new ConvexError("Produktet blev ikke fundet");
+  }
+  return product;
+}
+
+/** Links from the product's side: replaces the product's link. */
 export const setProductLink = mutation({
   args: {
     productId: v.id("products"),
@@ -381,55 +441,27 @@ export const setProductLink = mutation({
   handler: async (ctx, args) => {
     const auth = await requireManager(ctx);
     const { organizationId } = auth;
-    const product = await ctx.db.get("products", args.productId);
-    if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Produktet blev ikke fundet");
-    }
+    const product = await requireProduct(ctx, organizationId, args.productId);
     const current = await getGsSupplyLink(ctx, organizationId, product._id);
     if (!args.link) {
       if (current) await ctx.db.delete("gsSupplyProductLinks", current._id);
     } else {
-      const productNumber = args.link.productNumber.trim();
-      const productName = args.link.productName.trim().slice(0, 300);
-      if (!PRODUCT_NUMBER.test(productNumber) || !productName) {
-        throw new ConvexError("GS Supply-produktet er ugyldigt");
-      }
-      if (
-        (await getProductUnitFactor(ctx, product, args.link.unitId)) === null
-      ) {
-        throw new ConvexError("Vælg en af produktets enheder");
-      }
-      if (!current) {
-        const links = await ctx.db
-          .query("gsSupplyProductLinks")
-          .withIndex("by_organizationId_and_productId", (q) =>
-            q.eq("organizationId", organizationId),
-          )
-          .take(MAX_LINKS);
-        if (links.length >= MAX_LINKS) {
-          throw new ConvexError(
-            `Der kan højst være ${MAX_LINKS} GS Supply-koblinger`,
-          );
-        }
-      }
-      const taken = await ctx.db
-        .query("gsSupplyProductLinks")
-        .withIndex("by_organizationId_and_productNumber", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("productNumber", productNumber),
-        )
-        .first();
+      const next = await validateLink(ctx, product, args.link);
+      const taken = await linkForNumber(
+        ctx,
+        organizationId,
+        next.productNumber,
+      );
       if (taken && taken.productId !== product._id) {
         const other = await ctx.db.get("products", taken.productId);
         throw new ConvexError(
           `GS Supply-produktet er allerede koblet til ${other?.name ?? "et andet produkt"}`,
         );
       }
-      const next = { productNumber, productName, unitId: args.link.unitId };
       if (current) {
         await ctx.db.patch("gsSupplyProductLinks", current._id, next);
       } else {
+        await requireLinkCapacity(ctx, organizationId);
         await ctx.db.insert("gsSupplyProductLinks", {
           organizationId,
           productId: product._id,
@@ -444,6 +476,75 @@ export const setProductLink = mutation({
       summary: args.link
         ? `${product.name} er koblet til GS Supply-varenummer ${args.link.productNumber.trim()}`
         : `GS Supply-koblingen for ${product.name} er fjernet`,
+    });
+    return null;
+  },
+});
+
+/** Links from the catalog item's side: moves the item to another product or removes it. */
+export const setCatalogLink = mutation({
+  args: {
+    productNumber: v.string(),
+    productName: v.string(),
+    target: v.union(
+      v.object({ productId: v.id("products"), unitId: v.id("units") }),
+      v.null(),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireManager(ctx);
+    const { organizationId } = auth;
+    const current = await linkForNumber(
+      ctx,
+      organizationId,
+      args.productNumber.trim(),
+    );
+    if (!args.target) {
+      if (!current) return null;
+      await ctx.db.delete("gsSupplyProductLinks", current._id);
+      await recordAudit(ctx, auth, {
+        action: "gssupply.productLinkChanged",
+        entityTable: "products",
+        entityId: current.productId,
+        summary: `GS Supply-varenummer ${current.productNumber} er ikke længere koblet`,
+      });
+      return null;
+    }
+    const product = await requireProduct(
+      ctx,
+      organizationId,
+      args.target.productId,
+    );
+    const next = await validateLink(ctx, product, {
+      productNumber: args.productNumber,
+      productName: args.productName,
+      unitId: args.target.unitId,
+    });
+    const productLink = await getGsSupplyLink(ctx, organizationId, product._id);
+    if (productLink && productLink.productNumber !== next.productNumber) {
+      throw new ConvexError(
+        `${product.name} er allerede koblet til GS Supply-varenummer ${productLink.productNumber}`,
+      );
+    }
+    if (current && current.productId !== product._id) {
+      await ctx.db.delete("gsSupplyProductLinks", current._id);
+    }
+    if (productLink) {
+      await ctx.db.patch("gsSupplyProductLinks", productLink._id, next);
+    } else {
+      if (!current) await requireLinkCapacity(ctx, organizationId);
+      await ctx.db.insert("gsSupplyProductLinks", {
+        organizationId,
+        productId: product._id,
+        ...next,
+      });
+    }
+    await recordAudit(ctx, auth, {
+      action: "gssupply.productLinkChanged",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `${product.name} er koblet til GS Supply-varenummer ${next.productNumber}`,
     });
     return null;
   },

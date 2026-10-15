@@ -6,7 +6,10 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useIntegrations } from "@/integrations/use-integrations";
-import { GsSupplyLinkEditor, useGsSupplyCatalog } from "./gs-supply-link-editor";
+import {
+  GsSupplyLinkEditor,
+  useGsSupplyCatalog,
+} from "./gs-supply-link-editor";
 
 export function GsSupplyProductLinkField({
   productId,
@@ -21,7 +24,10 @@ export function GsSupplyProductLinkField({
     usePermission("integrations.manage") &&
     integrations?.gssupply === true &&
     access?.locationScope.all === true;
-  const settings = useQuery(api.integrations.gssupply.api.getSettings, enabled ? {} : "skip");
+  const settings = useQuery(
+    api.integrations.gssupply.api.getSettings,
+    enabled ? {} : "skip",
+  );
   const connected = Boolean(settings?.connection);
   const data = useQuery(
     api.integrations.gssupply.api.getProductLink,
@@ -41,7 +47,8 @@ export function GsSupplyProductLinkField({
         onRetry={reload}
       />
       <FieldDescription>
-        Vælg også den enhed, én pakke fra GS Supply svarer til. Koblingen gemmes med det samme.
+        Vælg også den enhed, én pakke fra GS Supply svarer til. Koblingen gemmes
+        med det samme.
       </FieldDescription>
     </Field>
   );
