@@ -31,7 +31,24 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { FieldDescription } from "@/components/ui/field";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { usePermission } from "@/components/app-shell";
 import {
   InputGroup,
   InputGroupAddon,
@@ -79,10 +96,12 @@ const priceFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 2,
 });
 const numberFormatter = new Intl.NumberFormat("da-DK");
+const NEW_UNIT = "new-unit";
 
 /** One row per GS Supply catalog item; each item is linked to an Engine product. */
 export function GsSupplyCatalogLinks() {
   const options = useQuery(api.integrations.gssupply.api.listLinks);
+  const canAddUnit = usePermission("catalog.manage");
   const { products: catalog, reload } = useGsSupplyCatalog();
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -241,6 +260,7 @@ export function GsSupplyCatalogLinks() {
                       linked={linkedByNumber.get(row.productNumber) ?? null}
                       products={options.products}
                       productOptions={productOptions}
+                      canAddUnit={canAddUnit}
                     />
                   </TableCell>
                 </TableRow>
@@ -279,11 +299,13 @@ function CatalogLinkEditor({
   linked,
   products,
   productOptions,
+  canAddUnit,
 }: {
   row: CatalogRow;
   linked: EngineProduct | null;
   products: EngineProduct[];
   productOptions: ComboboxOption[];
+  canAddUnit: boolean;
 }) {
   const setCatalogLink = useMutation(
     api.integrations.gssupply.api.setCatalogLink,
@@ -291,6 +313,7 @@ function CatalogLinkEditor({
   const [saving, setSaving] = useState(false);
   // A chosen product waits here until its unit is chosen.
   const [pendingId, setPendingId] = useState<Id<"products"> | null>(null);
+  const [addingUnit, setAddingUnit] = useState(false);
   const selected =
     products.find((product) => product.id === (pendingId ?? linked?.id)) ??
     null;
@@ -343,7 +366,7 @@ function CatalogLinkEditor({
     const unitId =
       product.id === linked?.id
         ? linked.link?.unitId
-        : product.units.length === 1
+        : product.units.length === 1 && row.unitAmount === 1
           ? product.units[0]!.id
           : undefined;
     if (unitId) void save({ productId: product.id, unitId });
@@ -362,10 +385,13 @@ function CatalogLinkEditor({
         }
       : option;
   });
-  const unitItems = (selected?.units ?? []).map((unit) => ({
-    value: unit.id,
-    label: unit.name,
-  }));
+  const unitItems = [
+    ...(selected?.units ?? []).map((unit) => ({
+      value: unit.id as string,
+      label: unit.name,
+    })),
+    ...(canAddUnit ? [{ value: NEW_UNIT, label: "Tilføj enhed…" }] : []),
+  ];
 
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
@@ -391,7 +417,12 @@ function CatalogLinkEditor({
           value={pendingId ? null : (linked?.link?.unitId ?? null)}
           onValueChange={(value) => {
             if (!value || !selected) return;
-            void save({ productId: selected.id, unitId: value as Id<"units"> });
+            if (value === NEW_UNIT) setAddingUnit(true);
+            else
+              void save({
+                productId: selected.id,
+                unitId: value as Id<"units">,
+              });
           }}
           disabled={saving || !selected}
         >
@@ -416,6 +447,153 @@ function CatalogLinkEditor({
           <FieldDescription>Vælg enheden for én pakke.</FieldDescription>
         ) : null}
       </div>
+      {selected && addingUnit ? (
+        <AddUnitDialog
+          product={selected}
+          unitAmount={row.unitAmount}
+          onClose={() => setAddingUnit(false)}
+          onAdded={(unitId) => {
+            setAddingUnit(false);
+            void save({ productId: selected.id, unitId });
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function AddUnitDialog({
+  product,
+  unitAmount,
+  onClose,
+  onAdded,
+}: {
+  product: EngineProduct;
+  unitAmount: number | null;
+  onClose: () => void;
+  onAdded: (unitId: Id<"units">) => void;
+}) {
+  const units = useQuery(api.catalog.listUnits);
+  const addProductUnit = useMutation(api.catalog.addProductUnit);
+  const [unitValue, setUnitValue] = useState<string | null>(null);
+  const [factor, setFactor] = useState(
+    unitAmount && unitAmount > 1 ? String(unitAmount) : "",
+  );
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const defaultUnit = product.units.find((unit) => unit.factorToDefault === 1);
+  const productUnitIds = new Set(product.units.map((unit) => unit.id));
+  const unitOptions = (units ?? [])
+    .filter((unit) => !productUnitIds.has(unit.id))
+    .map((unit) => ({ value: `existing:${unit.id}`, label: unit.name }));
+  const factorValue = Number(factor.trim().replace(",", "."));
+  const validFactor = Number.isFinite(factorValue) && factorValue > 0;
+
+  async function add() {
+    if (!unitValue || !validFactor) return;
+    setSaving(true);
+    setError("");
+    try {
+      const unitId = await addProductUnit({
+        productId: product.id,
+        unit: unitValue.startsWith("new:")
+          ? { name: unitValue.slice(4) }
+          : { unitId: unitValue.slice("existing:".length) as Id<"units"> },
+        factorToDefault: factorValue,
+      });
+      toast.success(`Enheden er tilføjet til ${product.name}`);
+      onAdded(unitId);
+    } catch (caught) {
+      setError(
+        getUserErrorMessage(caught, "Enheden kunne ikke tilføjes. Prøv igen."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
+      }}
+    >
+      <DialogContent>
+        <form
+          className="flex flex-col gap-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void add();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Tilføj enhed til {product.name}</DialogTitle>
+            <DialogDescription>
+              Enheden tilføjes til Produktet og bruges som én pakke fra GS
+              Supply.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel>Enhed</FieldLabel>
+              {units === undefined ? (
+                <Skeleton className="h-11 w-full" />
+              ) : (
+                <CreatableCombobox
+                  allowCreate
+                  options={unitOptions}
+                  value={unitValue}
+                  onValueChange={setUnitValue}
+                  placeholder="Vælg eller opret enhed"
+                  ariaLabel="Enhed"
+                  disabled={saving}
+                />
+              )}
+            </Field>
+            <Field data-invalid={factor.trim() !== "" && !validFactor}>
+              <FieldLabel htmlFor="gs-supply-unit-factor">
+                Antal {defaultUnit?.name ?? "standardenheder"} pr. enhed
+              </FieldLabel>
+              <Input
+                id="gs-supply-unit-factor"
+                inputMode="decimal"
+                className="h-11"
+                value={factor}
+                disabled={saving}
+                aria-invalid={factor.trim() !== "" && !validFactor}
+                onChange={(event) => setFactor(event.target.value)}
+              />
+              {unitAmount && unitAmount > 1 ? (
+                <FieldDescription>
+                  GS Supply angiver {numberFormatter.format(unitAmount)} pr.
+                  pakke.
+                </FieldDescription>
+              ) : null}
+            </Field>
+            {error ? <FieldError>{error}</FieldError> : null}
+          </FieldGroup>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              disabled={saving}
+              onClick={onClose}
+            >
+              Annullér
+            </Button>
+            <Button
+              type="submit"
+              size="lg"
+              disabled={saving || !unitValue || !validFactor}
+            >
+              {saving ? <Spinner data-icon="inline-start" /> : null}
+              Tilføj enhed
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

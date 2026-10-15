@@ -3113,6 +3113,80 @@ export const createUnit = mutation({
   },
 });
 
+/** Adds one unit to a product without replacing its other units. */
+export const addProductUnit = mutation({
+  args: {
+    productId: v.id("products"),
+    unit: v.union(
+      v.object({ unitId: v.id("units") }),
+      v.object({ name: v.string() }),
+    ),
+    factorToDefault: v.number(),
+  },
+  returns: v.id("units"),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    requirePositiveNumber(args.factorToDefault, "Omregningsfaktoren");
+    let unitId: Id<"units">;
+    if ("unitId" in args.unit) {
+      const unit = await ctx.db.get("units", args.unit.unitId);
+      if (!unit || unit.organizationId !== organizationId) {
+        throw new ConvexError("Enheden blev ikke fundet");
+      }
+      unitId = unit._id;
+    } else {
+      const { normalizedName } = normalizeName(args.unit.name, "Enhedsnavnet");
+      const existing = await ctx.db
+        .query("units")
+        .withIndex("by_organizationId_and_normalizedName", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("normalizedName", normalizedName),
+        )
+        .unique();
+      unitId =
+        existing?._id ?? (await createUnitWithAuth(ctx, auth, args.unit.name));
+    }
+    const productUnits = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS);
+    if (
+      unitId === product.defaultUnitId ||
+      productUnits.some((row) => row.unitId === unitId)
+    ) {
+      throw new ConvexError("Produktet har allerede enheden");
+    }
+    if (productUnits.length >= MAX_CHILD_ROWS) {
+      throw new ConvexError("Produktet har for mange enheder");
+    }
+    await ctx.db.insert("productUnits", {
+      organizationId,
+      productId: product._id,
+      unitId,
+      factorToDefault: args.factorToDefault,
+    });
+    await ctx.db.patch("products", product._id, {
+      updatedAt: Math.max(Date.now(), product.updatedAt + 1),
+    });
+    await invalidateSalesStockMappings(ctx, organizationId);
+    await recordAudit(ctx, auth, {
+      action: "catalog.productUnitAdded",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `${product.name} fik en ny enhed`,
+    });
+    return unitId;
+  },
+});
+
 export const renameUnit = mutation({
   args: { unitId: v.id("units"), name: v.string() },
   returns: v.null(),
