@@ -22,7 +22,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { normalizeProductSearch, searchProducts } from "@/lib/product-search";
+import { normalizeProductSearch } from "@/lib/product-search";
+import { suggestCatalogItems, suggestUnitId } from "./gs-supply-suggestions";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 export type GsSupplyProduct = FunctionReturnType<
@@ -164,13 +165,21 @@ export function GsSupplyLinkEditor({
   );
   const suggestions = exact.length
     ? exact
-    : normalizeProductSearch(productName)
-      ? searchProducts(catalog, productName, (product) => ({
-          name: product.name,
-          categoryPath: product.category,
-        })).slice(0, 3)
-      : [];
-  const unitItems = units.map((unit) => ({ value: unit.id, label: unit.name }));
+    : suggestCatalogItems(catalog, productName);
+  const selectedItem = selected
+    ? catalog.find((item) => item.productNumber === selected.productNumber)
+    : undefined;
+  const suggestedUnitId = suggestUnitId(units, selectedItem?.unitAmount);
+  const unitItems = units
+    .map((unit) => ({
+      value: unit.id,
+      label: unit.id === suggestedUnitId ? `${unit.name} (forslag)` : unit.name,
+    }))
+    .sort(
+      (left, right) =>
+        Number(right.value === suggestedUnitId) -
+        Number(left.value === suggestedUnitId),
+    );
   const unitId = pending ? null : (link?.unitId ?? null);
 
   function chooseProduct(productNumber: string | null) {
@@ -182,7 +191,7 @@ export function GsSupplyLinkEditor({
     const product = catalog?.find((row) => row.productNumber === productNumber);
     if (!product) return;
     const next = { productNumber, productName: product.name };
-    const keptUnit = link?.unitId ?? (units.length === 1 ? units[0]!.id : null);
+    const keptUnit = link?.unitId ?? suggestUnitId(units, product.unitAmount);
     if (keptUnit) void save({ ...next, unitId: keptUnit });
     else setPending(next);
   }

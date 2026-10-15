@@ -74,7 +74,12 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { searchProducts } from "@/lib/product-search";
+import { normalizeProductSearch, searchProducts } from "@/lib/product-search";
+import {
+  suggestNewUnits,
+  suggestProducts,
+  suggestUnitId,
+} from "./gs-supply-suggestions";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useGsSupplyCatalog } from "./gs-supply-link-editor";
 
@@ -115,6 +120,19 @@ export function GsSupplyCatalogLinks() {
       ),
     [options],
   );
+  // Units used by existing links are likely pack units for new ones too.
+  const linkUnitCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const product of options?.products ?? []) {
+      if (product.link) {
+        counts.set(
+          product.link.unitId,
+          (counts.get(product.link.unitId) ?? 0) + 1,
+        );
+      }
+    }
+    return counts;
+  }, [options]);
   const productOptions = useMemo<ComboboxOption[]>(
     () =>
       (options?.products ?? []).map((product) => ({
@@ -261,6 +279,7 @@ export function GsSupplyCatalogLinks() {
                       products={options.products}
                       productOptions={productOptions}
                       canAddUnit={canAddUnit}
+                      linkUnitCounts={linkUnitCounts}
                     />
                   </TableCell>
                 </TableRow>
@@ -300,12 +319,14 @@ function CatalogLinkEditor({
   products,
   productOptions,
   canAddUnit,
+  linkUnitCounts,
 }: {
   row: CatalogRow;
   linked: EngineProduct | null;
   products: EngineProduct[];
   productOptions: ComboboxOption[];
   canAddUnit: boolean;
+  linkUnitCounts: ReadonlyMap<string, number>;
 }) {
   const setCatalogLink = useMutation(
     api.integrations.gssupply.api.setCatalogLink,
@@ -321,11 +342,15 @@ function CatalogLinkEditor({
     () =>
       linked || pendingId
         ? []
-        : searchProducts(products, row.name, (product) => ({
-            name: product.name,
-          })).slice(0, 3),
+        : suggestProducts(
+            products.filter((product) => !product.link),
+            row.name,
+          ),
     [linked, pendingId, products, row.name],
   );
+  const suggestedUnitId = selected
+    ? suggestUnitId(selected.units, row.unitAmount)
+    : null;
 
   async function save(
     target: { productId: Id<"products">; unitId: Id<"units"> } | null,
@@ -366,9 +391,7 @@ function CatalogLinkEditor({
     const unitId =
       product.id === linked?.id
         ? linked.link?.unitId
-        : product.units.length === 1 && row.unitAmount === 1
-          ? product.units[0]!.id
-          : undefined;
+        : suggestUnitId(product.units, row.unitAmount);
     if (unitId) void save({ productId: product.id, unitId });
     else setPendingId(product.id);
   }
@@ -386,10 +409,17 @@ function CatalogLinkEditor({
       : option;
   });
   const unitItems = [
-    ...(selected?.units ?? []).map((unit) => ({
-      value: unit.id as string,
-      label: unit.name,
-    })),
+    ...(selected?.units ?? [])
+      .map((unit) => ({
+        value: unit.id as string,
+        label:
+          unit.id === suggestedUnitId ? `${unit.name} (forslag)` : unit.name,
+      }))
+      .sort(
+        (left, right) =>
+          Number(right.value === suggestedUnitId) -
+          Number(left.value === suggestedUnitId),
+      ),
     ...(canAddUnit ? [{ value: NEW_UNIT, label: "Tilføj enhed…" }] : []),
   ];
 
@@ -444,13 +474,18 @@ function CatalogLinkEditor({
           </SelectContent>
         </Select>
         {pendingId ? (
-          <FieldDescription>Vælg enheden for én pakke.</FieldDescription>
+          <FieldDescription>
+            {canAddUnit && row.unitAmount && row.unitAmount > 1
+              ? `Vælg enheden for én pakke. Mangler den, så vælg Tilføj enhed… med ${numberFormatter.format(row.unitAmount)} pr. enhed.`
+              : "Vælg enheden for én pakke."}
+          </FieldDescription>
         ) : null}
       </div>
       {selected && addingUnit ? (
         <AddUnitDialog
           product={selected}
           unitAmount={row.unitAmount}
+          linkUnitCounts={linkUnitCounts}
           onClose={() => setAddingUnit(false)}
           onAdded={(unitId) => {
             setAddingUnit(false);
@@ -465,17 +500,20 @@ function CatalogLinkEditor({
 function AddUnitDialog({
   product,
   unitAmount,
+  linkUnitCounts,
   onClose,
   onAdded,
 }: {
   product: EngineProduct;
   unitAmount: number | null;
+  linkUnitCounts: ReadonlyMap<string, number>;
   onClose: () => void;
   onAdded: (unitId: Id<"units">) => void;
 }) {
   const units = useQuery(api.catalog.listUnits);
   const addProductUnit = useMutation(api.catalog.addProductUnit);
-  const [unitValue, setUnitValue] = useState<string | null>(null);
+  // undefined until the user picks, so the top suggestion is preselected.
+  const [pickedUnit, setPickedUnit] = useState<string | null>();
   const [factor, setFactor] = useState(
     unitAmount && unitAmount > 1 ? String(unitAmount) : "",
   );
@@ -483,9 +521,26 @@ function AddUnitDialog({
   const [saving, setSaving] = useState(false);
   const defaultUnit = product.units.find((unit) => unit.factorToDefault === 1);
   const productUnitIds = new Set(product.units.map((unit) => unit.id));
-  const unitOptions = (units ?? [])
-    .filter((unit) => !productUnitIds.has(unit.id))
-    .map((unit) => ({ value: `existing:${unit.id}`, label: unit.name }));
+  const available = (units ?? []).filter(
+    (unit) => !productUnitIds.has(unit.id),
+  );
+  const unitOptions = available.map((unit) => ({
+    value: `existing:${unit.id}`,
+    label: unit.name,
+  }));
+  const unitSuggestions = [
+    ...suggestNewUnits(available, linkUnitCounts).map((unit) => ({
+      value: `existing:${unit.id}`,
+      label: unit.name,
+    })),
+    ...((units ?? []).some(
+      (unit) => normalizeProductSearch(unit.name) === "pakke",
+    )
+      ? []
+      : [{ value: "new:Pakke", label: "Pakke (ny enhed)" }]),
+  ];
+  const unitValue =
+    pickedUnit === undefined ? (unitSuggestions[0]?.value ?? null) : pickedUnit;
   const factorValue = Number(factor.trim().replace(",", "."));
   const validFactor = Number.isFinite(factorValue) && factorValue > 0;
 
@@ -543,8 +598,10 @@ function AddUnitDialog({
                 <CreatableCombobox
                   allowCreate
                   options={unitOptions}
+                  suggestionLabel="Forslag"
+                  suggestionOptions={unitSuggestions}
                   value={unitValue}
-                  onValueChange={setUnitValue}
+                  onValueChange={setPickedUnit}
                   placeholder="Vælg eller opret enhed"
                   ariaLabel="Enhed"
                   disabled={saving}
