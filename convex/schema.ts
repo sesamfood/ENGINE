@@ -1131,6 +1131,7 @@ export default defineSchema({
   orderingSettings: defineTable({
     organizationId: v.string(),
     includeRecipes: v.boolean(),
+    chooseSupplierFirst: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 

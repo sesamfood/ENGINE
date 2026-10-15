@@ -17,6 +17,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   ShoppingCartIcon,
+  TruckIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -40,7 +41,13 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -141,7 +148,8 @@ function Planner({
   const [exporting, setExporting] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [supplierValue, setSupplierValue] = useState(NO_SUPPLIER);
+  // null until the user has chosen, when suppliers must be chosen first.
+  const [supplierValue, setSupplierValue] = useState<string | null>(null);
   const [sendEmail, setSendEmail] = useState(true);
   const busy = exporting || placing;
   const submitting = useRef(false);
@@ -156,6 +164,10 @@ function Planner({
   const suppliers = useQuery(api.suppliers.list, canPlan ? {} : "skip");
   const supplier =
     suppliers?.find((item) => item.id === supplierValue) ?? null;
+  const choosingSupplier =
+    supplierValue === null &&
+    settings?.chooseSupplierFirst === true &&
+    (suppliers?.length ?? 0) > 0;
   const catalogSupplier = supplier?.catalog === "gssupply";
   const supplierLinks = useQuery(
     api.integrations.gssupply.api.listOrderingLinks,
@@ -589,6 +601,59 @@ function Planner({
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+      ) : settings === undefined || suppliers === undefined ? (
+        <Skeleton className="h-72 w-full" />
+      ) : choosingSupplier ? (
+        <section
+          aria-labelledby="ordering-choose-supplier"
+          className="flex flex-col gap-4 pb-40"
+        >
+          <h2 id="ordering-choose-supplier" className="text-xl font-semibold">
+            Hvem vil du bestille hos?
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ...suppliers.map((item) => ({
+                value: item.id as string,
+                label: item.name,
+                description:
+                  item.catalog === "gssupply"
+                    ? "Koblede Produkter med priser fra GS Supply"
+                    : "Alle Produkter, der kan bestilles",
+              })),
+              {
+                value: NO_SUPPLIER,
+                label: "Ingen leverandør",
+                description: "Alle Produkter, der kan bestilles",
+              },
+            ].map((option) => (
+              <Card
+                key={option.value}
+                role="button"
+                tabIndex={0}
+                appearance="menu"
+                className="cursor-pointer"
+                onClick={() => setSupplierValue(option.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSupplierValue(option.value);
+                  }
+                }}
+              >
+                <CardHeader>
+                  <CardTitle>
+                    <span className="flex items-center gap-2">
+                      <TruckIcon className="size-5" />
+                      {option.label}
+                    </span>
+                  </CardTitle>
+                  <CardDescription>{option.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </section>
       ) : (
         <div className="flex flex-col gap-5 pb-72 sm:pb-56 lg:pb-40">
           <Card>
@@ -1067,7 +1132,7 @@ function Planner({
           </AlertDialog>
         </div>
       )}
-      {canPlan && !locationId && navigation ? (
+      {canPlan && (!locationId || choosingSupplier) && navigation ? (
         <AppBottomBar>
           <div className="mx-auto w-full max-w-(--container-page)">
             {navigation}

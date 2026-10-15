@@ -3,7 +3,10 @@ import { hasPermission } from "../lib/auth-permissions";
 import { mutation, query } from "./_generated/server";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
 
-const settingsValidator = v.object({ includeRecipes: v.boolean() });
+const settingsValidator = v.object({
+  includeRecipes: v.boolean(),
+  chooseSupplierFirst: v.boolean(),
+});
 
 export const getSettings = query({
   args: {},
@@ -23,7 +26,10 @@ export const getSettings = query({
         q.eq("organizationId", auth.organizationId),
       )
       .unique();
-    return { includeRecipes: settings?.includeRecipes ?? false };
+    return {
+      includeRecipes: settings?.includeRecipes ?? false,
+      chooseSupplierFirst: settings?.chooseSupplierFirst ?? true,
+    };
   },
 });
 
@@ -40,6 +46,7 @@ export const setSettings = mutation({
       .unique();
     const next = {
       includeRecipes: args.includeRecipes,
+      chooseSupplierFirst: args.chooseSupplierFirst,
       updatedAt: Date.now(),
     };
     if (current) {
