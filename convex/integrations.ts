@@ -1,6 +1,7 @@
 import { applyWorkfeedInstallation } from "./integrations/workfeed/lifecycle";
 import { applyOnlinePosInstallation } from "./integrations/onlinepos/lifecycle";
 import { applyWoltInstallation } from "./integrations/wolt/lifecycle";
+import { applyGsSupplyInstallation } from "./integrations/gssupply/lifecycle";
 import { ConvexError, v } from "convex/values";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { recordAudit } from "./lib/audit";
@@ -38,7 +39,8 @@ export const setEnabled = mutation({
       case "workfeed": await applyWorkfeedInstallation(ctx, organizationId, enabled, updatedAt); break;
       case "onlinepos": await applyOnlinePosInstallation(ctx, organizationId, enabled, updatedAt); break;
       case "wolt": await applyWoltInstallation(ctx, organizationId, enabled, updatedAt); break;
-      case "economic": case "gssupply": break;
+      case "gssupply": await applyGsSupplyInstallation(ctx, auth, organizationId, enabled); break;
+      case "economic": break;
     }
     await recordAudit(ctx, auth, {
       action: enabled ? "integration.enabled" : "integration.disabled",

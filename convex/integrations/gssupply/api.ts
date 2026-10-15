@@ -25,6 +25,7 @@ import {
   ensureOrganizationCredentialKey,
 } from "../credentials";
 import { requireIntegrationEnabled } from "../state";
+import { ensureGsSupplySupplier } from "./lifecycle";
 import {
   catalogUrlPreview,
   fetchGsSupplyCatalog,
@@ -160,6 +161,8 @@ export const saveConnection = internalMutation({
         updatedAt: now,
       });
     }
+    const connection = await ctx.db.get("gsSupplyConnections", id);
+    if (connection) await ensureGsSupplySupplier(ctx, auth, connection);
     await recordAudit(ctx, auth, {
       action: "gssupply.connected",
       entityTable: "gsSupplyConnections",
