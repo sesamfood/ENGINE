@@ -56,7 +56,8 @@ function ConnectionSummary({ integration }: { integration: IntegrationId }) {
   }
   if (gsSupply) {
     attention = !gsSupply.connection?.supplierId;
-    label = !gsSupply.connection ? "Mangler forbindelse" : gsSupply.connection.supplierId ? "Forbundet til GS Supply" : "Mangler leverandør";
+    const supplier = gsSupply.suppliers.find((item) => item.id === gsSupply.connection?.supplierId);
+    label = !gsSupply.connection ? "Mangler forbindelse" : supplier ? `Bestillinger hos ${supplier.name}` : "Mangler leverandør";
   }
   return <p className={attention ? "flex items-center gap-2 text-sm font-medium" : "text-sm text-muted-foreground"}>{attention ? <TriangleAlertIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" /> : null}{label}</p>;
 }

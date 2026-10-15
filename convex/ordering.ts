@@ -2,7 +2,7 @@ import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/c
 import {
   getGsSupplyLink,
   getGsSupplySupplierId,
-  getProductUnitFactors,
+  getProductUnitFactor,
 } from "./integrations/gssupply/lib/links";
 import {
   paginationOptsValidator,
@@ -522,11 +522,14 @@ async function prepareOrder(
       if (
         (catalogSupplier && !link) ||
         line.unitId !== unitId ||
-        (link && !(await getProductUnitFactors(ctx, product)).has(unitId))
+        (link && (await getProductUnitFactor(ctx, product, unitId)) === null)
       ) {
         throw new ConvexError(
           "Et produkt er ikke længere koblet til leverandøren. Opdatér planen.",
         );
+      }
+      if (link && !Number.isInteger(line.quantity)) {
+        throw new ConvexError("Bestil hele pakker hos leverandøren");
       }
       const unit = await ctx.db.get("units", unitId);
       if (!unit || unit.organizationId !== organizationId)

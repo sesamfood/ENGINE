@@ -36,12 +36,14 @@ import {
   getGsSupplyConnection,
   getGsSupplyLink,
   getGsSupplySupplierId,
+  getProductUnitFactor,
   getProductUnitFactors,
   MAX_LINKS,
 } from "./lib/links";
 
 const MAX_PRODUCTS = 500;
 const MAX_SUPPLIERS = 100;
+const MAX_UNITS = 1000;
 const PRODUCT_NUMBER = /^[\w.-]{1,50}$/;
 
 async function requireManager(ctx: QueryCtx | MutationCtx) {
@@ -57,16 +59,26 @@ const unitOptionValidator = v.object({
   factorToDefault: v.number(),
 });
 
-async function unitOptions(ctx: QueryCtx, factors: Map<Id<"units">, number>) {
-  const units = await Promise.all(
-    [...factors].map(async ([unitId, factorToDefault]) => {
-      const unit = await ctx.db.get("units", unitId);
-      return unit ? { id: unit._id, name: unit.name, factorToDefault } : null;
-    }),
-  );
-  return units
-    .filter((unit) => unit !== null)
+function unitOptions(
+  factors: Map<Id<"units">, number>,
+  names: Map<Id<"units">, string>,
+) {
+  return [...factors]
+    .flatMap(([id, factorToDefault]) => {
+      const name = names.get(id);
+      return name === undefined ? [] : [{ id, name, factorToDefault }];
+    })
     .sort((a, b) => a.factorToDefault - b.factorToDefault);
+}
+
+async function unitNames(ctx: QueryCtx, organizationId: string) {
+  const units = await ctx.db
+    .query("units")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .take(MAX_UNITS);
+  return new Map(units.map((unit) => [unit._id, unit.name]));
 }
 
 const linkValidator = v.object({
@@ -287,7 +299,7 @@ export const listLinks = query({
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireManager(ctx);
-    const [products, links] = await Promise.all([
+    const [products, links, names] = await Promise.all([
       ctx.db
         .query("products")
         .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
@@ -300,6 +312,7 @@ export const listLinks = query({
           q.eq("organizationId", organizationId),
         )
         .take(MAX_LINKS),
+      unitNames(ctx, organizationId),
     ]);
     const byProductId = new Map(links.map((link) => [link.productId, link]));
     return {
@@ -310,9 +323,9 @@ export const listLinks = query({
             id: product._id,
             name: product.name,
             categoryIds: await getProductCategoryIds(ctx, product),
-            units: await unitOptions(
-              ctx,
+            units: unitOptions(
               await getProductUnitFactors(ctx, product),
+              names,
             ),
             link: link
               ? {
@@ -344,7 +357,10 @@ export const getProductLink = query({
     if (!product || product.organizationId !== organizationId) return null;
     const link = await getGsSupplyLink(ctx, organizationId, product._id);
     return {
-      units: await unitOptions(ctx, await getProductUnitFactors(ctx, product)),
+      units: unitOptions(
+        await getProductUnitFactors(ctx, product),
+        await unitNames(ctx, organizationId),
+      ),
       link: link
         ? {
             productNumber: link.productNumber,
@@ -378,9 +394,23 @@ export const setProductLink = mutation({
       if (!PRODUCT_NUMBER.test(productNumber) || !productName) {
         throw new ConvexError("GS Supply-produktet er ugyldigt");
       }
-      const factors = await getProductUnitFactors(ctx, product);
-      if (!factors.has(args.link.unitId)) {
+      if (
+        (await getProductUnitFactor(ctx, product, args.link.unitId)) === null
+      ) {
         throw new ConvexError("Vælg en af produktets enheder");
+      }
+      if (!current) {
+        const links = await ctx.db
+          .query("gsSupplyProductLinks")
+          .withIndex("by_organizationId_and_productId", (q) =>
+            q.eq("organizationId", organizationId),
+          )
+          .take(MAX_LINKS);
+        if (links.length >= MAX_LINKS) {
+          throw new ConvexError(
+            `Der kan højst være ${MAX_LINKS} GS Supply-koblinger`,
+          );
+        }
       }
       const taken = await ctx.db
         .query("gsSupplyProductLinks")
@@ -461,10 +491,12 @@ export const listOrderingLinks = query({
           ctx.db.get("units", link.unitId),
         ]);
         if (!product || product.status !== "active" || !unit) return null;
-        const factorToDefault = (await getProductUnitFactors(ctx, product)).get(
+        const factorToDefault = await getProductUnitFactor(
+          ctx,
+          product,
           link.unitId,
         );
-        if (factorToDefault === undefined) return null;
+        if (factorToDefault === null) return null;
         return {
           productId: link.productId,
           productNumber: link.productNumber,

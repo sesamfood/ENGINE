@@ -2,7 +2,8 @@ import type { Doc, Id } from "../../../_generated/dataModel";
 import type { QueryCtx } from "../../../_generated/server";
 import { isIntegrationEnabled } from "../../state";
 
-export const MAX_LINKS = 2000;
+export const MAX_LINKS = 500;
+const MAX_PRODUCT_UNITS = 200;
 
 export async function getGsSupplyConnection(
   ctx: QueryCtx,
@@ -37,7 +38,7 @@ export async function getProductUnitFactors(
     .withIndex("by_organizationId_and_productId", (q) =>
       q.eq("organizationId", product.organizationId).eq("productId", product._id),
     )
-    .take(100);
+    .take(MAX_PRODUCT_UNITS);
   const factors = new Map<Id<"units">, number>(
     rows.map((row) => [row.unitId, row.factorToDefault]),
   );
@@ -56,4 +57,23 @@ export async function getGsSupplyLink(
       q.eq("organizationId", organizationId).eq("productId", productId),
     )
     .unique();
+}
+
+/** Factor from a unit to the product's default unit, or null if the product no longer has the unit. */
+export async function getProductUnitFactor(
+  ctx: QueryCtx,
+  product: Doc<"products">,
+  unitId: Id<"units">,
+) {
+  if (unitId === product.defaultUnitId) return 1;
+  const row = await ctx.db
+    .query("productUnits")
+    .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+      q
+        .eq("organizationId", product.organizationId)
+        .eq("productId", product._id)
+        .eq("unitId", unitId),
+    )
+    .unique();
+  return row?.factorToDefault ?? null;
 }

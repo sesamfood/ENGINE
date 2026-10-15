@@ -359,18 +359,20 @@ function Planner({
       return [];
     }
     const orderUnitId = link?.unitId ?? product.unitId;
-    const suggested =
+    const catalogItem = link
+      ? catalogByNumber.get(link.productNumber)
+      : undefined;
+    const packs =
       product.forecast.suggested === null || !link
         ? product.forecast.suggested
         : Math.ceil(product.forecast.suggested / link.factorToDefault - 1e-9);
+    const suggested =
+      packs && catalogItem ? Math.max(packs, catalogItem.minOrder) : packs;
     const key = `${locationId}:${product.id}:${orderUnitId}`;
     const input = overrides[key] ?? String(suggested ?? 0);
     const parsed = parseOrderQuantity(input);
     const quantity =
       link && parsed !== null && !Number.isInteger(parsed) ? null : parsed;
-    const catalogItem = link
-      ? catalogByNumber.get(link.productNumber)
-      : undefined;
     return [
       {
         ...product,
@@ -898,8 +900,14 @@ function Planner({
                             <>
                               {priceFormatter.format(row.catalogItem.price)}
                               <div className="text-xs text-muted-foreground">
-                                {numberFormatter.format(row.catalogItem.unitAmount)} stk. pr. pakke
+                                {numberFormatter.format(row.catalogItem.unitAmount)} pr. pakke
                               </div>
+                              {(row.quantity ?? 0) > 0 &&
+                              (row.quantity ?? 0) < row.catalogItem.minOrder ? (
+                                <div className="text-xs font-medium text-destructive">
+                                  Mindst {numberFormatter.format(row.catalogItem.minOrder)} pakker
+                                </div>
+                              ) : null}
                               {row.catalogItem.leadTimeDays > 1 ? (
                                 <Badge variant="secondary">
                                   Leveringstid {row.catalogItem.leadTimeDays} dage
