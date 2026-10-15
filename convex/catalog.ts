@@ -438,6 +438,31 @@ async function resolveCategories(
   return categoryIds;
 }
 
+async function resolveUnit(
+  ctx: MutationCtx,
+  organizationId: string,
+  reference: UnitReference,
+) {
+  if (reference.kind === "existing") {
+    const unit = await ctx.db.get("units", reference.id);
+    if (!unit || unit.organizationId !== organizationId) {
+      throw new ConvexError("Enheden blev ikke fundet");
+    }
+    return unit._id;
+  }
+  const { name, normalizedName } = normalizeName(reference.name, "Enhedsnavnet");
+  const existing = await ctx.db
+    .query("units")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId).eq("normalizedName", normalizedName),
+    )
+    .unique();
+  return (
+    existing?._id ??
+    (await ctx.db.insert("units", { organizationId, name, normalizedName }))
+  );
+}
+
 async function resolveUnits(
   ctx: MutationCtx,
   organizationId: string,
@@ -455,7 +480,6 @@ async function resolveUnits(
     throw new ConvexError("Vælg præcis én standardenhed");
   }
 
-  const insertedByName = new Map<string, Id<"units">>();
   const resolved: Array<{
     unitId: Id<"units">;
     factorToDefault: number;
@@ -468,43 +492,8 @@ async function resolveUnits(
       throw new ConvexError("Omregningen for standardenheden skal være 1");
     }
 
-    let unitId: Id<"units">;
-    if (input.unit.kind === "existing") {
-      const unit = await ctx.db.get("units", input.unit.id);
-      if (!unit || unit.organizationId !== organizationId) {
-        throw new ConvexError("Enheden blev ikke fundet");
-      }
-      unitId = unit._id;
-    } else {
-      const { name, normalizedName } = normalizeName(
-        input.unit.name,
-        "Enhedsnavnet",
-      );
-      const inserted = insertedByName.get(normalizedName);
-      if (inserted) {
-        unitId = inserted;
-      } else {
-        const existing = await ctx.db
-          .query("units")
-          .withIndex("by_organizationId_and_normalizedName", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("normalizedName", normalizedName),
-          )
-          .unique();
-        unitId =
-          existing?._id ??
-          (await ctx.db.insert("units", {
-            organizationId,
-            name,
-            normalizedName,
-          }));
-        insertedByName.set(normalizedName, unitId);
-      }
-    }
-
     resolved.push({
-      unitId,
+      unitId: await resolveUnit(ctx, organizationId, input.unit),
       factorToDefault: input.factorToDefault,
       isDefault: input.isDefault,
     });
@@ -2410,6 +2399,52 @@ export const updateProduct = mutation({
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     return await updateProductWithAuth(ctx, auth, args);
+  },
+});
+
+export const addProductUnit = mutation({
+  args: {
+    productId: v.id("products"),
+    unit: unitReferenceValidator,
+    factorToDefault: v.number(),
+  },
+  returns: v.id("units"),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    requirePositiveNumber(args.factorToDefault, "Omregningsfaktoren");
+    const unitId = await resolveUnit(ctx, organizationId, args.unit);
+    const units = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS);
+    if (units.some((row) => row.unitId === unitId)) {
+      throw new ConvexError("Produktet har allerede denne enhed");
+    }
+    if (units.length >= MAX_CHILD_ROWS) {
+      throw new ConvexError("Produktet har for mange enheder");
+    }
+    await ctx.db.insert("productUnits", {
+      organizationId,
+      productId: product._id,
+      unitId,
+      factorToDefault: args.factorToDefault,
+    });
+    await ctx.db.patch("products", product._id, { updatedAt: Date.now() });
+    await invalidateSalesStockMappings(ctx, organizationId);
+    await recordAudit(ctx, auth, {
+      action: "catalog.productUpdated",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `Produktet ${product.name} fik en ny enhed`,
+    });
+    return unitId;
   },
 });
 
