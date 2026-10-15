@@ -2,7 +2,8 @@ export type IntegrationId =
   | "workfeed"
   | "onlinepos"
   | "economic"
-  | "wolt";
+  | "wolt"
+  | "gssupply";
 
 export const integrationRegistry = [
   {
@@ -28,6 +29,12 @@ export const integrationRegistry = [
     name: "Wolt",
     description: "Modtag Wolt-ordrer, og overvåg forbindelser pr. lokation.",
     requiresAllLocations: false,
+  },
+  {
+    id: "gssupply",
+    name: "GS Supply",
+    description: "Hent GS Supply-kataloget med priser og lager, og bestil koblede Produkter hos leverandøren.",
+    requiresAllLocations: true,
   },
 ] satisfies {
   id: IntegrationId;

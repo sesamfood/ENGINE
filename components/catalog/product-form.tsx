@@ -3,6 +3,7 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { OnlinePosMasterSelect } from "@/integrations/onlinepos/client";
+import { GsSupplyProductLinkField } from "@/integrations/gssupply/client";
 
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { ExpiryField } from "@/components/catalog/expiry-field";
@@ -25,7 +26,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { compressImage } from "@/lib/compress-image";
+import { compressImage, productImageOptions } from "@/lib/compress-image";
 import { cn } from "@/lib/utils";
 import { usePermission } from "@/components/app-shell";
 import {
@@ -735,11 +736,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   async function uploadImage(savedProductId: Id<"products">) {
     if (!imageFile) return;
-    const image = await compressImage(imageFile, {
-      maxWidth: 1200,
-      maxHeight: 1200,
-      quality: 0.75,
-    });
+    const image = await compressImage(imageFile, productImageOptions);
     const storageId = await uploadToStorage({
       uploadUrl: await generateUploadUrl({}),
       file: image,
@@ -1064,6 +1061,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   onlinePosProducts={onlinePosProducts}
                   onRetry={() => setOnlinePosProducts(undefined)}
                 />
+              ) : null}
+
+              {productId ? (
+                <GsSupplyProductLinkField productId={productId} productName={name} />
               ) : null}
 
               <Field

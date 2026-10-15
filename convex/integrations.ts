@@ -1,6 +1,7 @@
 import { applyWorkfeedInstallation } from "./integrations/workfeed/lifecycle";
 import { applyOnlinePosInstallation } from "./integrations/onlinepos/lifecycle";
 import { applyWoltInstallation } from "./integrations/wolt/lifecycle";
+import { applyGsSupplyInstallation } from "./integrations/gssupply/lifecycle";
 import { ConvexError, v } from "convex/values";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { recordAudit } from "./lib/audit";
@@ -15,7 +16,7 @@ export const isEnabled = internalQuery({
 
 export const getState = query({
   args: {},
-  returns: v.object({ organizationId: v.string(), workfeed: v.boolean(), onlinepos: v.boolean(), economic: v.boolean(), wolt: v.boolean() }),
+  returns: v.object({ organizationId: v.string(), workfeed: v.boolean(), onlinepos: v.boolean(), economic: v.boolean(), wolt: v.boolean(), gssupply: v.boolean() }),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
     return { organizationId, ...await getIntegrationState(ctx, organizationId) };
@@ -38,6 +39,7 @@ export const setEnabled = mutation({
       case "workfeed": await applyWorkfeedInstallation(ctx, organizationId, enabled, updatedAt); break;
       case "onlinepos": await applyOnlinePosInstallation(ctx, organizationId, enabled, updatedAt); break;
       case "wolt": await applyWoltInstallation(ctx, organizationId, enabled, updatedAt); break;
+      case "gssupply": await applyGsSupplyInstallation(ctx, auth, organizationId, enabled); break;
       case "economic": break;
     }
     await recordAudit(ctx, auth, {

@@ -43,6 +43,9 @@ function Settings() {
   const [includeRecipesDraft, setIncludeRecipesDraft] = useState<
     boolean | null
   >(null);
+  const [chooseSupplierFirstDraft, setChooseSupplierFirstDraft] = useState<
+    boolean | null
+  >(null);
   const [saving, setSaving] = useState(false);
 
   if (!access) return <Skeleton className="h-56 max-w-3xl" />;
@@ -61,13 +64,18 @@ function Settings() {
   }
 
   const includeRecipes = includeRecipesDraft ?? settings.includeRecipes;
-  const changed = includeRecipes !== settings.includeRecipes;
+  const chooseSupplierFirst =
+    chooseSupplierFirstDraft ?? settings.chooseSupplierFirst;
+  const changed =
+    includeRecipes !== settings.includeRecipes ||
+    chooseSupplierFirst !== settings.chooseSupplierFirst;
 
   async function save() {
     setSaving(true);
     try {
-      await saveSettings({ includeRecipes });
+      await saveSettings({ includeRecipes, chooseSupplierFirst });
       setIncludeRecipesDraft(null);
+      setChooseSupplierFirstDraft(null);
       toast.success("Indstillingerne for bestilling er gemt");
     } catch (error) {
       toast.error(
@@ -84,7 +92,7 @@ function Settings() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>Produkter</CardTitle>
+        <CardTitle>Bestilling</CardTitle>
       </CardHeader>
       <CardContent>
         <FieldGroup>
@@ -93,6 +101,18 @@ function Settings() {
             id="ordering-include-recipes"
             checked={includeRecipes}
             onCheckedChange={setIncludeRecipesDraft}
+            disabled={saving}
+          />
+          <SettingsSwitchField
+            label="Vælg leverandør før bestilling"
+            id="ordering-choose-supplier-first"
+            help={{
+              label: "vælg leverandør før bestilling",
+              content:
+                "Når der er oprettet leverandører, vælger brugeren først en leverandør eller Ingen leverandør. Slå fra for at vise alle Produkter, der kan bestilles, med det samme.",
+            }}
+            checked={chooseSupplierFirst}
+            onCheckedChange={setChooseSupplierFirstDraft}
             disabled={saving}
           />
         </FieldGroup>
