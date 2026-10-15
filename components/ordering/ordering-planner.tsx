@@ -166,7 +166,8 @@ function Planner({
     suppliers?.find((item) => item.id === supplierValue) ?? null;
   const choosingSupplier =
     supplierValue === null &&
-    settings?.chooseSupplierFirst === true &&
+    settings !== undefined &&
+    settings.chooseSupplierFirst !== false &&
     (suppliers?.length ?? 0) > 0;
   const catalogSupplier = supplier?.catalog === "gssupply";
   const supplierLinks = useQuery(
