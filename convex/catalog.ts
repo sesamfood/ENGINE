@@ -1,4 +1,5 @@
 import { productSearchScore } from "../lib/product-search";
+import { getGsSupplyLink } from "./integrations/gssupply/lib/links";
 import type { Expiry } from "../lib/expiry";
 import { expiryValidator, requireValidExpiry } from "./lib/expiry";
 import {
@@ -1046,6 +1047,14 @@ async function permanentlyDeleteProduct(
   }
   for (const membership of categoryMemberships) {
     await ctx.db.delete("productCategories", membership._id);
+  }
+  const gsSupplyLink = await getGsSupplyLink(
+    ctx,
+    product.organizationId,
+    product._id,
+  );
+  if (gsSupplyLink) {
+    await ctx.db.delete("gsSupplyProductLinks", gsSupplyLink._id);
   }
   await scrubProductFromCountOrder(ctx, product.organizationId, product._id);
   await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, {
@@ -2402,52 +2411,6 @@ export const updateProduct = mutation({
   },
 });
 
-export const addProductUnit = mutation({
-  args: {
-    productId: v.id("products"),
-    unit: unitReferenceValidator,
-    factorToDefault: v.number(),
-  },
-  returns: v.id("units"),
-  handler: async (ctx, args) => {
-    const auth = await requireCatalogManager(ctx);
-    const { organizationId } = auth;
-    const product = await ctx.db.get("products", args.productId);
-    if (!product || product.organizationId !== organizationId) {
-      throw new ConvexError("Produktet blev ikke fundet");
-    }
-    requirePositiveNumber(args.factorToDefault, "Omregningsfaktoren");
-    const unitId = await resolveUnit(ctx, organizationId, args.unit);
-    const units = await ctx.db
-      .query("productUnits")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", product._id),
-      )
-      .take(MAX_CHILD_ROWS);
-    if (units.some((row) => row.unitId === unitId)) {
-      throw new ConvexError("Produktet har allerede denne enhed");
-    }
-    if (units.length >= MAX_CHILD_ROWS) {
-      throw new ConvexError("Produktet har for mange enheder");
-    }
-    await ctx.db.insert("productUnits", {
-      organizationId,
-      productId: product._id,
-      unitId,
-      factorToDefault: args.factorToDefault,
-    });
-    await ctx.db.patch("products", product._id, { updatedAt: Date.now() });
-    await invalidateSalesStockMappings(ctx, organizationId);
-    await recordAudit(ctx, auth, {
-      action: "catalog.productUpdated",
-      entityTable: "products",
-      entityId: product._id,
-      summary: `Produktet ${product.name} fik en ny enhed`,
-    });
-    return unitId;
-  },
-});
-
 export const bulkUpdateProductCategory = mutation({
   args: bulkProductCategoryArgs.fields,
   returns: v.null(),
@@ -3038,6 +3001,17 @@ export async function mergeUnitsWithAuth(
     });
   }
 
+  const gsSupplyLinks = await ctx.db
+    .query("gsSupplyProductLinks")
+    .withIndex("by_organizationId_and_unitId", (q) =>
+      q.eq("organizationId", organizationId).eq("unitId", sourceUnit._id),
+    )
+    .take(MAX_CHILD_ROWS);
+  for (const link of gsSupplyLinks) {
+    await ctx.db.patch("gsSupplyProductLinks", link._id, {
+      unitId: targetUnit._id,
+    });
+  }
   await ctx.db.delete("units", sourceUnit._id);
   if (sourceProductUnits.length > 0) {
     await invalidateSalesStockMappings(ctx, organizationId);
@@ -3068,6 +3042,16 @@ export async function deleteUnitWithAuth(
     )
     .first();
   if (productUnit) throw new ConvexError("Enheden er stadig i brug");
+  // Links to units a product no longer has are already unusable.
+  const gsSupplyLinks = await ctx.db
+    .query("gsSupplyProductLinks")
+    .withIndex("by_organizationId_and_unitId", (q) =>
+      q.eq("organizationId", organizationId).eq("unitId", unit._id),
+    )
+    .take(MAX_CHILD_ROWS);
+  for (const link of gsSupplyLinks) {
+    await ctx.db.delete("gsSupplyProductLinks", link._id);
+  }
   await ctx.db.delete("units", unit._id);
   await recordAudit(ctx, auth, {
     action: "catalog.unitDeleted",
@@ -3115,6 +3099,77 @@ export const createUnit = mutation({
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
     return await createUnitWithAuth(ctx, auth, args.name);
+  },
+});
+
+/** Adds one unit to a product without replacing its other units. */
+export const addProductUnit = mutation({
+  args: {
+    productId: v.id("products"),
+    unit: unitReferenceValidator,
+    factorToDefault: v.number(),
+  },
+  returns: v.id("units"),
+  handler: async (ctx, args) => {
+    const auth = await requireCatalogManager(ctx);
+    const { organizationId } = auth;
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    requirePositiveNumber(args.factorToDefault, "Omregningsfaktoren");
+    let unitId: Id<"units">;
+    if (args.unit.kind === "existing") {
+      const unit = await ctx.db.get("units", args.unit.id);
+      if (!unit || unit.organizationId !== organizationId) {
+        throw new ConvexError("Enheden blev ikke fundet");
+      }
+      unitId = unit._id;
+    } else {
+      const { normalizedName } = normalizeName(args.unit.name, "Enhedsnavnet");
+      const existing = await ctx.db
+        .query("units")
+        .withIndex("by_organizationId_and_normalizedName", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("normalizedName", normalizedName),
+        )
+        .unique();
+      unitId =
+        existing?._id ?? (await createUnitWithAuth(ctx, auth, args.unit.name));
+    }
+    const productUnits = await ctx.db
+      .query("productUnits")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", organizationId).eq("productId", product._id),
+      )
+      .take(MAX_CHILD_ROWS);
+    if (
+      unitId === product.defaultUnitId ||
+      productUnits.some((row) => row.unitId === unitId)
+    ) {
+      throw new ConvexError("Produktet har allerede enheden");
+    }
+    if (productUnits.length >= MAX_CHILD_ROWS) {
+      throw new ConvexError("Produktet har for mange enheder");
+    }
+    await ctx.db.insert("productUnits", {
+      organizationId,
+      productId: product._id,
+      unitId,
+      factorToDefault: args.factorToDefault,
+    });
+    await ctx.db.patch("products", product._id, {
+      updatedAt: Math.max(Date.now(), product.updatedAt + 1),
+    });
+    await invalidateSalesStockMappings(ctx, organizationId);
+    await recordAudit(ctx, auth, {
+      action: "catalog.productUnitAdded",
+      entityTable: "products",
+      entityId: product._id,
+      summary: `${product.name} fik en ny enhed`,
+    });
+    return unitId;
   },
 });
 
