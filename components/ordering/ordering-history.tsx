@@ -210,7 +210,7 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
             </TableHeader>
             <TableBody>
               {order.rows.map((row) => (
-                <TableRow key={row.productId}>
+                <TableRow key={row.productId ?? row.supplierProductNumber}>
                   <TableCell
                     appearance="label"
                     className="whitespace-normal break-words"
@@ -515,7 +515,7 @@ function History({ organizationId }: { organizationId: string }) {
               order.supplierName ?? "",
               order.fromDate,
               order.toDate,
-              row.productId,
+              row.productId ?? "",
               row.supplierProductNumber ?? "",
               row.productName,
               String(row.quantity).replace(".", ","),

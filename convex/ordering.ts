@@ -432,6 +432,16 @@ export const listOperationalConsumption = query({
 const orderInputValidator = v.object({
   locationId: v.id("locations"),
   supplierId: v.optional(v.id("suppliers")),
+  // Catalog items without a linked product, ordered in whole packs.
+  catalogLines: v.optional(
+    v.array(
+      v.object({
+        productNumber: v.string(),
+        productName: v.string(),
+        quantity: v.number(),
+      }),
+    ),
+  ),
   lines: v.array(
     v.object({
       productId: v.id("products"),
@@ -471,9 +481,11 @@ async function prepareOrder(
 ) {
   const auth = await requirePlanner(ctx, args.locationId);
   const { organizationId } = auth;
+  const catalogLines = args.catalogLines ?? [];
+  const lineCount = args.lines.length + catalogLines.length;
   if (
-    args.lines.length === 0 ||
-    args.lines.length > 500 ||
+    lineCount === 0 ||
+    lineCount > 500 ||
     new Set(args.lines.map((line) => line.productId)).size !==
       args.lines.length
   ) {
@@ -493,7 +505,7 @@ async function prepareOrder(
   const catalogSupplier =
     supplier !== null &&
     supplier._id === (await getGsSupplySupplierId(ctx, organizationId));
-  const rows = await Promise.all(
+  const rows: Infer<typeof orderRowValidator>[] = await Promise.all(
     args.lines.map(async (line) => {
       if (
         !Number.isFinite(line.quantity) ||
@@ -543,6 +555,34 @@ async function prepareOrder(
       };
     }),
   );
+  if (catalogLines.length && !catalogSupplier) {
+    throw new ConvexError("Leverandøren har intet katalog. Opdatér planen.");
+  }
+  for (const line of catalogLines) {
+    const productNumber = line.productNumber.trim();
+    const productName = line.productName.trim().slice(0, 300);
+    if (
+      !/^[\w.-]{1,50}$/.test(productNumber) ||
+      !productName ||
+      !Number.isInteger(line.quantity) ||
+      line.quantity <= 0 ||
+      line.quantity > MAX_ORDER_QUANTITY
+    ) {
+      throw new ConvexError("En katalogvare er ugyldig. Opdatér planen.");
+    }
+    rows.push({
+      productName,
+      unitName: "Pakke",
+      quantity: line.quantity,
+      supplierProductNumber: productNumber,
+    });
+  }
+  const numbers = rows.flatMap((row) =>
+    row.supplierProductNumber ? [row.supplierProductNumber] : [],
+  );
+  if (new Set(numbers).size !== numbers.length) {
+    throw new ConvexError("En vare er med flere gange. Opdatér planen.");
+  }
   return { auth, supplier, rows };
 }
 

@@ -77,7 +77,10 @@ import { api } from "@/convex/_generated/api";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
 import { downloadOrderCsv } from "@/lib/ordering-csv";
-import { useGsSupplyCatalog } from "@/integrations/gssupply/client";
+import {
+  useGsSupplyCatalog,
+  type GsSupplyProduct,
+} from "@/integrations/gssupply/client";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -151,6 +154,9 @@ function Planner({
   // null until the user has chosen, when suppliers must be chosen first.
   const [supplierValue, setSupplierValue] = useState<string | null>(null);
   const [sendEmail, setSendEmail] = useState(true);
+  const [catalogInputs, setCatalogInputs] = useState<Record<string, string>>(
+    {},
+  );
   const busy = exporting || placing;
   const submitting = useRef(false);
   const convex = useConvex();
@@ -404,11 +410,43 @@ function Planner({
   const planned = rows.filter(
     (row) => row.quantity !== null && row.quantity > 0,
   );
-  const invalidQuantity = rows.some((row) => row.quantity === null);
-  const orderTotal = planned.reduce(
-    (sum, row) => sum + (row.catalogItem?.price ?? 0) * (row.quantity ?? 0),
-    0,
+  // Catalog items without a linked product can still be ordered in whole packs.
+  const linkedNumbers = new Set(
+    (supplierLinks?.links ?? []).map((link) => link.productNumber),
   );
+  const catalogRows =
+    catalogSupplier && catalog
+      ? catalog
+          .filter((item) => !linkedNumbers.has(item.productNumber))
+          .map((item) => {
+            const input = catalogInputs[item.productNumber] ?? "";
+            const parsed = parseOrderQuantity(input);
+            return {
+              ...item,
+              input,
+              quantity:
+                parsed !== null && Number.isInteger(parsed) ? parsed : null,
+            };
+          })
+      : [];
+  const plannedCatalog = catalogRows.filter(
+    (row) => row.quantity !== null && row.quantity > 0,
+  );
+  const plannedCount = planned.length + plannedCatalog.length;
+  const invalidQuantity =
+    rows.some((row) => row.quantity === null) ||
+    catalogRows.some((row) => row.quantity === null);
+  const orderTotal =
+    planned.reduce(
+      (sum, row) => sum + (row.catalogItem?.price ?? 0) * (row.quantity ?? 0),
+      0,
+    ) +
+    plannedCatalog.reduce((sum, row) => sum + row.price * (row.quantity ?? 0), 0);
+  const catalogLines = plannedCatalog.map((row) => ({
+    productNumber: row.productNumber,
+    productName: row.name,
+    quantity: row.quantity ?? 0,
+  }));
   const missingPrices = planned.some((row) => row.productNumber && !row.catalogItem);
   const orderLines = planned.flatMap((row) =>
     row.quantity === null
@@ -417,6 +455,10 @@ function Planner({
   );
   const visible = searchProducts(rows, search, (row) => ({
     name: row.name,
+    categoryPath: row.category,
+  }));
+  const visibleCatalog = searchProducts(catalogRows, search, (row) => ({
+    name: `${row.productNumber} ${row.name}`,
     categoryPath: row.category,
   }));
 
@@ -465,7 +507,7 @@ function Planner({
       loading ||
       !validSettings ||
       invalidQuantity ||
-      !planned.length ||
+      !plannedCount ||
       busy
     )
       return;
@@ -477,6 +519,7 @@ function Planner({
         locationId,
         supplierId: supplier?.id,
         lines: orderLines,
+        catalogLines,
       });
       if (!mounted.current) return;
       downloadOrderCsv({
@@ -505,8 +548,8 @@ function Planner({
       loading ||
       !validSettings ||
       invalidQuantity ||
-      !planned.length ||
-      planned.length > 500 ||
+      !plannedCount ||
+      plannedCount > 500 ||
       submitting.current
     ) return;
     submitting.current = true;
@@ -521,6 +564,7 @@ function Planner({
         coverageDays,
         bufferPercent,
         lines: orderLines,
+        catalogLines,
       });
       if (!mounted.current) return;
       setOrderingLocation(organizationId, locationId);
@@ -875,7 +919,7 @@ function Planner({
                 <Skeleton key={index} className="h-20 w-full" />
               ))}
             </div>
-          ) : !visible.length ? (
+          ) : !visible.length && !visibleCatalog.length ? (
             <Empty appearance="outlined" className="min-h-64">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -890,6 +934,8 @@ function Planner({
               </EmptyHeader>
             </Empty>
           ) : (
+            <>
+            {visible.length ? (
             <div className="overflow-hidden rounded-xl border">
               <Table>
                 <TableHeader>
@@ -1012,6 +1058,21 @@ function Planner({
                 </TableBody>
               </Table>
             </div>
+            ) : null}
+            {visibleCatalog.length ? (
+              <CatalogItemsTable
+                supplierName={supplier?.name ?? ""}
+                rows={visibleCatalog}
+                disabled={busy}
+                onQuantityChange={(productNumber, value) =>
+                  setCatalogInputs((current) => ({
+                    ...current,
+                    [productNumber]: value,
+                  }))
+                }
+              />
+            ) : null}
+            </>
           )}
           {!canExport ? (
             <p className="text-sm text-muted-foreground">
@@ -1023,14 +1084,14 @@ function Planner({
               Du mangler adgang til at afgive bestillinger.
             </p>
           ) : null}
-          {planned.length > 500 ? (
+          {plannedCount > 500 ? (
             <FieldError>Vælg højst 500 produkter ad gangen.</FieldError>
           ) : null}
           <AppBottomBar>
             <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-2">
               <div className="flex items-center gap-1">
                 <p className="font-medium">
-                  {planned.length} produkter i bestillingen
+                  {plannedCount} produkter i bestillingen
                   {catalogSupplier && catalog
                     ? ` · ${priceFormatter.format(orderTotal)} kr.${missingPrices ? " (uden ukendte priser)" : ""}`
                     : ""}
@@ -1052,8 +1113,8 @@ function Planner({
                       loading ||
                       !validSettings ||
                       invalidQuantity ||
-                      planned.length === 0 ||
-                      planned.length > 500 ||
+                      plannedCount === 0 ||
+                      plannedCount > 500 ||
                       busy
                     }
                     onClick={() => void exportPlan()}
@@ -1073,8 +1134,8 @@ function Planner({
                       loading ||
                       !validSettings ||
                       invalidQuantity ||
-                      planned.length === 0 ||
-                      planned.length > 500 ||
+                      plannedCount === 0 ||
+                      plannedCount > 500 ||
                       busy
                     }
                     onClick={() => setConfirming(true)}
@@ -1095,7 +1156,7 @@ function Planner({
               <AlertDialogHeader>
                 <AlertDialogTitle>Afgiv bestillingen?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Bestillingen med {planned.length} produkter
+                  Bestillingen med {plannedCount} produkter
                   {supplier ? ` hos ${supplier.name}` : ""} gemmes i
                   bestillingshistorikken for {locations.find((location) => location.id === locationId)?.name}.
                   {supplier?.email
@@ -1141,5 +1202,114 @@ function Planner({
         </AppBottomBar>
       ) : null}
     </>
+  );
+}
+
+function CatalogItemsTable({
+  supplierName,
+  rows,
+  disabled,
+  onQuantityChange,
+}: {
+  supplierName: string;
+  rows: Array<
+    GsSupplyProduct & { input: string; quantity: number | null }
+  >;
+  disabled: boolean;
+  onQuantityChange: (productNumber: string, value: string) => void;
+}) {
+  return (
+    <section
+      aria-labelledby="ordering-catalog-items"
+      className="flex flex-col gap-3"
+    >
+      <div className="flex items-center gap-1">
+        <h2 id="ordering-catalog-items" className="text-lg font-semibold">
+          Andre varer fra {supplierName}
+        </h2>
+        <HelpTooltip
+          label="andre varer"
+          content="Varer fra kataloget, der ikke er koblet til et Produkt. De bestilles i hele pakker uden forslag og påvirker ikke lageret."
+        />
+      </div>
+      <div className="overflow-hidden rounded-xl border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Vare</TableHead>
+              <TableHead>Pris pr. pakke</TableHead>
+              <TableHead className="w-44">Bestil pakker</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.productNumber} className="h-20">
+                <TableCell appearance="spaced" className="min-w-44 whitespace-normal">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="size-14">
+                      <AvatarImage src={row.pictureUrl ?? undefined} alt="" />
+                      <AvatarFallback>
+                        <PackageOpenIcon className="size-6" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="font-medium">{row.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {row.productNumber} · {row.category}
+                      </div>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="whitespace-normal">
+                  {priceFormatter.format(row.price)}
+                  <div className="text-xs text-muted-foreground">
+                    {numberFormatter.format(row.unitAmount)} pr. pakke
+                  </div>
+                  {row.leadTimeDays > 1 ? (
+                    <Badge variant="secondary">
+                      Leveringstid {row.leadTimeDays} dage
+                    </Badge>
+                  ) : null}
+                  {(row.quantity ?? 0) > row.availableQuantity ? (
+                    <div className="text-xs font-medium text-destructive">
+                      {row.availableQuantity > 0
+                        ? `Kun ${numberFormatter.format(row.availableQuantity)} på lager hos GS Supply`
+                        : "Ikke på lager hos GS Supply"}
+                    </div>
+                  ) : null}
+                  {(row.quantity ?? 0) > 0 && (row.quantity ?? 0) < row.minOrder ? (
+                    <div className="text-xs font-medium text-destructive">
+                      Mindst {numberFormatter.format(row.minOrder)} pakker
+                    </div>
+                  ) : null}
+                </TableCell>
+                <TableCell>
+                  <Field data-invalid={row.quantity === null} className="min-w-32">
+                    <FieldLabel
+                      className="sr-only"
+                      htmlFor={`catalog-quantity-${row.productNumber}`}
+                    >
+                      Bestil {row.name} i pakker
+                    </FieldLabel>
+                    <Input
+                      id={`catalog-quantity-${row.productNumber}`}
+                      value={row.input}
+                      inputMode="numeric"
+                      placeholder="0"
+                      className="h-11"
+                      disabled={disabled}
+                      aria-invalid={row.quantity === null}
+                      onChange={(event) =>
+                        onQuantityChange(row.productNumber, event.target.value)
+                      }
+                    />
+                  </Field>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </section>
   );
 }

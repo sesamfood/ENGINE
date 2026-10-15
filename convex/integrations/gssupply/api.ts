@@ -19,6 +19,7 @@ import {
   requireOrganization,
 } from "../../lib/auth";
 import { getProductCategoryIds } from "../../lib/productCategories";
+import { createProductWithAuth } from "../../catalog";
 import {
   decryptCredential,
   encryptCredential,
@@ -550,6 +551,89 @@ export const setCatalogLink = mutation({
       summary: `${product.name} er koblet til GS Supply-varenummer ${next.productNumber}`,
     });
     return null;
+  },
+});
+
+const referenceValidator = <T extends "categories" | "units">(table: T) =>
+  v.union(
+    v.object({ kind: v.literal("existing"), id: v.id(table) }),
+    v.object({ kind: v.literal("new"), name: v.string() }),
+  );
+
+/** Creates a product from a catalog item and links the item to it in one step. */
+export const createProductFromCatalog = mutation({
+  args: {
+    productNumber: v.string(),
+    productName: v.string(),
+    name: v.string(),
+    category: referenceValidator("categories"),
+    defaultUnit: referenceValidator("units"),
+    // The unit for one pack, when a pack holds more than one default unit.
+    packUnit: v.union(
+      v.object({ unit: referenceValidator("units"), factorToDefault: v.number() }),
+      v.null(),
+    ),
+  },
+  returns: v.id("products"),
+  handler: async (ctx, args) => {
+    const auth = await requireManager(ctx);
+    if (!hasPermission(auth.role, auth.permissions, "catalog.manage")) {
+      throw new ConvexError("Du har ikke adgang til at oprette Produkter");
+    }
+    const { organizationId } = auth;
+    if (await linkForNumber(ctx, organizationId, args.productNumber.trim())) {
+      throw new ConvexError("GS Supply-produktet er allerede koblet");
+    }
+    await requireLinkCapacity(ctx, organizationId);
+    const productId = await createProductWithAuth(ctx, auth, {
+      name: args.name,
+      categories: [args.category],
+      units: [
+        { unit: args.defaultUnit, factorToDefault: 1, isDefault: true },
+        ...(args.packUnit
+          ? [
+              {
+                unit: args.packUnit.unit,
+                factorToDefault: args.packUnit.factorToDefault,
+                isDefault: false,
+              },
+            ]
+          : []),
+      ],
+      ingredients: [],
+      addableIngredients: [],
+    });
+    const product = (await ctx.db.get("products", productId))!;
+    const packUnit = args.packUnit
+      ? (
+          await ctx.db
+            .query("productUnits")
+            .withIndex("by_organizationId_and_productId", (q) =>
+              q.eq("organizationId", organizationId).eq("productId", productId),
+            )
+            .take(10)
+        ).find((row) => row.unitId !== product.defaultUnitId)
+      : undefined;
+    if (args.packUnit && !packUnit) {
+      throw new ConvexError("Pakkeenheden skal være forskellig fra standardenheden");
+    }
+    const next = await validateLink(ctx, product, {
+      productNumber: args.productNumber,
+      productName: args.productName,
+      unitId: packUnit?.unitId ?? product.defaultUnitId,
+    });
+    await ctx.db.insert("gsSupplyProductLinks", {
+      organizationId,
+      productId,
+      ...next,
+    });
+    await recordAudit(ctx, auth, {
+      action: "gssupply.productLinkChanged",
+      entityTable: "products",
+      entityId: productId,
+      summary: `${product.name} er oprettet fra GS Supply-varenummer ${next.productNumber}`,
+    });
+    return productId;
   },
 });
 

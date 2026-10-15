@@ -5,6 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import {
   CircleAlertIcon,
   PackageOpenIcon,
+  PlusIcon,
   RefreshCwIcon,
   SearchIcon,
 } from "lucide-react";
@@ -335,6 +336,7 @@ function CatalogLinkEditor({
   // A chosen product waits here until its unit is chosen.
   const [pendingId, setPendingId] = useState<Id<"products"> | null>(null);
   const [addingUnit, setAddingUnit] = useState(false);
+  const [creatingProduct, setCreatingProduct] = useState(false);
   const selected =
     products.find((product) => product.id === (pendingId ?? linked?.id)) ??
     null;
@@ -440,6 +442,18 @@ function CatalogLinkEditor({
           ariaLabel={`Produkt for GS Supply-varenummer ${row.productNumber}`}
           disabled={saving}
         />
+        {canAddUnit && !linked && !pendingId && row.inCatalog ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="mt-1 min-h-11"
+            disabled={saving}
+            onClick={() => setCreatingProduct(true)}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Opret som nyt Produkt
+          </Button>
+        ) : null}
       </div>
       <div className="sm:w-44">
         <Select
@@ -481,6 +495,13 @@ function CatalogLinkEditor({
           </FieldDescription>
         ) : null}
       </div>
+      {creatingProduct ? (
+        <CreateProductDialog
+          row={row}
+          linkUnitCounts={linkUnitCounts}
+          onClose={() => setCreatingProduct(false)}
+        />
+      ) : null}
       {selected && addingUnit ? (
         <AddUnitDialog
           product={selected}
@@ -647,6 +668,258 @@ function AddUnitDialog({
             >
               {saving ? <Spinner data-icon="inline-start" /> : null}
               Tilføj enhed
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** GS names end with the pack contents, e.g. "(540 stk.)", which don't belong in a product name. */
+function productNameFromCatalog(name: string) {
+  return name
+    .replace(/\s*\([^()]*\)\s*$/, "")
+    .replace(/[\s,]+$/, "")
+    .slice(0, 100);
+}
+
+function CreateProductDialog({
+  row,
+  linkUnitCounts,
+  onClose,
+}: {
+  row: CatalogRow;
+  linkUnitCounts: ReadonlyMap<string, number>;
+  onClose: () => void;
+}) {
+  const categories = useQuery(api.catalog.listCategoryOptions);
+  const units = useQuery(api.catalog.listUnits);
+  const createProduct = useMutation(
+    api.integrations.gssupply.api.createProductFromCatalog,
+  );
+  const [name, setName] = useState(() => productNameFromCatalog(row.name));
+  // undefined until the user picks, so suggestions are preselected.
+  const [pickedCategory, setPickedCategory] = useState<string | null>();
+  const [pickedDefaultUnit, setPickedDefaultUnit] = useState<string | null>();
+  const [pickedPackUnit, setPickedPackUnit] = useState<string | null>();
+  const hasPack = (row.unitAmount ?? 1) > 1;
+  const [factor, setFactor] = useState(hasPack ? String(row.unitAmount) : "");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const categoryOptions = (categories ?? []).map((category) => ({
+    value: `existing:${category.id}`,
+    label: category.path,
+  }));
+  const categorySuggestions = suggestProducts(
+    categories ?? [],
+    row.category,
+  ).map((category) => ({
+    value: `existing:${category.id}`,
+    label: category.path,
+  }));
+  const unitOptions = (units ?? []).map((unit) => ({
+    value: `existing:${unit.id}`,
+    label: unit.name,
+  }));
+  const pieceUnit = (units ?? []).find((unit) =>
+    ["stk", "styk", "stykker"].includes(normalizeProductSearch(unit.name)),
+  );
+  const defaultUnitSuggestions = pieceUnit
+    ? [{ value: `existing:${pieceUnit.id}`, label: pieceUnit.name }]
+    : [{ value: "new:Stk.", label: "Stk. (ny enhed)" }];
+  const packUnitSuggestions = [
+    ...suggestNewUnits(units ?? [], linkUnitCounts).map((unit) => ({
+      value: `existing:${unit.id}`,
+      label: unit.name,
+    })),
+    ...((units ?? []).some(
+      (unit) => normalizeProductSearch(unit.name) === "pakke",
+    )
+      ? []
+      : [{ value: "new:Pakke", label: "Pakke (ny enhed)" }]),
+  ];
+  const category =
+    pickedCategory === undefined
+      ? (categorySuggestions[0]?.value ?? null)
+      : pickedCategory;
+  const defaultUnit =
+    pickedDefaultUnit === undefined
+      ? defaultUnitSuggestions[0]!.value
+      : pickedDefaultUnit;
+  const packUnit =
+    pickedPackUnit === undefined
+      ? (packUnitSuggestions[0]?.value ?? null)
+      : pickedPackUnit;
+  const factorValue = Number(factor.trim().replace(",", "."));
+  const validFactor =
+    !hasPack || (Number.isFinite(factorValue) && factorValue > 0);
+  const ready =
+    name.trim() !== "" &&
+    category !== null &&
+    defaultUnit !== null &&
+    (!hasPack || packUnit !== null) &&
+    validFactor;
+
+  function reference<T extends "categories" | "units">(value: string) {
+    return value.startsWith("new:")
+      ? { kind: "new" as const, name: value.slice(4) }
+      : {
+          kind: "existing" as const,
+          id: value.slice("existing:".length) as Id<T>,
+        };
+  }
+
+  async function create() {
+    if (!ready || !category || !defaultUnit) return;
+    setSaving(true);
+    setError("");
+    try {
+      await createProduct({
+        productNumber: row.productNumber,
+        productName: row.name,
+        name,
+        category: reference<"categories">(category),
+        defaultUnit: reference<"units">(defaultUnit),
+        packUnit:
+          hasPack && packUnit
+            ? {
+                unit: reference<"units">(packUnit),
+                factorToDefault: factorValue,
+              }
+            : null,
+      });
+      toast.success(`${name.trim()} er oprettet og koblet til GS Supply`);
+      onClose();
+    } catch (caught) {
+      setError(
+        getUserErrorMessage(
+          caught,
+          "Produktet kunne ikke oprettes. Prøv igen.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
+      }}
+    >
+      <DialogContent>
+        <form
+          className="flex flex-col gap-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void create();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Opret Produkt fra GS Supply</DialogTitle>
+            <DialogDescription>
+              {row.productNumber} · {row.name}
+            </DialogDescription>
+          </DialogHeader>
+          {categories === undefined || units === undefined ? (
+            <Skeleton className="h-64 w-full" />
+          ) : (
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="gs-supply-product-name">Navn</FieldLabel>
+                <Input
+                  id="gs-supply-product-name"
+                  className="h-11"
+                  value={name}
+                  maxLength={100}
+                  disabled={saving}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Kategori</FieldLabel>
+                <CreatableCombobox
+                  allowCreate
+                  options={categoryOptions}
+                  suggestionLabel="Forslag"
+                  suggestionOptions={categorySuggestions}
+                  value={category}
+                  onValueChange={setPickedCategory}
+                  placeholder="Vælg eller opret kategori"
+                  ariaLabel="Kategori"
+                  disabled={saving}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Standardenhed</FieldLabel>
+                <CreatableCombobox
+                  allowCreate
+                  options={unitOptions}
+                  suggestionLabel="Forslag"
+                  suggestionOptions={defaultUnitSuggestions}
+                  value={defaultUnit}
+                  onValueChange={setPickedDefaultUnit}
+                  placeholder="Vælg eller opret enhed"
+                  ariaLabel="Standardenhed"
+                  disabled={saving}
+                />
+              </Field>
+              {hasPack ? (
+                <>
+                  <Field>
+                    <FieldLabel>Enhed for én pakke</FieldLabel>
+                    <CreatableCombobox
+                      allowCreate
+                      options={unitOptions}
+                      suggestionLabel="Forslag"
+                      suggestionOptions={packUnitSuggestions}
+                      value={packUnit}
+                      onValueChange={setPickedPackUnit}
+                      placeholder="Vælg eller opret enhed"
+                      ariaLabel="Enhed for én pakke"
+                      disabled={saving}
+                    />
+                  </Field>
+                  <Field data-invalid={!validFactor}>
+                    <FieldLabel htmlFor="gs-supply-product-factor">
+                      Antal standardenheder pr. pakke
+                    </FieldLabel>
+                    <Input
+                      id="gs-supply-product-factor"
+                      inputMode="decimal"
+                      className="h-11"
+                      value={factor}
+                      disabled={saving}
+                      aria-invalid={!validFactor}
+                      onChange={(event) => setFactor(event.target.value)}
+                    />
+                    <FieldDescription>
+                      GS Supply angiver{" "}
+                      {numberFormatter.format(row.unitAmount ?? 0)} pr. pakke.
+                    </FieldDescription>
+                  </Field>
+                </>
+              ) : null}
+              {error ? <FieldError>{error}</FieldError> : null}
+            </FieldGroup>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              disabled={saving}
+              onClick={onClose}
+            >
+              Annullér
+            </Button>
+            <Button type="submit" size="lg" disabled={saving || !ready}>
+              {saving ? <Spinner data-icon="inline-start" /> : null}
+              Opret Produkt
             </Button>
           </DialogFooter>
         </form>

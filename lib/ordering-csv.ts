@@ -7,7 +7,7 @@ export function downloadOrderCsv(order: {
   fromDate: string;
   toDate: string;
   rows: readonly {
-    productId: string;
+    productId?: string;
     productName: string;
     unitName: string;
     quantity: number;
@@ -22,7 +22,7 @@ export function downloadOrderCsv(order: {
       order.supplierName ?? "",
       order.fromDate,
       order.toDate,
-      row.productId,
+      row.productId ?? "",
       row.supplierProductNumber ?? "",
       row.productName,
       row.unitName,

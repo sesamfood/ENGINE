@@ -1179,7 +1179,8 @@ export default defineSchema({
   orderLines: defineTable({
     organizationId: v.string(),
     orderId: v.id("orders"),
-    productId: v.id("products"),
+    // Missing for supplier catalog items that aren't linked to a product.
+    productId: v.optional(v.id("products")),
     productName: v.string(),
     unitName: v.string(),
     quantity: v.number(),
