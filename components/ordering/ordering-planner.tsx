@@ -588,11 +588,9 @@ function Planner({
   function quantityInput(row: (typeof rows)[number]) {
     return (
       <Field data-invalid={row.quantity === null} className="min-w-24">
-        <FieldLabel className="sr-only" htmlFor={`quantity-${row.id}`}>
-          Bestil {row.name} i {row.orderUnitName}
-        </FieldLabel>
         <Input
           id={`quantity-${row.id}`}
+          aria-label={`Bestil ${row.name} i ${row.orderUnitName}`}
           value={row.input}
           inputMode="decimal"
           className="h-11"
@@ -1236,14 +1234,9 @@ function CatalogItemsTable({
                 </TableCell>
                 <TableCell>
                   <Field data-invalid={row.quantity === null} className="min-w-24">
-                    <FieldLabel
-                      className="sr-only"
-                      htmlFor={`catalog-quantity-${row.productNumber}`}
-                    >
-                      Bestil {row.name} i pakker
-                    </FieldLabel>
                     <Input
                       id={`catalog-quantity-${row.productNumber}`}
+                      aria-label={`Bestil ${row.name} i pakker`}
                       value={row.input}
                       inputMode="numeric"
                       placeholder="0"
