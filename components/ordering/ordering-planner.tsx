@@ -587,7 +587,7 @@ function Planner({
 
   function quantityInput(row: (typeof rows)[number]) {
     return (
-      <Field data-invalid={row.quantity === null} className="min-w-32">
+      <Field data-invalid={row.quantity === null} className="min-w-24">
         <FieldLabel className="sr-only" htmlFor={`quantity-${row.id}`}>
           Bestil {row.name} i {row.orderUnitName}
         </FieldLabel>
@@ -942,18 +942,17 @@ function Planner({
                   <TableRow>
                     <TableHead>Produkt</TableHead>
                     <TableHead>Lager</TableHead>
-                    <TableHead>Forventet forbrug</TableHead>
-                    {catalogSupplier ? <TableHead>Pris pr. pakke</TableHead> : null}
+                    <TableHead className="whitespace-normal">Forventet forbrug</TableHead>
                     <TableHead>Forslag</TableHead>
-                    <TableHead className="w-44">Bestil</TableHead>
+                    <TableHead className="w-32">Bestil</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {visible.map((row) => (
                     <TableRow key={row.id} className="h-20">
-                      <TableCell appearance="spaced" className="min-w-44 whitespace-normal">
+                      <TableCell appearance="spaced" className="whitespace-normal">
                         <div className="flex items-center gap-3">
-                          <Avatar className="size-14">
+                          <Avatar className="size-14 shrink-0">
                             <AvatarImage
                               src={row.imageUrl ?? undefined}
                               alt=""
@@ -973,10 +972,17 @@ function Planner({
                                 Har ingredienser
                               </Badge>
                             ) : null}
+                            {catalogSupplier ? (
+                              <CatalogItemDetails
+                                item={row.catalogItem}
+                                catalogLoaded={Boolean(catalog)}
+                                quantity={row.quantity}
+                              />
+                            ) : null}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-normal">
                         {row.stock === null
                           ? "Ukendt"
                           : numberFormatter.format(row.stock)}
@@ -984,7 +990,7 @@ function Planner({
                           {row.unitName}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-normal">
                         {row.forecast.demand === null
                           ? "Intet forbrugsgrundlag"
                           : numberFormatter.format(row.forecast.demand)}
@@ -1006,43 +1012,7 @@ function Planner({
                           </div>
                         ) : null}
                       </TableCell>
-                      {catalogSupplier ? (
-                        <TableCell className="whitespace-normal">
-                          {row.catalogItem ? (
-                            <>
-                              {priceFormatter.format(row.catalogItem.price)}
-                              <div className="text-xs text-muted-foreground">
-                                {numberFormatter.format(row.catalogItem.unitAmount)} pr. pakke
-                              </div>
-                              {(row.quantity ?? 0) > 0 &&
-                              (row.quantity ?? 0) < row.catalogItem.minOrder ? (
-                                <div className="text-xs font-medium text-destructive">
-                                  Mindst {numberFormatter.format(row.catalogItem.minOrder)} pakker
-                                </div>
-                              ) : null}
-                              {row.catalogItem.leadTimeDays > 1 ? (
-                                <Badge variant="secondary">
-                                  Leveringstid {row.catalogItem.leadTimeDays} dage
-                                </Badge>
-                              ) : null}
-                              {(row.quantity ?? 0) > row.catalogItem.availableQuantity ? (
-                                <div className="text-xs font-medium text-destructive">
-                                  {row.catalogItem.availableQuantity > 0
-                                    ? `Kun ${numberFormatter.format(row.catalogItem.availableQuantity)} på lager hos GS Supply`
-                                    : "Ikke på lager hos GS Supply"}
-                                </div>
-                              ) : null}
-                            </>
-                          ) : catalog ? (
-                            <span className="text-xs font-medium text-destructive">
-                              Ikke i kataloget
-                            </span>
-                          ) : (
-                            "Ukendt"
-                          )}
-                        </TableCell>
-                      ) : null}
-                      <TableCell>
+                      <TableCell className="whitespace-normal">
                         {row.suggested === null
                           ? "Angiv manuelt"
                           : numberFormatter.format(row.suggested)}
@@ -1088,7 +1058,9 @@ function Planner({
             <FieldError>Vælg højst 500 produkter ad gangen.</FieldError>
           ) : null}
           <AppBottomBar>
-            <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-2">
+            <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              {navigation ? <div className="min-w-0" inert={busy}>{navigation}</div> : null}
+              <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
               <div className="flex items-center gap-1">
                 <p className="font-medium">
                   {plannedCount} produkter i bestillingen
@@ -1101,9 +1073,7 @@ function Planner({
                   content="Bestillingen og CSV-filen indeholder alle medtagne produkter med mængder over 0, også uden for søgningen."
                 />
               </div>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                {navigation ? <div className="min-w-0" inert={busy}>{navigation}</div> : null}
-                <div className="flex flex-wrap gap-2 sm:ml-auto">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     size="lg"
                     variant="outline"
@@ -1237,16 +1207,15 @@ function CatalogItemsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Vare</TableHead>
-              <TableHead>Pris pr. pakke</TableHead>
-              <TableHead className="w-44">Bestil pakker</TableHead>
+              <TableHead className="w-32 whitespace-normal">Bestil pakker</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.productNumber} className="h-20">
-                <TableCell appearance="spaced" className="min-w-44 whitespace-normal">
+                <TableCell appearance="spaced" className="whitespace-normal">
                   <div className="flex items-center gap-3">
-                    <Avatar className="size-14">
+                    <Avatar className="size-14 shrink-0">
                       <AvatarImage src={row.pictureUrl ?? undefined} alt="" />
                       <AvatarFallback>
                         <PackageOpenIcon className="size-6" />
@@ -1257,34 +1226,16 @@ function CatalogItemsTable({
                       <div className="text-sm text-muted-foreground">
                         {row.productNumber} · {row.category}
                       </div>
+                      <CatalogItemDetails
+                        item={row}
+                        catalogLoaded
+                        quantity={row.quantity}
+                      />
                     </div>
                   </div>
-                </TableCell>
-                <TableCell className="whitespace-normal">
-                  {priceFormatter.format(row.price)}
-                  <div className="text-xs text-muted-foreground">
-                    {numberFormatter.format(row.unitAmount)} pr. pakke
-                  </div>
-                  {row.leadTimeDays > 1 ? (
-                    <Badge variant="secondary">
-                      Leveringstid {row.leadTimeDays} dage
-                    </Badge>
-                  ) : null}
-                  {(row.quantity ?? 0) > row.availableQuantity ? (
-                    <div className="text-xs font-medium text-destructive">
-                      {row.availableQuantity > 0
-                        ? `Kun ${numberFormatter.format(row.availableQuantity)} på lager hos GS Supply`
-                        : "Ikke på lager hos GS Supply"}
-                    </div>
-                  ) : null}
-                  {(row.quantity ?? 0) > 0 && (row.quantity ?? 0) < row.minOrder ? (
-                    <div className="text-xs font-medium text-destructive">
-                      Mindst {numberFormatter.format(row.minOrder)} pakker
-                    </div>
-                  ) : null}
                 </TableCell>
                 <TableCell>
-                  <Field data-invalid={row.quantity === null} className="min-w-32">
+                  <Field data-invalid={row.quantity === null} className="min-w-24">
                     <FieldLabel
                       className="sr-only"
                       htmlFor={`catalog-quantity-${row.productNumber}`}
@@ -1311,5 +1262,46 @@ function CatalogItemsTable({
         </Table>
       </div>
     </section>
+  );
+}
+
+/** Price, pack size and supplier warnings for a catalog item, shown under its name. */
+function CatalogItemDetails({
+  item,
+  catalogLoaded,
+  quantity,
+}: {
+  item: GsSupplyProduct | undefined;
+  catalogLoaded: boolean;
+  quantity: number | null;
+}) {
+  if (!item) {
+    return catalogLoaded ? (
+      <div className="text-xs font-medium text-destructive">Ikke i kataloget</div>
+    ) : null;
+  }
+  const ordered = quantity ?? 0;
+  return (
+    <>
+      <div className="text-sm text-muted-foreground">
+        {priceFormatter.format(item.price)} kr. ·{" "}
+        {numberFormatter.format(item.unitAmount)} pr. pakke
+      </div>
+      {item.leadTimeDays > 1 ? (
+        <Badge variant="secondary">Leveringstid {item.leadTimeDays} dage</Badge>
+      ) : null}
+      {ordered > 0 && ordered < item.minOrder ? (
+        <div className="text-xs font-medium text-destructive">
+          Mindst {numberFormatter.format(item.minOrder)} pakker
+        </div>
+      ) : null}
+      {ordered > item.availableQuantity ? (
+        <div className="text-xs font-medium text-destructive">
+          {item.availableQuantity > 0
+            ? `Kun ${numberFormatter.format(item.availableQuantity)} på lager hos GS Supply`
+            : "Ikke på lager hos GS Supply"}
+        </div>
+      ) : null}
+    </>
   );
 }
