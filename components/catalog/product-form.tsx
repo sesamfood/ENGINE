@@ -26,7 +26,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { compressImage } from "@/lib/compress-image";
+import { compressImage, productImageOptions } from "@/lib/compress-image";
 import { cn } from "@/lib/utils";
 import { usePermission } from "@/components/app-shell";
 import {
@@ -736,11 +736,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
 
   async function uploadImage(savedProductId: Id<"products">) {
     if (!imageFile) return;
-    const image = await compressImage(imageFile, {
-      maxWidth: 1200,
-      maxHeight: 1200,
-      quality: 0.75,
-    });
+    const image = await compressImage(imageFile, productImageOptions);
     const storageId = await uploadToStorage({
       uploadUrl: await generateUploadUrl({}),
       file: image,

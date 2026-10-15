@@ -1,3 +1,9 @@
+export const productImageOptions = {
+  maxWidth: 1200,
+  maxHeight: 1200,
+  quality: 0.75,
+};
+
 export const evidencePhotoOptions = {
   maxWidth: 2600,
   maxHeight: 2600,

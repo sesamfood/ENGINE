@@ -125,3 +125,45 @@ export async function fetchGsSupplyCatalog(url: URL) {
   }
   return [...products.values()];
 }
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/** Downloads a catalog product image. Only GS Supply image URLs are allowed. */
+export async function fetchGsSupplyImage(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ConvexError("Billedet kunne ikke hentes");
+  }
+  if (
+    url.protocol !== "https:" ||
+    !ALLOWED_HOSTS.has(url.hostname) ||
+    url.port ||
+    url.username ||
+    url.password ||
+    !url.pathname.startsWith("/web/image/")
+  ) {
+    throw new ConvexError("Billedet kommer ikke fra GS Supply");
+  }
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      // GS Supply's CDN rejects requests without a user agent.
+      headers: { Accept: "image/*", "User-Agent": "ENGINE catalog import" },
+      redirect: "error",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    throw new ConvexError("Billedet kunne ikke hentes fra GS Supply");
+  }
+  const contentType = response.headers.get("content-type")?.split(";")[0] ?? "";
+  if (!response.ok || !contentType.startsWith("image/")) {
+    throw new ConvexError("Billedet kunne ikke hentes fra GS Supply");
+  }
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new ConvexError("Billedet fra GS Supply er for stort");
+  }
+  return { bytes, contentType };
+}

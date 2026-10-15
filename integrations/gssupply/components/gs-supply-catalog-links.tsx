@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   CircleAlertIcon,
@@ -82,6 +82,8 @@ import {
   suggestUnitId,
 } from "./gs-supply-suggestions";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { compressImage, productImageOptions } from "@/lib/compress-image";
+import { uploadToStorage } from "@/lib/upload-to-storage";
 import { useGsSupplyCatalog } from "./gs-supply-link-editor";
 
 type EngineProduct = FunctionReturnType<
@@ -698,6 +700,13 @@ function CreateProductDialog({
   const createProduct = useMutation(
     api.integrations.gssupply.api.createProductFromCatalog,
   );
+  const fetchCatalogImage = useAction(
+    api.integrations.gssupply.api.fetchCatalogImage,
+  );
+  const generateUploadUrl = useMutation(
+    api.catalog.generateProductImageUploadUrl,
+  );
+  const setProductImage = useMutation(api.catalog.setProductImage);
   const [name, setName] = useState(() => productNameFromCatalog(row.name));
   // undefined until the user picks, so suggestions are preselected.
   const [pickedCategory, setPickedCategory] = useState<string | null>();
@@ -771,12 +780,26 @@ function CreateProductDialog({
         };
   }
 
+  // Compressed in the browser, like images added on the product form.
+  async function addCatalogImage(productId: Id<"products">, url: string) {
+    const { bytes, contentType } = await fetchCatalogImage({ url });
+    const image = await compressImage(
+      new File([bytes], `gs-supply-${row.productNumber}`, { type: contentType }),
+      productImageOptions,
+    );
+    const storageId = await uploadToStorage({
+      uploadUrl: await generateUploadUrl({}),
+      file: image,
+    });
+    await setProductImage({ productId, storageId });
+  }
+
   async function create() {
     if (!ready || !category || !defaultUnit) return;
     setSaving(true);
     setError("");
     try {
-      await createProduct({
+      const productId = await createProduct({
         productNumber: row.productNumber,
         productName: row.name,
         name,
@@ -790,6 +813,17 @@ function CreateProductDialog({
               }
             : null,
       });
+      if (row.pictureUrl) {
+        try {
+          await addCatalogImage(productId, row.pictureUrl);
+        } catch {
+          toast.warning(
+            `${name.trim()} er oprettet, men billedet fra GS Supply kunne ikke tilføjes`,
+          );
+          onClose();
+          return;
+        }
+      }
       toast.success(`${name.trim()} er oprettet og koblet til GS Supply`);
       onClose();
     } catch (caught) {
@@ -821,9 +855,20 @@ function CreateProductDialog({
         >
           <DialogHeader>
             <DialogTitle>Opret Produkt fra GS Supply</DialogTitle>
-            <DialogDescription>
-              {row.productNumber} · {row.name}
-            </DialogDescription>
+            <div className="flex items-center gap-3">
+              {row.pictureUrl ? (
+                <Avatar className="size-14 shrink-0">
+                  <AvatarImage src={row.pictureUrl} alt="" />
+                  <AvatarFallback>
+                    <PackageOpenIcon className="size-5" />
+                  </AvatarFallback>
+                </Avatar>
+              ) : null}
+              <DialogDescription>
+                {row.productNumber} · {row.name}
+                {row.pictureUrl ? ". Billedet bruges på Produktet." : ""}
+              </DialogDescription>
+            </div>
           </DialogHeader>
           {categories === undefined || units === undefined ? (
             <Skeleton className="h-64 w-full" />

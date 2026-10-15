@@ -30,6 +30,7 @@ import { ensureGsSupplySupplier } from "./lifecycle";
 import {
   catalogUrlPreview,
   fetchGsSupplyCatalog,
+  fetchGsSupplyImage,
   gsSupplyCatalogProductValidator,
   parseCatalogUrl,
   type GsSupplyCatalogProduct,
@@ -551,6 +552,24 @@ export const setCatalogLink = mutation({
       summary: `${product.name} er koblet til GS Supply-varenummer ${next.productNumber}`,
     });
     return null;
+  },
+});
+
+/** Downloads a catalog image so the browser can compress it like other product images. */
+export const fetchCatalogImage = action({
+  args: { url: v.string() },
+  returns: v.object({ bytes: v.bytes(), contentType: v.string() }),
+  handler: async (ctx, args) => {
+    const auth = await requireOrganization(ctx);
+    if (
+      auth.kioskModeEnabled ||
+      !hasPermission(auth.role, auth.permissions, "integrations.manage") ||
+      !hasPermission(auth.role, auth.permissions, "catalog.manage")
+    ) {
+      throw new ConvexError("Du har ikke adgang til at hente billeder");
+    }
+    await requireIntegrationEnabled(ctx, auth.organizationId, "gssupply");
+    return fetchGsSupplyImage(args.url);
   },
 });
 
