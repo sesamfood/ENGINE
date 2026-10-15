@@ -1,5 +1,10 @@
 import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/connections";
 import {
+  getGsSupplyLink,
+  getGsSupplySupplierId,
+  getProductUnitFactors,
+} from "./integrations/gssupply/lib/links";
+import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
@@ -23,6 +28,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { requireLocationAccess, requirePermission } from "./lib/auth";
 import { recordAudit } from "./lib/audit";
 import schema from "./schema";
@@ -425,6 +431,7 @@ export const listOperationalConsumption = query({
 
 const orderInputValidator = v.object({
   locationId: v.id("locations"),
+  supplierId: v.optional(v.id("suppliers")),
   lines: v.array(
     v.object({
       productId: v.id("products"),
@@ -439,6 +446,7 @@ const orderRowValidator = schema.doc("orderLines").pick(
   "productName",
   "unitName",
   "quantity",
+  "supplierProductNumber",
 );
 const historySummaryValidator = schema.doc("orders").pick(
   "_id",
@@ -449,6 +457,8 @@ const historySummaryValidator = schema.doc("orders").pick(
   "toDate",
   "bufferPercent",
   "itemCount",
+  "supplierName",
+  "email",
 );
 const historyDetailValidator = historySummaryValidator.extend({
   locationId: v.id("locations"),
@@ -474,6 +484,15 @@ async function prepareOrder(
     organizationId,
     args.locationId,
   );
+  const supplier = args.supplierId
+    ? await ctx.db.get("suppliers", args.supplierId)
+    : null;
+  if (args.supplierId && supplier?.organizationId !== organizationId) {
+    throw new ConvexError("Leverandøren blev ikke fundet. Opdatér siden.");
+  }
+  const catalogSupplier =
+    supplier !== null &&
+    supplier._id === (await getGsSupplySupplierId(ctx, organizationId));
   const rows = await Promise.all(
     args.lines.map(async (line) => {
       if (
@@ -489,14 +508,27 @@ async function prepareOrder(
         !product ||
         product.organizationId !== organizationId ||
         product.status !== "active" ||
-        product.defaultUnitId !== line.unitId ||
         !locationHasProduct(access, product._id)
       ) {
         throw new ConvexError(
           "Et produkt er ikke længere tilgængeligt på lokationen. Opdatér planen.",
         );
       }
-      const unit = await ctx.db.get("units", product.defaultUnitId);
+      // Catalog suppliers are ordered in the linked unit, others in the default unit.
+      const link = catalogSupplier
+        ? await getGsSupplyLink(ctx, organizationId, product._id)
+        : null;
+      const unitId = link?.unitId ?? product.defaultUnitId;
+      if (
+        (catalogSupplier && !link) ||
+        line.unitId !== unitId ||
+        (link && !(await getProductUnitFactors(ctx, product)).has(unitId))
+      ) {
+        throw new ConvexError(
+          "Et produkt er ikke længere koblet til leverandøren. Opdatér planen.",
+        );
+      }
+      const unit = await ctx.db.get("units", unitId);
       if (!unit || unit.organizationId !== organizationId)
         throw new ConvexError("Produktets enhed blev ikke fundet");
       return {
@@ -504,22 +536,28 @@ async function prepareOrder(
         productName: product.name,
         unitName: unit.name,
         quantity: line.quantity,
+        ...(link ? { supplierProductNumber: link.productNumber } : {}),
       };
     }),
   );
-  return { auth, rows };
+  return { auth, supplier, rows };
 }
 
 export const prepareExport = query({
   args: orderInputValidator.fields,
   returns: v.object({
     locationName: v.string(),
+    supplierName: v.optional(v.string()),
     rows: v.array(orderRowValidator),
   }),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "ordering.export");
-    const { auth, rows } = await prepareOrder(ctx, args);
-    return { locationName: auth.location.name, rows };
+    const { auth, supplier, rows } = await prepareOrder(ctx, args);
+    return {
+      locationName: auth.location.name,
+      ...(supplier ? { supplierName: supplier.name } : {}),
+      rows,
+    };
   },
 });
 
@@ -533,6 +571,8 @@ function historySummary(order: Doc<"orders">) {
     toDate: order.toDate,
     bufferPercent: order.bufferPercent,
     itemCount: order.itemCount,
+    supplierName: order.supplierName,
+    email: order.email,
   };
 }
 
@@ -541,11 +581,15 @@ export const placeOrder = mutation({
     fromDate: v.string(),
     coverageDays: v.number(),
     bufferPercent: v.number(),
+    sendEmail: v.optional(v.boolean()),
   }).fields,
   returns: v.id("orders"),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "ordering.place");
-    const { auth, rows } = await prepareOrder(ctx, args);
+    const { auth, supplier, rows } = await prepareOrder(ctx, args);
+    if (args.sendEmail && !supplier?.email) {
+      throw new ConvexError("Leverandøren har ingen e-mailadresse");
+    }
     if (
       !Number.isInteger(args.coverageDays) ||
       args.coverageDays < 1 ||
@@ -572,6 +616,12 @@ export const placeOrder = mutation({
       toDate: shiftOrderDate(args.fromDate, args.coverageDays - 1),
       bufferPercent: args.bufferPercent,
       itemCount: rows.length,
+      ...(supplier
+        ? { supplierId: supplier._id, supplierName: supplier.name }
+        : {}),
+      ...(args.sendEmail && supplier?.email
+        ? { email: { to: supplier.email, status: "pending" as const } }
+        : {}),
     };
     const orderId = await ctx.db.insert("orders", order);
     for (const row of rows) {
@@ -586,8 +636,11 @@ export const placeOrder = mutation({
       entityTable: "orders",
       entityId: orderId,
       locationId: args.locationId,
-      summary: `Bestilling afgivet med ${rows.length} produkter`,
+      summary: `Bestilling afgivet med ${rows.length} produkter${supplier ? ` hos ${supplier.name}` : ""}`,
     });
+    if (order.email) {
+      await ctx.scheduler.runAfter(0, internal.orderEmails.send, { orderId });
+    }
     return orderId;
   },
 });
@@ -648,12 +701,15 @@ async function readHistory(ctx: QueryCtx, orderId: Id<"orders">) {
   return {
     ...historySummary(order),
     locationId: order.locationId,
-    rows: lines.map(({ productId, productName, unitName, quantity }) => ({
-      productId,
-      productName,
-      unitName,
-      quantity,
-    })),
+    rows: lines.map(
+      ({ productId, productName, unitName, quantity, supplierProductNumber }) => ({
+        productId,
+        productName,
+        unitName,
+        quantity,
+        supplierProductNumber,
+      }),
+    ),
   };
 }
 

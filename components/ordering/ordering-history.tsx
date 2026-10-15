@@ -180,6 +180,24 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
             <dt className="text-muted-foreground">Produkter</dt>
             <dd>{numberFormatter.format(order.itemCount)}</dd>
           </div>
+          {order.supplierName ? (
+            <div>
+              <dt className="text-muted-foreground">Leverandør</dt>
+              <dd>{order.supplierName}</dd>
+            </div>
+          ) : null}
+          {order.email ? (
+            <div>
+              <dt className="text-muted-foreground">E-mail</dt>
+              <dd className={order.email.status === "failed" ? "text-destructive" : undefined}>
+                {order.email.status === "sent"
+                  ? `Sendt til ${order.email.to}`
+                  : order.email.status === "pending"
+                    ? `Sendes til ${order.email.to}`
+                    : `Kunne ikke sendes til ${order.email.to}${order.email.failureMessage ? `: ${order.email.failureMessage}` : ""}`}
+              </dd>
+            </div>
+          ) : null}
         </dl>
         <div className="shrink-0 overflow-hidden rounded-lg border">
           <Table>
@@ -198,6 +216,11 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
                     className="whitespace-normal break-words"
                   >
                     {row.productName}
+                    {row.supplierProductNumber ? (
+                      <div className="text-xs font-normal text-muted-foreground">
+                        Varenummer {row.supplierProductNumber}
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell appearance="numeric" className="text-right">
                     {numberFormatter.format(row.quantity)}
@@ -267,6 +290,7 @@ function HistoryList({
                   <TableHead>Afgivet</TableHead>
                   <TableHead>Dækker perioden</TableHead>
                   <TableHead>Afgivet af</TableHead>
+                  <TableHead>Leverandør</TableHead>
                   <TableHead className="text-right">Produkter</TableHead>
                 </TableRow>
               </TableHeader>
@@ -296,6 +320,9 @@ function HistoryList({
                     </TableCell>
                     <TableCell className="max-w-60 whitespace-normal break-words">
                       {order.createdByName}
+                    </TableCell>
+                    <TableCell className="max-w-60 whitespace-normal break-words">
+                      {order.supplierName ?? "Ingen"}
                     </TableCell>
                     <TableCell appearance="numeric" className="text-right">
                       {numberFormatter.format(order.itemCount)}
@@ -333,7 +360,10 @@ function HistoryList({
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-col gap-1">
-                      <p>{numberFormatter.format(order.itemCount)} produkter</p>
+                      <p>
+                        {numberFormatter.format(order.itemCount)} produkter
+                        {order.supplierName ? ` hos ${order.supplierName}` : ""}
+                      </p>
                       <p className="break-words text-muted-foreground">
                         Afgivet af {order.createdByName}
                       </p>
@@ -426,9 +456,11 @@ function History({ organizationId }: { organizationId: string }) {
           "Afgivet",
           "Afgivet af",
           "Lokation",
+          "Leverandør",
           "Fra dato",
           "Til dato",
           "Produkt-id",
+          "Varenummer",
           "Produkt",
           "Mængde",
           "Enhed",
@@ -480,9 +512,11 @@ function History({ organizationId }: { organizationId: string }) {
               timestampFormatter.format(order.createdAt),
               order.createdByName,
               order.locationName,
+              order.supplierName ?? "",
               order.fromDate,
               order.toDate,
               row.productId,
+              row.supplierProductNumber ?? "",
               row.productName,
               String(row.quantity).replace(".", ","),
               row.unitName,

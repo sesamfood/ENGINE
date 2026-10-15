@@ -1,4 +1,5 @@
 import { productSearchScore } from "../lib/product-search";
+import { getGsSupplyLink } from "./integrations/gssupply/lib/links";
 import type { Expiry } from "../lib/expiry";
 import { expiryValidator, requireValidExpiry } from "./lib/expiry";
 import {
@@ -1057,6 +1058,14 @@ async function permanentlyDeleteProduct(
   }
   for (const membership of categoryMemberships) {
     await ctx.db.delete("productCategories", membership._id);
+  }
+  const gsSupplyLink = await getGsSupplyLink(
+    ctx,
+    product.organizationId,
+    product._id,
+  );
+  if (gsSupplyLink) {
+    await ctx.db.delete("gsSupplyProductLinks", gsSupplyLink._id);
   }
   await scrubProductFromCountOrder(ctx, product.organizationId, product._id);
   await ctx.scheduler.runAfter(0, internal.waste.cleanupProductData, {
@@ -3003,6 +3012,17 @@ export async function mergeUnitsWithAuth(
     });
   }
 
+  const gsSupplyLinks = await ctx.db
+    .query("gsSupplyProductLinks")
+    .withIndex("by_organizationId_and_unitId", (q) =>
+      q.eq("organizationId", organizationId).eq("unitId", sourceUnit._id),
+    )
+    .take(MAX_CHILD_ROWS);
+  for (const link of gsSupplyLinks) {
+    await ctx.db.patch("gsSupplyProductLinks", link._id, {
+      unitId: targetUnit._id,
+    });
+  }
   await ctx.db.delete("units", sourceUnit._id);
   if (sourceProductUnits.length > 0) {
     await invalidateSalesStockMappings(ctx, organizationId);
@@ -3033,6 +3053,16 @@ export async function deleteUnitWithAuth(
     )
     .first();
   if (productUnit) throw new ConvexError("Enheden er stadig i brug");
+  // Links to units a product no longer has are already unusable.
+  const gsSupplyLinks = await ctx.db
+    .query("gsSupplyProductLinks")
+    .withIndex("by_organizationId_and_unitId", (q) =>
+      q.eq("organizationId", organizationId).eq("unitId", unit._id),
+    )
+    .take(MAX_CHILD_ROWS);
+  for (const link of gsSupplyLinks) {
+    await ctx.db.delete("gsSupplyProductLinks", link._id);
+  }
   await ctx.db.delete("units", unit._id);
   await recordAudit(ctx, auth, {
     action: "catalog.unitDeleted",

@@ -15,7 +15,7 @@ export const isEnabled = internalQuery({
 
 export const getState = query({
   args: {},
-  returns: v.object({ organizationId: v.string(), workfeed: v.boolean(), onlinepos: v.boolean(), economic: v.boolean(), wolt: v.boolean() }),
+  returns: v.object({ organizationId: v.string(), workfeed: v.boolean(), onlinepos: v.boolean(), economic: v.boolean(), wolt: v.boolean(), gssupply: v.boolean() }),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
     return { organizationId, ...await getIntegrationState(ctx, organizationId) };
@@ -38,7 +38,7 @@ export const setEnabled = mutation({
       case "workfeed": await applyWorkfeedInstallation(ctx, organizationId, enabled, updatedAt); break;
       case "onlinepos": await applyOnlinePosInstallation(ctx, organizationId, enabled, updatedAt); break;
       case "wolt": await applyWoltInstallation(ctx, organizationId, enabled, updatedAt); break;
-      case "economic": break;
+      case "economic": case "gssupply": break;
     }
     await recordAudit(ctx, auth, {
       action: enabled ? "integration.enabled" : "integration.disabled",

@@ -2,6 +2,7 @@ import { legacyWorkfeedEnabled } from "./workfeed/lifecycle";
 import { legacyOnlinePosEnabled } from "./onlinepos/lifecycle";
 import { legacyEconomicEnabled } from "./economic/lifecycle";
 import { legacyWoltEnabled } from "./wolt/lifecycle";
+import { legacyGsSupplyEnabled } from "./gssupply/lifecycle";
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "../_generated/api";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
@@ -11,18 +12,20 @@ export const integrationIdValidator = v.union(
   v.literal("onlinepos"),
   v.literal("economic"),
   v.literal("wolt"),
+  v.literal("gssupply"),
 );
 
 export type IntegrationId = Infer<typeof integrationIdValidator>;
 
 export async function getIntegrationState(ctx: QueryCtx | MutationCtx, organizationId: string) {
-  const [workfeed, onlinepos, economic, wolt] = await Promise.all([
+  const [workfeed, onlinepos, economic, wolt, gssupply] = await Promise.all([
     isIntegrationEnabled(ctx, organizationId, "workfeed"),
     isIntegrationEnabled(ctx, organizationId, "onlinepos"),
     isIntegrationEnabled(ctx, organizationId, "economic"),
     isIntegrationEnabled(ctx, organizationId, "wolt"),
+    isIntegrationEnabled(ctx, organizationId, "gssupply"),
   ]);
-  return { workfeed, onlinepos, economic, wolt };
+  return { workfeed, onlinepos, economic, wolt, gssupply };
 }
 
 export async function isIntegrationEnabled(
@@ -41,6 +44,7 @@ export async function isIntegrationEnabled(
     case "onlinepos": return legacyOnlinePosEnabled(ctx, organizationId);
     case "economic": return legacyEconomicEnabled(ctx, organizationId);
     case "wolt": return legacyWoltEnabled(ctx, organizationId);
+    case "gssupply": return legacyGsSupplyEnabled();
   }
 }
 

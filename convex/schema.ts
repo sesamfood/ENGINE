@@ -2,6 +2,7 @@ import { woltTables } from "./integrations/wolt/schema";
 import { economicTables } from "./integrations/economic/schema";
 import { onlineposTables } from "./integrations/onlinepos/schema";
 import { workfeedTables } from "./integrations/workfeed/schema";
+import { gssupplyTables } from "./integrations/gssupply/schema";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
@@ -43,6 +44,7 @@ export default defineSchema({
   ...onlineposTables,
   ...economicTables,
   ...woltTables,
+  ...gssupplyTables,
   integrationSecrets: defineTable({
     organizationId: v.string(),
     key: v.string(),
@@ -218,7 +220,7 @@ export default defineSchema({
 
   integrationSettings: defineTable({
     organizationId: v.string(),
-    integration: v.union(v.literal("workfeed"), v.literal("onlinepos"), v.literal("economic"), v.literal("wolt")),
+    integration: v.union(v.literal("workfeed"), v.literal("onlinepos"), v.literal("economic"), v.literal("wolt"), v.literal("gssupply")),
     enabled: v.boolean(),
     updatedAt: v.number(),
   }).index("by_organizationId_and_integration", ["organizationId", "integration"]),
@@ -1132,6 +1134,17 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
+  suppliers: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    normalizedName: v.string(),
+    email: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_normalizedName", [
+    "organizationId",
+    "normalizedName",
+  ]),
+
   orders: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
@@ -1143,6 +1156,19 @@ export default defineSchema({
     toDate: v.string(),
     bufferPercent: v.number(),
     itemCount: v.number(),
+    supplierId: v.optional(v.id("suppliers")),
+    supplierName: v.optional(v.string()),
+    email: v.optional(
+      v.object({
+        to: v.string(),
+        status: v.union(
+          v.literal("pending"),
+          v.literal("sent"),
+          v.literal("failed"),
+        ),
+        failureMessage: v.optional(v.string()),
+      }),
+    ),
   }).index("by_organizationId_and_locationId_and_createdAt", [
     "organizationId",
     "locationId",
@@ -1156,6 +1182,7 @@ export default defineSchema({
     productName: v.string(),
     unitName: v.string(),
     quantity: v.number(),
+    supplierProductNumber: v.optional(v.string()),
   }).index("by_organizationId_and_orderId", ["organizationId", "orderId"]),
 
   goodsReceiptSettings: defineTable({

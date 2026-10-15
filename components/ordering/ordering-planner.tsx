@@ -70,6 +70,16 @@ import { api } from "@/convex/_generated/api";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
 import { downloadOrderCsv } from "@/lib/ordering-csv";
+import { useGsSupplyCatalog } from "@/integrations/gssupply/client";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
 import {
   forecastOrder,
@@ -82,6 +92,11 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 const numberFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
 });
+const priceFormatter = new Intl.NumberFormat("da-DK", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const NO_SUPPLIER = "none";
 const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
 
 export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
@@ -126,6 +141,8 @@ function Planner({
   const [exporting, setExporting] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [supplierValue, setSupplierValue] = useState(NO_SUPPLIER);
+  const [sendEmail, setSendEmail] = useState(true);
   const busy = exporting || placing;
   const submitting = useRef(false);
   const convex = useConvex();
@@ -136,6 +153,28 @@ function Planner({
     canPlan ? {} : "skip",
   );
   const includeRecipes = settings?.includeRecipes ?? false;
+  const suppliers = useQuery(api.suppliers.list, canPlan ? {} : "skip");
+  const supplier =
+    suppliers?.find((item) => item.id === supplierValue) ?? null;
+  const catalogSupplier = supplier?.catalog === "gssupply";
+  const supplierLinks = useQuery(
+    api.integrations.gssupply.api.listOrderingLinks,
+    canPlan && locationId && catalogSupplier ? { locationId } : "skip",
+  );
+  const { products: catalog, reload: reloadCatalog } =
+    useGsSupplyCatalog(catalogSupplier);
+  const linksByProduct = useMemo(
+    () =>
+      new Map(
+        (supplierLinks?.links ?? []).map((link) => [link.productId, link]),
+      ),
+    [supplierLinks],
+  );
+  const catalogByNumber = useMemo(
+    () =>
+      new Map((catalog ?? []).map((item) => [item.productNumber, item])),
+    [catalog],
+  );
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -263,6 +302,8 @@ function Planner({
   const validSettings = validCoverage && validBuffer;
   const loading =
     settings === undefined ||
+    suppliers === undefined ||
+    (catalogSupplier && (supplierLinks === undefined || catalog === undefined)) ||
     !context ||
     products === undefined ||
     consumption === undefined ||
@@ -311,27 +352,63 @@ function Planner({
       bufferPercent,
     ],
   );
-  const rows = forecasts
-    .filter((product) => includeRecipes || !product.hasIngredients)
-    .map((product) => {
-      const key = `${locationId}:${product.id}:${product.unitId}`;
-      const input = overrides[key] ?? String(product.forecast.suggested ?? 0);
-      return {
+  const rows = forecasts.flatMap((product) => {
+    // Catalog suppliers list their linked products, ordered in whole packs.
+    const link = catalogSupplier ? linksByProduct.get(product.id) : undefined;
+    if (catalogSupplier ? !link : !includeRecipes && product.hasIngredients) {
+      return [];
+    }
+    const orderUnitId = link?.unitId ?? product.unitId;
+    const suggested =
+      product.forecast.suggested === null || !link
+        ? product.forecast.suggested
+        : Math.ceil(product.forecast.suggested / link.factorToDefault - 1e-9);
+    const key = `${locationId}:${product.id}:${orderUnitId}`;
+    const input = overrides[key] ?? String(suggested ?? 0);
+    const parsed = parseOrderQuantity(input);
+    const quantity =
+      link && parsed !== null && !Number.isInteger(parsed) ? null : parsed;
+    const catalogItem = link
+      ? catalogByNumber.get(link.productNumber)
+      : undefined;
+    return [
+      {
         ...product,
         key,
         input,
-        quantity: parseOrderQuantity(input),
+        quantity,
+        suggested,
+        orderUnitId,
+        orderUnitName: link?.unitName ?? product.unitName,
+        productNumber: link?.productNumber ?? null,
+        catalogItem,
         edited: overrides[key] !== undefined,
-      };
-    });
+      },
+    ];
+  });
   const planned = rows.filter(
     (row) => row.quantity !== null && row.quantity > 0,
   );
   const invalidQuantity = rows.some((row) => row.quantity === null);
+  const orderTotal = planned.reduce(
+    (sum, row) => sum + (row.catalogItem?.price ?? 0) * (row.quantity ?? 0),
+    0,
+  );
+  const missingPrices = planned.some((row) => row.productNumber && !row.catalogItem);
+  const orderLines = planned.flatMap((row) =>
+    row.quantity === null
+      ? []
+      : [{ productId: row.id, unitId: row.orderUnitId, quantity: row.quantity }],
+  );
   const visible = searchProducts(rows, search, (row) => ({
     name: row.name,
     categoryPath: row.category,
   }));
+
+  const supplierItems = [
+    { value: NO_SUPPLIER, label: "Ingen leverandør" },
+    ...(suppliers ?? []).map((item) => ({ value: item.id, label: item.name })),
+  ];
 
   const header = (
     <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
@@ -383,17 +460,8 @@ function Planner({
     try {
       const result = await convex.query(api.ordering.prepareExport, {
         locationId,
-        lines: planned.flatMap((row) =>
-          row.quantity === null
-            ? []
-            : [
-                {
-                  productId: row.id,
-                  unitId: row.unitId,
-                  quantity: row.quantity,
-                },
-              ],
-        ),
+        supplierId: supplier?.id,
+        lines: orderLines,
       });
       if (!mounted.current) return;
       downloadOrderCsv({
@@ -429,21 +497,24 @@ function Planner({
     submitting.current = true;
     setPlacing(true);
     try {
+      const emailed = Boolean(supplier?.email && sendEmail);
       await placeOrder({
         locationId,
+        supplierId: supplier?.id,
+        sendEmail: emailed,
         fromDate: context.today,
         coverageDays,
         bufferPercent,
-        lines: planned.flatMap((row) =>
-          row.quantity === null
-            ? []
-            : [{ productId: row.id, unitId: row.unitId, quantity: row.quantity }],
-        ),
+        lines: orderLines,
       });
       if (!mounted.current) return;
       setOrderingLocation(organizationId, locationId);
       setConfirming(false);
-      toast.success("Bestillingen er gemt i bestillingshistorikken");
+      toast.success(
+        emailed
+          ? `Bestillingen er gemt og sendes til ${supplier?.email}`
+          : "Bestillingen er gemt i bestillingshistorikken",
+      );
       router.push("/ordering/history");
     } catch (error) {
       if (mounted.current) {
@@ -459,7 +530,7 @@ function Planner({
     return (
       <Field data-invalid={row.quantity === null} className="min-w-32">
         <FieldLabel className="sr-only" htmlFor={`quantity-${row.id}`}>
-          Bestil {row.name} i {row.unitName}
+          Bestil {row.name} i {row.orderUnitName}
         </FieldLabel>
         <Input
           id={`quantity-${row.id}`}
@@ -524,6 +595,28 @@ function Planner({
             </CardHeader>
             <CardContent>
               <FieldGroup appearance="relaxed" className="sm:flex-row sm:items-end">
+                <Field className="sm:max-w-64">
+                  <FieldLabel htmlFor="ordering-supplier">Leverandør</FieldLabel>
+                  <Select
+                    items={supplierItems}
+                    value={supplier ? supplier.id : NO_SUPPLIER}
+                    onValueChange={(value) => setSupplierValue(value ?? NO_SUPPLIER)}
+                    disabled={busy || suppliers === undefined}
+                  >
+                    <SelectTrigger id="ordering-supplier" className="h-11 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {supplierItems.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <Field className="sm:max-w-48" data-invalid={!validCoverage}>
                   <div className="flex items-center gap-1">
                     <FieldLabel htmlFor="ordering-days">
@@ -672,8 +765,23 @@ function Planner({
             <Alert variant="destructive">
               <AlertTitle>Kontrollér mængderne</AlertTitle>
               <AlertDescription>
-                Vælg 1 til 28 dage, en buffer fra 0 til 100 % og
-                bestillingsmængder fra 0 til 1.000.000 med højst seks decimaler.
+                {catalogSupplier
+                  ? "Vælg 1 til 28 dage, en buffer fra 0 til 100 % og hele pakker fra 0 til 1.000.000."
+                  : "Vælg 1 til 28 dage, en buffer fra 0 til 100 % og bestillingsmængder fra 0 til 1.000.000 med højst seks decimaler."}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {catalogSupplier && catalog === null ? (
+            <Alert variant="destructive">
+              <AlertTitle>GS Supply-kataloget kunne ikke hentes</AlertTitle>
+              <AlertDescription>
+                <div className="flex flex-col items-start gap-3">
+                  Priser, lager og leveringstid vises ikke. Du kan stadig bestille de koblede Produkter.
+                  <Button variant="outline" onClick={reloadCatalog}>
+                    <RefreshCwIcon data-icon="inline-start" />
+                    Prøv igen
+                  </Button>
+                </div>
               </AlertDescription>
             </Alert>
           ) : null}
@@ -707,7 +815,9 @@ function Planner({
                 </EmptyMedia>
                 <EmptyTitle>Ingen produkter at vise</EmptyTitle>
                 <EmptyDescription>
-                  Prøv en anden søgning, eller tilpas filtrene.
+                  {catalogSupplier && !rows.length
+                    ? "Ingen Produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
+                    : "Prøv en anden søgning, eller tilpas filtrene."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -719,6 +829,7 @@ function Planner({
                     <TableHead>Produkt</TableHead>
                     <TableHead>Lager</TableHead>
                     <TableHead>Forventet forbrug</TableHead>
+                    {catalogSupplier ? <TableHead>Pris pr. pakke</TableHead> : null}
                     <TableHead>Forslag</TableHead>
                     <TableHead className="w-44">Bestil</TableHead>
                   </TableRow>
@@ -740,7 +851,8 @@ function Planner({
                           <div className="min-w-0">
                             <div className="font-medium">{row.name}</div>
                             <div className="text-sm text-muted-foreground">
-                              {row.category} · {row.unitName}
+                              {row.productNumber ? `${row.productNumber} · ` : ""}
+                              {row.category} · {row.orderUnitName}
                             </div>
                             {row.hasIngredients ? (
                               <Badge variant="secondary">
@@ -780,10 +892,45 @@ function Planner({
                           </div>
                         ) : null}
                       </TableCell>
+                      {catalogSupplier ? (
+                        <TableCell className="whitespace-normal">
+                          {row.catalogItem ? (
+                            <>
+                              {priceFormatter.format(row.catalogItem.price)}
+                              <div className="text-xs text-muted-foreground">
+                                {numberFormatter.format(row.catalogItem.unitAmount)} stk. pr. pakke
+                              </div>
+                              {row.catalogItem.leadTimeDays > 1 ? (
+                                <Badge variant="secondary">
+                                  Leveringstid {row.catalogItem.leadTimeDays} dage
+                                </Badge>
+                              ) : null}
+                              {(row.quantity ?? 0) > row.catalogItem.availableQuantity ? (
+                                <div className="text-xs font-medium text-destructive">
+                                  {row.catalogItem.availableQuantity > 0
+                                    ? `Kun ${numberFormatter.format(row.catalogItem.availableQuantity)} på lager hos GS Supply`
+                                    : "Ikke på lager hos GS Supply"}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : catalog ? (
+                            <span className="text-xs font-medium text-destructive">
+                              Ikke i kataloget
+                            </span>
+                          ) : (
+                            "Ukendt"
+                          )}
+                        </TableCell>
+                      ) : null}
                       <TableCell>
-                        {row.forecast.suggested === null
+                        {row.suggested === null
                           ? "Angiv manuelt"
-                          : numberFormatter.format(row.forecast.suggested)}
+                          : numberFormatter.format(row.suggested)}
+                        {row.productNumber ? (
+                          <div className="text-xs text-muted-foreground">
+                            {row.orderUnitName}
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell>{quantityInput(row)}</TableCell>
                     </TableRow>
@@ -810,6 +957,9 @@ function Planner({
               <div className="flex items-center gap-1">
                 <p className="font-medium">
                   {planned.length} produkter i bestillingen
+                  {catalogSupplier && catalog
+                    ? ` · ${priceFormatter.format(orderTotal)} kr.${missingPrices ? " (uden ukendte priser)" : ""}`
+                    : ""}
                 </p>
                 <HelpTooltip
                   label="produkter i bestillingen"
@@ -871,11 +1021,27 @@ function Planner({
               <AlertDialogHeader>
                 <AlertDialogTitle>Afgiv bestillingen?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Bestillingen med {planned.length} produkter gemmes i
+                  Bestillingen med {planned.length} produkter
+                  {supplier ? ` hos ${supplier.name}` : ""} gemmes i
                   bestillingshistorikken for {locations.find((location) => location.id === locationId)?.name}.
-                  Den sendes ikke automatisk til en leverandør.
+                  {supplier?.email
+                    ? ""
+                    : " Den sendes ikke automatisk til en leverandør."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              {supplier?.email ? (
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="ordering-send-email"
+                    checked={sendEmail}
+                    onCheckedChange={(checked) => setSendEmail(checked === true)}
+                    disabled={placing}
+                  />
+                  <FieldLabel htmlFor="ordering-send-email">
+                    Send bestillingen til {supplier.email}
+                  </FieldLabel>
+                </Field>
+              ) : null}
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={placing}>Annullér</AlertDialogCancel>
                 <AlertDialogAction

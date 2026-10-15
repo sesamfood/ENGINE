@@ -3,6 +3,7 @@
 import { useIntegrations } from "@/integrations/use-integrations";
 
 import { OnlinePosMasterSelect } from "@/integrations/onlinepos/client";
+import { GsSupplyProductLinkField } from "@/integrations/gssupply/client";
 
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { ExpiryField } from "@/components/catalog/expiry-field";
@@ -1064,6 +1065,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   onlinePosProducts={onlinePosProducts}
                   onRetry={() => setOnlinePosProducts(undefined)}
                 />
+              ) : null}
+
+              {productId ? (
+                <GsSupplyProductLinkField productId={productId} productName={name} />
               ) : null}
 
               <Field

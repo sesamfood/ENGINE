@@ -1,0 +1,479 @@
+import { ConvexError, v } from "convex/values";
+import { internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
+import {
+  action,
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../../_generated/server";
+import { hasPermission } from "../../../lib/auth-permissions";
+import { recordAudit } from "../../lib/audit";
+import {
+  requireAllLocationAccess,
+  requireHumanPrincipal,
+  requireIntegrationManager,
+  requireLocationAccess,
+  requireOrganization,
+} from "../../lib/auth";
+import { getProductCategoryIds } from "../../lib/productCategories";
+import {
+  decryptCredential,
+  encryptCredential,
+  ensureOrganizationCredentialKey,
+} from "../credentials";
+import { requireIntegrationEnabled } from "../state";
+import {
+  catalogUrlPreview,
+  fetchGsSupplyCatalog,
+  gsSupplyCatalogProductValidator,
+  parseCatalogUrl,
+  type GsSupplyCatalogProduct,
+} from "./lib/api";
+import {
+  getGsSupplyConnection,
+  getGsSupplyLink,
+  getGsSupplySupplierId,
+  getProductUnitFactors,
+  MAX_LINKS,
+} from "./lib/links";
+
+const MAX_PRODUCTS = 500;
+const MAX_SUPPLIERS = 100;
+const PRODUCT_NUMBER = /^[\w.-]{1,50}$/;
+
+async function requireManager(ctx: QueryCtx | MutationCtx) {
+  const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+  requireAllLocationAccess(auth);
+  await requireIntegrationEnabled(ctx, auth.organizationId, "gssupply");
+  return auth;
+}
+
+const unitOptionValidator = v.object({
+  id: v.id("units"),
+  name: v.string(),
+  factorToDefault: v.number(),
+});
+
+async function unitOptions(ctx: QueryCtx, factors: Map<Id<"units">, number>) {
+  const units = await Promise.all(
+    [...factors].map(async ([unitId, factorToDefault]) => {
+      const unit = await ctx.db.get("units", unitId);
+      return unit ? { id: unit._id, name: unit.name, factorToDefault } : null;
+    }),
+  );
+  return units
+    .filter((unit) => unit !== null)
+    .sort((a, b) => a.factorToDefault - b.factorToDefault);
+}
+
+const linkValidator = v.object({
+  productNumber: v.string(),
+  productName: v.string(),
+  unitId: v.id("units"),
+});
+
+export const getSettings = query({
+  args: {},
+  returns: v.object({
+    organizationId: v.string(),
+    connection: v.union(
+      v.object({
+        catalogUrlPreview: v.string(),
+        supplierId: v.union(v.id("suppliers"), v.null()),
+        connectedAt: v.number(),
+      }),
+      v.null(),
+    ),
+    suppliers: v.array(v.object({ id: v.id("suppliers"), name: v.string() })),
+  }),
+  handler: async (ctx) => {
+    const auth = await requireManager(ctx);
+    const [connection, suppliers] = await Promise.all([
+      getGsSupplyConnection(ctx, auth.organizationId),
+      ctx.db
+        .query("suppliers")
+        .withIndex("by_organizationId_and_normalizedName", (q) =>
+          q.eq("organizationId", auth.organizationId),
+        )
+        .take(MAX_SUPPLIERS),
+    ]);
+    return {
+      organizationId: auth.organizationId,
+      connection: connection
+        ? {
+            catalogUrlPreview: connection.catalogUrlPreview,
+            supplierId: connection.supplierId ?? null,
+            connectedAt: connection.connectedAt,
+          }
+        : null,
+      suppliers: suppliers.map((supplier) => ({
+        id: supplier._id,
+        name: supplier.name,
+      })),
+    };
+  },
+});
+
+export const saveConnection = internalMutation({
+  args: {
+    organizationId: v.string(),
+    encryptedCatalogUrl: v.string(),
+    catalogUrlPreview: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireManager(ctx);
+    if (auth.organizationId !== args.organizationId) {
+      throw new ConvexError("Organisationen er ændret. Prøv igen");
+    }
+    const current = await getGsSupplyConnection(ctx, auth.organizationId);
+    const now = Date.now();
+    let id;
+    if (current) {
+      id = current._id;
+      await ctx.db.patch("gsSupplyConnections", id, {
+        encryptedCatalogUrl: args.encryptedCatalogUrl,
+        catalogUrlPreview: args.catalogUrlPreview,
+        updatedAt: now,
+      });
+    } else {
+      id = await ctx.db.insert("gsSupplyConnections", {
+        organizationId: auth.organizationId,
+        encryptedCatalogUrl: args.encryptedCatalogUrl,
+        catalogUrlPreview: args.catalogUrlPreview,
+        connectedAt: now,
+        updatedAt: now,
+      });
+    }
+    await recordAudit(ctx, auth, {
+      action: "gssupply.connected",
+      entityTable: "gsSupplyConnections",
+      entityId: id,
+      summary: "GS Supply-kataloget er forbundet",
+    });
+    return null;
+  },
+});
+
+export const connect = action({
+  args: { expectedOrganizationId: v.string(), catalogUrl: v.string() },
+  returns: v.number(),
+  handler: async (ctx, args): Promise<number> => {
+    const auth = requireHumanPrincipal(await requireIntegrationManager(ctx));
+    requireAllLocationAccess(auth);
+    if (auth.organizationId !== args.expectedOrganizationId) {
+      throw new ConvexError("Organisationen er ændret. Prøv igen");
+    }
+    await requireIntegrationEnabled(ctx, auth.organizationId, "gssupply");
+    const url = parseCatalogUrl(args.catalogUrl);
+    const products = await fetchGsSupplyCatalog(url);
+    const key = await ctx.runMutation(
+      internal.integrations.credentials.ensureKey,
+      { organizationId: auth.organizationId },
+    );
+    await ctx.runMutation(internal.integrations.gssupply.api.saveConnection, {
+      organizationId: auth.organizationId,
+      encryptedCatalogUrl: await encryptCredential(
+        url.toString(),
+        auth.organizationId,
+        key,
+      ),
+      catalogUrlPreview: catalogUrlPreview(url),
+    });
+    return products.length;
+  },
+});
+
+export const disconnect = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const auth = await requireManager(ctx);
+    const connection = await getGsSupplyConnection(ctx, auth.organizationId);
+    if (!connection) return null;
+    // Product links stay so a reconnect keeps the setup.
+    await ctx.db.delete("gsSupplyConnections", connection._id);
+    await recordAudit(ctx, auth, {
+      action: "gssupply.disconnected",
+      entityTable: "gsSupplyConnections",
+      entityId: connection._id,
+      summary: "GS Supply-kataloget er afbrudt",
+    });
+    return null;
+  },
+});
+
+export const setSupplier = mutation({
+  args: { supplierId: v.union(v.id("suppliers"), v.null()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireManager(ctx);
+    const connection = await getGsSupplyConnection(ctx, auth.organizationId);
+    if (!connection) throw new ConvexError("Forbind GS Supply først");
+    if (args.supplierId) {
+      const supplier = await ctx.db.get("suppliers", args.supplierId);
+      if (!supplier || supplier.organizationId !== auth.organizationId) {
+        throw new ConvexError("Leverandøren blev ikke fundet");
+      }
+    }
+    await ctx.db.patch("gsSupplyConnections", connection._id, {
+      supplierId: args.supplierId ?? undefined,
+      updatedAt: Date.now(),
+    });
+    await recordAudit(ctx, auth, {
+      action: "gssupply.supplierChanged",
+      entityTable: "gsSupplyConnections",
+      entityId: connection._id,
+      summary: args.supplierId
+        ? "GS Supply er koblet til en leverandør"
+        : "GS Supply er ikke længere koblet til en leverandør",
+    });
+    return null;
+  },
+});
+
+export const getCatalogUrl = internalMutation({
+  args: { organizationId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, { organizationId }) => {
+    await requireIntegrationEnabled(ctx, organizationId, "gssupply");
+    const connection = await getGsSupplyConnection(ctx, organizationId);
+    if (!connection) return null;
+    const key = await ensureOrganizationCredentialKey(ctx, organizationId);
+    return decryptCredential(connection.encryptedCatalogUrl, organizationId, key);
+  },
+});
+
+/** Reads the live catalog. Used by ordering and by product link setup. */
+export const fetchCatalog = action({
+  args: {},
+  returns: v.array(gsSupplyCatalogProductValidator),
+  handler: async (ctx): Promise<GsSupplyCatalogProduct[]> => {
+    const auth = await requireOrganization(ctx);
+    const canOrder =
+      !auth.kioskModeEnabled &&
+      hasPermission(auth.role, auth.permissions, "ordering.plan");
+    const canManage =
+      !auth.kioskModeEnabled &&
+      hasPermission(auth.role, auth.permissions, "integrations.manage");
+    if (!canOrder && !canManage) {
+      throw new ConvexError("Du har ikke adgang til GS Supply-kataloget");
+    }
+    const catalogUrl: string | null = await ctx.runMutation(
+      internal.integrations.gssupply.api.getCatalogUrl,
+      { organizationId: auth.organizationId },
+    );
+    if (!catalogUrl) throw new ConvexError("GS Supply er ikke forbundet");
+    return fetchGsSupplyCatalog(parseCatalogUrl(catalogUrl));
+  },
+});
+
+export const listLinks = query({
+  args: {},
+  returns: v.object({
+    products: v.array(
+      v.object({
+        id: v.id("products"),
+        name: v.string(),
+        categoryIds: v.array(v.id("categories")),
+        units: v.array(unitOptionValidator),
+        link: v.union(linkValidator, v.null()),
+      }),
+    ),
+    limitReached: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const { organizationId } = await requireManager(ctx);
+    const [products, links] = await Promise.all([
+      ctx.db
+        .query("products")
+        .withIndex("by_organizationId_and_status_and_normalizedName", (q) =>
+          q.eq("organizationId", organizationId).eq("status", "active"),
+        )
+        .take(MAX_PRODUCTS + 1),
+      ctx.db
+        .query("gsSupplyProductLinks")
+        .withIndex("by_organizationId_and_productId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .take(MAX_LINKS),
+    ]);
+    const byProductId = new Map(links.map((link) => [link.productId, link]));
+    return {
+      products: await Promise.all(
+        products.slice(0, MAX_PRODUCTS).map(async (product) => {
+          const link = byProductId.get(product._id);
+          return {
+            id: product._id,
+            name: product.name,
+            categoryIds: await getProductCategoryIds(ctx, product),
+            units: await unitOptions(
+              ctx,
+              await getProductUnitFactors(ctx, product),
+            ),
+            link: link
+              ? {
+                  productNumber: link.productNumber,
+                  productName: link.productName,
+                  unitId: link.unitId,
+                }
+              : null,
+          };
+        }),
+      ),
+      limitReached: products.length > MAX_PRODUCTS,
+    };
+  },
+});
+
+export const getProductLink = query({
+  args: { productId: v.id("products") },
+  returns: v.union(
+    v.object({
+      units: v.array(unitOptionValidator),
+      link: v.union(linkValidator, v.null()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireManager(ctx);
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) return null;
+    const link = await getGsSupplyLink(ctx, organizationId, product._id);
+    return {
+      units: await unitOptions(ctx, await getProductUnitFactors(ctx, product)),
+      link: link
+        ? {
+            productNumber: link.productNumber,
+            productName: link.productName,
+            unitId: link.unitId,
+          }
+        : null,
+    };
+  },
+});
+
+export const setProductLink = mutation({
+  args: {
+    productId: v.id("products"),
+    link: v.union(linkValidator, v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireManager(ctx);
+    const { organizationId } = auth;
+    const product = await ctx.db.get("products", args.productId);
+    if (!product || product.organizationId !== organizationId) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    const current = await getGsSupplyLink(ctx, organizationId, product._id);
+    if (!args.link) {
+      if (current) await ctx.db.delete("gsSupplyProductLinks", current._id);
+    } else {
+      const productNumber = args.link.productNumber.trim();
+      const productName = args.link.productName.trim().slice(0, 300);
+      if (!PRODUCT_NUMBER.test(productNumber) || !productName) {
+        throw new ConvexError("GS Supply-produktet er ugyldigt");
+      }
+      const factors = await getProductUnitFactors(ctx, product);
+      if (!factors.has(args.link.unitId)) {
+        throw new ConvexError("Vælg en af produktets enheder");
+      }
+      const taken = await ctx.db
+        .query("gsSupplyProductLinks")
+        .withIndex("by_organizationId_and_productNumber", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productNumber", productNumber),
+        )
+        .first();
+      if (taken && taken.productId !== product._id) {
+        const other = await ctx.db.get("products", taken.productId);
+        throw new ConvexError(
+          `GS Supply-produktet er allerede koblet til ${other?.name ?? "et andet produkt"}`,
+        );
+      }
+      const next = { productNumber, productName, unitId: args.link.unitId };
+      if (current) {
+        await ctx.db.patch("gsSupplyProductLinks", current._id, next);
+      } else {
+        await ctx.db.insert("gsSupplyProductLinks", {
+          organizationId,
+          productId: product._id,
+          ...next,
+        });
+      }
+    }
+    await recordAudit(ctx, auth, {
+      action: "gssupply.productLinkChanged",
+      entityTable: "products",
+      entityId: product._id,
+      summary: args.link
+        ? `${product.name} er koblet til GS Supply-varenummer ${args.link.productNumber.trim()}`
+        : `GS Supply-koblingen for ${product.name} er fjernet`,
+    });
+    return null;
+  },
+});
+
+/** Links for the supplier that orders through GS Supply, in the units products are ordered in. */
+export const listOrderingLinks = query({
+  args: { locationId: v.id("locations") },
+  returns: v.union(
+    v.object({
+      supplierId: v.id("suppliers"),
+      links: v.array(
+        v.object({
+          productId: v.id("products"),
+          productNumber: v.string(),
+          unitId: v.id("units"),
+          unitName: v.string(),
+          factorToDefault: v.number(),
+        }),
+      ),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const auth = await requireOrganization(ctx);
+    if (
+      auth.kioskModeEnabled ||
+      !hasPermission(auth.role, auth.permissions, "ordering.plan")
+    ) {
+      throw new ConvexError("Du har ikke adgang til bestilling");
+    }
+    requireLocationAccess(auth, args.locationId);
+    const supplierId = await getGsSupplySupplierId(ctx, auth.organizationId);
+    if (!supplierId) return null;
+    const links = await ctx.db
+      .query("gsSupplyProductLinks")
+      .withIndex("by_organizationId_and_productId", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(MAX_LINKS);
+    const rows = await Promise.all(
+      links.map(async (link) => {
+        const [product, unit] = await Promise.all([
+          ctx.db.get("products", link.productId),
+          ctx.db.get("units", link.unitId),
+        ]);
+        if (!product || product.status !== "active" || !unit) return null;
+        const factorToDefault = (await getProductUnitFactors(ctx, product)).get(
+          link.unitId,
+        );
+        if (factorToDefault === undefined) return null;
+        return {
+          productId: link.productId,
+          productNumber: link.productNumber,
+          unitId: link.unitId,
+          unitName: unit.name,
+          factorToDefault,
+        };
+      }),
+    );
+    return { supplierId, links: rows.filter((row) => row !== null) };
+  },
+});
