@@ -1,23 +1,45 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Trash2Icon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { useMutation } from "convex/react";
+import { PlusIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
+import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   CreatableCombobox,
   type ComboboxOption,
 } from "@/components/catalog/creatable-combobox";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+
+const ADD_UNIT_VALUE = "__add_unit__";
 
 export type IngredientDraft = {
   key: string;
@@ -29,6 +51,8 @@ export type IngredientDraft = {
 
 type IngredientProduct = {
   id: Id<"products">;
+  name: string;
+  defaultUnitName?: string;
   units: Array<{ id: Id<"units">; name: string }>;
 };
 
@@ -58,6 +82,7 @@ export function IngredientEditorRow({
   row,
   products,
   options,
+  unitOptions,
   onChange,
   onRemove,
   productLabel,
@@ -70,6 +95,7 @@ export function IngredientEditorRow({
   row: IngredientDraft;
   products: IngredientProduct[];
   options: ComboboxOption[];
+  unitOptions: ComboboxOption[];
   onChange: (patch: Partial<IngredientDraft>) => void;
   onRemove: () => void;
   productLabel: string;
@@ -85,6 +111,8 @@ export function IngredientEditorRow({
   const productError = errors[`${row.key}-product`];
   const quantityError = errors[`${row.key}-quantity`];
   const unitError = errors[`${row.key}-unit`];
+  const [addingUnit, setAddingUnit] = useState(false);
+  const canAddUnit = selectedProduct?.defaultUnitName !== undefined;
   return (
     <div className="grid gap-3 rounded-xl border p-3 md:grid-cols-(--grid-cols-product-mapping) md:items-start">
       <div className="flex min-w-0 flex-col gap-3 md:col-start-1 md:row-start-1">
@@ -144,6 +172,10 @@ export function IngredientEditorRow({
           }))}
           value={row.unitId}
           onValueChange={(value) => {
+            if (value === ADD_UNIT_VALUE) {
+              setAddingUnit(true);
+              return;
+            }
             const unit = selectedProduct?.units.find(
               (candidate) => candidate.id === value,
             );
@@ -166,9 +198,27 @@ export function IngredientEditorRow({
                 </SelectItem>
               ))}
             </SelectGroup>
+            {canAddUnit ? (
+              <>
+                <SelectSeparator />
+                <SelectItem value={ADD_UNIT_VALUE}>
+                  <PlusIcon />
+                  Tilføj enhed
+                </SelectItem>
+              </>
+            ) : null}
           </SelectContent>
         </Select>
         <FieldError>{unitError}</FieldError>
+        {selectedProduct && canAddUnit ? (
+          <AddProductUnitDialog
+            open={addingUnit}
+            onOpenChange={setAddingUnit}
+            product={selectedProduct}
+            unitOptions={unitOptions}
+            onAdded={(unitId) => onChange({ unitId })}
+          />
+        ) : null}
       </Field>
       <Button
         type="button"
@@ -181,5 +231,125 @@ export function IngredientEditorRow({
         <Trash2Icon />
       </Button>
     </div>
+  );
+}
+
+function AddProductUnitDialog({
+  open,
+  onOpenChange,
+  product,
+  unitOptions,
+  onAdded,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  product: IngredientProduct;
+  unitOptions: ComboboxOption[];
+  onAdded: (unitId: Id<"units">) => void;
+}) {
+  const addProductUnit = useMutation(api.catalog.addProductUnit);
+  const [unitValue, setUnitValue] = useState<string | null>(null);
+  const [factor, setFactor] = useState("");
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const availableOptions = unitOptions.filter(
+    (option) =>
+      !product.units.some((unit) => option.value === `existing:${unit.id}`),
+  );
+  const unitName =
+    unitOptions.find((option) => option.value === unitValue)?.label ??
+    unitValue?.replace(/^new:/, "") ??
+    "enhed";
+
+  function close(next: boolean) {
+    if (isSaving) return;
+    if (!next) {
+      setUnitValue(null);
+      setFactor("");
+      setError("");
+    }
+    onOpenChange(next);
+  }
+
+  async function save() {
+    const factorToDefault = Number(factor.trim().replace(",", "."));
+    if (!unitValue) return setError("Vælg en enhed");
+    if (!Number.isFinite(factorToDefault) || factorToDefault <= 0) {
+      return setError("Omregningen skal være større end nul");
+    }
+    setIsSaving(true);
+    setError("");
+    try {
+      const unitId = await addProductUnit({
+        productId: product.id,
+        unit: unitValue.startsWith("new:")
+          ? { kind: "new", name: unitValue.slice(4) }
+          : { kind: "existing", id: unitValue.slice(9) as Id<"units"> },
+        factorToDefault,
+      });
+      onAdded(unitId);
+      toast.success(`${unitName} er tilføjet til ${product.name}`);
+      setIsSaving(false);
+      close(false);
+    } catch (caught) {
+      setError(getUserErrorMessage(caught, "Enheden kunne ikke tilføjes. Prøv igen."));
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Tilføj enhed</DialogTitle>
+          <DialogDescription>
+            Enheden tilføjes til produktet {product.name}.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Enhed</FieldLabel>
+            <CreatableCombobox
+              options={availableOptions}
+              value={unitValue}
+              onValueChange={setUnitValue}
+              placeholder="Vælg eller opret en enhed"
+              allowCreate
+              ariaLabel="Enhed"
+            />
+          </Field>
+          <Field data-invalid={Boolean(error)}>
+            <FieldLabel htmlFor="add-product-unit-factor">
+              1 {unitName} svarer til
+            </FieldLabel>
+            <Input
+              id="add-product-unit-factor"
+              type="text"
+              inputMode="decimal"
+              value={factor}
+              onChange={(event) => setFactor(event.target.value)}
+              className="h-11"
+              aria-invalid={Boolean(error)}
+            />
+            <FieldDescription>{product.defaultUnitName}</FieldDescription>
+            <FieldError>{error}</FieldError>
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isSaving}
+            onClick={() => close(false)}
+          >
+            Annullér
+          </Button>
+          <Button type="button" disabled={isSaving} onClick={save}>
+            {isSaving ? <Spinner data-icon="inline-start" /> : null}
+            Tilføj enhed
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

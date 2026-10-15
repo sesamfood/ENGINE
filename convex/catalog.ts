@@ -439,6 +439,31 @@ async function resolveCategories(
   return categoryIds;
 }
 
+async function resolveUnit(
+  ctx: MutationCtx,
+  organizationId: string,
+  reference: UnitReference,
+) {
+  if (reference.kind === "existing") {
+    const unit = await ctx.db.get("units", reference.id);
+    if (!unit || unit.organizationId !== organizationId) {
+      throw new ConvexError("Enheden blev ikke fundet");
+    }
+    return unit._id;
+  }
+  const { name, normalizedName } = normalizeName(reference.name, "Enhedsnavnet");
+  const existing = await ctx.db
+    .query("units")
+    .withIndex("by_organizationId_and_normalizedName", (q) =>
+      q.eq("organizationId", organizationId).eq("normalizedName", normalizedName),
+    )
+    .unique();
+  return (
+    existing?._id ??
+    (await ctx.db.insert("units", { organizationId, name, normalizedName }))
+  );
+}
+
 async function resolveUnits(
   ctx: MutationCtx,
   organizationId: string,
@@ -456,7 +481,6 @@ async function resolveUnits(
     throw new ConvexError("Vælg præcis én standardenhed");
   }
 
-  const insertedByName = new Map<string, Id<"units">>();
   const resolved: Array<{
     unitId: Id<"units">;
     factorToDefault: number;
@@ -469,43 +493,8 @@ async function resolveUnits(
       throw new ConvexError("Omregningen for standardenheden skal være 1");
     }
 
-    let unitId: Id<"units">;
-    if (input.unit.kind === "existing") {
-      const unit = await ctx.db.get("units", input.unit.id);
-      if (!unit || unit.organizationId !== organizationId) {
-        throw new ConvexError("Enheden blev ikke fundet");
-      }
-      unitId = unit._id;
-    } else {
-      const { name, normalizedName } = normalizeName(
-        input.unit.name,
-        "Enhedsnavnet",
-      );
-      const inserted = insertedByName.get(normalizedName);
-      if (inserted) {
-        unitId = inserted;
-      } else {
-        const existing = await ctx.db
-          .query("units")
-          .withIndex("by_organizationId_and_normalizedName", (q) =>
-            q
-              .eq("organizationId", organizationId)
-              .eq("normalizedName", normalizedName),
-          )
-          .unique();
-        unitId =
-          existing?._id ??
-          (await ctx.db.insert("units", {
-            organizationId,
-            name,
-            normalizedName,
-          }));
-        insertedByName.set(normalizedName, unitId);
-      }
-    }
-
     resolved.push({
-      unitId,
+      unitId: await resolveUnit(ctx, organizationId, input.unit),
       factorToDefault: input.factorToDefault,
       isDefault: input.isDefault,
     });
@@ -3117,10 +3106,7 @@ export const createUnit = mutation({
 export const addProductUnit = mutation({
   args: {
     productId: v.id("products"),
-    unit: v.union(
-      v.object({ unitId: v.id("units") }),
-      v.object({ name: v.string() }),
-    ),
+    unit: unitReferenceValidator,
     factorToDefault: v.number(),
   },
   returns: v.id("units"),
@@ -3133,8 +3119,8 @@ export const addProductUnit = mutation({
     }
     requirePositiveNumber(args.factorToDefault, "Omregningsfaktoren");
     let unitId: Id<"units">;
-    if ("unitId" in args.unit) {
-      const unit = await ctx.db.get("units", args.unit.unitId);
+    if (args.unit.kind === "existing") {
+      const unit = await ctx.db.get("units", args.unit.id);
       if (!unit || unit.organizationId !== organizationId) {
         throw new ConvexError("Enheden blev ikke fundet");
       }

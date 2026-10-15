@@ -91,6 +91,7 @@ type ProductOption = {
   name: string;
   categoryPath?: string;
   archived?: boolean;
+  defaultUnitName?: string;
   units: Array<{ id: Id<"units">; name: string }>;
 };
 
@@ -538,6 +539,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           categoryPath: option.categories
             .map((category) => category.path)
             .join(" · "),
+          defaultUnitName: option.units.find(
+            (unit) => unit.id === option.defaultUnitId,
+          )?.name,
           units: option.units.map((unit) => ({ id: unit.id, name: unit.name })),
         })) ?? [],
     [catalog, productId],
@@ -1286,6 +1290,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         row={row}
                         products={recipeProductOptions}
                         options={recipeProductComboboxOptions}
+                        unitOptions={unitOptions}
                         disabled={catalog === undefined}
                         errors={errors}
                         onChange={(patch) =>
@@ -1421,6 +1426,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         row={row}
                         products={addableProductOptions}
                         options={addableProductComboboxOptions}
+                        unitOptions={unitOptions}
                         disabled={catalog === undefined}
                         errors={errors}
                         onChange={(patch) =>

@@ -575,8 +575,8 @@ function AddUnitDialog({
       const unitId = await addProductUnit({
         productId: product.id,
         unit: unitValue.startsWith("new:")
-          ? { name: unitValue.slice(4) }
-          : { unitId: unitValue.slice("existing:".length) as Id<"units"> },
+          ? { kind: "new", name: unitValue.slice(4) }
+          : { kind: "existing", id: unitValue.slice("existing:".length) as Id<"units"> },
         factorToDefault: factorValue,
       });
       toast.success(`Enheden er tilføjet til ${product.name}`);
