@@ -10,7 +10,6 @@ import { ArrowLeftIcon, CheckIcon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
 import { dateKey } from "@/lib/date";
 import { previousKpiMonth, type MonthlyKpiCell, type MonthlyKpiRow } from "@/lib/dashboard/monthly-kpi";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
@@ -34,6 +33,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Textarea } from "@/components/ui/textarea";
 import { MonthlyActualsDialog } from "./monthly-actuals-dialog";
 import { MonthlyBudgetDialog } from "./monthly-budget-dialog";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type MonthlyContext = FunctionReturnType<typeof api.monthlyKpi.getContext>;
 type ReportState = FunctionReturnType<typeof api.economicReports.getReportState>;
@@ -329,7 +329,7 @@ function MonthlyReportContent({ context }: { context: MonthlyContext }) {
 }
 
 function MonthlyReportAccess() {
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");

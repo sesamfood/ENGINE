@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { authClient } from "@/lib/auth-client";
 import { pageTitlePrefix } from "@/lib/page-title";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 const DEFAULT_BROWSER_TITLE = `${pageTitlePrefix}SESAM ENGINE`;
 
 export function BrowserBranding() {
-  const { data: organization } = authClient.useActiveOrganization();
+  const { data: organization } = useActiveOrganization();
 
   useEffect(() => {
     const organizationName = organization?.name?.trim();

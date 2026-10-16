@@ -13,6 +13,7 @@ import {
   CircleOffIcon,
   LogOutIcon,
   LayoutDashboardIcon,
+  LifeBuoyIcon,
   ReceiptTextIcon,
   WalletIcon,
   RefreshCwIcon,
@@ -25,6 +26,7 @@ import {
   UtensilsIcon,
   UsersRoundIcon,
   UserRoundIcon,
+  ShieldIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
 } from "lucide-react";
@@ -43,7 +45,12 @@ import { toast } from "sonner";
 import posthog from "posthog-js";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -121,6 +128,10 @@ import {
   kioskHome,
   resolveAppNavigation,
 } from "@/lib/app-navigation";
+import {
+  useActiveOrganization,
+  useSupportSession,
+} from "@/lib/active-organization";
 
 const navigationIcons = {
   dashboard: LayoutDashboardIcon,
@@ -293,7 +304,7 @@ export function useHomeDestination() {
 
 function AccessBoundary({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const runtime = useQuery(
     api.access.getRuntimeContext,
     isAuthenticated && organization.data ? {} : "skip",
@@ -482,7 +493,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
   const kiosk = useKiosk();
   const access = useAccess();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const { disabled, pending } = useCurrentFeatureState();
   const exempt = featureLockExempt(pathname) || disabled || pending;
   const countEnabled = access?.disabledFeatures.includes("count") === false;
@@ -589,7 +600,7 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
 }
 
 function OrganizationHome() {
-  const { data: organization } = authClient.useActiveOrganization();
+  const { data: organization } = useActiveOrganization();
   const { state, isMobile } = useSidebar();
   const { isAuthenticated } = useConvexAuth();
   const homeHref = useHomeDestination() ?? "/profile";
@@ -655,7 +666,7 @@ function OrganizationHome() {
 }
 
 function NavigationList() {
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -745,8 +756,13 @@ function ProfileMenu({
   onSignOut: () => void;
 }) {
   const { data: session } = authClient.useSession();
+  const { isAuthenticated } = useConvexAuth();
   const kiosk = useKiosk();
   const access = useAccess();
+  const platformMember = useQuery(
+    api.platform.members.me,
+    isAuthenticated ? {} : "skip",
+  );
   const canManageOrganization = canOpenAdministration(
     access?.permissions ?? [],
   );
@@ -861,6 +877,12 @@ function ProfileMenu({
             <DropdownMenuItem onClick={() => goTo("/administration")}>
               <Building2Icon />
               Administration
+            </DropdownMenuItem>
+          ) : null}
+          {platformMember ? (
+            <DropdownMenuItem onClick={() => goTo("/platform")}>
+              <ShieldIcon />
+              Platform
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuGroup>
@@ -1059,6 +1081,75 @@ function MobileAccount({
   );
 }
 
+function formatTimeLeft(milliseconds: number) {
+  const minutes = Math.max(1, Math.ceil(milliseconds / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} t ${rest} min` : `${hours} t`;
+}
+
+function SupportBanner() {
+  const support = useSupportSession();
+  const endSupport = useMutation(api.platform.support.end);
+  const [now, setNow] = useState(() => Date.now());
+  const [ending, setEnding] = useState(false);
+  const expiresAt = support?.expiresAt;
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    // The grant stops working on the server at expiry; reload so the app follows.
+    const timeout = window.setTimeout(
+      () => window.location.assign("/platform"),
+      Math.max(0, expiresAt - Date.now()),
+    );
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [expiresAt]);
+
+  if (!support) return null;
+
+  async function end() {
+    setEnding(true);
+    try {
+      await endSupport({});
+      window.location.assign("/platform");
+    } catch (error) {
+      setEnding(false);
+      toast.error(
+        getUserErrorMessage(error, "Supportadgangen kunne ikke afsluttes. Prøv igen."),
+      );
+    }
+  }
+
+  return (
+    <div className="px-4 pt-4">
+      <Alert>
+        <LifeBuoyIcon />
+        <AlertTitle>Supportadgang til {support.organizationName}</AlertTitle>
+        <AlertDescription>
+          {support.mode === "view" ? "Kun visning" : "Fuld adgang"}. Udløber om{" "}
+          {formatTimeLeft(support.expiresAt - now)}.
+        </AlertDescription>
+        <AlertAction>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={ending}
+            onClick={() => void end()}
+          >
+            {ending ? <Spinner data-icon="inline-start" /> : null}
+            Afslut support
+          </Button>
+        </AlertAction>
+      </Alert>
+    </div>
+  );
+}
+
 function OrganizationBoundary({
   children,
   required,
@@ -1067,8 +1158,13 @@ function OrganizationBoundary({
   required: boolean;
 }) {
   const router = useRouter();
+  const { isAuthenticated } = useConvexAuth();
   const organizations = authClient.useListOrganizations();
-  const activeOrganization = authClient.useActiveOrganization();
+  const activeOrganization = useActiveOrganization();
+  const platformMember = useQuery(
+    api.platform.members.me,
+    isAuthenticated ? {} : "skip",
+  );
   const [activationError, setActivationError] = useState(false);
   const activeOrganizationId = activeOrganization.data?.id;
   const firstOrganizationId = organizations.data?.[0]?.id;
@@ -1080,7 +1176,9 @@ function OrganizationBoundary({
     if (activeOrganizationId) return;
 
     if (!firstOrganizationId) {
-      router.replace("/onboarding");
+      // Platform staff usually have no organization of their own.
+      if (platformMember === undefined) return;
+      router.replace(platformMember ? "/platform" : "/onboarding");
       return;
     }
 
@@ -1102,6 +1200,7 @@ function OrganizationBoundary({
     firstOrganizationId,
     organizations.isPending,
     organizations.error,
+    platformMember,
     required,
     router,
   ]);
@@ -1148,7 +1247,7 @@ function OrganizationBoundary({
 }
 
 function OrganizationTheme({ children }: { children: React.ReactNode }) {
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const { isAuthenticated } = useConvexAuth();
   const branding = useQuery(
     api.organization.getBranding,
@@ -1302,6 +1401,7 @@ export function AppShell({
                     </Sidebar>
 
                     <SidebarInset className="min-w-0">
+                      <SupportBanner />
                       <header
                         className={cn(
                           "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",

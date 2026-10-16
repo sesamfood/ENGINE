@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
 import { downloadCsv } from "@/lib/download-csv";
 import {
   addDays as shiftDate,
@@ -61,6 +60,7 @@ import {
   type MissingRecord,
 } from "./inspection-report";
 import { useOwnCheckNow } from "./use-own-check-now";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 const MAX_EXPORT_RECORDS = 5_000;
 const MAX_EXPORT_PAGE_SIZE = 100;
@@ -219,7 +219,7 @@ function csvRows(
 
 export function InspectionDocumentation() {
   const convex = useConvex();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const kiosk = useKiosk();
   const canExport =

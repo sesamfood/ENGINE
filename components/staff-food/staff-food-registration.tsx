@@ -72,7 +72,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
 import { useLastDefined } from "@/lib/use-last-defined";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
@@ -94,6 +93,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type Picker = NonNullable<
   ReturnType<typeof useQuery<typeof api.staffFood.getPicker>>
@@ -233,7 +233,7 @@ function StaffFoodHeader({
 }
 
 export function StaffFoodRegistration() {
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();

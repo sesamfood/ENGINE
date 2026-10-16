@@ -17,10 +17,10 @@ import {
   useLocationAccess,
   usePermission,
 } from "@/components/app-shell";
-import { authClient } from "@/lib/auth-client";
 import { setCountLocation, useCountLocation } from "@/lib/count-prefs";
 import { selectedLocationId } from "@/lib/location-preference";
 import { useLastDefined } from "@/lib/use-last-defined";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type CountState = FunctionReturnType<typeof api.count.getCountState>;
 type LocationOption = { id: Id<"locations">; name: string };
@@ -44,7 +44,7 @@ function minuteTimestamp() {
 
 export function CountStateProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useCountLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();

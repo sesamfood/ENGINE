@@ -170,6 +170,7 @@ import type * as platform_entitlements from "../platform/entitlements.js";
 import type * as platform_lifecycle from "../platform/lifecycle.js";
 import type * as platform_members from "../platform/members.js";
 import type * as platform_organizations from "../platform/organizations.js";
+import type * as platform_support from "../platform/support.js";
 import type * as platformMembers from "../platformMembers.js";
 import type * as presence from "../presence.js";
 import type * as rest_catalog from "../rest/catalog.js";
@@ -362,6 +363,7 @@ declare const fullApi: ApiFromModules<{
   "platform/lifecycle": typeof platform_lifecycle;
   "platform/members": typeof platform_members;
   "platform/organizations": typeof platform_organizations;
+  "platform/support": typeof platform_support;
   platformMembers: typeof platformMembers;
   presence: typeof presence;
   "rest/catalog": typeof rest_catalog;

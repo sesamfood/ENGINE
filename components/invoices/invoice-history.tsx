@@ -46,9 +46,9 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { dateTimeFormatter } from "@/lib/date";
-import { authClient } from "@/lib/auth-client";
 import { selectedLocationId } from "@/lib/location-preference";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 const dateFormatter = dateTimeFormatter("da-DK", {
   dateStyle: "short",
@@ -174,7 +174,7 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
 
 export function InvoiceHistory() {
   const kiosk = useKiosk();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const locations = useQuery(api.invoices.listLocations, { page: "history" });

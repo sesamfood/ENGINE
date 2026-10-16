@@ -182,6 +182,17 @@ export const get = query({
     organizationDisabledFeatures: v.array(featureIdValidator),
     platformAudit: v.array(auditRowValidator),
     organizationAudit: v.array(auditRowValidator),
+    supportGrants: v.array(
+      v.object({
+        id: v.id("supportGrants"),
+        platformUserName: v.string(),
+        reason: v.string(),
+        mode: v.union(v.literal("view"), v.literal("full")),
+        startedAt: v.number(),
+        expiresAt: v.number(),
+        endedAt: v.union(v.number(), v.null()),
+      }),
+    ),
   }),
   handler: async (ctx, args) => {
     await requirePlatformMember(ctx);
@@ -201,6 +212,7 @@ export const get = query({
       organizationDisabledFeatures,
       platformAudit,
       organizationAudit,
+      supportGrants,
     ] = await Promise.all([
       adapter.findMany<AuthMember>({
         model: "member",
@@ -239,6 +251,13 @@ export const get = query({
         )
         .order("desc")
         .take(50),
+      ctx.db
+        .query("supportGrants")
+        .withIndex("by_organizationId_and_startedAt", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .order("desc")
+        .take(20),
     ]);
     const users = members.length
       ? await adapter.findMany<AuthUser>({
@@ -309,6 +328,15 @@ export const get = query({
       organizationDisabledFeatures,
       platformAudit: platformAudit.map(toAuditRow),
       organizationAudit: organizationAudit.map(toAuditRow),
+      supportGrants: supportGrants.map((grant) => ({
+        id: grant._id,
+        platformUserName: grant.platformUserName,
+        reason: grant.reason,
+        mode: grant.mode,
+        startedAt: grant.startedAt,
+        expiresAt: grant.expiresAt,
+        endedAt: grant.endedAt ?? null,
+      })),
     };
   },
 });

@@ -99,6 +99,21 @@ export default defineSchema({
     .index("by_at", ["at"])
     .index("by_organizationId_and_at", ["organizationId", "at"]),
 
+  supportGrants: defineTable({
+    organizationId: v.string(),
+    platformUserId: v.string(),
+    platformUserName: v.string(),
+    reason: v.string(),
+    mode: v.union(v.literal("view"), v.literal("full")),
+    permissions: v.array(v.string()),
+    startedAt: v.number(),
+    // Ending a grant also moves expiresAt to the end time, so active grants are one index range.
+    expiresAt: v.number(),
+    endedAt: v.optional(v.number()),
+  })
+    .index("by_platformUserId_and_expiresAt", ["platformUserId", "expiresAt"])
+    .index("by_organizationId_and_startedAt", ["organizationId", "startedAt"]),
+
   featureSettings: defineTable({
     organizationId: v.string(),
     disabledFeatures: v.array(featureIdValidator),
@@ -157,7 +172,7 @@ export default defineSchema({
     organizationId: v.string(),
     locationId: v.optional(v.id("locations")),
     actorKind: v.optional(
-      v.union(v.literal("user"), v.literal("apiKey")),
+      v.union(v.literal("user"), v.literal("apiKey"), v.literal("support")),
     ),
     actorUserId: v.optional(v.string()),
     actorApiKeyId: v.optional(v.string()),
