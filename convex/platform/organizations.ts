@@ -7,6 +7,7 @@ import {
   getIntegrationState,
   getUnavailableIntegrations,
   integrationIdValidator,
+  integrationIds,
 } from "../integrations/state";
 import {
   featureIdValidator,
@@ -179,6 +180,7 @@ export const get = query({
       }),
     ),
     nonEntitledFeatures: v.array(featureIdValidator),
+    entitledIntegrations: v.array(integrationIdValidator),
     organizationDisabledFeatures: v.array(featureIdValidator),
     platformAudit: v.array(auditRowValidator),
     organizationAudit: v.array(auditRowValidator),
@@ -325,6 +327,7 @@ export const get = query({
         ),
       })),
       nonEntitledFeatures: nonEntitledFeatures(entitlements),
+      entitledIntegrations: entitlements?.integrations ?? [...integrationIds],
       organizationDisabledFeatures,
       platformAudit: platformAudit.map(toAuditRow),
       organizationAudit: organizationAudit.map(toAuditRow),
