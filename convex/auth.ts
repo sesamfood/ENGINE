@@ -469,6 +469,11 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         },
         organizationHooks: {
           beforeCreateOrganization: async ({ user }) => {
+            if (process.env.ALLOW_SELF_SERVE_ORGANIZATIONS === "false") {
+              throw new APIError("FORBIDDEN", {
+                message: "Organisationer oprettes kun via invitation",
+              });
+            }
             await requireNoOrganizationMembership(ctx, user.id);
           },
           beforeAddMember: async ({ member }) => {

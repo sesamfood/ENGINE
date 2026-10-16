@@ -43,7 +43,7 @@ function invitationIdFromCode(value: string) {
   }
 }
 
-export function OnboardingForm() {
+export function OnboardingForm({ canCreate }: { canCreate: boolean }) {
   const router = useRouter();
   const organizations = authClient.useListOrganizations();
   const activeOrganization = authClient.useActiveOrganization();
@@ -212,6 +212,40 @@ export function OnboardingForm() {
     );
   }
 
+  const joinForm = (
+    <form onSubmit={joinOrganization} className="flex flex-col gap-5">
+      <FieldGroup>
+        <Field>
+          <div className="flex items-center gap-1">
+            <FieldLabel htmlFor="invitation-code">
+              Invitationskode
+            </FieldLabel>
+            <HelpTooltip
+              label="Invitationskode"
+              content="Indsæt koden fra invitationen. Du kan også indsætte hele invitationslinket."
+            />
+          </div>
+          <Input
+            id="invitation-code"
+            name="code"
+            autoComplete="off"
+            required
+          />
+        </Field>
+      </FieldGroup>
+      <Button
+        type="submit"
+        size="lg"
+        disabled={pendingAction !== undefined}
+      >
+        {pendingAction === "join" ? (
+          <Spinner data-icon="inline-start" />
+        ) : null}
+        Tilmeld organisation
+      </Button>
+    </form>
+  );
+
   return (
     <div className="flex flex-col gap-5">
       {error ? (
@@ -219,76 +253,50 @@ export function OnboardingForm() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <Tabs defaultValue="create" appearance="spaced">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="create">Opret organisation</TabsTrigger>
-          <TabsTrigger value="join">Tilmeld med kode</TabsTrigger>
-        </TabsList>
+      {canCreate ? (
+        <Tabs defaultValue="create" appearance="spaced">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="create">Opret organisation</TabsTrigger>
+            <TabsTrigger value="join">Tilmeld med kode</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="create">
-          <form onSubmit={createOrganization} className="flex flex-col gap-5">
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="organization-name">
-                  Organisationens navn
-                </FieldLabel>
-                <Input
-                  id="organization-name"
-                  name="name"
-                  autoComplete="organization"
-                  minLength={2}
-                  maxLength={100}
-                  required
-                />
-              </Field>
-            </FieldGroup>
-            <Button
-              type="submit"
-              size="lg"
-              disabled={pendingAction !== undefined}
-            >
-              {pendingAction === "create" ? (
-                <Spinner data-icon="inline-start" />
-              ) : null}
-              Opret organisation
-            </Button>
-          </form>
-        </TabsContent>
-
-        <TabsContent value="join">
-          <form onSubmit={joinOrganization} className="flex flex-col gap-5">
-            <FieldGroup>
-              <Field>
-                <div className="flex items-center gap-1">
-                  <FieldLabel htmlFor="invitation-code">
-                    Invitationskode
+          <TabsContent value="create">
+            <form onSubmit={createOrganization} className="flex flex-col gap-5">
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="organization-name">
+                    Organisationens navn
                   </FieldLabel>
-                  <HelpTooltip
-                    label="Invitationskode"
-                    content="Indsæt koden fra invitationen. Du kan også indsætte hele invitationslinket."
+                  <Input
+                    id="organization-name"
+                    name="name"
+                    autoComplete="organization"
+                    minLength={2}
+                    maxLength={100}
+                    required
                   />
-                </div>
-                <Input
-                  id="invitation-code"
-                  name="code"
-                  autoComplete="off"
-                  required
-                />
-              </Field>
-            </FieldGroup>
-            <Button
-              type="submit"
-              size="lg"
-              disabled={pendingAction !== undefined}
-            >
-              {pendingAction === "join" ? (
-                <Spinner data-icon="inline-start" />
-              ) : null}
-              Tilmeld organisation
-            </Button>
-          </form>
-        </TabsContent>
-      </Tabs>
+                </Field>
+              </FieldGroup>
+              <Button
+                type="submit"
+                size="lg"
+                disabled={pendingAction !== undefined}
+              >
+                {pendingAction === "create" ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                Opret organisation
+              </Button>
+            </form>
+          </TabsContent>
+
+          <TabsContent value="join">
+            {joinForm}
+          </TabsContent>
+        </Tabs>
+      ) : (
+        joinForm
+      )}
     </div>
   );
 }
