@@ -161,6 +161,7 @@ type AccessRuntime = {
   granularity: DataGranularity;
   permissions: string[];
   disabledFeatures: FeatureId[];
+  nonEntitledFeatures: FeatureId[];
   locationScope: { all: boolean; ids: Id<"locations">[] };
   kiosk: KioskRuntime | null;
 };

@@ -15,6 +15,7 @@ import { internal } from "../_generated/api";
 import { getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
+import { getEntitlements } from "./features";
 
 type AuthContext = QueryCtx | MutationCtx | ActionCtx;
 
@@ -95,6 +96,15 @@ export async function getUserSession(
   return session && session.expiresAt >= Date.now() ? session : null;
 }
 
+async function requireActiveOrganization(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+) {
+  if ((await getEntitlements(ctx, organizationId))?.status === "suspended") {
+    throw new ConvexError("Organisationen er suspenderet");
+  }
+}
+
 async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
@@ -116,6 +126,7 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     ],
   });
   if (!member) throw new ConvexError("Ingen aktiv organisation");
+  await requireActiveOrganization(ctx, member.organizationId);
   const role = member.role;
   const [configured, roleConfig] = await Promise.all([
     ctx.db
@@ -202,6 +213,9 @@ async function getApiKeyOrganization(
     policy.expiresAt <= Date.now()
   ) {
     throw apiAuthError("invalid_api_key_policy", "The API key is not authorized.");
+  }
+  if ((await getEntitlements(ctx, policy.organizationId))?.status === "suspended") {
+    throw apiAuthError("organization_suspended", "The organization is suspended.");
   }
   if (
     policy.permissions.some(

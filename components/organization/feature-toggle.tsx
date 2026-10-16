@@ -33,6 +33,7 @@ function FeatureToggleControl({ feature }: { feature: FeatureId }) {
 
   const label = featureLabels[feature];
   const enabled = !access.disabledFeatures.includes(feature);
+  const entitled = !access.nonEntitledFeatures.includes(feature);
 
   async function changeEnabled(nextEnabled: boolean) {
     if (!canManage || saving) return;
@@ -59,7 +60,7 @@ function FeatureToggleControl({ feature }: { feature: FeatureId }) {
           <SettingsSwitchField
             label={label}
             checked={enabled}
-            disabled={!canManage || saving}
+            disabled={!canManage || !entitled || saving}
             onCheckedChange={(checked) => void changeEnabled(checked)}
             help={{
               label: `aktivering af ${label}`,
@@ -67,7 +68,11 @@ function FeatureToggleControl({ feature }: { feature: FeatureId }) {
                 "Gælder hele organisationen. Når funktionen er slået fra, skjules den i sidemenuen og kan ikke bruges. Indstillinger og data bevares.",
             }}
             description={
-              !canManage ? (
+              !entitled ? (
+                <FieldDescription>
+                  Funktionen er ikke en del af jeres abonnement.
+                </FieldDescription>
+              ) : !canManage ? (
                 <FieldDescription>
                   Kontakt en administrator for at ændre indstillingen.
                 </FieldDescription>

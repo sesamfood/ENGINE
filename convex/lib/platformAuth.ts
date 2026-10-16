@@ -32,3 +32,21 @@ export async function requirePlatformMember(
   }
   return member;
 }
+
+export async function recordPlatformAudit(
+  ctx: MutationCtx,
+  actor: { userId: string; userName: string },
+  data: {
+    organizationId?: string;
+    action: string;
+    summary: string;
+    reason?: string;
+  },
+) {
+  await ctx.db.insert("platformAuditLog", {
+    actorUserId: actor.userId,
+    actorName: actor.userName,
+    ...data,
+    at: Date.now(),
+  });
+}

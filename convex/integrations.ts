@@ -6,7 +6,7 @@ import { ConvexError, v } from "convex/values";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { recordAudit } from "./lib/audit";
 import { requireAllLocationAccess, requireHumanPrincipal, requireIntegrationManager, requireOrganization } from "./lib/auth";
-import { getIntegrationState, integrationIdValidator, isIntegrationEnabled, writeInstallationState } from "./integrations/state";
+import { getIntegrationState, getUnavailableIntegrations, integrationIdValidator, isIntegrationEnabled, writeInstallationState } from "./integrations/state";
 
 export const isEnabled = internalQuery({
   args: { organizationId: v.string(), integration: integrationIdValidator },
@@ -16,10 +16,14 @@ export const isEnabled = internalQuery({
 
 export const getState = query({
   args: {},
-  returns: v.object({ organizationId: v.string(), workfeed: v.boolean(), onlinepos: v.boolean(), economic: v.boolean(), wolt: v.boolean(), gssupply: v.boolean() }),
+  returns: v.object({ organizationId: v.string(), workfeed: v.boolean(), onlinepos: v.boolean(), economic: v.boolean(), wolt: v.boolean(), gssupply: v.boolean(), unavailable: v.array(integrationIdValidator) }),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganization(ctx);
-    return { organizationId, ...await getIntegrationState(ctx, organizationId) };
+    return {
+      organizationId,
+      ...await getIntegrationState(ctx, organizationId),
+      unavailable: await getUnavailableIntegrations(ctx, organizationId),
+    };
   },
 });
 
