@@ -60,9 +60,6 @@ export async function requirePlatformOrganization(
   return organization;
 }
 
-const MAX_SEARCH_SCAN = 500;
-const MAX_SEARCH_RESULTS = 50;
-
 function normalizeSearch(value: string) {
   return value
     .trim()
@@ -104,14 +101,12 @@ export const list = query({
   handler: async (ctx, args) => {
     await requirePlatformMember(ctx);
     const search = args.search ? normalizeSearch(args.search) : "";
-    // Searching scans a bounded number of organizations in memory, since the
-    // Better Auth table has no case-insensitive name index.
+    // The Better Auth table has no case-insensitive name index, so search filters
+    // each page in memory. A page can come back short; "Vis flere" continues.
     const result = await ctx.runQuery(components.betterAuth.adapter.findMany, {
       model: "organization",
       sortBy: { field: "createdAt", direction: "desc" },
-      paginationOpts: search
-        ? { numItems: MAX_SEARCH_SCAN, cursor: null }
-        : args.paginationOpts,
+      paginationOpts: args.paginationOpts,
     });
     const organizations = (result.page as RawOrganization[]).filter(
       (organization) =>
@@ -121,7 +116,7 @@ export const list = query({
     );
     const adapter = getDatabaseAdapter(ctx);
     const page = await Promise.all(
-      organizations.slice(0, search ? MAX_SEARCH_RESULTS : undefined).map(async (organization) => {
+      organizations.map(async (organization) => {
         const [entitlements, members, locationCount] = await Promise.all([
           getEntitlements(ctx, organization._id),
           adapter.findMany({
@@ -143,7 +138,6 @@ export const list = query({
         };
       }),
     );
-    if (search) return { page, isDone: true, continueCursor: "" };
     return {
       page,
       isDone: result.isDone,

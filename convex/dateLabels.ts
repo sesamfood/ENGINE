@@ -159,13 +159,13 @@ export const rememberExpiry = mutation({
   },
 });
 
-// Catalog managers configure date labels from Administration, also while the feature is off.
+// Settings stay reachable from Administration while the feature is off. Writes also
+// require catalog management at the call site.
 async function requireDateLabelSettingsAccess(ctx: QueryCtx | MutationCtx) {
   const auth = await requireOrganization(ctx);
   if (
     auth.disabledFeatures.has("dateLabels") &&
     !auth.kioskModeEnabled &&
-    hasPermission(auth.role, auth.permissions, "catalog.manage") &&
     hasPermission(auth.role, auth.permissions, "dateLabels.print")
   ) {
     return auth;

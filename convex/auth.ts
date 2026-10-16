@@ -433,7 +433,12 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             internal.access.getMemberPermissionContext,
             { organizationId: organization.id, userId: session.user.id },
           );
+          const suspended = await ctx.runQuery(
+            internal.access.isOrganizationSuspended,
+            { organizationId: organization.id },
+          );
           if (
+            suspended ||
             session.session.kioskModeEnabled ||
             !roleContext.permissions.includes("members.manage")
           ) {

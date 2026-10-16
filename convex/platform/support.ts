@@ -154,9 +154,29 @@ export const expire = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const grant = await ctx.db.get("supportGrants", args.grantId);
-    if (grant && grant.endedAt === undefined) {
-      await ctx.db.patch("supportGrants", grant._id, { endedAt: grant.expiresAt });
-    }
+    if (!grant || grant.endedAt !== undefined) return null;
+    await ctx.db.patch("supportGrants", grant._id, { endedAt: grant.expiresAt });
+    const actor = { userId: grant.platformUserId, userName: grant.platformUserName };
+    await recordPlatformAudit(ctx, actor, {
+      organizationId: grant.organizationId,
+      action: "support.expired",
+      summary: "Supportadgang udløbet",
+    });
+    await recordAudit(
+      ctx,
+      {
+        organizationId: grant.organizationId,
+        principalKind: "support",
+        userId: actor.userId,
+        userName: `Support: ${actor.userName}`,
+      },
+      {
+        action: "support.expired",
+        entityTable: "supportGrants",
+        entityId: grant._id,
+        summary: "Supportadgangen til organisationen er udløbet",
+      },
+    );
     return null;
   },
 });
