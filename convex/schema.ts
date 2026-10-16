@@ -64,6 +64,12 @@ export default defineSchema({
     .index("by_organizationId_and_locationId_and_date", ["organizationId", "locationId", "date"])
     .index("by_attachment_storageId", ["attachment.storageId"]),
 
+  platformMembers: defineTable({
+    userId: v.string(),
+    role: v.union(v.literal("owner"), v.literal("support")),
+    createdAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
   featureSettings: defineTable({
     organizationId: v.string(),
     disabledFeatures: v.array(featureIdValidator),

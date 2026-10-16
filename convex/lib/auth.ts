@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import type { UserIdentity } from "convex/server";
 import {
   hasPermission,
   isPermissionId,
@@ -75,27 +76,36 @@ export async function resolveStoredLocationScope(
   return { all: true, ids: new Set<Id<"locations">>() };
 }
 
+export function isApiKeyIdentity(identity: { issuer: string }) {
+  return Boolean(
+    process.env.SITE_URL &&
+      identity.issuer === `${process.env.SITE_URL.replace(/\/$/, "")}/api/v1`,
+  );
+}
+
+export async function getUserSession(
+  ctx: QueryCtx | MutationCtx,
+  identity: UserIdentity,
+) {
+  if (typeof identity.sessionId !== "string") return null;
+  const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
+    model: "session",
+    where: [{ field: "id", value: identity.sessionId }],
+  });
+  return session && session.expiresAt >= Date.now() ? session : null;
+}
+
 async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
-  if (
-    process.env.SITE_URL &&
-    identity.issuer === `${process.env.SITE_URL.replace(/\/$/, "")}/api/v1`
-  ) {
+  if (isApiKeyIdentity(identity)) {
     return await getApiKeyOrganization(ctx, identity);
   }
 
   const adapter = getDatabaseAdapter(ctx);
-  const session = await adapter.findOne<AuthSession>({
-    model: "session",
-    where: [{ field: "id", value: identity.sessionId as string }],
-  });
-  if (
-    !session ||
-    session.expiresAt < Date.now() ||
-    !session.activeOrganizationId
-  ) {
+  const session = await getUserSession(ctx, identity);
+  if (!session || !session.activeOrganizationId) {
     throw new ConvexError("Ingen aktiv organisation");
   }
   const member = await adapter.findOne<AuthMember>({
