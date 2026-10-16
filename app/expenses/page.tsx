@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth-client";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 const ExpenseForm = dynamic(
   () =>
@@ -33,7 +34,7 @@ function ExpensesContent() {
   const access = useAccess();
   const canCreate = usePermission("expenses.create");
   const canView = usePermission("expenses.view");
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const session = authClient.useSession();
   const organizationId = organization.data?.id;
   const sessionId = session.data?.session.id;

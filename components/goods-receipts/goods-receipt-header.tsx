@@ -8,10 +8,10 @@ import { useLocationAccess } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import { Field, FieldLabel } from "@/components/ui/field";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect } from "react";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type GoodsReceiptContextValue = {
   locationId: Id<"locations"> | null;
@@ -72,7 +72,7 @@ export function GoodsReceiptHeader({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();

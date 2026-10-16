@@ -26,9 +26,6 @@ async function requireExpenseAccess(ctx: ReadCtx, permission: "expenses.create" 
   const auth = requireHumanPrincipal(await requirePermission(ctx, permission));
   if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
   if (auth.granularity !== "detail") throw new ConvexError("Udgifter kræver adgang til detaljerede data");
-  if ((await getDisabledFeatures(ctx, auth.organizationId)).includes("expenses")) {
-    throw new ConvexError("Udgift er slået fra i organisationen");
-  }
   return auth;
 }
 

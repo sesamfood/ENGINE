@@ -55,6 +55,7 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type Settings = FunctionReturnType<typeof api.economic.getSettings>;
 type Connection = Settings["connections"][number];
@@ -872,13 +873,13 @@ function AgreementCard({
 
 export function EconomicIntegration() {
   const { data: session, isPending } = authClient.useSession();
-  const organizationId = session?.session.activeOrganizationId;
+  const organizationId = useActiveOrganization().data?.id;
   if (isPending || !organizationId) {
     return <Skeleton className="h-72 w-full max-w-6xl" />;
   }
   return (
     <OrganizationIntegration
-      key={`${organizationId}:${session.user.id}`}
+      key={`${organizationId}:${session?.user.id}`}
       organizationId={organizationId}
     />
   );

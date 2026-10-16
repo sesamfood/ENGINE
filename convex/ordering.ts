@@ -86,7 +86,11 @@ export const listProducts = query({
   },
   returns: paginationResultValidator(productValidator),
   handler: async (ctx, args) => {
-    const { organizationId } = await requirePlanner(ctx, args.locationId);
+    const { organizationId, disabledFeatures } = await requirePlanner(
+      ctx,
+      args.locationId,
+    );
+    const showStock = !disabledFeatures.has("count");
     const access = await getLocationProductAccess(
       ctx,
       organizationId,
@@ -116,17 +120,19 @@ export const listProducts = query({
                   .eq("productId", product._id),
               )
               .first(),
-            ctx.db
-              .query("locationStock")
-              .withIndex(
-                "by_organizationId_and_locationId_and_productId",
-                (q) =>
-                  q
-                    .eq("organizationId", organizationId)
-                    .eq("locationId", args.locationId)
-                    .eq("productId", product._id),
-              )
-              .unique(),
+            showStock
+              ? ctx.db
+                  .query("locationStock")
+                  .withIndex(
+                    "by_organizationId_and_locationId_and_productId",
+                    (q) =>
+                      q
+                        .eq("organizationId", organizationId)
+                        .eq("locationId", args.locationId)
+                        .eq("productId", product._id),
+                  )
+                  .unique()
+              : null,
             product.imageStorageId
               ? ctx.storage.getUrl(product.imageStorageId)
               : null,

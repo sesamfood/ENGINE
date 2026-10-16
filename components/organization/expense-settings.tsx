@@ -48,6 +48,7 @@ import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { MAX_EXPENSE_CATEGORIES } from "@/lib/expenses";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type Settings = FunctionReturnType<typeof api.expenses.getSettings>;
 type EconomicMapping = Settings["economicMappings"][number];
@@ -113,7 +114,7 @@ function readRecipients(to: string, cc: string, bcc: string) {
 
 export function ExpenseSettings() {
   const { data: session } = authClient.useSession();
-  const organizationId = session?.session.activeOrganizationId;
+  const organizationId = useActiveOrganization().data?.id;
   if (!organizationId) return <Skeleton className="h-72 w-full max-w-3xl" />;
   return (
     <ExpenseSettingsControl

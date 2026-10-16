@@ -9,6 +9,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
+  requireFeatureEnabled,
   requireLocationAccess,
   requireStaffFoodManager,
   requireStaffFoodRegistrar,
@@ -1523,6 +1524,8 @@ export const exportRegistrations = query({
   returns: paginationResultValidator(registrationRowValidator),
   handler: async (ctx, args) => {
     const auth = await requireStaffFoodManager(ctx);
+    // Settings stay available while Staff food is off; exporting records does not.
+    requireFeatureEnabled(auth, "staffFood");
     const { organizationId } = auth;
     const locationFilter = resolveLocationFilter(auth, args.locationId);
     if (

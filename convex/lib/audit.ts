@@ -4,7 +4,7 @@ import type { MutationCtx } from "../_generated/server";
 
 export type AuditActor = {
   organizationId: string;
-  principalKind?: "user" | "apiKey";
+  principalKind?: "user" | "apiKey" | "support";
   userId?: string | null;
   apiKeyId?: string | null;
   userName: string;
@@ -46,7 +46,7 @@ export async function recordAudit(
   if (!actorId) throw new ConvexError("Auditaktøren er ugyldig");
   await ctx.db.insert("auditLog", {
     organizationId: actor.organizationId,
-    actorKind: actor.principalKind === "apiKey" ? "apiKey" : "user",
+    actorKind: actor.principalKind ?? "user",
     ...actorId,
     actorName: actor.userName,
     action: data.action,

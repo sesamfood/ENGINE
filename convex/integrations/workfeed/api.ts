@@ -173,6 +173,7 @@ export const saveConnection = internalMutation({
     companyId: v.string(),
     actorUserId: v.string(),
     actorName: v.string(),
+    actorKind: v.optional(v.union(v.literal("user"), v.literal("support"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -219,6 +220,7 @@ export const saveConnection = internalMutation({
       ctx,
       {
         organizationId: args.organizationId,
+        principalKind: args.actorKind,
         userId: args.actorUserId,
         userName: args.actorName,
       },
@@ -341,6 +343,7 @@ export const connect = action({
       companyId,
       actorUserId: human.userId,
       actorName: userName,
+      actorKind: human.principalKind,
     });
     return { departmentCount: departments.length };
   },

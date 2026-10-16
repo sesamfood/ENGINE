@@ -39,6 +39,14 @@ import {
 } from "./lib/dashboardValidators";
 import { salesSourceValidator } from "./lib/salesSources";
 
+const integrationIdValidator = v.union(
+  v.literal("workfeed"),
+  v.literal("onlinepos"),
+  v.literal("economic"),
+  v.literal("wolt"),
+  v.literal("gssupply"),
+);
+
 export default defineSchema({
   ...workfeedTables,
   ...onlineposTables,
@@ -63,6 +71,48 @@ export default defineSchema({
     .index("by_organizationId_and_requestId", ["organizationId", "requestId"])
     .index("by_organizationId_and_locationId_and_date", ["organizationId", "locationId", "date"])
     .index("by_attachment_storageId", ["attachment.storageId"]),
+
+  platformMembers: defineTable({
+    userId: v.string(),
+    role: v.union(v.literal("owner"), v.literal("support")),
+    createdAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
+  organizationEntitlements: defineTable({
+    organizationId: v.string(),
+    status: v.union(v.literal("active"), v.literal("suspended")),
+    plan: v.optional(v.string()),
+    features: v.array(featureIdValidator),
+    integrations: v.array(integrationIdValidator),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
+  platformAuditLog: defineTable({
+    actorUserId: v.string(),
+    actorName: v.string(),
+    organizationId: v.optional(v.string()),
+    action: v.string(),
+    summary: v.string(),
+    reason: v.optional(v.string()),
+    at: v.number(),
+  })
+    .index("by_at", ["at"])
+    .index("by_organizationId_and_at", ["organizationId", "at"]),
+
+  supportGrants: defineTable({
+    organizationId: v.string(),
+    platformUserId: v.string(),
+    platformUserName: v.string(),
+    reason: v.string(),
+    mode: v.union(v.literal("view"), v.literal("full")),
+    permissions: v.array(v.string()),
+    startedAt: v.number(),
+    // Ending a grant also moves expiresAt to the end time, so active grants are one index range.
+    expiresAt: v.number(),
+    endedAt: v.optional(v.number()),
+  })
+    .index("by_platformUserId_and_expiresAt", ["platformUserId", "expiresAt"])
+    .index("by_organizationId_and_startedAt", ["organizationId", "startedAt"]),
 
   featureSettings: defineTable({
     organizationId: v.string(),
@@ -122,7 +172,7 @@ export default defineSchema({
     organizationId: v.string(),
     locationId: v.optional(v.id("locations")),
     actorKind: v.optional(
-      v.union(v.literal("user"), v.literal("apiKey")),
+      v.union(v.literal("user"), v.literal("apiKey"), v.literal("support")),
     ),
     actorUserId: v.optional(v.string()),
     actorApiKeyId: v.optional(v.string()),
@@ -220,7 +270,7 @@ export default defineSchema({
 
   integrationSettings: defineTable({
     organizationId: v.string(),
-    integration: v.union(v.literal("workfeed"), v.literal("onlinepos"), v.literal("economic"), v.literal("wolt"), v.literal("gssupply")),
+    integration: integrationIdValidator,
     enabled: v.boolean(),
     updatedAt: v.number(),
   }).index("by_organizationId_and_integration", ["organizationId", "integration"]),

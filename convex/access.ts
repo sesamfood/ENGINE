@@ -25,7 +25,12 @@ import {
   requirePermission,
 } from "./lib/auth";
 import { recordAudit, requireAuditReason } from "./lib/audit";
-import { featureIdValidator, getDisabledFeatures } from "./lib/features";
+import {
+  featureIdValidator,
+  getDisabledFeatures,
+  getEntitlements,
+  nonEntitledFeatures,
+} from "./lib/features";
 
 const roleValidator = v.string();
 const granularityValidator = v.union(
@@ -71,6 +76,7 @@ const accessContextValidator = v.object({
 const runtimeContextValidator = accessContextValidator.extend({
   locations: v.array(locationOptionValidator),
   disabledFeatures: v.array(featureIdValidator),
+  nonEntitledFeatures: v.array(featureIdValidator),
 });
 
 const roleContextValidator = v.object({
@@ -79,7 +85,10 @@ const roleContextValidator = v.object({
   granularity: granularityValidator,
   permissions: v.array(v.string()),
   locationScope: locationScopeValidator,
-  principalKind: v.union(v.literal("user"), v.literal("apiKey")),
+  disabledFeatures: v.array(featureIdValidator),
+  principalKind: v.union(v.literal("user"), v.literal("apiKey"), v.literal("support")),
+  supportGrantId: v.union(v.id("supportGrants"), v.null()),
+  readOnly: v.boolean(),
   apiKeyId: v.union(v.string(), v.null()),
   userId: v.union(v.string(), v.null()),
   sessionId: v.union(v.string(), v.null()),
@@ -238,7 +247,10 @@ async function getRoleContextForQuery(ctx: QueryCtx) {
       all: auth.locationScope.all,
       ids: [...auth.locationScope.ids],
     },
+    disabledFeatures: [...auth.disabledFeatures],
     principalKind: auth.principalKind,
+    supportGrantId: auth.supportGrantId,
+    readOnly: auth.readOnly,
     apiKeyId: auth.apiKeyId,
     userId: auth.userId,
     sessionId: auth.sessionId,
@@ -255,6 +267,13 @@ export const getRoleContext = internalQuery({
   args: {},
   returns: roleContextValidator,
   handler: async (ctx) => getRoleContextForQuery(ctx),
+});
+
+export const isOrganizationSuspended = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) =>
+    (await getEntitlements(ctx, args.organizationId))?.status === "suspended",
 });
 
 export const getMemberPermissionContext = internalQuery({
@@ -292,6 +311,9 @@ export const getRuntimeContext = query({
     return {
       ...context,
       disabledFeatures: await getDisabledFeatures(ctx, auth.organizationId),
+      nonEntitledFeatures: nonEntitledFeatures(
+        await getEntitlements(ctx, auth.organizationId),
+      ),
       locations: await listScopedLocationOptions(
         ctx,
         auth.organizationId,

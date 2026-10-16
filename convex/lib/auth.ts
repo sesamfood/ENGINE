@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import type { UserIdentity } from "convex/server";
 import {
   hasPermission,
   isPermissionId,
@@ -9,11 +10,18 @@ import {
   type PermissionId,
 } from "../../lib/auth-permissions";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
+import {
+  getEntitlements,
+  getOrganizationDisabledFeatures,
+  nonEntitledFeatures,
+  permissionFeatures,
+  type FeatureId,
+} from "./features";
 
 type AuthContext = QueryCtx | MutationCtx | ActionCtx;
 
@@ -75,27 +83,57 @@ export async function resolveStoredLocationScope(
   return { all: true, ids: new Set<Id<"locations">>() };
 }
 
+export function isApiKeyIdentity(identity: { issuer: string }) {
+  return Boolean(
+    process.env.SITE_URL &&
+      identity.issuer === `${process.env.SITE_URL.replace(/\/$/, "")}/api/v1`,
+  );
+}
+
+export async function getUserSession(
+  ctx: QueryCtx | MutationCtx,
+  identity: UserIdentity,
+) {
+  if (typeof identity.sessionId !== "string") return null;
+  const session = await getDatabaseAdapter(ctx).findOne<AuthSession>({
+    model: "session",
+    where: [{ field: "id", value: identity.sessionId }],
+  });
+  return session && session.expiresAt >= Date.now() ? session : null;
+}
+
+async function getOrganizationAccess(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+) {
+  const [entitlements, disabled] = await Promise.all([
+    getEntitlements(ctx, organizationId),
+    getOrganizationDisabledFeatures(ctx, organizationId),
+  ]);
+  return {
+    suspended: entitlements?.status === "suspended",
+    disabledFeatures: new Set<FeatureId>([
+      ...disabled,
+      ...nonEntitledFeatures(entitlements),
+    ]),
+  };
+}
+
 async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Du er ikke logget ind");
 
-  if (
-    process.env.SITE_URL &&
-    identity.issuer === `${process.env.SITE_URL.replace(/\/$/, "")}/api/v1`
-  ) {
+  if (isApiKeyIdentity(identity)) {
     return await getApiKeyOrganization(ctx, identity);
   }
 
   const adapter = getDatabaseAdapter(ctx);
-  const session = await adapter.findOne<AuthSession>({
-    model: "session",
-    where: [{ field: "id", value: identity.sessionId as string }],
-  });
-  if (
-    !session ||
-    session.expiresAt < Date.now() ||
-    !session.activeOrganizationId
-  ) {
+  const session = await getUserSession(ctx, identity);
+  if (!session) throw new ConvexError("Ingen aktiv organisation");
+  // An active support grant takes precedence over the user's own membership.
+  const grant = await getActiveSupportGrant(ctx, session.userId);
+  if (grant) return await getSupportOrganization(ctx, identity, grant);
+  if (!session.activeOrganizationId) {
     throw new ConvexError("Ingen aktiv organisation");
   }
   const member = await adapter.findOne<AuthMember>({
@@ -106,6 +144,10 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     ],
   });
   if (!member) throw new ConvexError("Ingen aktiv organisation");
+  const organizationAccess = await getOrganizationAccess(ctx, member.organizationId);
+  if (organizationAccess.suspended) {
+    throw new ConvexError("Organisationen er suspenderet");
+  }
   const role = member.role;
   const [configured, roleConfig] = await Promise.all([
     ctx.db
@@ -144,7 +186,10 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     granularity: roleConfig?.granularity ?? "detail",
     permissions: new Set<string>(permissions),
     locationScope,
+    disabledFeatures: organizationAccess.disabledFeatures,
     principalKind: "user" as const,
+    supportGrantId: null,
+    readOnly: false,
     apiKeyId: null,
     userId: member.userId,
     sessionId: identity.sessionId as string,
@@ -153,6 +198,61 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     kioskLocationId,
     userIdentifier: identity.tokenIdentifier,
     userName: identity.name?.trim() || identity.email || "Ukendt bruger",
+    requestId: null,
+  };
+}
+
+export async function getActiveSupportGrant(
+  ctx: QueryCtx | MutationCtx,
+  platformUserId: string,
+) {
+  const grant = await ctx.db
+    .query("supportGrants")
+    .withIndex("by_platformUserId_and_expiresAt", (q) =>
+      q.eq("platformUserId", platformUserId).gt("expiresAt", Date.now()),
+    )
+    .first();
+  if (!grant || grant.endedAt !== undefined) return null;
+  // Revoking platform access cuts off any grant still running.
+  const member = await ctx.db
+    .query("platformMembers")
+    .withIndex("by_userId", (q) => q.eq("userId", platformUserId))
+    .unique();
+  return member ? grant : null;
+}
+
+// The organization comes only from the grant row, never from the session or a client argument.
+async function getSupportOrganization(
+  ctx: QueryCtx | MutationCtx,
+  identity: UserIdentity,
+  grant: Doc<"supportGrants">,
+) {
+  const organizationAccess = await getOrganizationAccess(ctx, grant.organizationId);
+  const readOnly = grant.mode === "view";
+  if (organizationAccess.suspended && !readOnly) {
+    throw new ConvexError("Organisationen er suspenderet");
+  }
+  if (readOnly && "insert" in ctx.db) {
+    throw new ConvexError("Supportadgangen er kun til visning");
+  }
+  return {
+    organizationId: grant.organizationId,
+    role: "support",
+    granularity: "detail" as const,
+    permissions: new Set<string>(grant.permissions.filter(isPermissionId)),
+    locationScope: { all: true, ids: new Set<Id<"locations">>() },
+    disabledFeatures: organizationAccess.disabledFeatures,
+    principalKind: "support" as const,
+    supportGrantId: grant._id,
+    readOnly,
+    apiKeyId: null,
+    userId: grant.platformUserId,
+    sessionId: identity.sessionId as string,
+    isKioskAccount: false,
+    kioskModeEnabled: false,
+    kioskLocationId: null,
+    userIdentifier: identity.tokenIdentifier,
+    userName: `Support: ${grant.platformUserName}`,
     requestId: null,
   };
 }
@@ -192,6 +292,10 @@ async function getApiKeyOrganization(
     policy.expiresAt <= Date.now()
   ) {
     throw apiAuthError("invalid_api_key_policy", "The API key is not authorized.");
+  }
+  const organizationAccess = await getOrganizationAccess(ctx, policy.organizationId);
+  if (organizationAccess.suspended) {
+    throw apiAuthError("organization_suspended", "The organization is suspended.");
   }
   if (
     policy.permissions.some(
@@ -244,7 +348,10 @@ async function getApiKeyOrganization(
     granularity: roleConfig?.granularity ?? "detail",
     permissions,
     locationScope,
+    disabledFeatures: organizationAccess.disabledFeatures,
     principalKind: "apiKey" as const,
+    supportGrantId: null,
+    readOnly: false,
     apiKeyId: policy.apiKeyId,
     userId: null,
     sessionId: null,
@@ -328,7 +435,11 @@ export type OrganizationAuth = {
   granularity: DataGranularity;
   permissions: ReadonlySet<string>;
   locationScope: { all: boolean; ids: ReadonlySet<Id<"locations">> };
-  principalKind: "user" | "apiKey";
+  disabledFeatures: ReadonlySet<FeatureId>;
+  principalKind: "user" | "apiKey" | "support";
+  supportGrantId: Id<"supportGrants"> | null;
+  /** View-only support access; mutations and actions are rejected. */
+  readOnly: boolean;
   apiKeyId: string | null;
   userId: string | null;
   sessionId: string | null;
@@ -340,9 +451,11 @@ export type OrganizationAuth = {
   requestId: string | null;
 };
 
+// Support staff count as human principals. Own-profile, leave-organization, and kiosk
+// actions do not go through here and stay unavailable to them.
 export function requireHumanPrincipal(auth: OrganizationAuth) {
   if (
-    auth.principalKind !== "user" ||
+    auth.principalKind === "apiKey" ||
     !auth.userId ||
     !auth.sessionId
   ) {
@@ -350,7 +463,7 @@ export function requireHumanPrincipal(auth: OrganizationAuth) {
   }
   return {
     ...auth,
-    principalKind: "user" as const,
+    principalKind: auth.principalKind,
     apiKeyId: null,
     userId: auth.userId,
     sessionId: auth.sessionId,
@@ -362,6 +475,9 @@ export async function requireOrganization(
 ): Promise<OrganizationAuth> {
   if (!("db" in ctx)) {
     const context = await ctx.runQuery(internal.access.getRoleContext, {});
+    if (context.readOnly) {
+      throw new ConvexError("Supportadgangen er kun til visning");
+    }
     return {
       ...context,
       permissions: new Set(context.permissions),
@@ -369,6 +485,7 @@ export async function requireOrganization(
         all: context.locationScope.all,
         ids: new Set(context.locationScope.ids),
       },
+      disabledFeatures: new Set(context.disabledFeatures),
     };
   }
   return await getOrganizationFromDatabase(ctx);
@@ -467,12 +584,25 @@ export function isMultiLocationFilter(
   return typeof filter === "object" && "locationIds" in filter;
 }
 
+export function requireFeatureEnabled(
+  auth: OrganizationAuth,
+  feature: FeatureId,
+) {
+  if (!auth.disabledFeatures.has(feature)) return;
+  if (auth.principalKind === "apiKey") {
+    throw apiAuthError("feature_disabled", "The feature is disabled.");
+  }
+  throw new ConvexError("Funktionen er slået fra");
+}
+
 export async function requirePermission(
   ctx: AuthContext,
   permission: PermissionId,
   page?: KioskDestinationId | readonly KioskDestinationId[],
 ) {
   const auth = await requireOrganization(ctx);
+  const feature = permissionFeatures[permission];
+  if (feature) requireFeatureEnabled(auth, feature);
   if (page && (await requireKioskDestination(ctx, auth, page))) return auth;
   if (!hasPermission(auth.role, auth.permissions, permission)) {
     if (auth.principalKind === "apiKey") {
@@ -636,6 +766,7 @@ export async function requireOwnCheckEditor(ctx: AuthContext) {
 
 export async function requireOwnCheckAttachmentUploader(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "ownChecks");
   if (auth.kioskModeEnabled) return await requireOwnCheckPerformer(ctx);
   if (
     !hasPermission(auth.role, auth.permissions, "ownChecks.perform") &&
@@ -685,6 +816,7 @@ export async function requireIntegrationManager(ctx: AuthContext) {
 
 export async function requireDashboardViewer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "dashboard");
   if (
     auth.kioskModeEnabled ||
     !hasPermission(auth.role, auth.permissions, "dashboard.view")
@@ -727,6 +859,7 @@ export async function requireBudgetManager(ctx: AuthContext) {
 
 export async function requireDashboardSharer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "dashboard");
   if (
     auth.kioskModeEnabled ||
     !hasPermission(auth.role, auth.permissions, "dashboard.share")

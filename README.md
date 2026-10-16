@@ -25,6 +25,17 @@ Set `BETTER_AUTH_TRUSTED_ORIGINS` to a comma-separated list when the app should 
 
 Use a verified sender or verified domain in Resend. Set the same variables for production using `--prod` and the public `SITE_URL`.
 
+## Platform administration
+
+Platform staff manage customer organizations at `/platform`. Grant or revoke access from the CLI; no endpoint in the app can create platform members:
+
+```bash
+bunx convex run platformMembers:grant '{"email":"staff@example.com","role":"owner"}'
+bunx convex run platformMembers:revoke '{"email":"staff@example.com"}'
+```
+
+`owner` can create organizations, change entitlements, and suspend organizations. `support` can view organizations and start support access. Set `ALLOW_SELF_SERVE_ORGANIZATIONS=false` on the Convex deployment to stop users from creating organizations themselves; they can then only join through invitations.
+
 ## Google Places
 
 Enable Places API (New) in a Google Cloud project with billing, restrict the API key to that API, and set `GOOGLE_PLACES_API_KEY` in the target Convex deployment's environment variables. The key stays on the backend.

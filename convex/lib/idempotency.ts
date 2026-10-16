@@ -6,7 +6,7 @@ const MAX_STORED_RESPONSE_BYTES = 100_000;
 
 type ApiKeyActor = {
   organizationId: string;
-  principalKind: "user" | "apiKey";
+  principalKind: "user" | "apiKey" | "support";
   apiKeyId: string | null;
 };
 

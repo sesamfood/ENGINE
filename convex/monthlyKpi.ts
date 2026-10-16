@@ -89,8 +89,8 @@ export const getContext = query({
       locations: locations.map(({ id, name, currency }) => ({ id, name, currency })),
       organizationId: auth.organizationId,
       timeZone: await resolveTimeZone(ctx, auth.organizationId),
-      canManageBudgets: auth.principalKind === "user" && hasPermission(auth.role, auth.permissions, "dashboard.manageBudgets"),
-      canSync: auth.principalKind === "user" && hasPermission(auth.role, auth.permissions, "integrations.manage"),
+      canManageBudgets: auth.principalKind !== "apiKey" && hasPermission(auth.role, auth.permissions, "dashboard.manageBudgets"),
+      canSync: auth.principalKind !== "apiKey" && hasPermission(auth.role, auth.permissions, "integrations.manage"),
     };
   },
 });

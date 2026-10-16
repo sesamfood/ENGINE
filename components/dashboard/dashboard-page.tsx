@@ -345,7 +345,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
     return canView ? <Skeleton className="h-96" /> : <Alert variant="destructive" className="max-w-xl"><AlertTitle>Ingen adgang</AlertTitle><AlertDescription>Du har ikke adgang til at se dashboardet.</AlertDescription></Alert>;
   }
   if (!dashboard || !currentScope || !currentRange || dashboardsQuery === undefined || locations === undefined) return <Skeleton className="h-96 w-full" />;
-  const visibleWidgets = dashboard.widgets.filter((widget) => widgetAvailable(widget, integrations));
+  const visibleWidgets = dashboard.widgets.filter((widget) => widgetAvailable(widget, integrations, access.disabledFeatures));
   const hiddenWidgets = dashboard.widgets.filter((widget) => !visibleWidgets.includes(widget));
   const dashboardList = dashboardsQuery.dashboards as DashboardRecord[];
 

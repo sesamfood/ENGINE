@@ -32,6 +32,16 @@ async function requireValidLogo(ctx: MutationCtx, storageId: Id<"_storage">) {
   }
 }
 
+export function selfServeOrganizationsAllowed() {
+  return process.env.ALLOW_SELF_SERVE_ORGANIZATIONS !== "false";
+}
+
+export const canCreateOrganization = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async () => selfServeOrganizationsAllowed(),
+});
+
 export const getBranding = query({
   args: {},
   returns: organizationBrandingValidator,

@@ -1,7 +1,7 @@
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import { action, env, internalQuery, query, type QueryCtx } from "./_generated/server";
-import { requireDashboardViewer, requireHumanPrincipal } from "./lib/auth";
+import { requireDashboardViewer, requireHumanPrincipal, requireOrganization } from "./lib/auth";
 import { dashboardMetricComputers, resolveMetricParams } from "./lib/dashboardMetrics";
 import { liveMetricResultValidator, metricIdValidator, scopeValidator, visualizationValidator } from "./lib/dashboardValidators";
 import { GooglePlacesError, readGoogleRating } from "./lib/googlePlaces";
@@ -73,6 +73,8 @@ export const getMetric = action({
   },
   returns: liveMetricResultValidator,
   handler: async (ctx, args): Promise<LiveMetricResult> => {
+    // Rejects view-only support before any external request; the internal query below cannot.
+    await requireOrganization(ctx);
     const queryArgs = { metricId: args.metricId, scope: args.scope };
     const before: Infer<typeof contextValidator> = await ctx.runQuery(internal.dashboardLive.getAuthorizedContext, queryArgs);
     if (JSON.stringify(before) !== args.expectedContext) {
