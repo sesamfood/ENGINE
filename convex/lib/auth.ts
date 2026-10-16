@@ -15,7 +15,13 @@ import { internal } from "../_generated/api";
 import { getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
-import { getEntitlements } from "./features";
+import {
+  getEntitlements,
+  getOrganizationDisabledFeatures,
+  nonEntitledFeatures,
+  permissionFeatures,
+  type FeatureId,
+} from "./features";
 
 type AuthContext = QueryCtx | MutationCtx | ActionCtx;
 
@@ -96,13 +102,21 @@ export async function getUserSession(
   return session && session.expiresAt >= Date.now() ? session : null;
 }
 
-async function requireActiveOrganization(
+async function getOrganizationAccess(
   ctx: QueryCtx | MutationCtx,
   organizationId: string,
 ) {
-  if ((await getEntitlements(ctx, organizationId))?.status === "suspended") {
-    throw new ConvexError("Organisationen er suspenderet");
-  }
+  const [entitlements, disabled] = await Promise.all([
+    getEntitlements(ctx, organizationId),
+    getOrganizationDisabledFeatures(ctx, organizationId),
+  ]);
+  return {
+    suspended: entitlements?.status === "suspended",
+    disabledFeatures: new Set<FeatureId>([
+      ...disabled,
+      ...nonEntitledFeatures(entitlements),
+    ]),
+  };
 }
 
 async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
@@ -126,7 +140,10 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     ],
   });
   if (!member) throw new ConvexError("Ingen aktiv organisation");
-  await requireActiveOrganization(ctx, member.organizationId);
+  const organizationAccess = await getOrganizationAccess(ctx, member.organizationId);
+  if (organizationAccess.suspended) {
+    throw new ConvexError("Organisationen er suspenderet");
+  }
   const role = member.role;
   const [configured, roleConfig] = await Promise.all([
     ctx.db
@@ -165,6 +182,7 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     granularity: roleConfig?.granularity ?? "detail",
     permissions: new Set<string>(permissions),
     locationScope,
+    disabledFeatures: organizationAccess.disabledFeatures,
     principalKind: "user" as const,
     apiKeyId: null,
     userId: member.userId,
@@ -214,7 +232,8 @@ async function getApiKeyOrganization(
   ) {
     throw apiAuthError("invalid_api_key_policy", "The API key is not authorized.");
   }
-  if ((await getEntitlements(ctx, policy.organizationId))?.status === "suspended") {
+  const organizationAccess = await getOrganizationAccess(ctx, policy.organizationId);
+  if (organizationAccess.suspended) {
     throw apiAuthError("organization_suspended", "The organization is suspended.");
   }
   if (
@@ -268,6 +287,7 @@ async function getApiKeyOrganization(
     granularity: roleConfig?.granularity ?? "detail",
     permissions,
     locationScope,
+    disabledFeatures: organizationAccess.disabledFeatures,
     principalKind: "apiKey" as const,
     apiKeyId: policy.apiKeyId,
     userId: null,
@@ -352,6 +372,7 @@ export type OrganizationAuth = {
   granularity: DataGranularity;
   permissions: ReadonlySet<string>;
   locationScope: { all: boolean; ids: ReadonlySet<Id<"locations">> };
+  disabledFeatures: ReadonlySet<FeatureId>;
   principalKind: "user" | "apiKey";
   apiKeyId: string | null;
   userId: string | null;
@@ -393,6 +414,7 @@ export async function requireOrganization(
         all: context.locationScope.all,
         ids: new Set(context.locationScope.ids),
       },
+      disabledFeatures: new Set(context.disabledFeatures),
     };
   }
   return await getOrganizationFromDatabase(ctx);
@@ -491,12 +513,25 @@ export function isMultiLocationFilter(
   return typeof filter === "object" && "locationIds" in filter;
 }
 
+export function requireFeatureEnabled(
+  auth: OrganizationAuth,
+  feature: FeatureId,
+) {
+  if (!auth.disabledFeatures.has(feature)) return;
+  if (auth.principalKind === "apiKey") {
+    throw apiAuthError("feature_disabled", "The feature is disabled.");
+  }
+  throw new ConvexError("Funktionen er slået fra");
+}
+
 export async function requirePermission(
   ctx: AuthContext,
   permission: PermissionId,
   page?: KioskDestinationId | readonly KioskDestinationId[],
 ) {
   const auth = await requireOrganization(ctx);
+  const feature = permissionFeatures[permission];
+  if (feature) requireFeatureEnabled(auth, feature);
   if (page && (await requireKioskDestination(ctx, auth, page))) return auth;
   if (!hasPermission(auth.role, auth.permissions, permission)) {
     if (auth.principalKind === "apiKey") {
@@ -660,6 +695,7 @@ export async function requireOwnCheckEditor(ctx: AuthContext) {
 
 export async function requireOwnCheckAttachmentUploader(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "ownChecks");
   if (auth.kioskModeEnabled) return await requireOwnCheckPerformer(ctx);
   if (
     !hasPermission(auth.role, auth.permissions, "ownChecks.perform") &&
@@ -709,6 +745,7 @@ export async function requireIntegrationManager(ctx: AuthContext) {
 
 export async function requireDashboardViewer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "dashboard");
   if (
     auth.kioskModeEnabled ||
     !hasPermission(auth.role, auth.permissions, "dashboard.view")
@@ -751,6 +788,7 @@ export async function requireBudgetManager(ctx: AuthContext) {
 
 export async function requireDashboardSharer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "dashboard");
   if (
     auth.kioskModeEnabled ||
     !hasPermission(auth.role, auth.permissions, "dashboard.share")

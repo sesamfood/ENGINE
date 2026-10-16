@@ -1,4 +1,5 @@
 import { v, type Infer } from "convex/values";
+import type { PermissionId } from "../../lib/auth-permissions";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 export const featureIds = [
@@ -63,3 +64,59 @@ export async function getDisabledFeatures(
   ]);
   return [...new Set([...disabled, ...nonEntitledFeatures(entitlements)])];
 }
+
+// Every permission must name its feature, so new permissions force a decision here.
+// Administration and settings permissions stay usable while a feature is off, so admins
+// can still configure it and switch it back on.
+export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
+  "dateLabels.print": "dateLabels",
+  "ordering.plan": "ordering",
+  "ordering.place": "ordering",
+  "ordering.export": "ordering",
+  "count.register": "count",
+  "count.viewStock": "count",
+  "count.export": "count",
+  "waste.register": "waste",
+  "waste.report": "waste",
+  "waste.export": "waste",
+  "ownChecks.perform": "ownChecks",
+  "ownChecks.correct": "ownChecks",
+  "ownChecks.view": "ownChecks",
+  "ownChecks.approve": "ownChecks",
+  "ownChecks.edit": "ownChecks",
+  "ownChecks.export": "ownChecks",
+  "transfers.view": "transfers",
+  "transfers.manage": "transfers",
+  "transfers.export": "transfers",
+  "invoices.view": "invoices",
+  "invoices.manage": "invoices",
+  "expenses.create": "expenses",
+  "expenses.view": "expenses",
+  "expenses.exportEconomic": "expenses",
+  "expenses.settings": null,
+  "goodsReceipts.register": "goodsReceipts",
+  "goodsReceipts.settings": null,
+  "staffFood.register": "staffFood",
+  "staffFood.manage": null,
+  "dashboard.view": "dashboard",
+  "dashboard.manage": "dashboard",
+  "dashboard.share": "dashboard",
+  "dashboard.viewSales": "dashboard",
+  "dashboard.viewFinancials": "dashboard",
+  "dashboard.manageBudgets": "dashboard",
+  // Sales data also feeds Count, Waste, and Wolt orders.
+  "sales.viewAggregate": null,
+  "sales.viewDetail": null,
+  "employees.schedule": "employees",
+  "employees.directory": "employees",
+  "catalog.manage": null,
+  "locations.manage": null,
+  "count.settings": null,
+  "waste.settings": null,
+  "ownChecks.manage": null,
+  "organization.settings": null,
+  "integrations.manage": null,
+  "apiKeys.manage": null,
+  "members.manage": null,
+  "roles.manage": null,
+};

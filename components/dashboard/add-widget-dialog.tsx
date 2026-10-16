@@ -1,7 +1,7 @@
 "use client";
 
 import { useIntegrations } from "@/integrations/use-integrations";
-import { customMetricAvailable, metricSourceAvailable, salesSourceOptions } from "@/integrations/dashboard";
+import { customMetricAvailable, metricFeaturesAvailable, metricSourceAvailable, salesSourceOptions } from "@/integrations/dashboard";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -108,7 +108,8 @@ export function AddWidgetDialog({
   const sources = salesSourceOptions(integrations);
   const access = useAccess();
   const convex = useConvex();
-  const available = metrics.filter((metric) => metricSourceAvailable(metric.source, integrations)).filter(
+  const disabledFeatures = access?.disabledFeatures ?? [];
+  const available = metrics.filter((metric) => metricSourceAvailable(metric.source, integrations) && metricFeaturesAvailable(metric.features, disabledFeatures)).filter(
     (metric) => metric.source === "economic"
       ? access?.granularity === "detail" && access.permissions.includes("dashboard.viewFinancials")
       : (!metric.sensitive || canViewSensitive) && (!metric.live || access?.granularity === "detail"),
@@ -125,7 +126,7 @@ export function AddWidgetDialog({
     api.customMetrics.list,
     open ? {} : "skip",
   );
-  const customMetrics = allCustomMetrics?.filter((metric) => customMetricAvailable(metric.spec, integrations));
+  const customMetrics = allCustomMetrics?.filter((metric) => customMetricAvailable(metric.spec, integrations, disabledFeatures));
   const sourceAvailability = useQuery(
     api.dashboard.salesSourceAvailability,
     open ? { scope } : "skip",

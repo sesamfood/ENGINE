@@ -18,6 +18,7 @@ function makeAuth(overrides: Partial<TestAuth> = {}): TestAuth {
     granularity: "detail",
     permissions: new Set(["count.register"]),
     locationScope: { all: true, ids: new Set() },
+    disabledFeatures: new Set(),
     principalKind: "user",
     apiKeyId: null,
     userId: "user-id",

@@ -32,6 +32,7 @@ import {
 import { equalSecrets, hashDashboardPassword } from "./lib/dashboardShareCrypto";
 import { rateLimiter } from "./lib/rateLimits";
 import { getIntegrationState } from "./integrations/state";
+import { getDisabledFeatures } from "./lib/features";
 import { customMetricAvailable, widgetAvailable } from "../integrations/dashboard";
 
 const MAX_METRIC_BATCH = 3;
@@ -85,13 +86,14 @@ async function requireShare(
     throw new ConvexError("Delingen er udløbet eller ikke tilgængelig");
   }
   const integrations = await getIntegrationState(ctx, share.organizationId);
+  const disabledFeatures = await getDisabledFeatures(ctx, share.organizationId);
   return {
     ...share,
     widgets: share.widgets.filter((widget) => {
-      if (!widgetAvailable(widget, integrations)) return false;
+      if (!widgetAvailable(widget, integrations, disabledFeatures)) return false;
       if (widget.metric.kind !== "custom") return true;
       const snapshot = share.customMetricSnapshots.find((snapshot) => snapshot.id === widget.metric.id);
-      return snapshot !== undefined && customMetricAvailable(snapshot.spec, integrations);
+      return snapshot !== undefined && customMetricAvailable(snapshot.spec, integrations, disabledFeatures);
     }),
   };
 }

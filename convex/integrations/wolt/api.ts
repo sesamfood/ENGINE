@@ -18,6 +18,7 @@ import {
 } from "../../_generated/server";
 import {
   requireAllLocationAccess,
+  requireFeatureEnabled,
   requireHumanPrincipal,
   requireIntegrationManager,
   requireLocationAccess,
@@ -849,6 +850,7 @@ export const listOrders = query({
   returns: paginationResultValidator(orderSummaryValidator),
   handler: async (ctx, args) => {
     const auth = await requireSalesDetailViewer(ctx);
+    requireFeatureEnabled(auth, "woltOrders");
     await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     requireOrderRange(args.from, args.to);
     requirePageSize(args.paginationOpts.numItems);
@@ -991,6 +993,7 @@ export const getOrder = query({
   ),
   handler: async (ctx, args) => {
     const auth = await requireSalesDetailViewer(ctx);
+    requireFeatureEnabled(auth, "woltOrders");
     await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const order = await ctx.db.get("woltOrders", args.orderId);
     if (!order || order.organizationId !== auth.organizationId) return null;
@@ -1085,6 +1088,7 @@ export const getOrderLocations = query({
   returns: v.array(v.object({ id: v.id("locations"), name: v.string() })),
   handler: async (ctx) => {
     const auth = await requireSalesDetailViewer(ctx);
+    requireFeatureEnabled(auth, "woltOrders");
     await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const filter = resolveLocationFilter(auth);
     const locations = await ctx.db
@@ -1116,6 +1120,7 @@ export const getOrderSourceHealth = query({
   }),
   handler: async (ctx) => {
     const auth = await requireSalesDetailViewer(ctx);
+    requireFeatureEnabled(auth, "woltOrders");
     await requireIntegrationEnabled(ctx, auth.organizationId, "wolt");
     const [locationRows, connectionRows] = await Promise.all([
       ctx.db

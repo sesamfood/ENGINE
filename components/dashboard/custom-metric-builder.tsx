@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess } from "@/components/app-shell";
+import type { FeatureId } from "@/lib/features";
 import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -269,8 +270,8 @@ function RegistrySelect({
   );
 }
 
-function datasetOptions(integrations: ReturnType<typeof useIntegrations>) {
-  return (Object.values(dashboardDatasets) as DashboardDataset[]).filter((dataset) => metricSourceAvailable(dataset.source, integrations)).map(
+function datasetOptions(integrations: ReturnType<typeof useIntegrations>, disabledFeatures: readonly FeatureId[]) {
+  return (Object.values(dashboardDatasets) as DashboardDataset[]).filter((dataset) => metricSourceAvailable(dataset.source, integrations) && (!dataset.feature || !disabledFeatures.includes(dataset.feature))).map(
     (dataset) => ({
       value: dataset.id,
       label: dataset.label,
@@ -815,7 +816,7 @@ export function CustomMetricBuilder({
                 id={`${which}-dataset`}
                 label="Datasæt"
                 value={query.dataset}
-                options={datasetOptions(integrations)}
+                options={datasetOptions(integrations, access?.disabledFeatures ?? [])}
                 onChange={(value) => chooseDataset(which, value)}
               />
               <RegistrySelect

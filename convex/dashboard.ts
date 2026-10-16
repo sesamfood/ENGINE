@@ -1,5 +1,6 @@
-import { customMetricAvailable, metricSourceAvailable, widgetAvailable, type IntegrationState } from "../integrations/dashboard";
+import { customMetricAvailable, customMetricFeaturesAvailable, metricFeaturesAvailable, metricSourceAvailable, widgetAvailable, type IntegrationState } from "../integrations/dashboard";
 import { getIntegrationState } from "./integrations/state";
+import { getDisabledFeatures } from "./lib/features";
 import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/connections";
 import { organizationRoleCatalog } from "./lib/roles";
 import { ConvexError, v } from "convex/values";
@@ -21,6 +22,8 @@ import {
 import { canBatchCustomMetric, dashboardDatasets } from "../lib/dashboard/datasets";
 import { dashboardColumns, layoutDashboardWidgets, widgetSizeSpans } from "../lib/dashboard/layout";
 import type {
+  MetricResult,
+  MetricUnit,
   DashboardConfig,
   DashboardScope,
   SalesSource,
@@ -1315,6 +1318,10 @@ export const getMetric = query({
     if (!canViewBuiltinMetric(auth, args.metricId, salesSource)) {
       throw new ConvexError("Du har ikke adgang til denne måling");
     }
+    if (!metricFeaturesAvailable(definition.features, [...auth.disabledFeatures])) {
+      const empty: MetricResult = { unit: definition.unit, series: [] };
+      return empty;
+    }
     const params = await resolveMetricParams(
       ctx,
       organizationId,
@@ -1359,6 +1366,9 @@ export const getMetrics = query({
       throw new ConvexError("Widgetgruppen er ugyldig");
     }
     const customMetrics = new Map<Id<"customMetrics">, Doc<"customMetrics">>();
+    // Widgets for switched-off features load as empty so the rest of the dashboard still renders.
+    const disabledFeatures = [...auth.disabledFeatures];
+    const featureBlocked = new Map<string, MetricUnit>();
     for (const widget of args.widgets) {
       if (widget.metric.kind === "builtin") {
         const definition = metricRegistry[widget.metric.id];
@@ -1376,6 +1386,9 @@ export const getMetrics = query({
         if (!canViewBuiltinMetric(auth, widget.metric.id, salesSource)) {
           throw new ConvexError("Du har ikke adgang til denne måling");
         }
+        if (!metricFeaturesAvailable(definition.features, disabledFeatures)) {
+          featureBlocked.set(widget.key, definition.unit);
+        }
         continue;
       }
       if (widget.salesSource !== undefined) {
@@ -1389,6 +1402,10 @@ export const getMetrics = query({
         !customMetricAllowed(auth, metric.spec)
       ) {
         throw new ConvexError("Du har ikke adgang til denne måling");
+      }
+      if (!customMetricFeaturesAvailable(metric.spec, disabledFeatures)) {
+        featureBlocked.set(widget.key, "count");
+        continue;
       }
       if (
         (widget.visualization === "donut" &&
@@ -1413,15 +1430,20 @@ export const getMetrics = query({
         salesDetailAllowed: canViewDetailedSales(auth),
       },
     );
-    const customBatch = args.widgets.flatMap((widget) =>
+    const blockedResults = [...featureBlocked].map(([key, unit]) => {
+      const result: MetricResult = { unit, series: [] };
+      return { key, result };
+    });
+    const widgets = args.widgets.filter((widget) => !featureBlocked.has(widget.key));
+    const customBatch = widgets.flatMap((widget) =>
       widget.metric.kind === "custom"
         ? [{ widget, spec: customMetrics.get(widget.metric.id)!.spec }]
         : [],
     );
     const firstCustom = customBatch[0];
-    if (firstCustom && args.widgets.length > 1) {
+    if (firstCustom && widgets.length > 1) {
       if (
-        customBatch.length !== args.widgets.length ||
+        customBatch.length !== widgets.length ||
         customBatch.some(({ spec }) => !canBatchCustomMetric(spec))
       ) {
         throw new ConvexError("Widgetgruppen er ugyldig");
@@ -1449,10 +1471,10 @@ export const getMetrics = query({
           ),
         });
       }
-      return results;
+      return [...results, ...blockedResults];
     }
-    return await Promise.all(
-      args.widgets.map(async (widget) => {
+    const computed = await Promise.all(
+      widgets.map(async (widget) => {
         const params = await resolveParams(
           widget.range ? { preset: widget.range } : args.range,
         );
@@ -1478,6 +1500,7 @@ export const getMetrics = query({
         };
       }),
     );
+    return [...computed, ...blockedResults];
   },
 });
 
@@ -1494,6 +1517,7 @@ export const getShareSource = internalQuery({
       args.dashboardId,
     );
     const integrations = await getIntegrationState(ctx, args.organizationId);
+    const disabledFeatures = await getDisabledFeatures(ctx, args.organizationId);
     const customMetricIds = dashboard.widgets.flatMap((widget) =>
       widget.metric.kind === "custom" ? [widget.metric.id] : [],
     );
@@ -1510,13 +1534,13 @@ export const getShareSource = internalQuery({
       throw new ConvexError("En tilpasset måling blev ikke fundet");
     }
     const availableCustomMetrics = customMetrics.flatMap((metric) =>
-      metric && customMetricAvailable(metric.spec, integrations) ? [metric] : [],
+      metric && customMetricAvailable(metric.spec, integrations, disabledFeatures) ? [metric] : [],
     );
     const availableCustomIds = new Set(availableCustomMetrics.map((metric) => metric._id));
     return {
       widgets: dashboard.widgets.filter((widget) =>
         widget.metric.kind === "builtin"
-          ? widgetAvailable(widget, integrations)
+          ? widgetAvailable(widget, integrations, disabledFeatures)
           : availableCustomIds.has(widget.metric.id)),
       scope: dashboard.defaultScope,
       range: dashboard.defaultRange,

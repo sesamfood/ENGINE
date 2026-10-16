@@ -12,6 +12,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { hasPermission } from "../lib/auth-permissions";
 import {
+  requireFeatureEnabled,
   requireKioskDestination,
   requireLocationAccess,
   requireOrganization,
@@ -1599,6 +1600,7 @@ async function voidRegistration(
   { registrationId, reason, requireUndoWindow }: VoidWasteOptions,
 ) {
   const auth = await requireOrganization(ctx);
+  requireFeatureEnabled(auth, "waste");
   const kioskBypass = await requireKioskDestination(ctx, auth, [
     "waste.register",
     "waste.report",
