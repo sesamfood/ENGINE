@@ -77,6 +77,8 @@ import { api } from "@/convex/_generated/api";
 import { usePermission } from "@/components/app-shell";
 import { LocationField } from "@/components/location-field";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useSupportSession } from "@/lib/active-organization";
+import { SupportUnavailable } from "@/components/platform/support-unavailable";
 
 type Member = {
   id: string;
@@ -292,6 +294,13 @@ function initials(name: string) {
 }
 
 export function MemberManagement() {
+  const support = useSupportSession();
+  if (support === undefined) return <Skeleton className="h-96 w-full" />;
+  if (support) return <SupportUnavailable>Inviter Administratorer fra platformen. Øvrige Brugere administreres af organisationens egne Administratorer.</SupportUnavailable>;
+  return <MemberManagementContent />;
+}
+
+function MemberManagementContent() {
   const allowed = usePermission("members.manage");
   const canManageRoles = usePermission("roles.manage");
   const { data: session } = authClient.useSession();

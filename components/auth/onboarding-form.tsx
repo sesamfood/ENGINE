@@ -1,5 +1,6 @@
 "use client";
 
+import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import posthog from "posthog-js";
+import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 
 function organizationSlug(name: string) {
@@ -49,6 +51,11 @@ export function OnboardingForm({ canCreate }: { canCreate: boolean }) {
   const activeOrganization = authClient.useActiveOrganization();
   const activeOrganizationId = activeOrganization.data?.id;
   const firstOrganizationId = organizations.data?.[0]?.id;
+  const { isAuthenticated } = useConvexAuth();
+  const platformMember = useQuery(
+    api.platform.members.me,
+    isAuthenticated ? {} : "skip",
+  );
   const [pendingAction, setPendingAction] = useState<"create" | "join">();
   const [error, setError] = useState<string>();
 
@@ -60,7 +67,11 @@ export function OnboardingForm({ canCreate }: { canCreate: boolean }) {
       return;
     }
 
-    if (!firstOrganizationId) return;
+    if (!firstOrganizationId) {
+      // Platform staff usually have no organization of their own.
+      if (platformMember) router.replace("/platform");
+      return;
+    }
 
     void authClient.organization
       .setActive({ organizationId: firstOrganizationId })
@@ -80,6 +91,7 @@ export function OnboardingForm({ canCreate }: { canCreate: boolean }) {
     activeOrganizationId,
     firstOrganizationId,
     organizations.isPending,
+    platformMember,
     router,
   ]);
 

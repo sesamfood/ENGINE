@@ -3,10 +3,12 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { hasPermission } from "../lib/auth-permissions";
 import {
   requireCatalogManager,
   requireLocationAccess,
+  requireOrganization,
   requirePermission,
 } from "./lib/auth";
 import { requireOrganizationLocation } from "./lib/locations";
@@ -157,6 +159,20 @@ export const rememberExpiry = mutation({
   },
 });
 
+// Catalog managers configure date labels from Administration, also while the feature is off.
+async function requireDateLabelSettingsAccess(ctx: QueryCtx | MutationCtx) {
+  const auth = await requireOrganization(ctx);
+  if (
+    auth.disabledFeatures.has("dateLabels") &&
+    !auth.kioskModeEnabled &&
+    hasPermission(auth.role, auth.permissions, "catalog.manage") &&
+    hasPermission(auth.role, auth.permissions, "dateLabels.print")
+  ) {
+    return auth;
+  }
+  return await requirePermission(ctx, "dateLabels.print", "dateLabels.print");
+}
+
 export const getSettings = query({
   args: { locationId: v.id("locations") },
   returns: v.object({
@@ -173,11 +189,7 @@ export const getSettings = query({
     ),
   }),
   handler: async (ctx, args) => {
-    const auth = await requirePermission(
-      ctx,
-      "dateLabels.print",
-      "dateLabels.print",
-    );
+    const auth = await requireDateLabelSettingsAccess(ctx);
     requireLocationAccess(auth, args.locationId);
     await requireOrganizationLocation(
       ctx,
@@ -215,7 +227,7 @@ export const saveSettings = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireCatalogManager(ctx);
-    await requirePermission(ctx, "dateLabels.print");
+    await requireDateLabelSettingsAccess(ctx);
     requireLocationAccess(auth, args.locationId);
     const location = await requireOrganizationLocation(
       ctx,

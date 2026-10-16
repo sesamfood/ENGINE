@@ -1,4 +1,5 @@
 import { customMetricAvailable, type IntegrationState } from "../integrations/dashboard";
+import type { FeatureId } from "./lib/features";
 import { getIntegrationState } from "./integrations/state";
 import { ConvexError, v } from "convex/values";
 import { dashboardDatasets } from "../lib/dashboard/datasets";
@@ -63,11 +64,12 @@ function requireDatasetPermissions(
   auth: {
     role: string;
     permissions: ReadonlySet<string>;
+    disabledFeatures: ReadonlySet<FeatureId>;
   },
   spec: CustomMetricSpec,
   integrations: IntegrationState,
 ) {
-  if (!customMetricAvailable(spec, integrations)) {
+  if (!customMetricAvailable(spec, integrations, [...auth.disabledFeatures])) {
     throw new ConvexError("Målingen er ikke tilgængelig");
   }
   const queries =

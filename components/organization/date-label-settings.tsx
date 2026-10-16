@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
 import { selectedLocationId } from "@/lib/location-preference";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 export function DateLabelSettings() {
   const access = useAccess();
@@ -28,7 +29,7 @@ export function DateLabelSettings() {
   const canPrint = usePermission("dateLabels.print");
   const canManageProducts = usePermission("catalog.manage");
   const session = authClient.useSession().data;
-  const organizationId = session?.session.activeOrganizationId ?? undefined;
+  const organizationId = useActiveOrganization().data?.id;
   const storedId = useWasteLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const locationId = selectedLocationId({

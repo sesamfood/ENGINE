@@ -1,6 +1,6 @@
 import { customMetricAvailable, customMetricFeaturesAvailable, metricFeaturesAvailable, metricSourceAvailable, widgetAvailable, type IntegrationState } from "../integrations/dashboard";
 import { getIntegrationState } from "./integrations/state";
-import { getDisabledFeatures } from "./lib/features";
+import { getDisabledFeatures, type FeatureId } from "./lib/features";
 import { getOnlinePosOrganizationSettings } from "./integrations/onlinepos/lib/connections";
 import { organizationRoleCatalog } from "./lib/roles";
 import { ConvexError, v } from "convex/values";
@@ -565,10 +565,14 @@ function roleAllowsDashboard(dashboard: Doc<"dashboards">, role: string) {
 
 async function availableWidgets(
   ctx: QueryCtx | MutationCtx,
-  auth: DashboardAccess & { organizationId: string },
+  auth: DashboardAccess & {
+    organizationId: string;
+    disabledFeatures: ReadonlySet<FeatureId>;
+  },
   widgets: WidgetInstance[],
   integrations: IntegrationState,
 ) {
+  const disabledFeatures = [...auth.disabledFeatures];
   const availability = await Promise.all(
     widgets.map(async (widget) => {
       if (widget.metric.kind === "builtin") {
@@ -579,7 +583,7 @@ async function availableWidgets(
         return {
           widget,
           permitted: canViewBuiltinMetric(auth, widget.metric.id, salesSource),
-          enabled: widgetAvailable(widget, integrations),
+          enabled: widgetAvailable(widget, integrations, disabledFeatures),
         };
       }
       const metric = await ctx.db.get("customMetrics", widget.metric.id);
@@ -587,7 +591,7 @@ async function availableWidgets(
       return {
         widget,
         permitted: Boolean(ownedMetric && customMetricAllowed(auth, ownedMetric.spec)),
-        enabled: !ownedMetric || customMetricAvailable(ownedMetric.spec, integrations),
+        enabled: !ownedMetric || customMetricAvailable(ownedMetric.spec, integrations, disabledFeatures),
       };
     }),
   );

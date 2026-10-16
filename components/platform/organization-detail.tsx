@@ -502,6 +502,11 @@ function SupportTab({ organization }: { organization: Organization }) {
   const [hours, setHours] = useState("1");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  // Suspended organizations only allow view access.
+  const availableModes =
+    organization.status === "suspended"
+      ? modeOptions.filter((option) => option.value === "view")
+      : modeOptions;
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -538,7 +543,7 @@ function SupportTab({ organization }: { organization: Organization }) {
                 <Field>
                   <FieldLabel htmlFor="platform-support-mode">Adgang</FieldLabel>
                   <Select
-                    items={modeOptions}
+                    items={availableModes}
                     value={mode}
                     onValueChange={(value) => setMode(value as "view" | "full")}
                   >
@@ -547,7 +552,7 @@ function SupportTab({ organization }: { organization: Organization }) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {modeOptions.map((option) => (
+                        {availableModes.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -603,7 +608,7 @@ function SupportTab({ organization }: { organization: Organization }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Medarbejder</TableHead>
+                  <TableHead>Platformbruger</TableHead>
                   <TableHead>Adgang</TableHead>
                   <TableHead>Start</TableHead>
                   <TableHead>Slut</TableHead>

@@ -45,12 +45,7 @@ import { toast } from "sonner";
 import posthog from "posthog-js";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1126,26 +1121,25 @@ function SupportBanner() {
   }
 
   return (
-    <div className="px-4 pt-4">
-      <Alert>
+    <div className="flex flex-col gap-3 px-4 pt-4 sm:flex-row sm:items-center">
+      <Alert className="flex-1">
         <LifeBuoyIcon />
         <AlertTitle>Supportadgang til {support.organizationName}</AlertTitle>
         <AlertDescription>
           {support.mode === "view" ? "Kun visning" : "Fuld adgang"}. Udløber om{" "}
           {formatTimeLeft(support.expiresAt - now)}.
         </AlertDescription>
-        <AlertAction>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={ending}
-            onClick={() => void end()}
-          >
-            {ending ? <Spinner data-icon="inline-start" /> : null}
-            Afslut support
-          </Button>
-        </AlertAction>
       </Alert>
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        disabled={ending}
+        onClick={() => void end()}
+      >
+        {ending ? <Spinner data-icon="inline-start" /> : null}
+        Afslut support
+      </Button>
     </div>
   );
 }

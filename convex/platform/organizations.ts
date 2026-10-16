@@ -60,6 +60,20 @@ export async function requirePlatformOrganization(
   return organization;
 }
 
+const MAX_SEARCH_SCAN = 500;
+const MAX_SEARCH_RESULTS = 50;
+
+function normalizeSearch(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("da")
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "oe")
+    .replace(/å/g, "aa")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 async function countLocations(ctx: QueryCtx, organizationId: string) {
   const locations = await ctx.db
     .query("locations")
@@ -89,22 +103,25 @@ export const list = query({
   ),
   handler: async (ctx, args) => {
     await requirePlatformMember(ctx);
-    // Slugs are lowercase and hyphenated, which makes them a case-insensitive search key.
-    const search = args.search
-      ?.trim()
-      .toLocaleLowerCase("da")
-      .replace(/\s+/g, "-");
+    const search = args.search ? normalizeSearch(args.search) : "";
+    // Searching scans a bounded number of organizations in memory, since the
+    // Better Auth table has no case-insensitive name index.
     const result = await ctx.runQuery(components.betterAuth.adapter.findMany, {
       model: "organization",
-      where: search
-        ? [{ field: "slug", operator: "contains", value: search }]
-        : undefined,
       sortBy: { field: "createdAt", direction: "desc" },
-      paginationOpts: args.paginationOpts,
+      paginationOpts: search
+        ? { numItems: MAX_SEARCH_SCAN, cursor: null }
+        : args.paginationOpts,
     });
+    const organizations = (result.page as RawOrganization[]).filter(
+      (organization) =>
+        !search ||
+        normalizeSearch(organization.name).includes(search) ||
+        organization.slug.includes(search.replace(/\s+/g, "-")),
+    );
     const adapter = getDatabaseAdapter(ctx);
     const page = await Promise.all(
-      (result.page as RawOrganization[]).map(async (organization) => {
+      organizations.slice(0, search ? MAX_SEARCH_RESULTS : undefined).map(async (organization) => {
         const [entitlements, members, locationCount] = await Promise.all([
           getEntitlements(ctx, organization._id),
           adapter.findMany({
@@ -126,6 +143,7 @@ export const list = query({
         };
       }),
     );
+    if (search) return { page, isDone: true, continueCursor: "" };
     return {
       page,
       isDone: result.isDone,

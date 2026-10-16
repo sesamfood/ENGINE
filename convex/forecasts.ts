@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { getEntitlements } from "./lib/features";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -130,6 +131,9 @@ export const claim = internalMutation({
     const location = await ctx.db.get("locations", forecast.locationId);
     if (!location || location.organizationId !== forecast.organizationId) {
       await ctx.db.delete("locationForecasts", forecastId);
+      return null;
+    }
+    if ((await getEntitlements(ctx, forecast.organizationId))?.status === "suspended") {
       return null;
     }
     const now = Date.now();

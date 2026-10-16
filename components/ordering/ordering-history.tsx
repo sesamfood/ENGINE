@@ -69,6 +69,7 @@ import { selectedLocationId } from "@/lib/location-preference";
 import { downloadOrderCsv } from "@/lib/ordering-csv";
 import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 const PAGE_SIZE = 25;
 const dateFormatter = new Intl.DateTimeFormat("da-DK", {
@@ -687,11 +688,11 @@ function History({ organizationId }: { organizationId: string }) {
 
 export function OrderingHistory() {
   const { data: session } = authClient.useSession();
-  const organizationId = session?.session.activeOrganizationId;
+  const organizationId = useActiveOrganization().data?.id;
   if (!organizationId) return <Skeleton className="h-96 w-full" />;
   return (
     <History
-      key={`${organizationId}:${session.user.id}`}
+      key={`${organizationId}:${session?.user.id}`}
       organizationId={organizationId}
     />
   );

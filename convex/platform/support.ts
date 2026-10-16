@@ -10,6 +10,7 @@ import {
 import type { Doc } from "../_generated/dataModel";
 import { getActiveSupportGrant } from "../lib/auth";
 import { recordAudit, requireAuditReason } from "../lib/audit";
+import { getEntitlements } from "../lib/features";
 import { getPlatformMember, recordPlatformAudit, requirePlatformMember } from "../lib/platformAuth";
 import { requirePlatformOrganization } from "./organizations";
 
@@ -94,6 +95,14 @@ export const start = mutation({
       ctx,
       args.organizationId,
     );
+    if (
+      args.mode === "full" &&
+      (await getEntitlements(ctx, organization.id))?.status === "suspended"
+    ) {
+      throw new ConvexError(
+        "En suspenderet organisation kan kun åbnes med visning",
+      );
+    }
     const current = await getActiveSupportGrant(ctx, actor.userId);
     if (current) await endGrant(ctx, actor, current);
     const now = Date.now();

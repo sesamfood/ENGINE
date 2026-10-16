@@ -98,6 +98,7 @@ import {
   type DemandObservation,
 } from "@/lib/ordering-forecast";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 const numberFormatter = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 6,
@@ -111,11 +112,11 @@ const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
 
 export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
   const { data: session } = authClient.useSession();
-  const organizationId = session?.session.activeOrganizationId;
+  const organizationId = useActiveOrganization().data?.id;
   if (!organizationId) return <Skeleton className="h-96 w-full" />;
   return (
     <Planner
-      key={`${organizationId}:${session.user.id}`}
+      key={`${organizationId}:${session?.user.id}`}
       organizationId={organizationId}
       navigation={navigation}
     />
