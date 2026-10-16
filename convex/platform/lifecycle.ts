@@ -7,7 +7,6 @@ import {
   type MutationCtx,
 } from "../_generated/server";
 import { getDatabaseAdapter } from "../auth";
-import { getActiveSupportGrant } from "../lib/auth";
 import { integrationIds } from "../integrations/state";
 import { requireAuditReason } from "../lib/audit";
 import { createInvitationEmail } from "../lib/authEmail";
@@ -168,20 +167,13 @@ export const inviteAdmin = mutation({
   args: { organizationId: v.string(), email: v.string(), reason: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const actor = await requirePlatformMember(ctx);
+    // Owner-only: an accepted invitation is permanent, so it must not outlive a support grant.
+    const actor = await requirePlatformMember(ctx, "owner");
     const reason = requireAuditReason(args.reason);
     const organization = await requirePlatformOrganization(
       ctx,
       args.organizationId,
     );
-    if (actor.role !== "owner") {
-      const grant = await getActiveSupportGrant(ctx, actor.userId);
-      if (grant?.organizationId !== organization.id || grant.mode !== "full") {
-        throw new ConvexError(
-          "Start supportadgang med fuld adgang for at invitere brugere",
-        );
-      }
-    }
     const { email } = await createAdminInvitation(
       ctx,
       actor,

@@ -322,6 +322,7 @@ export const saveConnection = internalMutation({
     companyId: v.number(),
     actorUserId: v.string(),
     actorName: v.string(),
+    actorKind: v.optional(v.union(v.literal("user"), v.literal("support"))),
   },
   returns: v.id("onlinePosIntegrations"),
   handler: async (ctx, args) => {
@@ -386,6 +387,7 @@ export const saveConnection = internalMutation({
       ctx,
       {
         organizationId: args.organizationId,
+        principalKind: args.actorKind,
         userId: args.actorUserId,
         userName: args.actorName,
       },
@@ -414,6 +416,7 @@ export const saveLocationConnection = internalMutation({
     companyId: v.number(),
     actorUserId: v.string(),
     actorName: v.string(),
+    actorKind: v.optional(v.union(v.literal("user"), v.literal("support"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -473,6 +476,7 @@ export const saveLocationConnection = internalMutation({
       ctx,
       {
         organizationId: args.organizationId,
+        principalKind: args.actorKind,
         userId: args.actorUserId,
         userName: args.actorName,
       },
@@ -545,6 +549,7 @@ export const connect = action({
         companyId: args.companyId,
         actorUserId: human.userId,
         actorName: userName,
+        actorKind: human.principalKind,
       },
     );
     return { productCount: products.length, integrationId };
@@ -587,6 +592,7 @@ export const connectLocation = action({
       companyId: args.companyId,
       actorUserId: human.userId,
       actorName: userName,
+      actorKind: human.principalKind,
     });
     return null;
   },

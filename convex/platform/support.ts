@@ -1,6 +1,12 @@
 import { ConvexError, v } from "convex/values";
 import { permissionIds, type PermissionId } from "../../lib/auth-permissions";
-import { mutation, query, type MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+} from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { getActiveSupportGrant } from "../lib/auth";
 import { recordAudit, requireAuditReason } from "../lib/audit";
@@ -101,6 +107,12 @@ export const start = mutation({
       startedAt: now,
       expiresAt: now + args.hours * 60 * 60 * 1000,
     });
+    // Queries do not rerun as time passes, so expiry writes the grant to invalidate them.
+    await ctx.scheduler.runAt(
+      now + args.hours * 60 * 60 * 1000,
+      internal.platform.support.expire,
+      { grantId },
+    );
     const summary = `Supportadgang med ${modeLabels[args.mode]} i ${args.hours} ${args.hours === 1 ? "time" : "timer"}`;
     await recordPlatformAudit(ctx, actor, {
       organizationId: organization.id,
@@ -125,6 +137,18 @@ export const start = mutation({
       },
     );
     return grantId;
+  },
+});
+
+export const expire = internalMutation({
+  args: { grantId: v.id("supportGrants") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const grant = await ctx.db.get("supportGrants", args.grantId);
+    if (grant && grant.endedAt === undefined) {
+      await ctx.db.patch("supportGrants", grant._id, { endedAt: grant.expiresAt });
+    }
+    return null;
   },
 });
 

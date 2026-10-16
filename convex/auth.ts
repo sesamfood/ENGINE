@@ -88,6 +88,21 @@ async function requireAnotherAdmin(
   }
 }
 
+async function requireActiveOrganization(
+  ctx: GenericCtx<DataModel>,
+  organizationId: string,
+) {
+  if (
+    await ctx.runQuery(internal.access.isOrganizationSuspended, {
+      organizationId,
+    })
+  ) {
+    throw new APIError("FORBIDDEN", {
+      message: "Organisationen er suspenderet",
+    });
+  }
+}
+
 async function requireNoOrganizationMembership(
   ctx: GenericCtx<DataModel>,
   userId: string,
@@ -370,6 +385,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             message: "Ingen aktiv organisation",
           });
         }
+        await requireActiveOrganization(ctx, organizationId);
         const roleContext = await ctx.runQuery(
           internal.access.getMemberPermissionContext,
           { organizationId, userId: session.user.id },
@@ -499,7 +515,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
               invitation.role,
             );
           },
-          beforeAcceptInvitation: async ({ user }) => {
+          beforeAcceptInvitation: async ({ user, invitation }) => {
+            await requireActiveOrganization(ctx, invitation.organizationId);
             await requireNoOrganizationMembership(ctx, user.id);
           },
           afterRemoveMember: async ({ member }) => {

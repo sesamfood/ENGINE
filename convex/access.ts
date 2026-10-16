@@ -269,6 +269,13 @@ export const getRoleContext = internalQuery({
   handler: async (ctx) => getRoleContextForQuery(ctx),
 });
 
+export const isOrganizationSuspended = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) =>
+    (await getEntitlements(ctx, args.organizationId))?.status === "suspended",
+});
+
 export const getMemberPermissionContext = internalQuery({
   args: { organizationId: v.string(), userId: v.string() },
   returns: memberPermissionContextValidator,

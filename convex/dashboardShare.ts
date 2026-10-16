@@ -32,7 +32,7 @@ import {
 import { equalSecrets, hashDashboardPassword } from "./lib/dashboardShareCrypto";
 import { rateLimiter } from "./lib/rateLimits";
 import { getIntegrationState } from "./integrations/state";
-import { getDisabledFeatures } from "./lib/features";
+import { getDisabledFeatures, getEntitlements } from "./lib/features";
 import { customMetricAvailable, widgetAvailable } from "../integrations/dashboard";
 
 const MAX_METRIC_BATCH = 3;
@@ -69,6 +69,21 @@ export const expireShare = internalMutation({
   },
 });
 
+// Shares stop working while the organization is suspended or Dashboard is off.
+async function shareOrganizationAvailable(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+) {
+  const [entitlements, disabledFeatures] = await Promise.all([
+    getEntitlements(ctx, organizationId),
+    getDisabledFeatures(ctx, organizationId),
+  ]);
+  return (
+    entitlements?.status !== "suspended" &&
+    !disabledFeatures.includes("dashboard")
+  );
+}
+
 async function requireShare(
   ctx: QueryCtx | MutationCtx,
   token: string,
@@ -81,7 +96,8 @@ async function requireShare(
   if (
     !share ||
     !active(share, Date.now()) ||
-    !equalSecrets(share.unlockKey, accessKey)
+    !equalSecrets(share.unlockKey, accessKey) ||
+    !(await shareOrganizationAvailable(ctx, share.organizationId))
   ) {
     throw new ConvexError("Delingen er udløbet eller ikke tilgængelig");
   }
@@ -117,7 +133,13 @@ export const getPublicMeta = query({
       .query("dashboardShares")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .unique();
-    if (!share || !active(share, Date.now())) return null;
+    if (
+      !share ||
+      !active(share, Date.now()) ||
+      !(await shareOrganizationAvailable(ctx, share.organizationId))
+    ) {
+      return null;
+    }
     const requiresPassword =
       Boolean(share.passwordHash) ||
       share.widgets.some(

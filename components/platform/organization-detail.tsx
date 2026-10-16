@@ -214,7 +214,7 @@ function InviteAdminCard({ organizationId }: { organizationId: string }) {
         <CardHeader>
           <CardTitle>Invitér Administrator</CardTitle>
           <CardDescription>
-            Platformsupport skal have startet supportadgang med fuld adgang.
+            Personen får en invitation, der udløber om syv dage.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -251,6 +251,7 @@ function InviteAdminCard({ organizationId }: { organizationId: string }) {
 }
 
 function OverviewTab({ organization }: { organization: Organization }) {
+  const role = usePlatformRole();
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <Card className="lg:col-span-2">
@@ -297,7 +298,9 @@ function OverviewTab({ organization }: { organization: Organization }) {
           ) : null}
         </CardContent>
       </Card>
-      <InviteAdminCard organizationId={organization.id} />
+      {role === "owner" ? (
+        <InviteAdminCard organizationId={organization.id} />
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Lokationer</CardTitle>
