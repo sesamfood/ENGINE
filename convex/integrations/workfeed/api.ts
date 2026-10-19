@@ -173,6 +173,7 @@ export const saveConnection = internalMutation({
     companyId: v.string(),
     actorUserId: v.string(),
     actorName: v.string(),
+    actorKind: v.optional(v.union(v.literal("user"), v.literal("support"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -219,6 +220,7 @@ export const saveConnection = internalMutation({
       ctx,
       {
         organizationId: args.organizationId,
+        principalKind: args.actorKind,
         userId: args.actorUserId,
         userName: args.actorName,
       },
@@ -323,11 +325,10 @@ export const connect = action({
   args: { apiKey: v.string(), companyId: v.string() },
   returns: v.object({ departmentCount: v.number() }),
   handler: async (ctx, args) => {
-    const auth = await requireIntegrationManager(ctx);
-    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
-    requireAllLocationAccess(auth);
-    const human = requireHumanPrincipal(auth);
-    const { organizationId, userName } = auth;
+    const initial = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, initial.organizationId, "workfeed");
+    requireAllLocationAccess(initial);
+    requireHumanPrincipal(initial);
     const apiKey = requireCredential(args.apiKey, "Workfeed API-nøgle", 500);
     const companyId = requireCredential(
       args.companyId,
@@ -335,12 +336,22 @@ export const connect = action({
       200,
     );
     const departments = await requestDepartments({ apiKey, companyId });
+    // Re-check authority: access may have changed while the provider call ran.
+    const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "workfeed");
+    requireAllLocationAccess(auth);
+    const human = requireHumanPrincipal(auth);
+    const { organizationId, userName } = auth;
+    if (organizationId !== initial.organizationId) {
+      throw new ConvexError("Du har ikke adgang");
+    }
     await ctx.runMutation(internal.workfeed.saveConnection, {
       organizationId,
       apiKey,
       companyId,
       actorUserId: human.userId,
       actorName: userName,
+      actorKind: human.principalKind,
     });
     return { departmentCount: departments.length };
   },

@@ -128,6 +128,7 @@ export function IntegrationOverview() {
       <div className="grid gap-5 md:grid-cols-2">
         {integrationRegistry.map((entry) => {
           const enabled = state[entry.id];
+          const unavailable = state.unavailable.includes(entry.id);
           const canConfigure = !entry.requiresAllLocations || canToggle;
           const canOpen = enabled && canConfigure;
           return (
@@ -157,7 +158,7 @@ export function IntegrationOverview() {
                     <Switch
                       id={`${entry.id}-enabled`}
                       checked={enabled}
-                      disabled={!canToggle || saving !== null}
+                      disabled={!canToggle || unavailable || saving !== null}
                       aria-busy={saving === entry.id}
                       onCheckedChange={(checked) => void changeEnabled(entry, checked)}
                     />
@@ -166,7 +167,7 @@ export function IntegrationOverview() {
               </CardHeader>
               <CardContent className="flex flex-1 items-center justify-between">
                 <div className="flex flex-col items-start gap-2">
-                  <Badge variant="secondary">{enabled ? "Aktiveret" : "Deaktiveret"}</Badge>
+                  <Badge variant="secondary">{unavailable ? "Ikke tilgængelig" : enabled ? "Aktiveret" : "Deaktiveret"}</Badge>
                   {canOpen ? <ConnectionSummary integration={entry.id} /> : null}
                 </div>
                 {canOpen ? <span className="flex items-center gap-2 text-sm">Indstillinger<ArrowRightIcon className="size-4" aria-hidden="true" /></span> : null}
@@ -174,7 +175,9 @@ export function IntegrationOverview() {
               {!canOpen ? (
                 <CardFooter>
                   <p className="flex min-h-11 items-center text-sm text-muted-foreground">
-                    {enabled
+                    {unavailable
+                      ? "Integrationen er ikke en del af jeres abonnement."
+                      : enabled
                       ? "Indstillinger kræver adgang til alle lokationer."
                       : "Aktivér integrationen for at åbne indstillinger."}
                   </p>

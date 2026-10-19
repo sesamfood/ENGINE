@@ -22,11 +22,11 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type WasteContextValue = {
   locationId: Id<"locations"> | null;
@@ -88,7 +88,7 @@ function Controls({
 export function WasteHeader({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();

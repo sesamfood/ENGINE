@@ -1,3 +1,4 @@
+import type { FeatureId } from "../features";
 import type {
   MetricId,
   MetricUnit,
@@ -32,6 +33,8 @@ export type MetricDefinition = {
   formula: string;
   sourceTables: readonly [string, ...string[]];
   source: MetricSource;
+  /** The metric is hidden and returns no data while any of these features is off. */
+  features?: readonly FeatureId[];
   unit: MetricUnit;
   visualizations: readonly VisualizationId[];
   defaultVisualization: VisualizationId;
@@ -158,6 +161,7 @@ const definitions = {
     formula: "Summen af standardmængden for aktive Waste-registreringer i perioden.",
     sourceTables: ["wasteRegistrations"],
     source: "internal",
+    features: ["waste"],
     unit: "quantity",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "area",
@@ -171,6 +175,7 @@ const definitions = {
     formula: "Antal aktive Waste-registreringer i perioden.",
     sourceTables: ["wasteRegistrations"],
     source: "internal",
+    features: ["waste"],
     unit: "count",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
@@ -184,6 +189,7 @@ const definitions = {
     formula: "Antal aktive Waste-registreringer pr. produkt i perioden, sorteret faldende (top 10).",
     sourceTables: ["wasteRegistrations"],
     source: "internal",
+    features: ["waste"],
     unit: "count",
     visualizations: ["bar", "donut", "list", "table"],
     defaultVisualization: "list",
@@ -197,6 +203,7 @@ const definitions = {
     formula: "Antal aktive Waste-registreringer i perioden, fordelt på produktkategori. Viser de 10 kategorier med flest registreringer.",
     sourceTables: ["wasteRegistrations", "products", "categories"],
     source: "internal",
+    features: ["waste"],
     unit: "count",
     visualizations: ["bar", "donut", "list", "table"],
     defaultVisualization: "donut",
@@ -210,6 +217,7 @@ const definitions = {
     formula: "Antal aktive registreringer af dårlige leveringer i perioden.",
     sourceTables: ["badDeliveries"],
     source: "internal",
+    features: ["waste"],
     unit: "count",
     visualizations: ["kpi", "line", "bar", "area"],
     defaultVisualization: "kpi",
@@ -223,6 +231,7 @@ const definitions = {
     formula: "Antal indsendte Counts ÷ antal Counts × 100.",
     sourceTables: ["counts"],
     source: "internal",
+    features: ["count"],
     unit: "percent",
     visualizations: ["kpi", "gauge", "bar"],
     defaultVisualization: "gauge",
@@ -236,6 +245,7 @@ const definitions = {
     formula: "Antal Counts oprettet før måletidspunktet, som ikke er indsendt ved måletidspunktet.",
     sourceTables: ["counts"],
     source: "internal",
+    features: ["count"],
     unit: "count",
     visualizations: ["kpi", "list", "table"],
     defaultVisualization: "kpi",
@@ -249,6 +259,7 @@ const definitions = {
     formula: "Antal transfers i perioden, hvor en valgt lokation er afsender eller modtager. Transferen tælles på afsenderlokationen.",
     sourceTables: ["transfers"],
     source: "internal",
+    features: ["transfers"],
     unit: "count",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
@@ -262,6 +273,7 @@ const definitions = {
     formula: "Summen af transferlinjens antal × faktor til standardenhed.",
     sourceTables: ["transfers", "transferItems"],
     source: "internal",
+    features: ["transfers"],
     unit: "quantity",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "line",
@@ -275,6 +287,7 @@ const definitions = {
     formula: "Samlet transfermængde pr. produkt i perioden, omregnet til produktets standardenhed. Viser de 10 produkter med størst mængde.",
     sourceTables: ["transfers", "transferItems"],
     source: "internal",
+    features: ["transfers"],
     unit: "quantity",
     visualizations: ["bar", "donut", "list", "table"],
     defaultVisualization: "bar",
@@ -288,6 +301,7 @@ const definitions = {
     formula: "Antal aktive Staff food-registreringer i perioden.",
     sourceTables: ["staffFoodRegistrations"],
     source: "internal",
+    features: ["staffFood"],
     unit: "count",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "kpi",
@@ -301,6 +315,7 @@ const definitions = {
     formula: "Antal aktive Staff food-registreringer pr. medarbejder, sorteret faldende (top 10).",
     sourceTables: ["staffFoodRegistrations"],
     source: "internal",
+    features: ["staffFood"],
     unit: "count",
     visualizations: ["bar", "donut", "list", "table"],
     defaultVisualization: "list",
@@ -314,6 +329,7 @@ const definitions = {
     formula: "Summen af max(0, sluttid − starttid) omregnet til timer.",
     sourceTables: ["scheduledShifts"],
     source: "workfeed",
+    features: ["employees"],
     unit: "hours",
     visualizations: ["kpi", "line", "bar", "area", "table"],
     defaultVisualization: "area",
@@ -327,6 +343,7 @@ const definitions = {
     formula: "Antal unikke medarbejdere med en vagt, der overlapper i dag.",
     sourceTables: ["scheduledShifts", "employees"],
     source: "workfeed",
+    features: ["employees"],
     unit: "count",
     visualizations: ["kpi", "list", "table"],
     defaultVisualization: "kpi",
@@ -340,6 +357,7 @@ const definitions = {
     formula: "Aktive Waste-registreringer, dårlige leveringer, Staff food-registreringer og afsendte transfers pr. lokation.",
     sourceTables: ["wasteRegistrations", "badDeliveries", "transfers", "staffFoodRegistrations"],
     source: "internal",
+    features: ["waste", "transfers", "staffFood"],
     unit: "count",
     visualizations: ["bar", "list", "table"],
     defaultVisualization: "table",

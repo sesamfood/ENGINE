@@ -322,6 +322,7 @@ export const saveConnection = internalMutation({
     companyId: v.number(),
     actorUserId: v.string(),
     actorName: v.string(),
+    actorKind: v.optional(v.union(v.literal("user"), v.literal("support"))),
   },
   returns: v.id("onlinePosIntegrations"),
   handler: async (ctx, args) => {
@@ -386,6 +387,7 @@ export const saveConnection = internalMutation({
       ctx,
       {
         organizationId: args.organizationId,
+        principalKind: args.actorKind,
         userId: args.actorUserId,
         userName: args.actorName,
       },
@@ -414,6 +416,7 @@ export const saveLocationConnection = internalMutation({
     companyId: v.number(),
     actorUserId: v.string(),
     actorName: v.string(),
+    actorKind: v.optional(v.union(v.literal("user"), v.literal("support"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -473,6 +476,7 @@ export const saveLocationConnection = internalMutation({
       ctx,
       {
         organizationId: args.organizationId,
+        principalKind: args.actorKind,
         userId: args.actorUserId,
         userName: args.actorName,
       },
@@ -524,17 +528,25 @@ export const connect = action({
     integrationId: v.id("onlinePosIntegrations"),
   }),
   handler: async (ctx, args) => {
-    const auth = await requireIntegrationManager(ctx);
-    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
-    requireAllLocationAccess(auth);
-    const human = requireHumanPrincipal(auth);
-    const { organizationId, userName } = auth;
+    const initial = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, initial.organizationId, "onlinepos");
+    requireAllLocationAccess(initial);
+    requireHumanPrincipal(initial);
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
     const products = await requestProducts({
       token,
       companyId: args.companyId,
     });
+    // Re-check authority: access may have changed while the provider call ran.
+    const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
+    requireAllLocationAccess(auth);
+    const human = requireHumanPrincipal(auth);
+    const { organizationId, userName } = auth;
+    if (organizationId !== initial.organizationId) {
+      throw new ConvexError("Du har ikke adgang");
+    }
     const integrationId: Id<"onlinePosIntegrations"> = await ctx.runMutation(
       internal.onlinePos.saveConnection,
       {
@@ -545,6 +557,7 @@ export const connect = action({
         companyId: args.companyId,
         actorUserId: human.userId,
         actorName: userName,
+        actorKind: human.principalKind,
       },
     );
     return { productCount: products.length, integrationId };
@@ -587,6 +600,7 @@ export const connectLocation = action({
       companyId: args.companyId,
       actorUserId: human.userId,
       actorName: userName,
+      actorKind: human.principalKind,
     });
     return null;
   },

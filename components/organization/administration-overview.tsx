@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { PermissionId } from "@/lib/auth-permissions";
+import type { FeatureId } from "@/lib/features";
 
 type AdministrationPermission = Extract<
   PermissionId,
@@ -64,6 +65,7 @@ type AdministrationSection = {
   href: string;
   icon: LucideIcon;
   permissions: AdministrationPermission[];
+  feature?: FeatureId;
 };
 
 type AdministrationCategory = {
@@ -118,6 +120,7 @@ const categories: AdministrationCategory[] = [
         title: "Bestilling",
         description: "Vælg, hvilke produkter der kan medtages i bestillinger.",
         href: "/administration/ordering",
+        feature: "ordering",
         icon: ShoppingCartIcon,
         permissions: ["organization.settings"],
       },
@@ -125,6 +128,7 @@ const categories: AdministrationCategory[] = [
         title: "Transfer",
         description: "Slå Transfer til eller fra for organisationen.",
         href: "/administration/transfers",
+        feature: "transfers",
         icon: ArrowRightLeftIcon,
         permissions: ["organization.settings"],
       },
@@ -132,6 +136,7 @@ const categories: AdministrationCategory[] = [
         title: "Faktura",
         description: "Slå Faktura til eller fra for organisationen.",
         href: "/administration/invoices",
+        feature: "invoices",
         icon: ReceiptTextIcon,
         permissions: ["organization.settings"],
       },
@@ -139,6 +144,7 @@ const categories: AdministrationCategory[] = [
         title: "Udgift",
         description: "Vælg e-mailmodtagere og opsæt udgifter.",
         href: "/administration/expenses",
+        feature: "expenses",
         icon: WalletIcon,
         permissions: ["expenses.settings", "organization.settings"],
       },
@@ -146,6 +152,7 @@ const categories: AdministrationCategory[] = [
         title: "Wolt-ordrer",
         description: "Slå Wolt-ordrer til eller fra for organisationen.",
         href: "/administration/wolt-orders",
+        feature: "woltOrders",
         icon: ShoppingBagIcon,
         permissions: ["organization.settings"],
       },
@@ -153,6 +160,7 @@ const categories: AdministrationCategory[] = [
         title: "Datomærkning",
         description: "Vælg produkter pr. lokation, og opsæt labelprinteren.",
         href: "/administration/date-labels",
+        feature: "dateLabels",
         icon: PrinterIcon,
         permissions: ["dateLabels.print", "organization.settings"],
       },
@@ -160,6 +168,7 @@ const categories: AdministrationCategory[] = [
         title: "Count",
         description: "Indstil frekvens og regler for Count-vinduet.",
         href: "/administration/count",
+        feature: "count",
         icon: ClipboardListIcon,
         permissions: ["count.settings", "organization.settings"],
       },
@@ -167,6 +176,7 @@ const categories: AdministrationCategory[] = [
         title: "Varemodtagelse",
         description: "Indstil billeder af følgesedler efter oprindelse.",
         href: "/administration/goods-receipts",
+        feature: "goodsReceipts",
         icon: PackageCheckIcon,
         permissions: ["goodsReceipts.settings", "organization.settings"],
       },
@@ -174,6 +184,7 @@ const categories: AdministrationCategory[] = [
         title: "Waste",
         description: "Indstil nulstilling og popularitet for Waste.",
         href: "/administration/waste",
+        feature: "waste",
         icon: Trash2Icon,
         permissions: ["waste.settings", "organization.settings"],
       },
@@ -181,6 +192,7 @@ const categories: AdministrationCategory[] = [
         title: "Egenkontrol",
         description: "Opret kontroller, tidsplaner og regler for dokumentation.",
         href: "/administration/own-checks",
+        feature: "ownChecks",
         icon: ClipboardCheckIcon,
         permissions: ["ownChecks.manage", "organization.settings"],
       },
@@ -188,6 +200,7 @@ const categories: AdministrationCategory[] = [
         title: "Staff food",
         description: "Indstil vagtlængder, kategorier og tilladte produkter.",
         href: "/administration/staff-food",
+        feature: "staffFood",
         icon: UtensilsIcon,
         permissions: ["staffFood.manage", "organization.settings"],
       },
@@ -195,6 +208,7 @@ const categories: AdministrationCategory[] = [
         title: "Medarbejdere",
         description: "Slå medarbejdersider til eller fra, og indstil vagtplanens tidszone.",
         href: "/administration/schedule",
+        feature: "employees",
         icon: CalendarClockIcon,
         permissions: ["organization.settings"],
       },
@@ -237,6 +251,7 @@ const categories: AdministrationCategory[] = [
         title: "Dashboard",
         description: "Slå Dashboard til eller fra for organisationen.",
         href: "/administration/dashboard",
+        feature: "dashboard",
         icon: LayoutDashboardIcon,
         permissions: ["organization.settings"],
       },
@@ -353,6 +368,33 @@ export function AdministrationOverview() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {category.sections.map((section) => {
               const Icon = section.icon;
+              if (
+                section.feature &&
+                access.nonEntitledFeatures.includes(section.feature)
+              ) {
+                return (
+                  <Card
+                    key={section.href}
+                    size="sm"
+                    unavailable
+                    aria-disabled="true"
+                    className="h-full"
+                  >
+                    <CardHeader>
+                      <CardTitle>{section.title}</CardTitle>
+                      <CardDescription>
+                        Ikke en del af jeres abonnement.
+                      </CardDescription>
+                      <CardAction>
+                        <Icon
+                          className="text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      </CardAction>
+                    </CardHeader>
+                  </Card>
+                );
+              }
               const href =
                 section.title === "Brugere" && !canMembers && canRoles
                   ? "/administration/users/roles"

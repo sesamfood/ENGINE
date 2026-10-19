@@ -4,6 +4,7 @@ import type {
   MetricUnit,
   VisualizationId,
 } from "./types";
+import type { FeatureId } from "../features";
 import type { MetricSource } from "./registry";
 
 export type DatasetMeasure = {
@@ -26,6 +27,7 @@ export type DashboardDataset = {
   dimensions: readonly DatasetField[];
   filters: readonly DatasetField[];
   permission?: "sales.viewAggregate" | "sales.viewDetail";
+  feature?: FeatureId;
 };
 
 export const customMetricVisualizations: readonly VisualizationId[] = [
@@ -67,6 +69,7 @@ export const dashboardDatasets: Record<
     id: "waste",
     label: "Waste",
     source: "internal",
+    feature: "waste",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "quantity", label: "Mængde", unit: "quantity" },
@@ -88,6 +91,7 @@ export const dashboardDatasets: Record<
     id: "badDelivery",
     label: "Dårlige leveringer",
     source: "internal",
+    feature: "waste",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "itemCount", label: "Antal produkter", unit: "count" },
@@ -105,6 +109,7 @@ export const dashboardDatasets: Record<
     id: "transfers",
     label: "Transfer",
     source: "internal",
+    feature: "transfers",
     measures: [
       { id: "transfers", label: "Transfers", unit: "count" },
       { id: "itemsMoved", label: "Transfermængde", unit: "quantity" },
@@ -122,6 +127,7 @@ export const dashboardDatasets: Record<
     id: "staffFood",
     label: "Staff food",
     source: "internal",
+    feature: "staffFood",
     measures: [
       { id: "registrations", label: "Registreringer", unit: "count" },
       { id: "quantity", label: "Mængde", unit: "quantity" },
@@ -143,6 +149,7 @@ export const dashboardDatasets: Record<
     id: "shifts",
     label: "Vagter",
     source: "workfeed",
+    feature: "employees",
     measures: [
       { id: "hours", label: "Timer", unit: "hours" },
       { id: "shifts", label: "Vagter", unit: "count" },
@@ -159,6 +166,7 @@ export const dashboardDatasets: Record<
     id: "counts",
     label: "Count",
     source: "internal",
+    feature: "count",
     measures: [
       { id: "counts", label: "Counts", unit: "count" },
       { id: "submitted", label: "Indsendte", unit: "count" },

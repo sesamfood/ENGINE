@@ -88,6 +88,21 @@ async function requireAnotherAdmin(
   }
 }
 
+async function requireActiveOrganization(
+  ctx: GenericCtx<DataModel>,
+  organizationId: string,
+) {
+  if (
+    await ctx.runQuery(internal.access.isOrganizationSuspended, {
+      organizationId,
+    })
+  ) {
+    throw new APIError("FORBIDDEN", {
+      message: "Organisationen er suspenderet",
+    });
+  }
+}
+
 async function requireNoOrganizationMembership(
   ctx: GenericCtx<DataModel>,
   userId: string,
@@ -370,6 +385,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             message: "Ingen aktiv organisation",
           });
         }
+        await requireActiveOrganization(ctx, organizationId);
         const roleContext = await ctx.runQuery(
           internal.access.getMemberPermissionContext,
           { organizationId, userId: session.user.id },
@@ -417,7 +433,12 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             internal.access.getMemberPermissionContext,
             { organizationId: organization.id, userId: session.user.id },
           );
+          const suspended = await ctx.runQuery(
+            internal.access.isOrganizationSuspended,
+            { organizationId: organization.id },
+          );
           if (
+            suspended ||
             session.session.kioskModeEnabled ||
             !roleContext.permissions.includes("members.manage")
           ) {
@@ -469,6 +490,11 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
         },
         organizationHooks: {
           beforeCreateOrganization: async ({ user }) => {
+            if (process.env.ALLOW_SELF_SERVE_ORGANIZATIONS === "false") {
+              throw new APIError("FORBIDDEN", {
+                message: "Organisationer oprettes kun via invitation",
+              });
+            }
             await requireNoOrganizationMembership(ctx, user.id);
           },
           beforeAddMember: async ({ member }) => {
@@ -494,7 +520,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
               invitation.role,
             );
           },
-          beforeAcceptInvitation: async ({ user }) => {
+          beforeAcceptInvitation: async ({ user, invitation }) => {
+            await requireActiveOrganization(ctx, invitation.organizationId);
             await requireNoOrganizationMembership(ctx, user.id);
           },
           afterRemoveMember: async ({ member }) => {

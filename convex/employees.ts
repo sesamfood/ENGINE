@@ -9,6 +9,7 @@ import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
   requireEmployeeViewer,
+  requireFeatureEnabled,
   requireHumanPrincipal,
   requireKioskDestination,
   requireLocationAccess,
@@ -414,6 +415,7 @@ export const saveManual = mutation({
   returns: v.id("employees"),
   handler: async (ctx, args) => {
     const auth = requireHumanPrincipal(await requireOrganizationAdmin(ctx));
+    requireFeatureEnabled(auth, "employees");
     requireLocationAccess(auth, args.locationId);
     await requireOrganizationLocation(ctx, auth.organizationId, args.locationId);
     const firstName = args.firstName.trim();

@@ -40,6 +40,8 @@ import { authClient } from "@/lib/auth-client";
 import { compressImage } from "@/lib/compress-image";
 import { cn } from "@/lib/utils";
 import { OrganizationThemeCard } from "./organization-theme-card";
+import { useSupportSession } from "@/lib/active-organization";
+import { SupportUnavailable } from "@/components/platform/support-unavailable";
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
 const MAX_LOGO_SOURCE_SIZE = 10 * 1024 * 1024;
@@ -299,6 +301,13 @@ function LogoUploadCard({
 }
 
 export function OrganizationAppearance() {
+  const support = useSupportSession();
+  if (support === undefined) return <Skeleton className="h-96 w-full" />;
+  if (support) return <SupportUnavailable>Udseendet kan kun ændres af organisationens egne Brugere.</SupportUnavailable>;
+  return <OrganizationAppearanceContent />;
+}
+
+function OrganizationAppearanceContent() {
   const organization = authClient.useActiveOrganization();
   const access = useAccess();
   const canManage = usePermission("organization.settings");

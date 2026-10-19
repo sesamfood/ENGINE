@@ -49,6 +49,8 @@ const domainProblems: Record<
   invalid_api_identity: { status: 401, title: "Invalid API identity" },
   invalid_api_key_policy: { status: 401, title: "API key is not authorized" },
   api_key_required: { status: 401, title: "API key required" },
+  organization_suspended: { status: 403, title: "Organization is suspended" },
+  feature_disabled: { status: 403, title: "Feature is disabled" },
   mutation_rate_limited: { status: 429, title: "Mutation rate limit exceeded" },
   workfeed_sync_rate_limited: {
     status: 429,

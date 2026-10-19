@@ -19,6 +19,7 @@ const shelllessRoutes = [
   "/onboarding",
   "/share",
   "/help",
+  "/platform",
 ];
 
 function isShelllessRoute(pathname: string | null) {
@@ -96,7 +97,10 @@ export function AppRouteShell({
   const pathname = usePathname();
   const { isLoading, isAuthenticated } = useConvexAuth();
   const shellless = isShelllessRoute(pathname);
-  const requiresAuth = !shellless || pathname === "/onboarding";
+  const requiresAuth =
+    !shellless ||
+    pathname === "/onboarding" ||
+    Boolean(pathname?.startsWith("/platform"));
 
   if (requiresAuth && !isLoading && !isAuthenticated) {
     return <AuthenticationRecovery />;

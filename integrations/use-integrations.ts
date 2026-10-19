@@ -2,18 +2,15 @@
 
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { authClient } from "@/lib/auth-client";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 export function useIntegrations() {
   const { isAuthenticated } = useConvexAuth();
-  const organization = authClient.useActiveOrganization();
-  const session = authClient.useSession();
-  const organizationId = session.data?.session.activeOrganizationId;
+  const organizationId = useActiveOrganization().data?.id;
   const state = useQuery(
     api.integrations.getState,
-    isAuthenticated && organizationId && organization.data?.id === organizationId ? {} : "skip",
+    isAuthenticated && organizationId ? {} : "skip",
   );
-  return state?.organizationId === organizationId && organization.data?.id === organizationId
-    ? state
-    : undefined;
+  // Ignore results that still belong to the previous organization after a switch.
+  return state?.organizationId === organizationId ? state : undefined;
 }

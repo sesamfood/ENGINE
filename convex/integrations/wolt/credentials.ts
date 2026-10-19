@@ -49,7 +49,7 @@ export const getSettings = query({
       .take(201);
     return {
       configured: Boolean(credentials),
-      canManage: auth.principalKind === "user" && auth.locationScope.all,
+      canManage: auth.principalKind !== "apiKey" && auth.locationScope.all,
       hasActiveConnections: connections.length > 200 ||
         connections.some((connection) => connection.state !== "disabled"),
       environment: credentials?.environment ?? "production",

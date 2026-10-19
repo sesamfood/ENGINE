@@ -65,7 +65,7 @@ async function resolveReportContext(ctx: QueryCtx, args: ReportArgs): Promise<Re
     ctx.db.query("economicApprovals").withIndex("by_organizationId_and_locationId_and_month_and_revision", (q) =>
       q.eq("organizationId", auth.organizationId).eq("locationId", location.id).eq("month", month)).order("desc").first(),
   )))).flatMap((approval) => approval ? [approval] : []);
-  const canApprove = auth.principalKind === "user" && hasPermission(auth.role, auth.permissions, "dashboard.manageBudgets");
+  const canApprove = auth.principalKind !== "apiKey" && hasPermission(auth.role, auth.permissions, "dashboard.manageBudgets");
   const revision = await economicFingerprint({
     user: auth.userIdentifier, organizationId: auth.organizationId, inputRevision: inputs.revision,
     connections: connections.map(({ connection, mappings }) => ({ id: connection._id, revision: connection.revision, mappings })),

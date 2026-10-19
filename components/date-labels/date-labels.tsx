@@ -110,6 +110,7 @@ import { searchProducts } from "@/lib/product-search";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type Product = FunctionReturnType<
   typeof api.dateLabels.listProducts
@@ -130,7 +131,7 @@ function localTime(timestamp: number) {
 }
 
 export function DateLabels() {
-  const organizationId = authClient.useActiveOrganization().data?.id;
+  const organizationId = useActiveOrganization().data?.id;
   const session = authClient.useSession().data;
   const storedId = useWasteLocation(organizationId);
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();

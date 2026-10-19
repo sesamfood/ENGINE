@@ -6,6 +6,7 @@ import { legacyGsSupplyEnabled } from "./gssupply/lifecycle";
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "../_generated/api";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
+import { getEntitlements } from "../lib/features";
 
 export const integrationIdValidator = v.union(
   v.literal("workfeed"),
@@ -16,6 +17,8 @@ export const integrationIdValidator = v.union(
 );
 
 export type IntegrationId = Infer<typeof integrationIdValidator>;
+
+export const integrationIds = ["workfeed", "onlinepos", "economic", "wolt", "gssupply"] as const satisfies readonly IntegrationId[];
 
 export async function getIntegrationState(ctx: QueryCtx | MutationCtx, organizationId: string) {
   const [workfeed, onlinepos, economic, wolt, gssupply] = await Promise.all([
@@ -33,6 +36,8 @@ export async function isIntegrationEnabled(
   organizationId: string,
   integration: IntegrationId,
 ): Promise<boolean> {
+  const entitlements = await getEntitlements(ctx, organizationId);
+  if (!isIntegrationEntitled(entitlements, integration)) return false;
   const installation = await ctx.db.query("integrationSettings")
     .withIndex("by_organizationId_and_integration", (q) =>
       q.eq("organizationId", organizationId).eq("integration", integration))
@@ -48,7 +53,23 @@ export async function isIntegrationEnabled(
   }
 }
 
+// Suspended organizations read as having every integration off, which stops jobs and callbacks.
+export function isIntegrationEntitled(
+  entitlements: { status: "active" | "suspended"; integrations: readonly IntegrationId[] } | null,
+  integration: IntegrationId,
+) {
+  return !entitlements || (entitlements.status === "active" && entitlements.integrations.includes(integration));
+}
+
+export async function getUnavailableIntegrations(ctx: QueryCtx | MutationCtx, organizationId: string) {
+  const entitlements = await getEntitlements(ctx, organizationId);
+  return integrationIds.filter((integration) => !isIntegrationEntitled(entitlements, integration));
+}
+
 export async function writeInstallationState(ctx: MutationCtx, organizationId: string, integration: IntegrationId, enabled: boolean, updatedAt: number) {
+  if (enabled && !isIntegrationEntitled(await getEntitlements(ctx, organizationId), integration)) {
+    throw new ConvexError("Integrationen er ikke en del af jeres abonnement");
+  }
   const current = await ctx.db.query("integrationSettings")
     .withIndex("by_organizationId_and_integration", (q) =>
       q.eq("organizationId", organizationId).eq("integration", integration)).unique();

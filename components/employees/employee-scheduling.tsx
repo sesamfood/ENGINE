@@ -52,7 +52,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { authClient } from "@/lib/auth-client";
 import { setEmployeeLocation, useEmployeeLocation } from "@/lib/employee-prefs";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -71,6 +70,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 function mondayFor(timestamp: number, timeZone: string) {
   const current = dateKey(timestamp, timeZone);
@@ -617,7 +617,7 @@ function DirectoryTab({
 
 export function EmployeeScheduling() {
   const integrations = useIntegrations();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const pathname = usePathname();
   const router = useRouter();
   const organizationId = organization.data?.id;

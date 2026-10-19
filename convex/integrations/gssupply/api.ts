@@ -17,6 +17,7 @@ import {
   requireIntegrationManager,
   requireLocationAccess,
   requireOrganization,
+  requirePermission,
 } from "../../lib/auth";
 import { getProductCategoryIds } from "../../lib/productCategories";
 import { createProductWithAuth } from "../../catalog";
@@ -236,6 +237,7 @@ export const fetchCatalog = action({
     const auth = await requireOrganization(ctx);
     const canOrder =
       !auth.kioskModeEnabled &&
+      !auth.disabledFeatures.has("ordering") &&
       hasPermission(auth.role, auth.permissions, "ordering.plan");
     const canManage =
       !auth.kioskModeEnabled &&
@@ -635,11 +637,8 @@ export const listOrderingLinks = query({
     v.null(),
   ),
   handler: async (ctx, args) => {
-    const auth = await requireOrganization(ctx);
-    if (
-      auth.kioskModeEnabled ||
-      !hasPermission(auth.role, auth.permissions, "ordering.plan")
-    ) {
+    const auth = await requirePermission(ctx, "ordering.plan");
+    if (auth.kioskModeEnabled) {
       throw new ConvexError("Du har ikke adgang til bestilling");
     }
     requireLocationAccess(auth, args.locationId);

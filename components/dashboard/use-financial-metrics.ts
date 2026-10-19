@@ -5,10 +5,10 @@ import { useConvex, useQueries, type ConvexReactClient, type RequestForQueries }
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { useAccess, usePermission } from "@/components/app-shell";
-import { authClient } from "@/lib/auth-client";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import type { DashboardRange, DashboardScope, MetricResult, WidgetInstance } from "@/lib/dashboard/types";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type FinancialContext = FunctionReturnType<typeof api.economicReports.getWidgetContext>;
 type FinancialResults = Array<{ key: string; result: MetricResult }>;
@@ -22,7 +22,7 @@ export function useFinancialMetrics(
   enabled = true,
 ) {
   const convex = useConvex();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");

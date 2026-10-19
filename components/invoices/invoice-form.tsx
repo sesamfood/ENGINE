@@ -50,11 +50,11 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { fromDateTimeLocal, toDateTimeLocal } from "@/lib/date";
-import { authClient } from "@/lib/auth-client";
 import { selectedLocationId } from "@/lib/location-preference";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { uploadToStorage } from "@/lib/upload-to-storage";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { useActiveOrganization } from "@/lib/active-organization";
 
 type InvoiceLine = {
   key: string;
@@ -114,7 +114,7 @@ function rebalanceMenuGroup(
 export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   const convex = useConvex();
   const kiosk = useKiosk();
-  const organization = authClient.useActiveOrganization();
+  const organization = useActiveOrganization();
   const organizationId = organization.data?.id;
   const storedLocationId = useWasteLocation(organizationId);
   const locations = useQuery(api.invoices.listLocations, { page: "new" });
