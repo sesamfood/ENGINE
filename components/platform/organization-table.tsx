@@ -121,11 +121,16 @@ export function PlatformOrganizationTable() {
                   >
                     {organization.name}
                   </Link>
-                  {organization.plan ? (
-                    <span className="block text-xs text-muted-foreground">
-                      {organization.plan}
-                    </span>
-                  ) : null}
+                  <span className="block text-xs text-muted-foreground">
+                    {organization.plan ? `${organization.plan} · ` : null}
+                    {organization.entitledFeatureCount}{" "}
+                    {organization.entitledFeatureCount === 1 ? "funktion" : "funktioner"}
+                    {" · "}
+                    {organization.entitledIntegrationCount}{" "}
+                    {organization.entitledIntegrationCount === 1
+                      ? "integration"
+                      : "integrationer"}
+                  </span>
                 </TableCell>
                 <TableCell>
                   <OrganizationStatusBadge status={organization.status} />

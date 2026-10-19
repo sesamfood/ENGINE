@@ -8,9 +8,11 @@ import {
   getUnavailableIntegrations,
   integrationIdValidator,
   integrationIds,
+  isIntegrationEntitled,
 } from "../integrations/state";
 import {
   featureIdValidator,
+  featureIds,
   getEntitlements,
   getOrganizationDisabledFeatures,
   nonEntitledFeatures,
@@ -94,6 +96,8 @@ export const list = query({
       createdAt: v.number(),
       status: statusValidator,
       plan: v.union(v.string(), v.null()),
+      entitledFeatureCount: v.number(),
+      entitledIntegrationCount: v.number(),
       memberCount: v.number(),
       locationCount: v.number(),
     }),
@@ -133,6 +137,11 @@ export const list = query({
           createdAt: organization.createdAt,
           status: entitlements?.status ?? "active",
           plan: entitlements?.plan ?? null,
+          entitledFeatureCount:
+            featureIds.length - nonEntitledFeatures(entitlements).length,
+          entitledIntegrationCount: integrationIds.filter((integration) =>
+            isIntegrationEntitled(entitlements, integration),
+          ).length,
           memberCount: members.length,
           locationCount,
         };
@@ -319,14 +328,13 @@ export const get = query({
           role: member.role,
         };
       }),
-      invitations: invitations
-        .filter((invitation) => new Date(invitation.expiresAt).getTime() > Date.now())
-        .map((invitation) => ({
-          id: invitation.id,
-          email: invitation.email,
-          role: invitation.role ?? "member",
-          expiresAt: new Date(invitation.expiresAt).getTime(),
-        })),
+      // Expiry is filtered on the client; queries do not rerun as time passes.
+      invitations: invitations.map((invitation) => ({
+        id: invitation.id,
+        email: invitation.email,
+        role: invitation.role ?? "member",
+        expiresAt: new Date(invitation.expiresAt).getTime(),
+      })),
       locations: locations.map((location) => ({
         id: location._id,
         name: location.name,

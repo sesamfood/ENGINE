@@ -1084,7 +1084,7 @@ function formatTimeLeft(milliseconds: number) {
   return rest ? `${hours} t ${rest} min` : `${hours} t`;
 }
 
-function SupportBanner() {
+function SupportBanner({ className }: { className?: string }) {
   const support = useSupportSession();
   const endSupport = useMutation(api.platform.support.end);
   const [now, setNow] = useState(() => Date.now());
@@ -1121,7 +1121,12 @@ function SupportBanner() {
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4 pt-4 sm:flex-row sm:items-center">
+    <div
+      className={cn(
+        "sticky z-30 flex flex-col gap-3 bg-background px-4 pt-4 sm:flex-row sm:items-center",
+        className,
+      )}
+    >
       <Alert className="flex-1">
         <LifeBuoyIcon />
         <AlertTitle>Supportadgang til {support.organizationName}</AlertTitle>
@@ -1395,7 +1400,6 @@ export function AppShell({
                     </Sidebar>
 
                     <SidebarInset className="min-w-0">
-                      <SupportBanner />
                       <header
                         className={cn(
                           "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:border-b-0",
@@ -1436,6 +1440,10 @@ export function AppShell({
                           />
                         </div>
                       </header>
+                      {/* Sticks below the sticky header, so offsets match its heights. */}
+                      <SupportBanner
+                        className={cn("top-16", showPageHeader && "md:top-24")}
+                      />
 
                       <div
                         className={cn(

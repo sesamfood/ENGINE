@@ -528,17 +528,25 @@ export const connect = action({
     integrationId: v.id("onlinePosIntegrations"),
   }),
   handler: async (ctx, args) => {
-    const auth = await requireIntegrationManager(ctx);
-    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
-    requireAllLocationAccess(auth);
-    const human = requireHumanPrincipal(auth);
-    const { organizationId, userName } = auth;
+    const initial = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, initial.organizationId, "onlinepos");
+    requireAllLocationAccess(initial);
+    requireHumanPrincipal(initial);
     requireCompanyId(args.companyId);
     const token = requireToken(args.token);
     const products = await requestProducts({
       token,
       companyId: args.companyId,
     });
+    // Re-check authority: access may have changed while the provider call ran.
+    const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
+    requireAllLocationAccess(auth);
+    const human = requireHumanPrincipal(auth);
+    const { organizationId, userName } = auth;
+    if (organizationId !== initial.organizationId) {
+      throw new ConvexError("Du har ikke adgang");
+    }
     const integrationId: Id<"onlinePosIntegrations"> = await ctx.runMutation(
       internal.onlinePos.saveConnection,
       {

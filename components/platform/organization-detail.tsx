@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { OrganizationStatusBadge } from "@/components/platform/organization-table";
 import { usePlatformRole } from "@/components/platform/platform-shell";
@@ -252,6 +252,14 @@ function InviteAdminCard({ organizationId }: { organizationId: string }) {
 
 function OverviewTab({ organization }: { organization: Organization }) {
   const role = usePlatformRole();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const invitations = organization.invitations.filter(
+    (invitation) => invitation.expiresAt > now,
+  );
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <Card className="lg:col-span-2">
@@ -283,11 +291,11 @@ function OverviewTab({ organization }: { organization: Organization }) {
               Organisationen har endnu ingen Brugere.
             </p>
           )}
-          {organization.invitations.length ? (
+          {invitations.length ? (
             <div className="mt-5 flex flex-col gap-2">
               <h3 className="text-sm font-medium">Afventende invitationer</h3>
               <ul className="flex flex-col gap-1 text-sm">
-                {organization.invitations.map((invitation) => (
+                {invitations.map((invitation) => (
                   <li key={invitation.id}>
                     {invitation.email} · {roleName(invitation.role)} · udløber{" "}
                     {formatDateTime(invitation.expiresAt)}

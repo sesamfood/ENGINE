@@ -1,5 +1,7 @@
 import { ConvexError, v } from "convex/values";
+import { featureLabels } from "../lib/features";
 import { mutation } from "./_generated/server";
+import { recordAudit } from "./lib/audit";
 import { requireOrganizationAdmin } from "./lib/auth";
 import { featureIdValidator, getEntitlements, nonEntitledFeatures } from "./lib/features";
 
@@ -7,7 +9,8 @@ export const setEnabled = mutation({
   args: { feature: featureIdValidator, enabled: v.boolean() },
   returns: v.null(),
   handler: async (ctx, { feature, enabled }) => {
-    const { organizationId } = await requireOrganizationAdmin(ctx);
+    const auth = await requireOrganizationAdmin(ctx);
+    const { organizationId } = auth;
     if (
       enabled &&
       nonEntitledFeatures(await getEntitlements(ctx, organizationId)).includes(feature)
@@ -22,8 +25,15 @@ export const setEnabled = mutation({
     if (enabled) disabledFeatures.delete(feature);
     else disabledFeatures.add(feature);
     const data = { disabledFeatures: [...disabledFeatures] };
+    const settingsId = current?._id
+      ?? await ctx.db.insert("featureSettings", { organizationId, ...data });
     if (current) await ctx.db.patch("featureSettings", current._id, data);
-    else await ctx.db.insert("featureSettings", { organizationId, ...data });
+    await recordAudit(ctx, auth, {
+      action: "features.changed",
+      entityTable: "featureSettings",
+      entityId: settingsId,
+      summary: `${enabled ? "Aktiverede" : "Deaktiverede"} funktionen ${featureLabels[feature]}`,
+    });
     return null;
   },
 });
