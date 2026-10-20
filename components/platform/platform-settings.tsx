@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { BlocksIcon } from "lucide-react";
+import { BlocksIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -46,6 +46,12 @@ const sections = [
     title: "Funktioner",
     description: "Standardindstillinger for funktioner i alle organisationer.",
     icon: BlocksIcon,
+  },
+  {
+    href: `${settingsPath}/access`,
+    title: "Adgang",
+    description: "Brugere med adgang til platformadministrationen.",
+    icon: UsersIcon,
   },
 ];
 
