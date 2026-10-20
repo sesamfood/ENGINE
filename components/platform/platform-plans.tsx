@@ -437,17 +437,21 @@ function CatalogSettings<T extends Item>({
   kind,
   items,
   addOns,
+  creating,
+  onCreateClose,
   onSave,
   onDelete,
 }: {
   kind: Kind;
   items: T[] | undefined;
   addOns?: AddOn[];
+  creating: boolean;
+  onCreateClose: () => void;
   onSave: (item: T | null, values: Values) => Promise<unknown>;
   onDelete: (item: T) => Promise<unknown>;
 }) {
   const role = usePlatformRole();
-  const [editing, setEditing] = useState<T | "new" | null>(null);
+  const [editing, setEditing] = useState<T | null>(null);
   const canEdit = role === "owner";
   const text = copy[kind];
 
@@ -457,17 +461,7 @@ function CatalogSettings<T extends Item>({
 
   return (
     <div className="flex max-w-3xl flex-col gap-4">
-      {canEdit ? (
-        <Button
-          type="button"
-          size="lg"
-          className="w-fit"
-          onClick={() => setEditing("new")}
-        >
-          <PlusIcon data-icon="inline-start" />
-          {text.create}
-        </Button>
-      ) : (
+      {canEdit ? null : (
         <p className="text-sm text-muted-foreground">{text.ownersOnly}</p>
       )}
       {items.length === 0 ? (
@@ -523,22 +517,25 @@ function CatalogSettings<T extends Item>({
           </CardContent>
         </Card>
       ))}
-      {editing ? (
+      {editing || creating ? (
         <CatalogDialog
           kind={kind}
-          item={editing === "new" ? null : editing}
+          item={editing}
           addOns={addOns}
-          onSave={(values) =>
-            onSave(editing === "new" ? null : editing, values)
-          }
-          onClose={() => setEditing(null)}
+          onSave={(values) => onSave(editing, values)}
+          onClose={() => {
+            setEditing(null);
+            onCreateClose();
+          }}
         />
       ) : null}
     </div>
   );
 }
 
-function PlanSettings() {
+type CreateProps = { creating: boolean; onCreateClose: () => void };
+
+function PlanSettings(props: CreateProps) {
   const plans = useQuery(api.platform.plans.list);
   const addOns = useQuery(api.platform.addOns.list);
   const create = useMutation(api.platform.plans.create);
@@ -548,6 +545,7 @@ function PlanSettings() {
   return (
     <CatalogSettings
       kind="plan"
+      {...props}
       items={
         plans && addOns
           ? plans.map((plan) => ({ ...plan, usage: plan.organizationCount }))
@@ -564,7 +562,7 @@ function PlanSettings() {
   );
 }
 
-function AddOnSettings() {
+function AddOnSettings(props: CreateProps) {
   const addOns = useQuery(api.platform.addOns.list);
   const create = useMutation(api.platform.addOns.create);
   const update = useMutation(api.platform.addOns.update);
@@ -573,6 +571,7 @@ function AddOnSettings() {
   return (
     <CatalogSettings
       kind="addOn"
+      {...props}
       items={addOns?.map((addOn) => ({ ...addOn, usage: addOn.planCount }))}
       onSave={(addOn, { name, features, integrations, deprecated }) =>
         addOn
@@ -591,17 +590,45 @@ function AddOnSettings() {
 }
 
 export function PlatformPlanSettings() {
+  const role = usePlatformRole();
+  const [tab, setTab] = useState<Kind>("plan");
+  const [creating, setCreating] = useState<Kind | null>(null);
+  const onCreateClose = () => setCreating(null);
+
   return (
-    <Tabs defaultValue="plans" appearance="spaced">
-      <TabsList>
-        <TabsTrigger value="plans">Planer</TabsTrigger>
-        <TabsTrigger value="addOns">Tilkøb</TabsTrigger>
-      </TabsList>
-      <TabsContent value="plans">
-        <PlanSettings />
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as Kind)}
+      appearance="spaced"
+    >
+      <div className="flex gap-2">
+        <TabsList className="w-full">
+          <TabsTrigger value="plan">Planer</TabsTrigger>
+          <TabsTrigger value="addOn">Tilkøb</TabsTrigger>
+        </TabsList>
+        {role === "owner" ? (
+          <Button
+            type="button"
+            size="lg"
+            className="h-12"
+            onClick={() => setCreating(tab)}
+          >
+            <PlusIcon data-icon="inline-start" />
+            {copy[tab].create}
+          </Button>
+        ) : null}
+      </div>
+      <TabsContent value="plan">
+        <PlanSettings
+          creating={creating === "plan"}
+          onCreateClose={onCreateClose}
+        />
       </TabsContent>
-      <TabsContent value="addOns">
-        <AddOnSettings />
+      <TabsContent value="addOn">
+        <AddOnSettings
+          creating={creating === "addOn"}
+          onCreateClose={onCreateClose}
+        />
       </TabsContent>
     </Tabs>
   );
