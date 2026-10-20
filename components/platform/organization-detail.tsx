@@ -336,7 +336,7 @@ function TestOrganizationCard({
             samme rolle og lokationer som dér.
           </CardDescription>
         </CardHeader>
-        <CardFooter>
+        <CardFooter className="mt-auto">
           <Button
             variant="outline"
             nativeButton={false}
@@ -392,7 +392,7 @@ function TestOrganizationCard({
         </CardContent>
       ) : null}
       {role === "owner" ? (
-        <CardFooter>
+        <CardFooter className="mt-auto">
           <div className="flex flex-wrap gap-2">
             {!test ? (
               <ConfirmAction
