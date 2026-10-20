@@ -1,5 +1,5 @@
-import { PlatformSettings } from "@/components/platform/platform-settings";
+import { PlatformSettingsOverview } from "@/components/platform/platform-settings";
 
 export default function PlatformSettingsPage() {
-  return <PlatformSettings />;
+  return <PlatformSettingsOverview />;
 }

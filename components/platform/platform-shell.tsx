@@ -64,7 +64,7 @@ export function PlatformShell({
       href: "/platform/settings",
       label: "Indstillinger",
       icon: SettingsIcon,
-      active: pathname === "/platform/settings",
+      active: pathname.startsWith("/platform/settings"),
     },
   ];
 
