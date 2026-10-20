@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  ArrowLeftIcon,
-  Building2Icon,
-  PlusIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, Building2Icon, SettingsIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext } from "react";
@@ -47,19 +42,8 @@ export function PlatformShell({
       icon: Building2Icon,
       active:
         pathname === "/platform" ||
-        (pathname.startsWith("/platform/organizations/") &&
-          pathname !== "/platform/organizations/new"),
+        pathname.startsWith("/platform/organizations/"),
     },
-    ...(role === "owner"
-      ? [
-          {
-            href: "/platform/organizations/new",
-            label: "Ny organisation",
-            icon: PlusIcon,
-            active: pathname === "/platform/organizations/new",
-          },
-        ]
-      : []),
     {
       href: "/platform/settings",
       label: "Indstillinger",
