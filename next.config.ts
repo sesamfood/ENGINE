@@ -57,6 +57,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     turbopackFileSystemCacheForDev: false,
+    turbopackFileSystemCacheForBuild: true,
   },
   images: {
     remotePatterns: convexUrl

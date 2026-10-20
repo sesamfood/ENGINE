@@ -27,7 +27,7 @@ Use a verified sender or verified domain in Resend. Set the same variables for p
 
 ## Platform administration
 
-Platform staff manage customer organizations at `/platform`. Grant or revoke access from the CLI; no endpoint in the app can create platform members:
+Platform staff manage customer organizations at `/platform`. Owners manage platform access under Indstillinger > Adgang. Grant the first owner from the CLI:
 
 ```bash
 bunx convex run platformMembers:grant '{"email":"staff@example.com","role":"owner"}'

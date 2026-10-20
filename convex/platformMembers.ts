@@ -2,10 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { getDatabaseAdapter } from "./auth";
 
-// Platform access is granted from the CLI only, for example:
+// Bootstraps platform access from the CLI, for example:
 // npx convex run platformMembers:grant '{"email":"a@b.dk","role":"owner"}'
 
-async function findUserId(ctx: MutationCtx, email: string) {
+export async function findUserId(ctx: MutationCtx, email: string) {
   const user = await getDatabaseAdapter(ctx).findOne<{ id: string }>({
     model: "user",
     where: [{ field: "email", value: email.trim().toLowerCase() }],
