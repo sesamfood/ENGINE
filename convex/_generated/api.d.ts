@@ -166,6 +166,7 @@ import type * as ownCheckDocumentation from "../ownCheckDocumentation.js";
 import type * as ownCheckOverview from "../ownCheckOverview.js";
 import type * as ownCheckTemplates from "../ownCheckTemplates.js";
 import type * as ownChecks from "../ownChecks.js";
+import type * as platform_addOns from "../platform/addOns.js";
 import type * as platform_entitlements from "../platform/entitlements.js";
 import type * as platform_lifecycle from "../platform/lifecycle.js";
 import type * as platform_members from "../platform/members.js";
@@ -361,6 +362,7 @@ declare const fullApi: ApiFromModules<{
   ownCheckOverview: typeof ownCheckOverview;
   ownCheckTemplates: typeof ownCheckTemplates;
   ownChecks: typeof ownChecks;
+  "platform/addOns": typeof platform_addOns;
   "platform/entitlements": typeof platform_entitlements;
   "platform/lifecycle": typeof platform_lifecycle;
   "platform/members": typeof platform_members;

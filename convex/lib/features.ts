@@ -25,7 +25,7 @@ export const featureIdValidator = v.union(
 export type FeatureId = Infer<typeof featureIdValidator>;
 
 // A missing row means the organization is active and entitled to everything.
-// An assigned plan supplies the features and integrations.
+// An assigned plan and its purchased add-ons supply the features and integrations.
 export async function getEntitlements(
   ctx: QueryCtx | MutationCtx,
   organizationId: string,
@@ -36,9 +36,19 @@ export async function getEntitlements(
     .unique();
   if (!row) return null;
   const plan = row.planId ? await ctx.db.get("plans", row.planId) : null;
-  return plan
-    ? { ...row, features: plan.features, integrations: plan.integrations, planName: plan.name }
-    : { ...row, planName: null };
+  if (!plan) return { ...row, planName: null };
+  const addOns = await Promise.all(
+    (row.addOnIds ?? [])
+      .filter((id) => plan.addOnIds?.includes(id))
+      .map((id) => ctx.db.get("addOns", id)),
+  );
+  const sources = [plan, ...addOns.filter((addOn) => addOn !== null)];
+  return {
+    ...row,
+    features: [...new Set(sources.flatMap((source) => source.features))],
+    integrations: [...new Set(sources.flatMap((source) => source.integrations))],
+    planName: plan.name,
+  };
 }
 
 // How the app shows features and integrations outside the organization's entitlements.

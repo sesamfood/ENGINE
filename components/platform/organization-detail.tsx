@@ -8,7 +8,11 @@ import {
   unavailableDisplayOptions,
   type UnavailableDisplay,
 } from "@/components/platform/platform-settings";
-import { AccessFields, featureIds } from "@/components/platform/platform-plans";
+import {
+  AccessFields,
+  AddOnFields,
+  featureIds,
+} from "@/components/platform/platform-plans";
 import { usePlatformRole } from "@/components/platform/platform-shell";
 import {
   AlertDialog,
@@ -337,6 +341,7 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
   const role = usePlatformRole();
   const setEntitlements = useMutation(api.platform.entitlements.setEntitlements);
   const plans = useQuery(api.platform.plans.list);
+  const allAddOns = useQuery(api.platform.addOns.list);
   const [features, setFeatures] = useState(() =>
     featureIds.filter(
       (feature) => !organization.nonEntitledFeatures.includes(feature),
@@ -346,12 +351,32 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
     organization.entitledIntegrations,
   );
   const [planId, setPlanId] = useState<string>(organization.planId ?? "none");
+  const [addOnIds, setAddOnIds] = useState(organization.addOnIds);
   const [unavailableDisplay, setUnavailableDisplay] = useState<
     UnavailableDisplay | "default"
   >(organization.unavailableDisplay ?? "default");
   const [saving, setSaving] = useState(false);
   const canEdit = role === "owner";
   const plan = plans?.find((item) => item.id === planId);
+  const planAddOns = (allAddOns ?? []).filter((addOn) =>
+    plan?.addOnIds.includes(addOn.id),
+  );
+  const selectedAddOns = planAddOns.filter((addOn) =>
+    addOnIds.includes(addOn.id),
+  );
+  // What the organization gets from the plan and its selected add-ons.
+  const planAccess = plan
+    ? {
+        features: [
+          ...new Set([plan, ...selectedAddOns].flatMap((item) => item.features)),
+        ],
+        integrations: [
+          ...new Set(
+            [plan, ...selectedAddOns].flatMap((item) => item.integrations),
+          ),
+        ],
+      }
+    : null;
   const planOptions = [
     { value: "none", label: "Ingen plan (tilpasset)" },
     ...(plans ?? [])
@@ -375,9 +400,10 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
     try {
       await setEntitlements({
         organizationId: organization.id,
-        features: plan?.features ?? features,
-        integrations: plan?.integrations ?? integrations,
+        features: planAccess?.features ?? features,
+        integrations: planAccess?.integrations ?? integrations,
         planId: plan?.id ?? null,
+        addOnIds: selectedAddOns.map((addOn) => addOn.id),
         unavailableDisplay:
           unavailableDisplay === "default" ? null : unavailableDisplay,
       });
@@ -407,7 +433,12 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
               <Select
                 items={planOptions}
                 value={planId}
-                disabled={!canEdit || saving || plans === undefined}
+                disabled={
+                  !canEdit ||
+                  saving ||
+                  plans === undefined ||
+                  allAddOns === undefined
+                }
                 onValueChange={(value) => setPlanId(value as string)}
               >
                 <SelectTrigger id="platform-plan" className="h-11! w-full">
@@ -425,15 +456,25 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
               </Select>
               {plan ? (
                 <FieldDescription>
-                  Planen styrer funktioner og integrationer. Redigér planen
-                  under Indstillinger → Planer.
+                  Planen og de valgte tilkøb styrer funktioner og
+                  integrationer. Redigér dem under Indstillinger.
                 </FieldDescription>
               ) : null}
             </Field>
+            {plan ? (
+              <AddOnFields
+                idPrefix="platform"
+                addOns={planAddOns}
+                selected={addOnIds}
+                current={organization.addOnIds}
+                disabled={!canEdit || saving}
+                onChange={setAddOnIds}
+              />
+            ) : null}
             <AccessFields
               idPrefix="platform"
-              features={plan?.features ?? features}
-              integrations={plan?.integrations ?? integrations}
+              features={planAccess?.features ?? features}
+              integrations={planAccess?.integrations ?? integrations}
               disabled={!canEdit || saving || plan !== undefined}
               onFeaturesChange={setFeatures}
               onIntegrationsChange={setIntegrations}
@@ -731,7 +772,7 @@ export function PlatformOrganizationDetail({
         </TabsContent>
         <TabsContent value="features">
           <EntitlementsTab
-            key={`${organization.id}:${organization.planId}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
+            key={`${organization.id}:${organization.planId}:${organization.addOnIds.join()}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
             organization={organization}
           />
         </TabsContent>

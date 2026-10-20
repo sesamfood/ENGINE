@@ -49,6 +49,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
   integrationRegistry,
   type IntegrationId,
@@ -56,7 +57,62 @@ import {
 import { featureLabels, type FeatureId } from "@/lib/features";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
-type Plan = FunctionReturnType<typeof api.platform.plans.list>[number];
+type AddOn = FunctionReturnType<typeof api.platform.addOns.list>[number];
+type Kind = "plan" | "addOn";
+
+type Values = {
+  name: string;
+  features: FeatureId[];
+  integrations: IntegrationId[];
+  addOnIds: Id<"addOns">[];
+  deprecated: boolean;
+};
+
+type Item = Omit<Values, "addOnIds"> & {
+  id: string;
+  addOnIds?: Id<"addOns">[];
+  usage: number;
+};
+
+const copy = {
+  plan: {
+    create: "Opret plan",
+    edit: "Redigér plan",
+    save: "Gem plan",
+    created: "Planen er oprettet",
+    saved: "Planen er gemt",
+    saveError: "Planen kunne ikke gemmes. Prøv igen.",
+    deleted: "er slettet",
+    deleteError: "Planen kunne ikke slettes. Prøv igen.",
+    description:
+      "Organisationer på planen får de valgte funktioner og integrationer og de tilkøb, de har købt. Ændringer gælder straks.",
+    deprecatedHelp:
+      "Organisationer beholder planen, men den kan ikke vælges til andre organisationer.",
+    deleteHelp: "Planen fjernes permanent. Ingen organisationer bruger den.",
+    empty: "Ingen planer endnu.",
+    ownersOnly: "Kun platformejere kan ændre planer.",
+    usage: (count: number) =>
+      `${count} ${count === 1 ? "organisation" : "organisationer"}`,
+  },
+  addOn: {
+    create: "Opret tilkøb",
+    edit: "Redigér tilkøb",
+    save: "Gem tilkøb",
+    created: "Tilkøbet er oprettet",
+    saved: "Tilkøbet er gemt",
+    saveError: "Tilkøbet kunne ikke gemmes. Prøv igen.",
+    deleted: "er slettet",
+    deleteError: "Tilkøbet kunne ikke slettes. Prøv igen.",
+    description:
+      "Organisationer, der har købt tilkøbet, får de valgte funktioner og integrationer oven i deres plan. Ændringer gælder straks.",
+    deprecatedHelp:
+      "Planer og organisationer beholder tilkøbet, men det kan ikke tilføjes igen.",
+    deleteHelp: "Tilkøbet fjernes permanent. Ingen planer tilbyder det.",
+    empty: "Ingen tilkøb endnu.",
+    ownersOnly: "Kun platformejere kan ændre tilkøb.",
+    usage: (count: number) => `${count} ${count === 1 ? "plan" : "planer"}`,
+  },
+} satisfies Record<Kind, unknown>;
 
 export const featureIds = Object.keys(featureLabels) as FeatureId[];
 
@@ -138,44 +194,87 @@ export function AccessFields({
   );
 }
 
-function PlanDialog({
-  plan,
+// Deprecated add-ons are only listed where they are already selected.
+export function AddOnFields({
+  idPrefix,
+  addOns,
+  selected,
+  current,
+  disabled,
+  onChange,
+}: {
+  idPrefix: string;
+  addOns: AddOn[];
+  selected: Id<"addOns">[];
+  current: Id<"addOns">[];
+  disabled: boolean;
+  onChange: (addOnIds: Id<"addOns">[]) => void;
+}) {
+  const visible = addOns.filter(
+    (addOn) => !addOn.deprecated || current.includes(addOn.id),
+  );
+  if (visible.length === 0) return null;
+  return (
+    <FieldSet>
+      <FieldLegend variant="label">Tilkøb</FieldLegend>
+      <FieldGroup appearance="dense" className="grid sm:grid-cols-2">
+        {visible.map((addOn) => (
+          <Field key={addOn.id} orientation="horizontal">
+            <Checkbox
+              id={`${idPrefix}-addon-${addOn.id}`}
+              checked={selected.includes(addOn.id)}
+              disabled={disabled}
+              onCheckedChange={(checked) =>
+                onChange(toggle(selected, addOn.id, checked === true))
+              }
+            />
+            <FieldLabel
+              htmlFor={`${idPrefix}-addon-${addOn.id}`}
+              appearance="regular"
+            >
+              {addOn.name}
+              {addOn.deprecated ? " (udfaset)" : ""}
+            </FieldLabel>
+          </Field>
+        ))}
+      </FieldGroup>
+    </FieldSet>
+  );
+}
+
+function CatalogDialog({
+  kind,
+  item,
+  addOns,
+  onSave,
   onClose,
 }: {
-  plan: Plan | null;
+  kind: Kind;
+  item: Item | null;
+  addOns?: AddOn[];
+  onSave: (values: Values) => Promise<unknown>;
   onClose: () => void;
 }) {
-  const create = useMutation(api.platform.plans.create);
-  const update = useMutation(api.platform.plans.update);
-  const [name, setName] = useState(plan?.name ?? "");
-  const [features, setFeatures] = useState<FeatureId[]>(plan?.features ?? []);
+  const text = copy[kind];
+  const [name, setName] = useState(item?.name ?? "");
+  const [features, setFeatures] = useState<FeatureId[]>(item?.features ?? []);
   const [integrations, setIntegrations] = useState<IntegrationId[]>(
-    plan?.integrations ?? [],
+    item?.integrations ?? [],
   );
-  const [deprecated, setDeprecated] = useState(plan?.deprecated ?? false);
+  const [addOnIds, setAddOnIds] = useState<Id<"addOns">[]>(
+    item?.addOnIds ?? [],
+  );
+  const [deprecated, setDeprecated] = useState(item?.deprecated ?? false);
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
     try {
-      if (plan) {
-        await update({
-          planId: plan.id,
-          name,
-          features,
-          integrations,
-          deprecated,
-        });
-        toast.success("Planen er gemt");
-      } else {
-        await create({ name, features, integrations });
-        toast.success("Planen er oprettet");
-      }
+      await onSave({ name, features, integrations, addOnIds, deprecated });
+      toast.success(item ? text.saved : text.created);
       onClose();
     } catch (error) {
-      toast.error(
-        getUserErrorMessage(error, "Planen kunne ikke gemmes. Prøv igen."),
-      );
+      toast.error(getUserErrorMessage(error, text.saveError));
     } finally {
       setSaving(false);
     }
@@ -190,14 +289,8 @@ function PlanDialog({
     >
       <DialogContent showCloseButton={!saving} className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{plan ? "Redigér plan" : "Opret plan"}</DialogTitle>
-          <DialogDescription>
-            Organisationer på planen får præcis de valgte funktioner og
-            integrationer.
-            {plan?.organizationCount
-              ? ` Ændringer gælder straks for ${plan.organizationCount} ${plan.organizationCount === 1 ? "organisation" : "organisationer"}.`
-              : ""}
-          </DialogDescription>
+          <DialogTitle>{item ? text.edit : text.create}</DialogTitle>
+          <DialogDescription>{text.description}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-5"
@@ -208,9 +301,9 @@ function PlanDialog({
         >
           <FieldGroup>
             <Field data-disabled={saving}>
-              <FieldLabel htmlFor="plan-name">Navn</FieldLabel>
+              <FieldLabel htmlFor={`${kind}-name`}>Navn</FieldLabel>
               <Input
-                id="plan-name"
+                id={`${kind}-name`}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 disabled={saving}
@@ -219,31 +312,38 @@ function PlanDialog({
               />
             </Field>
             <AccessFields
-              idPrefix="plan"
+              idPrefix={kind}
               features={features}
               integrations={integrations}
               disabled={saving}
               onFeaturesChange={setFeatures}
               onIntegrationsChange={setIntegrations}
             />
-            {plan ? (
+            {addOns ? (
+              <AddOnFields
+                idPrefix={kind}
+                addOns={addOns}
+                selected={addOnIds}
+                current={item?.addOnIds ?? []}
+                disabled={saving}
+                onChange={setAddOnIds}
+              />
+            ) : null}
+            {item ? (
               <Field orientation="horizontal" data-disabled={saving}>
                 <Switch
-                  id="plan-deprecated"
+                  id={`${kind}-deprecated`}
                   checked={deprecated}
                   onCheckedChange={setDeprecated}
                   disabled={saving}
                 />
-                <FieldLabel htmlFor="plan-deprecated" appearance="regular">
+                <FieldLabel htmlFor={`${kind}-deprecated`} appearance="regular">
                   Udfaset
                 </FieldLabel>
               </Field>
             ) : null}
             {deprecated ? (
-              <FieldDescription>
-                Organisationer beholder planen, men den kan ikke vælges til
-                andre organisationer.
-              </FieldDescription>
+              <FieldDescription>{text.deprecatedHelp}</FieldDescription>
             ) : null}
           </FieldGroup>
           <DialogFooter>
@@ -262,7 +362,7 @@ function PlanDialog({
               disabled={saving || !name.trim()}
             >
               {saving ? <Spinner data-icon="inline-start" /> : null}
-              {plan ? "Gem plan" : "Opret plan"}
+              {item ? text.save : text.create}
             </Button>
           </DialogFooter>
         </form>
@@ -271,21 +371,27 @@ function PlanDialog({
   );
 }
 
-function DeletePlanAction({ plan }: { plan: Plan }) {
-  const remove = useMutation(api.platform.plans.remove);
+function DeleteAction({
+  kind,
+  item,
+  onDelete,
+}: {
+  kind: Kind;
+  item: Item;
+  onDelete: () => Promise<unknown>;
+}) {
+  const text = copy[kind];
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function confirm() {
     setSaving(true);
     try {
-      await remove({ planId: plan.id });
-      toast.success(`${plan.name} er slettet`);
+      await onDelete();
+      toast.success(`${item.name} ${text.deleted}`);
       setOpen(false);
     } catch (error) {
-      toast.error(
-        getUserErrorMessage(error, "Planen kunne ikke slettes. Prøv igen."),
-      );
+      toast.error(getUserErrorMessage(error, text.deleteError));
     } finally {
       setSaving(false);
     }
@@ -299,7 +405,7 @@ function DeletePlanAction({ plan }: { plan: Plan }) {
             type="button"
             variant="outline"
             className="min-h-11"
-            disabled={plan.organizationCount > 0}
+            disabled={item.usage > 0}
           />
         }
       >
@@ -307,10 +413,8 @@ function DeletePlanAction({ plan }: { plan: Plan }) {
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Slet {plan.name}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Planen fjernes permanent. Ingen organisationer bruger den.
-          </AlertDialogDescription>
+          <AlertDialogTitle>Slet {item.name}?</AlertDialogTitle>
+          <AlertDialogDescription>{text.deleteHelp}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={saving}>Annullér</AlertDialogCancel>
@@ -328,13 +432,25 @@ function DeletePlanAction({ plan }: { plan: Plan }) {
   );
 }
 
-export function PlatformPlanSettings() {
+function CatalogSettings<T extends Item>({
+  kind,
+  items,
+  addOns,
+  onSave,
+  onDelete,
+}: {
+  kind: Kind;
+  items: T[] | undefined;
+  addOns?: AddOn[];
+  onSave: (item: T | null, values: Values) => Promise<unknown>;
+  onDelete: (item: T) => Promise<unknown>;
+}) {
   const role = usePlatformRole();
-  const plans = useQuery(api.platform.plans.list);
-  const [editing, setEditing] = useState<Plan | "new" | null>(null);
+  const [editing, setEditing] = useState<T | "new" | null>(null);
   const canEdit = role === "owner";
+  const text = copy[kind];
 
-  if (plans === undefined) {
+  if (items === undefined) {
     return <Skeleton className="h-40 w-full max-w-3xl" />;
   }
 
@@ -348,31 +464,34 @@ export function PlatformPlanSettings() {
           onClick={() => setEditing("new")}
         >
           <PlusIcon data-icon="inline-start" />
-          Opret plan
+          {text.create}
         </Button>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          Kun platformejere kan ændre planer.
-        </p>
+        <p className="text-sm text-muted-foreground">{text.ownersOnly}</p>
       )}
-      {plans.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Ingen planer endnu.</p>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{text.empty}</p>
       ) : null}
-      {plans.map((plan) => (
-        <Card key={plan.id} size="sm">
+      {items.map((item) => (
+        <Card key={item.id} size="sm">
           <CardHeader>
             <CardTitle>
               <span className="flex flex-wrap items-center gap-2">
-                {plan.name}
-                {plan.deprecated ? (
+                {item.name}
+                {item.deprecated ? (
                   <Badge variant="secondary">Udfaset</Badge>
                 ) : null}
               </span>
             </CardTitle>
             <CardDescription>
-              {plan.features.length} funktioner · {plan.integrations.length}{" "}
-              integrationer · {plan.organizationCount}{" "}
-              {plan.organizationCount === 1 ? "organisation" : "organisationer"}
+              {[
+                `${item.features.length} funktioner`,
+                `${item.integrations.length} integrationer`,
+                item.addOnIds ? `${item.addOnIds.length} tilkøb` : null,
+                text.usage(item.usage),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </CardDescription>
             {canEdit ? (
               <CardAction>
@@ -381,18 +500,22 @@ export function PlatformPlanSettings() {
                     type="button"
                     variant="outline"
                     className="min-h-11"
-                    onClick={() => setEditing(plan)}
+                    onClick={() => setEditing(item)}
                   >
                     Redigér
                   </Button>
-                  <DeletePlanAction plan={plan} />
+                  <DeleteAction
+                    kind={kind}
+                    item={item}
+                    onDelete={() => onDelete(item)}
+                  />
                 </div>
               </CardAction>
             ) : null}
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              {plan.features
+              {item.features
                 .map((feature) => featureLabels[feature])
                 .join(", ") || "Ingen funktioner"}
             </p>
@@ -400,11 +523,68 @@ export function PlatformPlanSettings() {
         </Card>
       ))}
       {editing ? (
-        <PlanDialog
-          plan={editing === "new" ? null : editing}
+        <CatalogDialog
+          kind={kind}
+          item={editing === "new" ? null : editing}
+          addOns={addOns}
+          onSave={(values) =>
+            onSave(editing === "new" ? null : editing, values)
+          }
           onClose={() => setEditing(null)}
         />
       ) : null}
     </div>
+  );
+}
+
+export function PlatformPlanSettings() {
+  const plans = useQuery(api.platform.plans.list);
+  const addOns = useQuery(api.platform.addOns.list);
+  const create = useMutation(api.platform.plans.create);
+  const update = useMutation(api.platform.plans.update);
+  const remove = useMutation(api.platform.plans.remove);
+
+  return (
+    <CatalogSettings
+      kind="plan"
+      items={
+        plans && addOns
+          ? plans.map((plan) => ({ ...plan, usage: plan.organizationCount }))
+          : undefined
+      }
+      addOns={addOns}
+      onSave={(plan, { deprecated, ...values }) =>
+        plan
+          ? update({ planId: plan.id, ...values, deprecated })
+          : create(values)
+      }
+      onDelete={(plan) => remove({ planId: plan.id })}
+    />
+  );
+}
+
+export function PlatformAddOnSettings() {
+  const addOns = useQuery(api.platform.addOns.list);
+  const create = useMutation(api.platform.addOns.create);
+  const update = useMutation(api.platform.addOns.update);
+  const remove = useMutation(api.platform.addOns.remove);
+
+  return (
+    <CatalogSettings
+      kind="addOn"
+      items={addOns?.map((addOn) => ({ ...addOn, usage: addOn.planCount }))}
+      onSave={(addOn, { name, features, integrations, deprecated }) =>
+        addOn
+          ? update({
+              addOnId: addOn.id,
+              name,
+              features,
+              integrations,
+              deprecated,
+            })
+          : create({ name, features, integrations })
+      }
+      onDelete={(addOn) => remove({ addOnId: addOn.id })}
+    />
   );
 }

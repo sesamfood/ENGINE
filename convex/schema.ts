@@ -85,6 +85,8 @@ export default defineSchema({
     plan: v.optional(v.string()),
     // A plan replaces features and integrations below while assigned.
     planId: v.optional(v.id("plans")),
+    // Purchased add-ons; only those offered by the assigned plan apply.
+    addOnIds: v.optional(v.array(v.id("addOns"))),
     features: v.array(featureIdValidator),
     integrations: v.array(integrationIdValidator),
     // Missing means the platform default in platformSettings applies.
@@ -98,7 +100,18 @@ export default defineSchema({
     name: v.string(),
     features: v.array(featureIdValidator),
     integrations: v.array(integrationIdValidator),
+    // Add-ons organizations on the plan can buy.
+    addOnIds: v.optional(v.array(v.id("addOns"))),
     // Deprecated plans stay on their organizations but cannot be assigned again.
+    deprecated: v.boolean(),
+    createdAt: v.number(),
+  }),
+
+  addOns: defineTable({
+    name: v.string(),
+    features: v.array(featureIdValidator),
+    integrations: v.array(integrationIdValidator),
+    // Deprecated add-ons stay where they are but cannot be added again.
     deprecated: v.boolean(),
     createdAt: v.number(),
   }),

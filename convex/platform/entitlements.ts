@@ -16,6 +16,8 @@ export const setEntitlements = mutation({
     integrations: v.array(integrationIdValidator),
     // null keeps the features and integrations above as a custom setup.
     planId: v.union(v.id("plans"), v.null()),
+    // Must be offered by the plan; ignored without one.
+    addOnIds: v.array(v.id("addOns")),
     // null follows the platform default.
     unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
   },
@@ -29,10 +31,21 @@ export const setEntitlements = mutation({
     if (plan?.deprecated && current?.planId !== args.planId) {
       throw new ConvexError("Planen er udfaset og kan ikke vælges");
     }
+    const addOnIds = plan ? [...new Set(args.addOnIds)] : [];
+    for (const id of addOnIds) {
+      const addOn = await ctx.db.get("addOns", id);
+      if (!addOn || !plan?.addOnIds?.includes(id)) {
+        throw new ConvexError("Et tilkøb hører ikke til planen");
+      }
+      if (addOn.deprecated && !current?.addOnIds?.includes(id)) {
+        throw new ConvexError(`${addOn.name} er udfaset og kan ikke tilføjes`);
+      }
+    }
     const data = {
       features: [...new Set(args.features)],
       integrations: [...new Set(args.integrations)],
       planId: args.planId ?? undefined,
+      addOnIds,
       plan: undefined,
       unavailableDisplay: args.unavailableDisplay ?? undefined,
       updatedAt: Date.now(),
@@ -50,7 +63,7 @@ export const setEntitlements = mutation({
       organizationId: args.organizationId,
       action: "entitlements.changed",
       summary: plan
-        ? `Adgang ændret: plan ${plan.name}`
+        ? `Adgang ændret: plan ${plan.name}${addOnIds.length ? ` med ${addOnIds.length} tilkøb` : ""}`
         : `Adgang ændret: ${data.features.length} funktioner og ${data.integrations.length} integrationer`,
     });
     return null;

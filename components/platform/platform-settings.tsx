@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { BlocksIcon, LayersIcon } from "lucide-react";
+import { BlocksIcon, LayersIcon, PackagePlusIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -52,6 +52,12 @@ const sections = [
     title: "Planer",
     description: "Planer og de funktioner og integrationer, de giver adgang til.",
     icon: LayersIcon,
+  },
+  {
+    href: `${settingsPath}/add-ons`,
+    title: "Tilkøb",
+    description: "Tilkøb, som planer kan tilbyde oven i deres funktioner.",
+    icon: PackagePlusIcon,
   },
 ];
 

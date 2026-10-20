@@ -5,26 +5,54 @@ import { integrationIdValidator } from "../integrations/state";
 import { featureIdValidator } from "../lib/features";
 import { recordPlatformAudit, requirePlatformMember } from "../lib/platformAuth";
 
-const planFields = {
+export const accessFields = {
   name: v.string(),
   features: v.array(featureIdValidator),
   integrations: v.array(integrationIdValidator),
 };
 
-async function normalize(
-  ctx: MutationCtx,
-  args: { name: string; features: string[]; integrations: string[] },
-  planId?: Id<"plans">,
+const planFields = { ...accessFields, addOnIds: v.array(v.id("addOns")) };
+
+export function uniqueName(
+  value: string,
+  existing: { _id: string; name: string }[],
+  id: string | undefined,
+  taken: string,
 ) {
-  const name = args.name.trim();
-  if (!name) throw new ConvexError("Planen skal have et navn");
+  const name = value.trim();
+  if (!name) throw new ConvexError("Navnet mangler");
   if (name.length > 100) throw new ConvexError("Navnet må højst være 100 tegn");
-  const plans = await ctx.db.query("plans").take(200);
   const lower = name.toLocaleLowerCase("da");
-  if (plans.some((plan) => plan._id !== planId && plan.name.toLocaleLowerCase("da") === lower)) {
-    throw new ConvexError("Der findes allerede en plan med det navn");
+  if (existing.some((row) => row._id !== id && row.name.toLocaleLowerCase("da") === lower)) {
+    throw new ConvexError(taken);
   }
   return name;
+}
+
+// Deprecated add-ons may stay on a plan but cannot be added to it.
+async function checkAddOns(
+  ctx: MutationCtx,
+  addOnIds: Id<"addOns">[],
+  currentIds: Id<"addOns">[] = [],
+) {
+  const unique = [...new Set(addOnIds)];
+  for (const id of unique) {
+    const addOn = await ctx.db.get("addOns", id);
+    if (!addOn) throw new ConvexError("Et tilkøb blev ikke fundet");
+    if (addOn.deprecated && !currentIds.includes(id)) {
+      throw new ConvexError(`${addOn.name} er udfaset og kan ikke tilføjes`);
+    }
+  }
+  return unique;
+}
+
+async function planName(ctx: MutationCtx, value: string, planId?: Id<"plans">) {
+  return uniqueName(
+    value,
+    await ctx.db.query("plans").take(200),
+    planId,
+    "Der findes allerede en plan med det navn",
+  );
 }
 
 export const list = query({
@@ -51,6 +79,7 @@ export const list = query({
           name: plan.name,
           features: plan.features,
           integrations: plan.integrations,
+          addOnIds: plan.addOnIds ?? [],
           deprecated: plan.deprecated,
           organizationCount: organizations.length,
         };
@@ -69,11 +98,12 @@ export const create = mutation({
   returns: v.id("plans"),
   handler: async (ctx, args) => {
     const actor = await requirePlatformMember(ctx, "owner");
-    const name = await normalize(ctx, args);
+    const name = await planName(ctx, args.name);
     const planId = await ctx.db.insert("plans", {
       name,
       features: [...new Set(args.features)],
       integrations: [...new Set(args.integrations)],
+      addOnIds: await checkAddOns(ctx, args.addOnIds),
       deprecated: false,
       createdAt: Date.now(),
     });
@@ -92,11 +122,12 @@ export const update = mutation({
     const actor = await requirePlatformMember(ctx, "owner");
     const current = await ctx.db.get("plans", args.planId);
     if (!current) throw new ConvexError("Planen blev ikke fundet");
-    const name = await normalize(ctx, args, args.planId);
+    const name = await planName(ctx, args.name, args.planId);
     await ctx.db.patch("plans", args.planId, {
       name,
       features: [...new Set(args.features)],
       integrations: [...new Set(args.integrations)],
+      addOnIds: await checkAddOns(ctx, args.addOnIds, current.addOnIds),
       deprecated: args.deprecated,
     });
     await recordPlatformAudit(ctx, actor, {
