@@ -2,7 +2,11 @@ import { v } from "convex/values";
 import { mutation } from "../_generated/server";
 import { integrationIdValidator } from "../integrations/state";
 import { requireAuditReason } from "../lib/audit";
-import { featureIdValidator, getEntitlements } from "../lib/features";
+import {
+  featureIdValidator,
+  getEntitlements,
+  unavailableDisplayValidator,
+} from "../lib/features";
 import { recordPlatformAudit, requirePlatformMember } from "../lib/platformAuth";
 import { requirePlatformOrganization } from "./organizations";
 
@@ -12,6 +16,8 @@ export const setEntitlements = mutation({
     features: v.array(featureIdValidator),
     integrations: v.array(integrationIdValidator),
     plan: v.optional(v.string()),
+    // null follows the platform default.
+    unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
     reason: v.string(),
   },
   returns: v.null(),
@@ -24,6 +30,7 @@ export const setEntitlements = mutation({
       features: [...new Set(args.features)],
       integrations: [...new Set(args.integrations)],
       plan,
+      unavailableDisplay: args.unavailableDisplay ?? undefined,
       updatedAt: Date.now(),
     };
     const current = await getEntitlements(ctx, args.organizationId);

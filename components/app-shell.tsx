@@ -168,6 +168,7 @@ type AccessRuntime = {
   permissions: string[];
   disabledFeatures: FeatureId[];
   nonEntitledFeatures: FeatureId[];
+  hideUnavailable: boolean;
   locationScope: { all: boolean; ids: Id<"locations">[] };
   kiosk: KioskRuntime | null;
 };

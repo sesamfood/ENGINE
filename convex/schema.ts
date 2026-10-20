@@ -7,7 +7,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { expiryValidator } from "./lib/expiry";
 import { dateLabelSelectionFields } from "./lib/dateLabelSettings";
-import { featureIdValidator } from "./lib/features";
+import { featureIdValidator, unavailableDisplayValidator } from "./lib/features";
 import { expenseCategoryOptionValidator, expenseEconomicMappingValidator, expenseFields } from "./lib/expenseValidators";
 import { economicCategoryValidator } from "./integrations/economic/lib/validators";
 import {
@@ -84,8 +84,15 @@ export default defineSchema({
     plan: v.optional(v.string()),
     features: v.array(featureIdValidator),
     integrations: v.array(integrationIdValidator),
+    // Missing means the platform default in platformSettings applies.
+    unavailableDisplay: v.optional(unavailableDisplayValidator),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  // Single row with platform-wide defaults.
+  platformSettings: defineTable({
+    unavailableDisplay: unavailableDisplayValidator,
+  }),
 
   platformAuditLog: defineTable({
     actorUserId: v.string(),

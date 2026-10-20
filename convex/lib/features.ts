@@ -35,6 +35,21 @@ export async function getEntitlements(
     .unique();
 }
 
+// How the app shows features and integrations outside the organization's entitlements.
+export const unavailableDisplayValidator = v.union(
+  v.literal("disabled"),
+  v.literal("hidden"),
+);
+
+export type UnavailableDisplay = Infer<typeof unavailableDisplayValidator>;
+
+export async function getDefaultUnavailableDisplay(
+  ctx: QueryCtx | MutationCtx,
+): Promise<UnavailableDisplay> {
+  const settings = await ctx.db.query("platformSettings").first();
+  return settings?.unavailableDisplay ?? "disabled";
+}
+
 export function nonEntitledFeatures(
   entitlements: { features: readonly FeatureId[] } | null,
 ): FeatureId[] {

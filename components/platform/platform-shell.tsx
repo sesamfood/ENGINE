@@ -1,6 +1,11 @@
 "use client";
 
-import { ArrowLeftIcon, Building2Icon, PlusIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  Building2Icon,
+  PlusIcon,
+  SettingsIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext } from "react";
@@ -55,6 +60,12 @@ export function PlatformShell({
           },
         ]
       : []),
+    {
+      href: "/platform/settings",
+      label: "Indstillinger",
+      icon: SettingsIcon,
+      active: pathname === "/platform/settings",
+    },
   ];
 
   return (

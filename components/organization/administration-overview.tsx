@@ -341,6 +341,11 @@ export function AdministrationOverview() {
       ...category,
       sections: category.sections.filter((section) =>
         (section.href !== "/administration/wolt-orders" || access.woltEnabled === true) &&
+        !(
+          access.hideUnavailable &&
+          section.feature &&
+          access.nonEntitledFeatures.includes(section.feature)
+        ) &&
         section.permissions.some((permission) => allowedPermissions[permission]),
       ),
     }))

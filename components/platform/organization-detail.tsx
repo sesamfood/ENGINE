@@ -4,6 +4,10 @@ import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { OrganizationStatusBadge } from "@/components/platform/organization-table";
+import {
+  unavailableDisplayOptions,
+  type UnavailableDisplay,
+} from "@/components/platform/platform-settings";
 import { usePlatformRole } from "@/components/platform/platform-shell";
 import {
   AlertDialog,
@@ -367,9 +371,19 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
     organization.entitledIntegrations,
   );
   const [plan, setPlan] = useState(organization.plan ?? "");
+  const [unavailableDisplay, setUnavailableDisplay] = useState<
+    UnavailableDisplay | "default"
+  >(organization.unavailableDisplay ?? "default");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const canEdit = role === "owner";
+  const defaultLabel = unavailableDisplayOptions.find(
+    (option) => option.value === organization.defaultUnavailableDisplay,
+  )?.label;
+  const displayOptions = [
+    { value: "default", label: `Følg standard (${defaultLabel})` },
+    ...unavailableDisplayOptions,
+  ];
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -380,6 +394,8 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
         features,
         integrations,
         plan,
+        unavailableDisplay:
+          unavailableDisplay === "default" ? null : unavailableDisplay,
         reason,
       });
       toast.success("Adgangen er gemt");
@@ -466,6 +482,38 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
                 disabled={!canEdit || saving}
                 onChange={(event) => setPlan(event.target.value)}
               />
+            </Field>
+            <Field className="sm:max-w-sm">
+              <FieldLabel htmlFor="platform-unavailable-display">
+                Funktioner uden for abonnementet
+              </FieldLabel>
+              <Select
+                items={displayOptions}
+                value={unavailableDisplay}
+                disabled={!canEdit || saving}
+                onValueChange={(value) =>
+                  setUnavailableDisplay(value as UnavailableDisplay | "default")
+                }
+              >
+                <SelectTrigger
+                  id="platform-unavailable-display"
+                  className="h-11! w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {displayOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                Gælder Administration og integrationer.
+              </FieldDescription>
             </Field>
             {canEdit ? (
               <ReasonField
@@ -730,7 +778,7 @@ export function PlatformOrganizationDetail({
         </TabsContent>
         <TabsContent value="features">
           <EntitlementsTab
-            key={`${organization.id}:${organization.plan}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
+            key={`${organization.id}:${organization.plan}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
             organization={organization}
           />
         </TabsContent>

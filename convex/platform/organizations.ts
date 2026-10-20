@@ -13,9 +13,11 @@ import {
 import {
   featureIdValidator,
   featureIds,
+  getDefaultUnavailableDisplay,
   getEntitlements,
   getOrganizationDisabledFeatures,
   nonEntitledFeatures,
+  unavailableDisplayValidator,
 } from "../lib/features";
 import { requirePlatformMember } from "../lib/platformAuth";
 
@@ -176,6 +178,8 @@ export const get = query({
     status: statusValidator,
     plan: v.union(v.string(), v.null()),
     hasExplicitEntitlements: v.boolean(),
+    unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
+    defaultUnavailableDisplay: unavailableDisplayValidator,
     members: v.array(
       v.object({
         id: v.string(),
@@ -236,6 +240,7 @@ export const get = query({
       platformAudit,
       organizationAudit,
       supportGrants,
+      defaultUnavailableDisplay,
     ] = await Promise.all([
       adapter.findMany<AuthMember>({
         model: "member",
@@ -281,6 +286,7 @@ export const get = query({
         )
         .order("desc")
         .take(20),
+      getDefaultUnavailableDisplay(ctx),
     ]);
     const users = members.length
       ? await adapter.findMany<AuthUser>({
@@ -319,6 +325,8 @@ export const get = query({
       status: entitlements?.status ?? "active",
       plan: entitlements?.plan ?? null,
       hasExplicitEntitlements: entitlements !== null,
+      unavailableDisplay: entitlements?.unavailableDisplay ?? null,
+      defaultUnavailableDisplay,
       members: members.map((member) => {
         const user = usersById.get(member.userId);
         return {
