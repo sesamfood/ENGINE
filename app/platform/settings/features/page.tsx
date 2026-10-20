@@ -1,5 +1,5 @@
-import { UnavailableDisplaySettings } from "@/components/platform/platform-settings";
+import { PlatformFeatureSettings } from "@/components/platform/platform-settings";
 
 export default function PlatformFeatureSettingsPage() {
-  return <UnavailableDisplaySettings />;
+  return <PlatformFeatureSettings />;
 }

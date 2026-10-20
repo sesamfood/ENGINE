@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { EyeOffIcon } from "lucide-react";
+import { BlocksIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -43,9 +43,9 @@ const settingsPath = "/platform/settings";
 const sections = [
   {
     href: `${settingsPath}/features`,
-    title: "Funktioner uden for abonnementet",
-    description: "Vælg, om de vises nedtonet eller skjules.",
-    icon: EyeOffIcon,
+    title: "Funktioner",
+    description: "Standardindstillinger for funktioner i alle organisationer.",
+    icon: BlocksIcon,
   },
 ];
 
@@ -97,7 +97,7 @@ export function PlatformSettingsOverview() {
   );
 }
 
-export function UnavailableDisplaySettings() {
+export function PlatformFeatureSettings() {
   const role = usePlatformRole();
   const settings = useQuery(api.platform.settings.get);
   const setUnavailableDisplay = useMutation(
@@ -127,7 +127,7 @@ export function UnavailableDisplaySettings() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>Standard</CardTitle>
+        <CardTitle>Funktioner uden for abonnementet</CardTitle>
         <CardDescription>
           Standard for alle organisationer. Kan ændres for den enkelte
           organisation under Funktioner.
