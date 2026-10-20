@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { mutation } from "../_generated/server";
 import { integrationIdValidator } from "../integrations/state";
-import { requireAuditReason } from "../lib/audit";
 import {
   featureIdValidator,
   getEntitlements,
@@ -18,12 +17,10 @@ export const setEntitlements = mutation({
     plan: v.optional(v.string()),
     // null follows the platform default.
     unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
-    reason: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const actor = await requirePlatformMember(ctx, "owner");
-    const reason = requireAuditReason(args.reason);
     await requirePlatformOrganization(ctx, args.organizationId);
     const plan = args.plan?.trim() || undefined;
     const data = {
@@ -47,7 +44,6 @@ export const setEntitlements = mutation({
       organizationId: args.organizationId,
       action: "entitlements.changed",
       summary: `Adgang ændret: ${data.features.length} funktioner og ${data.integrations.length} integrationer${plan ? `, plan ${plan}` : ""}`,
-      reason,
     });
     return null;
   },
