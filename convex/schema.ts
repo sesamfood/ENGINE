@@ -81,13 +81,27 @@ export default defineSchema({
   organizationEntitlements: defineTable({
     organizationId: v.string(),
     status: v.union(v.literal("active"), v.literal("suspended")),
+    // Legacy free-text plan name, replaced by planId.
     plan: v.optional(v.string()),
+    // A plan replaces features and integrations below while assigned.
+    planId: v.optional(v.id("plans")),
     features: v.array(featureIdValidator),
     integrations: v.array(integrationIdValidator),
     // Missing means the platform default in platformSettings applies.
     unavailableDisplay: v.optional(unavailableDisplayValidator),
     updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_planId", ["planId"]),
+
+  plans: defineTable({
+    name: v.string(),
+    features: v.array(featureIdValidator),
+    integrations: v.array(integrationIdValidator),
+    // Deprecated plans stay on their organizations but cannot be assigned again.
+    deprecated: v.boolean(),
+    createdAt: v.number(),
+  }),
 
   // Single row with platform-wide defaults.
   platformSettings: defineTable({

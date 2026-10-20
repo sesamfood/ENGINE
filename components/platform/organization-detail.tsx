@@ -8,6 +8,7 @@ import {
   unavailableDisplayOptions,
   type UnavailableDisplay,
 } from "@/components/platform/platform-settings";
+import { AccessFields, featureIds } from "@/components/platform/platform-plans";
 import { usePlatformRole } from "@/components/platform/platform-shell";
 import {
   AlertDialog,
@@ -30,14 +31,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -64,14 +62,12 @@ import { api } from "@/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { integrationRegistry, type IntegrationId } from "@/integrations/registry";
 import { systemRoleNames } from "@/lib/auth-permissions";
-import { featureLabels, type FeatureId } from "@/lib/features";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Organization = NonNullable<
   FunctionReturnType<typeof api.platform.organizations.get>
 >;
 
-const featureIds = Object.keys(featureLabels) as FeatureId[];
 
 function formatDateTime(value: number) {
   return new Date(value).toLocaleString("da-DK", {
@@ -82,12 +78,6 @@ function formatDateTime(value: number) {
 
 function roleName(role: string) {
   return systemRoleNames[role as keyof typeof systemRoleNames] ?? role;
-}
-
-function toggle<T>(values: T[], value: T, checked: boolean) {
-  return checked
-    ? [...new Set([...values, value])]
-    : values.filter((item) => item !== value);
 }
 
 function ReasonField({
@@ -346,6 +336,7 @@ function OverviewTab({ organization }: { organization: Organization }) {
 function EntitlementsTab({ organization }: { organization: Organization }) {
   const role = usePlatformRole();
   const setEntitlements = useMutation(api.platform.entitlements.setEntitlements);
+  const plans = useQuery(api.platform.plans.list);
   const [features, setFeatures] = useState(() =>
     featureIds.filter(
       (feature) => !organization.nonEntitledFeatures.includes(feature),
@@ -354,12 +345,22 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
   const [integrations, setIntegrations] = useState<IntegrationId[]>(
     organization.entitledIntegrations,
   );
-  const [plan, setPlan] = useState(organization.plan ?? "");
+  const [planId, setPlanId] = useState<string>(organization.planId ?? "none");
   const [unavailableDisplay, setUnavailableDisplay] = useState<
     UnavailableDisplay | "default"
   >(organization.unavailableDisplay ?? "default");
   const [saving, setSaving] = useState(false);
   const canEdit = role === "owner";
+  const plan = plans?.find((item) => item.id === planId);
+  const planOptions = [
+    { value: "none", label: "Ingen plan (tilpasset)" },
+    ...(plans ?? [])
+      .filter((item) => !item.deprecated || item.id === organization.planId)
+      .map((item) => ({
+        value: item.id,
+        label: item.deprecated ? `${item.name} (udfaset)` : item.name,
+      })),
+  ];
   const defaultLabel = unavailableDisplayOptions.find(
     (option) => option.value === organization.defaultUnavailableDisplay,
   )?.label;
@@ -374,9 +375,9 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
     try {
       await setEntitlements({
         organizationId: organization.id,
-        features,
-        integrations,
-        plan,
+        features: plan?.features ?? features,
+        integrations: plan?.integrations ?? integrations,
+        planId: plan?.id ?? null,
         unavailableDisplay:
           unavailableDisplay === "default" ? null : unavailableDisplay,
       });
@@ -401,69 +402,47 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <FieldSet>
-              <FieldLegend variant="label">Funktioner</FieldLegend>
-              <FieldGroup appearance="dense" className="grid sm:grid-cols-2">
-                {featureIds.map((feature) => (
-                  <Field key={feature} orientation="horizontal">
-                    <Checkbox
-                      id={`platform-feature-${feature}`}
-                      checked={features.includes(feature)}
-                      disabled={!canEdit || saving}
-                      onCheckedChange={(checked) =>
-                        setFeatures((current) =>
-                          toggle(current, feature, checked === true),
-                        )
-                      }
-                    />
-                    <FieldLabel
-                      htmlFor={`platform-feature-${feature}`}
-                      appearance="regular"
-                    >
-                      {featureLabels[feature]}
-                      {organization.organizationDisabledFeatures.includes(feature)
-                        ? " (slået fra af organisationen)"
-                        : ""}
-                    </FieldLabel>
-                  </Field>
-                ))}
-              </FieldGroup>
-            </FieldSet>
-            <FieldSet>
-              <FieldLegend variant="label">Integrationer</FieldLegend>
-              <FieldGroup appearance="dense" className="grid sm:grid-cols-2">
-                {integrationRegistry.map((entry) => (
-                  <Field key={entry.id} orientation="horizontal">
-                    <Checkbox
-                      id={`platform-integration-${entry.id}`}
-                      checked={integrations.includes(entry.id)}
-                      disabled={!canEdit || saving}
-                      onCheckedChange={(checked) =>
-                        setIntegrations((current) =>
-                          toggle(current, entry.id, checked === true),
-                        )
-                      }
-                    />
-                    <FieldLabel
-                      htmlFor={`platform-integration-${entry.id}`}
-                      appearance="regular"
-                    >
-                      {entry.name}
-                    </FieldLabel>
-                  </Field>
-                ))}
-              </FieldGroup>
-            </FieldSet>
             <Field className="sm:max-w-sm">
               <FieldLabel htmlFor="platform-plan">Plan</FieldLabel>
-              <Input
-                id="platform-plan"
-                value={plan}
-                maxLength={100}
-                disabled={!canEdit || saving}
-                onChange={(event) => setPlan(event.target.value)}
-              />
+              <Select
+                items={planOptions}
+                value={planId}
+                disabled={!canEdit || saving || plans === undefined}
+                onValueChange={(value) => setPlanId(value as string)}
+              >
+                <SelectTrigger id="platform-plan" className="h-11! w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {planOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {plan ? (
+                <FieldDescription>
+                  Planen styrer funktioner og integrationer. Redigér planen
+                  under Indstillinger → Planer.
+                </FieldDescription>
+              ) : null}
             </Field>
+            <AccessFields
+              idPrefix="platform"
+              features={plan?.features ?? features}
+              integrations={plan?.integrations ?? integrations}
+              disabled={!canEdit || saving || plan !== undefined}
+              onFeaturesChange={setFeatures}
+              onIntegrationsChange={setIntegrations}
+              featureNote={(feature) =>
+                organization.organizationDisabledFeatures.includes(feature)
+                  ? " (slået fra af organisationen)"
+                  : undefined
+              }
+            />
             <Field className="sm:max-w-sm">
               <FieldLabel htmlFor="platform-unavailable-display">
                 Funktioner uden for abonnementet
@@ -752,7 +731,7 @@ export function PlatformOrganizationDetail({
         </TabsContent>
         <TabsContent value="features">
           <EntitlementsTab
-            key={`${organization.id}:${organization.plan}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
+            key={`${organization.id}:${organization.planId}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
             organization={organization}
           />
         </TabsContent>
