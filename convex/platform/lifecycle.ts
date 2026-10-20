@@ -8,7 +8,6 @@ import {
 } from "../_generated/server";
 import { getDatabaseAdapter } from "../auth";
 import { integrationIds } from "../integrations/state";
-import { requireAuditReason } from "../lib/audit";
 import { createInvitationEmail } from "../lib/authEmail";
 import { featureIds, getEntitlements } from "../lib/features";
 import { recordPlatformAudit, requirePlatformMember } from "../lib/platformAuth";
@@ -164,12 +163,11 @@ export const createOrganization = mutation({
 });
 
 export const inviteAdmin = mutation({
-  args: { organizationId: v.string(), email: v.string(), reason: v.string() },
+  args: { organizationId: v.string(), email: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     // Owner-only: an accepted invitation is permanent, so it must not outlive a support grant.
     const actor = await requirePlatformMember(ctx, "owner");
-    const reason = requireAuditReason(args.reason);
     const organization = await requirePlatformOrganization(
       ctx,
       args.organizationId,
@@ -184,18 +182,16 @@ export const inviteAdmin = mutation({
       organizationId: organization.id,
       action: "organization.adminInvited",
       summary: `${email} er inviteret som Administrator`,
-      reason,
     });
     return null;
   },
 });
 
 export const suspend = mutation({
-  args: { organizationId: v.string(), reason: v.string() },
+  args: { organizationId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const actor = await requirePlatformMember(ctx, "owner");
-    const reason = requireAuditReason(args.reason);
     const organization = await requirePlatformOrganization(
       ctx,
       args.organizationId,
@@ -205,18 +201,16 @@ export const suspend = mutation({
       organizationId: organization.id,
       action: "organization.suspended",
       summary: `Organisationen ${organization.name} er suspenderet`,
-      reason,
     });
     return null;
   },
 });
 
 export const reactivate = mutation({
-  args: { organizationId: v.string(), reason: v.string() },
+  args: { organizationId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const actor = await requirePlatformMember(ctx, "owner");
-    const reason = requireAuditReason(args.reason);
     const organization = await requirePlatformOrganization(
       ctx,
       args.organizationId,
@@ -226,7 +220,6 @@ export const reactivate = mutation({
       organizationId: organization.id,
       action: "organization.reactivated",
       summary: `Organisationen ${organization.name} er genaktiveret`,
-      reason,
     });
     return null;
   },

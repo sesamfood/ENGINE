@@ -4,6 +4,10 @@ import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { OrganizationStatusBadge } from "@/components/platform/organization-table";
+import {
+  unavailableDisplayOptions,
+  type UnavailableDisplay,
+} from "@/components/platform/platform-settings";
 import { usePlatformRole } from "@/components/platform/platform-shell";
 import {
   AlertDialog,
@@ -116,7 +120,6 @@ function StatusAction({ organization }: { organization: Organization }) {
   const suspend = useMutation(api.platform.lifecycle.suspend);
   const reactivate = useMutation(api.platform.lifecycle.reactivate);
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const suspended = organization.status === "suspended";
 
@@ -124,14 +127,13 @@ function StatusAction({ organization }: { organization: Organization }) {
     setSaving(true);
     try {
       const action = suspended ? reactivate : suspend;
-      await action({ organizationId: organization.id, reason });
+      await action({ organizationId: organization.id });
       toast.success(
         suspended
           ? `${organization.name} er genaktiveret`
           : `${organization.name} er suspenderet`,
       );
       setOpen(false);
-      setReason("");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Status kunne ikke ændres. Prøv igen."));
     } finally {
@@ -165,17 +167,11 @@ function StatusAction({ organization }: { organization: Organization }) {
               : "Brugere og API-nøgler mister adgang ved næste anmodning, og integrationer stopper. Data og forbindelser bevares."}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <ReasonField
-          id="platform-status-reason"
-          value={reason}
-          disabled={saving}
-          onChange={setReason}
-        />
         <AlertDialogFooter>
           <AlertDialogCancel disabled={saving}>Annullér</AlertDialogCancel>
           <AlertDialogAction
             variant={suspended ? "default" : "destructive"}
-            disabled={saving || !reason.trim()}
+            disabled={saving}
             onClick={() => void confirm()}
           >
             {saving ? <Spinner data-icon="inline-start" /> : null}
@@ -190,17 +186,15 @@ function StatusAction({ organization }: { organization: Organization }) {
 function InviteAdminCard({ organizationId }: { organizationId: string }) {
   const inviteAdmin = useMutation(api.platform.lifecycle.inviteAdmin);
   const [email, setEmail] = useState("");
-  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
-      await inviteAdmin({ organizationId, email, reason });
+      await inviteAdmin({ organizationId, email });
       toast.success(`Invitationen er sendt til ${email.trim()}`);
       setEmail("");
-      setReason("");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Invitationen kunne ikke sendes. Prøv igen."));
     } finally {
@@ -231,16 +225,10 @@ function InviteAdminCard({ organizationId }: { organizationId: string }) {
                 onChange={(event) => setEmail(event.target.value)}
               />
             </Field>
-            <ReasonField
-              id="platform-invite-reason"
-              value={reason}
-              disabled={saving}
-              onChange={setReason}
-            />
           </FieldGroup>
         </CardContent>
         <CardFooter>
-          <Button type="submit" disabled={saving || !reason.trim()}>
+          <Button type="submit" disabled={saving}>
             {saving ? <Spinner data-icon="inline-start" /> : null}
             Send invitation
           </Button>
@@ -367,9 +355,18 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
     organization.entitledIntegrations,
   );
   const [plan, setPlan] = useState(organization.plan ?? "");
-  const [reason, setReason] = useState("");
+  const [unavailableDisplay, setUnavailableDisplay] = useState<
+    UnavailableDisplay | "default"
+  >(organization.unavailableDisplay ?? "default");
   const [saving, setSaving] = useState(false);
   const canEdit = role === "owner";
+  const defaultLabel = unavailableDisplayOptions.find(
+    (option) => option.value === organization.defaultUnavailableDisplay,
+  )?.label;
+  const displayOptions = [
+    { value: "default", label: `Følg standard (${defaultLabel})` },
+    ...unavailableDisplayOptions,
+  ];
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -380,10 +377,10 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
         features,
         integrations,
         plan,
-        reason,
+        unavailableDisplay:
+          unavailableDisplay === "default" ? null : unavailableDisplay,
       });
       toast.success("Adgangen er gemt");
-      setReason("");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Adgangen kunne ikke gemmes. Prøv igen."));
     } finally {
@@ -467,14 +464,39 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
                 onChange={(event) => setPlan(event.target.value)}
               />
             </Field>
-            {canEdit ? (
-              <ReasonField
-                id="platform-entitlements-reason"
-                value={reason}
-                disabled={saving}
-                onChange={setReason}
-              />
-            ) : (
+            <Field className="sm:max-w-sm">
+              <FieldLabel htmlFor="platform-unavailable-display">
+                Funktioner uden for abonnementet
+              </FieldLabel>
+              <Select
+                items={displayOptions}
+                value={unavailableDisplay}
+                disabled={!canEdit || saving}
+                onValueChange={(value) =>
+                  setUnavailableDisplay(value as UnavailableDisplay | "default")
+                }
+              >
+                <SelectTrigger
+                  id="platform-unavailable-display"
+                  className="h-11! w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {displayOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                Gælder Administration og integrationer.
+              </FieldDescription>
+            </Field>
+            {canEdit ? null : (
               <FieldDescription>
                 Kun platformejere kan ændre adgang.
               </FieldDescription>
@@ -483,7 +505,7 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
         </CardContent>
         {canEdit ? (
           <CardFooter>
-            <Button type="submit" disabled={saving || !reason.trim()}>
+            <Button type="submit" disabled={saving}>
               {saving ? <Spinner data-icon="inline-start" /> : null}
               Gem adgang
             </Button>
@@ -730,7 +752,7 @@ export function PlatformOrganizationDetail({
         </TabsContent>
         <TabsContent value="features">
           <EntitlementsTab
-            key={`${organization.id}:${organization.plan}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
+            key={`${organization.id}:${organization.plan}:${organization.unavailableDisplay}:${organization.nonEntitledFeatures.join()}:${organization.entitledIntegrations.join()}`}
             organization={organization}
           />
         </TabsContent>

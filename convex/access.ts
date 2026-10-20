@@ -27,6 +27,7 @@ import {
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
   featureIdValidator,
+  getDefaultUnavailableDisplay,
   getDisabledFeatures,
   getEntitlements,
   nonEntitledFeatures,
@@ -77,6 +78,7 @@ const runtimeContextValidator = accessContextValidator.extend({
   locations: v.array(locationOptionValidator),
   disabledFeatures: v.array(featureIdValidator),
   nonEntitledFeatures: v.array(featureIdValidator),
+  hideUnavailable: v.boolean(),
 });
 
 const roleContextValidator = v.object({
@@ -308,12 +310,14 @@ export const getRuntimeContext = query({
   returns: runtimeContextValidator,
   handler: async (ctx) => {
     const { auth, context } = await getAccessContext(ctx);
+    const entitlements = await getEntitlements(ctx, auth.organizationId);
+    const unavailableDisplay =
+      entitlements?.unavailableDisplay ?? (await getDefaultUnavailableDisplay(ctx));
     return {
       ...context,
       disabledFeatures: await getDisabledFeatures(ctx, auth.organizationId),
-      nonEntitledFeatures: nonEntitledFeatures(
-        await getEntitlements(ctx, auth.organizationId),
-      ),
+      nonEntitledFeatures: nonEntitledFeatures(entitlements),
+      hideUnavailable: unavailableDisplay === "hidden",
       locations: await listScopedLocationOptions(
         ctx,
         auth.organizationId,

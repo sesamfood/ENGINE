@@ -1,8 +1,11 @@
 import { v } from "convex/values";
 import { mutation } from "../_generated/server";
 import { integrationIdValidator } from "../integrations/state";
-import { requireAuditReason } from "../lib/audit";
-import { featureIdValidator, getEntitlements } from "../lib/features";
+import {
+  featureIdValidator,
+  getEntitlements,
+  unavailableDisplayValidator,
+} from "../lib/features";
 import { recordPlatformAudit, requirePlatformMember } from "../lib/platformAuth";
 import { requirePlatformOrganization } from "./organizations";
 
@@ -12,18 +15,19 @@ export const setEntitlements = mutation({
     features: v.array(featureIdValidator),
     integrations: v.array(integrationIdValidator),
     plan: v.optional(v.string()),
-    reason: v.string(),
+    // null follows the platform default.
+    unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const actor = await requirePlatformMember(ctx, "owner");
-    const reason = requireAuditReason(args.reason);
     await requirePlatformOrganization(ctx, args.organizationId);
     const plan = args.plan?.trim() || undefined;
     const data = {
       features: [...new Set(args.features)],
       integrations: [...new Set(args.integrations)],
       plan,
+      unavailableDisplay: args.unavailableDisplay ?? undefined,
       updatedAt: Date.now(),
     };
     const current = await getEntitlements(ctx, args.organizationId);
@@ -40,7 +44,6 @@ export const setEntitlements = mutation({
       organizationId: args.organizationId,
       action: "entitlements.changed",
       summary: `Adgang ændret: ${data.features.length} funktioner og ${data.integrations.length} integrationer${plan ? `, plan ${plan}` : ""}`,
-      reason,
     });
     return null;
   },

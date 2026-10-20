@@ -129,6 +129,7 @@ export function IntegrationOverview() {
         {integrationRegistry.map((entry) => {
           const enabled = state[entry.id];
           const unavailable = state.unavailable.includes(entry.id);
+          if (unavailable && access?.hideUnavailable) return null;
           const canConfigure = !entry.requiresAllLocations || canToggle;
           const canOpen = enabled && canConfigure;
           return (
