@@ -48,6 +48,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -537,7 +538,7 @@ function CatalogSettings<T extends Item>({
   );
 }
 
-export function PlatformPlanSettings() {
+function PlanSettings() {
   const plans = useQuery(api.platform.plans.list);
   const addOns = useQuery(api.platform.addOns.list);
   const create = useMutation(api.platform.plans.create);
@@ -563,7 +564,7 @@ export function PlatformPlanSettings() {
   );
 }
 
-export function PlatformAddOnSettings() {
+function AddOnSettings() {
   const addOns = useQuery(api.platform.addOns.list);
   const create = useMutation(api.platform.addOns.create);
   const update = useMutation(api.platform.addOns.update);
@@ -586,5 +587,22 @@ export function PlatformAddOnSettings() {
       }
       onDelete={(addOn) => remove({ addOnId: addOn.id })}
     />
+  );
+}
+
+export function PlatformPlanSettings() {
+  return (
+    <Tabs defaultValue="plans" appearance="spaced">
+      <TabsList>
+        <TabsTrigger value="plans">Planer</TabsTrigger>
+        <TabsTrigger value="addOns">Tilkøb</TabsTrigger>
+      </TabsList>
+      <TabsContent value="plans">
+        <PlanSettings />
+      </TabsContent>
+      <TabsContent value="addOns">
+        <AddOnSettings />
+      </TabsContent>
+    </Tabs>
   );
 }
