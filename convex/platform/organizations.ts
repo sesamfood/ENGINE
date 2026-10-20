@@ -138,7 +138,7 @@ export const list = query({
           slug: organization.slug,
           createdAt: organization.createdAt,
           status: entitlements?.status ?? "active",
-          plan: entitlements?.plan ?? null,
+          plan: entitlements?.planName ?? entitlements?.plan ?? null,
           entitledFeatureCount:
             featureIds.length - nonEntitledFeatures(entitlements).length,
           entitledIntegrationCount: integrationIds.filter((integration) =>
@@ -177,6 +177,8 @@ export const get = query({
     createdAt: v.number(),
     status: statusValidator,
     plan: v.union(v.string(), v.null()),
+    planId: v.union(v.id("plans"), v.null()),
+    addOnIds: v.array(v.id("addOns")),
     hasExplicitEntitlements: v.boolean(),
     unavailableDisplay: v.union(unavailableDisplayValidator, v.null()),
     defaultUnavailableDisplay: unavailableDisplayValidator,
@@ -323,7 +325,9 @@ export const get = query({
       slug: organization.slug,
       createdAt: new Date(organization.createdAt).getTime(),
       status: entitlements?.status ?? "active",
-      plan: entitlements?.plan ?? null,
+      plan: entitlements?.planName ?? entitlements?.plan ?? null,
+      planId: entitlements?.planId ?? null,
+      addOnIds: entitlements?.addOnIds ?? [],
       hasExplicitEntitlements: entitlements !== null,
       unavailableDisplay: entitlements?.unavailableDisplay ?? null,
       defaultUnavailableDisplay,
