@@ -31,6 +31,10 @@ import {
 import { requireOtherFeaturesUnlocked } from "./lib/countLock";
 import { addStock, normalizeStock } from "./lib/stock";
 import { resolveTimeZone } from "./lib/timeZone";
+import {
+  getTestOrganization,
+  TEST_ORGANIZATION_DELIVERY_ERROR,
+} from "./lib/testOrganizations";
 import { recordAudit, requireAuditReason } from "./lib/audit";
 import {
   dashboardSummaryTimeZone,
@@ -939,6 +943,10 @@ export const claimNotice = internalMutation({
   handler: async (ctx, args) => {
     const delivery = await ctx.db.get("badDeliveries", args.badDeliveryId);
     if (!delivery) return null;
+    // The thrown error is recorded by failNoticeClaim.
+    if (await getTestOrganization(ctx, delivery.organizationId)) {
+      throw new ConvexError(TEST_ORGANIZATION_DELIVERY_ERROR);
+    }
     const now = Date.now();
     if (args.kind === "initial") {
       const claimIsFresh =

@@ -6,6 +6,7 @@ import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { emailErrorMessage, escapeHtml } from "./lib/email";
 import { sendResendEmail } from "./lib/resend";
+import { requireExternalDelivery } from "./lib/testOrganizations";
 
 export const sendNotice = internalAction({
   args: { expenseId: v.id("expenses") }, returns: v.null(),
@@ -14,6 +15,7 @@ export const sendNotice = internalAction({
     if (!expense) return null;
     let result: { providerId: string } | { error: string };
     try {
+      await requireExternalDelivery(ctx, expense.organizationId);
       const money = new Intl.NumberFormat("da-DK", { style: "currency", currency: expense.currency });
       const category = expenseCategoryLabel(expense);
       const text = [

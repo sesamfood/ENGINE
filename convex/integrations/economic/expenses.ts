@@ -4,6 +4,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { internalAction } from "../../_generated/server";
+import { requireExternalDelivery } from "../../lib/testOrganizations";
 import { requireIntegrationEnabled } from "../state";
 import {
   attachExpenseDimension, attachExpenseReceipt, createExpenseDraft,
@@ -24,6 +25,7 @@ export const exportExpense = internalAction({
     let attachmentUploaded = expense.economicAttachmentUploaded ?? false;
     const requireEnabled = () => requireIntegrationEnabled(ctx, expense.organizationId, "economic");
     try {
+      await requireExternalDelivery(ctx, expense.organizationId);
       const mapping = expense.economic;
       if (!mapping) throw new ExpenseEconomicError("Udgiften mangler en e-conomic-opsætning.");
       let receipt: Blob | null = null;

@@ -9,6 +9,7 @@ import {
   ChevronsUpDownIcon,
   ClipboardCheckIcon,
   ClipboardListIcon,
+  FlaskConicalIcon,
   CircleHelpIcon,
   CircleOffIcon,
   LogOutIcon,
@@ -742,6 +743,63 @@ function AccountAvatar({
   );
 }
 
+function useTestOrganization() {
+  const { isAuthenticated } = useConvexAuth();
+  const current = useQuery(
+    api.testOrganizations.current,
+    isAuthenticated ? {} : "skip",
+  );
+  const enter = useMutation(api.testOrganizations.enter);
+  const [switching, setSwitching] = useState(false);
+
+  async function switchOrganization() {
+    if (!current) return;
+    setSwitching(true);
+    try {
+      const organizationId =
+        current.kind === "test" ? current.sourceOrganizationId : await enter({});
+      const { error } = await authClient.organization.setActive({ organizationId });
+      if (error) throw new Error(error.message);
+      // A full load resets organization-specific state such as theme and selections.
+      window.location.assign("/");
+    } catch (error) {
+      setSwitching(false);
+      toast.error(
+        getUserErrorMessage(error, "Organisationen kunne ikke skiftes. Prøv igen."),
+      );
+    }
+  }
+
+  return { current, switching, switchOrganization };
+}
+
+function TestOrganizationBanner() {
+  const { current, switching, switchOrganization } = useTestOrganization();
+  if (current?.kind !== "test") return null;
+  return (
+    <div className="flex flex-col gap-3 px-4 pt-4 sm:flex-row sm:items-center">
+      <Alert className="flex-1">
+        <FlaskConicalIcon />
+        <AlertTitle>Testorganisation</AlertTitle>
+        <AlertDescription>
+          Ændringer her påvirker ikke {current.sourceName}. E-mails og data til
+          andre systemer sendes ikke.
+        </AlertDescription>
+      </Alert>
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        disabled={switching}
+        onClick={() => void switchOrganization()}
+      >
+        {switching ? <Spinner data-icon="inline-start" /> : null}
+        Tilbage til {current.sourceName}
+      </Button>
+    </div>
+  );
+}
+
 function ProfileMenu({
   compact = false,
   signingOut,
@@ -762,6 +820,7 @@ function ProfileMenu({
   const canManageOrganization = canOpenAdministration(
     access?.permissions ?? [],
   );
+  const testOrganization = useTestOrganization();
   const { isMobile, setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
@@ -873,6 +932,20 @@ function ProfileMenu({
             <DropdownMenuItem onClick={() => goTo("/administration")}>
               <Building2Icon />
               Administration
+            </DropdownMenuItem>
+          ) : null}
+          {testOrganization.current ? (
+            <DropdownMenuItem
+              disabled={testOrganization.switching}
+              onClick={() => {
+                setOpenMobile(false);
+                void testOrganization.switchOrganization();
+              }}
+            >
+              <FlaskConicalIcon />
+              {testOrganization.current.kind === "test"
+                ? `Tilbage til ${testOrganization.current.sourceName}`
+                : "Åbn testorganisation"}
             </DropdownMenuItem>
           ) : null}
           {platformMember ? (
@@ -1445,6 +1518,7 @@ export function AppShell({
                       <SupportBanner
                         className={cn("top-16", showPageHeader && "md:top-24")}
                       />
+                      <TestOrganizationBanner />
 
                       <div
                         className={cn(

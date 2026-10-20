@@ -103,6 +103,26 @@ async function requireActiveOrganization(
   }
 }
 
+async function isTestOrganization(
+  ctx: GenericCtx<DataModel>,
+  organizationId: string,
+) {
+  return await ctx.runQuery(internal.testOrganizations.isTestOrganization, {
+    organizationId,
+  });
+}
+
+async function requireNotTestOrganization(
+  ctx: GenericCtx<DataModel>,
+  organizationId: string,
+) {
+  if (await isTestOrganization(ctx, organizationId)) {
+    throw new APIError("BAD_REQUEST", {
+      message: "Brugere får adgang til testorganisationen via kildeorganisationen",
+    });
+  }
+}
+
 async function requireNoOrganizationMembership(
   ctx: GenericCtx<DataModel>,
   userId: string,
@@ -131,6 +151,8 @@ async function requireAccountCanBeDeleted(
   });
 
   for (const membership of memberships) {
+    // Test organization access follows the source organization.
+    if (await isTestOrganization(ctx, membership.organizationId)) continue;
     const otherAdmins = await adapter.findMany<OrganizationMember>({
       model: "member",
       where: [
@@ -498,6 +520,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             await requireNoOrganizationMembership(ctx, user.id);
           },
           beforeAddMember: async ({ member }) => {
+            await requireNotTestOrganization(ctx, member.organizationId);
             await requireAllowedOrganizationRole(
               ctx,
               member.organizationId,
@@ -514,6 +537,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
             await requireAnotherAdmin(ctx, member, newRole);
           },
           beforeCreateInvitation: async ({ invitation }) => {
+            await requireNotTestOrganization(ctx, invitation.organizationId);
             await requireAllowedOrganizationRole(
               ctx,
               invitation.organizationId,
