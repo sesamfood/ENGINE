@@ -133,7 +133,10 @@ export function PlatformOrganizationTable() {
                   </span>
                 </TableCell>
                 <TableCell>
-                  <OrganizationStatusBadge status={organization.status} />
+                  <div className="flex flex-wrap gap-1">
+                    <OrganizationStatusBadge status={organization.status} />
+                    {organization.isTest ? <Badge variant="outline">Test</Badge> : null}
+                  </div>
                 </TableCell>
                 <TableCell appearance="numeric" className="text-right">
                   {organization.memberCount >= 100

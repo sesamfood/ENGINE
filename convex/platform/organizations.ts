@@ -20,6 +20,7 @@ import {
   unavailableDisplayValidator,
 } from "../lib/features";
 import { requirePlatformMember } from "../lib/platformAuth";
+import { getTestOrganization } from "../lib/testOrganizations";
 
 // Platform queries read across organizations, so they stay out of organization-scoped modules.
 
@@ -102,6 +103,7 @@ export const list = query({
       entitledIntegrationCount: v.number(),
       memberCount: v.number(),
       locationCount: v.number(),
+      isTest: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -123,7 +125,7 @@ export const list = query({
     const adapter = getDatabaseAdapter(ctx);
     const page = await Promise.all(
       organizations.map(async (organization) => {
-        const [entitlements, members, locationCount] = await Promise.all([
+        const [entitlements, members, locationCount, test] = await Promise.all([
           getEntitlements(ctx, organization._id),
           adapter.findMany({
             model: "member",
@@ -131,6 +133,7 @@ export const list = query({
             limit: 100,
           }),
           countLocations(ctx, organization._id),
+          getTestOrganization(ctx, organization._id),
         ]);
         return {
           id: organization._id,
@@ -146,6 +149,7 @@ export const list = query({
           ).length,
           memberCount: members.length,
           locationCount,
+          isTest: test !== null,
         };
       }),
     );

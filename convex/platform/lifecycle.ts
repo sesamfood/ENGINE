@@ -12,6 +12,10 @@ import { createInvitationEmail } from "../lib/authEmail";
 import { featureIds, getEntitlements } from "../lib/features";
 import { recordPlatformAudit, requirePlatformMember } from "../lib/platformAuth";
 import { sendResendEmail } from "../lib/resend";
+import {
+  getTestOrganization,
+  getTestOrganizationForSource,
+} from "../lib/testOrganizations";
 import { requirePlatformOrganization } from "./organizations";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -85,6 +89,9 @@ async function setStatus(
   organizationId: string,
   status: "active" | "suspended",
 ) {
+  // A ready test organization follows its source; a copy in progress stays suspended.
+  const test = await getTestOrganizationForSource(ctx, organizationId);
+  if (test?.status === "ready") await setStatus(ctx, test.organizationId, status);
   const current = await getEntitlements(ctx, organizationId);
   if (current) {
     await ctx.db.patch("organizationEntitlements", current._id, {
@@ -172,6 +179,9 @@ export const inviteAdmin = mutation({
       ctx,
       args.organizationId,
     );
+    if (await getTestOrganization(ctx, organization.id)) {
+      throw new ConvexError("Brugere får adgang til en testorganisation via kildeorganisationen");
+    }
     const { email } = await createAdminInvitation(
       ctx,
       actor,
@@ -215,6 +225,11 @@ export const reactivate = mutation({
       ctx,
       args.organizationId,
     );
+    // A copy in progress stays suspended so integration jobs cannot run on half-copied data.
+    const test = await getTestOrganization(ctx, organization.id);
+    if (test && test.status !== "ready") {
+      throw new ConvexError("Testorganisationen er ikke klar");
+    }
     await setStatus(ctx, organization.id, "active");
     await recordPlatformAudit(ctx, actor, {
       organizationId: organization.id,

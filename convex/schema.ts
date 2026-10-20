@@ -133,6 +133,33 @@ export default defineSchema({
     .index("by_at", ["at"])
     .index("by_organizationId_and_at", ["organizationId", "at"]),
 
+  // A test organization is a copy of its source organization. Status "ready" is the only
+  // state where users can open it; runId identifies the copy or delete job that owns it.
+  testOrganizations: defineTable({
+    organizationId: v.string(),
+    sourceOrganizationId: v.string(),
+    status: v.union(v.literal("copying"), v.literal("ready"), v.literal("deleting")),
+    runId: v.number(),
+    copiedAt: v.optional(v.number()),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_sourceOrganizationId", ["sourceOrganizationId"]),
+
+  // Maps each copied source document or file to its copy in the test organization.
+  testOrganizationCopies: defineTable({
+    organizationId: v.string(),
+    table: v.string(),
+    sourceId: v.string(),
+    // Missing until the file has been copied.
+    targetId: v.optional(v.string()),
+  })
+    .index("by_organizationId_and_sourceId", ["organizationId", "sourceId"])
+    .index("by_organizationId_and_table_and_targetId", [
+      "organizationId",
+      "table",
+      "targetId",
+    ]),
+
   supportGrants: defineTable({
     organizationId: v.string(),
     platformUserId: v.string(),

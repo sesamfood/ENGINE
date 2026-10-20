@@ -15,6 +15,7 @@ import { internal } from "../_generated/api";
 import { getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
+import { getTestOrganization, resolveTestOrganizationMember } from "./testOrganizations";
 import {
   getEntitlements,
   getOrganizationDisabledFeatures,
@@ -148,7 +149,14 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
   if (organizationAccess.suspended) {
     throw new ConvexError("Organisationen er suspenderet");
   }
-  const role = member.role;
+  const testOrganization = await getTestOrganization(ctx, member.organizationId);
+  if (testOrganization && session.isKioskAccount) {
+    throw new ConvexError("Ingen aktiv organisation");
+  }
+  const testMember = testOrganization
+    ? await resolveTestOrganizationMember(ctx, testOrganization, member.userId)
+    : null;
+  const role = testMember?.role ?? member.role;
   const [configured, roleConfig] = await Promise.all([
     ctx.db
       .query("rolePermissions")
@@ -164,13 +172,15 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
       .unique(),
   ]);
   const permissions = permissionsForRole(role, configured?.permissions);
-  const locationAccess = await ctx.db
-    .query("memberLocationAccess")
-    .withIndex("by_organizationId_and_userId", (q) =>
-      q.eq("organizationId", member.organizationId).eq("userId", member.userId),
-    )
-    .unique();
-  const kioskLocationId = member.kioskLocationId
+  const locationAccess = testMember
+    ? testMember.locationAccess
+    : await ctx.db
+        .query("memberLocationAccess")
+        .withIndex("by_organizationId_and_userId", (q) =>
+          q.eq("organizationId", member.organizationId).eq("userId", member.userId),
+        )
+        .unique();
+  const kioskLocationId = member.kioskLocationId && !testMember
     ? (member.kioskLocationId as Id<"locations">)
     : null;
   const locationScope = await resolveStoredLocationScope(

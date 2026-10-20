@@ -7,6 +7,7 @@ import {
 } from "./_generated/server";
 import { emailErrorMessage, escapeHtml } from "./lib/email";
 import { sendResendEmail } from "./lib/resend";
+import { requireExternalDelivery } from "./lib/testOrganizations";
 import { resolveTimeZone } from "./lib/timeZone";
 
 const MAX_LINES = 500;
@@ -15,6 +16,7 @@ export const getPayload = internalQuery({
   args: { orderId: v.id("orders") },
   returns: v.union(
     v.object({
+      organizationId: v.string(),
       to: v.string(),
       locationName: v.string(),
       supplierName: v.string(),
@@ -48,6 +50,7 @@ export const getPayload = internalQuery({
         order.organizationId,
         location ? order.locationId : undefined,
       ),
+      organizationId: order.organizationId,
       to: order.email.to,
       locationName: order.locationName,
       supplierName: order.supplierName ?? "",
@@ -91,6 +94,7 @@ export const send = internalAction({
     if (!payload) return null;
     let failureMessage: string | undefined;
     try {
+      await requireExternalDelivery(ctx, payload.organizationId);
       const quantities = new Intl.NumberFormat("da-DK", {
         maximumFractionDigits: 6,
       });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { OrganizationStatusBadge } from "@/components/platform/organization-table";
@@ -232,8 +233,221 @@ function InviteAdminCard({ organizationId }: { organizationId: string }) {
   );
 }
 
+function ConfirmAction({
+  label,
+  title,
+  description,
+  destructive,
+  onConfirm,
+}: {
+  label: string;
+  title: string;
+  description: string;
+  destructive?: boolean;
+  onConfirm: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function confirm() {
+    setSaving(true);
+    try {
+      await onConfirm();
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger
+        render={
+          <Button
+            type="button"
+            variant={destructive ? "destructive" : "outline"}
+          />
+        }
+      >
+        {label}
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={saving}>Annullér</AlertDialogCancel>
+          <AlertDialogAction
+            variant={destructive ? "destructive" : "default"}
+            disabled={saving}
+            onClick={() => void confirm()}
+          >
+            {saving ? <Spinner data-icon="inline-start" /> : null}
+            {label}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+const testStatusLabels = {
+  copying: "Kopierer",
+  ready: "Klar",
+  deleting: "Slettes",
+} as const;
+
+function TestOrganizationCard({
+  organization,
+  testOrganization,
+}: {
+  organization: Organization;
+  testOrganization: FunctionReturnType<
+    typeof api.platform.testOrganizations.get
+  >;
+}) {
+  const role = usePlatformRole();
+  const create = useMutation(api.platform.testOrganizations.create);
+  const reset = useMutation(api.platform.testOrganizations.reset);
+  const remove = useMutation(api.platform.testOrganizations.remove);
+
+  async function run(
+    action: () => Promise<unknown>,
+    success: string,
+    failure: string,
+  ) {
+    try {
+      await action();
+      toast.success(success);
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, failure));
+    }
+  }
+
+  if (testOrganization.kind === "test") {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Testorganisation</CardTitle>
+          <CardDescription>
+            Kopi af {testOrganization.source.name}. Brugere fra{" "}
+            {testOrganization.source.name} åbner den fra deres profilmenu og har
+            samme rolle og lokationer som dér.
+          </CardDescription>
+        </CardHeader>
+        <CardFooter className="mt-auto">
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={
+              <Link
+                href={`/platform/organizations/${testOrganization.source.id}`}
+              />
+            }
+          >
+            Gå til {testOrganization.source.name}
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
+
+  const test = testOrganization.test;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Testorganisation</CardTitle>
+        <CardDescription>
+          En kopi af organisationens data, filer og integrationsnøgler, hvor
+          Brugere kan afprøve ændringer. Kopien sender ikke e-mails eller data
+          til andre systemer, og Wolt kopieres kun som historik.
+        </CardDescription>
+      </CardHeader>
+      {test ? (
+        <CardContent>
+          <div className="flex flex-col gap-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/platform/organizations/${test.id}`}
+                className="font-medium underline-offset-4 hover:underline"
+              >
+                {test.name}
+              </Link>
+              <Badge
+                variant={test.status === "ready" ? "secondary" : "outline"}
+              >
+                {test.status === "ready" ? null : (
+                  <Spinner data-icon="inline-start" />
+                )}
+                {testStatusLabels[test.status]}
+              </Badge>
+            </div>
+            {test.copiedAt ? (
+              <span className="text-muted-foreground">
+                Kopieret {formatDateTime(test.copiedAt)}
+              </span>
+            ) : null}
+          </div>
+        </CardContent>
+      ) : null}
+      {role === "owner" ? (
+        <CardFooter className="mt-auto">
+          <div className="flex flex-wrap gap-2">
+            {!test ? (
+              <ConfirmAction
+                label="Opret testorganisation"
+                title={`Opret testorganisation for ${organization.name}?`}
+                description="Alle data og filer kopieres. Det kan tage nogle minutter, og testorganisationen kan først åbnes, når kopien er klar."
+                onConfirm={() =>
+                  run(
+                    () => create({ organizationId: organization.id }),
+                    "Testorganisationen kopieres",
+                    "Testorganisationen kunne ikke oprettes. Prøv igen.",
+                  )
+                }
+              />
+            ) : test.status !== "deleting" ? (
+              <>
+                <ConfirmAction
+                  label="Nulstil"
+                  title="Nulstil testorganisationen?"
+                  description={`Alle ændringer i testorganisationen slettes, og data fra ${organization.name} kopieres igen.`}
+                  onConfirm={() =>
+                    run(
+                      () => reset({ organizationId: organization.id }),
+                      "Testorganisationen nulstilles",
+                      "Testorganisationen kunne ikke nulstilles. Prøv igen.",
+                    )
+                  }
+                />
+                <ConfirmAction
+                  label="Slet"
+                  destructive
+                  title="Slet testorganisationen?"
+                  description="Testorganisationen og alle dens data og filer slettes. Det kan ikke fortrydes."
+                  onConfirm={() =>
+                    run(
+                      () => remove({ organizationId: organization.id }),
+                      "Testorganisationen slettes",
+                      "Testorganisationen kunne ikke slettes. Prøv igen.",
+                    )
+                  }
+                />
+              </>
+            ) : null}
+          </div>
+        </CardFooter>
+      ) : null}
+    </Card>
+  );
+}
+
 function OverviewTab({ organization }: { organization: Organization }) {
   const role = usePlatformRole();
+  const testOrganization = useQuery(api.platform.testOrganizations.get, {
+    organizationId: organization.id,
+  });
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -288,8 +502,14 @@ function OverviewTab({ organization }: { organization: Organization }) {
           ) : null}
         </CardContent>
       </Card>
-      {role === "owner" ? (
+      {role === "owner" && testOrganization?.kind === "source" ? (
         <InviteAdminCard organizationId={organization.id} />
+      ) : null}
+      {testOrganization ? (
+        <TestOrganizationCard
+          organization={organization}
+          testOrganization={testOrganization}
+        />
       ) : null}
       <Card>
         <CardHeader>
