@@ -14,6 +14,7 @@ export type IncomingSaleLine = {
   dayStart: number;
   revenue: number;
   quantity: number;
+  externalProductId: string;
 };
 
 export type ExistingLineState = {
@@ -23,7 +24,94 @@ export type ExistingLineState = {
   dayStart: number;
   orderNumber: number;
   department: string;
+  externalProductId: string;
 };
+
+export type ProductDailyDelta = {
+  locationId: string;
+  dayStart: number;
+  externalProductId: string;
+  quantity: number;
+  revenue: number;
+};
+
+/** Derived salesOrders externalId; identical to the formerly stored value. */
+export function salesOrderExternalId(order: {
+  locationId: string;
+  dayStart: number;
+  orderNumber: number;
+  department: string;
+}): string {
+  return orderKey(
+    order.locationId,
+    order.dayStart,
+    order.orderNumber,
+    order.department,
+  );
+}
+
+/**
+ * Per-product counterpart of {@link computeDailySalesDeltas}: subtract each
+ * existing line's old bucket, add its new bucket. Re-ingesting an identical
+ * batch nets to zero.
+ */
+export function computeProductDailyDeltas(
+  lines: IncomingSaleLine[],
+  existingLines: ReadonlyMap<string, ExistingLineState>,
+): ProductDailyDelta[] {
+  const deltas = new Map<string, ProductDailyDelta>();
+  const working = new Map(existingLines);
+  function add(
+    locationId: string,
+    dayStart: number,
+    externalProductId: string,
+    quantity: number,
+    revenue: number,
+  ) {
+    const key = JSON.stringify([locationId, dayStart, externalProductId]);
+    const current = deltas.get(key) ?? {
+      locationId,
+      dayStart,
+      externalProductId,
+      quantity: 0,
+      revenue: 0,
+    };
+    current.quantity += quantity;
+    current.revenue += revenue;
+    deltas.set(key, current);
+  }
+  for (const line of lines) {
+    const existing = working.get(line.externalId);
+    if (existing) {
+      add(
+        existing.locationId,
+        existing.dayStart,
+        existing.externalProductId,
+        -existing.quantity,
+        -existing.revenue,
+      );
+    }
+    add(
+      line.locationId,
+      line.dayStart,
+      line.externalProductId,
+      line.quantity,
+      line.revenue,
+    );
+    working.set(line.externalId, {
+      revenue: line.revenue,
+      quantity: line.quantity,
+      locationId: line.locationId,
+      dayStart: line.dayStart,
+      orderNumber: line.orderNumber,
+      department: line.department,
+      externalProductId: line.externalProductId,
+    });
+  }
+  return [...deltas.values()].filter(
+    (delta) => delta.quantity !== 0 || delta.revenue !== 0,
+  );
+}
 
 export function dayStartOf(occurredAt: number, timeZone: string): number {
   return zonedStart(dateKey(occurredAt, timeZone), timeZone);
@@ -133,6 +221,7 @@ export function computeDailySalesDeltas(
       dayStart: line.dayStart,
       orderNumber: line.orderNumber,
       department: line.department,
+      externalProductId: line.externalProductId,
     });
   }
 

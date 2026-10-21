@@ -12,9 +12,10 @@ import {
   internalMutation,
   internalQuery,
   mutation,
+  type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { requireLocationAccess, requirePermission } from "./lib/auth";
 import { resolveTimeZone } from "./lib/timeZone";
@@ -99,6 +100,9 @@ export const dispatch = internalMutation({
   args: { cursor: v.union(v.string(), v.null()) },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // Set FORECAST_DISPATCH_DISABLED=1 on dev deployments to stop paying
+    // for forecast refreshes against test data.
+    if (env.FORECAST_DISPATCH_DISABLED === "1") return null;
     const page = await ctx.db
       .query("locationForecasts")
       .withIndex("by_creation_time")
@@ -157,6 +161,34 @@ export const claim = internalMutation({
       now - forecast.updatedAt < 10 * 60_000
     )
       return null;
+    // Nothing to recompute when sales are unchanged since the snapshot and
+    // the cached weather is still inside its reuse window.
+    if (
+      !changedZone &&
+      !changedProvider &&
+      !changedProfile &&
+      forecast.snapshot?.modelVersion === FORECAST_MODEL_VERSION &&
+      forecast.snapshotSalesRunToken &&
+      forecast.weatherUpdatedAt &&
+      now - forecast.weatherUpdatedAt < 5 * 3_600_000 &&
+      orderDate(forecast.weatherUpdatedAt, timeZone) === orderDate(now, timeZone)
+    ) {
+      const status = await ctx.db
+        .query("onlinePosSyncStatus")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q
+            .eq("organizationId", forecast.organizationId)
+            .eq("locationId", forecast.locationId),
+        )
+        .unique();
+      if (
+        status?.state === "idle" &&
+        status.runToken === forecast.snapshotSalesRunToken &&
+        !status.dayStartRerollToken &&
+        status.pendingReconcileDayStart === undefined
+      )
+        return null;
+    }
     const changes = {
       runStartedAt: now,
       ...(changedZone || changedProvider || changedProfile
@@ -170,6 +202,7 @@ export const claim = internalMutation({
             weatherUpdatedAt: undefined,
             weatherWarning: undefined,
             snapshot: undefined,
+            snapshotSalesRunToken: undefined,
             updatedAt: undefined,
             warning: undefined,
           }
@@ -313,8 +346,50 @@ export const productSalesPage = internalQuery({
   returns: v.object({
     result: paginationResultValidator(productSalesValidator),
     rowsRead: v.number(),
+    rolledUp: v.boolean(),
   }),
   handler: async (ctx, args) => {
+    const fromDayStart = zonedStart(args.from, args.timeZone);
+    const status = await ctx.db
+      .query("onlinePosSyncStatus")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .unique();
+    if (
+      status?.productDailyFrom !== undefined &&
+      status.productDailyFrom <= fromDayStart
+    ) {
+      const result = await ctx.db
+        .query("salesProductDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("locationId", args.locationId)
+            .gte("dayStart", fromDayStart)
+            .lt("dayStart", zonedStart(args.today, args.timeZone)),
+        )
+        .paginate({
+          ...args.paginationOpts,
+          maximumRowsRead: 1000,
+          maximumBytesRead: 512 * 1024,
+        });
+      return {
+        result: {
+          ...result,
+          page: result.page.map((row) => ({
+            key: JSON.stringify([row.source, row.externalProductId]),
+            date: row.date,
+            quantity: row.quantity,
+            revenue: row.revenue,
+          })),
+        },
+        rowsRead: result.page.length,
+        rolledUp: true,
+      };
+    }
     // Stable history arguments keep weather refreshes from invalidating these reads.
     const result = await ctx.db
       .query("salesLines")
@@ -348,7 +423,158 @@ export const productSalesPage = internalQuery({
     return {
       result: { ...result, page: [...daily.values()] },
       rowsRead: result.page.length,
+      rolledUp: false,
     };
+  },
+});
+
+const seedArgs = {
+  organizationId: v.string(),
+  locationId: v.id("locations"),
+  timeZone: v.string(),
+  from: v.string(),
+  today: v.string(),
+  salesRunToken: v.string(),
+  forecastId: v.id("locationForecasts"),
+  revision: v.number(),
+  runStartedAt: v.number(),
+};
+
+type SeedArgs = {
+  organizationId: string;
+  locationId: Id<"locations">;
+  salesRunToken: string;
+  forecastId: Id<"locationForecasts">;
+  revision: number;
+  runStartedAt: number;
+};
+
+async function seedStatus(ctx: MutationCtx, args: SeedArgs) {
+  // Only the forecast run that still owns the location may seed; a newer
+  // claim (or an opening-hours invalidation) revokes stale seed steps.
+  const forecast = await ctx.db.get("locationForecasts", args.forecastId);
+  if (
+    !forecast ||
+    forecast.organizationId !== args.organizationId ||
+    forecast.locationId !== args.locationId ||
+    forecast.revision !== args.revision ||
+    forecast.runStartedAt !== args.runStartedAt
+  )
+    return null;
+  const status = await ctx.db
+    .query("onlinePosSyncStatus")
+    .withIndex("by_organizationId_and_locationId", (q) =>
+      q
+        .eq("organizationId", args.organizationId)
+        .eq("locationId", args.locationId),
+    )
+    .unique();
+  if (
+    !status ||
+    status.state !== "idle" ||
+    status.runToken !== args.salesRunToken ||
+    status.dayStartRerollToken ||
+    status.pendingReconcileDayStart !== undefined
+  )
+    return null;
+  return status;
+}
+
+// Seeding is chunked from refreshLocation after a fallback line scan. Every
+// step revalidates the sales token, so a sync landing mid-seed aborts it and
+// leaves the coverage marker unset (the next refresh rescans and reseeds).
+export const beginProductDailySeed = internalMutation({
+  args: seedArgs,
+  returns: v.object({ active: v.boolean(), cleared: v.boolean() }),
+  handler: async (ctx, args) => {
+    const status = await seedStatus(ctx, args);
+    if (!status) return { active: false, cleared: false };
+    // Invalidate any pending reroll cleanup so it cannot delete seeded rows.
+    await ctx.db.patch("onlinePosSyncStatus", status._id, {
+      productDailyFrom: undefined,
+      productDailyGeneration: (status.productDailyGeneration ?? 0) + 1,
+    });
+    const rows = await ctx.db
+      .query("salesProductDaily")
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId)
+          .gte("dayStart", zonedStart(args.from, args.timeZone))
+          .lt("dayStart", zonedStart(args.today, args.timeZone)),
+      )
+      .take(500);
+    for (const row of rows) await ctx.db.delete(row._id);
+    return { active: true, cleared: rows.length < 500 };
+  },
+});
+
+export const appendProductDailySeed = internalMutation({
+  args: { ...seedArgs, rows: v.array(productSalesValidator) },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    if (args.rows.length > 500) throw new Error("Seed chunk too large");
+    const status = await seedStatus(ctx, args);
+    if (!status) return false;
+    const now = Date.now();
+    for (const row of args.rows) {
+      if (row.quantity === 0 && row.revenue === 0) continue;
+      const parsed: unknown = JSON.parse(row.key);
+      if (
+        !Array.isArray(parsed) ||
+        parsed.length !== 2 ||
+        typeof parsed[0] !== "string" ||
+        typeof parsed[1] !== "string"
+      )
+        throw new Error("Invalid product sales key");
+      const dayStart = zonedStart(row.date, args.timeZone);
+      // Upsert absolute totals so a retried chunk cannot duplicate a bucket.
+      const existing = await ctx.db
+        .query("salesProductDaily")
+        .withIndex("by_org_location_dayStart_source_externalProductId", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("locationId", args.locationId)
+            .eq("dayStart", dayStart)
+            .eq("source", parsed[0] as string)
+            .eq("externalProductId", parsed[1] as string),
+        )
+        .unique();
+      if (existing) {
+        await ctx.db.patch("salesProductDaily", existing._id, {
+          date: row.date,
+          quantity: row.quantity,
+          revenue: row.revenue,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.insert("salesProductDaily", {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          dayStart,
+          date: row.date,
+          source: parsed[0],
+          externalProductId: parsed[1],
+          quantity: row.quantity,
+          revenue: row.revenue,
+          updatedAt: now,
+        });
+      }
+    }
+    return true;
+  },
+});
+
+export const finishProductDailySeed = internalMutation({
+  args: seedArgs,
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const status = await seedStatus(ctx, args);
+    if (!status) return false;
+    await ctx.db.patch("onlinePosSyncStatus", status._id, {
+      productDailyFrom: zonedStart(args.from, args.timeZone),
+    });
+    return true;
   },
 });
 
@@ -408,6 +634,7 @@ export const finish = internalMutation({
       throw new Error("Forecast exceeds bounded storage");
     await ctx.db.patch("locationForecasts", current._id, {
       snapshot: args.snapshot,
+      snapshotSalesRunToken: args.salesRunToken ?? undefined,
       warning: args.warning || undefined,
       runStartedAt: undefined,
       updatedAt: Date.now(),
@@ -545,6 +772,7 @@ export const refreshLocation = internalAction({
         shiftOrderDate(today, -PRODUCT_FORECAST_HISTORY_DAYS),
         training.observations[0]?.date ?? today,
       ].sort().at(-1)!;
+      let rolledUp = true;
       if (productsComplete)
         for (let pageNumber = 0; ; pageNumber++) {
           const page: FunctionReturnType<
@@ -557,6 +785,7 @@ export const refreshLocation = internalAction({
             today,
             paginationOpts: { cursor, numItems: 1000 },
           });
+          rolledUp = page.rolledUp;
           rowsRead += page.rowsRead;
           for (const row of page.result.page) {
             const key = JSON.stringify([row.key, row.date]);
@@ -580,6 +809,80 @@ export const refreshLocation = internalAction({
           }
           cursor = page.result.continueCursor;
         }
+      // Seed the product rollup from this scan so later refreshes skip the
+      // raw line scan. A token change mid-seed aborts via the seed guards.
+      // Seeding is best-effort: the scan above already produced a valid
+      // forecast, so a failed seed must not fail the run.
+      if (productsComplete && !rolledUp && training.salesRunToken) {
+        try {
+          const seed = {
+            organizationId: forecast.organizationId,
+            locationId: forecast.locationId,
+            timeZone: forecast.timeZone,
+            from: productHistoryFrom,
+            today: shiftOrderDate(today, 1),
+            salesRunToken: training.salesRunToken,
+            forecastId: args.forecastId,
+            revision: run.revision,
+            runStartedAt: run.runStartedAt,
+          };
+          // Include today's lines so far: coverage is open-ended once the
+          // marker is set, and ingest deltas only apply from that point.
+          const seedSales = new Map(productSales);
+          let todayCursor: string | null = null;
+          for (let pageNumber = 0; ; pageNumber++) {
+            const page: FunctionReturnType<
+              typeof internal.forecasts.productSalesPage
+            > = await ctx.runQuery(internal.forecasts.productSalesPage, {
+              organizationId: forecast.organizationId,
+              locationId: forecast.locationId,
+              timeZone: forecast.timeZone,
+              from: today,
+              today: shiftOrderDate(today, 1),
+              paginationOpts: { cursor: todayCursor, numItems: 1000 },
+            });
+            for (const row of page.result.page) {
+              const key = JSON.stringify([row.key, row.date]);
+              const current = seedSales.get(key) ?? {
+                ...row,
+                quantity: 0,
+                revenue: 0,
+              };
+              current.quantity += row.quantity;
+              current.revenue += row.revenue;
+              seedSales.set(key, current);
+            }
+            if (page.result.isDone) break;
+            if (pageNumber >= 500) throw new Error("Seed scan did not finish");
+            todayCursor = page.result.continueCursor;
+          }
+          for (let attempt = 0; ; attempt++) {
+            const begun: { active: boolean; cleared: boolean } =
+              await ctx.runMutation(
+                internal.forecasts.beginProductDailySeed,
+                seed,
+              );
+            if (!begun.active) throw new Error("Sales changed during seed");
+            if (begun.cleared) break;
+            if (attempt >= 200) throw new Error("Seed clear did not finish");
+          }
+          const seedRows = [...seedSales.values()];
+          for (let offset = 0; offset < seedRows.length; offset += 500) {
+            const appended: boolean = await ctx.runMutation(
+              internal.forecasts.appendProductDailySeed,
+              { ...seed, rows: seedRows.slice(offset, offset + 500) },
+            );
+            if (!appended) throw new Error("Sales changed during seed");
+          }
+          const seeded: boolean = await ctx.runMutation(
+            internal.forecasts.finishProductDailySeed,
+            seed,
+          );
+          if (!seeded) throw new Error("Sales changed during seed");
+        } catch {
+          // Reseeded on a later refresh; the marker stays unset meanwhile.
+        }
+      }
       const snapshot = {
         ...forecastSalesMix({
           productSales: productsComplete ? [...productSales.values()] : [],

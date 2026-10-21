@@ -23,7 +23,7 @@ import {
   type StockSale,
 } from "../../lib/salesStock";
 import { normalizeStock, toDefaultUnit } from "../../lib/stock";
-import { dayStartOf } from "../../lib/salesRollup";
+import { dayStartOf, salesOrderExternalId } from "../../lib/salesRollup";
 import { resolveTimeZone } from "../../lib/timeZone";
 import { reconcileOnlinePosWaste } from "../../waste";
 
@@ -354,7 +354,8 @@ async function applyOrder(
     integrationId: connection.masterIntegrationId,
     mappingRevision: settings.stockMappingRevision ?? 0,
     externalId:
-      previous?.externalId ?? `${connection.companyId}:${order.externalId}`,
+      previous?.externalId ??
+      `${connection.companyId}:${salesOrderExternalId(order)}`,
     dayStart: order.dayStart,
     orderNumber: order.orderNumber,
     department: order.department,

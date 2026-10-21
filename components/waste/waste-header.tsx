@@ -108,7 +108,7 @@ export function WasteHeader({ children }: { children: React.ReactNode }) {
   const viewState = useQuery(
     api.waste.getViewState,
     canRegister && !pathname.startsWith("/waste/report") && locationId
-      ? { locationId }
+      ? { locationId, omitProducts: true }
       : "skip",
   );
   const [draftState, setDraftState] = useState({ dirty: false, busy: false });

@@ -79,6 +79,7 @@ export const locationForecastValidator = v.object({
   weatherWarning: v.optional(v.string()),
   archiveThrough: v.optional(v.string()),
   snapshot: v.optional(forecastSnapshotValidator),
+  snapshotSalesRunToken: v.optional(v.string()),
   updatedAt: v.optional(v.number()),
   runStartedAt: v.optional(v.number()),
   warning: v.optional(v.string()),

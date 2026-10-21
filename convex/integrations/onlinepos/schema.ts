@@ -145,6 +145,12 @@ export const onlineposTables = {
     dayStartRerollRetryCount: v.optional(v.number()),
     dayStartRerollError: v.optional(v.string()),
     dailyHistoryFrom: v.optional(v.number()),
+    // Earliest dayStart with complete salesProductDaily coverage. Unset means
+    // the rollup is not maintained yet and must not be read.
+    productDailyFrom: v.optional(v.number()),
+    // Bumped when a rollup clear or seed starts, so stale scheduled clears
+    // cannot delete rows from a newer seed.
+    productDailyGeneration: v.optional(v.number()),
     // Keep the latest reconciled day hash; replace by dayStart.
     reconcileHashes: v.optional(
       v.array(v.object({ dayStart: v.number(), hash: v.string() })),

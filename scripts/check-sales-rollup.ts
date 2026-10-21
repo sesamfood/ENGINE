@@ -123,6 +123,7 @@ function ingest(
       dayStart: line.dayStart,
       orderNumber: line.orderNumber,
       department: line.department,
+      externalProductId: line.externalProductId,
     });
   }
   return deltas;
@@ -151,9 +152,9 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
   const dayStart = dayStartOf(parseOne(100, "20.02.2025", "12:00:00", 1, "10,00").occurredAt, TZ);
   const bucket = dayBucketKey(LOCATION, dayStart);
   const batch: IncomingSaleLine[] = [
-    { externalId: "L1", orderNumber: 501, department: "bar", locationId: LOCATION, dayStart, revenue: 2500, quantity: 2 },
-    { externalId: "L2", orderNumber: 501, department: "bar", locationId: LOCATION, dayStart, revenue: 1000, quantity: 1 },
-    { externalId: "L3", orderNumber: 502, department: "bar", locationId: LOCATION, dayStart, revenue: 5000, quantity: 4 },
+    { externalId: "L1", orderNumber: 501, department: "bar", locationId: LOCATION, dayStart, revenue: 2500, quantity: 2, externalProductId: "P1" },
+    { externalId: "L2", orderNumber: 501, department: "bar", locationId: LOCATION, dayStart, revenue: 1000, quantity: 1, externalProductId: "P2" },
+    { externalId: "L3", orderNumber: 502, department: "bar", locationId: LOCATION, dayStart, revenue: 5000, quantity: 4, externalProductId: "P1" },
   ];
   const knownOrderKeys = new Set<string>();
   const existingLines = new Map<string, ExistingLineState>();
@@ -198,6 +199,7 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
         dayStart: dayA,
         revenue: 2500,
         quantity: 1,
+        externalProductId: "P1",
       },
     ],
     knownOrderKeys,
@@ -216,6 +218,7 @@ function recomputeDay(lines: IncomingSaleLine[]): SalesDelta {
         dayStart: dayB,
         revenue: 2500,
         quantity: 1,
+        externalProductId: "P1",
       },
     ],
     knownOrderKeys,
