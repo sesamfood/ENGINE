@@ -241,6 +241,12 @@ export async function deleteLocationWithAuth(
         )
         .first(),
       ctx.db
+        .query("salesProductDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", location._id),
+        )
+        .first(),
+      ctx.db
         .query("onlinePosFinancialMonths")
         .withIndex("by_organizationId_and_locationId_and_month", (q) =>
           q.eq("organizationId", organizationId).eq("locationId", location._id),

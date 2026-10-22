@@ -428,7 +428,8 @@ export default defineSchema({
     paymentType: v.string(),
     department: v.string(),
     source: v.string(),
-    externalId: v.string(),
+    // Legacy: derived from locationId/dayStart/orderNumber/department. No longer written.
+    externalId: v.optional(v.string()),
     externalClerkId: v.optional(v.string()),
     updatedAt: v.number(),
     stockRevision: v.optional(v.number()),
@@ -480,8 +481,7 @@ export default defineSchema({
       "organizationId",
       "locationId",
       "occurredAt",
-    ])
-    .index("by_occurredAt", ["occurredAt"]),
+    ]),
 
   salesDaily: defineTable({
     organizationId: v.string(),
@@ -506,6 +506,36 @@ export default defineSchema({
     "locationId",
     "dayStart",
   ]),
+
+  // Per-product daily rollup of salesLines, maintained by the sales sync
+  // alongside salesDaily. Forecasts read this instead of scanning raw lines.
+  salesProductDaily: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    dayStart: v.number(),
+    date: v.string(),
+    source: v.string(),
+    externalProductId: v.string(),
+    quantity: v.number(),
+    revenue: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_locationId_and_dayStart", [
+      "organizationId",
+      "locationId",
+      "dayStart",
+    ])
+    .index(
+      "by_org_location_dayStart_source_externalProductId",
+      [
+        "organizationId",
+        "locationId",
+        "dayStart",
+        "source",
+        "externalProductId",
+      ],
+    )
+    .index("by_dayStart", ["dayStart"]),
 
   feedbackSettings: defineTable({
     organizationId: v.string(),

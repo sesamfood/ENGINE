@@ -10,6 +10,8 @@ registerWorkfeedCrons(crons);
 registerOnlinePosCrons(crons);
 registerWoltCrons(crons);
 
+// Forecasts hide after 26h without an update, so refresh well inside that
+// window; claim skips runs where neither sales nor weather changed.
 crons.interval("refresh weather and holiday forecasts", { hours: 6 }, internal.forecasts.dispatch, { cursor: null });
 
 crons.interval(

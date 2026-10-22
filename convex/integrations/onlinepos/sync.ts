@@ -19,8 +19,10 @@ import {
 import { dateKey, zonedStart } from "../../lib/dashboardMetrics";
 import {
   computeDailySalesDeltas,
+  computeProductDailyDeltas,
   dayStartOf,
   orderKey,
+  salesOrderExternalId,
   type ExistingLineState,
 } from "../../lib/salesRollup";
 import { resolveTimeZone } from "../../lib/timeZone";
@@ -672,13 +674,23 @@ export const rerollLocationDayStartsPage = internalMutation({
             q
               .eq("organizationId", args.organizationId)
               .eq("locationId", args.locationId)
-              .eq("externalId", `${connection.companyId}:${order.externalId}`),
+              .eq(
+                "externalId",
+                `${connection.companyId}:${order.externalId ?? salesOrderExternalId(order)}`,
+              ),
           )
           .unique();
-        if (application) await ctx.db.patch(application._id, { dayStart });
+        if (application)
+          await ctx.db.patch(application._id, {
+            dayStart,
+            // Rekey to the derived id at the new dayStart; the order's stored
+            // externalId is cleared below so lookups derive the same key.
+            externalId: `${connection.companyId}:${orderExternalId(args.locationId, dayStart, order.orderNumber, order.department)}`,
+          });
       }
       await ctx.db.patch(order._id, {
         dayStart,
+        externalId: undefined,
         stockRevision: (status.stockRevision ?? 0) + 1,
       });
       stockChangedFrom = Math.min(
@@ -712,14 +724,63 @@ export const rerollLocationDayStartsPage = internalMutation({
       dayStartRerollTimeZone: undefined,
       dayStartRerollRetryCount: undefined,
       dayStartRerollError: undefined,
+      // Day buckets moved; the product rollup is rebuilt by forecast backfill.
+      productDailyFrom: undefined,
+      productDailyGeneration: (status.productDailyGeneration ?? 0) + 1,
       updatedAt: Date.now(),
     });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.onlinePosSync.clearProductDaily,
+      {
+        organizationId: args.organizationId,
+        locationId: args.locationId,
+        generation: (status.productDailyGeneration ?? 0) + 1,
+      },
+    );
     await ctx.scheduler.runAfter(
       0,
       internal.onlinePosSync.enqueueLocationSync,
       { organizationId: args.organizationId, locationId: args.locationId },
     );
     return { patched, done: true };
+  },
+});
+
+export const clearProductDaily = internalMutation({
+  args: {
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    generation: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const status = await getStatus(ctx, args.organizationId, args.locationId);
+    // A newer seed (or clear) superseded this one; deleting now could erase
+    // rows that a completed seed just marked as covered.
+    if (
+      !status ||
+      status.productDailyGeneration !== args.generation ||
+      status.productDailyFrom !== undefined
+    )
+      return null;
+    const rows = await ctx.db
+      .query("salesProductDaily")
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId),
+      )
+      .take(RESET_PAGE);
+    for (const row of rows) await ctx.db.delete(row._id);
+    if (rows.length === RESET_PAGE) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.clearProductDaily,
+        args,
+      );
+    }
+    return null;
   },
 });
 
@@ -776,6 +837,38 @@ export const resetLocationSales = internalMutation({
       .take(RESET_PAGE);
     for (const row of daily) await ctx.db.delete(row._id);
     if (daily.length === RESET_PAGE) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.resetLocationSales,
+        args,
+      );
+      return null;
+    }
+
+    // Clear coverage before deleting rows so forecasts never read a
+    // half-deleted rollup as complete.
+    const resetStatus = await getStatus(
+      ctx,
+      reset.organizationId,
+      reset.locationId,
+    );
+    if (resetStatus && resetStatus.productDailyFrom !== undefined) {
+      await ctx.db.patch("onlinePosSyncStatus", resetStatus._id, {
+        productDailyFrom: undefined,
+        productDailyGeneration:
+          (resetStatus.productDailyGeneration ?? 0) + 1,
+      });
+    }
+    const productDaily = await ctx.db
+      .query("salesProductDaily")
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", reset.organizationId)
+          .eq("locationId", reset.locationId),
+      )
+      .take(RESET_PAGE);
+    for (const row of productDaily) await ctx.db.delete(row._id);
+    if (productDaily.length === RESET_PAGE) {
       await ctx.scheduler.runAfter(
         0,
         internal.onlinePosSync.resetLocationSales,
@@ -1116,6 +1209,7 @@ export const ingestSalesBatch = internalMutation({
           existingLines.set(line.externalId, {
             revenue: current.revenue,
             quantity: current.quantity,
+            externalProductId: current.externalProductId,
             locationId: current.locationId,
             dayStart:
               currentOrder?.organizationId === args.organizationId
@@ -1156,6 +1250,7 @@ export const ingestSalesBatch = internalMutation({
         dayStart,
         revenue: line.revenue,
         quantity: line.quantity,
+        externalProductId: line.externalProductId,
       };
     });
     const movingLineIdsByOrder = new Map<
@@ -1203,6 +1298,12 @@ export const ingestSalesBatch = internalMutation({
       existingLines,
       ordersWithOtherLines,
     );
+    // Only maintained once a forecast backfill has seeded complete coverage;
+    // applying deltas to an unseeded rollup would fabricate partial buckets.
+    const productDeltas =
+      status.productDailyFrom !== undefined
+        ? computeProductDailyDeltas(incoming, existingLines)
+        : [];
 
     const now = Date.now();
     const maybeEmptyOrders = new Map<Id<"salesOrders">, string>();
@@ -1285,12 +1386,6 @@ export const ingestSalesBatch = internalMutation({
           paymentType: line.paymentType,
           department: line.department,
           source: SOURCE,
-          externalId: orderExternalId(
-            args.locationId,
-            dayStart,
-            line.orderNumber,
-            line.department,
-          ),
           updatedAt: now,
         });
         order = {
@@ -1303,12 +1398,6 @@ export const ingestSalesBatch = internalMutation({
           itemCount: line.quantity,
           paymentType: line.paymentType,
           department: line.department,
-          externalId: orderExternalId(
-            args.locationId,
-            dayStart,
-            line.orderNumber,
-            line.department,
-          ),
           updatedAt: now,
         };
         orderCache.set(key, order);
@@ -1337,12 +1426,12 @@ export const ingestSalesBatch = internalMutation({
           line.orderNumber,
           line.department,
         );
-        if (
-          order.occurredAt !== nextOccurredAt ||
-          order.externalId !== externalId
-        ) {
+        // externalId is derived now; only a stored legacy value can disagree.
+        const externalIdChanged =
+          order.externalId !== undefined && order.externalId !== externalId;
+        if (order.occurredAt !== nextOccurredAt || externalIdChanged) {
           stockChangedOrders.add(order._id);
-          if (order.externalId !== externalId) fullStockSync = true;
+          if (externalIdChanged) fullStockSync = true;
           stockChangedFrom = Math.min(stockChangedFrom ?? dayStart, dayStart);
         }
         if (
@@ -1351,7 +1440,7 @@ export const ingestSalesBatch = internalMutation({
           order.occurredAt !== nextOccurredAt ||
           order.paymentType !== line.paymentType ||
           order.department !== line.department ||
-          order.externalId !== externalId
+          externalIdChanged
         ) {
           await ctx.db.patch("salesOrders", order._id, {
             revenue,
@@ -1359,7 +1448,7 @@ export const ingestSalesBatch = internalMutation({
             occurredAt: nextOccurredAt,
             paymentType: line.paymentType,
             department: line.department,
-            externalId,
+            externalId: undefined,
             updatedAt: now,
           });
           order = {
@@ -1369,7 +1458,7 @@ export const ingestSalesBatch = internalMutation({
             occurredAt: nextOccurredAt,
             paymentType: line.paymentType,
             department: line.department,
-            externalId,
+            externalId: undefined,
             updatedAt: now,
           };
           orderCache.set(key, order);
@@ -1437,6 +1526,7 @@ export const ingestSalesBatch = internalMutation({
       existingLines.set(line.externalId, {
         revenue: line.revenue,
         quantity: line.quantity,
+        externalProductId: line.externalProductId,
         locationId: args.locationId,
         dayStart,
         orderNumber: line.orderNumber,
@@ -1499,6 +1589,52 @@ export const ingestSalesBatch = internalMutation({
           revenue: delta.revenue,
           orderCount: delta.orderCount,
           itemCount: delta.itemCount,
+          updatedAt: now,
+        });
+      }
+    }
+
+    for (const delta of productDeltas) {
+      if (delta.locationId !== args.locationId) continue;
+      finiteSalesNumber(delta.quantity);
+      finiteSalesNumber(delta.revenue);
+      const row = await ctx.db
+        .query("salesProductDaily")
+        .withIndex(
+          "by_org_location_dayStart_source_externalProductId",
+          (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("locationId", args.locationId)
+              .eq("dayStart", delta.dayStart)
+              .eq("source", SOURCE)
+              .eq("externalProductId", delta.externalProductId),
+        )
+        .unique();
+      const quantity = finiteSalesNumber(
+        (row?.quantity ?? 0) + delta.quantity,
+      );
+      const revenue = finiteSalesNumber((row?.revenue ?? 0) + delta.revenue);
+      if (row) {
+        if (quantity === 0 && revenue === 0) {
+          await ctx.db.delete("salesProductDaily", row._id);
+        } else {
+          await ctx.db.patch("salesProductDaily", row._id, {
+            quantity,
+            revenue,
+            updatedAt: now,
+          });
+        }
+      } else if (quantity !== 0 || revenue !== 0) {
+        await ctx.db.insert("salesProductDaily", {
+          organizationId: args.organizationId,
+          locationId: args.locationId,
+          dayStart: delta.dayStart,
+          date: dateKey(delta.dayStart, timeZone),
+          source: SOURCE,
+          externalProductId: delta.externalProductId,
+          quantity,
+          revenue,
           updatedAt: now,
         });
       }
@@ -1663,6 +1799,19 @@ export const resetDayRollup = internalMutation({
       )
       .unique();
     const now = Date.now();
+    // deleteDayOrdersPage already cleared the day's product rollup rows;
+    // this bounded sweep only catches rows written since (none expected).
+    const leftover = await ctx.db
+      .query("salesProductDaily")
+      .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("locationId", args.locationId)
+          .eq("dayStart", args.dayStart),
+      )
+      .take(DELETE_WRITE_BUDGET);
+    for (const row of leftover) await ctx.db.delete(row._id);
+    if (leftover.length === DELETE_WRITE_BUDGET) return false;
     if (daily) {
       await ctx.db.patch("salesDaily", daily._id, {
         revenue: 0,
@@ -1764,6 +1913,22 @@ export const deleteDayOrdersPage = internalMutation({
         isDone = false;
         break;
       }
+    }
+    // Clear the day's product rollup in the same paging loop so resetDayRollup
+    // never has to delete an unbounded day in one transaction.
+    if (remaining > 0) {
+      const rollupRows = await ctx.db
+        .query("salesProductDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("locationId", args.locationId)
+            .eq("dayStart", args.dayStart),
+        )
+        .take(remaining);
+      for (const row of rollupRows) await ctx.db.delete(row._id);
+      if (rollupRows.length === remaining) isDone = false;
+      remaining -= rollupRows.length;
     }
     await markStockChanged(ctx, status, stockChangedFrom, true);
 
@@ -2083,11 +2248,13 @@ export const pruneSales = internalMutation({
       return null;
     }
 
-    // Catch orphaned lines whose orders were already removed.
+    // Catch orphaned lines whose orders were already removed. Creation time
+    // lags occurredAt for backfilled lines, so orphans are caught late, which
+    // is fine for a safety sweep and avoids a dedicated index.
     const orphanLimit = Math.min(PRUNE_PAGE, remaining);
     const orphanLines = await ctx.db
       .query("salesLines")
-      .withIndex("by_occurredAt", (q) => q.lt("occurredAt", cutoff))
+      .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
       .take(orphanLimit);
     let removed = 0;
     for (const line of orphanLines) {
@@ -2096,6 +2263,19 @@ export const pruneSales = internalMutation({
       removed++;
     }
     if (removed > 0 && orphanLines.length === orphanLimit) {
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
+        cursor: null,
+      });
+      return null;
+    }
+
+    // Rollup rows follow the same retention as the lines they aggregate.
+    const staleRollup = await ctx.db
+      .query("salesProductDaily")
+      .withIndex("by_dayStart", (q) => q.lt("dayStart", cutoff))
+      .take(200);
+    for (const row of staleRollup) await ctx.db.delete(row._id);
+    if (staleRollup.length === 200) {
       await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
         cursor: null,
       });

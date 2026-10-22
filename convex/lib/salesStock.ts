@@ -7,6 +7,7 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { createProductStockResolver } from "./productStock";
+import { salesOrderExternalId } from "./salesRollup";
 import { toDefaultUnit } from "./stock";
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -303,7 +304,12 @@ export async function stockApplication(
   ctx: ReadCtx,
   order: Pick<
     Doc<"salesOrders">,
-    "organizationId" | "locationId" | "externalId"
+    | "organizationId"
+    | "locationId"
+    | "externalId"
+    | "dayStart"
+    | "orderNumber"
+    | "department"
   >,
   companyId: number,
 ) {
@@ -313,7 +319,10 @@ export async function stockApplication(
       q
         .eq("organizationId", order.organizationId)
         .eq("locationId", order.locationId)
-        .eq("externalId", `${companyId}:${order.externalId}`),
+        .eq(
+          "externalId",
+          `${companyId}:${order.externalId ?? salesOrderExternalId(order)}`,
+        ),
     )
     .unique();
 }

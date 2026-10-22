@@ -13,6 +13,7 @@ const app = defineApp({
     OPENWEATHER_API_KEY: v.optional(v.string()),
     NOMINATIM_URL: v.optional(v.string()),
     SITE_URL: v.optional(v.string()),
+    FORECAST_DISPATCH_DISABLED: v.optional(v.string()),
   },
 });
 
