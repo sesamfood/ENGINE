@@ -704,7 +704,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Varemodtagelse",
             paragraphs: [
-              "Åbn en afventende transfer, når leveringen kommer fra en anden Lokation. Brug Manuel varemodtagelse til alle andre leveringer. En registreret varemodtagelse kan ikke redigeres.",
+              "Åbn en afventende transfer, når leveringen kommer fra en anden Lokation. Åbn en afventende bestilling, når leveringen kommer fra en leverandør. Produkterne fra bestillingen er udfyldt, så du kun retter afvigelser. Brug Manuel varemodtagelse til alle andre leveringer. En registreret varemodtagelse kan ikke redigeres.",
             ],
           },
           {
@@ -1108,7 +1108,7 @@ export const operationFeatures: HelpFeature[] = [
         slug: "registrering",
         label: "Regler og registrering",
         summary:
-          "Opret regler, registrér Staff food, og eksportér registreringer.",
+          "Opret regler, registrér Staff food, og se rapporten.",
         appHref: "/staff-food",
         appLinkLabel: "Åbn Staff food",
         sections: [
@@ -1148,10 +1148,10 @@ export const operationFeatures: HelpFeature[] = [
           },
           {
             id: "fortryd",
-            title: "Fortryd og eksportér",
+            title: "Fortryd og rapport",
             bullets: [
               "Fortryd i beskeden efter registrering annullerer med en begrundelse og fører lageret tilbage.",
-              "Administration → Staff food → Eksportér registreringer henter registreringer for op til ét år som CSV.",
+              "Staff food → Rapport viser udleveringer pr. medarbejder og pr. Produkt for en periode på op til ét år. Eksportér CSV henter alle registreringer i perioden.",
             ],
           },
         ],
@@ -1390,6 +1390,7 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Vælg Afgiv bestilling, og bekræft. Alle mængder over nul medtages, højst 500 Produkter.",
               "Find bestillingen i Bestillingshistorik. Vælg periode under Afgivet i perioden.",
+              "Bestillingen afventer nu modtagelse under Varemodtagelse på samme Lokation.",
               "Eksportér CSV henter én bestilling eller alle bestillinger i perioden.",
             ],
           },

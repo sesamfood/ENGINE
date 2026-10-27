@@ -9,7 +9,7 @@ import {
 
 import { selectedLocationId } from "@/lib/location-preference";
 
-import { AppBottomBar } from "@/components/app-bottom-bar";
+import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 
 import { AppPageHeader } from "@/components/app-page-header";
 
@@ -541,6 +541,14 @@ export function StaffFoodRegistration() {
     );
   }
 
+  // Mirrors the render branches below: the basket bar carries the tabs itself.
+  const showBasket = Boolean(
+    locations.length &&
+      picker?.hasRules &&
+      state &&
+      state.tierMinimumShiftMinutes !== null,
+  );
+
   return (
     <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-32 sm:pb-24">
       <AppPageHeader>{header}</AppPageHeader>
@@ -775,8 +783,9 @@ export function StaffFoodRegistration() {
                   </Empty>
                 )}
               </div>
-              <AppBottomBar>
-                <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-2 sm:flex-row sm:items-center">
+              <StaffFoodNavigation
+                action={
+                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 overflow-x-auto">
                     <ShoppingBasketIcon className="shrink-0" />
                     {basketProducts.length ? (
@@ -810,7 +819,8 @@ export function StaffFoodRegistration() {
                     Registrér Staff food
                   </Button>
                 </div>
-              </AppBottomBar>
+                }
+              />
               <Dialog
                 open={confirming}
                 onOpenChange={(open) => {
@@ -1093,6 +1103,7 @@ export function StaffFoodRegistration() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {showBasket ? null : <StaffFoodNavigation />}
     </section>
   );
 }

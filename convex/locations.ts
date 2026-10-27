@@ -104,6 +104,7 @@ const locationDetailsValidator = v.object({
   currency: v.union(v.string(), v.null()),
   timeZone: v.union(v.string(), v.null()),
   status: v.union(locationStatusValidator, v.null()),
+  hiddenFromDashboards: v.boolean(),
 });
 
 export const listLocations = query({
@@ -281,6 +282,7 @@ export const getLocationDetails = query({
       currency: location.currency ?? null,
       timeZone: location.timeZone ?? null,
       status: location.status ?? null,
+      hiddenFromDashboards: location.hiddenFromDashboards ?? false,
     };
   },
 });
@@ -405,6 +407,7 @@ export const locationUpdateValidator = v.object({
   currency: v.union(v.string(), v.null()),
   timeZone: v.union(v.string(), v.null()),
   status: v.union(locationStatusValidator, v.null()),
+  hiddenFromDashboards: v.optional(v.boolean()),
 });
 
 export const updateLocation = mutation({

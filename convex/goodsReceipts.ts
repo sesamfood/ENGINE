@@ -31,6 +31,8 @@ import { transferAggregates } from "./lib/transferAggregates";
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_MANUAL_RECEIPT_ITEMS = 200;
 const MAX_PENDING_TRANSFERS = 100;
+const MAX_PENDING_ORDERS = 100;
+const MAX_ORDER_LINES = 500;
 const MAX_COMMENT_LENGTH = 500;
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
@@ -93,10 +95,44 @@ const catalogReceiptItemInputValidator = v.object({
   quantity: v.number(),
 });
 
+const pendingOrderValidator = v.object({
+  id: v.id("orders"),
+  createdAt: v.number(),
+  createdByName: v.string(),
+  supplierName: v.union(v.string(), v.null()),
+  itemCount: v.number(),
+});
+
 const manualReceiptOptionsValidator = v.object({
   locationName: v.string(),
   products: v.array(activeProductCatalogValidator),
+  // Null when the requested order is no longer pending at this location.
+  order: v.optional(
+    v.union(
+      pendingOrderValidator.extend({
+        lines: v.array(
+          v.object({
+            productId: v.union(v.id("products"), v.null()),
+            productName: v.string(),
+            unitId: v.union(v.id("units"), v.null()),
+            quantity: v.number(),
+          }),
+        ),
+      }),
+      v.null(),
+    ),
+  ),
 });
+
+function pendingOrder(order: Doc<"orders">) {
+  return {
+    id: order._id,
+    createdAt: order.createdAt,
+    createdByName: order.createdByName,
+    supplierName: order.supplierName ?? null,
+    itemCount: order.itemCount,
+  };
+}
 
 type GoodsReceiptCtx = QueryCtx | MutationCtx;
 type CatalogReceiptItemInput = Infer<typeof catalogReceiptItemInputValidator>;
@@ -404,6 +440,33 @@ export const listPendingTransfers = query({
         pendingTransfer(transfer, names),
       ),
       truncated: rows.length > MAX_PENDING_TRANSFERS,
+    };
+  },
+});
+
+export const listPendingOrders = query({
+  args: { locationId: v.id("locations") },
+  returns: v.object({
+    orders: v.array(pendingOrderValidator),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const auth = await requireGoodsReceiptRegistrar(ctx);
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const rows = await ctx.db
+      .query("orders")
+      .withIndex("by_organizationId_locationId_receiptStatus_createdAt", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", args.locationId)
+          .eq("receiptStatus", "pending"),
+      )
+      .order("asc")
+      .take(MAX_PENDING_ORDERS + 1);
+    return {
+      orders: rows.slice(0, MAX_PENDING_ORDERS).map(pendingOrder),
+      truncated: rows.length > MAX_PENDING_ORDERS,
     };
   },
 });
@@ -726,7 +789,11 @@ export const listCatalogPage = query({
 });
 
 export const getManualReceiptOptions = query({
-  args: { locationId: v.id("locations"), omitCatalog: v.optional(v.boolean()) },
+  args: {
+    locationId: v.id("locations"),
+    omitCatalog: v.optional(v.boolean()),
+    orderId: v.optional(v.string()),
+  },
   returns: manualReceiptOptionsValidator,
   handler: async (ctx, args) => {
     const auth = await requireGoodsReceiptRegistrar(ctx);
@@ -736,6 +803,37 @@ export const getManualReceiptOptions = query({
       throw new ConvexError("Lokationen blev ikke fundet");
     }
 
+    let order;
+    if (args.orderId !== undefined) {
+      const orderId = ctx.db.normalizeId("orders", args.orderId);
+      const doc = orderId ? await ctx.db.get("orders", orderId) : null;
+      if (
+        doc?.organizationId === auth.organizationId &&
+        doc.locationId === location._id &&
+        doc.receiptStatus === "pending"
+      ) {
+        const lines = await ctx.db
+          .query("orderLines")
+          .withIndex("by_organizationId_and_orderId", (q) =>
+            q
+              .eq("organizationId", auth.organizationId)
+              .eq("orderId", doc._id),
+          )
+          .take(MAX_ORDER_LINES);
+        order = {
+          ...pendingOrder(doc),
+          lines: lines.map((line) => ({
+            productId: line.productId ?? null,
+            productName: line.productName,
+            unitId: line.unitId ?? null,
+            quantity: line.quantity,
+          })),
+        };
+      } else {
+        order = null;
+      }
+    }
+
     return {
       locationName: location.name,
       products: args.omitCatalog ? [] : await listLocationActiveProductCatalog(
@@ -743,6 +841,7 @@ export const getManualReceiptOptions = query({
         auth.organizationId,
         location._id,
       ),
+      ...(order !== undefined ? { order } : {}),
     };
   },
 });
@@ -754,6 +853,7 @@ export const createManualReceipt = mutation({
     comment: v.optional(v.string()),
     deliveryNoteStorageId: v.optional(v.id("_storage")),
     items: v.array(catalogReceiptItemInputValidator),
+    orderId: v.optional(v.id("orders")),
   },
   returns: v.id("manualGoodsReceipts"),
   handler: async (ctx, args) => {
@@ -794,6 +894,21 @@ export const createManualReceipt = mutation({
       items: args.items,
     });
 
+    const order = args.orderId
+      ? await ctx.db.get("orders", args.orderId)
+      : null;
+    if (args.orderId) {
+      if (
+        order?.organizationId !== organizationId ||
+        order.locationId !== location._id
+      ) {
+        throw new ConvexError("Bestillingen blev ikke fundet");
+      }
+      if (order.receiptStatus !== "pending") {
+        throw new ConvexError("Bestillingen er allerede modtaget");
+      }
+    }
+
     await requireOtherFeaturesUnlocked(ctx, organizationId, location._id);
 
     const manualGoodsReceiptId = await ctx.db.insert("manualGoodsReceipts", {
@@ -807,7 +922,14 @@ export const createManualReceipt = mutation({
       comment,
       deliveryNoteStorageId: args.deliveryNoteStorageId,
       itemCount: resolvedItems.length,
+      ...(order ? { orderId: order._id } : {}),
     });
+    if (order) {
+      await ctx.db.patch("orders", order._id, {
+        receiptStatus: "registered",
+        manualGoodsReceiptId,
+      });
+    }
 
     for (const item of resolvedItems) {
       await addStock(
@@ -828,7 +950,9 @@ export const createManualReceipt = mutation({
       action: "goodsReceipts.manualCreated",
       entityTable: "manualGoodsReceipts",
       entityId: manualGoodsReceiptId,
-      summary: `Manuel varemodtagelse registreret på ${location.name}`,
+      summary: order
+        ? `Varemodtagelse af bestilling registreret på ${location.name}`
+        : `Manuel varemodtagelse registreret på ${location.name}`,
       locationId: location._id,
     });
 

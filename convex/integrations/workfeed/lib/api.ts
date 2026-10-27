@@ -174,6 +174,40 @@ export function parseEmployees(payload: unknown): WorkfeedEmployee[] {
   });
 }
 
+export type WorkfeedPayPeriod = {
+  frequency: "weekly" | "biweekly" | "monthly";
+  startsAt: number;
+  monthDay: number | null;
+};
+
+export function parsePayPeriod(payload: unknown): WorkfeedPayPeriod | null {
+  const settings = object(payload);
+  const period = object(settings?.payPeriodSetting);
+  const frequency = period?.frequency;
+  const startsAt = Date.parse(string(period?.startDate));
+  if (
+    (frequency !== "weekly" &&
+      frequency !== "biweekly" &&
+      frequency !== "monthly") ||
+    !Number.isFinite(startsAt)
+  ) {
+    return null;
+  }
+  const monthDay = settings?.salaryPeriodStartDate;
+  return {
+    frequency,
+    startsAt,
+    monthDay:
+      frequency === "monthly" &&
+      typeof monthDay === "number" &&
+      Number.isInteger(monthDay) &&
+      monthDay >= 1 &&
+      monthDay <= 31
+        ? monthDay
+        : null,
+  };
+}
+
 export function parseRoles(payload: unknown): WorkfeedRole[] {
   if (!Array.isArray(payload)) {
     throw new ConvexError("Workfeed returnerede en ugyldig rolleliste");

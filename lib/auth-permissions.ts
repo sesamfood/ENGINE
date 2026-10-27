@@ -130,6 +130,7 @@ export const permissionCatalog = [
     group: "Staff food",
     permissions: [
       { id: "staffFood.register", label: "Registrere Staff food" },
+      { id: "staffFood.report", label: "Se Staff food-rapporter" },
       { id: "staffFood.manage", label: "Administrere Staff food" },
     ],
   },

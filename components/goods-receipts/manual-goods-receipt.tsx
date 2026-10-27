@@ -1,6 +1,10 @@
 "use client";
 
-import { toDateTimeLocal, fromDateTimeLocal } from "@/lib/date";
+import {
+  dateTimeFormatter as sharedDateTimeFormatter,
+  toDateTimeLocal,
+  fromDateTimeLocal,
+} from "@/lib/date";
 
 import { AppBottomBar } from "@/components/app-bottom-bar";
 
@@ -103,6 +107,36 @@ function newLineKey() {
   return `manual-receipt-line-${crypto.randomUUID()}`;
 }
 
+const dateTimeFormatter = sharedDateTimeFormatter("da-DK", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+// Order lines become receipt lines when their product and unit are still in the catalog.
+function orderLines(options: ManualReceiptOptions) {
+  const lines: ReceiptLine[] = [];
+  const skipped: string[] = [];
+  for (const line of options.order?.lines ?? []) {
+    const product = options.products.find(
+      (item) => item.id === line.productId,
+    );
+    if (!product || !product.units.some((unit) => unit.id === line.unitId)) {
+      skipped.push(line.productName);
+      continue;
+    }
+    lines.push({
+      key: newLineKey(),
+      productId: product.id,
+      productName: product.name,
+      imageUrl: product.imageUrl,
+      unitId: line.unitId!,
+      units: product.units,
+      quantity: String(line.quantity),
+    });
+  }
+  return { lines, skipped };
+}
+
 function ManualGoodsReceiptForm({
   locationId,
   options,
@@ -118,8 +152,10 @@ function ManualGoodsReceiptForm({
   const [receivedAtLocal, setReceivedAtLocal] = useState(() =>
     toDateTimeLocal(Date.now()),
   );
+  const { order } = options;
+  const [prefill] = useState(() => orderLines(options));
   const [comment, setComment] = useState("");
-  const [lines, setLines] = useState<ReceiptLine[]>([]);
+  const [lines, setLines] = useState(prefill.lines);
   const [photo, setPhoto] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
@@ -321,12 +357,18 @@ function ManualGoodsReceiptForm({
         items: validated.items,
         ...(comment.trim() ? { comment: comment.trim() } : {}),
         ...(deliveryNoteStorageId ? { deliveryNoteStorageId } : {}),
+        ...(order ? { orderId: order.id } : {}),
       });
       posthog.capture("manual_goods_receipt_created", {
         item_count: validated.items.length,
         has_delivery_note_photo: Boolean(photo),
+        from_order: Boolean(order),
       });
-      toast.success("Den manuelle varemodtagelse er registreret");
+      toast.success(
+        order
+          ? "Varemodtagelsen er registreret"
+          : "Den manuelle varemodtagelse er registreret",
+      );
       setConfirming(false);
       router.replace("/goods-receipts");
     } catch (error) {
@@ -372,6 +414,34 @@ function ManualGoodsReceiptForm({
               />
             </CardContent>
           </Card>
+
+          {order ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Bestillingsinfo</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid gap-4 text-sm">
+                  {order.supplierName ? (
+                    <div className="flex flex-col gap-1">
+                      <dt className="text-muted-foreground">Leverandør</dt>
+                      <dd className="font-medium">{order.supplierName}</dd>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-col gap-1">
+                    <dt className="text-muted-foreground">Bestilt</dt>
+                    <dd className="font-medium">
+                      {dateTimeFormatter.format(order.createdAt)}
+                    </dd>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <dt className="text-muted-foreground">Bestilt af</dt>
+                    <dd className="font-medium">{order.createdByName}</dd>
+                  </div>
+                </dl>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
@@ -420,7 +490,9 @@ function ManualGoodsReceiptForm({
             <CardHeader>
               <CardTitle>Overblik</CardTitle>
               <CardAction>
-                <Badge variant="secondary">Manuel</Badge>
+                <Badge variant="secondary">
+                  {order ? "Bestilling" : "Manuel"}
+                </Badge>
               </CardAction>
             </CardHeader>
             <CardContent>
@@ -466,6 +538,20 @@ function ManualGoodsReceiptForm({
               </CardAction>
             </CardHeader>
             <CardContent appearance="relaxed" className="flex flex-col">
+              {prefill.skipped.length > 0 ? (
+                <Alert>
+                  <AlertTitle>
+                    {prefill.skipped.length} bestillingslinje
+                    {prefill.skipped.length === 1 ? "" : "r"} kunne ikke
+                    udfyldes
+                  </AlertTitle>
+                  <AlertDescription>
+                    {prefill.skipped.join(", ")} findes ikke længere som
+                    produkt på lokationen. Tilføj dem manuelt, hvis de er
+                    modtaget.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               {lines.length === 0 ? (
                 <Empty appearance="outlined" className="min-h-32">
                   <EmptyHeader>
@@ -618,13 +704,15 @@ function ManualGoodsReceiptForm({
   );
 }
 
-export function ManualGoodsReceipt() {
+export function ManualGoodsReceipt({ orderId }: { orderId?: string }) {
   const access = useAccess();
   const canRegister = usePermission("goodsReceipts.register");
   const { locationId } = useGoodsReceiptContext();
   const options = useQuery(
     api.goodsReceipts.getManualReceiptOptions,
-    canRegister && locationId ? { locationId, omitCatalog: true } : "skip",
+    canRegister && locationId
+      ? { locationId, omitCatalog: true, ...(orderId ? { orderId } : {}) }
+      : "skip",
   );
   const products = useCompleteCatalog(
     api.goodsReceipts.listCatalogPage,
@@ -690,8 +778,33 @@ export function ManualGoodsReceipt() {
     );
   }
 
+  if (options.order === null) {
+    return (
+      <Empty appearance="outlined" className="min-h-80">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <PackageCheckIcon />
+          </EmptyMedia>
+          <EmptyTitle>Bestillingen afventer ikke modtagelse</EmptyTitle>
+          <EmptyDescription>
+            Den er allerede modtaget, eller den hører til en anden lokation.
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Link
+            href="/goods-receipts"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            Se åbne varemodtagelser
+          </Link>
+        </EmptyContent>
+      </Empty>
+    );
+  }
+
   return (
     <ManualGoodsReceiptForm
+      key={options.order?.id}
       locationId={locationId}
       options={{ ...options, products }}
     />
