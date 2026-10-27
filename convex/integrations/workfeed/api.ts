@@ -18,6 +18,7 @@ import {
   requireOrganization,
 } from "../../lib/auth";
 import { payPeriodValidator } from "./schema";
+import { resolveTimeZone } from "../../lib/timeZone";
 import {
   requestDepartments,
   type WorkfeedDepartment,
@@ -70,6 +71,8 @@ export const getSettings = query({
     enabled: v.boolean(),
     companyId: v.union(v.string(), v.null()),
     connectedAt: v.union(v.number(), v.null()),
+    payPeriod: v.union(payPeriodValidator, v.null()),
+    timeZone: v.string(),
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
@@ -86,6 +89,8 @@ export const getSettings = query({
       enabled: settings?.enabled ?? false,
       companyId: settings?.companyId ?? null,
       connectedAt: settings?.connectedAt ?? null,
+      payPeriod: settings?.payPeriod ?? null,
+      timeZone: await resolveTimeZone(ctx, organizationId),
     };
   },
 });

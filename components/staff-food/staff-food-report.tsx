@@ -53,6 +53,7 @@ import {
   zonedStart,
 } from "@/lib/date";
 import { downloadCsv } from "@/lib/download-csv";
+import { payPeriodRange } from "@/lib/pay-period";
 
 const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
 
@@ -62,43 +63,7 @@ function formatNumber(value: number) {
   );
 }
 
-type PayPeriod = NonNullable<
-  ReturnType<typeof useQuery<typeof api.workfeed.getPayPeriod>>
->;
 type Range = { from: string; to: string };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function monthStart(year: number, month: number, day: number) {
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return new Date(Date.UTC(year, month, Math.min(day, lastDay)))
-    .toISOString()
-    .slice(0, 10);
-}
-
-// offset 0 is the pay period containing today, -1 the one before.
-function payPeriodRange(
-  period: PayPeriod,
-  today: string,
-  timeZone: string,
-  offset: number,
-): Range {
-  const anchor = dateKey(period.startsAt, timeZone);
-  if (period.frequency !== "monthly") {
-    const length = period.frequency === "weekly" ? 7 : 14;
-    const elapsed = Math.round((Date.parse(today) - Date.parse(anchor)) / DAY_MS);
-    const from = addDays(anchor, (Math.floor(elapsed / length) + offset) * length);
-    return { from, to: addDays(from, length - 1) };
-  }
-  const day = period.monthDay ?? Number(anchor.slice(8, 10));
-  const year = Number(today.slice(0, 4));
-  const month = Number(today.slice(5, 7)) - 1;
-  const current = monthStart(year, month, day) <= today ? month : month - 1;
-  return {
-    from: monthStart(year, current + offset, day),
-    to: addDays(monthStart(year, current + offset + 1, day), -1),
-  };
-}
 
 function formatHours(minutes: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(
