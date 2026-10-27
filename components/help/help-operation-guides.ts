@@ -704,7 +704,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Varemodtagelse",
             paragraphs: [
-              "Åbn en afventende transfer, når leveringen kommer fra en anden Lokation. Brug Manuel varemodtagelse til alle andre leveringer. En registreret varemodtagelse kan ikke redigeres.",
+              "Åbn en afventende transfer, når leveringen kommer fra en anden Lokation. Åbn en afventende bestilling, når leveringen kommer fra en leverandør. Produkterne fra bestillingen er udfyldt, så du kun retter afvigelser. Brug Manuel varemodtagelse til alle andre leveringer. En registreret varemodtagelse kan ikke redigeres.",
             ],
           },
           {
@@ -1390,6 +1390,7 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Vælg Afgiv bestilling, og bekræft. Alle mængder over nul medtages, højst 500 Produkter.",
               "Find bestillingen i Bestillingshistorik. Vælg periode under Afgivet i perioden.",
+              "Bestillingen afventer nu modtagelse under Varemodtagelse på samme Lokation.",
               "Eksportér CSV henter én bestilling eller alle bestillinger i perioden.",
             ],
           },

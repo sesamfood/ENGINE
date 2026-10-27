@@ -460,6 +460,7 @@ const orderInputValidator = v.object({
 const orderRowValidator = schema.doc("orderLines").pick(
   "productId",
   "productName",
+  "unitId",
   "unitName",
   "quantity",
   "supplierProductNumber",
@@ -555,6 +556,7 @@ async function prepareOrder(
       return {
         productId: product._id,
         productName: product.name,
+        unitId: unit._id,
         unitName: unit.name,
         quantity: line.quantity,
         ...(link ? { supplierProductNumber: link.productNumber } : {}),
@@ -670,6 +672,10 @@ export const placeOrder = mutation({
         : {}),
       ...(args.sendEmail && supplier?.email
         ? { email: { to: supplier.email, status: "pending" as const } }
+        : {}),
+      // Only product lines can be received into stock.
+      ...(rows.some((row) => row.productId)
+        ? { receiptStatus: "pending" as const }
         : {}),
     };
     const orderId = await ctx.db.insert("orders", order);

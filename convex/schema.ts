@@ -1238,6 +1238,7 @@ export default defineSchema({
     comment: v.optional(v.string()),
     deliveryNoteStorageId: v.optional(v.id("_storage")),
     itemCount: v.number(),
+    orderId: v.optional(v.id("orders")),
   })
     .index("by_organizationId_and_locationId_and_receivedAt", [
       "organizationId",
@@ -1311,11 +1312,23 @@ export default defineSchema({
         failureMessage: v.optional(v.string()),
       }),
     ),
-  }).index("by_organizationId_and_locationId_and_createdAt", [
-    "organizationId",
-    "locationId",
-    "createdAt",
-  ]),
+    // Missing on orders placed before goods receipt, or without product lines.
+    receiptStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("registered")),
+    ),
+    manualGoodsReceiptId: v.optional(v.id("manualGoodsReceipts")),
+  })
+    .index("by_organizationId_and_locationId_and_createdAt", [
+      "organizationId",
+      "locationId",
+      "createdAt",
+    ])
+    .index("by_organizationId_locationId_receiptStatus_createdAt", [
+      "organizationId",
+      "locationId",
+      "receiptStatus",
+      "createdAt",
+    ]),
 
   orderLines: defineTable({
     organizationId: v.string(),
@@ -1323,6 +1336,8 @@ export default defineSchema({
     // Missing for supplier catalog items that aren't linked to a product.
     productId: v.optional(v.id("products")),
     productName: v.string(),
+    // Missing on lines placed before goods receipt.
+    unitId: v.optional(v.id("units")),
     unitName: v.string(),
     quantity: v.number(),
     supplierProductNumber: v.optional(v.string()),
