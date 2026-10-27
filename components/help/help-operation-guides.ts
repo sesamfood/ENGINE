@@ -1108,7 +1108,7 @@ export const operationFeatures: HelpFeature[] = [
         slug: "registrering",
         label: "Regler og registrering",
         summary:
-          "Opret regler, registrér Staff food, og eksportér registreringer.",
+          "Opret regler, registrér Staff food, og se rapporten.",
         appHref: "/staff-food",
         appLinkLabel: "Åbn Staff food",
         sections: [
@@ -1148,10 +1148,10 @@ export const operationFeatures: HelpFeature[] = [
           },
           {
             id: "fortryd",
-            title: "Fortryd og eksportér",
+            title: "Fortryd og rapport",
             bullets: [
               "Fortryd i beskeden efter registrering annullerer med en begrundelse og fører lageret tilbage.",
-              "Administration → Staff food → Eksportér registreringer henter registreringer for op til ét år som CSV.",
+              "Staff food → Rapport viser udleveringer pr. medarbejder og pr. Produkt for en periode på op til ét år. Eksportér CSV henter alle registreringer i perioden.",
             ],
           },
         ],

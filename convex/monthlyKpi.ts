@@ -44,7 +44,7 @@ async function selectedLocations(ctx: QueryCtx, auth: OrganizationAuth, location
       return requireOrganizationLocation(ctx, auth.organizationId, id);
     }));
   if (locations.length > 200) throw new ConvexError("Vælg højst 200 lokationer");
-  return Promise.all(locations.map(async (location) => ({
+  return Promise.all(locations.filter((location) => !location.hiddenFromDashboards).map(async (location) => ({
     id: location._id,
     name: location.name,
     currency: await resolveLocationCurrency(ctx, auth.organizationId, location),

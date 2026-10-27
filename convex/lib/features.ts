@@ -128,6 +128,7 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "goodsReceipts.register": "goodsReceipts",
   "goodsReceipts.settings": null,
   "staffFood.register": "staffFood",
+  "staffFood.report": "staffFood",
   "staffFood.manage": null,
   "dashboard.view": "dashboard",
   "dashboard.manage": "dashboard",

@@ -65,12 +65,20 @@ import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
+import { dateKey } from "@/lib/date";
+import {
+  payPeriodMonthDay,
+  payPeriodRange,
+  type PayPeriod,
+} from "@/lib/pay-period";
 
 type Settings = {
   connected: boolean;
   enabled: boolean;
   companyId: string | null;
   connectedAt: number | null;
+  payPeriod: PayPeriod | null;
+  timeZone: string;
 };
 
 type Department = {
@@ -547,6 +555,71 @@ function LocationMappings() {
   );
 }
 
+const payPeriodFrequencyLabels: Record<PayPeriod["frequency"], string> = {
+  weekly: "Ugentlig",
+  biweekly: "Hver 2. uge",
+  monthly: "Månedlig",
+};
+
+function PayPeriodCard({ settings }: { settings: Settings }) {
+  const [today] = useState(() => dateKey(Date.now(), settings.timeZone));
+  const period = settings.payPeriod;
+  const dateFormatter = new Intl.DateTimeFormat("da-DK", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  });
+  const formatDate = (value: string) =>
+    dateFormatter.format(Date.parse(value));
+  const current = period
+    ? payPeriodRange(period, today, settings.timeZone, 0)
+    : null;
+
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Lønperiode</CardTitle>
+        <CardDescription>
+          Hentes fra Workfeed ved synkronisering og bruges i Staff
+          food-rapporten.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {period && current ? (
+          <dl className="grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-1">
+              <dt className="text-sm text-muted-foreground">Frekvens</dt>
+              <dd className="font-medium">
+                {payPeriodFrequencyLabels[period.frequency]}
+              </dd>
+            </div>
+            <div className="flex flex-col gap-1">
+              <dt className="text-sm text-muted-foreground">Starter</dt>
+              <dd className="font-medium">
+                {period.frequency === "monthly"
+                  ? `Den ${payPeriodMonthDay(period, settings.timeZone)}. i måneden`
+                  : `Fra ${formatDate(dateKey(period.startsAt, settings.timeZone))}`}
+              </dd>
+            </div>
+            <div className="flex flex-col gap-1">
+              <dt className="text-sm text-muted-foreground">
+                Nuværende lønperiode
+              </dt>
+              <dd className="font-medium">
+                {formatDate(current.from)} – {formatDate(current.to)}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Der er ikke hentet en lønperiode endnu. Den hentes ved næste
+            synkronisering, hvis den er sat op i Workfeed.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function WorkfeedIntegration() {
   const access = useAccess();
   const canManage = usePermission("integrations.manage");
@@ -571,6 +644,7 @@ export function WorkfeedIntegration() {
   return (
     <div className="flex flex-col gap-5">
       <ConnectionCard settings={settings} />
+      {settings.connected ? <PayPeriodCard settings={settings} /> : null}
       {settings.connected ? <LocationMappings /> : null}
     </div>
   );

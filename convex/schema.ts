@@ -1035,6 +1035,7 @@ export default defineSchema({
         v.literal("closed"),
       ),
     ),
+    hiddenFromDashboards: v.optional(v.boolean()),
   })
     .index("by_organizationId_and_normalizedName", [
       "organizationId",

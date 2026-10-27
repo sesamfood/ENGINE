@@ -9,8 +9,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
-  requireFeatureEnabled,
   requireLocationAccess,
+  requirePermission,
   requireStaffFoodManager,
   requireStaffFoodRegistrar,
   isMultiLocationFilter,
@@ -1523,9 +1523,7 @@ export const exportRegistrations = query({
   },
   returns: paginationResultValidator(registrationRowValidator),
   handler: async (ctx, args) => {
-    const auth = await requireStaffFoodManager(ctx);
-    // Settings stay available while Staff food is off; exporting records does not.
-    requireFeatureEnabled(auth, "staffFood");
+    const auth = await requirePermission(ctx, "staffFood.report");
     const { organizationId } = auth;
     const locationFilter = resolveLocationFilter(auth, args.locationId);
     if (
@@ -1534,7 +1532,7 @@ export const exportRegistrations = query({
       args.startAt > args.endAt ||
       args.endAt - args.startAt > 366 * DAY_MS
     ) {
-      throw new ConvexError("Eksportperioden er ugyldig");
+      throw new ConvexError("Perioden er ugyldig");
     }
     if (args.paginationOpts.numItems > 100) {
       throw new ConvexError("Eksportsiden er for stor");

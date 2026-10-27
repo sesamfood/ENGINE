@@ -23,6 +23,7 @@ const viewPermissions: readonly PermissionId[] = [
   "expenses.view",
   "count.viewStock",
   "waste.report",
+  "staffFood.report",
   "dashboard.view",
   "dashboard.viewSales",
   "dashboard.viewFinancials",
