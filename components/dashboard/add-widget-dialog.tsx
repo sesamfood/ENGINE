@@ -516,9 +516,10 @@ export function AddWidgetDialog({
                     items={sources}
                     value={salesSource}
                     onValueChange={(value) => {
-                      if (value === "onlinePos" || value === "wolt" || value === "combined") {
+                      const source = sources.find((option) => option.value === value)?.value;
+                      if (source) {
                         setPreviewResult(undefined);
-                        setSalesSourceOverride(value);
+                        setSalesSourceOverride(source);
                       }
                     }}
                   >

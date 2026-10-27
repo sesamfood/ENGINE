@@ -31,6 +31,9 @@ export function customMetricAvailable(spec: CustomMetricSpec, integrations: Inte
 export function salesSourceOptions(integrations: IntegrationState): Array<{ value: SalesSource; label: string }> {
   return [
     { value: "onlinePos", label: integrations?.onlinepos ? "OnlinePOS" : "Salgsdata" },
+    ...(integrations?.onlinepos
+      ? [{ value: "onlinePosStore" as const, label: "OnlinePOS i butik" }, { value: "onlinePosOnline" as const, label: "OnlinePOS online" }]
+      : []),
     ...(integrations?.wolt ? [{ value: "wolt" as const, label: "Wolt" }, { value: "combined" as const, label: "Kombineret" }] : []),
   ];
 }

@@ -65,11 +65,13 @@ export type MetricId = (typeof metricIds)[number];
 export type VisualizationId = (typeof visualizationIds)[number];
 export type RangePreset = (typeof rangePresets)[number];
 export type WidgetRangePreset = Exclude<RangePreset, "custom">;
-export const salesSources = ["onlinePos", "wolt", "combined"] as const;
+export const salesSources = ["onlinePos", "onlinePosStore", "onlinePosOnline", "wolt", "combined"] as const;
 export type SalesSource = (typeof salesSources)[number];
 
 export const salesSourceLabels: Record<SalesSource, string> = {
   onlinePos: "OnlinePOS",
+  onlinePosStore: "OnlinePOS i butik",
+  onlinePosOnline: "OnlinePOS online",
   wolt: "Wolt",
   combined: "OnlinePOS + Wolt",
 };

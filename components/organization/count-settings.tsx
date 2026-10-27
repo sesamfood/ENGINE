@@ -45,7 +45,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAccess, usePermission } from "@/components/app-shell";
 import type { CountSchedule } from "@/lib/count-window";
 import { dateKey, DEFAULT_TIME_ZONE } from "@/lib/date";
-import type { SalesSource } from "@/lib/dashboard/types";
+import type { CountSalesSource as SalesSource } from "@/convex/lib/countSalesSource";
 
 const scheduleOptions = [
   { value: "monthly", label: "Månedligt" },

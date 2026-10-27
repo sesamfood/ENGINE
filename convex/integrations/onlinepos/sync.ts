@@ -18,6 +18,7 @@ import {
 } from "./lib/api";
 import { dateKey, zonedStart } from "../../lib/dashboardMetrics";
 import {
+  applyOrderToPaymentTypes,
   computeDailySalesDeltas,
   computeProductDailyDeltas,
   dayStartOf,
@@ -635,7 +636,7 @@ export const rerollLocationDayStartsPage = internalMutation({
       for (const [bucket, direction] of [
         [order.dayStart, -1],
         [dayStart, 1],
-      ]) {
+      ] as const) {
         const daily = await ctx.db
           .query("salesDaily")
           .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
@@ -647,7 +648,11 @@ export const rerollLocationDayStartsPage = internalMutation({
           .unique();
         // A missing old bucket is already lost history, not a negative sale.
         if (!daily && direction === -1) continue;
+        const paymentTypes = daily
+          ? daily.paymentTypes && applyOrderToPaymentTypes(daily.paymentTypes, order, direction)
+          : applyOrderToPaymentTypes([], order, 1);
         const value = {
+          paymentTypes,
           revenue: finiteSalesNumber(
             (daily?.revenue ?? 0) + direction * order.revenue,
           ),
@@ -1154,6 +1159,8 @@ export const ingestSalesBatch = internalMutation({
     const existingLines = new Map<string, ExistingLineState>();
     const existingLineDocs = new Map<string, Doc<"salesLines">>();
     const orderCache = new Map<string, SalesOrderState | null>();
+    // Order state before this batch, for the per-payment-type daily breakdown.
+    const ordersBefore = new Map<Id<"salesOrders">, SalesOrderState>();
 
     for (const line of lines) {
       const dayStart = dayStartOf(line.occurredAt, timeZone);
@@ -1176,7 +1183,10 @@ export const ingestSalesBatch = internalMutation({
           )
           .unique();
         orderCache.set(key, order);
-        if (order) knownOrderKeys.add(key);
+        if (order) {
+          knownOrderKeys.add(key);
+          ordersBefore.set(order._id, order);
+        }
       }
       if (!existingLines.has(line.externalId)) {
         let current = await ctx.db
@@ -1224,6 +1234,13 @@ export const ingestSalesBatch = internalMutation({
                 ? currentOrder.department
                 : line.department,
           });
+          if (
+            currentOrder?.organizationId === args.organizationId &&
+            currentOrder.locationId === args.locationId &&
+            !ordersBefore.has(currentOrder._id)
+          ) {
+            ordersBefore.set(currentOrder._id, currentOrder);
+          }
           if (currentOrder?.organizationId === args.organizationId) {
             const currentKey = orderKey(
               currentOrder.locationId,
@@ -1307,6 +1324,7 @@ export const ingestSalesBatch = internalMutation({
 
     const now = Date.now();
     const maybeEmptyOrders = new Map<Id<"salesOrders">, string>();
+    const insertedOrders = new Set<Id<"salesOrders">>();
     const stockChangedOrders = new Set<Id<"salesOrders">>();
     let fullStockSync = false;
     let stockChangedFrom: number | undefined;
@@ -1388,6 +1406,7 @@ export const ingestSalesBatch = internalMutation({
           source: SOURCE,
           updatedAt: now,
         });
+        insertedOrders.add(orderId);
         order = {
           _id: orderId,
           locationId: args.locationId,
@@ -1549,6 +1568,7 @@ export const ingestSalesBatch = internalMutation({
       knownOrderKeys.delete(key);
     }
 
+    const createdDays = new Set<number>();
     for (const [bucket, delta] of deltas) {
       finiteSalesNumber(delta.revenue);
       finiteSalesNumber(delta.orderCount);
@@ -1591,7 +1611,50 @@ export const ingestSalesBatch = internalMutation({
           itemCount: delta.itemCount,
           updatedAt: now,
         });
+        createdDays.add(dayStart);
       }
+    }
+
+    const paymentChanges = new Map<
+      number,
+      Array<{ order: SalesOrderState; direction: 1 | -1 }>
+    >();
+    for (const orderId of [...ordersBefore.keys(), ...insertedOrders]) {
+      const before = ordersBefore.get(orderId);
+      const after = await ctx.db.get("salesOrders", orderId);
+      if (
+        before && after &&
+        before.dayStart === after.dayStart &&
+        before.paymentType === after.paymentType &&
+        before.revenue === after.revenue &&
+        before.itemCount === after.itemCount
+      ) {
+        continue;
+      }
+      for (const [order, direction] of [[before, -1], [after, 1]] as const) {
+        if (!order) continue;
+        const changes = paymentChanges.get(order.dayStart) ?? [];
+        changes.push({ order, direction });
+        paymentChanges.set(order.dayStart, changes);
+      }
+    }
+    for (const [dayStart, changes] of paymentChanges) {
+      const daily = await ctx.db
+        .query("salesDaily")
+        .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("locationId", args.locationId)
+            .eq("dayStart", dayStart),
+        )
+        .unique();
+      // Unbackfilled days stay without a breakdown rather than a partial one.
+      if (!daily || (daily.paymentTypes === undefined && !createdDays.has(dayStart))) continue;
+      let paymentTypes = daily.paymentTypes ?? [];
+      for (const { order, direction } of changes) {
+        paymentTypes = applyOrderToPaymentTypes(paymentTypes, order, direction);
+      }
+      await ctx.db.patch("salesDaily", daily._id, { paymentTypes });
     }
 
     for (const delta of productDeltas) {
@@ -1817,6 +1880,7 @@ export const resetDayRollup = internalMutation({
         revenue: 0,
         orderCount: 0,
         itemCount: 0,
+        paymentTypes: [],
         updatedAt: now,
       });
     } else {
@@ -1828,6 +1892,7 @@ export const resetDayRollup = internalMutation({
         revenue: 0,
         orderCount: 0,
         itemCount: 0,
+        paymentTypes: [],
         updatedAt: now,
       });
     }

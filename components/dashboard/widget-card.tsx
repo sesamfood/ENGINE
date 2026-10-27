@@ -484,8 +484,9 @@ export function WidgetCard({
                         items={sources}
                         value={sources.some((source) => source.value === salesSource) ? salesSource : "onlinePos"}
                         onValueChange={(value) => {
-                          if (value === "onlinePos" || value === "wolt" || value === "combined") {
-                            onSalesSourceChange(value);
+                          const source = sources.find((option) => option.value === value)?.value;
+                          if (source) {
+                            onSalesSourceChange(source);
                           }
                         }}
                       >

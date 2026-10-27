@@ -3,6 +3,7 @@ import { dateKey, addDays, daysBetween, zonedStart, DEFAULT_TIME_ZONE } from "..
 export { dateKey, zonedStart } from "../../lib/date";
 import { ConvexError } from "convex/values";
 import { resolveTimeZone } from "./timeZone";
+import { splitPaymentTypes } from "./salesRollup";
 import { getForecastOpeningHours } from "./forecastOpeningHours";
 import { usesGoogleForecastLocation } from "./forecastValidators";
 import { FORECAST_MODEL_VERSION } from "../../lib/sales-forecast";
@@ -104,7 +105,7 @@ export function queryMetricComputer(metricId: MetricId): MetricComputer {
 
 export function salesSourceProviders(source: SalesSource): MetricSource[] {
   if (source === "combined") return ["onlinepos", "wolt"];
-  return [source === "onlinePos" ? "onlinepos" : "wolt"];
+  return [source === "wolt" ? "wolt" : "onlinepos"];
 }
 
 export function resolveBuiltinSalesSource(
@@ -2014,6 +2015,16 @@ async function salesDailyRows(
     const rows: SalesDailyMetricRow[] = [];
     let truncated = false;
     let previousAvailable = true;
+    const channel =
+      source === "onlinePosOnline" ? "online" : source === "onlinePosStore" ? "store" : null;
+    let onlinePaymentTypes = new Set<string>();
+    if (channel) {
+      const settings = await getOnlinePosOrganizationSettings(ctx, params.organizationId);
+      onlinePaymentTypes = new Set(settings?.onlinePaymentTypes ?? []);
+      if (onlinePaymentTypes.size === 0) {
+        throw new ConvexError("Vælg online betalingstyper i OnlinePOS-indstillingerne");
+      }
+    }
     for (const provider of salesSourceProviders(source)) {
       for (const location of params.locations) {
         const remaining = MAX_ROWS - rows.length;
@@ -2045,18 +2056,23 @@ async function salesDailyRows(
             )
             .take(remaining + 1);
           fetchedLength = locationRows.length;
-          rows.push(
-            ...locationRows.slice(0, remaining).map((row) => ({
+          for (const row of locationRows.slice(0, remaining)) {
+            // Days without a breakdown predate retained orders and cannot be split.
+            if (channel && !row.paymentTypes) continue;
+            const totals = channel
+              ? splitPaymentTypes(row.paymentTypes!, onlinePaymentTypes)[channel]
+              : row;
+            rows.push({
               locationId: row.locationId,
               dayStart: row.dayStart,
               currency: location.currency || DEFAULT_CURRENCY,
-              revenue: row.revenue,
-              orderCount: row.orderCount,
-              itemCount: row.itemCount,
+              revenue: totals.revenue,
+              orderCount: totals.orderCount,
+              itemCount: totals.itemCount,
               canceledCount: 0,
-              totalCount: row.orderCount,
-            })),
-          );
+              totalCount: totals.orderCount,
+            });
+          }
         } else {
           const locationRows = await ctx.db
             .query("woltSalesDaily")

@@ -1,4 +1,4 @@
-import { salesSourceValidator } from "./lib/salesSources";
+import { countSalesSourceValidator as salesSourceValidator } from "./lib/salesSources";
 import { getIntegrationState, isIntegrationEnabled, requireIntegrationEnabled } from "./integrations/state";
 import { getOnlinePosOrganizationSettings, getOnlinePosLocationMaster, onlinePosCatalogId } from "./integrations/onlinepos/lib/connections";
 import { ConvexError, type Infer, v } from "convex/values";
