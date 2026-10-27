@@ -10,12 +10,14 @@ import {
 } from "../../_generated/server";
 import {
   parseEmployees,
+  parsePayPeriod,
   parseRoles,
   parseShifts,
   requestWorkfeed,
   workfeedErrorMessage,
   type WorkfeedSettings,
 } from "./lib/api";
+import { payPeriodValidator } from "./schema";
 import {
   dashboardSummaryTimeZone,
   reconcileDashboardSummaryContributions,
@@ -616,6 +618,29 @@ export const dispatchEnabledIntegrations = internalMutation({
   },
 });
 
+export const savePayPeriod = internalMutation({
+  args: {
+    organizationId: v.string(),
+    companyId: v.string(),
+    payPeriod: v.union(payPeriodValidator, v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!await isIntegrationEnabled(ctx, args.organizationId, "workfeed")) return null;
+    const integration = await ctx.db
+      .query("workfeedIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      )
+      .unique();
+    if (integration?.companyId !== args.companyId) return null;
+    await ctx.db.patch(integration._id, {
+      payPeriod: args.payPeriod ?? undefined,
+    });
+    return null;
+  },
+});
+
 export const markRunning = internalMutation({
   args: { organizationId: v.string(), runToken: v.string() },
   returns: v.null(),
@@ -954,10 +979,19 @@ export const syncEmployees = internalAction({
         { organizationId: args.organizationId },
       );
       if (!context) throw new Error("Workfeed-integrationen er ikke aktiv");
-      const [employeePayload, rolePayload] = await Promise.all([
+      const [employeePayload, rolePayload, settingsPayload] = await Promise.all([
         requestWorkfeed("/employees", context.settings),
         requestWorkfeed("/roles", context.settings),
+        // The pay period is optional; a failed request keeps the stored value.
+        requestWorkfeed("/settings", context.settings).catch(() => undefined),
       ]);
+      if (settingsPayload !== undefined) {
+        await ctx.runMutation(internal.workfeedSync.savePayPeriod, {
+          organizationId: args.organizationId,
+          companyId: context.settings.companyId,
+          payPeriod: parsePayPeriod(settingsPayload),
+        });
+      }
       const roles = parseRoles(rolePayload);
       const locationByDepartment = new Map(
         context.locations.map((location) => [

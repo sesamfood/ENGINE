@@ -15,7 +15,9 @@ import {
   requireHumanPrincipal,
   requireIntegrationManager,
   requireLocationAccess,
+  requireOrganization,
 } from "../../lib/auth";
+import { payPeriodValidator } from "./schema";
 import {
   requestDepartments,
   type WorkfeedDepartment,
@@ -85,6 +87,22 @@ export const getSettings = query({
       companyId: settings?.companyId ?? null,
       connectedAt: settings?.connectedAt ?? null,
     };
+  },
+});
+
+export const getPayPeriod = query({
+  args: {},
+  returns: v.union(payPeriodValidator, v.null()),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    if (!await isIntegrationEnabled(ctx, organizationId, "workfeed")) return null;
+    const settings = await ctx.db
+      .query("workfeedIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .unique();
+    return settings?.payPeriod ?? null;
   },
 });
 

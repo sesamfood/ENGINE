@@ -2,15 +2,11 @@
 
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { DownloadIcon, UtensilsIcon } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppPageHeader } from "@/components/app-page-header";
-import {
-  useKiosk,
-  useLocationAccess,
-  usePermission,
-} from "@/components/app-shell";
+import { useLocationAccess, usePermission } from "@/components/app-shell";
+import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 import { LocationField } from "@/components/location-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Table,
   TableBody,
@@ -65,6 +62,44 @@ function formatNumber(value: number) {
   );
 }
 
+type PayPeriod = NonNullable<
+  ReturnType<typeof useQuery<typeof api.workfeed.getPayPeriod>>
+>;
+type Range = { from: string; to: string };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function monthStart(year: number, month: number, day: number) {
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(day, lastDay)))
+    .toISOString()
+    .slice(0, 10);
+}
+
+// offset 0 is the pay period containing today, -1 the one before.
+function payPeriodRange(
+  period: PayPeriod,
+  today: string,
+  timeZone: string,
+  offset: number,
+): Range {
+  const anchor = dateKey(period.startsAt, timeZone);
+  if (period.frequency !== "monthly") {
+    const length = period.frequency === "weekly" ? 7 : 14;
+    const elapsed = Math.round((Date.parse(today) - Date.parse(anchor)) / DAY_MS);
+    const from = addDays(anchor, (Math.floor(elapsed / length) + offset) * length);
+    return { from, to: addDays(from, length - 1) };
+  }
+  const day = period.monthDay ?? Number(anchor.slice(8, 10));
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7)) - 1;
+  const current = monthStart(year, month, day) <= today ? month : month - 1;
+  return {
+    from: monthStart(year, current + offset, day),
+    to: addDays(monthStart(year, current + offset + 1, day), -1),
+  };
+}
+
 function formatHours(minutes: number) {
   return new Intl.NumberFormat("da-DK", { maximumFractionDigits: 1 }).format(
     minutes / 60,
@@ -72,10 +107,8 @@ function formatHours(minutes: number) {
 }
 
 export function StaffFoodReport() {
-  const kiosk = useKiosk();
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const canReport = usePermission("staffFood.report");
-  const canRegister = usePermission("staffFood.register");
   const [todayTimestamp] = useState(() => Date.now());
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
@@ -87,10 +120,43 @@ export function StaffFoodReport() {
         ? location
         : "all";
   const context = useQuery(api.employees.getContext, canReport ? {} : "skip");
+  const payPeriod = useQuery(api.workfeed.getPayPeriod, canReport ? {} : "skip");
   const timeZone = context?.timeZone ?? DEFAULT_TIME_ZONE;
-  const resolvedFrom =
-    from ?? `${dateKey(todayTimestamp, timeZone).slice(0, 8)}01`;
-  const resolvedTo = to ?? dateKey(todayTimestamp, timeZone);
+  const today = dateKey(todayTimestamp, timeZone);
+  const thisMonth = `${today.slice(0, 8)}01`;
+  const presets: Array<{ label: string; range: Range }> = [
+    { label: "I dag", range: { from: today, to: today } },
+    { label: "7 dage", range: { from: addDays(today, -6), to: today } },
+    { label: "Denne måned", range: { from: thisMonth, to: today } },
+    {
+      label: "Sidste måned",
+      range: {
+        from: `${addDays(thisMonth, -1).slice(0, 8)}01`,
+        to: addDays(thisMonth, -1),
+      },
+    },
+    ...(payPeriod
+      ? [
+          {
+            label: "Denne lønperiode",
+            range: payPeriodRange(payPeriod, today, timeZone, 0),
+          },
+          {
+            label: "Sidste lønperiode",
+            range: payPeriodRange(payPeriod, today, timeZone, -1),
+          },
+        ]
+      : []),
+  ];
+  const defaultRange = payPeriod
+    ? payPeriodRange(payPeriod, today, timeZone, 0)
+    : { from: thisMonth, to: today };
+  const resolvedFrom = from ?? defaultRange.from;
+  const resolvedTo = to ?? defaultRange.to;
+  const selectedPreset = presets.find(
+    (preset) =>
+      preset.range.from === resolvedFrom && preset.range.to === resolvedTo,
+  )?.label;
   let startAt = Number.NaN;
   let endAt = Number.NaN;
   try {
@@ -231,27 +297,14 @@ export function StaffFoodReport() {
           Staff food-rapport
         </h1>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {canRegister && !kiosk?.kioskModeEnabled ? (
-          <Button
-            variant="outline"
-            size="lg"
-            render={<Link href="/staff-food" />}
-            nativeButton={false}
-          >
-            <UtensilsIcon data-icon="inline-start" />
-            Registrér
-          </Button>
-        ) : null}
-        <Button
-          size="lg"
-          disabled={loading || !results.length}
-          onClick={exportCsv}
-        >
-          <DownloadIcon data-icon="inline-start" />
-          Eksportér CSV
-        </Button>
-      </div>
+      <Button
+        size="lg"
+        disabled={loading || !results.length}
+        onClick={exportCsv}
+      >
+        <DownloadIcon data-icon="inline-start" />
+        Eksportér CSV
+      </Button>
     </div>
   );
 
@@ -273,6 +326,32 @@ export function StaffFoodReport() {
 
       <Card>
         <CardContent appearance="summary" className="grid sm:grid-cols-3">
+          <div className="overflow-x-auto pb-1 sm:col-span-3">
+            <ToggleGroup
+              value={selectedPreset ? [selectedPreset] : []}
+              onValueChange={(values) => {
+                const preset = presets.find((item) => item.label === values[0]);
+                if (!preset) return;
+                setFrom(preset.range.from);
+                setTo(preset.range.to);
+              }}
+              variant="outline"
+              size="lg"
+              spacing={0}
+              aria-label="Periode"
+              className="min-w-max"
+            >
+              {presets.map((preset) => (
+                <ToggleGroupItem
+                  key={preset.label}
+                  value={preset.label}
+                  className="min-h-11"
+                >
+                  {preset.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
           <Field data-invalid={!rangeValid}>
             <FieldLabel htmlFor="staff-food-report-from">Fra</FieldLabel>
             <Input
@@ -437,6 +516,7 @@ export function StaffFoodReport() {
           ) : null}
         </>
       )}
+      <StaffFoodNavigation />
     </section>
   );
 }

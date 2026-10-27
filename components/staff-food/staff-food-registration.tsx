@@ -9,7 +9,7 @@ import {
 
 import { selectedLocationId } from "@/lib/location-preference";
 
-import { AppBottomBar } from "@/components/app-bottom-bar";
+import { StaffFoodNavigation } from "@/components/staff-food/staff-food-navigation";
 
 import { AppPageHeader } from "@/components/app-page-header";
 
@@ -78,7 +78,6 @@ import { cn } from "@/lib/utils";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { useMutation, useQuery } from "convex/react";
 import {
-  ChartNoAxesColumnIcon,
   CheckIcon,
   Clock3Icon,
   ImageIcon,
@@ -173,7 +172,6 @@ function StaffFoodHeader({
   onEmployeeChange,
   isLocked,
   lockedName,
-  showReport,
 }: {
   locationId: Id<"locations"> | null;
   locations: Array<{ id: Id<"locations">; name: string }> | undefined;
@@ -183,7 +181,6 @@ function StaffFoodHeader({
   onEmployeeChange: () => void;
   isLocked: boolean;
   lockedName?: string | null;
-  showReport: boolean;
 }) {
   return (
     <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-end">
@@ -191,21 +188,9 @@ function StaffFoodHeader({
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Staff food
         </p>
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Staff food
-          </h1>
-          {showReport && !employeeName ? (
-            <Button
-              variant="outline"
-              render={<Link href="/staff-food/report" />}
-              nativeButton={false}
-            >
-              <ChartNoAxesColumnIcon data-icon="inline-start" />
-              Rapport
-            </Button>
-          ) : null}
-        </div>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Staff food
+        </h1>
       </div>
       <div
         className={cn(
@@ -259,7 +244,6 @@ export function StaffFoodRegistration() {
       kiosk?.kioskModeEnabled &&
       kiosk.settings?.enabledPages.includes("staffFood.register"),
     );
-  const canReport = usePermission("staffFood.report");
   const [now, setNow] = useState(() => Date.now());
   const [sessionId, setSessionId] = useState<Id<"staffFoodSessions"> | null>(
     null,
@@ -343,7 +327,6 @@ export function StaffFoodRegistration() {
       employeeName={state?.session.employeeName}
       isLocked={isLocked}
       lockedName={lockedName}
-      showReport={canReport && !kiosk?.kioskModeEnabled}
       onLocationChange={() => {
         setSessionId(null);
         setBasket({});
@@ -557,6 +540,14 @@ export function StaffFoodRegistration() {
       </div>
     );
   }
+
+  // Mirrors the render branches below: the basket bar carries the tabs itself.
+  const showBasket = Boolean(
+    locations.length &&
+      picker?.hasRules &&
+      state &&
+      state.tierMinimumShiftMinutes !== null,
+  );
 
   return (
     <section className="mx-auto flex w-full max-w-(--container-page) flex-col gap-6 pb-32 sm:pb-24">
@@ -792,8 +783,9 @@ export function StaffFoodRegistration() {
                   </Empty>
                 )}
               </div>
-              <AppBottomBar>
-                <div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-2 sm:flex-row sm:items-center">
+              <StaffFoodNavigation
+                action={
+                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 overflow-x-auto">
                     <ShoppingBasketIcon className="shrink-0" />
                     {basketProducts.length ? (
@@ -827,7 +819,8 @@ export function StaffFoodRegistration() {
                     Registrér Staff food
                   </Button>
                 </div>
-              </AppBottomBar>
+                }
+              />
               <Dialog
                 open={confirming}
                 onOpenChange={(open) => {
@@ -1110,6 +1103,7 @@ export function StaffFoodRegistration() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {showBasket ? null : <StaffFoodNavigation />}
     </section>
   );
 }
