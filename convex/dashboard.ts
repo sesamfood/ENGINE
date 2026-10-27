@@ -420,7 +420,11 @@ export const listScopeOptions = query({
         );
     const locations = rows.filter(
       (location): location is NonNullable<typeof location> =>
-        Boolean(location && location.organizationId === auth.organizationId),
+        Boolean(
+          location &&
+            location.organizationId === auth.organizationId &&
+            !location.hiddenFromDashboards,
+        ),
     );
     const marketIds = [...new Set(locations.flatMap((location) => location.marketId ? [location.marketId] : []))];
     const operatorIds = [...new Set(locations.flatMap((location) => location.operatorId ? [location.operatorId] : []))];
