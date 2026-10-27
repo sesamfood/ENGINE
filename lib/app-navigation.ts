@@ -57,7 +57,10 @@ const routes: Record<SidebarItemId, readonly Route[]> = {
     { href: "/own-checks/overview", permission: "ownChecks.view" },
     { href: "/own-checks/documentation", permission: "ownChecks.export" },
   ],
-  staffFood: [{ href: "/staff-food", permission: "staffFood.register" }],
+  staffFood: [
+    { href: "/staff-food", permission: "staffFood.register" },
+    { href: "/staff-food/report", permission: "staffFood.report" },
+  ],
   count: [
     { href: "/count", permission: "count.register" },
     { href: "/count/stock", permission: "count.viewStock" },

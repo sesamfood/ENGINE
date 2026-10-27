@@ -15,7 +15,10 @@ import {
   requireHumanPrincipal,
   requireIntegrationManager,
   requireLocationAccess,
+  requireOrganization,
 } from "../../lib/auth";
+import { payPeriodValidator } from "./schema";
+import { resolveTimeZone } from "../../lib/timeZone";
 import {
   requestDepartments,
   type WorkfeedDepartment,
@@ -68,6 +71,8 @@ export const getSettings = query({
     enabled: v.boolean(),
     companyId: v.union(v.string(), v.null()),
     connectedAt: v.union(v.number(), v.null()),
+    payPeriod: v.union(payPeriodValidator, v.null()),
+    timeZone: v.string(),
   }),
   handler: async (ctx) => {
     const auth = await requireIntegrationManager(ctx);
@@ -84,7 +89,25 @@ export const getSettings = query({
       enabled: settings?.enabled ?? false,
       companyId: settings?.companyId ?? null,
       connectedAt: settings?.connectedAt ?? null,
+      payPeriod: settings?.payPeriod ?? null,
+      timeZone: await resolveTimeZone(ctx, organizationId),
     };
+  },
+});
+
+export const getPayPeriod = query({
+  args: {},
+  returns: v.union(payPeriodValidator, v.null()),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    if (!await isIntegrationEnabled(ctx, organizationId, "workfeed")) return null;
+    const settings = await ctx.db
+      .query("workfeedIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .unique();
+    return settings?.payPeriod ?? null;
   },
 });
 

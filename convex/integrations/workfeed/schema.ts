@@ -1,6 +1,16 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const payPeriodValidator = v.object({
+  frequency: v.union(
+    v.literal("weekly"),
+    v.literal("biweekly"),
+    v.literal("monthly"),
+  ),
+  startsAt: v.number(),
+  monthDay: v.union(v.number(), v.null()),
+});
+
 export const workfeedTables = {
   workfeedLaborDaily: defineTable({
     organizationId: v.string(),
@@ -45,6 +55,8 @@ export const workfeedTables = {
     enabled: v.boolean(),
     connectedAt: v.number(),
     updatedAt: v.number(),
+    // Copied from Workfeed settings during the daily sync.
+    payPeriod: v.optional(payPeriodValidator),
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_enabled_and_organizationId", ["enabled", "organizationId"]),
