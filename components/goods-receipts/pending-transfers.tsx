@@ -43,6 +43,10 @@ export function PendingTransfers() {
     api.goodsReceipts.listPendingTransfers,
     canRegister && locationId ? { locationId } : "skip",
   );
+  const orders = useQuery(
+    api.goodsReceipts.listPendingOrders,
+    canRegister && locationId ? { locationId } : "skip",
+  );
 
   if (!access) {
     return (
@@ -81,7 +85,7 @@ export function PendingTransfers() {
     );
   }
 
-  if (result === undefined) {
+  if (result === undefined || orders === undefined) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 6 }, (_, index) => (
@@ -91,16 +95,17 @@ export function PendingTransfers() {
     );
   }
 
-  if (result.transfers.length === 0) {
+  if (result.transfers.length === 0 && orders.orders.length === 0) {
     return (
       <Empty appearance="outlined" className="min-h-80">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PackageCheckIcon />
           </EmptyMedia>
-          <EmptyTitle>Ingen transfers afventer modtagelse</EmptyTitle>
+          <EmptyTitle>Intet afventer modtagelse</EmptyTitle>
           <EmptyDescription>
-            Der er ingen åbne transfers til den valgte lokation.
+            Der er ingen åbne transfers eller bestillinger til den valgte
+            lokation.
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
@@ -121,7 +126,7 @@ export function PendingTransfers() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl">
           <h2 className="text-xl font-semibold tracking-tight">
-            Transfers der afventer modtagelse
+            Afventer modtagelse
           </h2>
         </div>
         <Link
@@ -142,7 +147,41 @@ export function PendingTransfers() {
         </Alert>
       ) : null}
 
+      {orders.truncated ? (
+        <Alert>
+          <AlertTitle>Listen viser de første 100 bestillinger</AlertTitle>
+          <AlertDescription>
+            Registrér de ældste modtagelser for at se resten.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {orders.orders.map((order) => (
+          <Link
+            key={order.id}
+            href={`/goods-receipts/manual?order=${order.id}`}
+            aria-label={`Registrér bestilling${order.supplierName ? ` fra ${order.supplierName}` : ""}`}
+            className="group rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Card appearance="link" className="h-full">
+              <CardHeader>
+                <CardTitle>{order.supplierName ?? "Bestilling"}</CardTitle>
+                <CardDescription>
+                  {dateTimeFormatter.format(order.createdAt)} ·{" "}
+                  {order.createdByName}
+                </CardDescription>
+                <CardAction>
+                  <Badge variant="secondary">Bestilling</Badge>
+                </CardAction>
+              </CardHeader>
+              <CardFooter appearance="emphasized" className="justify-between">
+                <span>Registrér modtagelse</span>
+                <ArrowRightIcon aria-hidden="true" />
+              </CardFooter>
+            </Card>
+          </Link>
+        ))}
         {result.transfers.map((transfer) => (
           <Link
             key={transfer.id}
