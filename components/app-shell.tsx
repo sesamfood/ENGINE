@@ -1399,7 +1399,8 @@ export function AppShell({
     pathname === "/waste" || pathname.startsWith("/waste/");
   const showOwnChecksHeader =
     pathname === "/own-checks" || pathname.startsWith("/own-checks/");
-  const showStaffFoodHeader = pathname === "/staff-food";
+  const showStaffFoodHeader =
+    pathname === "/staff-food" || pathname.startsWith("/staff-food/");
   const showEmployeesHeader =
     pathname === "/employees" || pathname.startsWith("/employees/");
   const showTransfersHeader =

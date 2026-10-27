@@ -78,6 +78,7 @@ import { cn } from "@/lib/utils";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { useMutation, useQuery } from "convex/react";
 import {
+  ChartNoAxesColumnIcon,
   CheckIcon,
   Clock3Icon,
   ImageIcon,
@@ -172,6 +173,7 @@ function StaffFoodHeader({
   onEmployeeChange,
   isLocked,
   lockedName,
+  showReport,
 }: {
   locationId: Id<"locations"> | null;
   locations: Array<{ id: Id<"locations">; name: string }> | undefined;
@@ -181,6 +183,7 @@ function StaffFoodHeader({
   onEmployeeChange: () => void;
   isLocked: boolean;
   lockedName?: string | null;
+  showReport: boolean;
 }) {
   return (
     <div className="grid gap-5 md:grid-cols-(--grid-cols-content-action) md:items-end">
@@ -188,9 +191,21 @@ function StaffFoodHeader({
         <p className="text-sm font-semibold uppercase tracking-widest text-primary">
           Staff food
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Staff food
-        </h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Staff food
+          </h1>
+          {showReport && !employeeName ? (
+            <Button
+              variant="outline"
+              render={<Link href="/staff-food/report" />}
+              nativeButton={false}
+            >
+              <ChartNoAxesColumnIcon data-icon="inline-start" />
+              Rapport
+            </Button>
+          ) : null}
+        </div>
       </div>
       <div
         className={cn(
@@ -244,6 +259,7 @@ export function StaffFoodRegistration() {
       kiosk?.kioskModeEnabled &&
       kiosk.settings?.enabledPages.includes("staffFood.register"),
     );
+  const canReport = usePermission("staffFood.report");
   const [now, setNow] = useState(() => Date.now());
   const [sessionId, setSessionId] = useState<Id<"staffFoodSessions"> | null>(
     null,
@@ -327,6 +343,7 @@ export function StaffFoodRegistration() {
       employeeName={state?.session.employeeName}
       isLocked={isLocked}
       lockedName={lockedName}
+      showReport={canReport && !kiosk?.kioskModeEnabled}
       onLocationChange={() => {
         setSessionId(null);
         setBasket({});
