@@ -68,6 +68,7 @@ export type LocationUpdateInput = {
   currency?: string | null;
   timeZone?: string | null;
   status?: LocationStatus | null;
+  hiddenFromDashboards?: boolean;
 };
 
 export type LocationMutationErrorCode =
@@ -550,6 +551,10 @@ export async function updateLocationWithAuth(
       input.status === undefined
         ? location.status
         : input.status ?? undefined,
+    hiddenFromDashboards:
+      input.hiddenFromDashboards === undefined
+        ? location.hiddenFromDashboards
+        : input.hiddenFromDashboards || undefined,
   });
   const effectiveTimeZone = await resolveTimeZone(
     ctx,

@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 
 type OwnershipType = "owned" | "franchise" | "jointVenture" | "license";
 type LocationStatus = "planned" | "open" | "temporarilyClosed" | "closed";
@@ -64,6 +65,7 @@ type Draft = {
   currency: string;
   timeZone: string;
   status: LocationStatus | null;
+  hiddenFromDashboards: boolean;
 };
 
 const emptyDraft: Draft = {
@@ -78,6 +80,7 @@ const emptyDraft: Draft = {
   currency: "",
   timeZone: "",
   status: null,
+  hiddenFromDashboards: false,
 };
 
 function dateValue(timestamp: number | null) {
@@ -138,6 +141,7 @@ function LocationDetailsDialog({
           currency: initialDetails.currency ?? "",
           timeZone: initialDetails.timeZone ?? "",
           status: initialDetails.status,
+          hiddenFromDashboards: initialDetails.hiddenFromDashboards,
         }
       : emptyDraft);
 
@@ -203,6 +207,7 @@ function LocationDetailsDialog({
         currency: draft.currency || null,
         timeZone: draft.timeZone || null,
         status: draft.status,
+        hiddenFromDashboards: draft.hiddenFromDashboards,
       });
       if (warning) toast.warning(warning);
       else toast.success("Lokationsoplysningerne er gemt");
@@ -476,6 +481,19 @@ function LocationDetailsDialog({
                 </Select>
               </Field>
             </div>
+            <SettingsSwitchField
+              id="location-hidden-from-dashboards"
+              label="Skjul på dashboards"
+              help={{
+                label: "Skjul på dashboards",
+                content: "Lokationen vises ikke i lokationsvalg, tal eller grafer på dashboards. Data slettes ikke.",
+              }}
+              checked={draft.hiddenFromDashboards}
+              disabled={saving}
+              onCheckedChange={(hiddenFromDashboards) =>
+                setDraft({ ...draft, hiddenFromDashboards })
+              }
+            />
           </FieldSet>
         )}
         <DialogFooter>

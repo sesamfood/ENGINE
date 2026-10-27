@@ -357,15 +357,20 @@ export async function resolveMetricParams(
   if (scope.locationIds?.some((locationId) => !hasAccess(locationId))) {
     throw new ConvexError("Du har ikke adgang til en eller flere lokationer");
   }
-  const selectedIds =
+  const shownOnDashboards = (locationId: Id<"locations">) =>
+    !byId.get(locationId)?.hiddenFromDashboards;
+  const selectedIds = (
     scope.locationIds === null
       ? candidateLocations
           .filter((location) => hasAccess(location._id))
           .map((location) => location._id)
-      : [...new Set(scope.locationIds)];
+      : [...new Set(scope.locationIds)]
+  ).filter(shownOnDashboards);
   const anonymousExpansion = widenAnonymousScope && selectedIds.length > 0;
   const anonymousSelectedIds = anonymousExpansion
-    ? candidateLocations.map((location) => location._id)
+    ? candidateLocations
+        .map((location) => location._id)
+        .filter(shownOnDashboards)
     : selectedIds;
   const scopeTruncated =
     selectedIds.length > MAX_SCOPE_LOCATIONS;
