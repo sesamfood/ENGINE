@@ -5,6 +5,8 @@ import {
   requireOrganization,
   requirePermission,
 } from "./lib/auth";
+import { closedPeriodAround } from "../lib/count-window";
+import { getLocationOpeningHours } from "./lib/countWindow";
 import { getKioskDayTasks, kioskDayState } from "./lib/kioskDay";
 import type { Id } from "./_generated/dataModel";
 import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
@@ -65,6 +67,27 @@ export const getTasks = query({
     requireLocationAccess(auth, args.locationId);
     await requireOrganizationLocation(ctx, auth.organizationId, args.locationId);
     return await getKioskDayTasks(ctx, auth.organizationId, args.locationId);
+  },
+});
+
+// Closing and opening times around `now`, for previewing the kiosk checklist.
+export const getPreviewTimes = query({
+  args: { locationId: v.id("locations"), now: v.number() },
+  returns: v.object({ closedAt: v.number(), reopensAt: v.number(), timeZone: v.string() }),
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.now) || args.now <= 0) {
+      throw new ConvexError("Tidspunktet er ugyldigt");
+    }
+    const auth = await requireDayTaskManager(ctx);
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireOrganizationLocation(ctx, auth.organizationId, args.locationId);
+    const { weekly, specials, timeZone } = await getLocationOpeningHours(
+      ctx,
+      auth.organizationId,
+      location,
+    );
+    const { closedAt, reopensAt } = closedPeriodAround(args.now, weekly, specials, timeZone);
+    return { closedAt, reopensAt, timeZone };
   },
 });
 

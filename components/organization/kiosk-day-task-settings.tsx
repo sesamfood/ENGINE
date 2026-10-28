@@ -1,18 +1,27 @@
 "use client";
 
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { CopyIcon, LinkIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { CopyIcon, EyeIcon, LinkIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
   DropdownMenu,
@@ -37,6 +46,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { KioskDayChecklistPreview } from "@/components/kiosk/kiosk-day-tasks";
 import {
   KioskDayTaskIconView,
   kioskDayTaskIconOptions,
@@ -181,11 +191,15 @@ function TaskList({
   phase,
   tasks,
   linkablePages,
+  locationId,
+  locationName,
   onChange,
 }: {
   phase: (typeof phases)[number];
   tasks: KioskDayTask[];
   linkablePages: KioskDestinationId[];
+  locationId: Id<"locations">;
+  locationName: string;
   onChange: (tasks: KioskDayTask[]) => void;
 }) {
   return (
@@ -193,6 +207,29 @@ function TaskList({
       <CardHeader>
         <CardTitle>{phase.title}</CardTitle>
         <CardDescription>{phase.description}</CardDescription>
+        <CardAction>
+          <Dialog>
+            <DialogTrigger render={<Button type="button" variant="outline" size="lg" />}>
+              <EyeIcon data-icon="inline-start" />
+              Forhåndsvis
+            </DialogTrigger>
+            <DialogContent className="max-h-(--spacing-viewport-inset) overflow-y-auto sm:max-w-5xl">
+              <DialogHeader>
+                <DialogTitle>Forhåndsvisning: {phase.title}</DialogTitle>
+                <DialogDescription>
+                  Sådan ser siden ud på kiosken. Ændringer, der ikke er gemt, er med.
+                </DialogDescription>
+              </DialogHeader>
+              <KioskDayChecklistPreview
+                phase={phase.id}
+                tasks={tasks.filter((task) => task.title.trim())}
+                locationId={locationId}
+                locationName={locationName}
+                enabledPages={linkablePages}
+              />
+            </DialogContent>
+          </Dialog>
+        </CardAction>
       </CardHeader>
       <CardContent appearance="compact" className="flex flex-col">
         {tasks.length === 0 ? (
@@ -229,11 +266,13 @@ function TaskList({
 
 function TaskEditor({
   locationId,
+  locationName,
   initial,
   otherLocations,
   linkablePages,
 }: {
   locationId: Id<"locations">;
+  locationName: string;
   initial: Tasks;
   otherLocations: LocationOption[];
   linkablePages: KioskDestinationId[];
@@ -299,6 +338,8 @@ function TaskEditor({
             phase={phase}
             tasks={tasks[phase.id]}
             linkablePages={linkablePages}
+            locationId={locationId}
+            locationName={locationName}
             onChange={(next) => setTasks((current) => ({ ...current, [phase.id]: next }))}
           />
         ))}
@@ -379,6 +420,7 @@ export function KioskDayTaskSettings() {
         <TaskEditor
           key={locationId}
           locationId={locationId}
+          locationName={locations.find((location) => location.id === locationId)?.name ?? ""}
           initial={tasks}
           otherLocations={locations.filter((location) => location.id !== locationId)}
           linkablePages={linkablePages.filter(isKioskDestinationId)}

@@ -88,12 +88,14 @@ function TaskRow({
   task,
   done,
   showLink,
+  preview,
   onToggle,
 }: {
   index: number;
   task: KioskDayTask;
   done: boolean;
   showLink: boolean;
+  preview: boolean;
   onToggle: () => void;
 }) {
   return (
@@ -117,8 +119,10 @@ function TaskRow({
           <Button
             variant="outline"
             size="lg"
-            render={<Link href={kioskDestination(task.link).route} />}
-            nativeButton={false}
+            // Links do nothing in preview so unsaved settings are not lost.
+            {...(preview
+              ? { type: "button" as const }
+              : { render: <Link href={kioskDestination(task.link).route} />, nativeButton: false })}
           >
             {kioskDestination(task.link).label}
             <ArrowRightIcon data-icon="inline-end" />
@@ -144,19 +148,26 @@ function Checklist({
   tasks,
   scheduledAt,
   timeZone,
+  locationName,
+  enabledPages,
+  preview = false,
 }: {
   phase: keyof typeof copy;
   tasks: KioskDayTask[];
   scheduledAt: number | null;
   timeZone: string | null;
+  locationName: string | null;
+  enabledPages: string[];
+  preview?: boolean;
 }) {
-  const kiosk = useKiosk();
   const complete = useMutation(api.kioskDay.complete);
   const [openedAt] = useState(Date.now);
-  const people = useQuery(api.kioskDay.listResponsibleEmployees, { now: openedAt });
-  const enabledPages = kiosk?.settings?.enabledPages ?? [];
+  const people = useQuery(
+    api.kioskDay.listResponsibleEmployees,
+    preview ? "skip" : { now: openedAt },
+  );
   const { checked, toggle, clear } = useStoredChecks(
-    `engine.kiosk-day.${phase}.${tasks.map((task) => task.title).join("\n")}`,
+    `engine.kiosk-day.${preview ? "preview." : ""}${phase}.${tasks.map((task) => task.title).join("\n")}`,
     tasks.length,
   );
   // An employee id, or "new:<name>" for a typed name.
@@ -187,19 +198,19 @@ function Checklist({
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-semibold tracking-tight uppercase">{text.title}</h1>
           <p className="text-muted-foreground">{text.description}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {kiosk?.locationName ? (
+          {locationName ? (
             <div className="flex flex-col gap-0.5 rounded-lg border bg-card px-3 py-2">
               <Eyebrow>Lokation</Eyebrow>
               <p className="flex items-center gap-1.5 font-semibold uppercase">
                 <MapPinIcon aria-hidden="true" className="size-4 text-primary" />
-                {kiosk.locationName}
+                {locationName}
               </p>
             </div>
           ) : null}
@@ -276,6 +287,7 @@ function Checklist({
                 task={task}
                 done={checked.includes(index)}
                 showLink={Boolean(task.link && enabledPages.includes(task.link))}
+                preview={preview}
                 onToggle={() => toggle(index)}
               />
             ))}
@@ -307,12 +319,12 @@ function Checklist({
                 onValueChange={setResponsible}
                 placeholder="Vælg medarbejder"
                 ariaLabel="Godkendt af"
-                disabled={people === undefined}
+                disabled={preview || people === undefined}
               />
             </Field>
             <Button
               size="lg"
-              disabled={!allDone || !responsible || pending}
+              disabled={preview || !allDone || !responsible || pending}
               onClick={submit}
             >
               {pending ? <Spinner data-icon="inline-start" /> : null}
@@ -321,12 +333,42 @@ function Checklist({
           </div>
         </CardContent>
       </Card>
-    </main>
+    </div>
+  );
+}
+
+// Shows the kiosk checklist for unsaved tasks without registering anything.
+export function KioskDayChecklistPreview({
+  phase,
+  tasks,
+  locationId,
+  locationName,
+  enabledPages,
+}: {
+  phase: keyof typeof copy;
+  tasks: KioskDayTask[];
+  locationId: Id<"locations">;
+  locationName: string | null;
+  enabledPages: string[];
+}) {
+  const [now] = useState(Date.now);
+  const times = useQuery(api.kioskDay.getPreviewTimes, { locationId, now });
+  return (
+    <Checklist
+      preview
+      phase={phase}
+      tasks={tasks}
+      scheduledAt={times ? (phase === "endOfDay" ? times.closedAt : times.reopensAt) : null}
+      timeZone={times?.timeZone ?? null}
+      locationName={locationName}
+      enabledPages={enabledPages}
+    />
   );
 }
 
 export function KioskDayTasks() {
   const day = useKioskDay();
+  const kiosk = useKiosk();
   const home = useHomeDestination();
   const router = useRouter();
   const phase = day?.phase ?? null;
@@ -344,12 +386,16 @@ export function KioskDayTasks() {
   }
 
   return (
-    <Checklist
-      key={`${day.phase}:${day.tasks.map((task) => task.title).join("\n")}`}
-      phase={day.phase}
-      tasks={day.tasks}
-      scheduledAt={day.scheduledAt}
-      timeZone={day.timeZone}
-    />
+    <main>
+      <Checklist
+        key={`${day.phase}:${day.tasks.map((task) => task.title).join("\n")}`}
+        phase={day.phase}
+        tasks={day.tasks}
+        scheduledAt={day.scheduledAt}
+        timeZone={day.timeZone}
+        locationName={kiosk?.locationName ?? null}
+        enabledPages={kiosk?.settings?.enabledPages ?? []}
+      />
+    </main>
   );
 }
