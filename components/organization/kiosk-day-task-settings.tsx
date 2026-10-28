@@ -191,12 +191,14 @@ function TaskList({
   phase,
   tasks,
   linkablePages,
+  locationId,
   locationName,
   onChange,
 }: {
   phase: (typeof phases)[number];
   tasks: KioskDayTask[];
   linkablePages: KioskDestinationId[];
+  locationId: Id<"locations">;
   locationName: string;
   onChange: (tasks: KioskDayTask[]) => void;
 }) {
@@ -221,6 +223,7 @@ function TaskList({
               <KioskDayChecklistPreview
                 phase={phase.id}
                 tasks={tasks.filter((task) => task.title.trim())}
+                locationId={locationId}
                 locationName={locationName}
                 enabledPages={linkablePages}
               />
@@ -335,6 +338,7 @@ function TaskEditor({
             phase={phase}
             tasks={tasks[phase.id]}
             linkablePages={linkablePages}
+            locationId={locationId}
             locationName={locationName}
             onChange={(next) => setTasks((current) => ({ ...current, [phase.id]: next }))}
           />

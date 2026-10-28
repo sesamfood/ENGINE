@@ -119,9 +119,9 @@ function TaskRow({
           <Button
             variant="outline"
             size="lg"
-            // Links stay inert in preview so unsaved settings are not lost.
+            // Links do nothing in preview so unsaved settings are not lost.
             {...(preview
-              ? { disabled: true }
+              ? { type: "button" as const }
               : { render: <Link href={kioskDestination(task.link).route} />, nativeButton: false })}
           >
             {kioskDestination(task.link).label}
@@ -341,21 +341,25 @@ function Checklist({
 export function KioskDayChecklistPreview({
   phase,
   tasks,
+  locationId,
   locationName,
   enabledPages,
 }: {
   phase: keyof typeof copy;
   tasks: KioskDayTask[];
+  locationId: Id<"locations">;
   locationName: string | null;
   enabledPages: string[];
 }) {
+  const [now] = useState(Date.now);
+  const times = useQuery(api.kioskDay.getPreviewTimes, { locationId, now });
   return (
     <Checklist
       preview
       phase={phase}
       tasks={tasks}
-      scheduledAt={null}
-      timeZone={null}
+      scheduledAt={times ? (phase === "endOfDay" ? times.closedAt : times.reopensAt) : null}
+      timeZone={times?.timeZone ?? null}
       locationName={locationName}
       enabledPages={enabledPages}
     />
