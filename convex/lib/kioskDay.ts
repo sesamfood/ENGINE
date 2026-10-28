@@ -71,6 +71,7 @@ export async function kioskDayState(
   organizationId: string,
   locationId: Id<"locations">,
   now: number,
+  forceEndOfDay = false, // TEMP: testing
 ) {
   const tasks = await getKioskDayTasks(ctx, organizationId, locationId);
   const startOfDay = await startOfDayDue(ctx, organizationId, locationId, tasks.startOfDay);
@@ -79,6 +80,10 @@ export async function kioskDayState(
   }
   if (!tasks.endOfDay.length) {
     return { phase: null, tasks: [], nextTransitionAt: null };
+  }
+  // TEMP: testing
+  if (forceEndOfDay) {
+    return { phase: "endOfDay" as const, tasks: tasks.endOfDay, nextTransitionAt: null };
   }
 
   const location = await requireOrganizationLocation(ctx, organizationId, locationId);

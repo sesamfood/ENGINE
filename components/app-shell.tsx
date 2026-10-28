@@ -187,6 +187,9 @@ const FeatureLockContext = createContext(false);
 type KioskDayState = {
   phase: "endOfDay" | "startOfDay" | null;
   tasks: string[];
+  // TEMP: testing
+  forceEndOfDay: boolean;
+  setForceEndOfDay: (force: boolean) => void;
 };
 
 const KioskDayContext = createContext<KioskDayState | null>(null);
@@ -622,9 +625,10 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [queryNow, setQueryNow] = useState(minuteTimestamp);
+  const [forceEndOfDay, setForceEndOfDay] = useState(false); // TEMP: testing
   const state = useQuery(
     api.kioskDay.getState,
-    kiosk?.kioskModeEnabled ? { now: queryNow } : "skip",
+    kiosk?.kioskModeEnabled ? { now: queryNow, forceEndOfDay } : "skip",
   );
   const current = useLastDefined(state, kiosk?.locationId ?? "kiosk");
   const nextTransitionAt = current?.nextTransitionAt;
@@ -670,7 +674,9 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <KioskDayContext.Provider value={current ?? null}>
+    <KioskDayContext.Provider
+      value={current ? { ...current, forceEndOfDay, setForceEndOfDay } : null}
+    >
       {children}
     </KioskDayContext.Provider>
   );
@@ -679,6 +685,19 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
 function EndOfDayBanner() {
   const day = useKioskDay();
   const pathname = usePathname();
+  // TEMP: testing
+  if (day && !day.phase) {
+    return (
+      <Button
+        variant="outline"
+        size="lg"
+        className="mb-4"
+        onClick={() => day.setForceEndOfDay(true)}
+      >
+        Test: Simulér lukketid
+      </Button>
+    );
+  }
   if (day?.phase !== "endOfDay" || pathname === KIOSK_DAY_PATH) return null;
   return (
     <Alert className="mb-4">

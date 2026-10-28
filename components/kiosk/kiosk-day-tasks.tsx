@@ -30,9 +30,13 @@ const copy = {
 function Checklist({
   phase,
   tasks,
+  forceEndOfDay,
+  onCompleted,
 }: {
   phase: keyof typeof copy;
   tasks: string[];
+  forceEndOfDay: boolean; // TEMP: testing
+  onCompleted: () => void;
 }) {
   const complete = useMutation(api.kioskDay.complete);
   const [checked, setChecked] = useState<number[]>([]);
@@ -43,7 +47,8 @@ function Checklist({
   async function submit() {
     setPending(true);
     try {
-      await complete({ phase, tasks });
+      await complete({ phase, tasks, forceEndOfDay });
+      onCompleted();
       toast.success(text.done);
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Opgaverne kunne ikke registreres. Prøv igen."));
@@ -115,6 +120,8 @@ export function KioskDayTasks() {
       key={`${day.phase}:${day.tasks.join("\n")}`}
       phase={day.phase}
       tasks={day.tasks}
+      forceEndOfDay={day.forceEndOfDay}
+      onCompleted={() => day.setForceEndOfDay(false)}
     />
   );
 }

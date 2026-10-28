@@ -88,7 +88,7 @@ export const saveTasks = mutation({
 });
 
 export const getState = query({
-  args: { now: v.number() },
+  args: { now: v.number(), forceEndOfDay: v.optional(v.boolean()) }, // TEMP: testing
   returns: v.object({
     phase: v.union(phaseValidator, v.null()),
     tasks: v.array(v.string()),
@@ -99,17 +99,33 @@ export const getState = query({
       throw new ConvexError("Tidspunktet er ugyldigt");
     }
     const { auth, locationId } = await requireKioskLocation(ctx);
-    return await kioskDayState(ctx, auth.organizationId, locationId, args.now);
+    return await kioskDayState(
+      ctx,
+      auth.organizationId,
+      locationId,
+      args.now,
+      args.forceEndOfDay,
+    );
   },
 });
 
 export const complete = mutation({
-  args: { phase: phaseValidator, tasks: v.array(v.string()) },
+  args: {
+    phase: phaseValidator,
+    tasks: v.array(v.string()),
+    forceEndOfDay: v.optional(v.boolean()), // TEMP: testing
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { auth, locationId } = await requireKioskLocation(ctx);
     if (auth.readOnly || !auth.userId) throw new ConvexError("Du har ikke adgang");
-    const state = await kioskDayState(ctx, auth.organizationId, locationId, Date.now());
+    const state = await kioskDayState(
+      ctx,
+      auth.organizationId,
+      locationId,
+      Date.now(),
+      args.forceEndOfDay,
+    );
     if (state.phase !== args.phase) {
       throw new ConvexError(
         args.phase === "endOfDay"
