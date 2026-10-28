@@ -283,16 +283,25 @@ export const moveMember = mutation({
     ) {
       throw new ConvexError("Brugere får adgang til en testorganisation via kildeorganisationen");
     }
+    // The last member may leave an organization empty; otherwise keep an Administrator.
     if (member.role === "admin") {
-      const admins = await adapter.findMany<AuthMember>({
-        model: "member",
-        where: [
-          { field: "organizationId", value: source.id },
-          { field: "role", value: "admin" },
-        ],
-        limit: 2,
-      });
-      if (!admins.some((admin) => admin.id !== member.id)) {
+      const [admins, members] = await Promise.all([
+        adapter.findMany<AuthMember>({
+          model: "member",
+          where: [
+            { field: "organizationId", value: source.id },
+            { field: "role", value: "admin" },
+          ],
+          limit: 2,
+        }),
+        adapter.findMany<AuthMember>({
+          model: "member",
+          where: [{ field: "organizationId", value: source.id }],
+          limit: 2,
+        }),
+      ]);
+      const isOnlyMember = !members.some((other) => other.id !== member.id);
+      if (!isOnlyMember && !admins.some((admin) => admin.id !== member.id)) {
         throw new ConvexError(
           "Giv en anden bruger rollen Administrator, før du flytter den sidste Administrator",
         );
