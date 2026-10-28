@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
+import { deleteMemberLocationAccess } from "../access";
 import {
   internalAction,
   internalQuery,
@@ -18,6 +19,12 @@ import {
 } from "../lib/testOrganizations";
 import { requirePlatformOrganization } from "./organizations";
 
+const roleValidator = v.union(
+  v.literal("admin"),
+  v.literal("manager"),
+  v.literal("member"),
+);
+
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type AuthInvitation = {
@@ -26,6 +33,14 @@ type AuthInvitation = {
   email: string;
   status: string;
   inviterId: string;
+};
+
+type AuthMember = {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: string;
+  kioskLocationId?: string | null;
 };
 
 function normalizeEmail(value: string) {
@@ -235,6 +250,79 @@ export const reactivate = mutation({
       organizationId: organization.id,
       action: "organization.reactivated",
       summary: `Organisationen ${organization.name} er genaktiveret`,
+    });
+    return null;
+  },
+});
+
+// Users belong to one organization, so moving rewrites the membership in place.
+export const moveMember = mutation({
+  args: { memberId: v.string(), organizationId: v.string(), role: roleValidator },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const actor = await requirePlatformMember(ctx, "owner");
+    const adapter = getDatabaseAdapter(ctx);
+    const member = await adapter.findOne<AuthMember>({
+      model: "member",
+      where: [{ field: "id", value: args.memberId }],
+    });
+    if (!member) throw new ConvexError("Brugeren blev ikke fundet");
+    if (member.kioskLocationId) {
+      throw new ConvexError("Kioskkonti kan ikke flyttes");
+    }
+    const [source, target] = await Promise.all([
+      requirePlatformOrganization(ctx, member.organizationId),
+      requirePlatformOrganization(ctx, args.organizationId),
+    ]);
+    if (source.id === target.id) {
+      throw new ConvexError("Brugeren er allerede i organisationen");
+    }
+    if (
+      (await getTestOrganization(ctx, source.id)) ||
+      (await getTestOrganization(ctx, target.id))
+    ) {
+      throw new ConvexError("Brugere får adgang til en testorganisation via kildeorganisationen");
+    }
+    if (member.role === "admin") {
+      const admins = await adapter.findMany<AuthMember>({
+        model: "member",
+        where: [
+          { field: "organizationId", value: source.id },
+          { field: "role", value: "admin" },
+        ],
+        limit: 2,
+      });
+      if (!admins.some((admin) => admin.id !== member.id)) {
+        throw new ConvexError(
+          "Giv en anden bruger rollen Administrator, før du flytter den sidste Administrator",
+        );
+      }
+    }
+    await deleteMemberLocationAccess(ctx, source.id, member.userId);
+    await adapter.update({
+      model: "member",
+      where: [{ field: "id", value: member.id }],
+      update: { organizationId: target.id, role: args.role },
+    });
+    await adapter.updateMany({
+      model: "session",
+      where: [{ field: "userId", value: member.userId }],
+      update: { activeOrganizationId: target.id },
+    });
+    const user = await adapter.findOne<{ email: string }>({
+      model: "user",
+      where: [{ field: "id", value: member.userId }],
+    });
+    const email = user?.email ?? member.userId;
+    await recordPlatformAudit(ctx, actor, {
+      organizationId: source.id,
+      action: "organization.memberMovedOut",
+      summary: `${email} er flyttet til ${target.name}`,
+    });
+    await recordPlatformAudit(ctx, actor, {
+      organizationId: target.id,
+      action: "organization.memberMovedIn",
+      summary: `${email} er flyttet hertil fra ${source.name}`,
     });
     return null;
   },

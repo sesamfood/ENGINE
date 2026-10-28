@@ -66,7 +66,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { integrationRegistry, type IntegrationId } from "@/integrations/registry";
-import { systemRoleNames } from "@/lib/auth-permissions";
+import { systemRoleKeys, systemRoleNames, type SystemOrganizationRole } from "@/lib/auth-permissions";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Organization = NonNullable<
@@ -171,6 +171,127 @@ function StatusAction({ organization }: { organization: Organization }) {
           >
             {saving ? <Spinner data-icon="inline-start" /> : null}
             {suspended ? "Genaktivér" : "Suspendér"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+const roleOptions = systemRoleKeys.map((role) => ({
+  value: role,
+  label: systemRoleNames[role],
+}));
+
+function MoveMemberAction({
+  organization,
+  member,
+}: {
+  organization: Organization;
+  member: Organization["members"][number];
+}) {
+  const moveMember = useMutation(api.platform.lifecycle.moveMember);
+  const organizations = useQuery(api.platform.organizations.options);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [targetId, setTargetId] = useState("");
+  const [role, setRole] = useState<SystemOrganizationRole>(
+    systemRoleKeys.includes(member.role as SystemOrganizationRole)
+      ? (member.role as SystemOrganizationRole)
+      : "member",
+  );
+  const targetOptions = (organizations ?? [])
+    .filter((option) => option.id !== organization.id)
+    .map((option) => ({ value: option.id, label: option.name }));
+  const target = targetOptions.find((option) => option.value === targetId);
+
+  async function confirm() {
+    if (!target) return;
+    setSaving(true);
+    try {
+      await moveMember({ memberId: member.id, organizationId: target.value, role });
+      toast.success(`${member.name} er flyttet til ${target.label}`);
+      setOpen(false);
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Brugeren kunne ikke flyttes. Prøv igen."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger render={<Button type="button" variant="outline" />}>
+        Flyt
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Flyt {member.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Brugeren forlader {organization.name} og mister sin lokationsadgang
+            her. I den nye organisation får brugeren adgang efter den valgte
+            rolle.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`move-${member.id}-organization`}>
+              Organisation
+            </FieldLabel>
+            <Select
+              items={targetOptions}
+              value={targetId}
+              disabled={saving || organizations === undefined}
+              onValueChange={(value) => setTargetId(value as string)}
+            >
+              <SelectTrigger
+                id={`move-${member.id}-organization`}
+                className="h-11! w-full"
+              >
+                <SelectValue placeholder="Vælg organisation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {targetOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`move-${member.id}-role`}>Rolle</FieldLabel>
+            <Select
+              items={roleOptions}
+              value={role}
+              disabled={saving}
+              onValueChange={(value) => setRole(value as SystemOrganizationRole)}
+            >
+              <SelectTrigger id={`move-${member.id}-role`} className="h-11! w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {roleOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={saving}>Annullér</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={saving || !target}
+            onClick={() => void confirm()}
+          >
+            {saving ? <Spinner data-icon="inline-start" /> : null}
+            Flyt
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -453,6 +574,7 @@ function OverviewTab({ organization }: { organization: Organization }) {
     const interval = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+  const canMove = role === "owner" && testOrganization?.kind === "source";
   const invitations = organization.invitations.filter(
     (invitation) => invitation.expiresAt > now,
   );
@@ -470,6 +592,7 @@ function OverviewTab({ organization }: { organization: Organization }) {
                   <TableHead>Navn</TableHead>
                   <TableHead>E-mail</TableHead>
                   <TableHead>Rolle</TableHead>
+                  {canMove ? <TableHead className="w-0" /> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -478,6 +601,11 @@ function OverviewTab({ organization }: { organization: Organization }) {
                     <TableCell>{member.name}</TableCell>
                     <TableCell>{member.email}</TableCell>
                     <TableCell>{roleName(member.role)}</TableCell>
+                    {canMove ? (
+                      <TableCell>
+                        <MoveMemberAction organization={organization} member={member} />
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>
