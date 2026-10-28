@@ -874,6 +874,10 @@ export default defineSchema({
     normalizedName: v.string(),
     categoryId: v.id("categories"),
     defaultUnitId: v.id("units"),
+    // Amount the ingredient list produces; absent means one default unit.
+    recipeYield: v.optional(
+      v.object({ quantity: v.number(), unitId: v.id("units") }),
+    ),
     imageStorageId: v.optional(v.id("_storage")),
     maxTemperatureCelsius: v.optional(v.number()),
     expiry: v.optional(expiryValidator),

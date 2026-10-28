@@ -39,6 +39,22 @@ export function createProductStockResolver(
     return rows;
   }
 
+  // Default units of the product that one batch of its recipe produces.
+  async function recipeYield(id: Id<"products">) {
+    const row = await product(id);
+    if (!row.recipeYield) return 1;
+    const quantity = await toDefaultUnit(
+      ctx,
+      organizationId,
+      id,
+      row.recipeYield.unitId,
+      row.recipeYield.quantity,
+    );
+    if (!quantity)
+      throw new ConvexError("Opskriftens udbytte mangler en gyldig enhed");
+    return quantity;
+  }
+
   async function expand(
     id: Id<"products">,
     quantity: number,
@@ -61,6 +77,7 @@ export function createProductStockResolver(
         },
       ];
     const nextPath = new Set(path).add(id);
+    const batches = quantity / (await recipeYield(id));
     const result = [];
     for (const ingredient of ingredients) {
       const converted = await toDefaultUnit(
@@ -68,7 +85,7 @@ export function createProductStockResolver(
         organizationId,
         ingredient.ingredientProductId,
         ingredient.unitId,
-        ingredient.quantity * quantity,
+        ingredient.quantity * batches,
       );
       if (converted === null)
         throw new ConvexError(
@@ -83,5 +100,5 @@ export function createProductStockResolver(
     return result;
   }
 
-  return { expand, recipe };
+  return { expand, recipe, recipeYield };
 }

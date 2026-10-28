@@ -70,6 +70,14 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -348,6 +356,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
   ]);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([]);
+  const [yieldQuantity, setYieldQuantity] = useState("1");
+  // Unit row key; falls back to the default unit when missing.
+  const [yieldUnitKey, setYieldUnitKey] = useState<string | null>(null);
   const [addableIngredientRows, setAddableIngredientRows] = useState<
     AddableIngredientRow[]
   >([]);
@@ -395,6 +406,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         factor: factorInputValue(unit.factorToDefault),
         isDefault: unit.isDefault,
       })),
+    );
+    setYieldQuantity(product.recipeYield?.quantity.toString() ?? "1");
+    setYieldUnitKey(
+      product.recipeYield ? `unit-${product.recipeYield.unitId}` : null,
     );
     setIngredientRows(
       product.ingredients.map((ingredient) => ({
@@ -622,6 +637,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         : "standardenhed"))
     : "standardenhed";
 
+  const yieldUnitRow =
+    unitRows.find((row) => row.key === yieldUnitKey) ?? defaultRow;
+
   function unitName(row: UnitRow) {
     return (
       unitOptions.find((option) => option.value === row.unitValue)?.label ??
@@ -729,6 +747,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       nextErrors.units = "Hver enhed kan kun tilføjes én gang";
     }
     validateIngredientRows(ingredientRows, nextErrors);
+    const yieldValue = Number(yieldQuantity);
+    if (
+      ingredientRows.length > 0 &&
+      (!Number.isFinite(yieldValue) || yieldValue <= 0)
+    ) {
+      nextErrors.recipeYield = "Indtast et udbytte større end nul";
+    }
     validateIngredientRows(addableIngredientRows, nextErrors);
     if (imageFile) {
       const imageError = productImageError(imageFile);
@@ -778,6 +803,21 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           ]
         : [],
     );
+    const yieldUnit =
+      ingredients.length > 0 && yieldUnitRow?.unitValue
+        ? parseReference(yieldUnitRow.unitValue)
+        : null;
+    const recipeYield =
+      yieldUnit &&
+      (Number(yieldQuantity) !== 1 || !yieldUnitRow?.isDefault)
+        ? {
+            quantity: Number(yieldQuantity),
+            unit:
+              yieldUnit.kind === "existing"
+                ? { kind: "existing" as const, id: yieldUnit.id as Id<"units"> }
+                : yieldUnit,
+          }
+        : null;
     const addableIngredients = addableIngredientRows.flatMap((row) =>
       row.productId !== null && row.unitId !== null
         ? [
@@ -804,6 +844,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   : row.unit,
             })),
             ingredients,
+            recipeYield,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
             expiry: expiryValue.trim()
@@ -821,6 +862,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   : row.unit,
             })),
             ingredients,
+            recipeYield,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
             expiry: expiryValue.trim()
@@ -1270,7 +1312,61 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
                       Produktet har endnu ingen ingredienser.
                     </Empty>
-                  ) : null}
+                  ) : (
+                    <Field data-invalid={Boolean(errors.recipeYield)}>
+                      <FieldLabel htmlFor="recipe-yield">
+                        Ingredienserne giver
+                      </FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          id="recipe-yield"
+                          type="text"
+                          inputMode="decimal"
+                          value={yieldQuantity}
+                          onChange={(event) =>
+                            setYieldQuantity(event.target.value)
+                          }
+                          aria-invalid={Boolean(errors.recipeYield)}
+                          className="h-11 min-w-0 flex-1"
+                        />
+                        <Select
+                          items={unitRows
+                            .filter((row) => row.unitValue)
+                            .map((row) => ({
+                              value: row.key,
+                              label: unitName(row),
+                            }))}
+                          value={yieldUnitRow?.key ?? null}
+                          onValueChange={(next) => {
+                            if (next) setYieldUnitKey(next);
+                          }}
+                        >
+                          <SelectTrigger
+                            aria-label="Enhed for udbytte"
+                            className="h-11! w-40"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {unitRows
+                                .filter((row) => row.unitValue)
+                                .map((row) => (
+                                  <SelectItem key={row.key} value={row.key}>
+                                    {unitName(row)}
+                                  </SelectItem>
+                                ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <FieldDescription>
+                        Mængderne herunder bruges til at lave så meget af
+                        produktet.
+                      </FieldDescription>
+                      <FieldError>{errors.recipeYield}</FieldError>
+                    </Field>
+                  )}
                   {ingredientRows.map((row) => {
                     const selectedProduct = recipeProductOptions.find(
                       (option) => option.id === row.productId,
