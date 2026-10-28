@@ -421,7 +421,7 @@ export const isRoleRegistered = internalQuery({
   },
 });
 
-async function deleteMemberLocationAccess(
+export async function deleteMemberLocationAccess(
   ctx: MutationCtx,
   organizationId: string,
   userId: string,

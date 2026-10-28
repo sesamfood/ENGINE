@@ -163,6 +163,27 @@ export const list = query({
   },
 });
 
+// Targets for moving a user; test organizations follow their source.
+export const options = query({
+  args: {},
+  returns: v.array(v.object({ id: v.string(), name: v.string() })),
+  handler: async (ctx) => {
+    await requirePlatformMember(ctx, "owner");
+    const [organizations, tests] = await Promise.all([
+      getDatabaseAdapter(ctx).findMany<AuthOrganization>({
+        model: "organization",
+        sortBy: { field: "name", direction: "asc" },
+        limit: 500,
+      }),
+      ctx.db.query("testOrganizations").take(500),
+    ]);
+    const testIds = new Set(tests.map((test) => test.organizationId));
+    return organizations
+      .filter((organization) => !testIds.has(organization.id))
+      .map((organization) => ({ id: organization.id, name: organization.name }));
+  },
+});
+
 const auditRowValidator = v.object({
   id: v.string(),
   actorName: v.string(),
