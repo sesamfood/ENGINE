@@ -12,7 +12,9 @@ import {
   FlaskConicalIcon,
   CircleHelpIcon,
   CircleOffIcon,
+  ListChecksIcon,
   LogOutIcon,
+  MoonIcon,
   LayoutDashboardIcon,
   LifeBuoyIcon,
   ReceiptTextIcon,
@@ -35,6 +37,7 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { flushSync } from "react-dom";
 import {
   createContext,
   useContext,
@@ -55,6 +58,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
@@ -113,7 +117,8 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { cn } from "@/lib/utils";
 import { featureForPath, featureLabels, type FeatureId } from "@/lib/features";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
-import { kioskDestination, type KioskDestinationId } from "@/lib/kiosk";
+import { kioskDestinationMatches } from "@/lib/kiosk";
+import type { KioskDayTask } from "@/lib/kiosk-day";
 import {
   normalizeSidebarOrder,
   type SidebarItemId,
@@ -183,6 +188,20 @@ const AccessContext = createContext<AccessContextValue | null>(null);
 
 const FeatureLockContext = createContext(false);
 
+type KioskDayState = {
+  phase: "endOfDay" | "startOfDay" | null;
+  tasks: KioskDayTask[];
+  scheduledAt: number | null;
+  timeZone: string | null;
+  endOfDayDismissed: boolean;
+  dismissEndOfDay: () => void;
+};
+
+const KioskDayContext = createContext<KioskDayState | null>(null);
+
+export const KIOSK_DAY_PATH = "/day-tasks";
+const END_OF_DAY_DISMISSED_KEY = "engine.kiosk-day.dismissed";
+
 const KIOSK_WAKE_LOCK_KEY = "engine.kiosk.keep-screen-on";
 
 function useKioskWakeLock(enabled: boolean) {
@@ -233,6 +252,20 @@ function useKioskWakeLock(enabled: boolean) {
 
 export function useAccess() {
   return useContext(AccessContext);
+}
+
+export function useKioskDay() {
+  return useContext(KioskDayContext);
+}
+
+// True on a page linked from a task in the current day phase.
+function useOnLinkedDayTaskPage() {
+  const day = useKioskDay();
+  const pathname = usePathname();
+  return Boolean(
+    day?.phase &&
+      day.tasks.some((task) => task.link && kioskDestinationMatches(task.link, pathname)),
+  );
 }
 
 export function useKiosk() {
@@ -397,9 +430,12 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const home = useHomeDestination();
   const { disabled, pending } = useCurrentFeatureState();
+  const dayPhase = useKioskDay()?.phase;
+  const onDayTasks = pathname === KIOSK_DAY_PATH && Boolean(dayPhase);
 
   useEffect(() => {
     if (
+      onDayTasks ||
       !runtime?.kioskModeEnabled ||
       !runtime.settings ||
       !home ||
@@ -413,20 +449,19 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       }
       return;
     }
-    const allowed = runtime.settings.enabledPages.some(
-      (page) =>
-        kioskDestination(page as KioskDestinationId).route === pathname ||
-        (page === "ownChecks.today" &&
-          pathname.startsWith("/own-checks/check/")),
+    const allowed = runtime.settings.enabledPages.some((page) =>
+      kioskDestinationMatches(page, pathname),
     );
     if (!allowed && pathname !== home) router.replace(home);
-  }, [countLocked, disabled, home, pathname, pending, router, runtime]);
+  }, [countLocked, disabled, home, onDayTasks, pathname, pending, router, runtime]);
 
   useEffect(() => {
     const seconds = runtime?.kioskModeEnabled
       ? runtime.settings?.inactivitySeconds
       : null;
-    if (!seconds || !home || pathname === home || disabled || pending) return;
+    if (!seconds || !home || pathname === home || onDayTasks || disabled || pending) {
+      return;
+    }
     let timeout = window.setTimeout(
       () => window.location.replace(home),
       seconds * 1000,
@@ -459,6 +494,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   }, [
     disabled,
     home,
+    onDayTasks,
     pathname,
     pending,
     runtime?.kioskModeEnabled,
@@ -593,6 +629,142 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     <FeatureLockContext.Provider value={isLocked}>
       {children}
     </FeatureLockContext.Provider>
+  );
+}
+
+function KioskDayBoundary({ children }: { children: React.ReactNode }) {
+  const kiosk = useKiosk();
+  const countLocked = useContext(FeatureLockContext);
+  const pathname = usePathname();
+  const router = useRouter();
+  const [queryNow, setQueryNow] = useState(minuteTimestamp);
+  const [dismissedKey, setDismissedKey] = useState(() => {
+    try {
+      return window.sessionStorage.getItem(END_OF_DAY_DISMISSED_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const state = useQuery(
+    api.kioskDay.getState,
+    kiosk?.kioskModeEnabled ? { now: queryNow } : "skip",
+  );
+  const current = useLastDefined(state, kiosk?.locationId ?? "kiosk");
+  const nextTransitionAt = current?.nextTransitionAt;
+  const onLinkedPage = Boolean(
+    current?.phase &&
+      current.tasks.some((task) => task.link && kioskDestinationMatches(task.link, pathname)),
+  );
+  const startOfDayDue =
+    current?.phase === "startOfDay" && !countLocked && !onLinkedPage;
+
+  useEffect(() => {
+    if (nextTransitionAt === null || nextTransitionAt === undefined) return;
+    const refresh = () => setQueryNow(minuteTimestamp());
+    const timeout = window.setTimeout(
+      refresh,
+      Math.max(0, nextTransitionAt - Date.now()) + 100,
+    );
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && Date.now() >= nextTransitionAt) {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [nextTransitionAt]);
+
+  useEffect(() => {
+    if (startOfDayDue && pathname !== KIOSK_DAY_PATH) router.replace(KIOSK_DAY_PATH);
+  }, [pathname, router, startOfDayDue]);
+
+  if (kiosk?.kioskModeEnabled && current === undefined) {
+    return (
+      <main className="grid min-h-screen place-items-center" aria-label="Indlæser dagsopgaver">
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  if (startOfDayDue && pathname !== KIOSK_DAY_PATH) {
+    return (
+      <main className="grid min-h-screen place-items-center" aria-label="Åbner åbningsopgaver">
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  return (
+    <KioskDayContext.Provider
+      value={
+        current
+          ? {
+              ...current,
+              // Dismissal lasts until the closed period ends.
+              endOfDayDismissed: dismissedKey === String(current.nextTransitionAt),
+              dismissEndOfDay: () => {
+                const key = String(current.nextTransitionAt);
+                try {
+                  window.sessionStorage.setItem(END_OF_DAY_DISMISSED_KEY, key);
+                } catch {}
+                setDismissedKey(key);
+              },
+            }
+          : null
+      }
+    >
+      {children}
+    </KioskDayContext.Provider>
+  );
+}
+
+function KioskDayPrompts() {
+  const day = useKioskDay();
+  const pathname = usePathname();
+  const onLinkedPage = useOnLinkedDayTaskPage();
+  const countLocked = useContext(FeatureLockContext);
+  if (countLocked) return null;
+  if (!day?.phase || pathname === KIOSK_DAY_PATH) return null;
+  if (onLinkedPage) return null;
+  if (day.phase !== "endOfDay" || day.endOfDayDismissed) return null;
+
+  function dismiss() {
+    if (!day) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!document.startViewTransition || reduceMotion) {
+      day.dismissEndOfDay();
+      return;
+    }
+    // Morph the popup into the end-of-day shortcut (data-view-transition="end-of-day")
+    // so staff see where it went.
+    document.startViewTransition(() => flushSync(day.dismissEndOfDay));
+  }
+
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && dismiss()}>
+      <AlertDialogContent data-view-transition="end-of-day">
+        <AlertDialogHeader>
+          <AlertDialogMedia>
+            <MoonIcon aria-hidden="true" />
+          </AlertDialogMedia>
+          <AlertDialogTitle>Lokationen er lukket</AlertDialogTitle>
+          <AlertDialogDescription>
+            Udfør lukkeopgaverne for at afslutte dagen.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel size="lg">
+            Senere
+          </AlertDialogCancel>
+          <AlertDialogAction size="lg" render={<Link href={KIOSK_DAY_PATH} />} nativeButton={false}>
+            Gå til lukning
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -1100,6 +1272,22 @@ function KioskModeControl() {
   );
 }
 
+// Shown after the closing popup is dismissed.
+// Sidebar shortcut back to the day tasks: from a linked task page, or after the
+// closing popup was dismissed.
+function useDayTaskShortcut() {
+  const day = useKioskDay();
+  const pathname = usePathname();
+  const countLocked = useContext(FeatureLockContext);
+  const onLinkedPage = useOnLinkedDayTaskPage();
+  if (countLocked || pathname === KIOSK_DAY_PATH) return null;
+  if (onLinkedPage) return { label: "Tilbage til opgaverne", Icon: ListChecksIcon };
+  if (day?.phase === "endOfDay" && day.endOfDayDismissed) {
+    return { label: "Gå til lukning", Icon: MoonIcon };
+  }
+  return null;
+}
+
 function SidebarAccount({
   signingOut,
   onSignOut,
@@ -1109,9 +1297,26 @@ function SidebarAccount({
 }) {
   const kiosk = useKiosk();
   const access = useAccess();
+  const shortcut = useDayTaskShortcut();
   const kioskModeControl = <KioskModeControl />;
   const accountMenu = (
     <SidebarMenu appearance="spaced">
+      {shortcut ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="lg"
+            variant="primary"
+            appearance="icon"
+            tooltip={shortcut.label}
+            data-view-transition="end-of-day"
+            className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
+            render={<Link href={KIOSK_DAY_PATH} />}
+          >
+            <shortcut.Icon aria-hidden="true" />
+            <span className="group-data-[collapsible=icon]:hidden">{shortcut.label}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
       <SidebarMenuItem>
         <FeedbackDialog permissions={access?.permissions} />
       </SidebarMenuItem>
@@ -1140,8 +1345,20 @@ function MobileAccount({
 }) {
   const kiosk = useKiosk();
   const access = useAccess();
+  const shortcut = useDayTaskShortcut();
   return (
     <div className="flex items-center gap-1">
+      {shortcut ? (
+        <Button
+          size="icon-lg"
+          aria-label={shortcut.label}
+          data-view-transition="end-of-day"
+          render={<Link href={KIOSK_DAY_PATH} />}
+          nativeButton={false}
+        >
+          <shortcut.Icon />
+        </Button>
+      ) : null}
       <FeedbackDialog permissions={access?.permissions} compact />
       {!kiosk?.kioskModeEnabled ? (
         <ProfileMenu compact signingOut={signingOut} onSignOut={onSignOut} />
@@ -1448,6 +1665,7 @@ export function AppShell({
         <OrganizationTheme>
           <AccessBoundary>
             <FeatureLockBoundary>
+              <KioskDayBoundary>
               <KioskBehavior>
                 <AppPageHeaderProvider>
                   <SidebarProvider
@@ -1529,12 +1747,14 @@ export function AppShell({
                             : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
                         )}
                       >
+                        <KioskDayPrompts />
                         <FeatureRouteBoundary>{children}</FeatureRouteBoundary>
                       </div>
                     </SidebarInset>
                   </SidebarProvider>
                 </AppPageHeaderProvider>
               </KioskBehavior>
+              </KioskDayBoundary>
             </FeatureLockBoundary>
           </AccessBoundary>
         </OrganizationTheme>

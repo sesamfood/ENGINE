@@ -88,6 +88,7 @@ import type * as integrations_workfeed_sync from "../integrations/workfeed/sync.
 import type * as invitations from "../invitations.js";
 import type * as invoices from "../invoices.js";
 import type * as kiosk from "../kiosk.js";
+import type * as kioskDay from "../kioskDay.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authEmail from "../lib/authEmail.js";
@@ -116,6 +117,8 @@ import type * as lib_forecastSettings from "../lib/forecastSettings.js";
 import type * as lib_forecastValidators from "../lib/forecastValidators.js";
 import type * as lib_googlePlaces from "../lib/googlePlaces.js";
 import type * as lib_idempotency from "../lib/idempotency.js";
+import type * as lib_kioskDay from "../lib/kioskDay.js";
+import type * as lib_kioskDayValidators from "../lib/kioskDayValidators.js";
 import type * as lib_linear from "../lib/linear.js";
 import type * as lib_locationDeletion from "../lib/locationDeletion.js";
 import type * as lib_locationMutations from "../lib/locationMutations.js";
@@ -287,6 +290,7 @@ declare const fullApi: ApiFromModules<{
   invitations: typeof invitations;
   invoices: typeof invoices;
   kiosk: typeof kiosk;
+  kioskDay: typeof kioskDay;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
   "lib/authEmail": typeof lib_authEmail;
@@ -315,6 +319,8 @@ declare const fullApi: ApiFromModules<{
   "lib/forecastValidators": typeof lib_forecastValidators;
   "lib/googlePlaces": typeof lib_googlePlaces;
   "lib/idempotency": typeof lib_idempotency;
+  "lib/kioskDay": typeof lib_kioskDay;
+  "lib/kioskDayValidators": typeof lib_kioskDayValidators;
   "lib/linear": typeof lib_linear;
   "lib/locationDeletion": typeof lib_locationDeletion;
   "lib/locationMutations": typeof lib_locationMutations;

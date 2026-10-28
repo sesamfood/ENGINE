@@ -13,6 +13,7 @@ const administrationPermissions: PermissionId[] = [
   "expenses.settings",
   "goodsReceipts.settings",
   "ownChecks.manage",
+  "kiosk.dayTasks.manage",
   "integrations.manage",
   "staffFood.manage",
   "members.manage",

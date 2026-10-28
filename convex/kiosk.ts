@@ -7,6 +7,7 @@ import type { Id } from "./_generated/dataModel";
 import { createAuth, getDatabaseAdapter } from "./auth";
 import {
   requireAllLocationAccess,
+  requireLocationAccess,
   requireMemberManager,
   requireOrganization,
   requireOrganizationAdmin,
@@ -400,12 +401,55 @@ export const deleteAccount = mutation({
   },
 });
 
+export const enterSessionKiosk = mutation({
+  args: { locationId: v.id("locations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireOrganizationAdmin(ctx);
+    if (auth.isKioskAccount || !auth.sessionId || auth.principalKind !== "user") {
+      throw new ConvexError("Kiosktilstand kan ikke startes for denne konto");
+    }
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, auth.organizationId, args.locationId);
+    const settings = await ctx.db
+      .query("kioskSettings")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId))
+      .unique();
+    if (!settings) throw new ConvexError("Gem kioskopsætningen, før du starter kiosktilstand");
+    const sessionId = auth.sessionId;
+    const current = await ctx.db
+      .query("kioskSessions")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .unique();
+    const data = { sessionId, organizationId: auth.organizationId, locationId: args.locationId };
+    if (current) await ctx.db.replace("kioskSessions", current._id, data);
+    else await ctx.db.insert("kioskSessions", data);
+    await getDatabaseAdapter(ctx).update({
+      model: "session",
+      where: [{ field: "id", value: sessionId }],
+      update: { kioskModeEnabled: true, updatedAt: new Date() },
+    });
+    return null;
+  },
+});
+
 export const setMode = mutation({
   args: { enabled: v.boolean() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requireOrganization(ctx);
     if (!auth.isKioskAccount) throw new ConvexError("Kontoen er ikke en kiosk");
+    const sessionId = auth.sessionId;
+    const kioskSession = sessionId
+      ? await ctx.db
+          .query("kioskSessions")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .unique()
+      : null;
+    // A regular user's session leaves kiosk mode completely.
+    if (kioskSession && !args.enabled) {
+      await ctx.db.delete("kioskSessions", kioskSession._id);
+    }
     await getDatabaseAdapter(ctx).update({
       model: "session",
       where: [{ field: "id", value: auth.sessionId }],

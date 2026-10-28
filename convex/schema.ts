@@ -18,6 +18,7 @@ import {
   openingHoursModeValidator,
   weeklyOpeningHoursValidator,
 } from "./lib/openingHours";
+import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
 import { countScheduleValidator } from "./lib/countSettings";
 
 import {
@@ -1871,6 +1872,39 @@ export default defineSchema({
     inactivitySeconds: v.union(v.number(), v.null()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  // Kiosk mode started by a regular user's own session, bound to one location.
+  kioskSessions: defineTable({
+    sessionId: v.string(),
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+  }).index("by_sessionId", ["sessionId"]),
+
+  kioskDayTasks: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    // Plain strings are tasks saved before descriptions and icons existed.
+    endOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
+    startOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  kioskDayRuns: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    phase: v.union(v.literal("endOfDay"), v.literal("startOfDay")),
+    tasks: v.array(v.string()),
+    completedAt: v.number(),
+    completedByUserId: v.string(),
+    completedByName: v.string(),
+    // The person who approved the run; the kiosk account only records it.
+    responsibleEmployeeId: v.optional(v.id("employees")),
+    responsibleName: v.optional(v.string()),
+  }).index("by_organizationId_and_locationId_and_phase", [
+    "organizationId",
+    "locationId",
+    "phase",
+  ]),
 
   dashboardDailySummaries: defineTable({
     organizationId: v.string(),

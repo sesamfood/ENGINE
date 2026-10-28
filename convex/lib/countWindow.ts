@@ -45,11 +45,10 @@ export async function getCountConfiguration(
   return configurationFrom(settings);
 }
 
-export async function getLocationCountWindow(
+export async function getLocationOpeningHours(
   ctx: CountWindowContext,
   organizationId: string,
   location: Doc<"locations">,
-  now: number,
 ) {
   const [timeZone, specials, settings] = await Promise.all([
     resolveTimeZone(ctx, organizationId, location._id),
@@ -81,6 +80,17 @@ export async function getLocationCountWindow(
       closeMinuteOfDay:
         settings?.closeMinuteOfDay ?? hours.closeMinuteOfDay,
     }));
+  return { timeZone, specials, settings, weekly };
+}
+
+export async function getLocationCountWindow(
+  ctx: CountWindowContext,
+  organizationId: string,
+  location: Doc<"locations">,
+  now: number,
+) {
+  const { timeZone, specials, settings, weekly } =
+    await getLocationOpeningHours(ctx, organizationId, location);
   const configuration = configurationFrom(settings);
   const windows = scheduledCountWindows(
     now,

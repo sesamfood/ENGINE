@@ -79,6 +79,7 @@ export const feedbackAreas = [
       "goodsReceipts.settings",
       "waste.settings",
       "ownChecks.manage",
+      "kiosk.dayTasks.manage",
       "staffFood.manage",
       "integrations.manage",
       "members.manage",

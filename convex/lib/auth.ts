@@ -15,6 +15,7 @@ import { internal } from "../_generated/api";
 import { getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
+import { startOfDayAllowedPages } from "./kioskDay";
 import { getTestOrganization, resolveTestOrganizationMember } from "./testOrganizations";
 import {
   getEntitlements,
@@ -180,9 +181,24 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
           q.eq("organizationId", member.organizationId).eq("userId", member.userId),
         )
         .unique();
+  const kioskSession =
+    !member.kioskLocationId && !testMember && session.kioskModeEnabled
+      ? await ctx.db
+          .query("kioskSessions")
+          .withIndex("by_sessionId", (q) =>
+            q.eq("sessionId", identity.sessionId as string),
+          )
+          .unique()
+      : null;
+  const sessionKioskLocationId =
+    kioskSession?.organizationId === member.organizationId
+      ? kioskSession.locationId
+      : null;
   const kioskLocationId = member.kioskLocationId && !testMember
     ? (member.kioskLocationId as Id<"locations">)
-    : null;
+    : sessionKioskLocationId;
+  const isKioskAccount =
+    session.isKioskAccount === true || sessionKioskLocationId !== null;
   const locationScope = await resolveStoredLocationScope(
     ctx,
     member.organizationId,
@@ -203,8 +219,8 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     apiKeyId: null,
     userId: member.userId,
     sessionId: identity.sessionId as string,
-    isKioskAccount: session?.isKioskAccount === true,
-    kioskModeEnabled: session?.kioskModeEnabled === true,
+    isKioskAccount,
+    kioskModeEnabled: isKioskAccount && session.kioskModeEnabled === true,
     kioskLocationId,
     userIdentifier: identity.tokenIdentifier,
     userName: identity.name?.trim() || identity.email || "Ukendt bruger",
@@ -534,6 +550,18 @@ export async function requireKioskDestination(
     !pages.some((item) => settings.enabledPages.includes(item))
   ) {
     throw new ConvexError("Siden er ikke aktiveret i kiosktilstand");
+  }
+  // Reads stay open so pages can render while the kiosk redirects to start of day.
+  // Pages linked from a start-of-day task stay writable so the task can be done.
+  if ("scheduler" in ctx && auth.kioskLocationId) {
+    const allowed = await startOfDayAllowedPages(
+      ctx,
+      auth.organizationId,
+      auth.kioskLocationId,
+    );
+    if (allowed && !pages.some((item) => allowed.includes(item))) {
+      throw new ConvexError("Udfør åbningsopgaverne, før du fortsætter");
+    }
   }
   return true;
 }

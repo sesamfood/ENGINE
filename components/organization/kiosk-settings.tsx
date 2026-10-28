@@ -61,7 +61,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { useAccess, usePermission } from "@/components/app-shell";
+import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
+import { useRouter } from "next/navigation";
 import {
   kioskDestinationWarnings,
   kioskDestinations,
@@ -177,6 +178,58 @@ function PasswordDialog({ account, onClose }: { account: Account | null; onClose
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SessionKioskCard({ disabled }: { disabled: boolean }) {
+  const { locations } = useLocationAccess();
+  const router = useRouter();
+  const enter = useMutation(api.kiosk.enterSessionKiosk);
+  const [selected, setSelected] = useState<Id<"locations"> | null>(null);
+  const [pending, setPending] = useState(false);
+  const locationId = selected ?? locations[0]?.id ?? null;
+
+  async function start() {
+    if (!locationId) return;
+    setPending(true);
+    try {
+      await enter({ locationId });
+      toast.success("Kiosktilstand er startet");
+      router.refresh();
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Kiosktilstand kunne ikke startes. Prøv igen."));
+      setPending(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Start kiosk på denne enhed</CardTitle>
+        <CardDescription>
+          Din session skifter til kiosktilstand for den valgte lokation. Alle ved enheden kan forlade kiosktilstand og få din adgang.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-end gap-3">
+          <Field className="max-w-sm">
+            <FieldLabel htmlFor="session-kiosk-location">Lokation</FieldLabel>
+            <Select
+              value={locationId}
+              onValueChange={(value) => setSelected(value as Id<"locations">)}
+              items={locations.map((location) => ({ value: location.id, label: location.name }))}
+            >
+              <SelectTrigger id="session-kiosk-location" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>{locations.map((location) => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Button size="lg" onClick={start} disabled={disabled || !locationId || pending}>
+            {pending ? <Spinner data-icon="inline-start" /> : <MonitorCogIcon data-icon="inline-start" />}
+            Start kiosktilstand
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -374,6 +427,8 @@ export function KioskSettings() {
           </form>
         </CardContent>
       </Card> : null}
+
+      {canManageSettings ? <SessionKioskCard disabled={!settings} /> : null}
 
       {canManageAccounts ? <>
       {canManageRoles && canManageKioskLocations ? <Card>
