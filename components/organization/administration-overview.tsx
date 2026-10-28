@@ -9,6 +9,7 @@ import {
   ClipboardListIcon,
   KeyRoundIcon,
   LayoutDashboardIcon,
+  ListChecksIcon,
   ListOrderedIcon,
   MessageSquarePlusIcon,
   MonitorCogIcon,
@@ -50,6 +51,7 @@ type AdministrationPermission = Extract<
     | "expenses.settings"
     | "goodsReceipts.settings"
     | "integrations.manage"
+    | "kiosk.dayTasks.manage"
     | "locations.manage"
     | "members.manage"
     | "organization.settings"
@@ -227,6 +229,13 @@ const categories: AdministrationCategory[] = [
         permissions: ["organization.settings", "members.manage"],
       },
       {
+        title: "Dagsopgaver",
+        description: "Opgaver til lukning og åbning på hver lokations kiosk.",
+        href: "/administration/day-tasks",
+        icon: ListChecksIcon,
+        permissions: ["kiosk.dayTasks.manage"],
+      },
+      {
         title: "Sidemenu",
         description: "Bestem rækkefølgen af organisationens menupunkter.",
         href: "/administration/sidebar",
@@ -294,6 +303,7 @@ export function AdministrationOverview() {
   const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
   const canOwnChecksManage = usePermission("ownChecks.manage");
   const canStaffFood = usePermission("staffFood.manage");
+  const canDayTasks = usePermission("kiosk.dayTasks.manage");
   const canIntegrations = usePermission("integrations.manage");
   const canDashboardManage = usePermission("dashboard.manage");
   const canDateLabels = usePermission("dateLabels.print");
@@ -306,6 +316,7 @@ export function AdministrationOverview() {
     "expenses.settings": canExpenseSettings,
     "goodsReceipts.settings": canGoodsReceiptSettings,
     "integrations.manage": canIntegrations,
+    "kiosk.dayTasks.manage": canDayTasks,
     "locations.manage": canLocations,
     "members.manage": canMembers,
     "organization.settings": canOrganizationSettings,

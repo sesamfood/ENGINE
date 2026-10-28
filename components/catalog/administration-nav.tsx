@@ -52,6 +52,7 @@ const sectionTitles = [
   { value: "goods-receipts", label: "Varemodtagelse" },
   { value: "waste", label: "Waste" },
   { value: "kiosk", label: "Kiosk" },
+  { value: "day-tasks", label: "Dagsopgaver" },
   { value: "sidebar", label: "Sidemenu" },
   { value: "feedback", label: "Feedback" },
   { value: "appearance", label: "Udseende" },

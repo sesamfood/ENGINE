@@ -276,3 +276,21 @@ export function scheduledCountWindows(
     active: now < due.closesAt ? due : next,
   };
 }
+
+// The closed period (last closing until next opening) that contains `now`, or the next one.
+export function closedPeriodAround(
+  now: number,
+  weekly: WeeklyOpeningHours[],
+  specialOpeningHours: SpecialOpeningHours[],
+  timeZone = DEFAULT_TIME_ZONE,
+) {
+  const today = localDate(now, timeZone);
+  const yesterday = new Date(today);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const previous = countWindowForDate(yesterday, "", weekly, specialOpeningHours, timeZone);
+  const window =
+    now < previous.closesAt
+      ? previous
+      : countWindowForDate(today, "", weekly, specialOpeningHours, timeZone);
+  return { closedAt: window.opensAt, reopensAt: window.closesAt };
+}

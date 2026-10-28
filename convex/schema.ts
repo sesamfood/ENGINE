@@ -1872,6 +1872,28 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
+  kioskDayTasks: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    endOfDay: v.array(v.string()),
+    startOfDay: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
+
+  kioskDayRuns: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    phase: v.union(v.literal("endOfDay"), v.literal("startOfDay")),
+    tasks: v.array(v.string()),
+    completedAt: v.number(),
+    completedByUserId: v.string(),
+    completedByName: v.string(),
+  }).index("by_organizationId_and_locationId_and_phase", [
+    "organizationId",
+    "locationId",
+    "phase",
+  ]),
+
   dashboardDailySummaries: defineTable({
     organizationId: v.string(),
     source: v.union(

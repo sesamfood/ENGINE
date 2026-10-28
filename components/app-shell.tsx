@@ -13,6 +13,7 @@ import {
   CircleHelpIcon,
   CircleOffIcon,
   LogOutIcon,
+  MoonIcon,
   LayoutDashboardIcon,
   LifeBuoyIcon,
   ReceiptTextIcon,
@@ -183,6 +184,15 @@ const AccessContext = createContext<AccessContextValue | null>(null);
 
 const FeatureLockContext = createContext(false);
 
+type KioskDayState = {
+  phase: "endOfDay" | "startOfDay" | null;
+  tasks: string[];
+};
+
+const KioskDayContext = createContext<KioskDayState | null>(null);
+
+export const KIOSK_DAY_PATH = "/day-tasks";
+
 const KIOSK_WAKE_LOCK_KEY = "engine.kiosk.keep-screen-on";
 
 function useKioskWakeLock(enabled: boolean) {
@@ -233,6 +243,10 @@ function useKioskWakeLock(enabled: boolean) {
 
 export function useAccess() {
   return useContext(AccessContext);
+}
+
+export function useKioskDay() {
+  return useContext(KioskDayContext);
 }
 
 export function useKiosk() {
@@ -397,9 +411,12 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const home = useHomeDestination();
   const { disabled, pending } = useCurrentFeatureState();
+  const dayPhase = useKioskDay()?.phase;
+  const onDayTasks = pathname === KIOSK_DAY_PATH && Boolean(dayPhase);
 
   useEffect(() => {
     if (
+      onDayTasks ||
       !runtime?.kioskModeEnabled ||
       !runtime.settings ||
       !home ||
@@ -420,13 +437,15 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
           pathname.startsWith("/own-checks/check/")),
     );
     if (!allowed && pathname !== home) router.replace(home);
-  }, [countLocked, disabled, home, pathname, pending, router, runtime]);
+  }, [countLocked, disabled, home, onDayTasks, pathname, pending, router, runtime]);
 
   useEffect(() => {
     const seconds = runtime?.kioskModeEnabled
       ? runtime.settings?.inactivitySeconds
       : null;
-    if (!seconds || !home || pathname === home || disabled || pending) return;
+    if (!seconds || !home || pathname === home || onDayTasks || disabled || pending) {
+      return;
+    }
     let timeout = window.setTimeout(
       () => window.location.replace(home),
       seconds * 1000,
@@ -459,6 +478,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   }, [
     disabled,
     home,
+    onDayTasks,
     pathname,
     pending,
     runtime?.kioskModeEnabled,
@@ -593,6 +613,84 @@ function FeatureLockBoundary({ children }: { children: React.ReactNode }) {
     <FeatureLockContext.Provider value={isLocked}>
       {children}
     </FeatureLockContext.Provider>
+  );
+}
+
+function KioskDayBoundary({ children }: { children: React.ReactNode }) {
+  const kiosk = useKiosk();
+  const countLocked = useContext(FeatureLockContext);
+  const pathname = usePathname();
+  const router = useRouter();
+  const [queryNow, setQueryNow] = useState(minuteTimestamp);
+  const state = useQuery(
+    api.kioskDay.getState,
+    kiosk?.kioskModeEnabled ? { now: queryNow } : "skip",
+  );
+  const current = useLastDefined(state, kiosk?.locationId ?? "kiosk");
+  const nextTransitionAt = current?.nextTransitionAt;
+  const startOfDayDue = current?.phase === "startOfDay" && !countLocked;
+
+  useEffect(() => {
+    if (nextTransitionAt === null || nextTransitionAt === undefined) return;
+    const refresh = () => setQueryNow(minuteTimestamp());
+    const timeout = window.setTimeout(
+      refresh,
+      Math.max(0, nextTransitionAt - Date.now()) + 100,
+    );
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && Date.now() >= nextTransitionAt) {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [nextTransitionAt]);
+
+  useEffect(() => {
+    if (startOfDayDue && pathname !== KIOSK_DAY_PATH) router.replace(KIOSK_DAY_PATH);
+  }, [pathname, router, startOfDayDue]);
+
+  if (kiosk?.kioskModeEnabled && current === undefined) {
+    return (
+      <main className="grid min-h-screen place-items-center" aria-label="Indlæser dagsopgaver">
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  if (startOfDayDue && pathname !== KIOSK_DAY_PATH) {
+    return (
+      <main className="grid min-h-screen place-items-center" aria-label="Åbner åbningsopgaver">
+        <Spinner className="size-5" />
+      </main>
+    );
+  }
+
+  return (
+    <KioskDayContext.Provider value={current ?? null}>
+      {children}
+    </KioskDayContext.Provider>
+  );
+}
+
+function EndOfDayBanner() {
+  const day = useKioskDay();
+  const pathname = usePathname();
+  if (day?.phase !== "endOfDay" || pathname === KIOSK_DAY_PATH) return null;
+  return (
+    <Alert className="mb-4">
+      <MoonIcon aria-hidden="true" />
+      <AlertTitle>Lokationen er lukket</AlertTitle>
+      <AlertDescription appearance="spaced" className="flex flex-col items-start">
+        Udfør lukkeopgaverne for at afslutte dagen.
+        <Button size="lg" render={<Link href={KIOSK_DAY_PATH} />} nativeButton={false}>
+          Gå til lukning
+        </Button>
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -1448,6 +1546,7 @@ export function AppShell({
         <OrganizationTheme>
           <AccessBoundary>
             <FeatureLockBoundary>
+              <KioskDayBoundary>
               <KioskBehavior>
                 <AppPageHeaderProvider>
                   <SidebarProvider
@@ -1529,12 +1628,14 @@ export function AppShell({
                             : "px-5 py-8 sm:px-8 lg:px-12 lg:py-11",
                         )}
                       >
+                        <EndOfDayBanner />
                         <FeatureRouteBoundary>{children}</FeatureRouteBoundary>
                       </div>
                     </SidebarInset>
                   </SidebarProvider>
                 </AppPageHeaderProvider>
               </KioskBehavior>
+              </KioskDayBoundary>
             </FeatureLockBoundary>
           </AccessBoundary>
         </OrganizationTheme>

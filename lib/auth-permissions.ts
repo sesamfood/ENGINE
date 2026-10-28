@@ -162,6 +162,7 @@ export const permissionCatalog = [
       { id: "count.settings", label: "Administrere Count-indstillinger" },
       { id: "waste.settings", label: "Administrere Waste-indstillinger" },
       { id: "ownChecks.manage", label: "Administrere egenkontroller" },
+      { id: "kiosk.dayTasks.manage", label: "Administrere dagsopgaver" },
       {
         id: "organization.settings",
         label: "Administrere organisationsindstillinger",

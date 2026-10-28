@@ -15,6 +15,7 @@ import { internal } from "../_generated/api";
 import { getDatabaseAdapter } from "../auth";
 import type { KioskDestinationId } from "../../lib/kiosk";
 import { otherFeaturesLocked } from "./countLock";
+import { startOfDayRequired } from "./kioskDay";
 import { getTestOrganization, resolveTestOrganizationMember } from "./testOrganizations";
 import {
   getEntitlements,
@@ -534,6 +535,14 @@ export async function requireKioskDestination(
     !pages.some((item) => settings.enabledPages.includes(item))
   ) {
     throw new ConvexError("Siden er ikke aktiveret i kiosktilstand");
+  }
+  // Reads stay open so pages can render while the kiosk redirects to start of day.
+  if (
+    "scheduler" in ctx &&
+    auth.kioskLocationId &&
+    (await startOfDayRequired(ctx, auth.organizationId, auth.kioskLocationId))
+  ) {
+    throw new ConvexError("Udfør åbningsopgaverne, før du fortsætter");
   }
   return true;
 }

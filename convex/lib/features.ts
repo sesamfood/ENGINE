@@ -146,6 +146,7 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "count.settings": null,
   "waste.settings": null,
   "ownChecks.manage": null,
+  "kiosk.dayTasks.manage": null,
   "organization.settings": null,
   "integrations.manage": null,
   "apiKeys.manage": null,
