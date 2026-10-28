@@ -6,6 +6,7 @@ import {
   requirePermission,
 } from "./lib/auth";
 import { getKioskDayTasks, kioskDayState } from "./lib/kioskDay";
+import { getDatabaseAdapter } from "./auth";
 import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
 import { requireOrganizationLocation } from "./lib/locations";
 
@@ -121,6 +122,8 @@ export const getState = query({
   returns: v.object({
     phase: v.union(phaseValidator, v.null()),
     tasks: v.array(kioskDayTaskValidator),
+    scheduledAt: v.union(v.number(), v.null()),
+    timeZone: v.union(v.string(), v.null()),
     nextTransitionAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx, args) => {
@@ -138,11 +141,43 @@ export const getState = query({
   },
 });
 
+type Member = { userId: string; kioskLocationId?: string | null };
+type User = { id: string; name?: string | null; email: string };
+
+// Organization users who can approve a run. Kiosk accounts are shared, so they are left out.
+async function listOrganizationUsers(ctx: QueryCtx | MutationCtx, organizationId: string) {
+  const adapter = getDatabaseAdapter(ctx);
+  const members = await adapter.findMany<Member>({
+    model: "member",
+    where: [{ field: "organizationId", value: organizationId }],
+    limit: 200,
+  });
+  const people = members.filter((member) => !member.kioskLocationId);
+  const users = await Promise.all(
+    people.map((member) =>
+      adapter.findOne<User>({ model: "user", where: [{ field: "id", value: member.userId }] }),
+    ),
+  );
+  return users
+    .flatMap((user) => (user ? [{ id: user.id, name: user.name?.trim() || user.email }] : []))
+    .sort((a, b) => a.name.localeCompare(b.name, "da"));
+}
+
+export const listResponsibleUsers = query({
+  args: {},
+  returns: v.array(v.object({ id: v.string(), name: v.string() })),
+  handler: async (ctx) => {
+    const { auth } = await requireKioskLocation(ctx);
+    return await listOrganizationUsers(ctx, auth.organizationId);
+  },
+});
+
 export const complete = mutation({
   args: {
     phase: phaseValidator,
     // Task titles as shown, so a list edited meanwhile is rejected.
     tasks: v.array(v.string()),
+    responsibleUserId: v.string(),
     forceEndOfDay: v.optional(v.boolean()), // TEMP: testing
   },
   returns: v.null(),
@@ -163,6 +198,10 @@ export const complete = mutation({
           : "Åbning er ikke tilgængelig lige nu",
       );
     }
+    const responsible = (await listOrganizationUsers(ctx, auth.organizationId)).find(
+      (user) => user.id === args.responsibleUserId,
+    );
+    if (!responsible) throw new ConvexError("Vælg en godkender");
     const titles = state.tasks.map((task) => task.title);
     if (
       titles.length !== args.tasks.length ||
@@ -178,6 +217,8 @@ export const complete = mutation({
       completedAt: Date.now(),
       completedByUserId: auth.userId,
       completedByName: auth.userName,
+      responsibleUserId: responsible.id,
+      responsibleName: responsible.name,
     });
     return null;
   },

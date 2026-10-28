@@ -191,6 +191,8 @@ const FeatureLockContext = createContext(false);
 type KioskDayState = {
   phase: "endOfDay" | "startOfDay" | null;
   tasks: KioskDayTask[];
+  scheduledAt: number | null;
+  timeZone: string | null;
   // TEMP: testing
   forceEndOfDay: boolean;
   setForceEndOfDay: (force: boolean) => void;

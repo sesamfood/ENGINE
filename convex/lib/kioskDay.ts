@@ -83,17 +83,11 @@ export async function kioskDayState(
   now: number,
   forceEndOfDay = false, // TEMP: testing
 ) {
+  const none = { phase: null, tasks: [], scheduledAt: null, timeZone: null };
   const tasks = await getKioskDayTasks(ctx, organizationId, locationId);
   const startOfDay = await startOfDayDue(ctx, organizationId, locationId, tasks.startOfDay);
-  if (startOfDay.due) {
-    return { phase: "startOfDay" as const, tasks: tasks.startOfDay, nextTransitionAt: null };
-  }
-  if (!tasks.endOfDay.length) {
-    return { phase: null, tasks: [], nextTransitionAt: null };
-  }
-  // TEMP: testing
-  if (forceEndOfDay) {
-    return { phase: "endOfDay" as const, tasks: tasks.endOfDay, nextTransitionAt: null };
+  if (!startOfDay.due && !tasks.endOfDay.length) {
+    return { ...none, nextTransitionAt: null };
   }
 
   const location = await requireOrganizationLocation(ctx, organizationId, locationId);
@@ -103,13 +97,29 @@ export async function kioskDayState(
     location,
   );
   const { closedAt, reopensAt } = closedPeriodAround(now, weekly, specials, timeZone);
-  if (now < closedAt) {
-    return { phase: null, tasks: [], nextTransitionAt: closedAt };
+  if (startOfDay.due) {
+    return {
+      phase: "startOfDay" as const,
+      tasks: tasks.startOfDay,
+      // The coming opening, or none once the location has opened.
+      scheduledAt: now >= closedAt ? reopensAt : null,
+      timeZone,
+      nextTransitionAt: null,
+    };
   }
+  const endOfDay = {
+    phase: "endOfDay" as const,
+    tasks: tasks.endOfDay,
+    scheduledAt: closedAt,
+    timeZone,
+  };
+  // TEMP: testing
+  if (forceEndOfDay) return { ...endOfDay, nextTransitionAt: null };
+  if (now < closedAt) return { ...none, nextTransitionAt: closedAt };
   const lastEnd =
     startOfDay.lastEnd ?? (await latestRun(ctx, organizationId, locationId, "endOfDay"));
   if (lastEnd && lastEnd.completedAt >= closedAt) {
-    return { phase: null, tasks: [], nextTransitionAt: reopensAt };
+    return { ...none, nextTransitionAt: reopensAt };
   }
-  return { phase: "endOfDay" as const, tasks: tasks.endOfDay, nextTransitionAt: reopensAt };
+  return { ...endOfDay, nextTransitionAt: reopensAt };
 }

@@ -1897,6 +1897,9 @@ export default defineSchema({
     completedAt: v.number(),
     completedByUserId: v.string(),
     completedByName: v.string(),
+    // The person who approved the run; the kiosk account only records it.
+    responsibleUserId: v.optional(v.string()),
+    responsibleName: v.optional(v.string()),
   }).index("by_organizationId_and_locationId_and_phase", [
     "organizationId",
     "locationId",
