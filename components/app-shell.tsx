@@ -747,19 +747,7 @@ function KioskDayPrompts() {
     );
   }
   if (!day?.phase || pathname === KIOSK_DAY_PATH) return null;
-  if (onLinkedPage) {
-    return (
-      <Button
-        size="lg"
-        className="fixed right-4 bottom-4 z-40 shadow-lg"
-        render={<Link href={KIOSK_DAY_PATH} />}
-        nativeButton={false}
-      >
-        <ListChecksIcon data-icon="inline-start" />
-        Tilbage til opgaverne
-      </Button>
-    );
-  }
+  if (onLinkedPage) return null;
   if (day.phase !== "endOfDay" || day.endOfDayDismissed) return null;
 
   function dismiss() {
@@ -1304,16 +1292,19 @@ function KioskModeControl() {
 }
 
 // Shown after the closing popup is dismissed.
-function useEndOfDayShortcut() {
+// Sidebar shortcut back to the day tasks: from a linked task page, or after the
+// closing popup was dismissed.
+function useDayTaskShortcut() {
   const day = useKioskDay();
   const pathname = usePathname();
   const countLocked = useContext(FeatureLockContext);
-  return Boolean(
-    day?.phase === "endOfDay" &&
-      day.endOfDayDismissed &&
-      !countLocked &&
-      pathname !== KIOSK_DAY_PATH,
-  );
+  const onLinkedPage = useOnLinkedDayTaskPage();
+  if (countLocked || pathname === KIOSK_DAY_PATH) return null;
+  if (onLinkedPage) return { label: "Tilbage til opgaverne", Icon: ListChecksIcon };
+  if (day?.phase === "endOfDay" && day.endOfDayDismissed) {
+    return { label: "Gå til lukning", Icon: MoonIcon };
+  }
+  return null;
 }
 
 function SidebarAccount({
@@ -1325,23 +1316,23 @@ function SidebarAccount({
 }) {
   const kiosk = useKiosk();
   const access = useAccess();
-  const showEndOfDay = useEndOfDayShortcut();
+  const shortcut = useDayTaskShortcut();
   const kioskModeControl = <KioskModeControl />;
   const accountMenu = (
     <SidebarMenu appearance="spaced">
-      {showEndOfDay ? (
+      {shortcut ? (
         <SidebarMenuItem>
           <SidebarMenuButton
             size="lg"
             variant="primary"
             appearance="icon"
-            tooltip="Gå til lukning"
+            tooltip={shortcut.label}
             data-view-transition="end-of-day"
             className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
             render={<Link href={KIOSK_DAY_PATH} />}
           >
-            <MoonIcon aria-hidden="true" />
-            <span className="group-data-[collapsible=icon]:hidden">Gå til lukning</span>
+            <shortcut.Icon aria-hidden="true" />
+            <span className="group-data-[collapsible=icon]:hidden">{shortcut.label}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : null}
@@ -1373,18 +1364,18 @@ function MobileAccount({
 }) {
   const kiosk = useKiosk();
   const access = useAccess();
-  const showEndOfDay = useEndOfDayShortcut();
+  const shortcut = useDayTaskShortcut();
   return (
     <div className="flex items-center gap-1">
-      {showEndOfDay ? (
+      {shortcut ? (
         <Button
           size="icon-lg"
-          aria-label="Gå til lukning"
+          aria-label={shortcut.label}
           data-view-transition="end-of-day"
           render={<Link href={KIOSK_DAY_PATH} />}
           nativeButton={false}
         >
-          <MoonIcon />
+          <shortcut.Icon />
         </Button>
       ) : null}
       <FeedbackDialog permissions={access?.permissions} compact />

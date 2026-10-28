@@ -21,6 +21,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useHomeDestination, useKiosk, useKioskDay } from "@/components/app-shell";
 import { KioskDayTaskIconView } from "@/components/kiosk/kiosk-day-task-icon";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { dateTimeFormatter } from "@/lib/date";
 import { kioskDestination } from "@/lib/kiosk";
 import type { KioskDayTask } from "@/lib/kiosk-day";
@@ -155,27 +156,31 @@ function Checklist({
 }) {
   const kiosk = useKiosk();
   const complete = useMutation(api.kioskDay.complete);
-  const users = useQuery(api.kioskDay.listResponsibleUsers, {});
+  const [openedAt] = useState(Date.now);
+  const people = useQuery(api.kioskDay.listResponsibleEmployees, { now: openedAt });
   const enabledPages = kiosk?.settings?.enabledPages ?? [];
   const { checked, toggle, clear } = useStoredChecks(
     `engine.kiosk-day.${phase}.${tasks.map((task) => task.title).join("\n")}`,
     tasks.length,
   );
-  const [responsibleUserId, setResponsibleUserId] = useState<string | null>(null);
+  // An employee id, or "new:<name>" for a typed name.
+  const [responsible, setResponsible] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [openedAt] = useState(Date.now);
   const text = copy[phase];
   const allDone = checked.length === tasks.length;
   const zone = timeZone ?? undefined;
+  const shiftTime = dateTimeFormatter("da-DK", { hour: "2-digit", minute: "2-digit", timeZone: zone });
 
   async function submit() {
-    if (!responsibleUserId) return;
+    if (!responsible) return;
     setPending(true);
     try {
       await complete({
         phase,
         tasks: tasks.map((task) => task.title),
-        responsibleUserId,
+        responsible: responsible.startsWith("new:")
+          ? { name: responsible.slice(4) }
+          : { employeeId: responsible as Id<"employees"> },
         forceEndOfDay,
       });
       clear();
@@ -294,17 +299,26 @@ function Checklist({
             <Field className="md:w-72">
               <FieldLabel>Godkendt af</FieldLabel>
               <CreatableCombobox
-                options={(users ?? []).map((user) => ({ value: user.id, label: user.name }))}
-                value={responsibleUserId}
-                onValueChange={setResponsibleUserId}
-                placeholder="Vælg bruger"
+                options={(people?.employees ?? []).map((person) => ({
+                  value: person.id,
+                  label: person.name,
+                }))}
+                suggestionLabel="På vagt"
+                suggestionOptions={(people?.onShift ?? []).map((person) => ({
+                  value: person.id,
+                  label: `${person.name} · ${shiftTime.formatRange(person.startsAt, person.endsAt)}`,
+                }))}
+                allowCreate
+                value={responsible}
+                onValueChange={setResponsible}
+                placeholder="Vælg medarbejder"
                 ariaLabel="Godkendt af"
-                disabled={users === undefined}
+                disabled={people === undefined}
               />
             </Field>
             <Button
               size="lg"
-              disabled={!allDone || !responsibleUserId || pending}
+              disabled={!allDone || !responsible || pending}
               onClick={submit}
             >
               {pending ? <Spinner data-icon="inline-start" /> : null}

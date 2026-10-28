@@ -6,7 +6,7 @@ import {
   requirePermission,
 } from "./lib/auth";
 import { getKioskDayTasks, kioskDayState } from "./lib/kioskDay";
-import { getDatabaseAdapter } from "./auth";
+import type { Id } from "./_generated/dataModel";
 import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
 import { requireOrganizationLocation } from "./lib/locations";
 
@@ -141,34 +141,74 @@ export const getState = query({
   },
 });
 
-type Member = { userId: string; kioskLocationId?: string | null };
-type User = { id: string; name?: string | null; email: string };
+const MAX_LOCATION_EMPLOYEES = 500;
+const SHIFT_WINDOW_MS = 3 * 60 * 60 * 1000;
+const SHIFT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
-// Organization users who can approve a run. Kiosk accounts are shared, so they are left out.
-async function listOrganizationUsers(ctx: QueryCtx | MutationCtx, organizationId: string) {
-  const adapter = getDatabaseAdapter(ctx);
-  const members = await adapter.findMany<Member>({
-    model: "member",
-    where: [{ field: "organizationId", value: organizationId }],
-    limit: 200,
-  });
-  const people = members.filter((member) => !member.kioskLocationId);
-  const users = await Promise.all(
-    people.map((member) =>
-      adapter.findOne<User>({ model: "user", where: [{ field: "id", value: member.userId }] }),
+// Active employees assigned to the kiosk location, and who is on shift near `now`.
+export const listResponsibleEmployees = query({
+  args: { now: v.number() },
+  returns: v.object({
+    employees: v.array(v.object({ id: v.id("employees"), name: v.string() })),
+    onShift: v.array(
+      v.object({
+        id: v.id("employees"),
+        name: v.string(),
+        startsAt: v.number(),
+        endsAt: v.number(),
+      }),
     ),
-  );
-  return users
-    .flatMap((user) => (user ? [{ id: user.id, name: user.name?.trim() || user.email }] : []))
-    .sort((a, b) => a.name.localeCompare(b.name, "da"));
-}
-
-export const listResponsibleUsers = query({
-  args: {},
-  returns: v.array(v.object({ id: v.string(), name: v.string() })),
-  handler: async (ctx) => {
-    const { auth } = await requireKioskLocation(ctx);
-    return await listOrganizationUsers(ctx, auth.organizationId);
+  }),
+  handler: async (ctx, args) => {
+    const { auth, locationId } = await requireKioskLocation(ctx);
+    const { organizationId } = auth;
+    const [assignments, shifts] = await Promise.all([
+      ctx.db
+        .query("employeeLocationAssignments")
+        .withIndex("by_organizationId_and_locationId_and_employeeId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", locationId),
+        )
+        .take(MAX_LOCATION_EMPLOYEES),
+      ctx.db
+        .query("scheduledShifts")
+        .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("locationId", locationId)
+            .gte("startsAt", args.now - SHIFT_LOOKBACK_MS)
+            .lte("startsAt", args.now + SHIFT_WINDOW_MS),
+        )
+        .take(200),
+    ]);
+    // Closing staff may just have ended their shift; opening staff may not have started yet.
+    const nearby = shifts.filter((shift) => shift.endsAt >= args.now - SHIFT_WINDOW_MS);
+    const ids = new Set([
+      ...assignments.map((row) => row.employeeId),
+      ...nearby.map((shift) => shift.employeeId),
+    ]);
+    const employees = (await Promise.all([...ids].map((id) => ctx.db.get("employees", id))))
+      .flatMap((employee) =>
+        employee?.organizationId === organizationId && employee.active
+          ? [{ id: employee._id, name: employee.displayName }]
+          : [],
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, "da"));
+    const names = new Map(employees.map((employee) => [employee.id, employee.name]));
+    const onShift = new Map<Id<"employees">, { startsAt: number; endsAt: number }>();
+    for (const shift of nearby.sort((a, b) => a.startsAt - b.startsAt)) {
+      if (names.has(shift.employeeId) && !onShift.has(shift.employeeId)) {
+        onShift.set(shift.employeeId, shift);
+      }
+    }
+    return {
+      employees,
+      onShift: [...onShift].map(([id, shift]) => ({
+        id,
+        name: names.get(id)!,
+        startsAt: shift.startsAt,
+        endsAt: shift.endsAt,
+      })),
+    };
   },
 });
 
@@ -177,7 +217,11 @@ export const complete = mutation({
     phase: phaseValidator,
     // Task titles as shown, so a list edited meanwhile is rejected.
     tasks: v.array(v.string()),
-    responsibleUserId: v.string(),
+    // An employee from the worker list, or a typed name when the list has no match.
+    responsible: v.union(
+      v.object({ employeeId: v.id("employees") }),
+      v.object({ name: v.string() }),
+    ),
     forceEndOfDay: v.optional(v.boolean()), // TEMP: testing
   },
   returns: v.null(),
@@ -198,10 +242,18 @@ export const complete = mutation({
           : "Åbning er ikke tilgængelig lige nu",
       );
     }
-    const responsible = (await listOrganizationUsers(ctx, auth.organizationId)).find(
-      (user) => user.id === args.responsibleUserId,
-    );
-    if (!responsible) throw new ConvexError("Vælg en godkender");
+    let responsible: { employeeId?: Id<"employees">; name: string };
+    if ("employeeId" in args.responsible) {
+      const employee = await ctx.db.get("employees", args.responsible.employeeId);
+      if (!employee || employee.organizationId !== auth.organizationId) {
+        throw new ConvexError("Medarbejderen blev ikke fundet");
+      }
+      responsible = { employeeId: employee._id, name: employee.displayName };
+    } else {
+      const name = args.responsible.name.trim();
+      if (!name || name.length > 100) throw new ConvexError("Vælg en godkender");
+      responsible = { name };
+    }
     const titles = state.tasks.map((task) => task.title);
     if (
       titles.length !== args.tasks.length ||
@@ -217,7 +269,7 @@ export const complete = mutation({
       completedAt: Date.now(),
       completedByUserId: auth.userId,
       completedByName: auth.userName,
-      responsibleUserId: responsible.id,
+      responsibleEmployeeId: responsible.employeeId,
       responsibleName: responsible.name,
     });
     return null;
