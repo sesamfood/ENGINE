@@ -1,11 +1,19 @@
+import type { Infer } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { closedPeriodAround } from "../../lib/count-window";
+import { kioskDayTaskValidator } from "./kioskDayValidators";
 import { getLocationOpeningHours } from "./countWindow";
 import { requireOrganizationLocation } from "./locations";
 
 type KioskDayContext = QueryCtx | MutationCtx;
 export type KioskDayPhase = "endOfDay" | "startOfDay";
+
+type KioskDayTask = Infer<typeof kioskDayTaskValidator>;
+
+function normalize(tasks: (string | KioskDayTask)[] | undefined): KioskDayTask[] {
+  return (tasks ?? []).map((task) => (typeof task === "string" ? { title: task } : task));
+}
 
 export async function getKioskDayTasks(
   ctx: KioskDayContext,
@@ -18,7 +26,7 @@ export async function getKioskDayTasks(
       q.eq("organizationId", organizationId).eq("locationId", locationId),
     )
     .unique();
-  return { endOfDay: tasks?.endOfDay ?? [], startOfDay: tasks?.startOfDay ?? [] };
+  return { endOfDay: normalize(tasks?.endOfDay), startOfDay: normalize(tasks?.startOfDay) };
 }
 
 async function latestRun(
@@ -44,7 +52,7 @@ async function startOfDayDue(
   ctx: KioskDayContext,
   organizationId: string,
   locationId: Id<"locations">,
-  startOfDayTasks: string[],
+  startOfDayTasks: KioskDayTask[],
 ) {
   if (!startOfDayTasks.length) return { due: false, lastEnd: null };
   const [lastEnd, lastStart] = await Promise.all([
@@ -57,13 +65,15 @@ async function startOfDayDue(
   };
 }
 
-export async function startOfDayRequired(
+// Pages the kiosk may still write to while start of day is due, or null when not due.
+export async function startOfDayAllowedPages(
   ctx: KioskDayContext,
   organizationId: string,
   locationId: Id<"locations">,
 ) {
   const tasks = await getKioskDayTasks(ctx, organizationId, locationId);
-  return (await startOfDayDue(ctx, organizationId, locationId, tasks.startOfDay)).due;
+  const { due } = await startOfDayDue(ctx, organizationId, locationId, tasks.startOfDay);
+  return due ? tasks.startOfDay.flatMap((task) => (task.link ? [task.link] : [])) : null;
 }
 
 export async function kioskDayState(

@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
   requireLocationAccess,
@@ -6,23 +6,38 @@ import {
   requirePermission,
 } from "./lib/auth";
 import { getKioskDayTasks, kioskDayState } from "./lib/kioskDay";
+import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
 import { requireOrganizationLocation } from "./lib/locations";
 
 const MAX_TASKS = 50;
 const MAX_TASK_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 1000;
 const phaseValidator = v.union(v.literal("endOfDay"), v.literal("startOfDay"));
 const tasksValidator = v.object({
-  endOfDay: v.array(v.string()),
-  startOfDay: v.array(v.string()),
+  endOfDay: v.array(kioskDayTaskValidator),
+  startOfDay: v.array(kioskDayTaskValidator),
 });
 
-function cleanTasks(tasks: string[]) {
-  const cleaned = tasks.map((task) => task.trim()).filter(Boolean);
+function cleanTasks(tasks: Infer<typeof kioskDayTaskValidator>[]) {
+  const cleaned = tasks.flatMap(({ title, description, icon, link }) => {
+    const trimmedTitle = title.trim();
+    const trimmedDescription = description?.trim();
+    if (!trimmedTitle) return [];
+    if (trimmedTitle.length > MAX_TASK_LENGTH) {
+      throw new ConvexError(`En opgave må højst have ${MAX_TASK_LENGTH} tegn`);
+    }
+    if (trimmedDescription && trimmedDescription.length > MAX_DESCRIPTION_LENGTH) {
+      throw new ConvexError(`En beskrivelse må højst have ${MAX_DESCRIPTION_LENGTH} tegn`);
+    }
+    return [{
+      title: trimmedTitle,
+      ...(trimmedDescription ? { description: trimmedDescription } : {}),
+      ...(icon ? { icon } : {}),
+      ...(link ? { link } : {}),
+    }];
+  });
   if (cleaned.length > MAX_TASKS) {
     throw new ConvexError(`Der kan højst være ${MAX_TASKS} opgaver pr. liste`);
-  }
-  if (cleaned.some((task) => task.length > MAX_TASK_LENGTH)) {
-    throw new ConvexError(`En opgave må højst have ${MAX_TASK_LENGTH} tegn`);
   }
   return cleaned;
 }
@@ -52,11 +67,25 @@ export const getTasks = query({
   },
 });
 
+// Tasks may only link to pages the kiosk can open.
+export const getLinkablePages = query({
+  args: {},
+  returns: v.array(v.string()),
+  handler: async (ctx) => {
+    const auth = await requireDayTaskManager(ctx);
+    const settings = await ctx.db
+      .query("kioskSettings")
+      .withIndex("by_organizationId", (q) => q.eq("organizationId", auth.organizationId))
+      .unique();
+    return settings?.enabledPages ?? [];
+  },
+});
+
 export const saveTasks = mutation({
   args: {
     locationId: v.id("locations"),
-    endOfDay: v.array(v.string()),
-    startOfDay: v.array(v.string()),
+    endOfDay: v.array(kioskDayTaskValidator),
+    startOfDay: v.array(kioskDayTaskValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -91,7 +120,7 @@ export const getState = query({
   args: { now: v.number(), forceEndOfDay: v.optional(v.boolean()) }, // TEMP: testing
   returns: v.object({
     phase: v.union(phaseValidator, v.null()),
-    tasks: v.array(v.string()),
+    tasks: v.array(kioskDayTaskValidator),
     nextTransitionAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx, args) => {
@@ -112,6 +141,7 @@ export const getState = query({
 export const complete = mutation({
   args: {
     phase: phaseValidator,
+    // Task titles as shown, so a list edited meanwhile is rejected.
     tasks: v.array(v.string()),
     forceEndOfDay: v.optional(v.boolean()), // TEMP: testing
   },
@@ -133,9 +163,10 @@ export const complete = mutation({
           : "Åbning er ikke tilgængelig lige nu",
       );
     }
+    const titles = state.tasks.map((task) => task.title);
     if (
-      state.tasks.length !== args.tasks.length ||
-      state.tasks.some((task, index) => task !== args.tasks[index])
+      titles.length !== args.tasks.length ||
+      titles.some((title, index) => title !== args.tasks[index])
     ) {
       throw new ConvexError("Opgavelisten er ændret. Gennemgå opgaverne igen");
     }
@@ -143,7 +174,7 @@ export const complete = mutation({
       organizationId: auth.organizationId,
       locationId,
       phase: args.phase,
-      tasks: state.tasks,
+      tasks: titles,
       completedAt: Date.now(),
       completedByUserId: auth.userId,
       completedByName: auth.userName,

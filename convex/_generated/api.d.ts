@@ -118,6 +118,7 @@ import type * as lib_forecastValidators from "../lib/forecastValidators.js";
 import type * as lib_googlePlaces from "../lib/googlePlaces.js";
 import type * as lib_idempotency from "../lib/idempotency.js";
 import type * as lib_kioskDay from "../lib/kioskDay.js";
+import type * as lib_kioskDayValidators from "../lib/kioskDayValidators.js";
 import type * as lib_linear from "../lib/linear.js";
 import type * as lib_locationDeletion from "../lib/locationDeletion.js";
 import type * as lib_locationMutations from "../lib/locationMutations.js";
@@ -319,6 +320,7 @@ declare const fullApi: ApiFromModules<{
   "lib/googlePlaces": typeof lib_googlePlaces;
   "lib/idempotency": typeof lib_idempotency;
   "lib/kioskDay": typeof lib_kioskDay;
+  "lib/kioskDayValidators": typeof lib_kioskDayValidators;
   "lib/linear": typeof lib_linear;
   "lib/locationDeletion": typeof lib_locationDeletion;
   "lib/locationMutations": typeof lib_locationMutations;

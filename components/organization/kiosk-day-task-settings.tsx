@@ -1,7 +1,7 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
-import { PlusIcon, Trash2Icon } from "lucide-react";
+import { useConvex, useMutation, useQuery } from "convex/react";
+import { CopyIcon, LinkIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,7 +14,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -28,10 +37,25 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  KioskDayTaskIconView,
+  kioskDayTaskIconOptions,
+} from "@/components/kiosk/kiosk-day-task-icon";
+import {
+  kioskDayTaskIcons,
+  type KioskDayTask,
+  type KioskDayTaskIcon,
+} from "@/lib/kiosk-day";
+import { kioskDestination, kioskDestinations, type KioskDestinationId } from "@/lib/kiosk";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
+function isKioskDestinationId(page: string): page is KioskDestinationId {
+  return kioskDestinations.some((destination) => destination.id === page);
+}
+
 type Phase = "endOfDay" | "startOfDay";
-type Tasks = Record<Phase, string[]>;
+type Tasks = Record<Phase, KioskDayTask[]>;
+type LocationOption = { id: Id<"locations">; name: string };
 
 const phases: { id: Phase; title: string; description: string }[] = [
   {
@@ -46,24 +70,124 @@ const phases: { id: Phase; title: string; description: string }[] = [
   },
 ];
 
+const iconItems = kioskDayTaskIcons.map((icon) => ({
+  value: icon,
+  label: kioskDayTaskIconOptions[icon].label,
+}));
+
+function TaskRow({
+  phase,
+  index,
+  task,
+  linkablePages,
+  onChange,
+  onRemove,
+}: {
+  phase: (typeof phases)[number];
+  index: number;
+  task: KioskDayTask;
+  linkablePages: KioskDestinationId[];
+  onChange: (task: KioskDayTask) => void;
+  onRemove: () => void;
+}) {
+  const id = `${phase.id}-task-${index}`;
+  return (
+    <li>
+      <Field appearance="panel">
+        <div className="flex items-center gap-2">
+          <Select
+            value={task.icon ?? "check"}
+            onValueChange={(icon) => onChange({ ...task, icon: icon as KioskDayTaskIcon })}
+            items={iconItems}
+          >
+            <SelectTrigger aria-label={`Ikon for opgave ${index + 1}`}>
+              <SelectValue>
+                <KioskDayTaskIconView icon={task.icon} />
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {kioskDayTaskIcons.map((icon) => (
+                  <SelectItem key={icon} value={icon}>
+                    <KioskDayTaskIconView icon={icon} />
+                    {kioskDayTaskIconOptions[icon].label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Input
+            id={id}
+            aria-label={`${phase.title}, opgave ${index + 1}`}
+            placeholder="Opgave"
+            value={task.title}
+            maxLength={200}
+            onChange={(event) => onChange({ ...task, title: event.target.value })}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-lg"
+            aria-label={`Fjern opgave ${index + 1}`}
+            onClick={onRemove}
+          >
+            <Trash2Icon />
+          </Button>
+        </div>
+        <Textarea
+          aria-label={`Beskrivelse af opgave ${index + 1}`}
+          placeholder="Beskrivelse (valgfri)"
+          rows={2}
+          maxLength={1000}
+          value={task.description ?? ""}
+          onChange={(event) => onChange({ ...task, description: event.target.value })}
+        />
+        {linkablePages.length ? (
+          <Select
+            value={task.link ?? "none"}
+            onValueChange={(link) =>
+              onChange({
+                ...task,
+                link: link === "none" ? undefined : (link as KioskDestinationId),
+              })
+            }
+            items={[
+              { value: "none", label: "Ingen side" },
+              ...linkablePages.map((page) => ({ value: page, label: kioskDestination(page).label })),
+            ]}
+          >
+            <SelectTrigger aria-label={`Side for opgave ${index + 1}`} className="w-full">
+              <LinkIcon />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="none">Ingen side</SelectItem>
+                {linkablePages.map((page) => (
+                  <SelectItem key={page} value={page}>
+                    {kioskDestination(page).label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        ) : null}
+      </Field>
+    </li>
+  );
+}
+
 function TaskList({
   phase,
   tasks,
+  linkablePages,
   onChange,
 }: {
   phase: (typeof phases)[number];
-  tasks: string[];
-  onChange: (tasks: string[]) => void;
+  tasks: KioskDayTask[];
+  linkablePages: KioskDestinationId[];
+  onChange: (tasks: KioskDayTask[]) => void;
 }) {
-  const [draft, setDraft] = useState("");
-
-  function add() {
-    const task = draft.trim();
-    if (!task) return;
-    onChange([...tasks, task]);
-    setDraft("");
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -74,48 +198,30 @@ function TaskList({
         {tasks.length === 0 ? (
           <p className="text-sm text-muted-foreground">Ingen opgaver endnu.</p>
         ) : null}
-        <ol className="flex flex-col gap-2">
+        <ol className="flex flex-col gap-3">
           {tasks.map((task, index) => (
-            <li key={index} className="flex items-center gap-2">
-              <Input
-                aria-label={`${phase.title}, opgave ${index + 1}`}
-                value={task}
-                maxLength={200}
-                onChange={(event) =>
-                  onChange(tasks.map((item, i) => (i === index ? event.target.value : item)))
-                }
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-lg"
-                aria-label={`Fjern opgave ${index + 1}`}
-                onClick={() => onChange(tasks.filter((_, i) => i !== index))}
-              >
-                <Trash2Icon />
-              </Button>
-            </li>
+            <TaskRow
+              key={index}
+              phase={phase}
+              index={index}
+              task={task}
+              linkablePages={linkablePages}
+              onChange={(next) => onChange(tasks.map((item, i) => (i === index ? next : item)))}
+              onRemove={() => onChange(tasks.filter((_, i) => i !== index))}
+            />
           ))}
         </ol>
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            add();
-          }}
-        >
-          <Input
-            aria-label={`Ny opgave til ${phase.title.toLowerCase()}`}
-            placeholder="Ny opgave"
-            value={draft}
-            maxLength={200}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <Button type="submit" variant="outline" size="lg" disabled={!draft.trim()}>
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => onChange([...tasks, { title: "" }])}
+          >
             <PlusIcon data-icon="inline-start" />
-            Tilføj
+            Tilføj opgave
           </Button>
-        </form>
+        </div>
       </CardContent>
     </Card>
   );
@@ -124,13 +230,19 @@ function TaskList({
 function TaskEditor({
   locationId,
   initial,
+  otherLocations,
+  linkablePages,
 }: {
   locationId: Id<"locations">;
   initial: Tasks;
+  otherLocations: LocationOption[];
+  linkablePages: KioskDestinationId[];
 }) {
+  const convex = useConvex();
   const saveTasks = useMutation(api.kioskDay.saveTasks);
   const [tasks, setTasks] = useState(initial);
   const [pending, setPending] = useState(false);
+  const [copying, setCopying] = useState(false);
 
   async function save() {
     setPending(true);
@@ -144,14 +256,49 @@ function TaskEditor({
     }
   }
 
+  async function copyFrom(source: LocationOption) {
+    setCopying(true);
+    try {
+      setTasks(await convex.query(api.kioskDay.getTasks, { locationId: source.id }));
+      toast.success(`Opgaverne er kopieret fra ${source.name}. Gem for at anvende dem.`);
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Opgaverne kunne ikke kopieres. Prøv igen."));
+    } finally {
+      setCopying(false);
+    }
+  }
+
   return (
     <>
+      {otherLocations.length ? (
+        <div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" size="lg" disabled={copying} />}
+            >
+              {copying ? <Spinner data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
+              Kopiér fra lokation
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Erstat begge lister med</DropdownMenuLabel>
+                {otherLocations.map((location) => (
+                  <DropdownMenuItem key={location.id} onClick={() => void copyFrom(location)}>
+                    {location.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ) : null}
       <div className="grid gap-5 lg:grid-cols-2">
         {phases.map((phase) => (
           <TaskList
             key={phase.id}
             phase={phase}
             tasks={tasks[phase.id]}
+            linkablePages={linkablePages}
             onChange={(next) => setTasks((current) => ({ ...current, [phase.id]: next }))}
           />
         ))}
@@ -176,6 +323,7 @@ export function KioskDayTaskSettings() {
     api.kioskDay.getTasks,
     canManage && locationId ? { locationId } : "skip",
   );
+  const linkablePages = useQuery(api.kioskDay.getLinkablePages, canManage ? {} : "skip");
 
   if (!access) return <Skeleton className="h-80 w-full" />;
 
@@ -225,10 +373,16 @@ export function KioskDayTaskSettings() {
           </Select>
         </Field>
       ) : null}
-      {tasks === undefined ? (
+      {tasks === undefined || linkablePages === undefined ? (
         <Skeleton className="h-72 w-full" />
       ) : (
-        <TaskEditor key={locationId} locationId={locationId} initial={tasks} />
+        <TaskEditor
+          key={locationId}
+          locationId={locationId}
+          initial={tasks}
+          otherLocations={locations.filter((location) => location.id !== locationId)}
+          linkablePages={linkablePages.filter(isKioskDestinationId)}
+        />
       )}
     </div>
   );

@@ -1,14 +1,25 @@
 "use client";
 
 import { useMutation } from "convex/react";
+import { ArrowRightIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldContent, FieldLabel, FieldTitle } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldTitle,
+} from "@/components/ui/field";
+import { KioskDayTaskIconView } from "@/components/kiosk/kiosk-day-task-icon";
+import type { KioskDayTask } from "@/lib/kiosk-day";
 import { Spinner } from "@/components/ui/spinner";
-import { useHomeDestination, useKioskDay } from "@/components/app-shell";
+import { useHomeDestination, useKiosk, useKioskDay } from "@/components/app-shell";
+import { kioskDestination } from "@/lib/kiosk";
 import { api } from "@/convex/_generated/api";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
@@ -34,12 +45,33 @@ function Checklist({
   onCompleted,
 }: {
   phase: keyof typeof copy;
-  tasks: string[];
+  tasks: KioskDayTask[];
   forceEndOfDay: boolean; // TEMP: testing
   onCompleted: () => void;
 }) {
   const complete = useMutation(api.kioskDay.complete);
-  const [checked, setChecked] = useState<number[]>([]);
+  const enabledPages = useKiosk()?.settings?.enabledPages ?? [];
+  // Kept in session storage so ticks survive a visit to a linked page.
+  const storageKey = `engine.kiosk-day.${phase}.${tasks.map((task) => task.title).join("\n")}`;
+  const [checked, setCheckedState] = useState<number[]>(() => {
+    try {
+      const stored: unknown = JSON.parse(window.sessionStorage.getItem(storageKey) ?? "[]");
+      return Array.isArray(stored)
+        ? stored.filter((index): index is number => Number.isInteger(index) && index < tasks.length)
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  function setChecked(update: (current: number[]) => number[]) {
+    setCheckedState((current) => {
+      const next = update(current);
+      try {
+        window.sessionStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }
   const [pending, setPending] = useState(false);
   const text = copy[phase];
   const allDone = checked.length === tasks.length;
@@ -47,7 +79,10 @@ function Checklist({
   async function submit() {
     setPending(true);
     try {
-      await complete({ phase, tasks, forceEndOfDay });
+      await complete({ phase, tasks: tasks.map((task) => task.title), forceEndOfDay });
+      try {
+        window.sessionStorage.removeItem(storageKey);
+      } catch {}
       onCompleted();
       toast.success(text.done);
     } catch (error) {
@@ -64,7 +99,7 @@ function Checklist({
       </div>
       <ul className="flex flex-col gap-2">
         {tasks.map((task, index) => (
-          <li key={index}>
+          <li key={index} className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
             <FieldLabel htmlFor={`day-task-${index}`} appearance="large">
               <Field orientation="horizontal">
                 <Checkbox
@@ -76,11 +111,26 @@ function Checklist({
                     )
                   }
                 />
+                <KioskDayTaskIconView icon={task.icon} />
                 <FieldContent>
-                  <FieldTitle>{task}</FieldTitle>
+                  <FieldTitle>{task.title}</FieldTitle>
+                  {task.description ? (
+                    <FieldDescription>{task.description}</FieldDescription>
+                  ) : null}
                 </FieldContent>
               </Field>
             </FieldLabel>
+            {task.link && enabledPages.includes(task.link) ? (
+              <Button
+                variant="outline"
+                size="lg"
+                render={<Link href={kioskDestination(task.link).route} />}
+                nativeButton={false}
+              >
+                {kioskDestination(task.link).label}
+                <ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -117,7 +167,7 @@ export function KioskDayTasks() {
 
   return (
     <Checklist
-      key={`${day.phase}:${day.tasks.join("\n")}`}
+      key={`${day.phase}:${day.tasks.map((task) => task.title).join("\n")}`}
       phase={day.phase}
       tasks={day.tasks}
       forceEndOfDay={day.forceEndOfDay}

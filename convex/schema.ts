@@ -18,6 +18,7 @@ import {
   openingHoursModeValidator,
   weeklyOpeningHoursValidator,
 } from "./lib/openingHours";
+import { kioskDayTaskValidator } from "./lib/kioskDayValidators";
 import { countScheduleValidator } from "./lib/countSettings";
 
 import {
@@ -1882,8 +1883,9 @@ export default defineSchema({
   kioskDayTasks: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
-    endOfDay: v.array(v.string()),
-    startOfDay: v.array(v.string()),
+    // Plain strings are tasks saved before descriptions and icons existed.
+    endOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
+    startOfDay: v.array(v.union(v.string(), kioskDayTaskValidator)),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 

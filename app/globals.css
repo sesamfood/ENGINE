@@ -147,6 +147,16 @@
   transition: var(--drag-transition);
 }
 
+/* The kiosk closing popup morphs into its end-of-day shortcut button. */
+[data-view-transition="end-of-day"] {
+  view-transition-name: end-of-day;
+}
+
+::view-transition-group(end-of-day) {
+  animation-duration: 450ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
 .dashboard-grid {
   --dashboard-visible-columns: 1;
   grid-template-columns: repeat(var(--dashboard-visible-columns), minmax(0, 1fr));

@@ -28,6 +28,14 @@ export const kioskDestinationWarnings: Partial<
     "På denne side kan tabletten eksportere kontroldokumentation, uanset kontoens rolle.",
 };
 
+export function kioskDestinationMatches(id: string, pathname: string) {
+  const destination = kioskDestinations.find((item) => item.id === id);
+  return (
+    destination?.route === pathname ||
+    (id === "ownChecks.today" && pathname.startsWith("/own-checks/check/"))
+  );
+}
+
 export function kioskDestination(id: KioskDestinationId) {
   return kioskDestinations.find((destination) => destination.id === id)!;
 }
