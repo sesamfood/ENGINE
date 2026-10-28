@@ -48,6 +48,7 @@ export type ProductExportRow = {
     quantity: number;
     unit: string;
     removable: boolean;
+    packaging: boolean;
   }>;
   addableIngredients: Array<{
     sourceProductId: string;
@@ -300,6 +301,14 @@ function parseProduct(
             ? ingredient.removable
             : archiveError(
                 `fjernelsesindstillingen for ingrediens ${ingredientIndex + 1} for produkt ${index + 1} er ugyldig`,
+              ),
+      packaging:
+        ingredient.packaging === undefined
+          ? false
+          : typeof ingredient.packaging === "boolean"
+            ? ingredient.packaging
+            : archiveError(
+                `emballageindstillingen for ingrediens ${ingredientIndex + 1} for produkt ${index + 1} er ugyldig`,
               ),
     };
   });

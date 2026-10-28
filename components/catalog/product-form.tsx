@@ -356,6 +356,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
   ]);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([]);
+  const [packagingRows, setPackagingRows] = useState<IngredientDraft[]>([]);
+  const hasRecipe = ingredientRows.length > 0 || packagingRows.length > 0;
   const [yieldQuantity, setYieldQuantity] = useState("1");
   // Unit row key; falls back to the default unit when missing.
   const [yieldUnitKey, setYieldUnitKey] = useState<string | null>(null);
@@ -364,7 +366,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   >([]);
   const catalog = useCompleteCatalog(
     api.catalog.listActiveProductsPage,
-    ingredientRows.length > 0 || addableIngredientRows.length > 0
+    hasRecipe || addableIngredientRows.length > 0
       ? {}
       : "skip",
   );
@@ -411,8 +413,21 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     setYieldUnitKey(
       product.recipeYield ? `unit-${product.recipeYield.unitId}` : null,
     );
+    setPackagingRows(
+      product.ingredients
+        .filter((ingredient) => ingredient.packaging)
+        .map((ingredient) => ({
+          key: `packaging-${ingredient.productId}`,
+          productId: ingredient.productId,
+          quantity: ingredient.quantity.toString(),
+          unitId: ingredient.unitId,
+          onlinePosProductId: null,
+        })),
+    );
     setIngredientRows(
-      product.ingredients.map((ingredient) => ({
+      product.ingredients
+        .filter((ingredient) => !ingredient.packaging)
+        .map((ingredient) => ({
         key: `ingredient-${ingredient.productId}`,
         productId: ingredient.productId,
         quantity: ingredient.quantity.toString(),
@@ -699,6 +714,19 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     ]);
   }
 
+  function addPackaging() {
+    setPackagingRows((current) => [
+      ...current,
+      {
+        key: newKey("packaging"),
+        productId: null,
+        quantity: "",
+        unitId: null,
+        onlinePosProductId: null,
+      },
+    ]);
+  }
+
   function addAddableIngredient() {
     setAddableIngredientRows((current) => [
       ...current,
@@ -746,10 +774,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     if (new Set(unitKeys).size !== unitKeys.length) {
       nextErrors.units = "Hver enhed kan kun tilføjes én gang";
     }
-    validateIngredientRows(ingredientRows, nextErrors);
+    validateIngredientRows([...ingredientRows, ...packagingRows], nextErrors);
     const yieldValue = Number(yieldQuantity);
     if (
-      ingredientRows.length > 0 &&
+      hasRecipe &&
       (!Number.isFinite(yieldValue) || yieldValue <= 0)
     ) {
       nextErrors.recipeYield = "Indtast et udbytte større end nul";
@@ -791,7 +819,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       factorToDefault: parseFactor(row.factor),
       isDefault: row.isDefault,
     }));
-    const ingredients = ingredientRows.flatMap((row) =>
+    const ingredients = [
+      ...ingredientRows.map((row) => ({ ...row, packaging: false })),
+      ...packagingRows.map((row) => ({
+        ...row,
+        removable: false,
+        packaging: true,
+      })),
+    ].flatMap((row) =>
       row.productId !== null && row.unitId !== null
         ? [
             {
@@ -799,6 +834,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
               quantity: Number(row.quantity),
               unitId: row.unitId,
               removable: row.removable,
+              packaging: row.packaging,
             },
           ]
         : [],
@@ -1312,7 +1348,8 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                     <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
                       Produktet har endnu ingen ingredienser.
                     </Empty>
-                  ) : (
+                  ) : null}
+                  {hasRecipe ? (
                     <Field data-invalid={Boolean(errors.recipeYield)}>
                       <FieldLabel htmlFor="recipe-yield">
                         Ingredienserne giver
@@ -1366,7 +1403,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       </FieldDescription>
                       <FieldError>{errors.recipeYield}</FieldError>
                     </Field>
-                  )}
+                  ) : null}
                   {ingredientRows.map((row) => {
                     const selectedProduct = recipeProductOptions.find(
                       (option) => option.id === row.productId,
@@ -1478,6 +1515,62 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   >
                     <PlusIcon data-icon="inline-start" />
                     Tilføj ingrediens
+                  </Button>
+                </FieldGroup>
+              </FieldSet>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Emballage</CardTitle>
+              <CardDescription>
+                Emballage trækkes fra lageret ligesom ingredienser, men vises
+                for sig.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FieldSet>
+                <FieldLegend className="sr-only">Emballage</FieldLegend>
+                <FieldGroup>
+                  {packagingRows.length === 0 ? (
+                    <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
+                      Produktet har endnu ingen emballage.
+                    </Empty>
+                  ) : null}
+                  {packagingRows.map((row) => (
+                    <IngredientEditorRow
+                      key={row.key}
+                      row={row}
+                      products={recipeProductOptions}
+                      options={recipeProductComboboxOptions}
+                      unitOptions={unitOptions}
+                      disabled={catalog === undefined}
+                      errors={errors}
+                      onChange={(patch) =>
+                        setPackagingRows((current) =>
+                          current.map((item) =>
+                            item.key === row.key ? { ...item, ...patch } : item,
+                          ),
+                        )
+                      }
+                      onRemove={() =>
+                        setPackagingRows((current) =>
+                          current.filter((item) => item.key !== row.key),
+                        )
+                      }
+                      productLabel="Emballageprodukt"
+                      removeLabel="Fjern emballage"
+                    />
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={addPackaging}
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    Tilføj emballage
                   </Button>
                 </FieldGroup>
               </FieldSet>

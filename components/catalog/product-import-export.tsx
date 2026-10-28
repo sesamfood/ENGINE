@@ -203,6 +203,7 @@ export function ProductImportExport() {
               quantity: ingredient.quantity,
               unitName: ingredient.unit,
               removable: ingredient.removable ?? false,
+              packaging: ingredient.packaging ?? false,
             })),
             ...(product.addableIngredients
               ? {
