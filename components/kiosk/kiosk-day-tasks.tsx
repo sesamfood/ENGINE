@@ -144,15 +144,11 @@ function Checklist({
   tasks,
   scheduledAt,
   timeZone,
-  forceEndOfDay,
-  onCompleted,
 }: {
   phase: keyof typeof copy;
   tasks: KioskDayTask[];
   scheduledAt: number | null;
   timeZone: string | null;
-  forceEndOfDay: boolean; // TEMP: testing
-  onCompleted: () => void;
 }) {
   const kiosk = useKiosk();
   const complete = useMutation(api.kioskDay.complete);
@@ -181,10 +177,8 @@ function Checklist({
         responsible: responsible.startsWith("new:")
           ? { name: responsible.slice(4) }
           : { employeeId: responsible as Id<"employees"> },
-        forceEndOfDay,
       });
       clear();
-      onCompleted();
       toast.success(text.done);
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Opgaverne kunne ikke registreres. Prøv igen."));
@@ -356,8 +350,6 @@ export function KioskDayTasks() {
       tasks={day.tasks}
       scheduledAt={day.scheduledAt}
       timeZone={day.timeZone}
-      forceEndOfDay={day.forceEndOfDay}
-      onCompleted={() => day.setForceEndOfDay(false)}
     />
   );
 }

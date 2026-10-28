@@ -193,9 +193,6 @@ type KioskDayState = {
   tasks: KioskDayTask[];
   scheduledAt: number | null;
   timeZone: string | null;
-  // TEMP: testing
-  forceEndOfDay: boolean;
-  setForceEndOfDay: (force: boolean) => void;
   endOfDayDismissed: boolean;
   dismissEndOfDay: () => void;
 };
@@ -641,7 +638,6 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [queryNow, setQueryNow] = useState(minuteTimestamp);
-  const [forceEndOfDay, setForceEndOfDay] = useState(false); // TEMP: testing
   const [dismissedKey, setDismissedKey] = useState(() => {
     try {
       return window.sessionStorage.getItem(END_OF_DAY_DISMISSED_KEY);
@@ -651,7 +647,7 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   });
   const state = useQuery(
     api.kioskDay.getState,
-    kiosk?.kioskModeEnabled ? { now: queryNow, forceEndOfDay } : "skip",
+    kiosk?.kioskModeEnabled ? { now: queryNow } : "skip",
   );
   const current = useLastDefined(state, kiosk?.locationId ?? "kiosk");
   const nextTransitionAt = current?.nextTransitionAt;
@@ -707,8 +703,6 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
         current
           ? {
               ...current,
-              forceEndOfDay,
-              setForceEndOfDay,
               // Dismissal lasts until the closed period ends.
               endOfDayDismissed: dismissedKey === String(current.nextTransitionAt),
               dismissEndOfDay: () => {
@@ -733,19 +727,6 @@ function KioskDayPrompts() {
   const onLinkedPage = useOnLinkedDayTaskPage();
   const countLocked = useContext(FeatureLockContext);
   if (countLocked) return null;
-  // TEMP: testing
-  if (day && !day.phase) {
-    return (
-      <Button
-        variant="outline"
-        size="lg"
-        className="mb-4"
-        onClick={() => day.setForceEndOfDay(true)}
-      >
-        Test: Simulér lukketid
-      </Button>
-    );
-  }
   if (!day?.phase || pathname === KIOSK_DAY_PATH) return null;
   if (onLinkedPage) return null;
   if (day.phase !== "endOfDay" || day.endOfDayDismissed) return null;
