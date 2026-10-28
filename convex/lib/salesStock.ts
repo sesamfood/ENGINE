@@ -53,7 +53,10 @@ export function createSalesStockResolver(
   organizationId: string,
   integrationId?: Id<"onlinePosIntegrations">,
 ) {
-  const { expand, recipe } = createProductStockResolver(ctx, organizationId);
+  const { expand, recipe, recipeYield } = createProductStockResolver(
+    ctx,
+    organizationId,
+  );
   const additions = new Map<
     Id<"products">,
     Doc<"productIngredientAdditions">[]
@@ -191,6 +194,7 @@ export function createSalesStockResolver(
       modifiers.set(String(externalId), rules);
     }
     for (const id of soldIds) {
+      const batchesPerSale = 1 / (await recipeYield(id));
       for (const ingredient of await recipe(id)) {
         const removalId = settings
           ? (ingredient.onlinePosRemovalMappings?.find(
@@ -204,7 +208,7 @@ export function createSalesStockResolver(
         if (ingredient.removable && removalId !== undefined) {
           addModifier(removalId, {
             productId: ingredient.ingredientProductId,
-            quantity: -ingredient.quantity,
+            quantity: -ingredient.quantity * batchesPerSale,
             unitId: ingredient.unitId,
           });
         }

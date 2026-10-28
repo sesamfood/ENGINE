@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { normalizeStock } from "./stock";
+import { normalizeStock, toDefaultUnit } from "./stock";
 
 type Consumption = {
   productId: Id<"products">;
@@ -68,13 +68,24 @@ export function createForecastConsumptionResolver(
     }
     if (!ingredients.length)
       return [{ productId, unitId: product.defaultUnitId, quantity: amount }];
+    const recipeYield = product.recipeYield
+      ? await toDefaultUnit(
+          ctx,
+          organizationId,
+          productId,
+          product.recipeYield.unitId,
+          product.recipeYield.quantity,
+        )
+      : 1;
+    if (!recipeYield) return null;
+    const batches = amount / recipeYield;
     const result: Consumption[] = [];
     const nextPath = new Set(path).add(productId);
     for (const ingredient of ingredients) {
       const children = await expand(
         ingredient.ingredientProductId,
         ingredient.unitId,
-        ingredient.quantity * amount,
+        ingredient.quantity * batches,
         nextPath,
       );
       if (!children) return null;

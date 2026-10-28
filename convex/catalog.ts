@@ -130,6 +130,10 @@ const productDetailValidator = v.object({
       removable: v.boolean(),
     }),
   ),
+  recipeYield: v.union(
+    v.object({ quantity: v.number(), unitId: v.id("units") }),
+    v.null(),
+  ),
   addableIngredients: v.array(
     v.object({
       productId: v.id("products"),
@@ -176,6 +180,13 @@ const ingredientInputValidator = v.object({
   unitId: v.id("units"),
   removable: v.optional(v.boolean()),
 });
+
+const recipeYieldInputValidator = v.optional(
+  v.union(
+    v.object({ quantity: v.number(), unit: unitReferenceValidator }),
+    v.null(),
+  ),
+);
 
 const addableIngredientInputValidator = v.object({
   productId: v.id("products"),
@@ -260,6 +271,8 @@ type IngredientInput = {
   unitId: Id<"units">;
   removable?: boolean;
 };
+
+type RecipeYieldInput = { quantity: number; unit: UnitReference } | null;
 
 type AddableIngredientInput = {
   productId: Id<"products">;
@@ -505,6 +518,21 @@ async function resolveUnits(
   }
 
   return resolved;
+}
+
+async function resolveRecipeYield(
+  ctx: MutationCtx,
+  organizationId: string,
+  input: RecipeYieldInput,
+  units: Awaited<ReturnType<typeof resolveUnits>>,
+) {
+  if (!input) return undefined;
+  requirePositiveNumber(input.quantity, "Opskriftens udbytte");
+  const unitId = await resolveUnit(ctx, organizationId, input.unit);
+  if (!units.some((unit) => unit.unitId === unitId)) {
+    throw new ConvexError("Vælg en af produktets enheder for udbyttet");
+  }
+  return { quantity: input.quantity, unitId };
 }
 
 async function validateIngredients(
@@ -1518,6 +1546,7 @@ export const getProduct = query({
       imageUrl,
       units: units.filter((row) => row !== null),
       ingredients: ingredients.filter((row) => row !== null),
+      recipeYield: product.recipeYield ?? null,
       addableIngredients: addableIngredients.filter((row) => row !== null),
     };
   },
@@ -1651,6 +1680,7 @@ export async function createProductWithAuth(
     categories: CategoryReference[];
     units: ProductUnitInput[];
     ingredients: IngredientInput[];
+    recipeYield?: RecipeYieldInput;
     addableIngredients: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
@@ -1667,6 +1697,12 @@ export async function createProductWithAuth(
   );
   const categoryId = categoryIds[0];
   const units = await resolveUnits(ctx, organizationId, args.units);
+  const recipeYield = await resolveRecipeYield(
+    ctx,
+    organizationId,
+    args.recipeYield ?? null,
+    units,
+  );
   await validateIngredients(ctx, organizationId, args.ingredients);
   await validateAddableIngredients(
     ctx,
@@ -1684,6 +1720,7 @@ export async function createProductWithAuth(
     normalizedName,
     categoryId,
     defaultUnitId,
+    ...(recipeYield ? { recipeYield } : {}),
     ...(typeof args.maxTemperatureCelsius === "number"
       ? { maxTemperatureCelsius: args.maxTemperatureCelsius }
       : {}),
@@ -1728,6 +1765,8 @@ export async function updateProductWithAuth(
     categories: CategoryReference[];
     units: ProductUnitInput[];
     ingredients: IngredientInput[];
+    // Undefined keeps the stored yield.
+    recipeYield?: RecipeYieldInput;
     addableIngredients?: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
@@ -1757,6 +1796,19 @@ export async function updateProductWithAuth(
   );
   const categoryId = categoryIds[0];
   const units = await resolveUnits(ctx, organizationId, args.units);
+  const recipeYield = await resolveRecipeYield(
+    ctx,
+    organizationId,
+    args.recipeYield === undefined
+      ? product.recipeYield
+        ? {
+            quantity: product.recipeYield.quantity,
+            unit: { kind: "existing", id: product.recipeYield.unitId },
+          }
+        : null
+      : args.recipeYield,
+    units,
+  );
   const [existingIngredients, existingAddableIngredients] = await Promise.all([
     ctx.db
       .query("productIngredients")
@@ -1843,6 +1895,12 @@ export async function updateProductWithAuth(
     product._id,
     addableIngredients,
   );
+  if (
+    recipeYield?.quantity !== product.recipeYield?.quantity ||
+    recipeYield?.unitId !== product.recipeYield?.unitId
+  ) {
+    await invalidateSalesStockMappings(ctx, organizationId);
+  }
   const updatedAt = Math.max(Date.now(), product.updatedAt + 1);
   await ctx.db.patch("products", product._id, {
     ...(args.expiry !== undefined ? { expiry: args.expiry ?? undefined } : {}),
@@ -1850,6 +1908,7 @@ export async function updateProductWithAuth(
     normalizedName,
     categoryId,
     defaultUnitId,
+    recipeYield,
     ...(args.maxTemperatureCelsius !== undefined
       ? {
           maxTemperatureCelsius:
@@ -1969,6 +2028,7 @@ export const createProduct = mutation({
     categories: v.array(categoryReferenceValidator),
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
+    recipeYield: recipeYieldInputValidator,
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
@@ -2238,6 +2298,7 @@ export const importProduct = mutation({
         normalizedName,
         categoryId,
         defaultUnitId,
+        recipeYield: undefined,
         ...(args.maxTemperatureCelsius !== undefined
           ? {
               maxTemperatureCelsius:
@@ -2400,6 +2461,7 @@ export const updateProduct = mutation({
     categories: v.array(categoryReferenceValidator),
     units: v.array(productUnitInputValidator),
     ingredients: v.array(ingredientInputValidator),
+    recipeYield: recipeYieldInputValidator,
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
@@ -2997,6 +3059,11 @@ export async function mergeUnitsWithAuth(
         product.defaultUnitId === sourceUnit._id
           ? targetUnit._id
           : product.defaultUnitId,
+      ...(product.recipeYield?.unitId === sourceUnit._id
+        ? {
+            recipeYield: { ...product.recipeYield, unitId: targetUnit._id },
+          }
+        : {}),
       updatedAt: Math.max(Date.now(), product.updatedAt + 1),
     });
   }
