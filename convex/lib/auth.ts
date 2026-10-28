@@ -181,9 +181,24 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
           q.eq("organizationId", member.organizationId).eq("userId", member.userId),
         )
         .unique();
+  const kioskSession =
+    !member.kioskLocationId && !testMember && session.kioskModeEnabled
+      ? await ctx.db
+          .query("kioskSessions")
+          .withIndex("by_sessionId", (q) =>
+            q.eq("sessionId", identity.sessionId as string),
+          )
+          .unique()
+      : null;
+  const sessionKioskLocationId =
+    kioskSession?.organizationId === member.organizationId
+      ? kioskSession.locationId
+      : null;
   const kioskLocationId = member.kioskLocationId && !testMember
     ? (member.kioskLocationId as Id<"locations">)
-    : null;
+    : sessionKioskLocationId;
+  const isKioskAccount =
+    session.isKioskAccount === true || sessionKioskLocationId !== null;
   const locationScope = await resolveStoredLocationScope(
     ctx,
     member.organizationId,
@@ -204,8 +219,8 @@ async function getOrganizationFromDatabase(ctx: QueryCtx | MutationCtx) {
     apiKeyId: null,
     userId: member.userId,
     sessionId: identity.sessionId as string,
-    isKioskAccount: session?.isKioskAccount === true,
-    kioskModeEnabled: session?.kioskModeEnabled === true,
+    isKioskAccount,
+    kioskModeEnabled: isKioskAccount && session.kioskModeEnabled === true,
     kioskLocationId,
     userIdentifier: identity.tokenIdentifier,
     userName: identity.name?.trim() || identity.email || "Ukendt bruger",

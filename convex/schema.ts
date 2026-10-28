@@ -1872,6 +1872,13 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
+  // Kiosk mode started by a regular user's own session, bound to one location.
+  kioskSessions: defineTable({
+    sessionId: v.string(),
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+  }).index("by_sessionId", ["sessionId"]),
+
   kioskDayTasks: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
