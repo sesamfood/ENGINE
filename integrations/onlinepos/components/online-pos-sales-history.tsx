@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import { addDays, dateKey } from "@/lib/date";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import {
   AlertDialog,
@@ -156,6 +157,22 @@ export function OnlinePosSalesHistory() {
             </Field>
           </FieldGroup>
         </form>
+        <Button
+          type="button"
+          variant="secondary"
+          className="self-start"
+          disabled={disabled}
+          onClick={() => {
+            const today = dateKey(
+              Date.now(),
+              Intl.DateTimeFormat().resolvedOptions().timeZone,
+            );
+            setFrom(addDays(today, -history.retentionDays));
+            setConfirming(true);
+          }}
+        >
+          Hent salg for de seneste {history.retentionDays} dage
+        </Button>
         {history.locations.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Forbind en lokation til OnlinePOS for at hente salg.
