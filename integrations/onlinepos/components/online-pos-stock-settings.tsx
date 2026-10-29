@@ -22,10 +22,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -219,9 +219,12 @@ export function OnlinePosStockSettings() {
           <FieldGroup>
             <Field orientation="horizontal" data-disabled={saving}>
               <Checkbox id="online-pos-enable-refunds-waste" checked={refundsToWaste} onCheckedChange={setRefundsToWasteChoice} disabled={saving} />
-              <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="online-pos-enable-refunds-waste">Registrér refunderinger som Waste</FieldLabel>
-                <FieldDescription>Refunderinger registreres som Waste, så maden ikke føres tilbage på lageret. Gælder også refunderinger siden seneste Count, hvis du vælger at synkronisere dem. Allerede behandlede refunderinger ændres ikke.</FieldDescription>
+                <HelpTooltip
+                  label="Registrér refunderinger som Waste"
+                  content="Refunderinger registreres som Waste, så maden ikke føres tilbage på lageret. Gælder også refunderinger siden seneste Count, hvis du vælger at synkronisere dem. Allerede behandlede refunderinger ændres ikke."
+                />
               </div>
             </Field>
             <Field orientation="horizontal" data-disabled={saving}>
@@ -231,15 +234,14 @@ export function OnlinePosStockSettings() {
                 onCheckedChange={setSinceCount}
                 disabled={saving}
               />
-              <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="online-pos-stock-since-count">
                   Synkronisér med salg siden seneste Count
                 </FieldLabel>
-                <FieldDescription>
-                  Afstem lageret med salget siden hvert Produkts seneste Count
-                  på lokationen. Tidligere synkroniserede salg trækkes ikke fra
-                  igen. Produkter uden Count starter fra nu.
-                </FieldDescription>
+                <HelpTooltip
+                  label="Synkronisér med salg siden seneste Count"
+                  content="Afstem lageret med salget siden hvert Produkts seneste Count på lokationen. Tidligere synkroniserede salg trækkes ikke fra igen. Produkter uden Count starter fra nu."
+                />
               </div>
             </Field>
           </FieldGroup>

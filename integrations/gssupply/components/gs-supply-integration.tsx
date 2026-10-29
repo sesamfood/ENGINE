@@ -25,9 +25,9 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
-  FieldDescription,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -121,9 +121,15 @@ function ConnectionCard({
         >
           <CardContent>
             <Field>
-              <FieldLabel htmlFor="gs-supply-catalog-url">
-                Link til katalog-API
-              </FieldLabel>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="gs-supply-catalog-url">
+                  Link til katalog-API
+                </FieldLabel>
+                <HelpTooltip
+                  label="Link til katalog-API"
+                  content="Linket gemmes krypteret og vises ikke igen."
+                />
+              </div>
               <Input
                 id="gs-supply-catalog-url"
                 type="password"
@@ -134,9 +140,6 @@ function ConnectionCard({
                 disabled={saving}
                 onChange={(event) => setCatalogUrl(event.target.value)}
               />
-              <FieldDescription>
-                Linket gemmes krypteret og vises ikke igen.
-              </FieldDescription>
             </Field>
           </CardContent>
           <CardFooter className="mt-6 justify-end">

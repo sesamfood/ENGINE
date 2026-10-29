@@ -355,11 +355,12 @@ export function LocationOpeningHours({
 
             <FieldSet>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="flex items-center gap-1">
                   <FieldLegend>Særlige datoer</FieldLegend>
-                  <FieldDescription>
-                    Overskriv de faste tider på eksempelvis helligdage.
-                  </FieldDescription>
+                  <HelpTooltip
+                    label="Særlige datoer"
+                    content="Overskriv de faste tider på eksempelvis helligdage."
+                  />
                 </div>
                 <Button
                   type="button"

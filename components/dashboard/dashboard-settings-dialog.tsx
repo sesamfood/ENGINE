@@ -23,7 +23,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -218,10 +219,13 @@ export function DashboardSettingsDialog({
             </Field>
 
             <FieldSet>
-              <FieldLegend variant="label">Dashboardrækkefølge</FieldLegend>
-              <FieldDescription>
-                Bestem rækkefølgen på dashboards i fanerne.
-              </FieldDescription>
+              <div className="flex items-center gap-1">
+                <FieldLegend variant="label">Dashboardrækkefølge</FieldLegend>
+                <HelpTooltip
+                  label="Dashboardrækkefølge"
+                  content="Bestem rækkefølgen på dashboards i fanerne."
+                />
+              </div>
               <DndContext
                 accessibility={{
                   screenReaderInstructions: sortableListInstructions,
@@ -253,8 +257,13 @@ export function DashboardSettingsDialog({
             </FieldSet>
 
             <FieldSet>
-              <FieldLegend variant="label">Adgang</FieldLegend>
-              <FieldDescription>Vælg roller, der må se dashboardet. Ingen valgte roller betyder alle roller.</FieldDescription>
+              <div className="flex items-center gap-1">
+                <FieldLegend variant="label">Adgang</FieldLegend>
+                <HelpTooltip
+                  label="Adgang"
+                  content="Vælg roller, der må se dashboardet. Ingen valgte roller betyder alle roller."
+                />
+              </div>
               <FieldGroup appearance="dense">
                 {roles.map((role) => (
                   <Field key={role.role} orientation="horizontal">
@@ -279,10 +288,13 @@ export function DashboardSettingsDialog({
             </FieldSet>
 
             <FieldSet>
-              <FieldLegend variant="label">Standard for roller</FieldLegend>
-              <FieldDescription>
-                Disse roller åbner dashboardet som standard.
-              </FieldDescription>
+              <div className="flex items-center gap-1">
+                <FieldLegend variant="label">Standard for roller</FieldLegend>
+                <HelpTooltip
+                  label="Standard for roller"
+                  content="Disse roller åbner dashboardet som standard."
+                />
+              </div>
               <FieldGroup appearance="dense">
                 {roles.map((role) => {
                   const allowed =
@@ -312,10 +324,13 @@ export function DashboardSettingsDialog({
             </FieldSet>
 
             <FieldSet>
-              <FieldLegend variant="label">Standard for lokationer</FieldLegend>
-              <FieldDescription>
-                En lokation kan kun have ét standarddashboard.
-              </FieldDescription>
+              <div className="flex items-center gap-1">
+                <FieldLegend variant="label">Standard for lokationer</FieldLegend>
+                <HelpTooltip
+                  label="Standard for lokationer"
+                  content="En lokation kan kun have ét standarddashboard."
+                />
+              </div>
               <div className="max-h-44 overflow-y-auto rounded-lg border p-3">
                 <FieldGroup appearance="dense">
                   {locations.map((location) => (

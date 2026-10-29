@@ -61,6 +61,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -233,11 +234,13 @@ function PermissionFields({
   );
   return (
     <FieldSet>
-      <FieldLegend variant="label">Tilladelser</FieldLegend>
-      <FieldDescription>
-        Start med rollens tilladelser, og fjern de handlinger API-nøglen ikke
-        skal kunne udføre.
-      </FieldDescription>
+      <div className="flex items-center gap-1">
+        <FieldLegend variant="label">Tilladelser</FieldLegend>
+        <HelpTooltip
+          label="Tilladelser"
+          content="Start med rollens tilladelser, og fjern de handlinger API-nøglen ikke skal kunne udføre."
+        />
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {options.permissionGroups
           .filter((group) =>
@@ -347,10 +350,13 @@ function PolicyFields({
       />
 
       <FieldSet>
-        <FieldLegend variant="label">Lokationsadgang</FieldLegend>
-        <FieldDescription>
-          API-nøglen kan kun bruge data fra den valgte lokationspolitik.
-        </FieldDescription>
+        <div className="flex items-center gap-1">
+          <FieldLegend variant="label">Lokationsadgang</FieldLegend>
+          <HelpTooltip
+            label="Lokationsadgang"
+            content="API-nøglen kan kun bruge data fra den valgte lokationspolitik."
+          />
+        </div>
         <Field>
           <FieldLabel htmlFor="api-key-location-policy">Politik</FieldLabel>
           <Select
@@ -1004,7 +1010,13 @@ export function ApiKeyManagement() {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="new-api-key-expiry">Udløbsdato</FieldLabel>
+                <div className="flex items-center gap-1">
+                  <FieldLabel htmlFor="new-api-key-expiry">Udløbsdato</FieldLabel>
+                  <HelpTooltip
+                    label="Udløbsdato"
+                    content="Standard er 90 dage. Nøglen kan højst være gyldig i ét år."
+                  />
+                </div>
                 <Input
                   id="new-api-key-expiry"
                   type="date"
@@ -1014,9 +1026,6 @@ export function ApiKeyManagement() {
                   onChange={(event) => setCreateExpiry(event.target.value)}
                   disabled={creating}
                 />
-                <FieldDescription>
-                  Standard er 90 dage. Nøglen kan højst være gyldig i ét år.
-                </FieldDescription>
               </Field>
               <PolicyFields
                 draft={createDraft}

@@ -93,7 +93,7 @@ function RecipientInput({
   otherValues,
   onChange,
   placeholder,
-  description,
+  help,
 }: {
   id: string;
   label: string;
@@ -101,7 +101,7 @@ function RecipientInput({
   otherValues: string[];
   onChange: (value: string[]) => void;
   placeholder: string;
-  description?: string;
+  help?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
 
@@ -113,9 +113,12 @@ function RecipientInput({
 
   return (
     <Field data-invalid={Boolean(error)}>
-      <FieldLabel id={`${id}-label`} htmlFor={id}>
-        {label}
-      </FieldLabel>
+      <div className="flex items-center gap-1">
+        <FieldLabel id={`${id}-label`} htmlFor={id}>
+          {label}
+        </FieldLabel>
+        {help ? <HelpTooltip label={label} content={help} /> : null}
+      </div>
       <TagsInputRoot
         value={value}
         onValueChange={(items) => {
@@ -188,7 +191,6 @@ function RecipientInput({
           }}
         />
       </TagsInputRoot>
-      {description ? <FieldDescription>{description}</FieldDescription> : null}
       <FieldError>{error}</FieldError>
     </Field>
   );
@@ -438,7 +440,7 @@ export function WasteSettings() {
               otherValues={[...cc, ...bcc]}
               onChange={setToDraft}
               placeholder="modtager@eksempel.dk"
-              description="Tom liste deaktiverer automatiske meddelelser."
+              help="Tom liste deaktiverer automatiske meddelelser."
             />
             <RecipientInput
               id="bad-delivery-cc"

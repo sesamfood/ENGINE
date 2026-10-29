@@ -20,6 +20,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
@@ -124,9 +125,15 @@ export function PlatformOrganizationForm() {
                 </FieldDescription>
               </Field>
               <Field>
-                <FieldLabel htmlFor="platform-organization-admin">
-                  E-mail for første Administrator
-                </FieldLabel>
+                <div className="flex items-center gap-1">
+                  <FieldLabel htmlFor="platform-organization-admin">
+                    E-mail for første Administrator
+                  </FieldLabel>
+                  <HelpTooltip
+                    label="E-mail for første Administrator"
+                    content="Personen får en invitation, der udløber om syv dage."
+                  />
+                </div>
                 <Input
                   id="platform-organization-admin"
                   type="email"
@@ -136,9 +143,6 @@ export function PlatformOrganizationForm() {
                   disabled={saving}
                   onChange={(event) => setAdminEmail(event.target.value)}
                 />
-                <FieldDescription>
-                  Personen får en invitation, der udløber om syv dage.
-                </FieldDescription>
               </Field>
             </FieldGroup>
           </CardContent>

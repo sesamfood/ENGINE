@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
@@ -245,7 +244,13 @@ export function CountSettings() {
 
           <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="count-schedule-type">Count-frekvens</FieldLabel>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="count-schedule-type">Count-frekvens</FieldLabel>
+              <HelpTooltip
+                label="Count-frekvens"
+                content="Vælg, hvornår Count-vinduet skal åbne."
+              />
+            </div>
             <Select
               items={scheduleOptions}
               value={countSchedule.type}
@@ -274,9 +279,6 @@ export function CountSettings() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <FieldDescription>
-              Vælg, hvornår Count-vinduet skal åbne.
-            </FieldDescription>
           </Field>
 
           {countSchedule.type === "monthly" ? (
