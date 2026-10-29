@@ -30,6 +30,7 @@ import {
 import { OnlinePosLocationConnections } from "./online-pos-location-connections";
 import { OnlinePosStockSettings } from "./online-pos-stock-settings";
 import { OnlinePosSalesChannels } from "./online-pos-sales-channels";
+import { OnlinePosSalesHistory } from "./online-pos-sales-history";
 import { OnlinePosOrderDetail } from "./online-pos-order-detail";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1286,6 +1287,7 @@ export function OnlinePosIntegration() {
               <MasterConnections settings={settings} />
               <StoredSalesSample />
               <OnlinePosSalesChannels />
+              <OnlinePosSalesHistory />
               <OnlinePosStockSettings />
               <OnlinePosLocationConnections />
             </div>

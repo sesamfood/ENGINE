@@ -9,7 +9,16 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
+  query,
 } from "../../_generated/server";
+import { requireIntegrationEnabled } from "../state";
+import {
+  requireAllLocationAccess,
+  requireIntegrationManager,
+  requireLocationAccess,
+} from "../../lib/auth";
+import { recordAudit } from "../../lib/audit";
 import {
   onlinePosErrorMessage,
   parseSaleLines,
@@ -35,6 +44,10 @@ const OVERLAP_MS = 2 * 60 * 60 * 1_000;
 const CHUNK_MS = 7 * 24 * 60 * 60 * 1_000;
 const HISTORY_MS = 90 * 24 * 60 * 60 * 1_000;
 const RETENTION_MS = 400 * 24 * 60 * 60 * 1_000;
+const DAY_MS = 24 * 60 * 60 * 1_000;
+const MIN_RETENTION_DAYS = 400;
+const MAX_RETENTION_DAYS = 3650;
+const MAX_LOCATIONS = 200;
 const LINE_BATCH_SIZE = 250;
 const DISPATCH_PAGE = 25;
 const DELETE_PAGE = 40;
@@ -411,9 +424,10 @@ async function scheduleBackfillIfNeeded(
   ctx: MutationCtx,
   status: Doc<"onlinePosSyncStatus">,
   runToken: string,
+  targetAt?: number,
 ) {
   const now = Date.now();
-  const target = now - HISTORY_MS;
+  const target = targetAt ?? now - HISTORY_MS;
   const edge = status.backfillThroughAt ?? status.syncedThroughAt ?? now;
   if (edge <= target) {
     await ctx.db.patch("onlinePosSyncStatus", status._id, {
@@ -433,6 +447,7 @@ async function scheduleBackfillIfNeeded(
     locationId: status.locationId,
     runToken,
     throughAt: edge,
+    targetAt,
   });
 }
 
@@ -1079,6 +1094,7 @@ export const completeBackfillChunk = internalMutation({
     locationId: v.id("locations"),
     runToken: v.string(),
     backfillThroughAt: v.number(),
+    targetAt: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1113,7 +1129,12 @@ export const completeBackfillChunk = internalMutation({
       lastError: undefined,
       updatedAt: now,
     });
-    await scheduleBackfillIfNeeded(ctx, updatedStatus, args.runToken);
+    await scheduleBackfillIfNeeded(
+      ctx,
+      updatedStatus,
+      args.runToken,
+      args.targetAt,
+    );
     return null;
   },
 });
@@ -1778,6 +1799,7 @@ export const backfillLocation = internalAction({
     locationId: v.id("locations"),
     runToken: v.string(),
     throughAt: v.number(),
+    targetAt: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1797,13 +1819,14 @@ export const backfillLocation = internalAction({
       if (!context || context.runToken !== args.runToken) {
         throw new ConvexError("OnlinePOS-synkroniseringen er ikke aktiv");
       }
-      const target = Date.now() - HISTORY_MS;
+      const target = args.targetAt ?? Date.now() - HISTORY_MS;
       if (args.throughAt <= target) {
         await ctx.runMutation(internal.onlinePosSync.completeBackfillChunk, {
           organizationId: args.organizationId,
           locationId: args.locationId,
           runToken: args.runToken,
           backfillThroughAt: args.throughAt,
+          targetAt: args.targetAt,
         });
         return null;
       }
@@ -1825,6 +1848,7 @@ export const backfillLocation = internalAction({
         locationId: args.locationId,
         runToken: args.runToken,
         backfillThroughAt: from,
+        targetAt: args.targetAt,
       });
     } catch (error) {
       await ctx.runMutation(internal.onlinePosSync.failSync, {
@@ -1835,6 +1859,222 @@ export const backfillLocation = internalAction({
       });
     }
     return null;
+  },
+});
+
+async function salesRetentionDays(ctx: MutationCtx, organizationId: string) {
+  const settings = await getOnlinePosOrganizationSettings(ctx, organizationId);
+  return settings?.salesRetentionDays ?? MIN_RETENTION_DAYS;
+}
+
+export const getSalesHistory = query({
+  args: {},
+  returns: v.object({
+    retentionDays: v.number(),
+    canManage: v.boolean(),
+    locations: v.array(
+      v.object({
+        id: v.id("locations"),
+        name: v.string(),
+        state: v.union(
+          v.literal("idle"),
+          v.literal("queued"),
+          v.literal("running"),
+          v.literal("error"),
+        ),
+        historyFrom: v.union(v.number(), v.null()),
+      }),
+    ),
+  }),
+  handler: async (ctx) => {
+    const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
+    const [settings, connections] = await Promise.all([
+      getOnlinePosOrganizationSettings(ctx, auth.organizationId),
+      ctx.db
+        .query("onlinePosLocationIntegrations")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", auth.organizationId),
+        )
+        .take(MAX_LOCATIONS + 1),
+    ]);
+    if (connections.length > MAX_LOCATIONS)
+      throw new ConvexError("Der er for mange OnlinePOS-lokationer");
+    let canManage = true;
+    try {
+      requireAllLocationAccess(auth);
+    } catch {
+      canManage = false;
+    }
+    const locations = [];
+    for (const { locationId } of connections) {
+      try {
+        requireLocationAccess(auth, locationId);
+      } catch {
+        continue;
+      }
+      const [location, status] = await Promise.all([
+        ctx.db.get("locations", locationId),
+        ctx.db
+          .query("onlinePosSyncStatus")
+          .withIndex("by_organizationId_and_locationId", (q) =>
+            q.eq("organizationId", auth.organizationId).eq("locationId", locationId),
+          )
+          .unique(),
+      ]);
+      if (location?.organizationId !== auth.organizationId) continue;
+      locations.push({
+        id: location._id,
+        name: location.name,
+        state: status?.state ?? ("idle" as const),
+        historyFrom: status?.backfillThroughAt ?? status?.syncedThroughAt ?? null,
+      });
+    }
+    return {
+      retentionDays: settings?.salesRetentionDays ?? MIN_RETENTION_DAYS,
+      canManage,
+      locations,
+    };
+  },
+});
+
+export const setSalesRetentionDays = mutation({
+  args: { days: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
+    requireAllLocationAccess(auth);
+    if (
+      !Number.isSafeInteger(args.days) ||
+      args.days < MIN_RETENTION_DAYS ||
+      args.days > MAX_RETENTION_DAYS
+    ) {
+      throw new ConvexError(
+        `Angiv et antal dage mellem ${MIN_RETENTION_DAYS} og ${MAX_RETENTION_DAYS}`,
+      );
+    }
+    const settings = await getOnlinePosOrganizationSettings(
+      ctx,
+      auth.organizationId,
+    );
+    if (!settings) throw new ConvexError("OnlinePOS er ikke forbundet");
+    await ctx.db.patch(settings._id, {
+      salesRetentionDays: args.days,
+      updatedAt: Date.now(),
+    });
+    await recordAudit(ctx, auth, {
+      action: "integration.salesRetentionChanged",
+      entityTable: "onlinePosIntegrations",
+      entityId: settings._id,
+      summary: `OnlinePOS-salgslinjer gemmes nu i ${args.days} dage`,
+    });
+    return null;
+  },
+});
+
+// One-time import of older sales. It extends the normal backfill past
+// HISTORY_MS. backfillThroughAt only moves back, so re-running resumes a failed
+// import and never re-reads covered days. Lines older than the retention are
+// pruned later; salesDaily keeps them.
+export const importSalesHistory = mutation({
+  args: { from: v.string() },
+  returns: v.object({
+    started: v.number(),
+    skipped: v.array(v.object({ name: v.string(), reason: v.string() })),
+  }),
+  handler: async (ctx, args) => {
+    const auth = await requireIntegrationManager(ctx);
+    await requireIntegrationEnabled(ctx, auth.organizationId, "onlinepos");
+    requireAllLocationAccess(auth);
+    const { organizationId } = auth;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.from)) {
+      throw new ConvexError("Vælg en gyldig dato");
+    }
+    const settings = await getOnlinePosOrganizationSettings(ctx, organizationId);
+    if (!settings?.enabled) {
+      throw new ConvexError("Aktivér OnlinePOS-integrationen først");
+    }
+    const connections = await ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_LOCATIONS + 1);
+    if (connections.length > MAX_LOCATIONS)
+      throw new ConvexError("Der er for mange OnlinePOS-lokationer");
+    let started = 0;
+    const skipped: Array<{ name: string; reason: string }> = [];
+    for (const { locationId } of connections) {
+      const location = await ctx.db.get("locations", locationId);
+      if (location?.organizationId !== organizationId) continue;
+      const skip = (reason: string) =>
+        skipped.push({ name: location.name, reason });
+      const status = await getStatus(ctx, organizationId, locationId);
+      const reset = await ctx.db
+        .query("onlinePosSalesResets")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", organizationId).eq("locationId", locationId),
+        )
+        .unique();
+      const edge = status?.backfillThroughAt ?? status?.syncedThroughAt;
+      if (!status || edge === undefined || reset) {
+        skip("Den første synkronisering er ikke færdig");
+        continue;
+      }
+      if (status.dayStartRerollToken) {
+        skip("Salgsdata genopbygges efter skift af tidszone");
+        continue;
+      }
+      if (status.dailyHistoryFrom !== undefined) {
+        // Archived buckets from an earlier time zone would be counted twice.
+        skip("Tidszonen er ændret, så ældre salg kan ikke hentes");
+        continue;
+      }
+      const now = Date.now();
+      if (
+        (status.state === "queued" || status.state === "running") &&
+        now - status.updatedAt < STUCK_MS
+      ) {
+        skip("Synkroniserer allerede. Prøv igen senere");
+        continue;
+      }
+      const timeZone = await organizationTimeZone(
+        ctx,
+        organizationId,
+        locationId,
+      );
+      const targetAt = zonedStart(args.from, timeZone);
+      if (edge <= targetAt) {
+        skip("Salg fra perioden er allerede hentet");
+        continue;
+      }
+      const runToken = makeRunToken(now);
+      await ctx.db.patch("onlinePosSyncStatus", status._id, {
+        state: "running",
+        runToken,
+        lastAttemptAt: now,
+        lastError: undefined,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.backfillLocation, {
+        organizationId,
+        locationId,
+        runToken,
+        throughAt: edge,
+        targetAt,
+      });
+      started++;
+    }
+    if (started > 0) {
+      await recordAudit(ctx, auth, {
+        action: "integration.salesHistoryImported",
+        entityTable: "onlinePosIntegrations",
+        entityId: settings._id,
+        summary: `OnlinePOS-salg fra ${args.from} hentes for ${started} lokationer`,
+      });
+    }
+    return { started, skipped };
   },
 });
 
@@ -2261,89 +2501,114 @@ export const failSync = internalMutation({
   },
 });
 
+// Deletes one location's expired lines, orders and product rollups. Returns
+// false when the write budget ran out and the location needs another pass.
+async function pruneLocationSales(
+  ctx: MutationCtx,
+  status: Doc<"onlinePosSyncStatus">,
+  cutoff: number,
+) {
+  const { organizationId, locationId } = status;
+  let remaining = DELETE_WRITE_BUDGET;
+  const orders = await ctx.db
+    .query("salesOrders")
+    .withIndex("by_organizationId_and_locationId_and_occurredAt", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("locationId", locationId)
+        .lt("occurredAt", cutoff),
+    )
+    .take(PRUNE_PAGE);
+  for (const order of orders) {
+    const limit = Math.min(LINE_DELETE_PAGE, remaining);
+    const lines = await ctx.db
+      .query("salesLines")
+      .withIndex("by_organizationId_and_orderId", (q) =>
+        q.eq("organizationId", organizationId).eq("orderId", order._id),
+      )
+      .take(limit);
+    for (const line of lines) await ctx.db.delete(line._id);
+    remaining -= lines.length;
+    if (lines.length === limit || remaining === 0) return false;
+    await ctx.db.delete(order._id);
+    remaining--;
+    if (remaining === 0) return false;
+  }
+  if (orders.length === PRUNE_PAGE) return false;
+
+  // Rollup rows follow the same retention as the lines they aggregate.
+  const staleRollup = await ctx.db
+    .query("salesProductDaily")
+    .withIndex("by_organizationId_and_locationId_and_dayStart", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("locationId", locationId)
+        .lt("dayStart", cutoff),
+    )
+    .take(200);
+  for (const row of staleRollup) await ctx.db.delete(row._id);
+  return staleRollup.length < 200;
+}
+
 export const pruneSales = internalMutation({
   args: { cursor: v.union(v.string(), v.null()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     // salesDaily is kept forever so dashboard history survives while line-level
-    // storage stays bounded.
-    const cutoff = Date.now() - RETENTION_MS;
+    // storage stays bounded by each organization's retention.
     const result = await ctx.db
-      .query("salesOrders")
-      .withIndex("by_occurredAt", (q) => q.lt("occurredAt", cutoff))
-      .paginate({ numItems: PRUNE_PAGE, cursor: args.cursor });
-
-    let remaining = DELETE_WRITE_BUDGET;
-    for (const order of result.page) {
-      const status = await getStatus(
-        ctx,
-        order.organizationId,
-        order.locationId,
-      );
-      if (status?.dayStartRerollToken) continue;
-      const limit = Math.min(LINE_DELETE_PAGE, remaining);
-      const lines = await ctx.db
-        .query("salesLines")
-        .withIndex("by_organizationId_and_orderId", (q) =>
-          q.eq("organizationId", order.organizationId).eq("orderId", order._id),
-        )
-        .take(limit);
-      for (const line of lines) await ctx.db.delete(line._id);
-      remaining -= lines.length;
-      if (lines.length === limit || remaining === 0) {
-        await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
-          cursor: args.cursor,
-        });
-        return null;
-      }
-      await ctx.db.delete(order._id);
-      remaining--;
-      if (remaining === 0) {
+      .query("onlinePosSyncStatus")
+      .paginate({ numItems: 1, cursor: args.cursor });
+    const status = result.page[0];
+    if (status && !status.dayStartRerollToken) {
+      const days = await salesRetentionDays(ctx, status.organizationId);
+      if (!(await pruneLocationSales(ctx, status, Date.now() - days * DAY_MS))) {
         await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
           cursor: args.cursor,
         });
         return null;
       }
     }
-
-    if (!result.isDone) {
+    if (result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.pruneOrphanSalesLines,
+        {},
+      );
+    } else {
       await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
         cursor: result.continueCursor,
       });
-      return null;
     }
+    return null;
+  },
+});
 
+export const pruneOrphanSalesLines = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
     // Catch orphaned lines whose orders were already removed. Creation time
     // lags occurredAt for backfilled lines, so orphans are caught late, which
     // is fine for a safety sweep and avoids a dedicated index.
-    const orphanLimit = Math.min(PRUNE_PAGE, remaining);
     const orphanLines = await ctx.db
       .query("salesLines")
-      .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
-      .take(orphanLimit);
+      .withIndex("by_creation_time", (q) =>
+        q.lt("_creationTime", Date.now() - RETENTION_MS),
+      )
+      .take(PRUNE_PAGE);
     let removed = 0;
     for (const line of orphanLines) {
       if (await ctx.db.get(line.orderId)) continue;
       await ctx.db.delete("salesLines", line._id);
       removed++;
     }
-    if (removed > 0 && orphanLines.length === orphanLimit) {
-      await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
-        cursor: null,
-      });
-      return null;
-    }
-
-    // Rollup rows follow the same retention as the lines they aggregate.
-    const staleRollup = await ctx.db
-      .query("salesProductDaily")
-      .withIndex("by_dayStart", (q) => q.lt("dayStart", cutoff))
-      .take(200);
-    for (const row of staleRollup) await ctx.db.delete(row._id);
-    if (staleRollup.length === 200) {
-      await ctx.scheduler.runAfter(0, internal.onlinePosSync.pruneSales, {
-        cursor: null,
-      });
+    if (removed > 0 && orphanLines.length === PRUNE_PAGE) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.onlinePosSync.pruneOrphanSalesLines,
+        {},
+      );
     }
     return null;
   },
