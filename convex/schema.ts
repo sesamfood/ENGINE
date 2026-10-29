@@ -909,6 +909,12 @@ export default defineSchema({
       filterFields: ["organizationId", "status", "categoryId"],
     }),
 
+  catalogSettings: defineTable({
+    organizationId: v.string(),
+    packagingEnabled: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   productCategories: defineTable({
     organizationId: v.string(),
     productId: v.id("products"),

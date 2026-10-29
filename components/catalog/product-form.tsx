@@ -330,6 +330,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       ? ingredientRemovalSettings?.integrationId
       : undefined;
   const options = useQuery(api.catalog.listFormOptions);
+  const catalogSettings = useQuery(api.catalog.getSettings);
   const createProduct = useMutation(api.catalog.createProduct);
   const updateProduct = useMutation(api.catalog.updateProduct);
   const setIngredientRemovalMappings = useAction(
@@ -1521,61 +1522,64 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Emballage</CardTitle>
-              <CardDescription>
-                Emballage trækkes fra lageret ligesom ingredienser, men vises
-                for sig.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FieldSet>
-                <FieldLegend className="sr-only">Emballage</FieldLegend>
-                <FieldGroup>
-                  {packagingRows.length === 0 ? (
-                    <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
-                      Produktet har endnu ingen emballage.
-                    </Empty>
-                  ) : null}
-                  {packagingRows.map((row) => (
-                    <IngredientEditorRow
-                      key={row.key}
-                      row={row}
-                      products={recipeProductOptions}
-                      options={recipeProductComboboxOptions}
-                      unitOptions={unitOptions}
-                      disabled={catalog === undefined}
-                      errors={errors}
-                      onChange={(patch) =>
-                        setPackagingRows((current) =>
-                          current.map((item) =>
-                            item.key === row.key ? { ...item, ...patch } : item,
-                          ),
-                        )
-                      }
-                      onRemove={() =>
-                        setPackagingRows((current) =>
-                          current.filter((item) => item.key !== row.key),
-                        )
-                      }
-                      productLabel="Emballageprodukt"
-                      removeLabel="Fjern emballage"
-                    />
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-11"
-                    onClick={addPackaging}
-                  >
-                    <PlusIcon data-icon="inline-start" />
-                    Tilføj emballage
-                  </Button>
-                </FieldGroup>
-              </FieldSet>
-            </CardContent>
-          </Card>
+          {catalogSettings?.packagingEnabled ||
+            product?.ingredients.some((ingredient) => ingredient.packaging) ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Emballage</CardTitle>
+                <CardDescription>
+                  Emballage trækkes fra lageret ligesom ingredienser, men vises
+                  for sig.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FieldSet>
+                  <FieldLegend className="sr-only">Emballage</FieldLegend>
+                  <FieldGroup>
+                    {packagingRows.length === 0 ? (
+                      <Empty appearance="notice" className="block w-auto min-w-auto flex-initial text-start">
+                        Produktet har endnu ingen emballage.
+                      </Empty>
+                    ) : null}
+                    {packagingRows.map((row) => (
+                      <IngredientEditorRow
+                        key={row.key}
+                        row={row}
+                        products={recipeProductOptions}
+                        options={recipeProductComboboxOptions}
+                        unitOptions={unitOptions}
+                        disabled={catalog === undefined}
+                        errors={errors}
+                        onChange={(patch) =>
+                          setPackagingRows((current) =>
+                            current.map((item) =>
+                              item.key === row.key ? { ...item, ...patch } : item,
+                            ),
+                          )
+                        }
+                        onRemove={() =>
+                          setPackagingRows((current) =>
+                            current.filter((item) => item.key !== row.key),
+                          )
+                        }
+                        productLabel="Emballageprodukt"
+                        removeLabel="Fjern emballage"
+                      />
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11"
+                      onClick={addPackaging}
+                    >
+                      <PlusIcon data-icon="inline-start" />
+                      Tilføj emballage
+                    </Button>
+                  </FieldGroup>
+                </FieldSet>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>

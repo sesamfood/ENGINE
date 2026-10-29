@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ProductSettings } from "@/components/catalog/product-settings";
 import { ProductImportExport } from "@/components/catalog/product-import-export";
 import { useDelayedLoading } from "@/components/catalog/use-delayed-loading";
 import {
@@ -602,6 +603,7 @@ export function ProductCatalog() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
+            <ProductSettings />
             <ProductImportExport />
             <Button
               size="lg"

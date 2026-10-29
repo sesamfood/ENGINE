@@ -1562,6 +1562,44 @@ export const getProduct = query({
   },
 });
 
+async function getCatalogSettingsRow(
+  ctx: QueryCtx,
+  organizationId: string,
+) {
+  return await ctx.db
+    .query("catalogSettings")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .unique();
+}
+
+export const getSettings = query({
+  args: {},
+  returns: v.object({ packagingEnabled: v.boolean() }),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    const settings = await getCatalogSettingsRow(ctx, organizationId);
+    return { packagingEnabled: settings?.packagingEnabled ?? false };
+  },
+});
+
+export const setSettings = mutation({
+  args: { packagingEnabled: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const current = await getCatalogSettingsRow(ctx, organizationId);
+    const next = { packagingEnabled: args.packagingEnabled, updatedAt: Date.now() };
+    if (current) {
+      await ctx.db.patch("catalogSettings", current._id, next);
+    } else {
+      await ctx.db.insert("catalogSettings", { organizationId, ...next });
+    }
+    return null;
+  },
+});
+
 export const listFormOptions = query({
   args: {},
   returns: productFormOptionsValidator,
