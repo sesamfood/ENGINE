@@ -1,5 +1,7 @@
 import { v, type Infer } from "convex/values";
 import { dateKey, zonedStart } from "../../lib/date";
+import type { Doc } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 
 export const paymentTypeTotalsValidator = v.object({
   paymentType: v.string(),
@@ -27,6 +29,42 @@ export function applyOrderToPaymentTypes(
   entry.orderCount += direction;
   entry.itemCount += direction * order.itemCount;
   return next.filter((item) => item.orderCount !== 0 || item.revenue !== 0 || item.itemCount !== 0);
+}
+
+const MAX_BACKFILL_DAY_ORDERS = 4_000;
+
+// Seeds a day's breakdown from retained OnlinePOS orders. Days whose orders were
+// pruned or no longer add up to the daily totals stay without a breakdown.
+export async function backfillDailyPaymentTypes(
+  ctx: MutationCtx,
+  daily: Doc<"salesDaily">,
+) {
+  if (daily.paymentTypes !== undefined) return;
+  const orders = await ctx.db
+    .query("salesOrders")
+    .withIndex("by_org_location_day_order_department", (q) =>
+      q
+        .eq("organizationId", daily.organizationId)
+        .eq("locationId", daily.locationId)
+        .eq("dayStart", daily.dayStart),
+    )
+    .take(MAX_BACKFILL_DAY_ORDERS + 1);
+  if (orders.length > MAX_BACKFILL_DAY_ORDERS) return;
+  let paymentTypes: PaymentTypeTotals[] = [];
+  for (const order of orders) {
+    if (order.source !== "onlinePos") continue;
+    paymentTypes = applyOrderToPaymentTypes(paymentTypes, order, 1);
+  }
+  const sum = (field: "revenue" | "orderCount" | "itemCount") =>
+    paymentTypes.reduce((total, entry) => total + entry[field], 0);
+  if (
+    sum("revenue") !== daily.revenue ||
+    sum("orderCount") !== daily.orderCount ||
+    sum("itemCount") !== daily.itemCount
+  ) {
+    return;
+  }
+  await ctx.db.patch("salesDaily", daily._id, { paymentTypes });
 }
 
 /** Splits a day's breakdown into online and in-store totals. */
