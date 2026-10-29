@@ -24,6 +24,7 @@ const MAX_DESCRIPTION_LENGTH = 4_000;
 const MAX_EMAIL_LENGTH = 200;
 const MAX_API_KEY_LENGTH = 200;
 const MAX_TEAM_LENGTH = 100;
+const MAX_REPLAY_URL_LENGTH = 500;
 const MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024;
 const RECENT_SUBMISSIONS = 10;
 const IMAGE_TYPES = new Set([
@@ -54,6 +55,7 @@ const deliveryValidator = v.union(
     createdAt: v.number(),
     screenshotUrl: v.union(v.string(), v.null()),
     screenshotStorageId: v.union(v.id("_storage"), v.null()),
+    sessionReplayUrl: v.union(v.string(), v.null()),
     destination: destinationValidator,
     email: v.union(v.string(), v.null()),
     linearApiKey: v.union(v.string(), v.null()),
@@ -61,6 +63,20 @@ const deliveryValidator = v.union(
   }),
   v.null(),
 );
+
+function isPostHogReplayUrl(value: string) {
+  if (value.length > MAX_REPLAY_URL_LENGTH) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      /(^|\.)posthog\.com$/.test(url.hostname) &&
+      url.pathname.includes("/replay/")
+    );
+  } catch {
+    return false;
+  }
+}
 
 function trimmedEmail(value: string) {
   const email = value.trim();
@@ -278,6 +294,7 @@ export const submit = mutation({
     title: v.string(),
     description: v.optional(v.string()),
     screenshotStorageId: v.optional(v.id("_storage")),
+    sessionReplayUrl: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -310,6 +327,12 @@ export const submit = mutation({
       throw new ConvexError(
         `Beskrivelsen må højst være ${MAX_DESCRIPTION_LENGTH} tegn`,
       );
+    }
+
+    // The link lands in Linear and e-mail, so only accept PostHog replay links.
+    const sessionReplayUrl = args.sessionReplayUrl?.trim();
+    if (sessionReplayUrl && !isPostHogReplayUrl(sessionReplayUrl)) {
+      throw new ConvexError("Ugyldigt link til sessionsoptagelse");
     }
 
     const limit = await rateLimiter.limit(ctx, "feedbackSubmit", {
@@ -371,6 +394,7 @@ export const submit = mutation({
       ...(args.screenshotStorageId
         ? { screenshotStorageId: args.screenshotStorageId }
         : {}),
+      ...(sessionReplayUrl ? { sessionReplayUrl } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.feedbackDelivery.deliver, {
       submissionId,
@@ -409,6 +433,7 @@ export const getDelivery = internalQuery({
         ? await ctx.storage.getUrl(submission.screenshotStorageId)
         : null,
       screenshotStorageId: submission.screenshotStorageId ?? null,
+      sessionReplayUrl: submission.sessionReplayUrl ?? null,
       destination: settings.destination,
       email: settings.email ?? null,
       linearApiKey: settings.linearApiKey ?? null,

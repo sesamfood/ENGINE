@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import posthog from "posthog-js";
 
 const defaultFallback = "Handlingen kunne ikke gennemføres. Prøv igen.";
 
@@ -123,19 +124,27 @@ export function getUserErrorMessage(
   error: unknown,
   fallback = defaultFallback,
 ) {
+  const message = userErrorMessage(error);
+  if (message) return message;
+  // The generic fallback means nothing explained the error, so support needs it.
+  posthog.captureException(error, { user_message: fallback });
+  return fallback;
+}
+
+function userErrorMessage(error: unknown) {
   const convexMessage = messageFromConvexError(error);
   if (convexMessage) {
     const knownMessage = knownUserMessage(convexMessage);
     if (knownMessage) return knownMessage;
-    return isDisplaySafe(convexMessage) ? convexMessage : fallback;
+    return isDisplaySafe(convexMessage) ? convexMessage : null;
   }
 
   const message = messageFromUnknownError(error);
 
-  if (!message) return fallback;
+  if (!message) return null;
 
   const knownMessage = knownUserMessage(message);
   if (knownMessage) return knownMessage;
 
-  return isSafeLocalUserMessage(message) ? message : fallback;
+  return isSafeLocalUserMessage(message) ? message : null;
 }

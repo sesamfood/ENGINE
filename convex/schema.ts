@@ -564,6 +564,7 @@ export default defineSchema({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     screenshotStorageId: v.optional(v.id("_storage")),
+    sessionReplayUrl: v.optional(v.string()),
     destination: v.union(v.literal("linear"), v.literal("email")),
     status: v.union(
       v.literal("pending"),

@@ -1245,7 +1245,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
             }}
           >
             <SaveIcon data-icon="inline-start" />
-            Registrér kvittering
+            Registrér salg
           </Button>
         </div>
       </AppBottomBar>

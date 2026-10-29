@@ -303,6 +303,37 @@ export function useLocationAccess() {
   };
 }
 
+// Identifies every session, not only fresh logins, so replays, errors and
+// feedback can be traced to a user, organization and location.
+function AnalyticsIdentity() {
+  const { data: session } = authClient.useSession();
+  const { data: organization } = useActiveOrganization();
+  const access = useAccess();
+  const { lockedId, lockedName } = useLocationAccess();
+  const userId = session?.user.id;
+  const name = session?.user.name;
+  const email = session?.user.email;
+  const organizationId = organization?.id;
+  const organizationName = organization?.name;
+  const role = access?.role;
+  const kiosk = Boolean(access?.kiosk?.isKioskAccount);
+
+  useEffect(() => {
+    if (!userId || !organizationId || !role) return;
+    posthog.identify(userId, { name, email, role, kiosk });
+    posthog.group("organization", organizationId, { name: organizationName });
+    posthog.register({
+      organization_id: organizationId,
+      organization_name: organizationName,
+      role,
+      location_id: lockedId,
+      location_name: lockedName,
+    });
+  }, [userId, name, email, organizationId, organizationName, role, kiosk, lockedId, lockedName]);
+
+  return null;
+}
+
 function useAppNavigation() {
   const access = useAccess();
   const countLocked = useContext(FeatureLockContext);
@@ -1664,6 +1695,7 @@ export function AppShell({
       <OrganizationBoundary required={organizationRequired}>
         <OrganizationTheme>
           <AccessBoundary>
+            <AnalyticsIdentity />
             <FeatureLockBoundary>
               <KioskDayBoundary>
               <KioskBehavior>
