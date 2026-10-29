@@ -909,6 +909,12 @@ export default defineSchema({
       filterFields: ["organizationId", "status", "categoryId"],
     }),
 
+  catalogSettings: defineTable({
+    organizationId: v.string(),
+    packagingEnabled: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   productCategories: defineTable({
     organizationId: v.string(),
     productId: v.id("products"),
@@ -944,6 +950,8 @@ export default defineSchema({
     quantity: v.number(),
     unitId: v.id("units"),
     removable: v.optional(v.boolean()),
+    // Packaging rows are consumed like ingredients but listed separately.
+    packaging: v.optional(v.boolean()),
     onlinePosRemovalProductId: v.optional(v.number()),
     onlinePosRemovalMappings: v.optional(
       v.array(

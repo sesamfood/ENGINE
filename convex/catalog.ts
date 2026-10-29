@@ -128,6 +128,7 @@ const productDetailValidator = v.object({
       unitId: v.id("units"),
       unitName: v.string(),
       removable: v.boolean(),
+      packaging: v.boolean(),
     }),
   ),
   recipeYield: v.union(
@@ -179,6 +180,7 @@ const ingredientInputValidator = v.object({
   quantity: v.number(),
   unitId: v.id("units"),
   removable: v.optional(v.boolean()),
+  packaging: v.optional(v.boolean()),
 });
 
 const recipeYieldInputValidator = v.optional(
@@ -217,6 +219,7 @@ const productExportValidator = v.object({
       quantity: v.number(),
       unit: v.string(),
       removable: v.boolean(),
+      packaging: v.boolean(),
     }),
   ),
   addableIngredients: v.array(
@@ -240,6 +243,7 @@ const importedIngredientValidator = v.object({
   quantity: v.number(),
   unitName: v.string(),
   removable: v.optional(v.boolean()),
+  packaging: v.optional(v.boolean()),
 });
 
 const importedAddableIngredientValidator = v.object({
@@ -270,6 +274,7 @@ type IngredientInput = {
   quantity: number;
   unitId: Id<"units">;
   removable?: boolean;
+  packaging?: boolean;
 };
 
 type RecipeYieldInput = { quantity: number; unit: UnitReference } | null;
@@ -707,7 +712,9 @@ async function replaceProductIngredients(
         current.quantity !== row.quantity ||
         current.unitId !== row.unitId ||
         (current.removable ?? false) !==
-          (row.removable ?? current.removable ?? false)
+          (row.removable ?? current.removable ?? false) ||
+        (current.packaging ?? false) !==
+          (row.packaging ?? current.packaging ?? false)
       );
     });
 
@@ -730,6 +737,7 @@ async function replaceProductIngredients(
       quantity: row.quantity,
       unitId: row.unitId,
       removable,
+      packaging: row.packaging ?? current?.packaging ?? false,
       onlinePosRemovalMappings:
         removable && current?.removable
           ? current.onlinePosRemovalMappings
@@ -1384,6 +1392,7 @@ export const exportProducts = query({
                 quantity: row.quantity,
                 unit: unit.name,
                 removable: row.removable ?? false,
+                packaging: row.packaging ?? false,
               };
             }),
           );
@@ -1510,6 +1519,7 @@ export const getProduct = query({
               unitId: unit._id,
               unitName: unit.name,
               removable: row.removable ?? false,
+              packaging: row.packaging ?? false,
             }
           : null;
       }),
@@ -1549,6 +1559,44 @@ export const getProduct = query({
       recipeYield: product.recipeYield ?? null,
       addableIngredients: addableIngredients.filter((row) => row !== null),
     };
+  },
+});
+
+async function getCatalogSettingsRow(
+  ctx: QueryCtx,
+  organizationId: string,
+) {
+  return await ctx.db
+    .query("catalogSettings")
+    .withIndex("by_organizationId", (q) =>
+      q.eq("organizationId", organizationId),
+    )
+    .unique();
+}
+
+export const getSettings = query({
+  args: {},
+  returns: v.object({ packagingEnabled: v.boolean() }),
+  handler: async (ctx) => {
+    const { organizationId } = await requireOrganization(ctx);
+    const settings = await getCatalogSettingsRow(ctx, organizationId);
+    return { packagingEnabled: settings?.packagingEnabled ?? false };
+  },
+});
+
+export const setSettings = mutation({
+  args: { packagingEnabled: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireCatalogManager(ctx);
+    const current = await getCatalogSettingsRow(ctx, organizationId);
+    const next = { packagingEnabled: args.packagingEnabled, updatedAt: Date.now() };
+    if (current) {
+      await ctx.db.patch("catalogSettings", current._id, next);
+    } else {
+      await ctx.db.insert("catalogSettings", { organizationId, ...next });
+    }
+    return null;
   },
 });
 
@@ -2410,6 +2458,9 @@ export const importProductIngredients = mutation({
         ...(input.removable === undefined
           ? {}
           : { removable: input.removable }),
+        ...(input.packaging === undefined
+          ? {}
+          : { packaging: input.packaging }),
       });
     }
 

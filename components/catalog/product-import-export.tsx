@@ -9,8 +9,10 @@ import { useConvex, useMutation } from "convex/react";
 import {
   DownloadIcon,
   MoreHorizontalIcon,
+  Settings2Icon,
   UploadIcon,
 } from "lucide-react";
+import { ProductSettings } from "@/components/catalog/product-settings";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -29,6 +31,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldTitle } from "@/components/ui/field";
@@ -44,6 +47,7 @@ export function ProductImportExport() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [archive, setArchive] = useState<ParsedProductArchive | null>(null);
   const [archiveName, setArchiveName] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isReading, setIsReading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -203,6 +207,7 @@ export function ProductImportExport() {
               quantity: ingredient.quantity,
               unitName: ingredient.unit,
               removable: ingredient.removable ?? false,
+              packaging: ingredient.packaging ?? false,
             })),
             ...(product.addableIngredients
               ? {
@@ -310,9 +315,16 @@ export function ProductImportExport() {
               Importér
             </DropdownMenuItem>
           </DropdownMenuGroup>
-
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+              <Settings2Icon />
+              Produktindstillinger
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ProductSettings open={settingsOpen} onOpenChange={setSettingsOpen} />
       <input
         ref={inputRef}
         type="file"
