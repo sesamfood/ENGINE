@@ -4,6 +4,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { MessageSquarePlusIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
+import posthog from "posthog-js";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,13 @@ function FeedbackForm({
     setError(undefined);
     setSubmitting(true);
     try {
+      // The link opens a minute before submitting to show what led up to it.
+      const sessionReplayUrl = posthog.sessionRecordingStarted()
+        ? posthog.get_session_replay_url({
+            withTimestamp: true,
+            timestampLookBack: 60,
+          })
+        : undefined;
       const screenshotStorageId = screenshot
         ? await uploadScreenshot(screenshot)
         : undefined;
@@ -104,6 +112,13 @@ function FeedbackForm({
         title: trimmedTitle,
         ...(trimmed ? { description: trimmed } : {}),
         ...(screenshotStorageId ? { screenshotStorageId } : {}),
+        ...(sessionReplayUrl ? { sessionReplayUrl } : {}),
+      });
+      posthog.capture("feedback_submitted", {
+        area,
+        type,
+        title: trimmedTitle,
+        has_screenshot: Boolean(screenshotStorageId),
       });
       toast.success("Tak. Din feedback er sendt");
       onDone();
