@@ -53,11 +53,9 @@ export function GoalVisualization({
       <p className="text-sm font-medium tabular-nums">
         {new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format(progress)} % af målet{reached ? " · Nået" : ""}
       </p>
-      {compact ? null : (
-        <p className="text-xs text-muted-foreground">
-          Mål: {percentFormat.format(goalPercent)} % i forhold til {comparisonLabel} ({formatMetricValue(baseline, result)})
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground" title={`${formatMetricValue(baseline, result)} ${comparisonLabel}`}>
+        {percentFormat.format(goalPercent)} % i forhold til {comparisonLabel}{compact ? "" : ` (${formatMetricValue(baseline, result)})`}
+      </p>
     </div>
   );
 }

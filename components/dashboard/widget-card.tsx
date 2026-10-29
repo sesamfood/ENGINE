@@ -255,7 +255,7 @@ export function WidgetCard({
   const previous = result && result.emptyMessage === undefined && result.series.length > 0 ? previousTotal(result) : null;
   const freshness = result?.freshness;
   const hasFreshness = Boolean(freshness);
-  const change = !definition?.live && current !== null && previous !== null && (financial || previous !== 0)
+  const change = !definition?.live && widget.visualization !== "goal" && current !== null && previous !== null && (financial || previous !== 0)
     ? financial ? current - previous : ((current - previous) / Math.abs(previous)) * 100
     : null;
 
