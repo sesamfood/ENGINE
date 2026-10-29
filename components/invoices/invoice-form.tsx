@@ -53,6 +53,7 @@ import { fromDateTimeLocal, toDateTimeLocal } from "@/lib/date";
 import { selectedLocationId } from "@/lib/location-preference";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { uploadToStorage } from "@/lib/upload-to-storage";
+import { parseExpenseAmount } from "@/lib/expenses";
 import { getUserErrorMessage } from "@/lib/user-errors";
 import { useActiveOrganization } from "@/lib/active-organization";
 
@@ -128,6 +129,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
   const [soldAtLocal, setSoldAtLocal] = useState(() =>
     toDateTimeLocal(Date.now()),
   );
+  const [price, setPrice] = useState("");
   const [comment, setComment] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [menuRows, setMenuRows] = useState<
@@ -504,6 +506,8 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       nextErrors.soldAt = "Vælg en gyldig dato";
     else if (soldAt > now + 60_000)
       nextErrors.soldAt = "Datoen må ikke ligge i fremtiden";
+    const parsedPrice = price.trim() ? parseExpenseAmount(price) : undefined;
+    if (parsedPrice === null) nextErrors.price = "Angiv en gyldig pris";
     if (comment.trim().length > 2000)
       nextErrors.comment = "Kommentaren må højst være 2.000 tegn";
     if (!lines.length) nextErrors.items = "Tilføj mindst ét produkt";
@@ -586,7 +590,12 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
     });
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0 && location
-      ? { locationId: location.id, soldAt, items }
+      ? {
+          locationId: location.id,
+          soldAt,
+          items,
+          ...(parsedPrice != null ? { price: parsedPrice } : {}),
+        }
       : null;
   }
 
@@ -621,6 +630,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       });
       setTitle("");
       setSoldAtLocal(toDateTimeLocal(now));
+      setPrice("");
       setComment("");
       setPhoto(null);
       setLines([]);
@@ -630,12 +640,12 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       setConfirming(false);
       clientRequestId.current = null;
       uploadedPhoto.current = null;
-      toast.success("Kvitteringen er registreret, og lageret er opdateret");
+      toast.success("Salget er registreret, og lageret er opdateret");
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "Kvitteringen kunne ikke registreres. Prøv igen.",
+          "Salget kunne ikke registreres. Prøv igen.",
         ),
       );
     } finally {
@@ -898,6 +908,19 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
                   aria-invalid={Boolean(errors.soldAt)}
                 />
                 <FieldError>{errors.soldAt}</FieldError>
+              </Field>
+              <Field data-invalid={Boolean(errors.price)}>
+                <FieldLabel htmlFor="invoice-price">Pris (valgfri)</FieldLabel>
+                <Input
+                  id="invoice-price"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={price}
+                  onChange={(event) => setPrice(event.target.value)}
+                  className="h-11"
+                  aria-invalid={Boolean(errors.price)}
+                />
+                <FieldError>{errors.price}</FieldError>
               </Field>
               <Field data-invalid={Boolean(errors.comment)}>
                 <FieldLabel htmlFor="invoice-comment">
@@ -1257,7 +1280,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Registrér kvitteringen?</AlertDialogTitle>
+            <AlertDialogTitle>Registrér salget?</AlertDialogTitle>
             <AlertDialogDescription>
               Salget &quot;{title.trim()}&quot; registreres på {location?.name}.
               De valgte mængder trækkes fra lageret. Salg før produktets seneste

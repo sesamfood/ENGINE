@@ -4,7 +4,7 @@ export const sidebarItems = [
   { id: "woltOrders", label: "Wolt-ordrer" },
   { id: "ordering", label: "Bestilling" },
   { id: "transfers", label: "Transfer" },
-  { id: "invoices", label: "Faktura" },
+  { id: "invoices", label: "Salg" },
   { id: "expenses", label: "Udgift" },
   { id: "goodsReceipts", label: "Varemodtagelse" },
   { id: "waste", label: "Waste" },

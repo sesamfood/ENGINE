@@ -41,7 +41,7 @@ const sectionTitles = [
   { value: "dashboard", label: "Dashboard" },
   { value: "schedule", label: "Medarbejdere" },
   { value: "transfers", label: "Transfer" },
-  { value: "invoices", label: "Faktura" },
+  { value: "invoices", label: "Salg" },
   { value: "expenses", label: "Udgift" },
   { value: "wolt-orders", label: "Wolt-ordrer" },
   { value: "staff-food", label: "Staff food" },

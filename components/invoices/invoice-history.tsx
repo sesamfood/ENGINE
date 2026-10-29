@@ -46,6 +46,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { dateTimeFormatter } from "@/lib/date";
+import { formatExpenseAmount } from "@/lib/expenses";
 import { selectedLocationId } from "@/lib/location-preference";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { useActiveOrganization } from "@/lib/active-organization";
@@ -65,8 +66,8 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
     return (
       <>
         <DialogHeader>
-          <DialogTitle>Kvittering</DialogTitle>
-          <DialogDescription>Henter kvitteringen…</DialogDescription>
+          <DialogTitle>Salg</DialogTitle>
+          <DialogDescription>Henter salget…</DialogDescription>
         </DialogHeader>
         <Skeleton className="h-64 w-full" />
       </>
@@ -76,12 +77,12 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
     return (
       <>
         <DialogHeader>
-          <DialogTitle>Kvittering ikke fundet</DialogTitle>
+          <DialogTitle>Salg ikke fundet</DialogTitle>
         </DialogHeader>
         <Alert>
-          <AlertTitle>Kvitteringen er ikke tilgængelig</AlertTitle>
+          <AlertTitle>Salget er ikke tilgængeligt</AlertTitle>
           <AlertDescription>
-            Den findes ikke, eller du har ikke adgang til den.
+            Det findes ikke, eller du har ikke adgang til det.
           </AlertDescription>
         </Alert>
       </>
@@ -105,6 +106,12 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
             <dt className="text-muted-foreground">Produktlinjer</dt>
             <dd>{invoice.items.length}</dd>
           </div>
+          {invoice.price !== null && invoice.currency ? (
+            <div>
+              <dt className="text-muted-foreground">Pris</dt>
+              <dd>{formatExpenseAmount(invoice.price, invoice.currency)}</dd>
+            </div>
+          ) : null}
           {invoice.comment ? (
             <div className="sm:col-span-2">
               <dt className="text-muted-foreground">Kommentar</dt>
@@ -217,7 +224,7 @@ export function InvoiceHistory() {
               setSelectedInvoiceId(null);
             }}
             placeholder="Vælg lokation"
-            ariaLabel="Lokation for kvitteringshistorik"
+            ariaLabel="Lokation for salgshistorik"
             disabled={locations === undefined || Boolean(kiosk?.isKioskAccount)}
           />
         </Field>
@@ -229,7 +236,7 @@ export function InvoiceHistory() {
           <EmptyHeader>
             <EmptyTitle>Ingen lokation valgt</EmptyTitle>
             <EmptyDescription>
-              Vælg en lokation for at se registrerede kvitteringer.
+              Vælg en lokation for at se registrerede salg.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -239,9 +246,9 @@ export function InvoiceHistory() {
             <EmptyMedia variant="icon">
               <ReceiptTextIcon />
             </EmptyMedia>
-            <EmptyTitle>Ingen registrerede kvitteringer</EmptyTitle>
+            <EmptyTitle>Ingen registrerede salg</EmptyTitle>
             <EmptyDescription>
-              Registrerede kvitteringer for {location.name} vises her.
+              Registrerede salg for {location.name} vises her.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -256,11 +263,12 @@ export function InvoiceHistory() {
                   <TableHead>Lokation</TableHead>
                   <TableHead>Registreret af</TableHead>
                   <TableHead className="text-right">Produktlinjer</TableHead>
+                  <TableHead className="text-right">Pris</TableHead>
                   <TableHead>
                     <span className="sr-only">Billede</span>
                   </TableHead>
                   <TableHead>
-                    <span className="sr-only">Se kvittering</span>
+                    <span className="sr-only">Se salg</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -278,6 +286,11 @@ export function InvoiceHistory() {
                     <TableCell appearance="numeric" className="text-right">
                       {invoice.itemCount}
                     </TableCell>
+                    <TableCell appearance="numeric" className="text-right">
+                      {invoice.price !== null && invoice.currency
+                        ? formatExpenseAmount(invoice.price, invoice.currency)
+                        : null}
+                    </TableCell>
                     <TableCell>
                       {invoice.hasPhoto ? (
                         <FileImageIcon
@@ -291,9 +304,9 @@ export function InvoiceHistory() {
                         variant="outline"
                         className="min-h-11"
                         onClick={() => setSelectedInvoiceId(invoice.id)}
-                        aria-label={`Se kvittering: ${invoice.title}`}
+                        aria-label={`Se salg: ${invoice.title}`}
                       >
-                        Se kvittering
+                        Se salg
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -322,6 +335,11 @@ export function InvoiceHistory() {
                         ? "produktlinje"
                         : "produktlinjer"}
                     </Badge>
+                    {invoice.price !== null && invoice.currency ? (
+                      <Badge variant="secondary">
+                        {formatExpenseAmount(invoice.price, invoice.currency)}
+                      </Badge>
+                    ) : null}
                     {invoice.hasPhoto ? (
                       <Badge variant="outline">
                         <FileImageIcon data-icon="inline-start" />
@@ -334,9 +352,9 @@ export function InvoiceHistory() {
                       variant="outline"
                       className="min-h-11 w-full"
                       onClick={() => setSelectedInvoiceId(invoice.id)}
-                      aria-label={`Se kvittering: ${invoice.title}`}
+                      aria-label={`Se salg: ${invoice.title}`}
                     >
-                      Se kvittering
+                      Se salg
                     </Button>
                   </CardFooter>
                 </Card>
@@ -356,7 +374,7 @@ export function InvoiceHistory() {
             {status === "LoadingMore" ? (
               <Spinner data-icon="inline-start" />
             ) : null}
-            Vis flere kvitteringer
+            Vis flere salg
           </Button>
         </div>
       ) : null}
@@ -371,7 +389,7 @@ export function InvoiceHistory() {
             <InvoiceDetails invoiceId={selectedInvoiceId} />
           ) : (
             <DialogHeader>
-              <DialogTitle>Kvittering</DialogTitle>
+              <DialogTitle>Salg</DialogTitle>
             </DialogHeader>
           )}
           <DialogFooter showCloseButton />
