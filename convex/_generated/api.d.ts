@@ -56,6 +56,7 @@ import type * as integrations_gssupply_lib_api from "../integrations/gssupply/li
 import type * as integrations_gssupply_lib_links from "../integrations/gssupply/lib/links.js";
 import type * as integrations_gssupply_lifecycle from "../integrations/gssupply/lifecycle.js";
 import type * as integrations_onlinepos_api from "../integrations/onlinepos/api.js";
+import type * as integrations_onlinepos_channels from "../integrations/onlinepos/channels.js";
 import type * as integrations_onlinepos_crons from "../integrations/onlinepos/crons.js";
 import type * as integrations_onlinepos_financial from "../integrations/onlinepos/financial.js";
 import type * as integrations_onlinepos_lib_api from "../integrations/onlinepos/lib/api.js";
@@ -258,6 +259,7 @@ declare const fullApi: ApiFromModules<{
   "integrations/gssupply/lib/links": typeof integrations_gssupply_lib_links;
   "integrations/gssupply/lifecycle": typeof integrations_gssupply_lifecycle;
   "integrations/onlinepos/api": typeof integrations_onlinepos_api;
+  "integrations/onlinepos/channels": typeof integrations_onlinepos_channels;
   "integrations/onlinepos/crons": typeof integrations_onlinepos_crons;
   "integrations/onlinepos/financial": typeof integrations_onlinepos_financial;
   "integrations/onlinepos/lib/api": typeof integrations_onlinepos_lib_api;

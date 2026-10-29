@@ -29,6 +29,7 @@ import {
 } from "./online-pos-product-select";
 import { OnlinePosLocationConnections } from "./online-pos-location-connections";
 import { OnlinePosStockSettings } from "./online-pos-stock-settings";
+import { OnlinePosSalesChannels } from "./online-pos-sales-channels";
 import { OnlinePosOrderDetail } from "./online-pos-order-detail";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1284,6 +1285,7 @@ export function OnlinePosIntegration() {
             <div className="flex flex-col gap-5">
               <MasterConnections settings={settings} />
               <StoredSalesSample />
+              <OnlinePosSalesChannels />
               <OnlinePosStockSettings />
               <OnlinePosLocationConnections />
             </div>

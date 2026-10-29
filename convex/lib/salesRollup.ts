@@ -1,4 +1,49 @@
+import { v, type Infer } from "convex/values";
 import { dateKey, zonedStart } from "../../lib/date";
+
+export const paymentTypeTotalsValidator = v.object({
+  paymentType: v.string(),
+  revenue: v.number(),
+  orderCount: v.number(),
+  itemCount: v.number(),
+});
+export type PaymentTypeTotals = Infer<typeof paymentTypeTotalsValidator>;
+
+type OrderContribution = { paymentType: string; revenue: number; itemCount: number };
+
+/** Adds (direction 1) or removes (-1) one order's contribution; drops emptied entries. */
+export function applyOrderToPaymentTypes(
+  totals: readonly PaymentTypeTotals[],
+  order: OrderContribution,
+  direction: 1 | -1,
+): PaymentTypeTotals[] {
+  const next = totals.map((entry) => ({ ...entry }));
+  let entry = next.find((item) => item.paymentType === order.paymentType);
+  if (!entry) {
+    entry = { paymentType: order.paymentType, revenue: 0, orderCount: 0, itemCount: 0 };
+    next.push(entry);
+  }
+  entry.revenue += direction * order.revenue;
+  entry.orderCount += direction;
+  entry.itemCount += direction * order.itemCount;
+  return next.filter((item) => item.orderCount !== 0 || item.revenue !== 0 || item.itemCount !== 0);
+}
+
+/** Splits a day's breakdown into online and in-store totals. */
+export function splitPaymentTypes(
+  totals: readonly PaymentTypeTotals[],
+  onlinePaymentTypes: ReadonlySet<string>,
+) {
+  const online = { revenue: 0, orderCount: 0, itemCount: 0 };
+  const store = { revenue: 0, orderCount: 0, itemCount: 0 };
+  for (const entry of totals) {
+    const target = onlinePaymentTypes.has(entry.paymentType) ? online : store;
+    target.revenue += entry.revenue;
+    target.orderCount += entry.orderCount;
+    target.itemCount += entry.itemCount;
+  }
+  return { online, store };
+}
 
 export type SalesDelta = {
   revenue: number;

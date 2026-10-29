@@ -3,6 +3,7 @@ import { ConvexError } from "convex/values";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { unitPriceFromLineTotal } from "./integrations/onlinepos/lib/api";
+import { applyOrderToPaymentTypes, type PaymentTypeTotals } from "./lib/salesRollup";
 
 const ONLINE_POS_SOURCE = "onlinePos";
 
@@ -71,5 +72,42 @@ export const fixOnlinePosLinePrices = migrations.define({
       revenue,
       pricingVersion: 1,
     });
+  },
+});
+
+const MAX_BACKFILL_DAY_ORDERS = 4_000;
+
+// Seeds salesDaily.paymentTypes from retained orders. Days whose orders were
+// pruned or no longer add up to the daily totals stay without a breakdown.
+export const backfillSalesDailyPaymentTypes = migrations.define({
+  table: "salesDaily",
+  batchSize: 10,
+  migrateOne: async (ctx, daily) => {
+    if (daily.paymentTypes !== undefined) return;
+    const orders = await ctx.db
+      .query("salesOrders")
+      .withIndex("by_org_location_day_order_department", (q) =>
+        q
+          .eq("organizationId", daily.organizationId)
+          .eq("locationId", daily.locationId)
+          .eq("dayStart", daily.dayStart),
+      )
+      .take(MAX_BACKFILL_DAY_ORDERS + 1);
+    if (orders.length > MAX_BACKFILL_DAY_ORDERS) return;
+    let paymentTypes: PaymentTypeTotals[] = [];
+    for (const order of orders) {
+      if (order.source !== ONLINE_POS_SOURCE) continue;
+      paymentTypes = applyOrderToPaymentTypes(paymentTypes, order, 1);
+    }
+    const sum = (field: "revenue" | "orderCount" | "itemCount") =>
+      paymentTypes.reduce((total, entry) => total + entry[field], 0);
+    if (
+      sum("revenue") !== daily.revenue ||
+      sum("orderCount") !== daily.orderCount ||
+      sum("itemCount") !== daily.itemCount
+    ) {
+      return;
+    }
+    await ctx.db.patch("salesDaily", daily._id, { paymentTypes });
   },
 });

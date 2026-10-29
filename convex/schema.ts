@@ -38,7 +38,8 @@ import {
   scopeValidator,
   widgetValidator,
 } from "./lib/dashboardValidators";
-import { salesSourceValidator } from "./lib/salesSources";
+import { countSalesSourceValidator } from "./lib/salesSources";
+import { paymentTypeTotalsValidator } from "./lib/salesRollup";
 
 const integrationIdValidator = v.union(
   v.literal("workfeed"),
@@ -492,6 +493,8 @@ export default defineSchema({
     revenue: v.number(),
     orderCount: v.number(),
     itemCount: v.number(),
+    // Totals per POS payment type. Absent until backfilled from retained orders.
+    paymentTypes: v.optional(v.array(paymentTypeTotalsValidator)),
     updatedAt: v.number(),
     financial: v.optional(v.object({
       netRevenue: v.number(),
@@ -1781,7 +1784,7 @@ export default defineSchema({
   countSalesSourceSettings: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
-    salesSource: salesSourceValidator,
+    salesSource: countSalesSourceValidator,
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
