@@ -87,6 +87,7 @@ function DashboardLanding() {
   const canView = usePermission("dashboard.view");
   const canManage = usePermission("dashboard.manage");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
+  const canViewOperations = usePermission("dashboard.viewOperations");
   const router = useRouter();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
   const initialize = useMutation(api.dashboard.initialize);
@@ -138,8 +139,11 @@ function DashboardLanding() {
           <EmptyTitle>Ingen dashboards</EmptyTitle>
           <EmptyDescription>Der er ikke oprettet et dashboard, du kan se.</EmptyDescription>
         </EmptyHeader>
-        {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
-          <EmptyContent><Button className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button></EmptyContent>
+        {(canViewFinancials || canViewOperations) && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
+          <EmptyContent>
+            {canViewOperations ? <Button className="min-h-11" nativeButton={false} render={<Link href="/dashboard/operations" />}>Driftsoverblik</Button> : null}
+            {canViewFinancials ? <Button className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button> : null}
+          </EmptyContent>
         ) : null}
       </Empty>
     );
@@ -152,6 +156,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
+  const canViewOperations = usePermission("dashboard.viewOperations");
   const canManage = usePermission("dashboard.manage");
   const canShare = usePermission("dashboard.share");
   const canManageIntegrations = usePermission("integrations.manage") && Boolean(integrations?.onlinepos || integrations?.workfeed);
@@ -382,6 +387,9 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
         </div>
         <div className="flex flex-wrap gap-2">
+          {canViewOperations && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
+            <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/operations" />}>Driftsoverblik</Button>
+          ) : null}
           {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
             <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button>
           ) : null}

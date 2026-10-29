@@ -31,7 +31,10 @@ export function canOpenAdministration(permissions: readonly string[]) {
 type Route = { href: string; permission: PermissionId };
 const routes: Record<SidebarItemId, readonly Route[]> = {
   dateLabels: [{ href: "/date-labels", permission: "dateLabels.print" }],
-  dashboard: [{ href: "/dashboard", permission: "dashboard.view" }],
+  dashboard: [
+    { href: "/dashboard", permission: "dashboard.view" },
+    { href: "/dashboard/operations", permission: "dashboard.viewOperations" },
+  ],
   woltOrders: [{ href: "/wolt-orders", permission: "sales.viewDetail" }],
   ordering: [{ href: "/ordering", permission: "ordering.plan" }],
   transfers: [
