@@ -7,6 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { getUserErrorMessage } from "@/lib/user-errors";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -22,6 +23,9 @@ const countFormatter = new Intl.NumberFormat("da-DK");
 export function OnlinePosSalesChannels() {
   const settings = useQuery(api.integrations.onlinepos.channels.getSalesChannels);
   const save = useMutation(api.integrations.onlinepos.channels.setOnlinePaymentTypes);
+  const backfill = useMutation(
+    api.integrations.onlinepos.channels.backfillRecentPaymentTypes,
+  );
   const [saving, setSaving] = useState(false);
 
   if (!settings) return <Skeleton className="h-24 w-full" />;
@@ -47,6 +51,18 @@ export function OnlinePosSalesChannels() {
     }
   }
 
+  async function fetchMissing() {
+    setSaving(true);
+    try {
+      await backfill();
+      toast.success("Betalingstyperne hentes. Listen opdateres om lidt.");
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Betalingstyperne kunne ikke hentes"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -57,6 +73,18 @@ export function OnlinePosSalesChannels() {
         </CardDescription>
       </CardHeader>
       <CardContent appearance="stacked" className="flex flex-col">
+        {settings.missingDayCount > 0 && settings.canManage && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+            <p className="text-sm text-muted-foreground">
+              {countFormatter.format(settings.missingDayCount)}{" "}
+              {settings.missingDayCount === 1 ? "dag" : "dage"} blev synkroniseret
+              før salgskanaler fandtes og mangler betalingstyper.
+            </p>
+            <Button disabled={saving} onClick={() => void fetchMissing()}>
+              Hent betalingstyper
+            </Button>
+          </div>
+        )}
         {settings.paymentTypes.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Der er ingen betalingstyper fra de seneste 30 dage endnu.

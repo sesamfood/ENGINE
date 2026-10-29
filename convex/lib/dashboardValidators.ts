@@ -33,6 +33,12 @@ export const metricIdValidator = v.union(
   v.literal("predictedSalesRevenue"),
   v.literal("salesOrderCount"),
   v.literal("averageBasket"),
+  v.literal("onlineSalesRevenue"),
+  v.literal("onlineSalesOrderCount"),
+  v.literal("onlineAverageBasket"),
+  v.literal("storeSalesRevenue"),
+  v.literal("storeSalesOrderCount"),
+  v.literal("storeAverageBasket"),
   v.literal("woltCancellationRate"),
 );
 
