@@ -33,6 +33,7 @@ import {
   getStorageReferences,
 } from "./lib/storageOwnership";
 import { listScopedLocationOptions } from "./locations";
+import { resolveLocationCurrency } from "./lib/masterData";
 import { menuGroupInputValidator, menuGroups } from "./lib/menuGroups";
 
 const MAX_ITEMS = 100;
@@ -58,6 +59,8 @@ const listRowValidator = v.object({
   id: v.id("invoices"),
   title: v.string(),
   soldAt: v.number(),
+  price: v.union(v.number(), v.null()),
+  currency: v.union(v.string(), v.null()),
   locationName: v.string(),
   registeredByName: v.string(),
   itemCount: v.number(),
@@ -227,6 +230,7 @@ export const create = mutation({
     locationId: v.id("locations"),
     title: v.string(),
     soldAt: v.number(),
+    price: v.optional(v.number()),
     comment: v.optional(v.string()),
     receiptStorageId: v.optional(v.id("_storage")),
     clientRequestId: v.string(),
@@ -256,6 +260,12 @@ export const create = mutation({
       throw new ConvexError(
         "Angiv en gyldig salgsdato, som ikke ligger i fremtiden",
       );
+    }
+    if (
+      args.price !== undefined &&
+      (!Number.isSafeInteger(args.price) || args.price < 0)
+    ) {
+      throw new ConvexError("Angiv en gyldig pris");
     }
     if (!args.clientRequestId.trim() || args.clientRequestId.length > 100) {
       throw new ConvexError("Registreringen har et ugyldigt ID");
@@ -309,6 +319,7 @@ export const create = mutation({
       locationId: args.locationId,
       title,
       soldAt: args.soldAt,
+      price: args.price,
       comment,
       receiptStorageId: args.receiptStorageId,
       items,
@@ -510,6 +521,11 @@ export const create = mutation({
       locationName: location.name,
       title,
       soldAt: args.soldAt,
+      price: args.price,
+      currency:
+        args.price === undefined
+          ? undefined
+          : await resolveLocationCurrency(ctx, organizationId, location),
       comment,
       receiptStorageId: args.receiptStorageId,
       registeredBy: auth.userId,
@@ -580,6 +596,8 @@ export const list = query({
         id: invoice._id,
         title: invoice.title,
         soldAt: invoice.soldAt,
+        price: invoice.price ?? null,
+        currency: invoice.currency ?? null,
         locationName: invoice.locationName,
         registeredByName: invoice.registeredByName,
         itemCount: invoice.itemCount,
@@ -629,6 +647,8 @@ export const get = query({
       id: invoice._id,
       title: invoice.title,
       soldAt: invoice.soldAt,
+      price: invoice.price ?? null,
+      currency: invoice.currency ?? null,
       locationName: invoice.locationName,
       registeredByName: invoice.registeredByName,
       comment: invoice.comment ?? null,

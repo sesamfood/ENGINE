@@ -589,7 +589,7 @@ export const operationFeatures: HelpFeature[] = [
             steps: [
               "Åbn Salg → Ny kvittering. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
               "Søg Produkter eller menuer frem, og tilføj dem. Vælg enhed og mængde for hver linje. Ved en menu angiver du antal menuer og vælger Produkterne i hver gruppe.",
-              "Tilføj eventuelt Kommentar og Billede af kvittering.",
+              "Tilføj eventuelt Pris, Kommentar og Billede af kvittering.",
               "Vælg Registrér kvittering, og bekræft med Registrér og træk fra lager.",
             ],
             bullets: [

@@ -46,6 +46,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { dateTimeFormatter } from "@/lib/date";
+import { formatExpenseAmount } from "@/lib/expenses";
 import { selectedLocationId } from "@/lib/location-preference";
 import { setRegistrationLocation, useWasteLocation } from "@/lib/waste-prefs";
 import { useActiveOrganization } from "@/lib/active-organization";
@@ -105,6 +106,12 @@ function InvoiceDetails({ invoiceId }: { invoiceId: Id<"invoices"> }) {
             <dt className="text-muted-foreground">Produktlinjer</dt>
             <dd>{invoice.items.length}</dd>
           </div>
+          {invoice.price !== null && invoice.currency ? (
+            <div>
+              <dt className="text-muted-foreground">Pris</dt>
+              <dd>{formatExpenseAmount(invoice.price, invoice.currency)}</dd>
+            </div>
+          ) : null}
           {invoice.comment ? (
             <div className="sm:col-span-2">
               <dt className="text-muted-foreground">Kommentar</dt>
@@ -256,6 +263,7 @@ export function InvoiceHistory() {
                   <TableHead>Lokation</TableHead>
                   <TableHead>Registreret af</TableHead>
                   <TableHead className="text-right">Produktlinjer</TableHead>
+                  <TableHead className="text-right">Pris</TableHead>
                   <TableHead>
                     <span className="sr-only">Billede</span>
                   </TableHead>
@@ -277,6 +285,11 @@ export function InvoiceHistory() {
                     <TableCell>{invoice.registeredByName}</TableCell>
                     <TableCell appearance="numeric" className="text-right">
                       {invoice.itemCount}
+                    </TableCell>
+                    <TableCell appearance="numeric" className="text-right">
+                      {invoice.price !== null && invoice.currency
+                        ? formatExpenseAmount(invoice.price, invoice.currency)
+                        : null}
                     </TableCell>
                     <TableCell>
                       {invoice.hasPhoto ? (
@@ -322,6 +335,11 @@ export function InvoiceHistory() {
                         ? "produktlinje"
                         : "produktlinjer"}
                     </Badge>
+                    {invoice.price !== null && invoice.currency ? (
+                      <Badge variant="secondary">
+                        {formatExpenseAmount(invoice.price, invoice.currency)}
+                      </Badge>
+                    ) : null}
                     {invoice.hasPhoto ? (
                       <Badge variant="outline">
                         <FileImageIcon data-icon="inline-start" />
