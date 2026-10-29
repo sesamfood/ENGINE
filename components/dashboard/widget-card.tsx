@@ -54,7 +54,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { defaultSalesSource, metricRegistry, supportsSalesSource, visualizationLabels } from "@/lib/dashboard/registry";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
-import { widgetSizes, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
+import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type ComparisonPeriod, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
 import { previousTotal, total } from "./visualizations/utils";
@@ -83,6 +83,11 @@ const widgetRangeOptions = [
   { value: "7days", label: "7 dage" },
   { value: "30days", label: "30 dage" },
   { value: "thisMonth", label: "Denne måned" },
+];
+
+const widgetComparisonOptions = [
+  { value: "board", label: "Sammenlign: dashboard" },
+  ...comparisonPeriods.map((value) => ({ value, label: `Sammenlign: ${comparisonPeriodLabels[value].toLocaleLowerCase("da")}` })),
 ];
 
 function FreshnessNotice({
@@ -196,6 +201,7 @@ export function WidgetCard({
   onVisualizationChange,
   visualizations,
   onRangeChange,
+  onComparisonChange,
   onSalesSourceChange,
   onYAxisChange,
   onEditCustomMetric,
@@ -213,6 +219,7 @@ export function WidgetCard({
   onVisualizationChange?: (visualization: VisualizationId) => void;
   visualizations?: readonly VisualizationId[];
   onRangeChange?: (range: WidgetRangePreset | undefined) => void;
+  onComparisonChange?: (comparison: ComparisonPeriod | undefined) => void;
   onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
   onEditCustomMetric?: () => void;
@@ -249,7 +256,9 @@ export function WidgetCard({
     ? financial ? current - previous : ((current - previous) / Math.abs(previous)) * 100
     : null;
 
-  const comparisonLabel = financial ? "den foregående måned" : range?.preset === "today"
+  const comparisonLabel = financial ? "den foregående måned" : result?.comparison === "lastYear"
+    ? "samme ugedage sidste år"
+    : range?.preset === "today"
     ? "i går"
     : range?.preset === "yesterday"
       ? "dagen før"
@@ -513,6 +522,20 @@ export function WidgetCard({
                       <SelectContent>
                         <SelectGroup>
                           {availableRangeOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select> : null}
+                    {!definition?.live && !financial ? <Select
+                      items={widgetComparisonOptions}
+                      value={widget.comparison ?? "board"}
+                      onValueChange={(value) => onComparisonChange?.(comparisonPeriods.find((period) => period === value))}
+                    >
+                      <SelectTrigger className="h-11 w-60" aria-label={`Sammenligning for ${metricLabel}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {widgetComparisonOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                         </SelectGroup>
                       </SelectContent>
                     </Select> : null}

@@ -3,7 +3,7 @@
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { DashboardRange, RangePreset } from "@/lib/dashboard/types";
+import { comparisonPeriodLabels, comparisonPeriods, type ComparisonPeriod, type DashboardRange, type RangePreset } from "@/lib/dashboard/types";
 import { dateKey, DEFAULT_TIME_ZONE } from "@/lib/date";
 
 const presets: Array<{ value: RangePreset; label: string }> = [
@@ -49,6 +49,33 @@ export function RangeSelector({
           </Field>
         </FieldGroup>
       ) : null}
+    </div>
+  );
+}
+
+export function ComparisonSelector({
+  comparison,
+  onChange,
+}: {
+  comparison: ComparisonPeriod;
+  onChange: (comparison: ComparisonPeriod) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span id="dashboard-comparison-label" className="text-sm text-muted-foreground">Sammenlign med</span>
+      <ToggleGroup
+        aria-labelledby="dashboard-comparison-label"
+        value={[comparison]}
+        onValueChange={(values) => {
+          const next = comparisonPeriods.find((period) => period === values[0]);
+          if (next) onChange(next);
+        }}
+        variant="outline"
+        size="lg"
+        spacing={0}
+      >
+        {comparisonPeriods.map((period) => <ToggleGroupItem key={period} value={period} className="min-h-11">{comparisonPeriodLabels[period]}</ToggleGroupItem>)}
+      </ToggleGroup>
     </div>
   );
 }
