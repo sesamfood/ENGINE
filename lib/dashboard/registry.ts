@@ -62,6 +62,16 @@ const financialDefaults = {
   shareable: false,
 } as const satisfies Partial<MetricDefinition>;
 
+const channelSalesDefaults = {
+  category: "Salg",
+  sourceTables: ["salesDaily", "onlinePosIntegrations"],
+  source: "onlinepos",
+  visualizations: ["kpi", "line", "bar", "area", "table"],
+  defaultVisualization: "kpi",
+  sensitive: true,
+  shareable: true,
+} as const satisfies Partial<MetricDefinition>;
+
 const definitions = {
   cogsPercent: {
     ...financialDefaults,
@@ -407,6 +417,60 @@ const definitions = {
     defaultSize: "1x1",
     sensitive: true,
     shareable: true,
+  },
+  onlineSalesRevenue: {
+    ...channelSalesDefaults,
+    id: "onlineSalesRevenue",
+    label: "Online omsætning",
+    description: "Omsætning fra OnlinePOS-salg online i perioden.",
+    formula: "Summen af daglig omsætning i mindreenheder ÷ 100. Kun ordrer med betalingstyper, der er markeret som online i OnlinePOS-indstillingerne.",
+    unit: "currency",
+    defaultSize: "2x1",
+  },
+  onlineSalesOrderCount: {
+    ...channelSalesDefaults,
+    id: "onlineSalesOrderCount",
+    label: "Online ordrer",
+    description: "Antal OnlinePOS-ordrer online i perioden.",
+    formula: "Summen af daglige ordreantal. Kun ordrer med betalingstyper, der er markeret som online i OnlinePOS-indstillingerne.",
+    unit: "count",
+    defaultSize: "1x1",
+  },
+  onlineAverageBasket: {
+    ...channelSalesDefaults,
+    id: "onlineAverageBasket",
+    label: "Online gennemsnitlig kurv",
+    description: "Omsætning divideret med antal ordrer for OnlinePOS-salg online.",
+    formula: "Summen af omsætning i mindreenheder ÷ summen af ordrer ÷ 100; 0 hvis der ikke er ordrer. Kun ordrer med betalingstyper, der er markeret som online i OnlinePOS-indstillingerne.",
+    unit: "currency",
+    defaultSize: "1x1",
+  },
+  storeSalesRevenue: {
+    ...channelSalesDefaults,
+    id: "storeSalesRevenue",
+    label: "Omsætning i butik",
+    description: "Omsætning fra OnlinePOS-salg i butik i perioden.",
+    formula: "Summen af daglig omsætning i mindreenheder ÷ 100. Kun ordrer med betalingstyper, der ikke er markeret som online i OnlinePOS-indstillingerne.",
+    unit: "currency",
+    defaultSize: "2x1",
+  },
+  storeSalesOrderCount: {
+    ...channelSalesDefaults,
+    id: "storeSalesOrderCount",
+    label: "Ordrer i butik",
+    description: "Antal OnlinePOS-ordrer i butik i perioden.",
+    formula: "Summen af daglige ordreantal. Kun ordrer med betalingstyper, der ikke er markeret som online i OnlinePOS-indstillingerne.",
+    unit: "count",
+    defaultSize: "1x1",
+  },
+  storeAverageBasket: {
+    ...channelSalesDefaults,
+    id: "storeAverageBasket",
+    label: "Gennemsnitlig kurv i butik",
+    description: "Omsætning divideret med antal ordrer for OnlinePOS-salg i butik.",
+    formula: "Summen af omsætning i mindreenheder ÷ summen af ordrer ÷ 100; 0 hvis der ikke er ordrer. Kun ordrer med betalingstyper, der ikke er markeret som online i OnlinePOS-indstillingerne.",
+    unit: "currency",
+    defaultSize: "1x1",
   },
   woltCancellationRate: {
     id: "woltCancellationRate",

@@ -2616,6 +2616,9 @@ const predictedSalesRevenue: MetricComputer = async (ctx, params) => {
   };
 };
 
+const withSalesSource = (computer: MetricComputer, salesSource: SalesSource): MetricComputer =>
+  (ctx, params) => computer(ctx, { ...params, salesSource });
+
 export const dashboardMetricComputers: Record<MetricId, MetricComputer | ExternalMetricComputer> = {
   cogsPercent: { kind: "external", provider: "economic" },
   labourPercent: { kind: "external", provider: "economic" },
@@ -2660,6 +2663,30 @@ export const dashboardMetricComputers: Record<MetricId, MetricComputer | Externa
   salesRevenue: withMetricMetadata("salesRevenue", salesRevenue),
   salesOrderCount: withMetricMetadata("salesOrderCount", salesOrderCount),
   averageBasket: withMetricMetadata("averageBasket", averageBasket),
+  onlineSalesRevenue: withMetricMetadata(
+    "onlineSalesRevenue",
+    withSalesSource(salesRevenue, "onlinePosOnline"),
+  ),
+  onlineSalesOrderCount: withMetricMetadata(
+    "onlineSalesOrderCount",
+    withSalesSource(salesOrderCount, "onlinePosOnline"),
+  ),
+  onlineAverageBasket: withMetricMetadata(
+    "onlineAverageBasket",
+    withSalesSource(averageBasket, "onlinePosOnline"),
+  ),
+  storeSalesRevenue: withMetricMetadata(
+    "storeSalesRevenue",
+    withSalesSource(salesRevenue, "onlinePosStore"),
+  ),
+  storeSalesOrderCount: withMetricMetadata(
+    "storeSalesOrderCount",
+    withSalesSource(salesOrderCount, "onlinePosStore"),
+  ),
+  storeAverageBasket: withMetricMetadata(
+    "storeAverageBasket",
+    withSalesSource(averageBasket, "onlinePosStore"),
+  ),
   woltCancellationRate: withMetricMetadata(
     "woltCancellationRate",
     woltCancellationRate,
