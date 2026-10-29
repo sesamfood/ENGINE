@@ -569,8 +569,8 @@ export const operationFeatures: HelpFeature[] = [
     ],
   },
   {
-    slug: "faktura",
-    label: "Faktura",
+    slug: "salg",
+    label: "Salg",
     summary:
       "Registrér salg fra en kvittering, og træk Produkterne fra lageret.",
     icon: ReceiptTextIcon,
@@ -581,13 +581,13 @@ export const operationFeatures: HelpFeature[] = [
         summary:
           "Registrér salg, der ikke kommer fra et kassesystem, så lageret passer.",
         appHref: "/invoices",
-        appLinkLabel: "Åbn Faktura",
+        appLinkLabel: "Åbn Salg",
         sections: [
           {
             id: "registrer",
             title: "Registrér en kvittering",
             steps: [
-              "Åbn Faktura → Ny kvittering. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
+              "Åbn Salg → Ny kvittering. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
               "Søg Produkter eller menuer frem, og tilføj dem. Vælg enhed og mængde for hver linje. Ved en menu angiver du antal menuer og vælger Produkterne i hver gruppe.",
               "Tilføj eventuelt Kommentar og Billede af kvittering.",
               "Vælg Registrér kvittering, og bekræft med Registrér og træk fra lager.",
@@ -598,7 +598,7 @@ export const operationFeatures: HelpFeature[] = [
               "Menuer kræver OnlinePOS-menuer under Administration → Produkter.",
             ],
             screenshot: {
-              src: "/help/screenshots/faktura.webp",
+              src: "/help/screenshots/salg.webp",
               alt: "Ny kvittering med lokation, titel, dato og produktlinjer",
               caption:
                 "Mængderne trækkes fra lageret, når kvitteringen registreres. Eksempeldata.",
@@ -617,7 +617,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "adgang",
             title: "Adgang",
             paragraphs: [
-              "Registrering og visning er separate rettigheder. Faktura slås til under Administration → Faktura.",
+              "Registrering og visning er separate rettigheder. Salg slås til under Administration → Salg.",
             ],
           },
         ],
@@ -901,7 +901,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "lager",
             title: "Lager",
             paragraphs: [
-              "Åbn Count → Lager, og vælg Lokation. Vælg Kort eller Detaljer. Lageret ændres af Count, varemodtagelser, Waste, Staff food, Faktura og salg, når lagersynkronisering er slået til.",
+              "Åbn Count → Lager, og vælg Lokation. Vælg Kort eller Detaljer. Lageret ændres af Count, varemodtagelser, Waste, Staff food og salg, når lagersynkronisering er slået til.",
             ],
           },
           {

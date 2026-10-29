@@ -172,7 +172,7 @@ export const administrationFeatures: HelpFeature[] = [
               "Vælg Opret menu, og opret de OnlinePOS-koblinger, advarslerne peger på.",
             ],
             bullets: [
-              "Menuen samler salgslinjer til 0 kr. ud fra Produkternes OnlinePOS-koblinger. Menuer kan også vælges ved registrering af Faktura.",
+              "Menuen samler salgslinjer til 0 kr. ud fra Produkternes OnlinePOS-koblinger. Menuer kan også vælges ved registrering af Salg.",
               "Sletning af en menu fjerner kun grupperingen. Gemte salgslinjer bevares.",
             ],
           },
