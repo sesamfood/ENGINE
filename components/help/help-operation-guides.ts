@@ -569,8 +569,8 @@ export const operationFeatures: HelpFeature[] = [
     ],
   },
   {
-    slug: "faktura",
-    label: "Faktura",
+    slug: "salg",
+    label: "Salg",
     summary:
       "Registrér salg fra en kvittering, og træk Produkterne fra lageret.",
     icon: ReceiptTextIcon,
@@ -581,43 +581,43 @@ export const operationFeatures: HelpFeature[] = [
         summary:
           "Registrér salg, der ikke kommer fra et kassesystem, så lageret passer.",
         appHref: "/invoices",
-        appLinkLabel: "Åbn Faktura",
+        appLinkLabel: "Åbn Salg",
         sections: [
           {
             id: "registrer",
-            title: "Registrér en kvittering",
+            title: "Registrér et salg",
             steps: [
-              "Åbn Faktura → Ny kvittering. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
+              "Åbn Salg → Nyt salg. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
               "Søg Produkter eller menuer frem, og tilføj dem. Vælg enhed og mængde for hver linje. Ved en menu angiver du antal menuer og vælger Produkterne i hver gruppe.",
-              "Tilføj eventuelt Kommentar og Billede af kvittering.",
-              "Vælg Registrér kvittering, og bekræft med Registrér og træk fra lager.",
+              "Tilføj eventuelt Pris, Kommentar og Billede af kvittering.",
+              "Vælg Registrér salg, og bekræft med Registrér og træk fra lager.",
             ],
             bullets: [
               "Salg fra før et Produkts seneste Count er allerede talt med og trækkes ikke fra igen.",
-              "En kvittering kan have højst 100 produktlinjer og kan ikke redigeres eller slettes bagefter.",
+              "Et salg kan have højst 100 produktlinjer og kan ikke redigeres eller slettes bagefter.",
               "Menuer kræver OnlinePOS-menuer under Administration → Produkter.",
             ],
             screenshot: {
-              src: "/help/screenshots/faktura.webp",
-              alt: "Ny kvittering med lokation, titel, dato og produktlinjer",
+              src: "/help/screenshots/salg.webp",
+              alt: "Nyt salg med lokation, titel, dato og produktlinjer",
               caption:
-                "Mængderne trækkes fra lageret, når kvitteringen registreres. Eksempeldata.",
+                "Mængderne trækkes fra lageret, når salget registreres. Eksempeldata.",
               width: 1020,
               height: 800,
             },
           },
           {
             id: "historik",
-            title: "Find en kvittering",
+            title: "Find et salg",
             paragraphs: [
-              "Registrerede kvitteringer viser titel, dato, Lokation og hvem der registrerede. Åbn en kvittering for at se produktlinjer og billede.",
+              "Registrerede salg viser titel, dato, Lokation og hvem der registrerede. Åbn et salg for at se produktlinjer og billede.",
             ],
           },
           {
             id: "adgang",
             title: "Adgang",
             paragraphs: [
-              "Registrering og visning er separate rettigheder. Faktura slås til under Administration → Faktura.",
+              "Registrering og visning er separate rettigheder. Salg slås til under Administration → Salg.",
             ],
           },
         ],
@@ -901,7 +901,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "lager",
             title: "Lager",
             paragraphs: [
-              "Åbn Count → Lager, og vælg Lokation. Vælg Kort eller Detaljer. Lageret ændres af Count, varemodtagelser, Waste, Staff food, Faktura og salg, når lagersynkronisering er slået til.",
+              "Åbn Count → Lager, og vælg Lokation. Vælg Kort eller Detaljer. Lageret ændres af Count, varemodtagelser, Waste, Staff food og salg, når lagersynkronisering er slået til.",
             ],
           },
           {

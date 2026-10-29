@@ -135,8 +135,8 @@ const categories: AdministrationCategory[] = [
         permissions: ["organization.settings"],
       },
       {
-        title: "Faktura",
-        description: "Slå Faktura til eller fra for organisationen.",
+        title: "Salg",
+        description: "Slå Salg til eller fra for organisationen.",
         href: "/administration/invoices",
         feature: "invoices",
         icon: ReceiptTextIcon,

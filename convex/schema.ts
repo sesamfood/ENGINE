@@ -385,6 +385,9 @@ export default defineSchema({
     locationName: v.string(),
     title: v.string(),
     soldAt: v.number(),
+    // Minor units in currency.
+    price: v.optional(v.number()),
+    currency: v.optional(v.string()),
     comment: v.optional(v.string()),
     receiptStorageId: v.optional(v.id("_storage")),
     registeredBy: v.string(),

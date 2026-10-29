@@ -8,7 +8,7 @@ export const featureLabels = {
   woltOrders: "Wolt-ordrer",
   ordering: "Bestilling",
   transfers: "Transfer",
-  invoices: "Faktura",
+  invoices: "Salg",
   expenses: "Udgift",
   goodsReceipts: "Varemodtagelse",
   waste: "Waste",

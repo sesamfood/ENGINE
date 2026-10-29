@@ -66,7 +66,7 @@ function InvoicesContent() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Du har ikke adgang til at registrere eller se kvitteringer.
+          Du har ikke adgang til at registrere eller se salg.
         </AlertDescription>
       </Alert>
     );
@@ -75,17 +75,17 @@ function InvoicesContent() {
   const sectionTabs = showSectionTabs ? (
     <TabsList
       variant="line"
-      aria-label="Fakturasektioner"
+      aria-label="Salgssektioner"
       className="h-12 max-w-full justify-start overflow-x-auto overflow-y-hidden"
     >
       {showNew ? (
         <TabsTrigger value="new" appearance="standard" className="min-w-36">
-          Ny kvittering
+          Nyt salg
         </TabsTrigger>
       ) : null}
       {showHistory ? (
         <TabsTrigger value="history" appearance="standard" className="min-w-36">
-          Registrerede kvitteringer
+          Registrerede salg
         </TabsTrigger>
       ) : null}
     </TabsList>
@@ -123,10 +123,10 @@ export default function InvoicesPage() {
   const header = (
     <div className="flex min-w-0 flex-col gap-2">
       <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-        Faktura
+        Salg
       </p>
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-        Faktura
+        Salg
       </h1>
     </div>
   );
