@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import type { VisualizationId } from "@/lib/dashboard/types";
 
@@ -66,7 +67,10 @@ export function YAxisSettings({
   return (
     <FieldGroup appearance="standard" className="grid sm:grid-cols-2">
       <Field data-invalid={invalidBounds || undefined}>
-        <FieldLabel htmlFor={`${idPrefix}-min`}>Minimum på Y-akse</FieldLabel>
+        <div className="flex items-center gap-1">
+          <FieldLabel htmlFor={`${idPrefix}-min`}>Minimum på Y-akse</FieldLabel>
+          <HelpTooltip label="Minimum på Y-akse" content="Minimum starter ved 0." />
+        </div>
         <YAxisInput
           key={`${idPrefix}-min-${draftVersion}`}
           id={`${idPrefix}-min`}
@@ -79,7 +83,10 @@ export function YAxisSettings({
         />
       </Field>
       <Field data-invalid={invalidBounds || undefined}>
-        <FieldLabel htmlFor={`${idPrefix}-max`}>Maksimum på Y-akse</FieldLabel>
+        <div className="flex items-center gap-1">
+          <FieldLabel htmlFor={`${idPrefix}-max`}>Maksimum på Y-akse</FieldLabel>
+          <HelpTooltip label="Maksimum på Y-akse" content="Lad feltet stå tomt for automatisk skala." />
+        </div>
         <YAxisInput
           key={`${idPrefix}-max-${draftVersion}`}
           id={`${idPrefix}-max`}
@@ -92,9 +99,6 @@ export function YAxisSettings({
           onCommit={(nextMax) => commit({ min, max: nextMax })}
         />
       </Field>
-      <FieldDescription className="sm:col-span-2">
-        Minimum starter ved 0. Lad maksimumfeltet stå tomt for automatisk skala.
-      </FieldDescription>
       {invalidBounds ? (
         <FieldError className="sm:col-span-2">Minimum skal være mindre end maksimum.</FieldError>
       ) : null}

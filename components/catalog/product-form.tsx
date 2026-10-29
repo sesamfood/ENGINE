@@ -1397,9 +1397,15 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   ) : null}
                   {hasRecipe ? (
                     <Field data-invalid={Boolean(errors.recipeYield)}>
-                      <FieldLabel htmlFor="recipe-yield">
-                        Ingredienserne giver
-                      </FieldLabel>
+                      <div className="flex items-center gap-1">
+                        <FieldLabel htmlFor="recipe-yield">
+                          Ingredienserne giver
+                        </FieldLabel>
+                        <HelpTooltip
+                          label="Ingredienserne giver"
+                          content="Mængderne herunder bruges til at lave så meget af produktet."
+                        />
+                      </div>
                       <div className="flex gap-2">
                         <Input
                           id="recipe-yield"
@@ -1443,10 +1449,6 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           </SelectContent>
                         </Select>
                       </div>
-                      <FieldDescription>
-                        Mængderne herunder bruges til at lave så meget af
-                        produktet.
-                      </FieldDescription>
                       <FieldError>{errors.recipeYield}</FieldError>
                     </Field>
                   ) : null}

@@ -55,6 +55,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -274,9 +275,15 @@ function LocationHealthCard({
 
         <FieldGroup appearance="compact">
           <Field data-disabled={!canUseWio}>
-            <FieldLabel htmlFor={`wolt-partner-venue-${location.id}`}>
-              WIO partner-venue-id
-            </FieldLabel>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor={`wolt-partner-venue-${location.id}`}>
+                WIO partner-venue-id
+              </FieldLabel>
+              <HelpTooltip
+                label="WIO partner-venue-id"
+                content="Partner-venue-id bruges kun ved WIO. Forslag eller indtastede værdier gemmes ikke, før du vælger Gem."
+              />
+            </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 id={`wolt-partner-venue-${location.id}`}
@@ -302,9 +309,6 @@ function LocationHealthCard({
                 Gem
               </Button>
             </div>
-            <FieldDescription>
-              Partner-venue-id bruges kun ved WIO. Forslag eller indtastede værdier gemmes ikke, før du vælger Gem.
-            </FieldDescription>
           </Field>
           {!canUseWio ? (
             <p className="text-sm text-muted-foreground">

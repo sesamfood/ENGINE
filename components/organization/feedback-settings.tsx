@@ -24,13 +24,13 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldTitle,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { SettingsSwitchField } from "./settings-switch-field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -173,21 +172,16 @@ export function FeedbackSettings() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <FieldLabel htmlFor="feedback-enabled">
-              <Field orientation="horizontal">
-                <FieldContent>
-                  <FieldTitle>Tillad feedback</FieldTitle>
-                  <FieldDescription>
-                    Slår knappen “Send feedback” til for hele organisationen.
-                  </FieldDescription>
-                </FieldContent>
-                <Switch
-                  id="feedback-enabled"
-                  checked={enabled}
-                  onCheckedChange={setEnabledDraft}
-                />
-              </Field>
-            </FieldLabel>
+            <SettingsSwitchField
+              id="feedback-enabled"
+              label="Tillad feedback"
+              checked={enabled}
+              onCheckedChange={setEnabledDraft}
+              help={{
+                label: "Tillad feedback",
+                content: "Slår knappen “Send feedback” til for hele organisationen.",
+              }}
+            />
 
             <Field>
               <FieldTitle id="feedback-destination-label">Modtager</FieldTitle>

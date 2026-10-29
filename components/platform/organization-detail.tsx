@@ -42,6 +42,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -777,7 +778,15 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
         <CardContent>
           <FieldGroup>
             <Field className="sm:max-w-sm">
-              <FieldLabel htmlFor="platform-plan">Plan</FieldLabel>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="platform-plan">Plan</FieldLabel>
+                {plan ? (
+                  <HelpTooltip
+                    label="Plan"
+                    content="Planen og de valgte tilkøb styrer funktioner og integrationer. Redigér dem under Indstillinger."
+                  />
+                ) : null}
+              </div>
               <Select
                 items={planOptions}
                 value={planId}
@@ -802,12 +811,6 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              {plan ? (
-                <FieldDescription>
-                  Planen og de valgte tilkøb styrer funktioner og
-                  integrationer. Redigér dem under Indstillinger.
-                </FieldDescription>
-              ) : null}
             </Field>
             {plan ? (
               <AddOnFields
@@ -833,9 +836,15 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
               }
             />
             <Field className="sm:max-w-sm">
-              <FieldLabel htmlFor="platform-unavailable-display">
-                Funktioner uden for abonnementet
-              </FieldLabel>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="platform-unavailable-display">
+                  Funktioner uden for abonnementet
+                </FieldLabel>
+                <HelpTooltip
+                  label="Funktioner uden for abonnementet"
+                  content="Gælder Administration og integrationer."
+                />
+              </div>
               <Select
                 items={displayOptions}
                 value={unavailableDisplay}
@@ -860,9 +869,6 @@ function EntitlementsTab({ organization }: { organization: Organization }) {
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <FieldDescription>
-                Gælder Administration og integrationer.
-              </FieldDescription>
             </Field>
             {canEdit ? null : (
               <FieldDescription>

@@ -47,7 +47,6 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
-  FieldTitle,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -60,7 +59,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+import { SettingsSwitchField } from "./settings-switch-field";
 import { useAccess, useLocationAccess, usePermission } from "@/components/app-shell";
 import { useRouter } from "next/navigation";
 import {
@@ -419,7 +418,7 @@ export function KioskSettings() {
             <FieldGroup className="md:grid md:grid-cols-2">
               <Field><FieldLabel htmlFor="kiosk-home">Startside</FieldLabel><Select items={homeItems} value={homePage || null} onValueChange={(value) => setHomePage((value ?? "") as KioskDestinationId | "")} disabled={!homeItems.length}><SelectTrigger id="kiosk-home" className="w-full"><SelectValue placeholder="Vælg startside" /></SelectTrigger><SelectContent><SelectGroup>{homeItems.map((page) => <SelectItem key={page.value} value={page.value}>{page.label}</SelectItem>)}</SelectGroup></SelectContent></Select><FieldDescription>Startsiden skal være blandt de aktiverede sider.</FieldDescription></Field>
               <FieldGroup>
-                <Field orientation="horizontal"><FieldContent><FieldTitle>Nulstil ved inaktivitet</FieldTitle><FieldDescription>Sender kiosken tilbage til startsiden og rydder igangværende arbejde.</FieldDescription></FieldContent><Switch checked={inactivityEnabled} onCheckedChange={setInactivityEnabled} /></Field>
+                <SettingsSwitchField label="Nulstil ved inaktivitet" checked={inactivityEnabled} onCheckedChange={setInactivityEnabled} help={{ label: "Nulstil ved inaktivitet", content: "Sender kiosken tilbage til startsiden og rydder igangværende arbejde." }} />
                 <Field data-disabled={!inactivityEnabled}><FieldLabel htmlFor="kiosk-timeout">Sekunder</FieldLabel><Input id="kiosk-timeout" type="number" min={5} max={3600} value={inactivitySeconds} onChange={(event) => setInactivitySeconds(Number(event.target.value))} disabled={!inactivityEnabled} /></Field>
               </FieldGroup>
             </FieldGroup>

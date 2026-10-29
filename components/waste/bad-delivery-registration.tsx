@@ -531,13 +531,15 @@ export function BadDeliveryRegistration() {
             {config!.showStockChoice ? (
               <Field orientation="horizontal">
                 <FieldContent>
-                  <FieldLabel htmlFor="bad-delivery-stock">
-                    Træk produkterne fra lageret
-                  </FieldLabel>
-                  <FieldDescription>
-                    Trækker varernes omregnede standardmængder fra den valgte
-                    lokationen.
-                  </FieldDescription>
+                  <div className="flex items-center gap-1">
+                    <FieldLabel htmlFor="bad-delivery-stock">
+                      Træk produkterne fra lageret
+                    </FieldLabel>
+                    <HelpTooltip
+                      label="Træk produkterne fra lageret"
+                      content="Trækker varernes omregnede standardmængder fra den valgte lokation."
+                    />
+                  </div>
                 </FieldContent>
                 <Switch
                   id="bad-delivery-stock"
