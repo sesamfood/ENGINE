@@ -365,6 +365,10 @@ function DraggableWidget({
           else options.yAxisMax = axis.max;
           onChange({ ...widget, options: Object.keys(options).length ? options : undefined });
         }}
+        onGoalPercentChange={(goalPercent: number) => onChange({
+          ...widget,
+          options: { ...widget.options, goalPercent },
+        })}
         onEditCustomMetric={onEditCustomMetric}
         onResize={onResize}
         onRemove={onRemove}

@@ -1,6 +1,7 @@
 import dynamic from "next/dynamic";
 import { createElement, type ComponentType } from "react";
 import { GaugeVisualization } from "@/components/dashboard/visualizations/gauge";
+import { GoalVisualization } from "@/components/dashboard/visualizations/goal";
 import { KpiVisualization } from "@/components/dashboard/visualizations/kpi";
 import { ListVisualization } from "@/components/dashboard/visualizations/list";
 import { TableVisualization } from "@/components/dashboard/visualizations/table";
@@ -15,6 +16,8 @@ export type VisualizationProps = {
   tooltipLabel?: string;
   yAxisMin?: number;
   yAxisMax?: number;
+  goalPercent?: number;
+  comparisonLabel?: string;
 };
 
 const visualizationLoading = () =>
@@ -101,4 +104,5 @@ export const visualizationRegistry: Record<
   gauge: withEmptyState(GaugeVisualization),
   list: withEmptyState(ListVisualization),
   table: withEmptyState(TableVisualization),
+  goal: withEmptyState(GoalVisualization),
 };

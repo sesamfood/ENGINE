@@ -489,7 +489,15 @@ const definitions = {
   },
 } satisfies Record<MetricId, MetricDefinition>;
 
-export const metricRegistry: Record<MetricId, MetricDefinition> = definitions;
+// Every metric with a single headline value and a comparison period can be shown as a goal.
+export const metricRegistry = Object.fromEntries(
+  Object.values(definitions).map((definition: MetricDefinition) => [
+    definition.id,
+    definition.visualizations.includes("kpi") && !definition.live && definition.source !== "economic"
+      ? { ...definition, visualizations: [...definition.visualizations, "goal"] }
+      : definition,
+  ]),
+) as Record<MetricId, MetricDefinition>;
 
 export const metrics: MetricDefinition[] = Object.values(metricRegistry);
 
@@ -502,6 +510,7 @@ export const visualizationLabels: Record<VisualizationId, string> = {
   gauge: "Måler",
   list: "Liste",
   table: "Tabel",
+  goal: "Mål",
 };
 
 export const sizeLabels = {

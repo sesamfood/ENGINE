@@ -1,6 +1,7 @@
 import type { ChartConfig } from "@/components/ui/chart";
 import {
   DEFAULT_CURRENCY,
+  type DashboardRange,
   type MetricResult,
   type MetricUnit,
 } from "@/lib/dashboard/types";
@@ -18,6 +19,18 @@ export function previousTotal(result: MetricResult) {
   return values.some((value) => value === null)
     ? null
     : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+}
+
+export function comparisonPeriodText(result: MetricResult | undefined, range: DashboardRange | undefined) {
+  if (result?.comparison === "lastYear") return "samme ugedage sidste år";
+  switch (range?.preset) {
+    case "today": return "i går";
+    case "yesterday": return "dagen før";
+    case "7days": return "de foregående 7 dage";
+    case "30days": return "de foregående 30 dage";
+    case "thisMonth": return "den foregående måned";
+    default: return "den foregående tilsvarende periode";
+  }
 }
 
 export function isMixedCurrency(result: MetricResult) {

@@ -49,7 +49,10 @@ export const visualizationIds = [
   "gauge",
   "list",
   "table",
+  "goal",
 ] as const;
+
+export const DEFAULT_GOAL_PERCENT = 10;
 
 const widgetColumnSpans = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const widgetRowSpans = [1, 2, 3, 4] as const;
@@ -198,6 +201,8 @@ export type WidgetInstance = {
     yAxisMax?: number;
     /** Sales widgets default to OnlinePOS for backwards compatibility. */
     salesSource?: SalesSource;
+    /** Goal widgets aim this many percent above the comparison period. */
+    goalPercent?: number;
   };
 };
 

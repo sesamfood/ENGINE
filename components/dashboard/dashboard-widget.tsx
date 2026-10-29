@@ -7,6 +7,7 @@ import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { WidgetCard } from "./widget-card";
+import { comparisonPeriodText } from "./visualizations/utils";
 import { LiveMetricContent } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
 
@@ -26,6 +27,7 @@ export function DashboardWidget({
   onComparisonChange,
   onSalesSourceChange,
   onYAxisChange,
+  onGoalPercentChange,
   onEditCustomMetric,
   onResize,
   onRemove,
@@ -45,6 +47,7 @@ export function DashboardWidget({
   onComparisonChange?: (comparison: ComparisonPeriod | undefined) => void;
   onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
+  onGoalPercentChange?: (goalPercent: number) => void;
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
@@ -67,6 +70,7 @@ export function DashboardWidget({
       onComparisonChange={onComparisonChange}
       onSalesSourceChange={onSalesSourceChange}
       onYAxisChange={onYAxisChange}
+      onGoalPercentChange={onGoalPercentChange}
       onEditCustomMetric={onEditCustomMetric}
       onResize={onResize}
       onRemove={onRemove}
@@ -79,7 +83,7 @@ export function DashboardWidget({
           <Skeleton className="min-h-24 flex-1" />
         </div>
       ) : (
-        <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} />
+        <Visualization result={result} compact={compact} tooltipLabel={tooltipLabel} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} goalPercent={widget.options?.goalPercent} comparisonLabel={comparisonPeriodText(result, widget.range ? { preset: widget.range } : range)} />
       )}
     </WidgetCard>
   );

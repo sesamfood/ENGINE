@@ -39,6 +39,7 @@ export const customMetricVisualizations: readonly VisualizationId[] = [
   "gauge",
   "list",
   "table",
+  "goal",
 ];
 
 export const ratioMetricVisualizations: readonly VisualizationId[] = [
@@ -49,6 +50,7 @@ export const ratioMetricVisualizations: readonly VisualizationId[] = [
   "gauge",
   "list",
   "table",
+  "goal",
 ];
 
 export function canBatchCustomMetric(spec: CustomMetricSpec) {
