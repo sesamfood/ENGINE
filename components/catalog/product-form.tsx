@@ -63,6 +63,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Empty } from "@/components/ui/empty";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -246,7 +247,13 @@ function OnlinePosProductMappingField({
 
   return (
     <Field>
-      <FieldLabel>OnlinePOS-produkt</FieldLabel>
+      <div className="flex items-center gap-2">
+        <FieldLabel>OnlinePOS-produkt</FieldLabel>
+        <HelpTooltip
+          label="OnlinePOS-produkt"
+          content="Koblingen gemmes med det samme."
+        />
+      </div>
       <OnlinePosProductSelect
         options={options}
         productName={productName}
@@ -256,7 +263,6 @@ function OnlinePosProductMappingField({
         onRetry={onRetry}
         disabled={saving}
       />
-      <FieldDescription>Koblingen gemmes med det samme.</FieldDescription>
     </Field>
   );
 }
