@@ -585,32 +585,32 @@ export const operationFeatures: HelpFeature[] = [
         sections: [
           {
             id: "registrer",
-            title: "Registrér en kvittering",
+            title: "Registrér et salg",
             steps: [
-              "Åbn Salg → Ny kvittering. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
+              "Åbn Salg → Nyt salg. Vælg Lokation, og angiv Titel og Dato og tidspunkt fra kvitteringen.",
               "Søg Produkter eller menuer frem, og tilføj dem. Vælg enhed og mængde for hver linje. Ved en menu angiver du antal menuer og vælger Produkterne i hver gruppe.",
               "Tilføj eventuelt Pris, Kommentar og Billede af kvittering.",
               "Vælg Registrér salg, og bekræft med Registrér og træk fra lager.",
             ],
             bullets: [
               "Salg fra før et Produkts seneste Count er allerede talt med og trækkes ikke fra igen.",
-              "En kvittering kan have højst 100 produktlinjer og kan ikke redigeres eller slettes bagefter.",
+              "Et salg kan have højst 100 produktlinjer og kan ikke redigeres eller slettes bagefter.",
               "Menuer kræver OnlinePOS-menuer under Administration → Produkter.",
             ],
             screenshot: {
               src: "/help/screenshots/salg.webp",
-              alt: "Ny kvittering med lokation, titel, dato og produktlinjer",
+              alt: "Nyt salg med lokation, titel, dato og produktlinjer",
               caption:
-                "Mængderne trækkes fra lageret, når kvitteringen registreres. Eksempeldata.",
+                "Mængderne trækkes fra lageret, når salget registreres. Eksempeldata.",
               width: 1020,
               height: 800,
             },
           },
           {
             id: "historik",
-            title: "Find en kvittering",
+            title: "Find et salg",
             paragraphs: [
-              "Registrerede kvitteringer viser titel, dato, Lokation og hvem der registrerede. Åbn en kvittering for at se produktlinjer og billede.",
+              "Registrerede salg viser titel, dato, Lokation og hvem der registrerede. Åbn et salg for at se produktlinjer og billede.",
             ],
           },
           {

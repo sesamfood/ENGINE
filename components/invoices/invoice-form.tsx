@@ -640,12 +640,12 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       setConfirming(false);
       clientRequestId.current = null;
       uploadedPhoto.current = null;
-      toast.success("Kvitteringen er registreret, og lageret er opdateret");
+      toast.success("Salget er registreret, og lageret er opdateret");
     } catch (error) {
       toast.error(
         getUserErrorMessage(
           error,
-          "Kvitteringen kunne ikke registreres. Prøv igen.",
+          "Salget kunne ikke registreres. Prøv igen.",
         ),
       );
     } finally {
@@ -1280,7 +1280,7 @@ export function InvoiceForm({ navigation }: { navigation?: ReactNode }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Registrér kvitteringen?</AlertDialogTitle>
+            <AlertDialogTitle>Registrér salget?</AlertDialogTitle>
             <AlertDialogDescription>
               Salget &quot;{title.trim()}&quot; registreres på {location?.name}.
               De valgte mængder trækkes fra lageret. Salg før produktets seneste

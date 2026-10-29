@@ -338,7 +338,7 @@ export const create = mutation({
     if (existing) {
       if (existing.requestPayload !== requestPayload) {
         throw new ConvexError(
-          "Registreringen er allerede gemt med andre oplysninger. Se kvitteringshistorikken.",
+          "Registreringen er allerede gemt med andre oplysninger. Se salgshistorikken.",
         );
       }
       return existing._id;
@@ -558,7 +558,7 @@ export const create = mutation({
       entityTable: "invoices",
       entityId: invoiceId,
       locationId: location._id,
-      summary: `Registrerede kvitteringen ${title}`,
+      summary: `Registrerede salget ${title}`,
     });
     return invoiceId;
   },
@@ -642,7 +642,7 @@ export const get = query({
       )
       .take(MAX_ITEMS + 1);
     if (items.length > MAX_ITEMS)
-      throw new ConvexError("Kvitteringen har for mange produktlinjer");
+      throw new ConvexError("Salget har for mange produktlinjer");
     return {
       id: invoice._id,
       title: invoice.title,

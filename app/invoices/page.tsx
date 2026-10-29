@@ -66,7 +66,7 @@ function InvoicesContent() {
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>
         <AlertDescription>
-          Du har ikke adgang til at registrere eller se kvitteringer.
+          Du har ikke adgang til at registrere eller se salg.
         </AlertDescription>
       </Alert>
     );
@@ -80,12 +80,12 @@ function InvoicesContent() {
     >
       {showNew ? (
         <TabsTrigger value="new" appearance="standard" className="min-w-36">
-          Ny kvittering
+          Nyt salg
         </TabsTrigger>
       ) : null}
       {showHistory ? (
         <TabsTrigger value="history" appearance="standard" className="min-w-36">
-          Registrerede kvitteringer
+          Registrerede salg
         </TabsTrigger>
       ) : null}
     </TabsList>

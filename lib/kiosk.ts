@@ -3,7 +3,7 @@ export const kioskDestinations = [
   { id: "transfers.new", route: "/transfers", label: "Ny transfer", group: "Transfer" },
   { id: "transfers.history", route: "/transfers/history", label: "Transferhistorik", group: "Transfer" },
   { id: "invoices.new", route: "/invoices", label: "Registrér salg", group: "Salg" },
-  { id: "invoices.history", route: "/invoices/history", label: "Kvitteringshistorik", group: "Salg" },
+  { id: "invoices.history", route: "/invoices/history", label: "Salgshistorik", group: "Salg" },
   { id: "waste.register", route: "/waste", label: "Registrér Waste", group: "Waste" },
   { id: "waste.badDelivery", route: "/waste/bad-delivery", label: "Dårlig levering", group: "Waste" },
   { id: "waste.report", route: "/waste/report", label: "Waste-rapport", group: "Waste" },
