@@ -2,7 +2,7 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { ComparisonPeriod, DashboardRange, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import type { YAxisValues } from "./y-axis-settings";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { widgetSizeSpans } from "@/lib/dashboard/layout";
@@ -23,6 +23,7 @@ export function DashboardWidget({
   onVisualizationChange,
   visualizations,
   onRangeChange,
+  onComparisonChange,
   onSalesSourceChange,
   onYAxisChange,
   onEditCustomMetric,
@@ -41,6 +42,7 @@ export function DashboardWidget({
   onVisualizationChange?: (visualization: VisualizationId) => void;
   visualizations?: readonly VisualizationId[];
   onRangeChange?: (range: WidgetRangePreset | undefined) => void;
+  onComparisonChange?: (comparison: ComparisonPeriod | undefined) => void;
   onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
   onEditCustomMetric?: () => void;
@@ -62,6 +64,7 @@ export function DashboardWidget({
       onVisualizationChange={onVisualizationChange}
       visualizations={visualizations}
       onRangeChange={onRangeChange}
+      onComparisonChange={onComparisonChange}
       onSalesSourceChange={onSalesSourceChange}
       onYAxisChange={onYAxisChange}
       onEditCustomMetric={onEditCustomMetric}

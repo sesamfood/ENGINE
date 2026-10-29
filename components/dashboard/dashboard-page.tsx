@@ -23,12 +23,12 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
 import { metricRegistry } from "@/lib/dashboard/registry";
-import { rangePresets, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
+import { comparisonPeriods, DEFAULT_COMPARISON_PERIOD, rangePresets, type ComparisonPeriod, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
 import type { DashboardRecord } from "@/lib/dashboard/dashboard-record";
 import { useDashboardNow } from "@/lib/dashboard/use-dashboard-now";
 import { DashboardGrid } from "./dashboard-grid";
 import { DashboardTabs } from "./dashboard-tabs";
-import { RangeSelector } from "./range-selector";
+import { ComparisonSelector, RangeSelector } from "./range-selector";
 import { ScopeSelector } from "./scope-selector";
 
 const AddWidgetDialog = dynamic(() => import("./add-widget-dialog").then((module) => module.AddWidgetDialog));
@@ -201,6 +201,14 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
 
   const currentScope = dashboard ? scopeFromUrl(searchParams, dashboard.defaultScope) : null;
   const currentRange = dashboard ? rangeFromUrl(searchParams, dashboard.defaultRange) : null;
+  const currentComparison = comparisonPeriods.find((period) => period === searchParams.get("comparison"))
+    ?? dashboard?.defaultComparison ?? DEFAULT_COMPARISON_PERIOD;
+
+  function updateComparison(next: ComparisonPeriod) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("comparison", next);
+    pushUrl(router, pathname, params);
+  }
 
   function updateRange(next: DashboardRange) {
     const params = new URLSearchParams(searchParams.toString());
@@ -267,11 +275,12 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         dashboardId: dashboard.id,
         defaultScope: currentScope,
         defaultRange: currentRange,
+        defaultComparison: currentComparison,
         expectedUpdatedAt: expectedUpdatedAt.current ?? dashboard.updatedAt,
       });
       expectedUpdatedAt.current = updatedAt;
-      setDashboard((current) => current ? { ...current, defaultScope: currentScope, defaultRange: currentRange, updatedAt } : current);
-      toast.success("Lokationsvalg og periode er gemt som standard");
+      setDashboard((current) => current ? { ...current, defaultScope: currentScope, defaultRange: currentRange, defaultComparison: currentComparison, updatedAt } : current);
+      toast.success("Lokationsvalg, periode og sammenligning er gemt som standard");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Dashboardet kunne ikke gemmes. Prøv igen."));
     }
@@ -370,6 +379,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
       <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm xl:flex-row xl:items-end xl:justify-between">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <RangeSelector range={currentRange} onChange={updateRange} timeZone={organizationContext?.timeZone} />
+          <ComparisonSelector comparison={currentComparison} onChange={updateComparison} />
         </div>
         <div className="flex flex-wrap gap-2">
           {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
@@ -422,7 +432,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         </div>
       </div>
       {visibleWidgets.length ? (
-        <DashboardGrid widgets={visibleWidgets} scope={currentScope} range={currentRange} now={now} editable={canManage && editing} onChange={(widgets) => commitWidgets([...widgets, ...hiddenWidgets])} />
+        <DashboardGrid widgets={visibleWidgets} scope={currentScope} range={currentRange} comparison={currentComparison} now={now} editable={canManage && editing} onChange={(widgets) => commitWidgets([...widgets, ...hiddenWidgets])} />
       ) : (
         <Empty appearance="outlined" className="min-h-80">
           <EmptyHeader>

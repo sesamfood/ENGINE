@@ -71,6 +71,13 @@ export type MetricId = (typeof metricIds)[number];
 export type VisualizationId = (typeof visualizationIds)[number];
 export type RangePreset = (typeof rangePresets)[number];
 export type WidgetRangePreset = Exclude<RangePreset, "custom">;
+export const comparisonPeriods = ["lastYear", "previousPeriod"] as const;
+export type ComparisonPeriod = (typeof comparisonPeriods)[number];
+export const DEFAULT_COMPARISON_PERIOD: ComparisonPeriod = "lastYear";
+export const comparisonPeriodLabels: Record<ComparisonPeriod, string> = {
+  lastYear: "Sidste år",
+  previousPeriod: "Forrige periode",
+};
 export const salesSources = ["onlinePos", "onlinePosStore", "onlinePosOnline", "wolt", "combined"] as const;
 export type SalesSource = (typeof salesSources)[number];
 
@@ -160,6 +167,8 @@ export type MetricResult = {
   // summing series totals, which is wrong for averages in compare scope.
   headlineTotal?: number;
   headlinePrevious?: number | null;
+  /** The comparison actually used; last year falls back to the previous period without data. */
+  comparison?: ComparisonPeriod;
 };
 
 export type LiveMetricResult = {
@@ -182,6 +191,7 @@ export type WidgetInstance = {
   size: WidgetSize;
   position?: { column: number; row: number };
   range?: WidgetRangePreset;
+  comparison?: ComparisonPeriod;
   options?: {
     limit?: number;
     yAxisMin?: number;

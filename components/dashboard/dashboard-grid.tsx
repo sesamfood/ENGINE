@@ -34,7 +34,7 @@ import {
   widgetsOverlappingPosition,
   widgetSizeSpans,
 } from "@/lib/dashboard/layout";
-import type { CustomMetricSpec, DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
+import type { ComparisonPeriod, CustomMetricSpec, DashboardRange, DashboardScope, MetricResult, SalesSource, WidgetInstance, WidgetRangePreset, WidgetSize, VisualizationId } from "@/lib/dashboard/types";
 import { DashboardWidget } from "./dashboard-widget";
 import { useLiveMetrics, type LiveMetricState } from "./use-live-metrics";
 import { useFinancialMetrics } from "./use-financial-metrics";
@@ -94,6 +94,7 @@ function useMetricBatches(
   batches: WidgetInstance[][],
   scope: DashboardScope,
   range: DashboardRange,
+  comparison: ComparisonPeriod | undefined,
   now: number,
   publicAccess?: { token: string; accessKey: string },
 ) {
@@ -101,20 +102,21 @@ function useMetricBatches(
   const publicAccessKey = publicAccess?.accessKey;
   const [failedBatches, setFailedBatches] = useState<string[]>([]);
   const groups = useMemo(() => batches.map((widgets) => {
-    const requests = widgets.map(({ key, metric, visualization, range: widgetRange, options }) => ({
+    const requests = widgets.map(({ key, metric, visualization, range: widgetRange, comparison: widgetComparison, options }) => ({
       key, metric, visualization, range: widgetRange,
+      ...(widgetComparison ? { comparison: widgetComparison } : {}),
       ...(options?.salesSource ? { salesSource: options.salesSource } : {}),
     }));
     const request: RequestForQueries[string] = publicToken !== undefined && publicAccessKey !== undefined
       ? { query: api.dashboardShare.getSharedMetrics, args: { token: publicToken, accessKey: publicAccessKey, widgets: requests, now } }
-      : { query: api.dashboard.getMetrics, args: { widgets: requests, scope, range, now } };
+      : { query: api.dashboard.getMetrics, args: { widgets: requests, scope, range, ...(comparison ? { comparison } : {}), now } };
     return {
       signature: JSON.stringify(request.args),
       request,
       widgets: requests,
       canSplit: publicToken === undefined && widgets.length > 1 && widgets.every((widget) => widget.metric.kind === "custom"),
     };
-  }), [batches, scope, range, now, publicToken, publicAccessKey]);
+  }), [batches, scope, range, comparison, now, publicToken, publicAccessKey]);
   const requests = useMemo(() => groups.flatMap((group) =>
     group.canSplit && failedBatches.includes(group.signature)
       ? group.widgets.map((widget) => ({
@@ -350,6 +352,7 @@ function DraggableWidget({
         onVisualizationChange={(visualization: VisualizationId) => onChange({ ...widget, visualization })}
         visualizations={visualizations}
         onRangeChange={(range: WidgetRangePreset | undefined) => onChange({ ...widget, range })}
+        onComparisonChange={(comparison: ComparisonPeriod | undefined) => onChange({ ...widget, comparison })}
         onSalesSourceChange={(salesSource: SalesSource) => onChange({
           ...widget,
           options: { ...widget.options, salesSource },
@@ -374,6 +377,7 @@ export function DashboardGrid({
   widgets,
   scope,
   range,
+  comparison,
   now,
   editable = false,
   publicAccess,
@@ -382,6 +386,7 @@ export function DashboardGrid({
   widgets: WidgetInstance[];
   scope: DashboardScope;
   range: DashboardRange;
+  comparison?: ComparisonPeriod;
   now: number;
   editable?: boolean;
   publicAccess?: { token: string; accessKey: string };
@@ -452,7 +457,7 @@ export function DashboardGrid({
     () => groupMetricBatches(widgets, range, customMetricsById, customMetricsLoading),
     [customMetricsById, customMetricsLoading, range, widgets],
   );
-  const metricResults = useMetricBatches(metricBatches, scope, range, now, publicAccess);
+  const metricResults = useMetricBatches(metricBatches, scope, range, comparison, now, publicAccess);
   const financialMetrics = useFinancialMetrics(widgets, scope, range, now, !publicAccess);
   for (const [key, result] of financialMetrics) metricResults.set(key, result);
   const liveMetrics = useLiveMetrics(widgets, scope, !publicAccess);

@@ -10,6 +10,7 @@ import {
   query,
 } from "./_generated/server";
 import { metricRegistry } from "../lib/dashboard/registry";
+import { DEFAULT_COMPARISON_PERIOD } from "../lib/dashboard/types";
 import { canBatchCustomMetric } from "../lib/dashboard/datasets";
 import {
   dashboardConfigValidator,
@@ -18,6 +19,7 @@ import {
   metricRequestValidator,
 } from "./lib/dashboardValidators";
 import {
+  computeWithComparison,
   createMetricParamsResolver,
   queryMetricComputer,
   resolveBuiltinSalesSource,
@@ -397,7 +399,15 @@ export const getSharedMetrics = query({
       }
       const results = [];
       for (const { widget, spec } of customBatch) {
-        results.push({ key: widget.key, result: await executeCustomMetric(ctx, spec, params) });
+        const savedWidget = share.widgets.find((candidate) => candidate.key === widget.key)!;
+        results.push({
+          key: widget.key,
+          result: await computeWithComparison(
+            params,
+            savedWidget.comparison ?? share.comparison ?? DEFAULT_COMPARISON_PERIOD,
+            (comparisonParams) => executeCustomMetric(ctx, spec, comparisonParams),
+          ),
+        });
       }
       return results;
     }
@@ -409,29 +419,26 @@ export const getSharedMetrics = query({
         const params = await resolveParams(
           savedWidget.range ? { preset: savedWidget.range } : share.range,
         );
+        const savedSalesSource =
+          widget.metric.kind === "builtin"
+            ? resolveBuiltinSalesSource(widget.metric.id, savedWidget.options?.salesSource)
+            : undefined;
         return {
           key: widget.key,
-          result:
-            widget.metric.kind === "builtin"
-              ? await queryMetricComputer(widget.metric.id)(
-                  ctx,
-                  (() => {
-                    const savedSalesSource = resolveBuiltinSalesSource(
-                      widget.metric.id,
-                      savedWidget.options?.salesSource,
-                    );
-                    return savedSalesSource
-                      ? { ...params, salesSource: savedSalesSource }
-                      : params;
-                  })(),
-                )
-              : await executeCustomMetric(
-                  ctx,
-                  share.customMetricSnapshots.find(
-                    (snapshot) => snapshot.id === widget.metric.id,
-                  )!.spec,
-                  params,
-                ),
+          result: await computeWithComparison(
+            savedSalesSource ? { ...params, salesSource: savedSalesSource } : params,
+            savedWidget.comparison ?? share.comparison ?? DEFAULT_COMPARISON_PERIOD,
+            (comparisonParams) =>
+              widget.metric.kind === "builtin"
+                ? queryMetricComputer(widget.metric.id)(ctx, comparisonParams)
+                : executeCustomMetric(
+                    ctx,
+                    share.customMetricSnapshots.find(
+                      (snapshot) => snapshot.id === widget.metric.id,
+                    )!.spec,
+                    comparisonParams,
+                  ),
+          ),
         };
       }),
     );

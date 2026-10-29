@@ -35,6 +35,7 @@ import {
   customMetricSpecValidator,
   dashboardSummarySourceValidator,
   rangeValidator,
+  comparisonPeriodValidator,
   scopeValidator,
   widgetValidator,
 } from "./lib/dashboardValidators";
@@ -2022,6 +2023,7 @@ export default defineSchema({
     widgets: v.array(widgetValidator),
     defaultScope: scopeValidator,
     defaultRange: rangeValidator,
+    defaultComparison: v.optional(comparisonPeriodValidator),
     roleIds: v.array(v.string()),
     defaultForRoleIds: v.array(v.string()),
     defaultForLocationIds: v.array(v.id("locations")),
@@ -2072,6 +2074,7 @@ export default defineSchema({
     ),
     scope: scopeValidator,
     range: rangeValidator,
+    comparison: v.optional(comparisonPeriodValidator),
     createdBy: v.string(),
     granularity: v.optional(
       v.union(

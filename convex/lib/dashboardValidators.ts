@@ -71,6 +71,11 @@ export const widgetRangePresetValidator = v.union(
   v.literal("thisMonth"),
 );
 
+export const comparisonPeriodValidator = v.union(
+  v.literal("lastYear"),
+  v.literal("previousPeriod"),
+);
+
 export const widgetMetricValidator = v.union(
   v.object({ kind: v.literal("builtin"), id: metricIdValidator }),
   v.object({ kind: v.literal("custom"), id: v.id("customMetrics") }),
@@ -141,6 +146,7 @@ export const widgetValidator = v.object({
   size: widgetSizeValidator,
   position: v.optional(v.object({ column: v.number(), row: v.number() })),
   range: v.optional(widgetRangePresetValidator),
+  comparison: v.optional(comparisonPeriodValidator),
   options: v.optional(
     v.object({
       limit: v.optional(v.number()),
@@ -223,6 +229,7 @@ export const metricResultValidator = v.object({
   ),
   headlineTotal: v.optional(v.number()),
   headlinePrevious: v.optional(v.union(v.number(), v.null())),
+  comparison: v.optional(comparisonPeriodValidator),
 });
 
 export const liveMetricResultValidator = v.object({
@@ -241,6 +248,7 @@ export const metricRequestValidator = v.object({
   metric: widgetMetricValidator,
   visualization: visualizationValidator,
   range: v.optional(widgetRangePresetValidator),
+  comparison: v.optional(comparisonPeriodValidator),
   salesSource: v.optional(salesSourceValidator),
 });
 

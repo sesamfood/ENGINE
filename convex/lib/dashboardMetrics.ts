@@ -9,6 +9,7 @@ import { usesGoogleForecastLocation } from "./forecastValidators";
 import { FORECAST_MODEL_VERSION } from "../../lib/sales-forecast";
 import {
   DEFAULT_CURRENCY,
+  type ComparisonPeriod,
   type DashboardRange,
   type DashboardScope,
   type MetricId,
@@ -531,6 +532,60 @@ export function createMetricParamsResolver(
     );
     paramsByRange.set(key, params);
     return params;
+  };
+}
+
+const lastYearCaches = new WeakMap<DashboardMetricParams["cache"], DashboardMetricParams["cache"]>();
+
+// Same weekdays last year: 52 weeks back. Falls back to the previous period when last year has no data.
+export async function computeWithComparison(
+  params: DashboardMetricParams,
+  comparison: ComparisonPeriod,
+  compute: (params: DashboardMetricParams) => Promise<MetricResult>,
+): Promise<MetricResult> {
+  const current = await compute(params);
+  if (
+    comparison === "previousPeriod" ||
+    current.emptyMessage !== undefined ||
+    current.series.every((series) => series.previousTotal === null)
+  ) {
+    return { ...current, comparison: "previousPeriod" };
+  }
+  const shift = (time: number) =>
+    zonedStart(addDays(dateKey(time, params.timeZone), -364), params.timeZone);
+  const from = shift(params.from);
+  const to = shift(params.to);
+  let cache = lastYearCaches.get(params.cache);
+  if (!cache) {
+    cache = new Map();
+    lastYearCaches.set(params.cache, cache);
+  }
+  const lastYear = await compute({
+    ...params,
+    from,
+    to,
+    previousFrom: from,
+    previousTo: from,
+    cache,
+  }).catch(() => null);
+  if (
+    !lastYear ||
+    lastYear.emptyMessage !== undefined ||
+    lastYear.series.every((series) => series.total === 0)
+  ) {
+    return { ...current, comparison: "previousPeriod" };
+  }
+  const totals = new Map(lastYear.series.map((series) => [series.key, series.total]));
+  return {
+    ...current,
+    series: current.series.map((series) => ({
+      ...series,
+      previousTotal: series.previousTotal === null ? null : totals.get(series.key) ?? null,
+    })),
+    ...(current.headlinePrevious !== undefined
+      ? { headlinePrevious: lastYear.headlineTotal ?? null }
+      : {}),
+    comparison: "lastYear",
   };
 }
 

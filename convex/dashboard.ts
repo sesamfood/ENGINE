@@ -21,15 +21,18 @@ import {
 } from "../lib/dashboard/registry";
 import { canBatchCustomMetric, dashboardDatasets } from "../lib/dashboard/datasets";
 import { dashboardColumns, layoutDashboardWidgets, widgetSizeSpans } from "../lib/dashboard/layout";
-import type {
-  MetricResult,
-  MetricUnit,
-  DashboardConfig,
-  DashboardScope,
-  SalesSource,
-  WidgetInstance,
+import {
+  DEFAULT_COMPARISON_PERIOD,
+  type ComparisonPeriod,
+  type MetricResult,
+  type MetricUnit,
+  type DashboardConfig,
+  type DashboardScope,
+  type SalesSource,
+  type WidgetInstance,
 } from "../lib/dashboard/types";
 import {
+  comparisonPeriodValidator,
   customMetricSpecValidator,
   keyedMetricResultValidator,
   metricIdValidator,
@@ -42,6 +45,7 @@ import {
   widgetValidator,
 } from "./lib/dashboardValidators";
 import {
+  computeWithComparison,
   createMetricParamsResolver,
   queryMetricComputer,
   resolveBuiltinSalesSource,
@@ -203,6 +207,7 @@ const shareSourceValidator = v.object({
   widgets: v.array(widgetValidator),
   scope: scopeValidator,
   range: rangeValidator,
+  comparison: v.optional(comparisonPeriodValidator),
   updatedAt: v.number(),
   roleIds: v.array(v.string()),
   customMetricSnapshots: v.array(customMetricSnapshotValidator),
@@ -525,6 +530,7 @@ const dashboardValidator = v.object({
   widgets: v.array(widgetValidator),
   defaultScope: scopeValidator,
   defaultRange: rangeValidator,
+  defaultComparison: v.optional(comparisonPeriodValidator),
   roleIds: v.array(v.string()),
   defaultForRoleIds: v.array(v.string()),
   defaultForLocationIds: v.array(v.id("locations")),
@@ -554,6 +560,7 @@ function dashboardResult(dashboard: Doc<"dashboards">) {
     widgets: dashboard.widgets,
     defaultScope: dashboard.defaultScope,
     defaultRange: dashboard.defaultRange,
+    defaultComparison: dashboard.defaultComparison,
     roleIds: dashboard.roleIds,
     defaultForRoleIds: dashboard.defaultForRoleIds,
     defaultForLocationIds: dashboard.defaultForLocationIds,
@@ -1037,6 +1044,7 @@ export const duplicate = mutation({
       widgets: source.widgets,
       defaultScope: source.defaultScope,
       defaultRange: source.defaultRange,
+      defaultComparison: source.defaultComparison,
       roleIds: source.roleIds,
       defaultForRoleIds: [],
       defaultForLocationIds: [],
@@ -1264,6 +1272,7 @@ export const saveDefaults = mutation({
     dashboardId: v.id("dashboards"),
     defaultScope: scopeValidator,
     defaultRange: rangeValidator,
+    defaultComparison: v.optional(comparisonPeriodValidator),
     expectedUpdatedAt: v.number(),
   },
   returns: v.number(),
@@ -1289,6 +1298,7 @@ export const saveDefaults = mutation({
     await ctx.db.patch(dashboard._id, {
       defaultScope: args.defaultScope,
       defaultRange: args.defaultRange,
+      ...(args.defaultComparison ? { defaultComparison: args.defaultComparison } : {}),
       updatedBy: auth.userIdentifier,
       updatedAt,
     });
@@ -1358,6 +1368,7 @@ export const getMetrics = query({
     widgets: v.array(metricRequestValidator),
     scope: scopeValidator,
     range: rangeValidator,
+    comparison: v.optional(comparisonPeriodValidator),
     now: v.number(),
   },
   returns: v.array(keyedMetricResultValidator),
@@ -1474,7 +1485,11 @@ export const getMetrics = query({
         results.push({
           key: widget.key,
           result: markScopeTruncated(
-            await executeCustomMetric(ctx, spec, params),
+            await computeWithComparison(
+              params,
+              widget.comparison ?? args.comparison ?? DEFAULT_COMPARISON_PERIOD,
+              (comparisonParams) => executeCustomMetric(ctx, spec, comparisonParams),
+            ),
             params.scopeTruncated,
           ),
         });
@@ -1490,19 +1505,23 @@ export const getMetrics = query({
           widget.metric.kind === "builtin"
             ? resolveBuiltinSalesSource(widget.metric.id, widget.salesSource)
             : undefined;
+        const comparison: ComparisonPeriod =
+          widget.comparison ?? args.comparison ?? DEFAULT_COMPARISON_PERIOD;
         return {
           key: widget.key,
           result: markScopeTruncated(
-            widget.metric.kind === "builtin"
-              ? await queryMetricComputer(widget.metric.id)(
-                  ctx,
-                  salesSource ? { ...params, salesSource } : params,
-                )
-              : await executeCustomMetric(
-                  ctx,
-                  customMetrics.get(widget.metric.id)!.spec,
-                  params,
-                ),
+            await computeWithComparison(
+              salesSource ? { ...params, salesSource } : params,
+              comparison,
+              (comparisonParams) =>
+                widget.metric.kind === "builtin"
+                  ? queryMetricComputer(widget.metric.id)(ctx, comparisonParams)
+                  : executeCustomMetric(
+                      ctx,
+                      customMetrics.get(widget.metric.id)!.spec,
+                      comparisonParams,
+                    ),
+            ),
             params.scopeTruncated,
           ),
         };
@@ -1552,6 +1571,7 @@ export const getShareSource = internalQuery({
           : availableCustomIds.has(widget.metric.id)),
       scope: dashboard.defaultScope,
       range: dashboard.defaultRange,
+      comparison: dashboard.defaultComparison,
       updatedAt: dashboard.updatedAt,
       roleIds: dashboard.roleIds,
       customMetricSnapshots: availableCustomMetrics.map((metric) => ({
@@ -1576,6 +1596,7 @@ export const insertShare = internalMutation({
     customMetricSnapshots: v.array(customMetricSnapshotValidator),
     scope: scopeValidator,
     range: rangeValidator,
+    comparison: v.optional(comparisonPeriodValidator),
     createdBy: v.string(),
     granularity: v.optional(
       v.union(
@@ -1625,6 +1646,7 @@ export const createShare = action({
       widgets: WidgetInstance[];
       scope: DashboardScope;
       range: DashboardConfig["range"];
+      comparison?: ComparisonPeriod;
       updatedAt: number;
       roleIds: string[];
       customMetricSnapshots: Array<{
@@ -1719,6 +1741,7 @@ export const createShare = action({
       ),
       scope,
       range: source.range,
+      comparison: source.comparison,
       createdBy: userIdentifier,
       granularity: auth.granularity,
       salesDetailAllowed: canViewDetailedSales(auth),
