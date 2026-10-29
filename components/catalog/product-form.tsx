@@ -63,6 +63,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Empty } from "@/components/ui/empty";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -118,6 +119,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MIN_MAX_TEMPERATURE_CELSIUS = -100;
 const MAX_MAX_TEMPERATURE_CELSIUS = 100;
 const MAX_TEMPERATURE_INPUT = /^-?(?:\d+(?:[.,]\d{0,1})?|[.,]\d)$/;
+const SALES_PRICE_INPUT = /^(?:\d+(?:[.,]\d{0,2})?|[.,]\d{1,2})$/;
 const FACTOR_INPUT = /^(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:e[+-]?\d+)?$/i;
 
 function newKey(prefix: string) {
@@ -183,6 +185,13 @@ function productImageError(file: File) {
   return undefined;
 }
 
+function parseSalesPrice(value: string) {
+  const normalized = value.trim();
+  return normalized
+    ? Math.round(Number(normalized.replace(",", ".")) * 100)
+    : null;
+}
+
 function parseMaxTemperature(value: string) {
   const normalized = value.trim();
   return normalized ? Number(normalized.replace(",", ".")) : null;
@@ -238,7 +247,13 @@ function OnlinePosProductMappingField({
 
   return (
     <Field>
-      <FieldLabel>OnlinePOS-produkt</FieldLabel>
+      <div className="flex items-center gap-2">
+        <FieldLabel>OnlinePOS-produkt</FieldLabel>
+        <HelpTooltip
+          label="OnlinePOS-produkt"
+          content="Koblingen gemmes med det samme."
+        />
+      </div>
       <OnlinePosProductSelect
         options={options}
         productName={productName}
@@ -248,7 +263,6 @@ function OnlinePosProductMappingField({
         onRetry={onRetry}
         disabled={saving}
       />
-      <FieldDescription>Koblingen gemmes med det samme.</FieldDescription>
     </Field>
   );
 }
@@ -350,6 +364,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   >(undefined);
   const [name, setName] = useState("");
   const [maxTemperatureCelsius, setMaxTemperatureCelsius] = useState("");
+  const [salesPrice, setSalesPrice] = useState("");
   const [expiryValue, setExpiryValue] = useState("");
   const [expiryUnit, setExpiryUnit] = useState<Expiry["unit"]>("days");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
@@ -398,6 +413,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     setExpiryUnit(product.expiry?.unit ?? "days");
     setMaxTemperatureCelsius(
       product.maxTemperatureCelsius?.toString() ?? "",
+    );
+    setSalesPrice(
+      product.salesPrice === null
+        ? ""
+        : (product.salesPrice / 100).toFixed(2).replace(".", ","),
     );
     setCategoryValues(
       product.categories.map((category) => `existing:${category.id}`),
@@ -752,6 +772,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     if (temperatureError) {
       nextErrors.maxTemperatureCelsius = temperatureError;
     }
+    if (salesPrice.trim() && !SALES_PRICE_INPUT.test(salesPrice.trim())) {
+      nextErrors.salesPrice = "Angiv et beløb med højst to decimaler";
+    }
     if (categoryValues.length === 0) {
       nextErrors.category = "Vælg eller opret mindst én kategori";
     }
@@ -884,6 +907,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             recipeYield,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
+            salesPrice: parseSalesPrice(salesPrice),
             expiry: expiryValue.trim()
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
@@ -902,6 +926,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             recipeYield,
             addableIngredients,
             maxTemperatureCelsius: parseMaxTemperature(maxTemperatureCelsius),
+            salesPrice: parseSalesPrice(salesPrice),
             expiry: expiryValue.trim()
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
@@ -1123,6 +1148,26 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                   <InputGroupAddon align="inline-end">°C</InputGroupAddon>
                 </InputGroup>
                 <FieldError>{errors.maxTemperatureCelsius}</FieldError>
+              </Field>
+
+              <Field
+                className="max-w-xl"
+                data-invalid={Boolean(errors.salesPrice)}
+              >
+                <FieldLabel htmlFor="product-sales-price">Salgspris</FieldLabel>
+                <InputGroup className="h-11 max-w-xs">
+                  <InputGroupInput
+                    id="product-sales-price"
+                    type="text"
+                    inputMode="decimal"
+                    value={salesPrice}
+                    onChange={(event) => setSalesPrice(event.target.value)}
+                    aria-invalid={Boolean(errors.salesPrice)}
+                  />
+                  <InputGroupAddon align="inline-end">kr.</InputGroupAddon>
+                </InputGroup>
+                <FieldDescription>Inklusive moms</FieldDescription>
+                <FieldError>{errors.salesPrice}</FieldError>
               </Field>
 
               <ExpiryField

@@ -105,6 +105,7 @@ const productDetailValidator = v.object({
   status: statusValidator,
   maxTemperatureCelsius: v.union(v.number(), v.null()),
   expiry: v.union(expiryValidator, v.null()),
+  salesPrice: v.union(v.number(), v.null()),
   category: v.union(
     productCategoryValidator,
     v.null(),
@@ -346,6 +347,12 @@ async function loadCategoryHierarchy(
 function requirePositiveNumber(value: number, label: string) {
   if (!Number.isFinite(value) || value <= 0) {
     throw new ConvexError(`${label} skal være større end nul`);
+  }
+}
+
+function requireSalesPrice(value: number) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ConvexError("Salgsprisen skal være et beløb på nul eller mere");
   }
 }
 
@@ -833,30 +840,69 @@ async function replaceProductChildren(
         current.factorToDefault === unit.factorToDefault,
       ),
     );
+  // Recipes and addable ingredients that use a removed unit move to the new
+  // default unit. Any unit kept from before bridges the old and new defaults.
+  const oldUnits = new Map(
+    existingUnits.map((unit) => [unit.unitId, unit.factorToDefault]),
+  );
+  const defaultUnitId = units.find((unit) => unit.isDefault)!.unitId;
+  const bridge =
+    units.find((unit) => unit.isDefault && oldUnits.has(unit.unitId)) ??
+    units.find((unit) => oldUnits.has(unit.unitId));
+  const conversion = bridge
+    ? bridge.factorToDefault / oldUnits.get(bridge.unitId)!
+    : null;
   for (const row of existingUnits) {
     if (nextUnitIds.has(row.unitId)) continue;
-    const usedByRecipe = await ctx.db
-      .query("productIngredients")
-      .withIndex("by_organizationId_and_ingredientProductId_and_unitId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("ingredientProductId", productId)
-          .eq("unitId", row.unitId),
-      )
-      .first();
-    const usedByAddition = await ctx.db
-      .query("productIngredientAdditions")
-      .withIndex("by_organizationId_and_ingredientProductId_and_unitId", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("ingredientProductId", productId)
-          .eq("unitId", row.unitId),
-      )
-      .first();
-    if (usedByRecipe || usedByAddition) {
+    const [recipeReferences, additionReferences] = await Promise.all([
+      ctx.db
+        .query("productIngredients")
+        .withIndex("by_organizationId_and_ingredientProductId_and_unitId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("ingredientProductId", productId)
+            .eq("unitId", row.unitId),
+        )
+        .take(MAX_CHILD_ROWS),
+      ctx.db
+        .query("productIngredientAdditions")
+        .withIndex("by_organizationId_and_ingredientProductId_and_unitId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("ingredientProductId", productId)
+            .eq("unitId", row.unitId),
+        )
+        .take(MAX_CHILD_ROWS),
+    ]);
+    if (recipeReferences.length === 0 && additionReferences.length === 0) {
+      continue;
+    }
+    if (!conversion) {
       throw new ConvexError(
-        "En enhed, der bruges af en opskrift eller en ingrediens, der kan tilføjes, kan ikke fjernes",
+        "Behold mindst én af de tidligere enheder for at omregne opskrifter, der bruger produktet",
       );
+    }
+    const factor = row.factorToDefault * conversion;
+    for (const reference of recipeReferences) {
+      const quantity = reference.quantity * factor;
+      requirePositiveNumber(quantity, "Den omregnede ingrediensmængde");
+      await ctx.db.patch("productIngredients", reference._id, {
+        quantity,
+        unitId: defaultUnitId,
+      });
+    }
+    for (const reference of additionReferences) {
+      const quantity =
+        reference.quantity === undefined
+          ? undefined
+          : reference.quantity * factor;
+      if (quantity !== undefined) {
+        requirePositiveNumber(quantity, "Den omregnede ingrediensmængde");
+      }
+      await ctx.db.patch("productIngredientAdditions", reference._id, {
+        quantity,
+        unitId: defaultUnitId,
+      });
     }
   }
 
@@ -1551,6 +1597,7 @@ export const getProduct = query({
       status: product.status,
       maxTemperatureCelsius: product.maxTemperatureCelsius ?? null,
       expiry: product.expiry ?? null,
+      salesPrice: product.salesPrice ?? null,
       category: category ?? null,
       categories,
       imageUrl,
@@ -1732,10 +1779,12 @@ export async function createProductWithAuth(
     addableIngredients: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
+    salesPrice?: number | null;
   },
 ): Promise<Id<"products">> {
   const { organizationId, userIdentifier } = auth;
   if (args.expiry) requireValidExpiry(args.expiry);
+  if (typeof args.salesPrice === "number") requireSalesPrice(args.salesPrice);
   const { name, normalizedName } = normalizeName(args.name, "Produktnavnet");
   await assertProductNameAvailable(ctx, organizationId, normalizedName);
   const categoryIds = await resolveCategories(
@@ -1775,6 +1824,9 @@ export async function createProductWithAuth(
     status: "active",
     createdBy: userIdentifier,
     ...(args.expiry ? { expiry: args.expiry } : {}),
+    ...(typeof args.salesPrice === "number"
+      ? { salesPrice: args.salesPrice }
+      : {}),
     updatedAt: Date.now(),
   });
   await replaceProductChildren(
@@ -1818,10 +1870,12 @@ export async function updateProductWithAuth(
     addableIngredients?: AddableIngredientInput[];
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
+    salesPrice?: number | null;
   },
 ): Promise<Id<"products">> {
   const { organizationId } = auth;
   if (args.expiry) requireValidExpiry(args.expiry);
+  if (typeof args.salesPrice === "number") requireSalesPrice(args.salesPrice);
   const product = await ctx.db.get("products", args.productId);
   if (!product || product.organizationId !== organizationId) {
     throw new ConvexError("Produktet blev ikke fundet");
@@ -1972,6 +2026,9 @@ export async function updateProductWithAuth(
   const updatedAt = Math.max(Date.now(), product.updatedAt + 1);
   await ctx.db.patch("products", product._id, {
     ...(args.expiry !== undefined ? { expiry: args.expiry ?? undefined } : {}),
+    ...(args.salesPrice !== undefined
+      ? { salesPrice: args.salesPrice ?? undefined }
+      : {}),
     name,
     normalizedName,
     categoryId,
@@ -2100,6 +2157,7 @@ export const createProduct = mutation({
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
+    salesPrice: v.optional(v.union(v.number(), v.null())),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {
@@ -2536,6 +2594,7 @@ export const updateProduct = mutation({
     addableIngredients: v.optional(v.array(addableIngredientInputValidator)),
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
+    salesPrice: v.optional(v.union(v.number(), v.null())),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {

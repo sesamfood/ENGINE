@@ -2,7 +2,8 @@
 
 import { useQuery } from "convex/react";
 import { useAccess, usePermission } from "@/components/app-shell";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useIntegrations } from "@/integrations/use-integrations";
@@ -37,7 +38,13 @@ export function GsSupplyProductLinkField({
   if (!data) return null;
   return (
     <Field>
-      <FieldLabel>GS Supply-produkt</FieldLabel>
+      <div className="flex items-center gap-2">
+        <FieldLabel>GS Supply-produkt</FieldLabel>
+        <HelpTooltip
+          label="GS Supply-produkt"
+          content="Vælg også den enhed, én pakke fra GS Supply svarer til. Koblingen gemmes med det samme."
+        />
+      </div>
       <GsSupplyLinkEditor
         productId={productId}
         productName={productName}
@@ -46,10 +53,6 @@ export function GsSupplyProductLinkField({
         catalog={products}
         onRetry={reload}
       />
-      <FieldDescription>
-        Vælg også den enhed, én pakke fra GS Supply svarer til. Koblingen gemmes
-        med det samme.
-      </FieldDescription>
     </Field>
   );
 }
