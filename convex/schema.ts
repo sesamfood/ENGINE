@@ -889,6 +889,8 @@ export default defineSchema({
     imageStorageId: v.optional(v.id("_storage")),
     maxTemperatureCelsius: v.optional(v.number()),
     expiry: v.optional(expiryValidator),
+    // Including VAT, in integer minor units.
+    salesPrice: v.optional(v.number()),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdBy: v.string(),
     updatedAt: v.number(),
