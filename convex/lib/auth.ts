@@ -887,6 +887,14 @@ export async function requireFinancialReportViewer(ctx: AuthContext) {
   return auth;
 }
 
+export async function requireOperationsViewer(ctx: AuthContext) {
+  const auth = await requirePermission(ctx, "dashboard.viewOperations");
+  if (auth.kioskModeEnabled || auth.granularity !== "detail") {
+    throw new ConvexError("Du har ikke adgang til driftsoverblikket");
+  }
+  return auth;
+}
+
 export async function requireBudgetManager(ctx: AuthContext) {
   const auth = requireHumanPrincipal(await requireFinancialReportViewer(ctx));
   if (!hasPermission(auth.role, auth.permissions, "dashboard.manageBudgets")) {

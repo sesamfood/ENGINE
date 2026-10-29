@@ -27,6 +27,7 @@ import {
   type MetricResult,
   type MetricUnit,
   type DashboardConfig,
+  type DashboardRange,
   type DashboardScope,
   type SalesSource,
   type WidgetInstance,
@@ -68,7 +69,9 @@ import {
   requireDashboardViewer,
   requireHumanPrincipal,
   requireIntegrationManager,
+  requireOperationsViewer,
 } from "./lib/auth";
+import { operationsMetricIds, operationsRanges } from "../lib/dashboard/operations";
 import {
   hasPermission,
   systemRoleKeys,
@@ -1306,6 +1309,58 @@ export const saveDefaults = mutation({
   },
 });
 
+async function computeBuiltinMetric(
+  ctx: QueryCtx,
+  auth: Awaited<ReturnType<typeof requireDashboardViewer>>,
+  args: {
+    metricId: BuiltinMetricId;
+    scope: DashboardScope;
+    range: DashboardRange;
+    now: number;
+    salesSource?: SalesSource;
+  },
+) {
+  const human = requireHumanPrincipal(auth);
+  const { organizationId } = auth;
+  const integrations = await getIntegrationState(ctx, organizationId);
+  const definition = metricRegistry[args.metricId];
+  const salesSource = resolveBuiltinSalesSource(
+    args.metricId,
+    args.salesSource,
+  );
+  if (!metricSourceAvailable(definition.source, integrations) ||
+    (salesSource && salesSourceProviders(salesSource).includes("wolt") && !integrations.wolt)) {
+    throw new ConvexError("Målingen er ikke tilgængelig");
+  }
+  if (!canViewBuiltinMetric(auth, args.metricId, salesSource)) {
+    throw new ConvexError("Du har ikke adgang til denne måling");
+  }
+  if (!metricFeaturesAvailable(definition.features, [...auth.disabledFeatures])) {
+    const empty: MetricResult = { unit: definition.unit, series: [] };
+    return empty;
+  }
+  const params = await resolveMetricParams(
+    ctx,
+    organizationId,
+    args.scope,
+    args.range,
+    args.now,
+    auth.locationScope,
+    {
+      granularity: auth.granularity,
+      anonymousSeed: human.sessionId,
+      salesDetailAllowed: canViewDetailedSales(auth),
+    },
+  );
+  return markScopeTruncated(
+    await queryMetricComputer(args.metricId)(
+      ctx,
+      salesSource ? { ...params, salesSource } : params,
+    ),
+    params.scopeTruncated,
+  );
+}
+
 export const getMetric = query({
   args: {
     metricId: metricIdValidator,
@@ -1318,48 +1373,29 @@ export const getMetric = query({
   returns: metricResultValidator,
   handler: async (ctx, args) => {
     const auth = await requireDashboardViewer(ctx);
-    const human = requireHumanPrincipal(auth);
-    const { organizationId } = auth;
-    const integrations = await getIntegrationState(ctx, organizationId);
-    const definition = metricRegistry[args.metricId];
-    if (!definition.visualizations.includes(args.visualization)) {
+    if (!metricRegistry[args.metricId].visualizations.includes(args.visualization)) {
       throw new ConvexError("Visualiseringen understøttes ikke af målingen");
     }
-    const salesSource = resolveBuiltinSalesSource(
-      args.metricId,
-      args.salesSource,
-    );
-    if (!metricSourceAvailable(definition.source, integrations) ||
-      (salesSource && salesSourceProviders(salesSource).includes("wolt") && !integrations.wolt)) {
-      throw new ConvexError("Målingen er ikke tilgængelig");
-    }
-    if (!canViewBuiltinMetric(auth, args.metricId, salesSource)) {
-      throw new ConvexError("Du har ikke adgang til denne måling");
-    }
-    if (!metricFeaturesAvailable(definition.features, [...auth.disabledFeatures])) {
-      const empty: MetricResult = { unit: definition.unit, series: [] };
-      return empty;
-    }
-    const params = await resolveMetricParams(
-      ctx,
-      organizationId,
-      args.scope,
-      args.range,
-      args.now,
-      auth.locationScope,
-      {
-        granularity: auth.granularity,
-        anonymousSeed: human.sessionId,
-        salesDetailAllowed: canViewDetailedSales(auth),
-      },
-    );
-    return markScopeTruncated(
-      await queryMetricComputer(args.metricId)(
-        ctx,
-        salesSource ? { ...params, salesSource } : params,
-      ),
-      params.scopeTruncated,
-    );
+    return computeBuiltinMetric(ctx, auth, args);
+  },
+});
+
+// One value per dashboard location, compared with the previous period.
+export const getOperationsMetric = query({
+  args: {
+    metricId: v.union(...operationsMetricIds.map((id) => v.literal(id))),
+    range: v.union(...operationsRanges.map((range) => v.literal(range))),
+    now: v.number(),
+  },
+  returns: metricResultValidator,
+  handler: async (ctx, args) => {
+    const auth = await requireOperationsViewer(ctx);
+    return computeBuiltinMetric(ctx, auth, {
+      metricId: args.metricId,
+      scope: { mode: "compare", locationIds: null },
+      range: { preset: args.range },
+      now: args.now,
+    });
   },
 });
 
