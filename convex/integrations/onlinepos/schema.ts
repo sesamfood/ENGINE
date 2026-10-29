@@ -17,6 +17,7 @@ export const onlineposTables = {
     stockSyncSinceLastCount: v.optional(v.boolean()),
     stockMappingRevision: v.optional(v.number()),
     onlinePaymentTypes: v.optional(v.array(v.string())),
+    salesRetentionDays: v.optional(v.number()),
     connectedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
