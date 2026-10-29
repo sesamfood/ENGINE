@@ -1,24 +1,27 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { FieldGroup } from "@/components/ui/field";
 import { api } from "@/convex/_generated/api";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
-export function ProductSettings() {
+export function ProductSettings({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const settings = useQuery(api.catalog.getSettings);
   const saveSettings = useMutation(api.catalog.setSettings);
   const [saving, setSaving] = useState(false);
@@ -43,20 +46,7 @@ export function ProductSettings() {
   }
 
   return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-lg"
-            className="size-11"
-            aria-label="Produktindstillinger"
-          />
-        }
-      >
-        <Settings2Icon />
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Produktindstillinger</DialogTitle>
