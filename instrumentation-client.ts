@@ -17,6 +17,8 @@ if (!token) {
     ui_host: host ?? "https://eu.posthog.com",
     defaults: "2026-01-30",
     capture_exceptions: true,
+    // Tablets stay on all day, so end a session after a short pause in use.
+    session_idle_timeout_seconds: 10 * 60,
     disable_session_recording: process.env.NODE_ENV === "development",
     // Flag requests bypass before_send and include unredacted initial URLs.
     advanced_disable_feature_flags: true,
