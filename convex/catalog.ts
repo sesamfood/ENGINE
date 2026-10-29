@@ -1873,21 +1873,41 @@ export async function updateProductWithAuth(
     if (stockRows.length > MAX_CHILD_ROWS) {
       throw new ConvexError("Produktet har for mange lagerrelationer");
     }
-    const oldDefaultUnit = units.find(
+    // Factor from the old default unit to the new one. If the old default was
+    // removed, derive it from the new default's previous factor.
+    let stockFactor = units.find(
       (unit) => unit.unitId === product.defaultUnitId,
-    );
-    if (stockRows.length > 0 && !oldDefaultUnit) {
+    )?.factorToDefault;
+    if (stockFactor === undefined) {
+      const previousNewDefault = await ctx.db
+        .query("productUnits")
+        .withIndex("by_organizationId_and_productId_and_unitId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("productId", product._id)
+            .eq("unitId", defaultUnitId),
+        )
+        .unique();
+      if (previousNewDefault) {
+        stockFactor = 1 / previousNewDefault.factorToDefault;
+      }
+    }
+    if (
+      stockFactor === undefined &&
+      stockRows.some(
+        (stock) => stock.quantity !== 0 || !!stock.onlinePosSalesQuantity,
+      )
+    ) {
       throw new ConvexError(
         "Den tidligere standardenhed skal beholdes for at omregne lageret",
       );
     }
+    const factor = stockFactor ?? 1;
     const updatedAt = Date.now();
     for (const stock of stockRows) {
       await ctx.db.patch("locationStock", stock._id, {
-        quantity: normalizeStock(
-          stock.quantity * oldDefaultUnit!.factorToDefault,
-        ),
-        onlinePosSalesQuantity: stock.onlinePosSalesQuantity === undefined ? undefined : normalizeStock(stock.onlinePosSalesQuantity * oldDefaultUnit!.factorToDefault),
+        quantity: normalizeStock(stock.quantity * factor),
+        onlinePosSalesQuantity: stock.onlinePosSalesQuantity === undefined ? undefined : normalizeStock(stock.onlinePosSalesQuantity * factor),
         updatedAt,
       });
     }
