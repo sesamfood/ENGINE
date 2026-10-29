@@ -411,9 +411,10 @@ async function scheduleBackfillIfNeeded(
   ctx: MutationCtx,
   status: Doc<"onlinePosSyncStatus">,
   runToken: string,
+  targetAt?: number,
 ) {
   const now = Date.now();
-  const target = now - HISTORY_MS;
+  const target = targetAt ?? now - HISTORY_MS;
   const edge = status.backfillThroughAt ?? status.syncedThroughAt ?? now;
   if (edge <= target) {
     await ctx.db.patch("onlinePosSyncStatus", status._id, {
@@ -433,6 +434,7 @@ async function scheduleBackfillIfNeeded(
     locationId: status.locationId,
     runToken,
     throughAt: edge,
+    targetAt,
   });
 }
 
@@ -1079,6 +1081,7 @@ export const completeBackfillChunk = internalMutation({
     locationId: v.id("locations"),
     runToken: v.string(),
     backfillThroughAt: v.number(),
+    targetAt: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1113,7 +1116,12 @@ export const completeBackfillChunk = internalMutation({
       lastError: undefined,
       updatedAt: now,
     });
-    await scheduleBackfillIfNeeded(ctx, updatedStatus, args.runToken);
+    await scheduleBackfillIfNeeded(
+      ctx,
+      updatedStatus,
+      args.runToken,
+      args.targetAt,
+    );
     return null;
   },
 });
@@ -1778,6 +1786,7 @@ export const backfillLocation = internalAction({
     locationId: v.id("locations"),
     runToken: v.string(),
     throughAt: v.number(),
+    targetAt: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1797,13 +1806,14 @@ export const backfillLocation = internalAction({
       if (!context || context.runToken !== args.runToken) {
         throw new ConvexError("OnlinePOS-synkroniseringen er ikke aktiv");
       }
-      const target = Date.now() - HISTORY_MS;
+      const target = args.targetAt ?? Date.now() - HISTORY_MS;
       if (args.throughAt <= target) {
         await ctx.runMutation(internal.onlinePosSync.completeBackfillChunk, {
           organizationId: args.organizationId,
           locationId: args.locationId,
           runToken: args.runToken,
           backfillThroughAt: args.throughAt,
+          targetAt: args.targetAt,
         });
         return null;
       }
@@ -1825,6 +1835,7 @@ export const backfillLocation = internalAction({
         locationId: args.locationId,
         runToken: args.runToken,
         backfillThroughAt: from,
+        targetAt: args.targetAt,
       });
     } catch (error) {
       await ctx.runMutation(internal.onlinePosSync.failSync, {
@@ -1835,6 +1846,91 @@ export const backfillLocation = internalAction({
       });
     }
     return null;
+  },
+});
+
+// One-time import of older sales, run manually per organization:
+// npx convex run onlinePosSync:importSalesHistory '{"organizationId":"...","from":"2024-01-01"}'
+// It extends the normal backfill past HISTORY_MS. backfillThroughAt only moves
+// back, so re-running resumes a failed import and never re-reads covered days.
+// Lines older than RETENTION_MS are pruned later; salesDaily keeps them.
+export const importSalesHistory = internalMutation({
+  args: { organizationId: v.string(), from: v.string() },
+  returns: v.array(
+    v.object({ locationId: v.id("locations"), result: v.string() }),
+  ),
+  handler: async (ctx, args) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.from)) {
+      throw new ConvexError("from skal være en dato som YYYY-MM-DD");
+    }
+    if (!(await isMasterEnabled(ctx, args.organizationId))) {
+      throw new ConvexError("OnlinePOS er ikke aktiveret for organisationen");
+    }
+    const results = [];
+    const connections = ctx.db
+      .query("onlinePosLocationIntegrations")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", args.organizationId),
+      );
+    for await (const { locationId } of connections) {
+      const skip = (result: string) => results.push({ locationId, result });
+      const status = await getStatus(ctx, args.organizationId, locationId);
+      const reset = await ctx.db
+        .query("onlinePosSalesResets")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", args.organizationId).eq("locationId", locationId),
+        )
+        .unique();
+      const edge = status?.backfillThroughAt ?? status?.syncedThroughAt;
+      if (!status || edge === undefined || reset) {
+        skip("skipped: first sync has not finished");
+        continue;
+      }
+      if (status.dayStartRerollToken) {
+        skip("skipped: time zone rebuild in progress");
+        continue;
+      }
+      if (status.dailyHistoryFrom !== undefined) {
+        // Archived buckets from an earlier time zone would be counted twice.
+        skip("skipped: time zone has been changed");
+        continue;
+      }
+      const now = Date.now();
+      if (
+        (status.state === "queued" || status.state === "running") &&
+        now - status.updatedAt < STUCK_MS
+      ) {
+        skip("skipped: sync is running, try again later");
+        continue;
+      }
+      const timeZone = await organizationTimeZone(
+        ctx,
+        args.organizationId,
+        locationId,
+      );
+      const targetAt = zonedStart(args.from, timeZone);
+      if (edge <= targetAt) {
+        skip("skipped: already covered");
+        continue;
+      }
+      const runToken = makeRunToken(now);
+      await ctx.db.patch("onlinePosSyncStatus", status._id, {
+        state: "running",
+        runToken,
+        lastAttemptAt: now,
+        lastError: undefined,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAfter(0, internal.onlinePosSync.backfillLocation, {
+        organizationId: args.organizationId,
+        locationId,
+        runToken,
+        throughAt: edge,
+        targetAt,
+      });
+      results.push({ locationId, result: "started" });
+    }
+    return results;
   },
 });
 
