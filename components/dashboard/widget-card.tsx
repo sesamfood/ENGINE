@@ -57,7 +57,8 @@ import { widgetSizeSpans } from "@/lib/dashboard/layout";
 import { comparisonPeriodLabels, comparisonPeriods, widgetSizes, type ComparisonPeriod, type DashboardRange, type MetricResult, type SalesSource, type WidgetInstance, type WidgetRangePreset, type WidgetSize, type VisualizationId } from "@/lib/dashboard/types";
 import { visualizationRegistry } from "@/lib/dashboard/visualizations";
 import { visualizationHasYAxis, YAxisSettings, type YAxisValues } from "./y-axis-settings";
-import { previousTotal, total } from "./visualizations/utils";
+import { GoalSettings } from "./goal-settings";
+import { comparisonPeriodText, previousTotal, total } from "./visualizations/utils";
 import { LiveMetricContent, MetricSourceAttribution } from "./live-metric-content";
 import type { LiveMetricState } from "./use-live-metrics";
 
@@ -76,7 +77,7 @@ type ResizeSession = {
   current: WidgetSize;
 };
 
-const widgetRangeOptions = [
+export const widgetRangeOptions = [
   { value: "board", label: "Følg dashboard" },
   { value: "today", label: "I dag" },
   { value: "yesterday", label: "I går" },
@@ -85,7 +86,7 @@ const widgetRangeOptions = [
   { value: "thisMonth", label: "Denne måned" },
 ];
 
-const widgetComparisonOptions = [
+export const widgetComparisonOptions = [
   { value: "board", label: "Sammenlign: dashboard" },
   ...comparisonPeriods.map((value) => ({ value, label: `Sammenlign: ${comparisonPeriodLabels[value].toLocaleLowerCase("da")}` })),
 ];
@@ -204,6 +205,7 @@ export function WidgetCard({
   onComparisonChange,
   onSalesSourceChange,
   onYAxisChange,
+  onGoalPercentChange,
   onEditCustomMetric,
   onResize,
   onRemove,
@@ -222,6 +224,7 @@ export function WidgetCard({
   onComparisonChange?: (comparison: ComparisonPeriod | undefined) => void;
   onSalesSourceChange?: (salesSource: SalesSource) => void;
   onYAxisChange?: (axis: YAxisValues) => void;
+  onGoalPercentChange?: (goalPercent: number) => void;
   onEditCustomMetric?: () => void;
   onResize?: (size: WidgetSize, complete: boolean) => void;
   onRemove?: () => void;
@@ -252,23 +255,12 @@ export function WidgetCard({
   const previous = result && result.emptyMessage === undefined && result.series.length > 0 ? previousTotal(result) : null;
   const freshness = result?.freshness;
   const hasFreshness = Boolean(freshness);
-  const change = !definition?.live && current !== null && previous !== null && (financial || previous !== 0)
+  const change = !definition?.live && widget.visualization !== "goal" && current !== null && previous !== null && (financial || previous !== 0)
     ? financial ? current - previous : ((current - previous) / Math.abs(previous)) * 100
     : null;
 
-  const comparisonLabel = financial ? "den foregående måned" : result?.comparison === "lastYear"
-    ? "samme ugedage sidste år"
-    : range?.preset === "today"
-    ? "i går"
-    : range?.preset === "yesterday"
-      ? "dagen før"
-      : range?.preset === "7days"
-        ? "de foregående 7 dage"
-        : range?.preset === "30days"
-          ? "de foregående 30 dage"
-          : range?.preset === "thisMonth"
-            ? "den foregående måned"
-            : "den foregående tilsvarende periode";
+  const comparisonLabel = financial ? "den foregående måned" : comparisonPeriodText(result, range);
+  const goalComparisonLabel = comparisonPeriodText(result, widget.range ? { preset: widget.range } : range);
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [resizeActive, setResizeActive] = useState(false);
   const resizeSession = useRef<ResizeSession | null>(null);
@@ -452,7 +444,7 @@ export function WidgetCard({
                                       }
                                     }}
                                   >
-                                    {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} /> : <Skeleton className="size-full" />}
+                                    {live ? <LiveMetricContent widget={{ ...widget, visualization }} state={live} compact /> : result ? <Visualization result={result} yAxisMin={widget.options?.yAxisMin} yAxisMax={widget.options?.yAxisMax} goalPercent={widget.options?.goalPercent} comparisonLabel={goalComparisonLabel} /> : <Skeleton className="size-full" />}
                                   </CardContent>
                                 </ToggleGroupItem>
                               );
@@ -539,6 +531,11 @@ export function WidgetCard({
                         </SelectGroup>
                       </SelectContent>
                     </Select> : null}
+                    {widget.visualization === "goal" && onGoalPercentChange ? (
+                      <div className="w-full">
+                        <GoalSettings id={`widget-${widget.key}-goal`} value={widget.options?.goalPercent} onChange={onGoalPercentChange} />
+                      </div>
+                    ) : null}
                     <Button type="button" variant="destructive" size="icon-lg" className="size-11" aria-label={`Fjern ${metricLabel}`} onClick={onRemove}>
                       <MinusIcon />
                     </Button>

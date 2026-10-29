@@ -59,6 +59,7 @@ export const visualizationValidator = v.union(
   v.literal("gauge"),
   v.literal("list"),
   v.literal("table"),
+  v.literal("goal"),
 );
 
 export const widgetSizeValidator = v.union(...widgetSizes.map((size) => v.literal(size)));
@@ -153,6 +154,7 @@ export const widgetValidator = v.object({
       yAxisMin: v.optional(v.number()),
       yAxisMax: v.optional(v.number()),
       salesSource: v.optional(salesSourceValidator),
+      goalPercent: v.optional(v.number()),
     }),
   ),
 });
