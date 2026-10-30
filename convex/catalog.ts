@@ -823,6 +823,8 @@ async function replaceProductChildren(
   productId: Id<"products">,
   units: Awaited<ReturnType<typeof resolveUnits>>,
   ingredients: IngredientInput[],
+  // Without a kept unit, recipe quantities keep their numbers in the new default.
+  keepUnconverted = false,
 ) {
   const existingUnits = await ctx.db
     .query("productUnits")
@@ -877,12 +879,12 @@ async function replaceProductChildren(
     if (recipeReferences.length === 0 && additionReferences.length === 0) {
       continue;
     }
-    if (!conversion) {
+    if (!conversion && !keepUnconverted) {
       throw new ConvexError(
         "Behold mindst én af de tidligere enheder for at omregne opskrifter, der bruger produktet",
       );
     }
-    const factor = row.factorToDefault * conversion;
+    const factor = conversion ? row.factorToDefault * conversion : 1;
     for (const reference of recipeReferences) {
       const quantity = reference.quantity * factor;
       requirePositiveNumber(quantity, "Den omregnede ingrediensmængde");
@@ -1871,6 +1873,9 @@ export async function updateProductWithAuth(
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
+    // How to handle stock when the old default unit was removed. Either value
+    // keeps recipe quantities that use a removed unit.
+    unconvertedStock?: "keep" | "reset";
   },
 ): Promise<Id<"products">> {
   const { organizationId } = auth;
@@ -1986,6 +1991,7 @@ export async function updateProductWithAuth(
     }
     if (
       stockFactor === undefined &&
+      !args.unconvertedStock &&
       stockRows.some(
         (stock) => stock.quantity !== 0 || !!stock.onlinePosSalesQuantity,
       )
@@ -1994,7 +2000,8 @@ export async function updateProductWithAuth(
         "Den tidligere standardenhed skal beholdes for at omregne lageret",
       );
     }
-    const factor = stockFactor ?? 1;
+    const factor =
+      stockFactor ?? (args.unconvertedStock === "reset" ? 0 : 1);
     const updatedAt = Date.now();
     for (const stock of stockRows) {
       await ctx.db.patch("locationStock", stock._id, {
@@ -2010,6 +2017,7 @@ export async function updateProductWithAuth(
     product._id,
     units,
     args.ingredients,
+    args.unconvertedStock !== undefined,
   );
   await replaceProductIngredientAdditions(
     ctx,
@@ -2595,6 +2603,7 @@ export const updateProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
+    unconvertedStock: v.optional(v.union(v.literal("keep"), v.literal("reset"))),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {

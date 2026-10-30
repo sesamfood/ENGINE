@@ -15,6 +15,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import {
   ArrowLeftIcon,
   ImageIcon,
@@ -46,6 +47,16 @@ import {
 import { ProductImageCropDialog } from "@/components/catalog/product-image-crop-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Card,
   CardContent,
@@ -392,6 +403,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  // Set when removing the old default unit leaves stock or recipes unconverted.
+  const [unconverted, setUnconverted] = useState<"stock" | "recipes" | null>(
+    null,
+  );
   const listProducts = useAction(api.onlinePos.listProducts);
   const [onlinePosProducts, setOnlinePosProducts] = useState<
     OnlinePosProduct[] | null
@@ -828,7 +843,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     });
   }
 
-  async function save() {
+  async function save(unconvertedStock?: "keep" | "reset") {
     if (!validate() || categoryValues.length === 0) return;
     setIsSaving(true);
 
@@ -911,6 +926,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             expiry: expiryValue.trim()
               ? { value: Number(expiryValue), unit: expiryUnit }
               : null,
+            unconvertedStock,
           })
         : await createProduct({
             name,
@@ -1025,6 +1041,22 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       );
       router.push(returnHref);
     } catch (caught) {
+      if (caught instanceof ConvexError) {
+        if (
+          caught.data ===
+          "Den tidligere standardenhed skal beholdes for at omregne lageret"
+        ) {
+          setUnconverted("stock");
+          return;
+        }
+        if (
+          caught.data ===
+          "Behold mindst én af de tidligere enheder for at omregne opskrifter, der bruger produktet"
+        ) {
+          setUnconverted("recipes");
+          return;
+        }
+      }
       toast.error(getUserErrorMessage(caught, "Produktet kunne ikke gemmes. Prøv igen."));
     } finally {
       setIsSaving(false);
@@ -1771,7 +1803,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
             disabled={
               isSaving || options === undefined || !onlinePosSettingsReady
             }
-            onClick={save}
+            onClick={() => save()}
           >
             {isSaving ? (
               <Spinner data-icon="inline-start" />
@@ -1799,6 +1831,51 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           }}
         />
       ) : null}
+
+      <AlertDialog
+        open={unconverted !== null}
+        onOpenChange={(open) => {
+          if (!open) setUnconverted(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {unconverted === "stock"
+                ? "Lageret kan ikke omregnes"
+                : "Opskrifterne kan ikke omregnes"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {unconverted === "stock"
+                ? "Den tidligere standardenhed er fjernet. Vælg, om lagerbeholdningen skal nulstilles, eller om tallene skal beholdes i den nye standardenhed. Opskrifter, der bruger produktet, beholder deres tal."
+                : "De tidligere enheder er fjernet. Opskrifter, der bruger produktet, beholder deres tal i den nye standardenhed."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annullér</AlertDialogCancel>
+            <AlertDialogAction
+              variant={unconverted === "stock" ? "secondary" : "default"}
+              onClick={() => {
+                setUnconverted(null);
+                void save("keep");
+              }}
+            >
+              Behold tallene
+            </AlertDialogAction>
+            {unconverted === "stock" ? (
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  setUnconverted(null);
+                  void save("reset");
+                }}
+              >
+                Nulstil lageret
+              </AlertDialogAction>
+            ) : null}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
