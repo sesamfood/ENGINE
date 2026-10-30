@@ -2,7 +2,23 @@
 
 import { useState, type ReactNode } from "react";
 import { useMutation } from "convex/react";
-import { PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVerticalIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -38,6 +54,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { sortableListInstructions } from "@/components/organization/sortable-list-row";
+import { cn } from "@/lib/utils";
 
 const ADD_UNIT_VALUE = "__add_unit__";
 
@@ -351,5 +369,127 @@ function AddProductUnitDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function SortableIngredientList<T extends { key: string }>({
+  rows,
+  onReorder,
+  rowLabel,
+  listLabel,
+  disabled,
+  children,
+}: {
+  rows: T[];
+  onReorder: (rows: T[]) => void;
+  rowLabel: (row: T) => string;
+  listLabel: string;
+  disabled?: boolean;
+  children: (row: T) => ReactNode;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+  const labelFor = (id: string | number) => {
+    const row = rows.find((item) => item.key === id);
+    return row ? rowLabel(row) : "Rækken";
+  };
+  return (
+    <DndContext
+      accessibility={{
+        screenReaderInstructions: sortableListInstructions,
+        announcements: {
+          onDragStart: ({ active }) => `${labelFor(active.id)} er valgt.`,
+          onDragOver: ({ over }) =>
+            over
+              ? `Flyttes til plads ${rows.findIndex((row) => row.key === over.id) + 1}.`
+              : undefined,
+          onDragEnd: ({ active }) => `${labelFor(active.id)} er placeret.`,
+          onDragCancel: () => "Flytningen blev annulleret.",
+        },
+      }}
+      collisionDetection={closestCenter}
+      sensors={sensors}
+      onDragEnd={({ active, over }) => {
+        if (!over || active.id === over.id) return;
+        const from = rows.findIndex((row) => row.key === active.id);
+        const to = rows.findIndex((row) => row.key === over.id);
+        if (from >= 0 && to >= 0) onReorder(arrayMove(rows, from, to));
+      }}
+    >
+      <SortableContext
+        items={rows.map((row) => row.key)}
+        strategy={verticalListSortingStrategy}
+      >
+        <ol className="flex flex-col gap-5" aria-label={listLabel}>
+          {rows.map((row) => (
+            <SortableIngredientItem
+              key={row.key}
+              id={row.key}
+              label={rowLabel(row)}
+              disabled={disabled || rows.length < 2}
+            >
+              {children(row)}
+            </SortableIngredientItem>
+          ))}
+        </ol>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function SortableIngredientItem({
+  id,
+  label,
+  disabled,
+  children,
+}: {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+  return (
+    <li
+      ref={setNodeRef}
+      style={
+        {
+          "--drag-transform": CSS.Translate.toString(transform),
+          "--drag-transition": transition,
+        } as React.CSSProperties
+      }
+      className={cn(
+        "flex items-center gap-1 rounded-xl border bg-background py-3 pr-3 pl-1",
+        transform && "transform-(--drag-transform)",
+        transition && "transition-drag!",
+        isDragging && "relative z-1 opacity-60",
+      )}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+        aria-label={`Flyt ${label}`}
+        aria-roledescription="række, der kan flyttes"
+        className="flex size-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing disabled:pointer-events-none disabled:opacity-50"
+      >
+        <GripVerticalIcon aria-hidden="true" />
+      </button>
+      <div className="min-w-0 flex-1 *:rounded-none *:border-0 *:p-0">{children}</div>
+    </li>
   );
 }
