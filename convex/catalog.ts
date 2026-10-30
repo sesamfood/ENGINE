@@ -1871,6 +1871,8 @@ export async function updateProductWithAuth(
     maxTemperatureCelsius?: number | null;
     expiry?: Expiry | null;
     salesPrice?: number | null;
+    // How to handle stock when the old default unit was removed.
+    unconvertedStock?: "keep" | "reset";
   },
 ): Promise<Id<"products">> {
   const { organizationId } = auth;
@@ -1986,6 +1988,7 @@ export async function updateProductWithAuth(
     }
     if (
       stockFactor === undefined &&
+      !args.unconvertedStock &&
       stockRows.some(
         (stock) => stock.quantity !== 0 || !!stock.onlinePosSalesQuantity,
       )
@@ -1994,7 +1997,8 @@ export async function updateProductWithAuth(
         "Den tidligere standardenhed skal beholdes for at omregne lageret",
       );
     }
-    const factor = stockFactor ?? 1;
+    const factor =
+      stockFactor ?? (args.unconvertedStock === "reset" ? 0 : 1);
     const updatedAt = Date.now();
     for (const stock of stockRows) {
       await ctx.db.patch("locationStock", stock._id, {
@@ -2595,6 +2599,7 @@ export const updateProduct = mutation({
     maxTemperatureCelsius: maxTemperatureInputValidator,
     expiry: v.optional(v.union(expiryValidator, v.null())),
     salesPrice: v.optional(v.union(v.number(), v.null())),
+    unconvertedStock: v.optional(v.union(v.literal("keep"), v.literal("reset"))),
   },
   returns: v.id("products"),
   handler: async (ctx, args) => {
