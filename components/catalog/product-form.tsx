@@ -403,7 +403,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [confirmStockOpen, setConfirmStockOpen] = useState(false);
+  // Set when removing the old default unit leaves stock or recipes unconverted.
+  const [unconverted, setUnconverted] = useState<"stock" | "recipes" | null>(
+    null,
+  );
   const listProducts = useAction(api.onlinePos.listProducts);
   const [onlinePosProducts, setOnlinePosProducts] = useState<
     OnlinePosProduct[] | null
@@ -1038,13 +1041,21 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       );
       router.push(returnHref);
     } catch (caught) {
-      if (
-        caught instanceof ConvexError &&
-        caught.data ===
+      if (caught instanceof ConvexError) {
+        if (
+          caught.data ===
           "Den tidligere standardenhed skal beholdes for at omregne lageret"
-      ) {
-        setConfirmStockOpen(true);
-        return;
+        ) {
+          setUnconverted("stock");
+          return;
+        }
+        if (
+          caught.data ===
+          "Behold mindst én af de tidligere enheder for at omregne opskrifter, der bruger produktet"
+        ) {
+          setUnconverted("recipes");
+          return;
+        }
       }
       toast.error(getUserErrorMessage(caught, "Produktet kunne ikke gemmes. Prøv igen."));
     } finally {
@@ -1821,36 +1832,47 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         />
       ) : null}
 
-      <AlertDialog open={confirmStockOpen} onOpenChange={setConfirmStockOpen}>
+      <AlertDialog
+        open={unconverted !== null}
+        onOpenChange={(open) => {
+          if (!open) setUnconverted(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Lageret kan ikke omregnes</AlertDialogTitle>
+            <AlertDialogTitle>
+              {unconverted === "stock"
+                ? "Lageret kan ikke omregnes"
+                : "Opskrifterne kan ikke omregnes"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Den tidligere standardenhed er fjernet. Vælg, om lagerbeholdningen
-              skal nulstilles, eller om tallene skal beholdes i den nye
-              standardenhed.
+              {unconverted === "stock"
+                ? "Den tidligere standardenhed er fjernet. Vælg, om lagerbeholdningen skal nulstilles, eller om tallene skal beholdes i den nye standardenhed. Opskrifter, der bruger produktet, beholder deres tal."
+                : "De tidligere enheder er fjernet. Opskrifter, der bruger produktet, beholder deres tal i den nye standardenhed."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annullér</AlertDialogCancel>
             <AlertDialogAction
-              variant="secondary"
+              variant={unconverted === "stock" ? "secondary" : "default"}
               onClick={() => {
-                setConfirmStockOpen(false);
+                setUnconverted(null);
                 void save("keep");
               }}
             >
               Behold tallene
             </AlertDialogAction>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                setConfirmStockOpen(false);
-                void save("reset");
-              }}
-            >
-              Nulstil lageret
-            </AlertDialogAction>
+            {unconverted === "stock" ? (
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  setUnconverted(null);
+                  void save("reset");
+                }}
+              >
+                Nulstil lageret
+              </AlertDialogAction>
+            ) : null}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
