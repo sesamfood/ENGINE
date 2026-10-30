@@ -41,6 +41,7 @@ import {
 } from "@/components/catalog/creatable-combobox";
 import {
   IngredientEditorRow,
+  SortableIngredientList,
   validateIngredientRows,
   type IngredientDraft,
 } from "@/components/catalog/ingredient-editor-row";
@@ -734,6 +735,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       }
       return remaining;
     });
+  }
+
+  function recipeRowLabel(row: IngredientDraft, fallback: string) {
+    return (
+      recipeProductOptions.find((option) => option.id === row.productId)
+        ?.name ?? fallback
+    );
   }
 
   function addIngredient() {
@@ -1484,109 +1492,117 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       <FieldError>{errors.recipeYield}</FieldError>
                     </Field>
                   ) : null}
-                  {ingredientRows.map((row) => {
-                    const selectedProduct = recipeProductOptions.find(
-                      (option) => option.id === row.productId,
-                    );
-                    const showRemovalMapping =
-                      row.removable &&
-                      canManageIntegrations &&
-                      ingredientRemovalSettings?.enabled === true;
-                    const showIntegrationGuidance =
-                      row.removable &&
-                      canManageIntegrations &&
-                      ingredientRemovalSettings !== undefined &&
-                      !ingredientRemovalSettings.enabled;
-                    return (
-                      <IngredientEditorRow
-                        key={row.key}
-                        row={row}
-                        products={recipeProductOptions}
-                        options={recipeProductComboboxOptions}
-                        unitOptions={unitOptions}
-                        disabled={catalog === undefined}
-                        errors={errors}
-                        onChange={(patch) =>
-                          setIngredientRows((current) =>
-                            current.map((item) =>
-                              item.key === row.key
-                                ? { ...item, ...patch }
-                                : item,
-                            ),
-                          )
-                        }
-                        onRemove={() =>
-                          setIngredientRows((current) =>
-                            current.filter((item) => item.key !== row.key),
-                          )
-                        }
-                        productLabel="Ingrediensprodukt"
-                        removeLabel="Fjern ingrediens"
-                      >
-                        <div className="grid gap-3 md:col-span-full md:row-start-2 md:grid-cols-(--grid-cols-product-settings) md:items-start">
-                          <Field
-                            orientation="horizontal"
-                            appearance="outline"
-                            className={cn(
-                              "min-h-11 items-center justify-between",
-                              showRemovalMapping &&
-                                "md:mt-(--spacing-field-label)",
-                            )}
-                          >
-                            <FieldLabel htmlFor={`${row.key}-removable`}>
-                              Kan fjernes
-                            </FieldLabel>
-                            <Switch
-                              id={`${row.key}-removable`}
-                              checked={row.removable}
-                              onCheckedChange={(checked) =>
-                                setIngredientRows((current) =>
-                                  current.map((item) =>
-                                    item.key === row.key
-                                      ? {
-                                          ...item,
-                                          removable: checked,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            />
-                          </Field>
-                          {showRemovalMapping ? (
-                            <Field>
-                              <FieldLabel>
-                                OnlinePOS-produkt for fravalg
+                  <SortableIngredientList
+                    rows={ingredientRows}
+                    onReorder={setIngredientRows}
+                    rowLabel={(row) => recipeRowLabel(row, "Ingrediensen")}
+                    listLabel="Rækkefølge af ingredienser"
+                    disabled={catalog === undefined}
+                  >
+                    {(row) => {
+                      const selectedProduct = recipeProductOptions.find(
+                        (option) => option.id === row.productId,
+                      );
+                      const showRemovalMapping =
+                        row.removable &&
+                        canManageIntegrations &&
+                        ingredientRemovalSettings?.enabled === true;
+                      const showIntegrationGuidance =
+                        row.removable &&
+                        canManageIntegrations &&
+                        ingredientRemovalSettings !== undefined &&
+                        !ingredientRemovalSettings.enabled;
+                      return (
+                        <IngredientEditorRow
+                          key={row.key}
+                          row={row}
+                          products={recipeProductOptions}
+                          options={recipeProductComboboxOptions}
+                          unitOptions={unitOptions}
+                          disabled={catalog === undefined}
+                          errors={errors}
+                          onChange={(patch) =>
+                            setIngredientRows((current) =>
+                              current.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, ...patch }
+                                  : item,
+                              ),
+                            )
+                          }
+                          onRemove={() =>
+                            setIngredientRows((current) =>
+                              current.filter((item) => item.key !== row.key),
+                            )
+                          }
+                          productLabel="Ingrediensprodukt"
+                          removeLabel="Fjern ingrediens"
+                        >
+                          <div className="grid gap-3 md:col-span-full md:row-start-2 md:grid-cols-(--grid-cols-product-settings) md:items-start">
+                            <Field
+                              orientation="horizontal"
+                              appearance="outline"
+                              className={cn(
+                                "min-h-11 items-center justify-between",
+                                showRemovalMapping &&
+                                  "md:mt-(--spacing-field-label)",
+                              )}
+                            >
+                              <FieldLabel htmlFor={`${row.key}-removable`}>
+                                Kan fjernes
                               </FieldLabel>
-                              <OnlinePosProductSelect
-                                options={onlinePosOptions}
-                                productName={selectedProduct?.name ?? ""}
-                                value={row.onlinePosProductId}
-                                onValueChange={(onlinePosProductId) =>
+                              <Switch
+                                id={`${row.key}-removable`}
+                                checked={row.removable}
+                                onCheckedChange={(checked) =>
                                   setIngredientRows((current) =>
                                     current.map((item) =>
                                       item.key === row.key
-                                        ? { ...item, onlinePosProductId }
+                                        ? {
+                                            ...item,
+                                            removable: checked,
+                                          }
                                         : item,
                                     ),
                                   )
                                 }
-                                ariaLabel="OnlinePOS-produkt for fravalg"
-                                onRetry={() => setOnlinePosProducts(undefined)}
                               />
                             </Field>
-                          ) : null}
-                          {showIntegrationGuidance ? (
-                            <FieldDescription className="md:col-span-full">
-                              {ingredientRemovalSettings.connected
-                                ? "Aktivér OnlinePOS-integrationen for at tilføje en kobling."
-                                : "Forbind OnlinePOS-integrationen for at tilføje en kobling."}
-                            </FieldDescription>
-                          ) : null}
-                        </div>
-                      </IngredientEditorRow>
-                    );
-                  })}
+                            {showRemovalMapping ? (
+                              <Field>
+                                <FieldLabel>
+                                  OnlinePOS-produkt for fravalg
+                                </FieldLabel>
+                                <OnlinePosProductSelect
+                                  options={onlinePosOptions}
+                                  productName={selectedProduct?.name ?? ""}
+                                  value={row.onlinePosProductId}
+                                  onValueChange={(onlinePosProductId) =>
+                                    setIngredientRows((current) =>
+                                      current.map((item) =>
+                                        item.key === row.key
+                                          ? { ...item, onlinePosProductId }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                  ariaLabel="OnlinePOS-produkt for fravalg"
+                                  onRetry={() => setOnlinePosProducts(undefined)}
+                                />
+                              </Field>
+                            ) : null}
+                            {showIntegrationGuidance ? (
+                              <FieldDescription className="md:col-span-full">
+                                {ingredientRemovalSettings.connected
+                                  ? "Aktivér OnlinePOS-integrationen for at tilføje en kobling."
+                                  : "Forbind OnlinePOS-integrationen for at tilføje en kobling."}
+                              </FieldDescription>
+                            ) : null}
+                          </div>
+                        </IngredientEditorRow>
+                      );
+                    }}
+                  </SortableIngredientList>
                   <Button
                     type="button"
                     variant="outline"
@@ -1620,31 +1636,39 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                         Produktet har endnu ingen emballage.
                       </Empty>
                     ) : null}
-                    {packagingRows.map((row) => (
-                      <IngredientEditorRow
-                        key={row.key}
-                        row={row}
-                        products={recipeProductOptions}
-                        options={recipeProductComboboxOptions}
-                        unitOptions={unitOptions}
-                        disabled={catalog === undefined}
-                        errors={errors}
-                        onChange={(patch) =>
-                          setPackagingRows((current) =>
-                            current.map((item) =>
-                              item.key === row.key ? { ...item, ...patch } : item,
-                            ),
-                          )
-                        }
-                        onRemove={() =>
-                          setPackagingRows((current) =>
-                            current.filter((item) => item.key !== row.key),
-                          )
-                        }
-                        productLabel="Emballageprodukt"
-                        removeLabel="Fjern emballage"
-                      />
-                    ))}
+                    <SortableIngredientList
+                      rows={packagingRows}
+                      onReorder={setPackagingRows}
+                      rowLabel={(row) => recipeRowLabel(row, "Emballagen")}
+                      listLabel="Rækkefølge af emballage"
+                      disabled={catalog === undefined}
+                    >
+                      {(row) => (
+                        <IngredientEditorRow
+                          key={row.key}
+                          row={row}
+                          products={recipeProductOptions}
+                          options={recipeProductComboboxOptions}
+                          unitOptions={unitOptions}
+                          disabled={catalog === undefined}
+                          errors={errors}
+                          onChange={(patch) =>
+                            setPackagingRows((current) =>
+                              current.map((item) =>
+                                item.key === row.key ? { ...item, ...patch } : item,
+                              ),
+                            )
+                          }
+                          onRemove={() =>
+                            setPackagingRows((current) =>
+                              current.filter((item) => item.key !== row.key),
+                            )
+                          }
+                          productLabel="Emballageprodukt"
+                          removeLabel="Fjern emballage"
+                        />
+                      )}
+                    </SortableIngredientList>
                     <Button
                       type="button"
                       variant="outline"
