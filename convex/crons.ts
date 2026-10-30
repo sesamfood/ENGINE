@@ -21,13 +21,6 @@ crons.interval(
   {},
 );
 
-crons.interval(
-  "delete expired archived products",
-  { hours: 24 },
-  internal.catalog.deleteExpiredProducts,
-  {},
-);
-
 // Audit history follows the existing 400-day sales retention window.
 crons.interval("prune audit log", { hours: 24 }, internal.audit.prune, {});
 
