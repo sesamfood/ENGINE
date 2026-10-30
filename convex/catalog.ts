@@ -96,7 +96,6 @@ const catalogProductValidator = v.object({
   unitCount: v.number(),
   ingredientCount: v.number(),
   imageUrl: v.union(v.string(), v.null()),
-  deletesAt: v.union(v.number(), v.null()),
 });
 
 const productDetailValidator = v.object({
@@ -298,7 +297,6 @@ const MAX_GRAPH_PRODUCTS = 500;
 const MAX_LOCATIONS_PER_ORGANIZATION = 200;
 const MAX_PUBLIC_PAGE_SIZE = 100;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-const ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -1210,9 +1208,6 @@ async function hydrateCatalogProduct(
     unitCount: units.length,
     ingredientCount: ingredients.length,
     imageUrl,
-    deletesAt: product.archivedAt
-      ? product.archivedAt + ARCHIVE_RETENTION_MS
-      : null,
   };
 }
 
@@ -2076,28 +2071,12 @@ export async function archiveProductWithAuth(
   if (!product || product.organizationId !== organizationId) {
     throw new ConvexError("Produktet blev ikke fundet");
   }
-  const retainedForCountHistory = Boolean(
-    await ctx.db
-      .query("countItems")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q.eq("organizationId", organizationId).eq("productId", product._id),
-      )
-      .first(),
-  );
-  const archivedAt = Math.max(Date.now(), product.updatedAt + 1);
+  const updatedAt = Math.max(Date.now(), product.updatedAt + 1);
   await ctx.db.patch("products", product._id, {
     status: "archived",
-    archivedAt: retainedForCountHistory ? undefined : archivedAt,
-    updatedAt: archivedAt,
+    updatedAt,
   });
   await scrubProductFromCountOrder(ctx, organizationId, product._id);
-  if (!retainedForCountHistory) {
-    await ctx.scheduler.runAfter(
-      ARCHIVE_RETENTION_MS,
-      internal.catalog.deleteExpiredProduct,
-      { productId: product._id, archivedAt },
-    );
-  }
   await recordAudit(ctx, auth, {
     action: "catalog.productArchived",
     entityTable: "products",
@@ -2693,72 +2672,12 @@ export const deleteProduct = mutation({
   },
 });
 
+// Archived products are only deleted manually. Kept as a no-op for jobs queued
+// before automatic deletion was removed.
 export const deleteExpiredProduct = internalMutation({
   args: { productId: v.id("products"), archivedAt: v.number() },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const product = await ctx.db.get("products", args.productId);
-    if (
-      !product ||
-      product.status !== "archived" ||
-      product.archivedAt !== args.archivedAt
-    ) {
-      return null;
-    }
-    const countItem = await ctx.db
-      .query("countItems")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q
-          .eq("organizationId", product.organizationId)
-          .eq("productId", product._id),
-      )
-      .first();
-    if (countItem) {
-      await ctx.db.patch("products", product._id, { archivedAt: undefined });
-      return null;
-    }
-    await permanentlyDeleteProduct(ctx, product);
-    return null;
-  },
-});
-
-export const deleteExpiredProducts = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const product = await ctx.db
-      .query("products")
-      .withIndex("by_status_and_archivedAt", (q) =>
-        q
-          .eq("status", "archived")
-          .gte("archivedAt", 0)
-          .lt("archivedAt", Date.now() - ARCHIVE_RETENTION_MS),
-      )
-      .first();
-    if (!product) return null;
-
-    const countItem = await ctx.db
-      .query("countItems")
-      .withIndex("by_organizationId_and_productId", (q) =>
-        q
-          .eq("organizationId", product.organizationId)
-          .eq("productId", product._id),
-      )
-      .first();
-    if (countItem) {
-      await ctx.db.patch("products", product._id, { archivedAt: undefined });
-      await ctx.scheduler.runAfter(
-        0,
-        internal.catalog.deleteExpiredProducts,
-        {},
-      );
-      return null;
-    }
-
-    await permanentlyDeleteProduct(ctx, product);
-    await ctx.scheduler.runAfter(0, internal.catalog.deleteExpiredProducts, {});
-    return null;
-  },
+  handler: async () => null,
 });
 
 export async function createCategoryWithAuth(

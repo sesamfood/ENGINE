@@ -902,7 +902,6 @@ export default defineSchema({
       "normalizedName",
     ])
     .index("by_organizationId_and_categoryId", ["organizationId", "categoryId"])
-    .index("by_status_and_archivedAt", ["status", "archivedAt"])
     .index("by_organizationId_and_status_and_normalizedName", [
       "organizationId",
       "status",

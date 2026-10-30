@@ -182,7 +182,7 @@ export const administrationFeatures: HelpFeature[] = [
             bullets: [
               "Eksportér giver en ZIP-fil med kataloget. Importér indlæser en eksporteret fil og opretter manglende kategorier og enheder.",
               "Ved samme produktnavn vælger du Spring over eller Overskriv. Overskriv erstatter produktdata og billeder og omregner lager og opskrifter.",
-              "Arkivér fjerner Produktet fra vælgerne. Det kan gendannes fra arkivet i 30 dage, før det slettes permanent.",
+              "Arkivér fjerner Produktet fra vælgerne. Det bliver i arkivet, indtil du gendanner eller sletter det permanent.",
               "Permanent sletning fjerner også billede, enheder, opskrift og brugen som ingrediens. Det kan ikke fortrydes.",
             ],
           },

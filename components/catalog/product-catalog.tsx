@@ -225,9 +225,6 @@ function ProductCard({
         <CardDescription>
           {product.categories.map((category) => category.name).join(" · ") ||
             "Uden kategori"}
-          {product.deletesAt
-            ? ` · Slettes automatisk ${new Intl.DateTimeFormat("da-DK", { dateStyle: "long" }).format(product.deletesAt)}`
-            : null}
         </CardDescription>
         <CardAction appearance="compact" className="relative z-20 flex">
           <Button
@@ -712,7 +709,7 @@ export function ProductCatalog() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingProduct?.status === "active"
-                ? `Arkiverer du ${pendingProduct.name}, forsvinder produktet fra produkt- og ingrediensvælgerne. Det slettes permanent efter 30 dage, medmindre du gendanner det.`
+                ? `Arkiverer du ${pendingProduct.name}, forsvinder produktet fra produkt- og ingrediensvælgerne. Du kan gendanne det fra arkivet.`
                 : `${pendingProduct?.name} vender tilbage til det aktive katalog og ingrediensvælgerne.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
