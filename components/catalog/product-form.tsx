@@ -852,7 +852,16 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   }
 
   async function save(unconvertedStock?: "keep" | "reset") {
-    if (!validate() || categoryValues.length === 0) return;
+    if (!validate()) {
+      toast.error("Produktet kunne ikke gemmes. Ret de markerede felter.");
+      // Errors may sit far below the visible part of the form.
+      requestAnimationFrame(() =>
+        document
+          .querySelector('[data-invalid="true"]')
+          ?.scrollIntoView({ block: "center", behavior: "smooth" }),
+      );
+      return;
+    }
     setIsSaving(true);
 
     const categories = categoryValues.map((value) => {
