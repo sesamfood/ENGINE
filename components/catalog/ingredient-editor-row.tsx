@@ -471,7 +471,7 @@ function SortableIngredientItem({
         } as React.CSSProperties
       }
       className={cn(
-        "flex items-start gap-1",
+        "flex items-center gap-1 rounded-xl border bg-background py-3 pr-3 pl-1",
         transform && "transform-(--drag-transform)",
         transition && "transition-drag!",
         isDragging && "relative z-1 opacity-60",
@@ -485,11 +485,11 @@ function SortableIngredientItem({
         {...listeners}
         aria-label={`Flyt ${label}`}
         aria-roledescription="række, der kan flyttes"
-        className="mt-3 flex size-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing disabled:pointer-events-none disabled:opacity-50"
+        className="flex size-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing disabled:pointer-events-none disabled:opacity-50"
       >
         <GripVerticalIcon aria-hidden="true" />
       </button>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 *:rounded-none *:border-0 *:p-0">{children}</div>
     </li>
   );
 }
