@@ -687,6 +687,12 @@ export default defineSchema({
       "startsAt",
     ]),
 
+  staffFoodSettings: defineTable({
+    organizationId: v.string(),
+    afterShiftMinutes: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   staffFoodRuleTiers: defineTable({
     organizationId: v.string(),
     minimumShiftMinutes: v.number(),

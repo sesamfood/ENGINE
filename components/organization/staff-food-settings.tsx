@@ -91,6 +91,18 @@ function formatDuration(minutes: number) {
   );
 }
 
+const afterShiftOptions = [0, 15, 30, 45, 60, 90, 120, 180, 240].map(
+  (minutes) => ({
+    value: String(minutes),
+    label:
+      minutes === 0
+        ? "Kun under vagten"
+        : minutes < 60
+          ? `${minutes} minutter`
+          : `${formatDuration(minutes)} time${minutes === 60 ? "" : "r"}`,
+  }),
+);
+
 function categoryTreeIds(
   categories: SettingsCategory[],
   categoryIds: SettingsCategory["id"][],
@@ -116,6 +128,7 @@ export function StaffFoodSettings() {
   const settings = useQuery(api.staffFood.getSettings, canManage ? {} : "skip");
   const saveTier = useMutation(api.staffFood.saveTier);
   const deleteTier = useMutation(api.staffFood.deleteTier);
+  const setAfterShiftMinutes = useMutation(api.staffFood.setAfterShiftMinutes);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<Id<"staffFoodRuleTiers"> | null>(
     null,
@@ -297,6 +310,15 @@ export function StaffFoodSettings() {
     }
   }
 
+  async function saveAfterShift(value: string) {
+    try {
+      await setAfterShiftMinutes({ afterShiftMinutes: Number(value) });
+      toast.success("Tiden efter vagten er gemt");
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Staff food-indstillingerne kunne ikke gemmes. Prøv igen."));
+    }
+  }
+
   async function removeTier() {
     if (!pendingDelete) return;
     try {
@@ -322,6 +344,43 @@ export function StaffFoodSettings() {
 
   return (
     <div className="flex max-w-5xl flex-col gap-8">
+      <Card>
+        <CardHeader>
+          <CardTitle appearance="compact">Registrering efter vagten</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Field>
+            <div className="flex items-center gap-1">
+              <FieldLabel htmlFor="staff-food-after-shift">
+                Tid efter vagtens slut
+              </FieldLabel>
+              <HelpTooltip
+                label="Tid efter vagtens slut"
+                content="Så længe efter vagtens slut kan medarbejderen stadig findes og registrere Staff food."
+              />
+            </div>
+            <Select
+              items={afterShiftOptions}
+              value={String(settings.afterShiftMinutes)}
+              onValueChange={(value) => value && void saveAfterShift(value)}
+            >
+              <SelectTrigger id="staff-food-after-shift" className="h-11! w-full sm:max-w-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {afterShiftOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle appearance="compact" className="flex items-center">
