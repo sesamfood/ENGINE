@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2Icon } from "lucide-react";
+import { CheckCircle2Icon, ClipboardListIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { AppPageHeader } from "@/components/app-page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -36,14 +36,14 @@ function CountHeaderControls({
   locationId,
   locations,
   organizationId,
-  periodKey,
+  periodLabel,
   isLocked,
   lockedName,
 }: {
   locationId: Id<"locations"> | null;
   locations: Array<{ id: Id<"locations">; name: string }> | undefined;
   organizationId: string | undefined;
-  periodKey: string | undefined;
+  periodLabel: string | undefined;
   isLocked: boolean;
   lockedName?: string | null;
 }) {
@@ -57,9 +57,9 @@ function CountHeaderControls({
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             Count
           </h1>
-          {periodKey ? (
+          {periodLabel ? (
             <p className="text-lg capitalize text-muted-foreground">
-              {formatPeriod(periodKey)}
+              {periodLabel}
             </p>
           ) : null}
         </div>
@@ -98,11 +98,28 @@ export function CountHeader() {
           locationId={locationId}
           locations={locations}
           organizationId={organizationId}
-          periodKey={state?.periodKey}
+          periodLabel={
+            state
+              ? state.adHoc
+                ? "Ekstra Count"
+                : formatPeriod(state.periodKey)
+              : undefined
+          }
           isLocked={isLocked}
           lockedName={lockedName}
         />
       </AppPageHeader>
+
+      {pathname === "/count" && state?.adHoc && !submitted ? (
+        <Alert className="md:-mt-5">
+          <ClipboardListIcon />
+          <AlertTitle>Ekstra Count er åben</AlertTitle>
+          <AlertDescription>
+            Lageret opdateres for de Produkter, du tæller, når Count
+            registreres. Den planlagte Count påvirkes ikke.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {pathname === "/count" && submitted ? (
         <Alert className="md:-mt-5">

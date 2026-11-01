@@ -16,7 +16,7 @@ import {
   MAX_COUNT_AREA_PRODUCTS,
   requireCountArea,
 } from "./lib/countAreas";
-import { getLocationCountWindow } from "./lib/countWindow";
+import { getCurrentCount } from "./lib/countWindow";
 import {
   getLocationProductAccess,
   locationHasProduct,
@@ -57,21 +57,12 @@ async function getCurrentOpenCount(
   organizationId: string,
   location: Doc<"locations">,
 ) {
-  const countWindow = await getLocationCountWindow(
+  const { count } = await getCurrentCount(
     ctx,
     organizationId,
     location,
     Date.now(),
   );
-  const count = await ctx.db
-    .query("counts")
-    .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
-      q
-        .eq("organizationId", organizationId)
-        .eq("locationId", location._id)
-        .eq("periodKey", countWindow.periodKey),
-    )
-    .unique();
   return count?.status === "open" ? count : null;
 }
 

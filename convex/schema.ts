@@ -1804,6 +1804,8 @@ export default defineSchema({
     locationId: v.id("locations"),
     periodKey: v.string(),
     status: v.union(v.literal("open"), v.literal("submitted")),
+    // Extra Count opened outside the schedule; it never fulfils a period.
+    adHoc: v.optional(v.boolean()),
     completedCountAreaIds: v.optional(v.array(v.id("countAreas"))),
     submittedAt: v.optional(v.number()),
     submittedByName: v.optional(v.string()),
@@ -1819,10 +1821,11 @@ export default defineSchema({
       "locationId",
       "submittedAt",
     ])
-    .index("by_organizationId_and_locationId_and_status", [
+    .index("by_organizationId_and_locationId_and_status_and_adHoc", [
       "organizationId",
       "locationId",
       "status",
+      "adHoc",
     ]),
 
   countItems: defineTable({

@@ -1197,6 +1197,7 @@ export function CountSheet() {
   const { locations, locationId, canRegister, state } = useCountState();
   const canManageLocations = usePermission("locations.manage");
   const canExport = usePermission("count.export");
+  const canManageCount = usePermission("count.manage");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string>("all");
   const [editingOrderContext, setEditingOrderContext] = useState<string | null>(
@@ -1220,6 +1221,8 @@ export function CountSheet() {
   const [completingCountAreaId, setCompletingCountAreaId] =
     useState<Id<"countAreas"> | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [adHocPending, setAdHocPending] = useState(false);
+  const [cancelAdHocOpen, setCancelAdHocOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const pendingValues = useRef(new Map<string, QuantityPayload>());
   const timers = useRef(new Map<string, number>());
@@ -1232,6 +1235,8 @@ export function CountSheet() {
   );
   const completeCountArea = useMutation(api.count.completeCountArea);
   const submitCount = useMutation(api.count.submitCount);
+  const openAdHocCount = useMutation(api.count.openAdHocCount);
+  const cancelAdHocCount = useMutation(api.count.cancelAdHocCount);
   const setProductOrder = useMutation(api.countAreas.setProductOrder);
 
   const queriedCountAreas = useQuery(
@@ -1769,6 +1774,42 @@ export function CountSheet() {
     }
   }
 
+  async function openExtraCount() {
+    if (!locationId) return;
+    setAdHocPending(true);
+    try {
+      await openAdHocCount({ locationId });
+      toast.success("Ekstra Count er åbnet");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(error, "Ekstra Count kunne ikke åbnes. Prøv igen."),
+      );
+    } finally {
+      setAdHocPending(false);
+    }
+  }
+
+  async function cancelExtraCount() {
+    if (!locationId) return;
+    setAdHocPending(true);
+    try {
+      await flushPending();
+      await cancelAdHocCount({ locationId });
+      setCancelAdHocOpen(false);
+      setOverrides({});
+      toast.success("Ekstra Count er annulleret");
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Ekstra Count kunne ikke annulleres. Prøv igen.",
+        ),
+      );
+    } finally {
+      setAdHocPending(false);
+    }
+  }
+
   async function exportWasteReport() {
     if (!state?.count?.id) return;
     setExporting(true);
@@ -2194,6 +2235,41 @@ export function CountSheet() {
                 </span>
               </Badge>
             ) : null}
+            {canManageCount &&
+            state &&
+            !state.adHoc &&
+            (isClosed || state.count?.status === "submitted") ? (
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                appearance="responsive"
+                className="min-h-11 shrink-0"
+                disabled={adHocPending}
+                onClick={() => void openExtraCount()}
+              >
+                {adHocPending ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <PlusIcon data-icon="inline-start" />
+                )}
+                Åbn ekstra Count
+              </Button>
+            ) : null}
+            {canManageCount && state?.adHoc ? (
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                appearance="responsive"
+                className="min-h-11 shrink-0"
+                disabled={adHocPending || submitting}
+                onClick={() => setCancelAdHocOpen(true)}
+              >
+                <XIcon data-icon="inline-start" />
+                Annullér ekstra Count
+              </Button>
+            ) : null}
             {state?.count?.status === "submitted" && canExport ? (
               <Button
                 type="button"
@@ -2250,6 +2326,30 @@ export function CountSheet() {
             >
               {submitting ? <Spinner data-icon="inline-start" /> : null}
               Registrér Count
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={cancelAdHocOpen} onOpenChange={setCancelAdHocOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Annullér ekstra Count?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Alle mængder i den ekstra Count slettes, og lageret ændres ikke.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={adHocPending}>
+              Fortsæt Count
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={adHocPending}
+              onClick={() => void cancelExtraCount()}
+            >
+              {adHocPending ? <Spinner data-icon="inline-start" /> : null}
+              Annullér ekstra Count
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

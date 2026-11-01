@@ -7,7 +7,7 @@ import {
   scheduledCountWindows,
 } from "../../lib/count-window";
 import type { CountSchedule } from "../../lib/count-window";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 type CountWindowContext = QueryCtx | MutationCtx;
@@ -105,11 +105,12 @@ export async function getLocationCountWindow(
   if (configuration.requireCountBeforeOpening) {
     const openCount = await ctx.db
       .query("counts")
-      .withIndex("by_organizationId_and_locationId_and_status", (q) =>
+      .withIndex("by_organizationId_and_locationId_and_status_and_adHoc", (q) =>
         q
           .eq("organizationId", organizationId)
           .eq("locationId", location._id)
-          .eq("status", "open"),
+          .eq("status", "open")
+          .eq("adHoc", undefined),
       )
       .order("desc")
       .first();
@@ -143,4 +144,46 @@ export async function getLocationCountWindow(
   }
 
   return { ...window, ...configuration, timeZone };
+}
+
+export async function getOpenAdHocCount(
+  ctx: CountWindowContext,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  return await ctx.db
+    .query("counts")
+    .withIndex("by_organizationId_and_locationId_and_status_and_adHoc", (q) =>
+      q
+        .eq("organizationId", organizationId)
+        .eq("locationId", locationId)
+        .eq("status", "open")
+        .eq("adHoc", true),
+    )
+    .first();
+}
+
+// The Count registrations write to: an open extra Count, else the scheduled one.
+export async function getCurrentCount(
+  ctx: CountWindowContext,
+  organizationId: string,
+  location: Doc<"locations">,
+  now: number,
+) {
+  const [window, adHocCount] = await Promise.all([
+    getLocationCountWindow(ctx, organizationId, location, now),
+    getOpenAdHocCount(ctx, organizationId, location._id),
+  ]);
+  const count =
+    adHocCount ??
+    (await ctx.db
+      .query("counts")
+      .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("locationId", location._id)
+          .eq("periodKey", window.periodKey),
+      )
+      .unique());
+  return { window, count };
 }

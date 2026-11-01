@@ -2,14 +2,29 @@
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { BoxesIcon, Grid2X2Icon, ListIcon } from "lucide-react";
+import type { FunctionReturnType } from "convex/server";
+import { useMutation } from "convex/react";
+import { BoxesIcon, Grid2X2Icon, ListIcon, PlusIcon } from "lucide-react";
+import { toast } from "sonner";
 import {
   ProductCardMedia,
   productGridClassName,
 } from "@/components/catalog/product-card-media";
 import { useCountState } from "./count-state-provider";
 import { useState } from "react";
+import { QuantityInput } from "@/components/quantity-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Card,
   CardContent,
@@ -35,6 +50,8 @@ import {
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { getUserErrorMessage } from "@/lib/user-errors";
 import { useKiosk, usePermission } from "@/components/app-shell";
 import { dateTimeFormatter, DEFAULT_TIME_ZONE } from "@/lib/date";
 
@@ -71,8 +88,120 @@ function formatStockQuantity(
     : `${largest} og ${quantityFormatter.format(remainder)} ${defaultUnitName}`;
 }
 
+type StockRow = FunctionReturnType<
+  typeof api.count.listLocationStockPage
+>["page"][number];
+
+function AddToLatestCountDialog({
+  locationId,
+  row,
+  onClose,
+}: {
+  locationId: Id<"locations">;
+  row: StockRow | null;
+  onClose: () => void;
+}) {
+  const addProduct = useMutation(api.count.addProductToLatestCount);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+
+  function close() {
+    setQuantities({});
+    onClose();
+  }
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!row) return;
+    setSaving(true);
+    try {
+      await addProduct({
+        locationId,
+        productId: row.productId,
+        quantities: row.units.map((unit) => ({
+          unitId: unit.id,
+          quantity: quantities[unit.id] ?? 0,
+        })),
+      });
+      toast.success(`${row.productName} er tilføjet til seneste Count`);
+      close();
+    } catch (error) {
+      toast.error(
+        getUserErrorMessage(
+          error,
+          "Produktet kunne ikke tilføjes. Prøv igen.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={row !== null}
+      onOpenChange={(open) => {
+        if (!open && !saving) close();
+      }}
+    >
+      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+        {row ? (
+          <form className="flex flex-col gap-4" onSubmit={save}>
+            <DialogHeader>
+              <DialogTitle>{row.productName}</DialogTitle>
+              <DialogDescription>
+                Tilføj den optalte beholdning til den seneste registrerede
+                Count. Lageret overskrives med mængden.
+              </DialogDescription>
+            </DialogHeader>
+            <FieldGroup>
+              {row.units.map((unit) => (
+                <Field key={unit.id} orientation="responsive">
+                  <FieldLabel className="@md/field-group:min-w-24">
+                    {unit.name}
+                  </FieldLabel>
+                  <div className="w-full @md/field-group:w-56">
+                    <QuantityInput
+                      label={`Mængde af ${row.productName} i ${unit.name}`}
+                      value={quantities[unit.id] ?? 0}
+                      disabled={saving}
+                      onValueChange={(value) => {
+                        const quantity = Number(value.replace(",", "."));
+                        if (Number.isFinite(quantity))
+                          setQuantities((current) => ({
+                            ...current,
+                            [unit.id]: Math.max(0, quantity),
+                          }));
+                      }}
+                    />
+                  </div>
+                </Field>
+              ))}
+            </FieldGroup>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={close}
+              >
+                Annullér
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? <Spinner data-icon="inline-start" /> : null}
+                Tilføj til Count
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function LocationStock() {
   const [view, setView] = useState<"grid" | "detail">("grid");
+  const [addingRow, setAddingRow] = useState<StockRow | null>(null);
   const { locations, locationId, state } = useCountState();
   const dateFormatter = dateTimeFormatter("da-DK", {
     dateStyle: "short",
@@ -86,6 +215,7 @@ export function LocationStock() {
       kiosk?.kioskModeEnabled &&
       kiosk.settings?.enabledPages.includes("count.stock"),
     );
+  const canManageCount = usePermission("count.manage");
   const stock = useCompleteCatalog(
     api.count.listLocationStockPage,
     canView && locationId ? { locationId } : "skip",
@@ -211,6 +341,17 @@ export function LocationStock() {
                     ? `Senest talt ${dateFormatter.format(row.lastCountedAt)}`
                     : "Ikke talt endnu"}
                 </p>
+                {canManageCount ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-auto h-11 w-full"
+                    onClick={() => setAddingRow(row)}
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    Tilføj til seneste Count
+                  </Button>
+                ) : null}
               </CardContent>
             </Card>
           ))}
@@ -224,6 +365,11 @@ export function LocationStock() {
                 <TableHead>Kategori</TableHead>
                 <TableHead className="text-right">Beholdning</TableHead>
                 <TableHead>Senest talt</TableHead>
+                {canManageCount ? (
+                  <TableHead>
+                    <span className="sr-only">Handlinger</span>
+                  </TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -245,12 +391,31 @@ export function LocationStock() {
                       ? dateFormatter.format(row.lastCountedAt)
                       : "Ikke talt endnu"}
                   </TableCell>
+                  {canManageCount ? (
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11"
+                        onClick={() => setAddingRow(row)}
+                      >
+                        <PlusIcon data-icon="inline-start" />
+                        Tilføj til seneste Count
+                      </Button>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
       )}
+
+      <AddToLatestCountDialog
+        locationId={locationId}
+        row={addingRow}
+        onClose={() => setAddingRow(null)}
+      />
     </div>
   );
 }
