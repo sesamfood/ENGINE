@@ -10,15 +10,18 @@ import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader } from "@/components/app-page-header";
 
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DownloadIcon,
   PackageOpenIcon,
+  PlusIcon,
   RefreshCwIcon,
   SearchIcon,
   ShoppingCartIcon,
   StoreIcon,
   TruckIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -44,7 +47,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -75,6 +77,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
 import { downloadOrderCsv } from "@/lib/ordering-csv";
@@ -116,11 +119,14 @@ const currentMinute = () => Math.floor(Date.now() / 60_000) * 60_000;
 export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
   const { data: session } = authClient.useSession();
   const organizationId = useActiveOrganization().data?.id;
+  // An open internal order being edited.
+  const editOrderId = useSearchParams().get("order") as Id<"orders"> | null;
   if (!organizationId) return <Skeleton className="h-96 w-full" />;
   return (
     <Planner
-      key={`${organizationId}:${session?.user.id}`}
+      key={`${organizationId}:${session?.user.id}:${editOrderId}`}
       organizationId={organizationId}
+      editOrderId={editOrderId}
       navigation={navigation}
     />
   );
@@ -129,9 +135,11 @@ export function OrderingPlanner({ navigation }: { navigation?: ReactNode }) {
 function Planner({
   navigation,
   organizationId,
+  editOrderId,
 }: {
   navigation?: ReactNode;
   organizationId: string;
+  editOrderId: Id<"orders"> | null;
 }) {
   const access = useAccess();
   const canPlan =
@@ -141,20 +149,32 @@ function Planner({
   const router = useRouter();
   const { locations, isLocked, lockedId, lockedName } = useLocationAccess();
   const storedLocationId = useOrderingLocation(organizationId);
-  const locationId = selectedLocationId({
-    locations,
-    storedId: storedLocationId,
-    lockedId,
-    isLocked,
-  });
+  const editOrder = useQuery(
+    api.ordering.getEditableOrder,
+    canPlan && editOrderId ? { orderId: editOrderId } : "skip",
+  );
+  const editing = editOrderId !== null;
+  const locationId = editing
+    ? (editOrder?.locationId ?? null)
+    : selectedLocationId({
+        locations,
+        storedId: storedLocationId,
+        lockedId,
+        isLocked,
+      });
   const [asOf, setAsOf] = useState(currentMinute);
   const [search, setSearch] = useState("");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  // Internal orders can list a Produkt in several units.
+  const [unitLines, setUnitLines] = useState<
+    Record<string, { unitId: Id<"units">; input: string }[]>
+  >({});
   const [exporting, setExporting] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // null until the user has chosen, when suppliers must be chosen first.
-  const [supplierValue, setSupplierValue] = useState<string | null>(null);
+  const [supplierChoice, setSupplierValue] = useState<string | null>(null);
+  const supplierValue = editOrder?.fulfillingLocationId ?? supplierChoice;
   const [sendEmail, setSendEmail] = useState(true);
   const [catalogInputs, setCatalogInputs] = useState<Record<string, string>>(
     {},
@@ -163,6 +183,7 @@ function Planner({
   const submitting = useRef(false);
   const convex = useConvex();
   const placeOrder = useMutation(api.ordering.placeOrder);
+  const updateOrder = useMutation(api.ordering.updateInternalOrder);
   const refreshEnvironment = useMutation(api.forecasts.requestRefresh);
   const settings = useQuery(
     api.orderingSettings.getSettings,
@@ -182,6 +203,16 @@ function Planner({
   const internalSupplier =
     internalSuppliers?.find((item) => item.locationId === supplierValue) ??
     null;
+  const editLines = useMemo(() => {
+    const lines = new Map<string, { unitId: Id<"units">; input: string }[]>();
+    for (const line of editOrder?.lines ?? []) {
+      lines.set(line.productId, [
+        ...(lines.get(line.productId) ?? []),
+        { unitId: line.unitId, input: String(line.quantity) },
+      ]);
+    }
+    return lines;
+  }, [editOrder]);
   const internalProductIds = useMemo(
     () => new Set(internalSupplier?.productIds),
     [internalSupplier],
@@ -415,8 +446,22 @@ function Planner({
     const key = `${locationId}:${product.id}:${orderUnitId}`;
     const input = overrides[key] ?? String(suggested ?? 0);
     const parsed = parseOrderQuantity(input);
-    const quantity =
-      link && parsed !== null && !Number.isInteger(parsed) ? null : parsed;
+    // Editing starts from the order, with other Produkter at 0.
+    const editStart = editOrder
+      ? (editLines.get(product.id) ?? [{ unitId: orderUnitId, input: "0" }])
+      : undefined;
+    const lines = (
+      (internalSupplier && (unitLines[key] ?? editStart)) || [
+        { unitId: orderUnitId, input },
+      ]
+    ).map((line) => ({ ...line, quantity: parseOrderQuantity(line.input) }));
+    const quantity = internalSupplier
+      ? lines.some((line) => line.quantity === null)
+        ? null
+        : lines.reduce((sum, line) => sum + (line.quantity ?? 0), 0)
+      : link && parsed !== null && !Number.isInteger(parsed)
+        ? null
+        : parsed;
     return [
       {
         ...product,
@@ -428,7 +473,10 @@ function Planner({
         orderUnitName: link?.unitName ?? product.unitName,
         productNumber: link?.productNumber ?? null,
         catalogItem,
-        edited: overrides[key] !== undefined,
+        lines,
+        edited:
+          overrides[key] !== undefined ||
+          (internalSupplier !== null && unitLines[key] !== undefined),
       },
     ];
   });
@@ -457,7 +505,14 @@ function Planner({
   const plannedCatalog = catalogRows.filter(
     (row) => row.quantity !== null && row.quantity > 0,
   );
-  const plannedCount = planned.length + plannedCatalog.length;
+  const orderLines = planned.flatMap((row) =>
+    row.lines.flatMap((line) =>
+      line.quantity
+        ? [{ productId: row.id, unitId: line.unitId, quantity: line.quantity }]
+        : [],
+    ),
+  );
+  const plannedCount = orderLines.length + plannedCatalog.length;
   const invalidQuantity =
     rows.some((row) => row.quantity === null) ||
     catalogRows.some((row) => row.quantity === null);
@@ -473,11 +528,6 @@ function Planner({
     quantity: row.quantity ?? 0,
   }));
   const missingPrices = planned.some((row) => row.productNumber && !row.catalogItem);
-  const orderLines = planned.flatMap((row) =>
-    row.quantity === null
-      ? []
-      : [{ productId: row.id, unitId: row.orderUnitId, quantity: row.quantity }],
-  );
   const visible = searchProducts(rows, search, (row) => ({
     name: row.name,
     categoryPath: row.category,
@@ -496,6 +546,13 @@ function Planner({
     })),
   ];
 
+  const showSupplierField =
+    Boolean(locationId) &&
+    settings !== undefined &&
+    suppliers !== undefined &&
+    internalSuppliers !== undefined &&
+    !choosingSupplier;
+
   const header = (
     <FieldGroup appearance="standard" className="sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
@@ -503,28 +560,59 @@ function Planner({
           Bestilling
         </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Planlæg bestilling
+          {editing ? "Redigér bestilling" : "Planlæg bestilling"}
         </h1>
       </div>
       {canPlan ? (
-        <Field className="sm:max-w-72">
-          <FieldLabel htmlFor="ordering-location">Lokation</FieldLabel>
-          <LocationField
-            id="ordering-location"
-            locations={locations}
-            value={locationId}
-            locked={isLocked}
-            lockedName={lockedName}
-            disabled={busy || !locations.length}
-            onValueChange={(value) => {
-              const location = locations.find((item) => item.id === value);
-              if (location) {
-                setOrderingLocation(organizationId, location.id);
-                setAsOf(currentMinute());
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+          {showSupplierField ? (
+            <Field className="sm:w-64">
+              <FieldLabel htmlFor="ordering-supplier">Leverandør</FieldLabel>
+              <Select
+                items={supplierItems}
+                value={supplier?.id ?? internalSupplier?.locationId ?? NO_SUPPLIER}
+                onValueChange={(value) => setSupplierValue(value ?? NO_SUPPLIER)}
+                disabled={busy || editing || suppliers === undefined}
+              >
+                <SelectTrigger id="ordering-supplier" className="h-11 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {supplierItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : null}
+          <Field className="sm:w-72">
+            <FieldLabel htmlFor="ordering-location">Lokation</FieldLabel>
+            <LocationField
+              id="ordering-location"
+              locations={locations}
+              value={locationId}
+              locked={isLocked || editing}
+              lockedName={
+                editing
+                  ? locations.find((location) => location.id === locationId)
+                      ?.name
+                  : lockedName
               }
-            }}
-          />
-        </Field>
+              disabled={busy || !locations.length}
+              onValueChange={(value) => {
+                const location = locations.find((item) => item.id === value);
+                if (location) {
+                  setOrderingLocation(organizationId, location.id);
+                  setAsOf(currentMinute());
+                }
+              }}
+            />
+          </Field>
+        </div>
       ) : null}
     </FieldGroup>
   );
@@ -582,6 +670,25 @@ function Planner({
     ) return;
     submitting.current = true;
     setPlacing(true);
+    if (editOrder) {
+      try {
+        await updateOrder({ orderId: editOrder.id, lines: orderLines });
+        if (!mounted.current) return;
+        setConfirming(false);
+        toast.success("Bestillingen er opdateret");
+        router.push("/ordering/history");
+      } catch (error) {
+        if (mounted.current) {
+          toast.error(
+            getUserErrorMessage(error, "Bestillingen kunne ikke opdateres"),
+          );
+        }
+      } finally {
+        submitting.current = false;
+        if (mounted.current) setPlacing(false);
+      }
+      return;
+    }
     try {
       const emailed = Boolean(supplier?.email && sendEmail);
       await placeOrder({
@@ -617,6 +724,7 @@ function Planner({
   }
 
   function quantityInput(row: (typeof rows)[number]) {
+    if (internalSupplier) return unitLinesInput(row);
     return (
       <Field data-invalid={row.quantity === null} className="min-w-24">
         <Input
@@ -655,6 +763,134 @@ function Planner({
     );
   }
 
+  function unitLinesInput(row: (typeof rows)[number]) {
+    const setLines = (lines: { unitId: Id<"units">; input: string }[]) =>
+      setUnitLines((current) => ({ ...current, [row.key]: lines }));
+    const unusedUnits = row.units.filter(
+      (unit) => !row.lines.some((line) => line.unitId === unit.id),
+    );
+    return (
+      <div className="flex min-w-64 flex-col gap-2">
+        {row.lines.map((line, index) => {
+          const unitName =
+            row.units.find((unit) => unit.id === line.unitId)?.name ?? "";
+          const unitItems = row.units
+            .filter(
+              (unit) =>
+                unit.id === line.unitId ||
+                !row.lines.some((other) => other.unitId === unit.id),
+            )
+            .map((unit) => ({ value: unit.id, label: unit.name }));
+          const update = (next: Partial<(typeof row.lines)[number]>) =>
+            setLines(
+              row.lines.map((item, itemIndex) => ({
+                unitId: item.unitId,
+                input: item.input,
+                ...(itemIndex === index ? next : {}),
+              })),
+            );
+          return (
+            <Field
+              key={index}
+              orientation="horizontal"
+              data-invalid={line.quantity === null}
+            >
+              <Input
+                id={`quantity-${row.id}-${index}`}
+                aria-label={`Bestil ${row.name} i ${unitName}`}
+                value={line.input}
+                inputMode="decimal"
+                className="h-11 w-24"
+                disabled={busy}
+                aria-invalid={line.quantity === null}
+                onChange={(event) => update({ input: event.target.value })}
+              />
+              <Select
+                items={unitItems}
+                value={line.unitId}
+                onValueChange={(value) => {
+                  if (value) update({ unitId: value as Id<"units"> });
+                }}
+                disabled={busy || unitItems.length < 2}
+              >
+                <SelectTrigger
+                  className="h-11! w-32"
+                  aria-label={`Enhed for ${row.name}`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {unitItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {row.lines.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="size-11"
+                  aria-label={`Fjern ${unitName} for ${row.name}`}
+                  disabled={busy}
+                  onClick={() =>
+                    setLines(
+                      row.lines
+                        .filter((_, itemIndex) => itemIndex !== index)
+                        .map(({ unitId, input }) => ({ unitId, input })),
+                    )
+                  }
+                >
+                  <XIcon />
+                </Button>
+              ) : null}
+            </Field>
+          );
+        })}
+        <div className="flex flex-wrap gap-1">
+          {unusedUnits.length ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                setLines([
+                  ...row.lines.map(({ unitId, input }) => ({ unitId, input })),
+                  { unitId: unusedUnits[0].id, input: "" },
+                ])
+              }
+            >
+              <PlusIcon data-icon="inline-start" />
+              Tilføj enhed
+            </Button>
+          ) : null}
+          {row.edited ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                setUnitLines((current) => {
+                  const next = { ...current };
+                  delete next[row.key];
+                  return next;
+                })
+              }
+            >
+              {editing ? "Fortryd" : "Brug forslag"}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <AppPageHeader>{header}</AppPageHeader>
@@ -663,6 +899,27 @@ function Planner({
           <AlertTitle>Ingen adgang</AlertTitle>
           <AlertDescription>
             Du har ikke adgang til at planlægge bestillinger.
+          </AlertDescription>
+        </Alert>
+      ) : editing && editOrder === undefined ? (
+        <Skeleton className="h-72 w-full" />
+      ) : editing &&
+        (editOrder === null ||
+          (internalSuppliers !== undefined && !internalSupplier)) ? (
+        <Alert variant="destructive">
+          <AlertTitle>Bestillingen kan ikke redigeres</AlertTitle>
+          <AlertDescription>
+            <div className="flex flex-col items-start gap-3">
+              Der er allerede oprettet en transfer for den, eller den kan ikke
+              længere bestilles hos leverandøren.
+              <Button
+                variant="outline"
+                render={<Link href="/ordering/history" />}
+                nativeButton={false}
+              >
+                Til bestillingshistorikken
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       ) : !locationId ? (
@@ -740,133 +997,6 @@ function Planner({
         </section>
       ) : (
         <div className="flex flex-col gap-5 pb-72 sm:pb-56 lg:pb-40">
-          <Card>
-            <CardHeader>
-              <CardTitle>Bestillingsforslag</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FieldGroup appearance="relaxed" className="sm:flex-row sm:items-end">
-                <Field className="sm:max-w-64">
-                  <FieldLabel htmlFor="ordering-supplier">Leverandør</FieldLabel>
-                  <Select
-                    items={supplierItems}
-                    value={supplier?.id ?? internalSupplier?.locationId ?? NO_SUPPLIER}
-                    onValueChange={(value) => setSupplierValue(value ?? NO_SUPPLIER)}
-                    disabled={busy || suppliers === undefined}
-                  >
-                    <SelectTrigger id="ordering-supplier" className="h-11 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {supplierItems.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            {item.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-                  <HelpTooltip
-                    label="bestillingsforslag"
-                    content={
-                      <div className="flex max-w-sm flex-col gap-2">
-                        <p>
-                          Forslag bruger op til 90 dages produktforbrug. De
-                          seneste otte uger vægter i grundprognosen.
-                          Åbningstider og lukkedage medregnes; natåbent fordeles
-                          på kalenderdage. Vejr og helligdage læres særskilt fra
-                          hvert produkts mængder, når der er nok historik. Staff
-                          food og aktiv Waste fremskrives separat og lægges til.
-                          Waste kan indgå på lukkedage. Opskrifter i Staff food
-                          og Waste omregnes med de nuværende ingredienser. Waste
-                          skelner endnu ikke mellem forberedelsestab og
-                          undgåeligt spild. Buffer lægges til, og positiv
-                          lagerbeholdning trækkes fra. Indgående leverancer er
-                          ikke medregnet.
-                        </p>
-                        {context?.warning ? <p>{context.warning}</p> : null}
-                        {operationalHistory.staffFood.unresolvedCount +
-                          operationalHistory.waste.unresolvedCount >
-                        0 ? (
-                          <p>
-                            Nogle Staff food- eller Waste-registreringer mangler
-                            produkt- eller enhedskoblinger. Forslagene kan være
-                            for lave.
-                          </p>
-                        ) : null}
-                        {history.unmappedQuantity > 0 ? (
-                          <p>
-                            {numberFormatter.format(history.unmappedQuantity)}{" "}
-                            solgte enheder mangler produkt- eller
-                            enhedskoblinger. Forslagene kan være for lave.
-                          </p>
-                        ) : null}
-                        {context ? <p>{context.environment.message}</p> : null}
-                        <p>
-                          Vejr fra{" "}
-                          <a
-                            className="underline"
-                            href="https://openweathermap.org/"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            OpenWeather
-                          </a>
-                          , bearbejdet til prognoser under{" "}
-                          <a
-                            className="underline"
-                            href="https://creativecommons.org/licenses/by-sa/4.0/"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            CC BY-SA 4.0
-                          </a>
-                          . Helligdage fra{" "}
-                          <a
-                            className="underline"
-                            href="https://nagerholidays.com/"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Nager.Holidays
-                          </a>
-                          .
-                        </p>
-                      </div>
-                    }
-                  />
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    disabled={busy || loading}
-                    onClick={async () => {
-                      setAsOf(currentMinute());
-                      if (!locationId) return;
-                      try {
-                        await refreshEnvironment({ locationId });
-                        toast.success(
-                          "Forslag opdateres. Vejr og helligdage genbruges i op til ti minutter.",
-                        );
-                      } catch (error) {
-                        toast.error(
-                          getUserErrorMessage(
-                            error,
-                            "Prognosen kunne ikke opdateres",
-                          ),
-                        );
-                      }
-                    }}
-                  >
-                    <RefreshCwIcon data-icon="inline-start" />
-                    Opdatér forslag
-                  </Button>
-                </div>
-              </FieldGroup>
-            </CardContent>
-          </Card>
           {invalidQuantity ? (
             <Alert variant="destructive">
               <AlertTitle>Kontrollér mængderne</AlertTitle>
@@ -903,6 +1033,102 @@ function Planner({
                 onChange={(event) => setSearch(event.target.value)}
               />
             </InputGroup>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              <HelpTooltip
+                label="bestillingsforslag"
+                content={
+                  <div className="flex max-w-sm flex-col gap-2">
+                    <p>
+                      Forslag bruger op til 90 dages produktforbrug. De
+                      seneste otte uger vægter i grundprognosen.
+                      Åbningstider og lukkedage medregnes; natåbent fordeles
+                      på kalenderdage. Vejr og helligdage læres særskilt fra
+                      hvert produkts mængder, når der er nok historik. Staff
+                      food og aktiv Waste fremskrives separat og lægges til.
+                      Waste kan indgå på lukkedage. Opskrifter i Staff food
+                      og Waste omregnes med de nuværende ingredienser. Waste
+                      skelner endnu ikke mellem forberedelsestab og
+                      undgåeligt spild. Buffer lægges til, og positiv
+                      lagerbeholdning trækkes fra. Indgående leverancer er
+                      ikke medregnet.
+                    </p>
+                    {context?.warning ? <p>{context.warning}</p> : null}
+                    {operationalHistory.staffFood.unresolvedCount +
+                      operationalHistory.waste.unresolvedCount >
+                    0 ? (
+                      <p>
+                        Nogle Staff food- eller Waste-registreringer mangler
+                        produkt- eller enhedskoblinger. Forslagene kan være
+                        for lave.
+                      </p>
+                    ) : null}
+                    {history.unmappedQuantity > 0 ? (
+                      <p>
+                        {numberFormatter.format(history.unmappedQuantity)}{" "}
+                        solgte enheder mangler produkt- eller
+                        enhedskoblinger. Forslagene kan være for lave.
+                      </p>
+                    ) : null}
+                    {context ? <p>{context.environment.message}</p> : null}
+                    <p>
+                      Vejr fra{" "}
+                      <a
+                        className="underline"
+                        href="https://openweathermap.org/"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        OpenWeather
+                      </a>
+                      , bearbejdet til prognoser under{" "}
+                      <a
+                        className="underline"
+                        href="https://creativecommons.org/licenses/by-sa/4.0/"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        CC BY-SA 4.0
+                      </a>
+                      . Helligdage fra{" "}
+                      <a
+                        className="underline"
+                        href="https://nagerholidays.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Nager.Holidays
+                      </a>
+                      .
+                    </p>
+                  </div>
+                }
+              />
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={busy || loading}
+                onClick={async () => {
+                  setAsOf(currentMinute());
+                  if (!locationId) return;
+                  try {
+                    await refreshEnvironment({ locationId });
+                    toast.success(
+                      "Forslag opdateres. Vejr og helligdage genbruges i op til ti minutter.",
+                    );
+                  } catch (error) {
+                    toast.error(
+                      getUserErrorMessage(
+                        error,
+                        "Prognosen kunne ikke opdateres",
+                      ),
+                    );
+                  }
+                }}
+              >
+                <RefreshCwIcon data-icon="inline-start" />
+                Opdatér forslag
+              </Button>
+            </div>
           </div>
           {loading ? (
             <div role="status" className="flex flex-col gap-3">
@@ -1017,7 +1243,7 @@ function Planner({
                         {row.suggested === null
                           ? "Angiv manuelt"
                           : numberFormatter.format(row.suggested)}
-                        {row.productNumber ? (
+                        {row.productNumber || internalSupplier ? (
                           <div className="text-xs text-muted-foreground">
                             {row.orderUnitName}
                           </div>
@@ -1075,6 +1301,18 @@ function Planner({
                 />
               </div>
                 <div className="flex flex-wrap gap-2">
+                  {editing ? (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="h-12 flex-1 sm:flex-none"
+                      disabled={busy}
+                      render={<Link href="/ordering/history" />}
+                      nativeButton={false}
+                    >
+                      Annullér
+                    </Button>
+                  ) : null}
                   <Button
                     size="lg"
                     variant="outline"
@@ -1109,7 +1347,7 @@ function Planner({
                     }
                     onClick={() => setConfirming(true)}
                   >
-                    Afgiv bestilling
+                    {editing ? "Gem ændringer" : "Afgiv bestilling"}
                   </Button>
                 </div>
               </div>
@@ -1123,16 +1361,15 @@ function Planner({
           >
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Afgiv bestillingen?</AlertDialogTitle>
+                <AlertDialogTitle>
+                  {editing ? "Gem ændringerne?" : "Afgiv bestillingen?"}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Bestillingen med {plannedCount} produkter
-                  {supplierName ? ` hos ${supplierName}` : ""} gemmes i
-                  bestillingshistorikken for {locations.find((location) => location.id === locationId)?.name}.
-                  {internalSupplier
-                    ? ` ${internalSupplier.name} kan oprette en transfer ud fra den under Transfer.`
-                    : supplier?.email
-                      ? ""
-                      : " Den sendes ikke automatisk til en leverandør."}
+                  {plannedCount} {plannedCount === 1 ? "Produkt" : "Produkter"}
+                  {supplierName ? ` hos ${supplierName}` : ""}.
+                  {supplier && !supplier.email
+                    ? " Bestillingen sendes ikke automatisk til leverandøren."
+                    : ""}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               {supplier?.email ? (
@@ -1158,7 +1395,7 @@ function Planner({
                   }}
                 >
                   {placing ? <Spinner data-icon="inline-start" /> : null}
-                  Afgiv bestilling
+                  {editing ? "Gem ændringer" : "Afgiv bestilling"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

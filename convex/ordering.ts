@@ -3,6 +3,7 @@ import {
   getGsSupplyLink,
   getGsSupplySupplierId,
   getProductUnitFactor,
+  getProductUnitFactors,
 } from "./integrations/gssupply/lib/links";
 import {
   paginationOptsValidator,
@@ -80,6 +81,8 @@ const productValidator = v.object({
   category: v.string(),
   unitId: v.id("units"),
   unitName: v.string(),
+  // All units the Produkt can be ordered in, default first. Used by internal orders.
+  units: v.array(v.object({ id: v.id("units"), name: v.string() })),
   hasIngredients: v.boolean(),
   stock: v.union(v.number(), v.null()),
   lastCountedAt: v.union(v.number(), v.null()),
@@ -115,7 +118,7 @@ export const listProducts = query({
       ...result,
       page: await Promise.all(
         products.map(async (product) => {
-          const [unit, category, ingredient, stock, imageUrl] =
+          const [unit, category, ingredient, stock, imageUrl, units] =
             await Promise.all([
               ctx.db.get("units", product.defaultUnitId),
               ctx.db.get("categories", product.categoryId),
@@ -143,6 +146,13 @@ export const listProducts = query({
               product.imageStorageId
                 ? ctx.storage.getUrl(product.imageStorageId)
                 : null,
+              getProductUnitFactors(ctx, product).then((factors) =>
+                Promise.all(
+                  [...factors.keys()]
+                    .filter((unitId) => unitId !== product.defaultUnitId)
+                    .map((unitId) => ctx.db.get("units", unitId)),
+                ),
+              ),
             ]);
           if (!unit || unit.organizationId !== organizationId)
             throw new ConvexError("Produktets enhed blev ikke fundet");
@@ -156,6 +166,11 @@ export const listProducts = query({
                 : "Uden kategori",
             unitId: unit._id,
             unitName: unit.name,
+            units: [unit, ...units].flatMap((item) =>
+              item?.organizationId === organizationId
+                ? [{ id: item._id, name: item.name }]
+                : [],
+            ),
             hasIngredients: ingredient !== null,
             stock: stock?.quantity ?? null,
             lastCountedAt: stock?.lastCountedAt ?? null,
@@ -574,12 +589,16 @@ async function prepareOrder(
   }
   // Internal orders become one Transfer, which has a lower line limit.
   if (internalSupplier && lineCount > 200) {
-    throw new ConvexError("Vælg højst 200 Produkter i en intern bestilling");
+    throw new ConvexError(
+      "Vælg højst 200 produktlinjer i en intern bestilling",
+    );
   }
+  // Internal orders may list a Produkt once per unit.
   if (
     lineCount === 0 ||
     lineCount > 500 ||
-    new Set(args.lines.map((line) => line.productId)).size !== args.lines.length
+    new Set(args.lines.map((line) => `${line.productId}:${line.unitId}`))
+      .size !== args.lines.length
   ) {
     throw new ConvexError("Vælg mellem 1 og 500 forskellige produkter");
   }
@@ -623,11 +642,21 @@ async function prepareOrder(
           `${product.name} kan ikke længere bestilles hos ${internalSupplier.location.name}. Opdatér planen.`,
         );
       }
-      // Catalog suppliers are ordered in the linked unit, others in the default unit.
+      if (
+        internalSupplier &&
+        (await getProductUnitFactor(ctx, product, line.unitId)) === null
+      ) {
+        throw new ConvexError(
+          `${product.name} kan ikke bestilles i den valgte enhed. Opdatér planen.`,
+        );
+      }
+      // Catalog suppliers use the linked unit, internal orders any unit, others the default unit.
       const link = catalogSupplier
         ? await getGsSupplyLink(ctx, organizationId, product._id)
         : null;
-      const unitId = link?.unitId ?? product.defaultUnitId;
+      const unitId = internalSupplier
+        ? line.unitId
+        : (link?.unitId ?? product.defaultUnitId);
       if (
         (catalogSupplier && !link) ||
         line.unitId !== unitId ||
@@ -873,6 +902,109 @@ export const getHistory = query({
   args: { orderId: v.id("orders") },
   returns: v.union(historyDetailValidator, v.null()),
   handler: async (ctx, args) => await readHistory(ctx, args.orderId),
+});
+
+// An open internal order, loaded into the planner for editing.
+export const getEditableOrder = query({
+  args: { orderId: v.id("orders") },
+  returns: v.union(
+    v.object({
+      id: v.id("orders"),
+      locationId: v.id("locations"),
+      fulfillingLocationId: v.id("locations"),
+      lines: v.array(
+        v.object({
+          productId: v.id("products"),
+          unitId: v.id("units"),
+          quantity: v.number(),
+        }),
+      ),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const auth = await requireOrdering(ctx);
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId ||
+      order.fulfillmentStatus !== "open"
+    ) {
+      return null;
+    }
+    requireLocationAccess(auth, order.locationId);
+    const lines = await ctx.db
+      .query("orderLines")
+      .withIndex("by_organizationId_and_orderId", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("orderId", order._id),
+      )
+      .take(500);
+    return {
+      id: order._id,
+      locationId: order.locationId,
+      fulfillingLocationId: order.fulfillingLocationId,
+      lines: lines.flatMap(({ productId, unitId, quantity }) =>
+        productId && unitId ? [{ productId, unitId, quantity }] : [],
+      ),
+    };
+  },
+});
+
+export const updateInternalOrder = mutation({
+  args: {
+    orderId: v.id("orders"),
+    lines: orderInputValidator.fields.lines,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "ordering.place");
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId
+    ) {
+      throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    if (order.fulfillmentStatus !== "open") {
+      throw new ConvexError(
+        "Der er allerede oprettet en transfer for bestillingen, så den kan ikke ændres",
+      );
+    }
+    // Checks location access and that the supplier still offers each Produkt.
+    const { rows } = await prepareOrder(ctx, {
+      locationId: order.locationId,
+      fulfillingLocationId: order.fulfillingLocationId,
+      lines: args.lines,
+    });
+    const existing = await ctx.db
+      .query("orderLines")
+      .withIndex("by_organizationId_and_orderId", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("orderId", order._id),
+      )
+      .take(500);
+    for (const line of existing) await ctx.db.delete("orderLines", line._id);
+    for (const row of rows) {
+      await ctx.db.insert("orderLines", {
+        organizationId: auth.organizationId,
+        orderId: order._id,
+        ...row,
+      });
+    }
+    await ctx.db.patch("orders", order._id, {
+      itemCount: rows.length,
+      editedAt: Date.now(),
+    });
+    await recordAudit(ctx, auth, {
+      action: "ordering.update",
+      entityTable: "orders",
+      entityId: order._id,
+      locationId: order.locationId,
+      summary: `Intern bestilling ændret til ${rows.length} produkter${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
+    });
+    return null;
+  },
 });
 
 export const exportHistory = query({

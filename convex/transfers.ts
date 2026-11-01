@@ -520,13 +520,14 @@ export const createTransfer = mutation({
     ...transferArgsValidator.fields,
     // Fulfils an open internal order between the same locations.
     orderId: v.optional(v.id("orders")),
+    orderVersion: v.optional(v.number()),
   },
   returns: v.id("transfers"),
   handler: async (ctx, args) => {
     const auth = await requireTransferManager(ctx, "transfers.new");
     const { organizationId, userIdentifier } = auth;
     const order = args.orderId
-      ? await requireOpenOrder(ctx, auth, args.orderId)
+      ? await requireOpenOrder(ctx, auth, args.orderId, args.orderVersion)
       : null;
     if (
       order &&

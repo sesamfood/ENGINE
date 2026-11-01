@@ -108,6 +108,7 @@ export type EditableTransfer = {
 // An open internal order to fulfil with this Transfer.
 export type TransferOrder = {
   id: Id<"orders">;
+  version: number;
   locationId: Id<"locations">;
   fulfillingLocationId: Id<"locations">;
   items: Array<{
@@ -649,7 +650,11 @@ export function TransferForm({
         toast.success("Transferen er opdateret");
         onSaved?.();
       } else {
-        await createTransfer(order ? { ...payload, orderId: order.id } : payload);
+        await createTransfer(
+          order
+            ? { ...payload, orderId: order.id, orderVersion: order.version }
+            : payload,
+        );
         if (
           confirmedTemperatureDeviations &&
           confirmedTemperatureDeviations.length > 0

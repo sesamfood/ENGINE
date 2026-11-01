@@ -1380,6 +1380,8 @@ export default defineSchema({
       v.union(v.literal("open"), v.literal("transferred")),
     ),
     transferId: v.optional(v.id("transfers")),
+    // Set when an open internal order is edited. A Transfer must match the latest version.
+    editedAt: v.optional(v.number()),
   })
     .index("by_organizationId_and_locationId_and_createdAt", [
       "organizationId",

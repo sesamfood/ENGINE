@@ -311,15 +311,25 @@ async function getInternalOrder(
   return { ...order, fulfillingLocationId: order.fulfillingLocationId };
 }
 
+export function orderVersion(order: Doc<"orders">) {
+  return order.editedAt ?? order.createdAt;
+}
+
 export async function requireOpenOrder(
   ctx: MutationCtx,
   auth: OrganizationAuth,
   orderId: Id<"orders">,
+  version: number | undefined,
 ) {
   const order = await getInternalOrder(ctx, auth, orderId);
   if (order.fulfillmentStatus !== "open") {
     throw new ConvexError(
       "Der er allerede oprettet en transfer for bestillingen",
+    );
+  }
+  if (version !== orderVersion(order)) {
+    throw new ConvexError(
+      "Bestillingen er blevet ændret. Åbn den igen under Bestillinger.",
     );
   }
   return order;
@@ -329,6 +339,7 @@ export const getOpenOrder = query({
   args: { orderId: v.id("orders") },
   returns: v.union(
     openOrderValidator.extend({
+      version: v.number(),
       items: v.array(
         v.object({
           productId: v.id("products"),
@@ -368,6 +379,7 @@ export const getOpenOrder = query({
     );
     return {
       ...(await openOrderSummary(ctx, order)),
+      version: orderVersion(order),
       items: items.filter((item) => item !== null),
     };
   },

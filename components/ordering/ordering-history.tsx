@@ -2,7 +2,8 @@
 
 import { useConvex, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { DownloadIcon, HistoryIcon } from "lucide-react";
+import { DownloadIcon, HistoryIcon, PencilIcon } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppPageHeader } from "@/components/app-page-header";
@@ -99,6 +100,7 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
   const order = useQuery(api.ordering.getHistory, { orderId });
   const convex = useConvex();
   const canExport = usePermission("ordering.export");
+  const canPlace = usePermission("ordering.place");
   const [exporting, setExporting] = useState(false);
   const mounted = useRef(true);
 
@@ -221,7 +223,9 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
             </TableHeader>
             <TableBody>
               {order.rows.map((row) => (
-                <TableRow key={row.productId ?? row.supplierProductNumber}>
+                <TableRow
+                  key={`${row.productId ?? row.supplierProductNumber}:${row.unitName}`}
+                >
                   <TableCell
                     appearance="label"
                     className="whitespace-normal break-words"
@@ -244,6 +248,16 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
         </div>
       </div>
       <DialogFooter showCloseButton>
+        {canPlace && order.fulfillmentStatus === "open" ? (
+          <Button
+            variant="outline"
+            render={<Link href={`/ordering?order=${order._id}`} />}
+            nativeButton={false}
+          >
+            <PencilIcon data-icon="inline-start" />
+            Redigér
+          </Button>
+        ) : null}
         {canExport ? (
           <Button disabled={exporting} onClick={() => void exportOrder()}>
             {exporting ? (
