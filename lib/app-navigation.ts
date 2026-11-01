@@ -9,6 +9,7 @@ const administrationPermissions: PermissionId[] = [
   "locations.manage",
   "organization.settings",
   "count.settings",
+  "count.manage",
   "waste.settings",
   "expenses.settings",
   "goodsReceipts.settings",

@@ -68,6 +68,10 @@ export const permissionCatalog = [
       { id: "count.register", label: "Registrere Counts" },
       { id: "count.viewStock", label: "Se lagerbeholdning" },
       { id: "count.export", label: "Eksportere Count-data" },
+      {
+        id: "count.manage",
+        label: "Åbne ekstra Counts og tilføje glemte Produkter",
+      },
     ],
   },
   {

@@ -107,6 +107,7 @@ export const permissionFeatures: Record<PermissionId, FeatureId | null> = {
   "count.register": "count",
   "count.viewStock": "count",
   "count.export": "count",
+  "count.manage": "count",
   "waste.register": "waste",
   "waste.report": "waste",
   "waste.export": "waste",

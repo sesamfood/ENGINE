@@ -84,6 +84,7 @@ export function CountSettings() {
   );
   const access = useAccess();
   const canManage = usePermission("count.settings");
+  const canManageCount = usePermission("count.manage");
   const settings = useQuery(
     api.count.getCountSettings,
     canManage ? {} : "skip",
@@ -129,6 +130,7 @@ export function CountSettings() {
   }
 
   if (!canManage) {
+    if (canManageCount) return null;
     return (
       <Alert variant="destructive" className="max-w-xl">
         <AlertTitle>Ingen adgang</AlertTitle>

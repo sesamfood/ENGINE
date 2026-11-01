@@ -25,7 +25,8 @@ import {
 import { countScheduleValidator } from "./lib/countSettings";
 import {
   getCountConfiguration,
-  getLocationCountWindow,
+  getCurrentCount,
+  getOpenAdHocCount,
 } from "./lib/countWindow";
 import { setStock, toDefaultUnit } from "./lib/stock";
 import { recordAudit, requireAuditReason } from "./lib/audit";
@@ -49,6 +50,7 @@ const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
 const MAX_COUNT_ITEMS = 5000;
 const MAX_LOCATION_STOCK_ROWS = 5000;
+const MAX_LOCATIONS = 200;
 
 const settingsValidator = v.object({
   allowOutsideWindow: v.boolean(),
@@ -79,6 +81,7 @@ const countStateValidator = v.object({
   nextTransitionAt: v.union(v.number(), v.null()),
   isOpen: v.boolean(),
   outsideWindowAllowed: v.boolean(),
+  adHoc: v.boolean(),
   count: v.union(countSummaryValidator, v.null()),
 });
 
@@ -98,6 +101,7 @@ const locationStockValidator = v.object({
   defaultUnitName: v.string(),
   units: v.array(
     v.object({
+      id: v.id("units"),
       name: v.string(),
       factorToDefault: v.number(),
     }),
@@ -168,29 +172,12 @@ function requireCountSchedule(
   }
 }
 
-async function getCount(
+async function getLatestSubmittedCount(
   ctx: CountContext,
   organizationId: string,
   locationId: Id<"locations">,
-  periodKey: string,
 ) {
   return await ctx.db
-    .query("counts")
-    .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
-      q
-        .eq("organizationId", organizationId)
-        .eq("locationId", locationId)
-        .eq("periodKey", periodKey),
-    )
-    .unique();
-}
-
-async function hasSubmittedCount(
-  ctx: CountContext,
-  organizationId: string,
-  locationId: Id<"locations">,
-) {
-  const count = await ctx.db
     .query("counts")
     .withIndex("by_organizationId_and_locationId_and_submittedAt", (q) =>
       q
@@ -198,8 +185,18 @@ async function hasSubmittedCount(
         .eq("locationId", locationId)
         .gt("submittedAt", 0),
     )
+    .order("desc")
     .first();
-  return count !== null;
+}
+
+async function hasSubmittedCount(
+  ctx: CountContext,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  return (
+    (await getLatestSubmittedCount(ctx, organizationId, locationId)) !== null
+  );
 }
 
 async function getCountItems(
@@ -265,25 +262,17 @@ async function getWritableCount(
   },
 ) {
   const now = Date.now();
-  const window = await getLocationCountWindow(
+  const { window, count } = await getCurrentCount(
     ctx,
     args.organizationId,
     args.location,
     now,
   );
-  const [count, hasSubmitted] = await Promise.all([
-    getCount(
-      ctx,
-      args.organizationId,
-      args.location._id,
-      window.periodKey,
-    ),
-    hasSubmittedCount(ctx, args.organizationId, args.location._id),
-  ]);
   if (
+    !count?.adHoc &&
     !window.allowOutsideWindow &&
-    hasSubmitted &&
-    !windowIsOpen(now, window)
+    !windowIsOpen(now, window) &&
+    (await hasSubmittedCount(ctx, args.organizationId, args.location._id))
   ) {
     throw new ConvexError("Count-vinduet er lukket");
   }
@@ -302,6 +291,75 @@ async function getWritableCount(
   const created = await ctx.db.get("counts", countId);
   if (!created) throw new ConvexError("Count kunne ikke oprettes");
   return created;
+}
+
+async function hasOnlinePosStockConnection(
+  ctx: MutationCtx,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const onlinePos = await getOnlinePosOrganizationSettings(ctx, organizationId);
+  if (!onlinePos?.enabled || !onlinePos.stockSyncEnabled) return false;
+  const connection = await ctx.db
+    .query("onlinePosLocationIntegrations")
+    .withIndex("by_organizationId_and_locationId", (q) =>
+      q.eq("organizationId", organizationId).eq("locationId", locationId),
+    )
+    .unique();
+  return connection !== null;
+}
+
+// Overwrites stock with the counted quantity and records the deviation for the Waste-rapport.
+async function reconcileStock(
+  ctx: MutationCtx,
+  args: {
+    organizationId: string;
+    locationId: Id<"locations">;
+    countId: Id<"counts">;
+    productId: Id<"products">;
+    quantity: number;
+    now: number;
+    onlinePosConnected: boolean;
+  },
+) {
+  const { organizationId, productId, quantity } = args;
+  const previousStock = await setStock(
+    ctx,
+    organizationId,
+    args.locationId,
+    productId,
+    quantity,
+    args.now,
+  );
+  if (!previousStock?.lastCountedAt) return;
+  const product = await ctx.db.get("products", productId);
+  const defaultUnit = product
+    ? await ctx.db.get("units", product.defaultUnitId)
+    : null;
+  if (
+    !product ||
+    product.organizationId !== organizationId ||
+    !defaultUnit ||
+    defaultUnit.organizationId !== organizationId
+  ) {
+    throw new ConvexError("Produktet eller standardenheden blev ikke fundet");
+  }
+  await ctx.db.insert("countReconciliationItems", {
+    organizationId,
+    countId: args.countId,
+    productId,
+    productName: product.name,
+    defaultUnitName: defaultUnit.name,
+    defaultUnitId: defaultUnit._id,
+    expectedQuantity:
+      previousStock.quantity + (previousStock.onlinePosSalesQuantity ?? 0),
+    countedQuantity: quantity,
+    expectedSinceAt: previousStock.lastCountedAt,
+    onlinePosStockAccounting:
+      args.onlinePosConnected ||
+      previousStock.onlinePosSalesQuantity !== undefined,
+    onlinePosAppliedSalesQuantity: previousStock.onlinePosSalesQuantity,
+  });
 }
 
 async function markCountAreaProduct(
@@ -453,24 +511,18 @@ export const getCountState = query({
       organizationId,
       args.locationId,
     );
-    const window = await getLocationCountWindow(
-      ctx,
-      organizationId,
-      location,
-      args.now,
-    );
-    const periodKey = window.periodKey;
-    const [count, hasSubmitted] = await Promise.all([
-      getCount(ctx, organizationId, args.locationId, periodKey),
+    const [{ window, count }, hasSubmitted] = await Promise.all([
+      getCurrentCount(ctx, organizationId, location, args.now),
       hasSubmittedCount(ctx, organizationId, args.locationId),
     ]);
+    const adHoc = count?.adHoc === true;
     const countAreaProgress = count
       ? await listCountAreaProgress(ctx, organizationId, count._id)
       : [];
 
     return {
       timeZone: window.timeZone,
-      periodKey,
+      periodKey: count?.periodKey ?? window.periodKey,
       opensAt: window.opensAt,
       closesAt: window.closesAt,
       nextTransitionAt:
@@ -480,10 +532,12 @@ export const getCountState = query({
             ? window.closesAt
             : null,
       isOpen:
+        adHoc ||
         window.allowOutsideWindow ||
         !hasSubmitted ||
         windowIsOpen(args.now, window),
       outsideWindowAllowed: window.allowOutsideWindow,
+      adHoc,
       count: count
         ? {
             id: count._id,
@@ -918,29 +972,14 @@ export const submitCount = mutation({
       args.locationId,
     );
     const now = Date.now();
-    const window = await getLocationCountWindow(
-      ctx,
+    const count = await getWritableCount(ctx, {
       organizationId,
+      userIdentifier: auth.userIdentifier,
       location,
-      now,
-    );
-    const periodKey = window.periodKey;
-    const [count, hasSubmitted] = await Promise.all([
-      getCount(ctx, organizationId, args.locationId, periodKey),
-      hasSubmittedCount(ctx, organizationId, args.locationId),
-    ]);
-    if (
-      !window.allowOutsideWindow &&
-      hasSubmitted &&
-      !windowIsOpen(now, window)
-    ) {
-      throw new ConvexError("Count-vinduet er lukket");
-    }
+      create: false,
+    });
     if (!count) {
       throw new ConvexError("Indtast mindst én mængde før registrering");
-    }
-    if (count.status === "submitted") {
-      throw new ConvexError("Count er allerede registreret");
     }
     const items = await getCountItems(ctx, organizationId, count._id);
     if (items.length === 0) {
@@ -948,11 +987,11 @@ export const submitCount = mutation({
     }
 
     const totals = new Map<Id<"products">, number>();
-    const onlinePos = await getOnlinePosOrganizationSettings(ctx, organizationId);
-    const onlinePosConnection = onlinePos?.enabled && onlinePos.stockSyncEnabled
-      ? await ctx.db.query("onlinePosLocationIntegrations")
-        .withIndex("by_organizationId_and_locationId", q => q.eq("organizationId", organizationId).eq("locationId", args.locationId)).unique()
-      : null;
+    const onlinePosConnected = await hasOnlinePosStockConnection(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
     for (const item of items) {
       const quantity = await toDefaultUnit(
         ctx,
@@ -969,43 +1008,15 @@ export const submitCount = mutation({
       totals.set(item.productId, (totals.get(item.productId) ?? 0) + quantity);
     }
     for (const [productId, quantity] of totals) {
-      const previousStock = await setStock(
-        ctx,
+      await reconcileStock(ctx, {
         organizationId,
-        args.locationId,
+        locationId: args.locationId,
+        countId: count._id,
         productId,
         quantity,
         now,
-      );
-      if (previousStock?.lastCountedAt) {
-        const product = await ctx.db.get("products", productId);
-        const defaultUnit = product
-          ? await ctx.db.get("units", product.defaultUnitId)
-          : null;
-        if (
-          !product ||
-          product.organizationId !== organizationId ||
-          !defaultUnit ||
-          defaultUnit.organizationId !== organizationId
-        ) {
-          throw new ConvexError(
-            "Produktet eller standardenheden blev ikke fundet",
-          );
-        }
-        await ctx.db.insert("countReconciliationItems", {
-          organizationId,
-          countId: count._id,
-          productId,
-          productName: product.name,
-          defaultUnitName: defaultUnit.name,
-          defaultUnitId: defaultUnit._id,
-          expectedQuantity: previousStock.quantity + (previousStock.onlinePosSalesQuantity ?? 0),
-          countedQuantity: quantity,
-          expectedSinceAt: previousStock.lastCountedAt,
-          onlinePosStockAccounting: onlinePosConnection !== null || previousStock.onlinePosSalesQuantity !== undefined,
-          onlinePosAppliedSalesQuantity: previousStock.onlinePosSalesQuantity,
-        });
-      }
+        onlinePosConnected,
+      });
     }
     await ctx.db.patch("counts", count._id, {
       status: "submitted",
@@ -1019,6 +1030,304 @@ export const submitCount = mutation({
       locationId: args.locationId,
       summary: "Count registreret og lageret afstemt",
       reason,
+    });
+    return null;
+  },
+});
+
+export const listAdHocCountLocations = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      id: v.id("locations"),
+      name: v.string(),
+      openedAt: v.union(v.number(), v.null()),
+    }),
+  ),
+  handler: async (ctx) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    const locations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_LOCATIONS + 1);
+    if (locations.length > MAX_LOCATIONS) {
+      throw new ConvexError("Organisationen har for mange lokationer");
+    }
+    const accessible = locations.filter(
+      (location) =>
+        (!auth.isKioskAccount || auth.kioskLocationId === location._id) &&
+        (auth.locationScope.all || auth.locationScope.ids.has(location._id)),
+    );
+    return await Promise.all(
+      accessible.map(async (location) => {
+        const count = await getOpenAdHocCount(
+          ctx,
+          organizationId,
+          location._id,
+        );
+        return {
+          id: location._id,
+          name: location.name,
+          openedAt: count?._creationTime ?? null,
+        };
+      }),
+    );
+  },
+});
+
+export const openAdHocCount = mutation({
+  args: {
+    locationId: v.id("locations"),
+    continueFromLatest: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const now = Date.now();
+    const [{ window, count }, hasSubmitted] = await Promise.all([
+      getCurrentCount(ctx, organizationId, location, now),
+      hasSubmittedCount(ctx, organizationId, location._id),
+    ]);
+    if (count?.adHoc) {
+      throw new ConvexError("Der er allerede en åben ekstra Count");
+    }
+    if (
+      count?.status !== "submitted" &&
+      (window.allowOutsideWindow ||
+        !hasSubmitted ||
+        windowIsOpen(now, window))
+    ) {
+      throw new ConvexError("Count-vinduet er allerede åbent");
+    }
+    const countId = await ctx.db.insert("counts", {
+      organizationId,
+      locationId: location._id,
+      periodKey: `adhoc-${now}`,
+      status: "open",
+      adHoc: true,
+      createdBy: auth.userIdentifier,
+    });
+    if (args.continueFromLatest) {
+      const latest = await getLatestSubmittedCount(
+        ctx,
+        organizationId,
+        location._id,
+      );
+      const items = latest
+        ? await getCountItems(ctx, organizationId, latest._id)
+        : [];
+      const products = new Map<Id<"products">, boolean>();
+      for (const item of items) {
+        if (!products.has(item.productId)) {
+          const product = await ctx.db.get("products", item.productId);
+          products.set(item.productId, product?.status === "active");
+        }
+        if (
+          !products.get(item.productId) ||
+          (await toDefaultUnit(
+            ctx,
+            organizationId,
+            item.productId,
+            item.unitId,
+            item.quantity,
+          )) === null
+        ) {
+          continue;
+        }
+        await ctx.db.insert("countItems", {
+          organizationId,
+          countId,
+          countAreaId: item.countAreaId,
+          productId: item.productId,
+          unitId: item.unitId,
+          quantity: item.quantity,
+        });
+      }
+      // Keep which Produkter were counted per Område, but let areas be completed again.
+      const progress = latest
+        ? await listCountAreaProgress(ctx, organizationId, latest._id)
+        : [];
+      for (const row of progress) {
+        await ctx.db.insert("countAreaProgress", {
+          organizationId,
+          locationId: location._id,
+          countId,
+          countAreaId: row.countAreaId,
+          countedProductIds: row.countedProductIds,
+        });
+      }
+    }
+    await recordAudit(ctx, auth, {
+      action: "count.adHocOpened",
+      entityTable: "counts",
+      entityId: countId,
+      locationId: location._id,
+      summary: "Ekstra Count åbnet",
+    });
+    return null;
+  },
+});
+
+export const cancelAdHocCount = mutation({
+  args: { locationId: v.id("locations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    await requireLocation(ctx, organizationId, args.locationId);
+    const count = await getOpenAdHocCount(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    if (!count) throw new ConvexError("Der er ingen åben ekstra Count");
+    const [items, progress] = await Promise.all([
+      getCountItems(ctx, organizationId, count._id),
+      listCountAreaProgress(ctx, organizationId, count._id),
+    ]);
+    for (const item of items) await ctx.db.delete("countItems", item._id);
+    for (const row of progress) {
+      await ctx.db.delete("countAreaProgress", row._id);
+    }
+    await ctx.db.delete("counts", count._id);
+    await recordAudit(ctx, auth, {
+      action: "count.adHocCancelled",
+      entityTable: "counts",
+      entityId: count._id,
+      locationId: args.locationId,
+      summary: "Ekstra Count annulleret",
+    });
+    return null;
+  },
+});
+
+export const addProductToLatestCount = mutation({
+  args: {
+    locationId: v.id("locations"),
+    productId: v.id("products"),
+    quantities: v.array(
+      v.object({ unitId: v.id("units"), quantity: v.number() }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    requireLocationAccess(auth, args.locationId);
+    if (
+      args.quantities.length === 0 ||
+      args.quantities.length > MAX_PRODUCT_UNITS ||
+      new Set(args.quantities.map((row) => row.unitId)).size !==
+        args.quantities.length
+    ) {
+      throw new ConvexError("Angiv en mængde");
+    }
+    if (
+      args.quantities.some(
+        (row) => !Number.isFinite(row.quantity) || row.quantity < 0,
+      )
+    ) {
+      throw new ConvexError("Mængden skal være nul eller større");
+    }
+    const location = await requireLocation(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const product = await ctx.db.get("products", args.productId);
+    if (
+      !product ||
+      product.organizationId !== organizationId ||
+      product.status !== "active"
+    ) {
+      throw new ConvexError("Produktet blev ikke fundet");
+    }
+    await requireLocationProduct(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+    );
+    await requireCountedProduct(
+      ctx,
+      organizationId,
+      location._id,
+      product._id,
+    );
+    let quantity = 0;
+    for (const row of args.quantities) {
+      const converted = await toDefaultUnit(
+        ctx,
+        organizationId,
+        product._id,
+        row.unitId,
+        row.quantity,
+      );
+      if (converted === null) throw new ConvexError("Enheden blev ikke fundet");
+      quantity += converted;
+    }
+    const count = await getLatestSubmittedCount(
+      ctx,
+      organizationId,
+      location._id,
+    );
+    if (!count) {
+      throw new ConvexError("Lokationen har ingen registreret Count");
+    }
+    const counted = await ctx.db
+      .query("countItems")
+      .withIndex(
+        "by_organizationId_and_countId_and_productId_and_unitId",
+        (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("countId", count._id)
+            .eq("productId", product._id),
+      )
+      .first();
+    if (counted) {
+      throw new ConvexError("Produktet er allerede talt i den seneste Count");
+    }
+
+    for (const row of args.quantities) {
+      await ctx.db.insert("countItems", {
+        organizationId,
+        countId: count._id,
+        productId: product._id,
+        unitId: row.unitId,
+        quantity: row.quantity,
+      });
+    }
+    await reconcileStock(ctx, {
+      organizationId,
+      locationId: location._id,
+      countId: count._id,
+      productId: product._id,
+      quantity,
+      now: Date.now(),
+      onlinePosConnected: await hasOnlinePosStockConnection(
+        ctx,
+        organizationId,
+        location._id,
+      ),
+    });
+    await recordAudit(ctx, auth, {
+      action: "count.productAdded",
+      entityTable: "counts",
+      entityId: count._id,
+      locationId: location._id,
+      summary: `${product.name} tilføjet til seneste Count`,
     });
     return null;
   },
@@ -1233,6 +1542,7 @@ async function hydrateLocationStock(
           return unit?.organizationId === organizationId
             ? [
                 {
+                  id: unit._id,
                   name: unit.name,
                   factorToDefault: row.factorToDefault,
                 },

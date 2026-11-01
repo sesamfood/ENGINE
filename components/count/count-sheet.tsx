@@ -15,6 +15,7 @@ import { QuantityInput } from "@/components/quantity-input";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { usePermission } from "@/components/app-shell";
+import { AddForgottenProductButton } from "@/components/count/add-to-latest-count-dialog";
 import { CountNavigation } from "@/components/count/count-navigation";
 import { useCountState } from "@/components/count/count-state-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1234,6 +1235,7 @@ export function CountSheet() {
   const submitCount = useMutation(api.count.submitCount);
   const setProductOrder = useMutation(api.countAreas.setProductOrder);
 
+
   const queriedCountAreas = useQuery(
     api.countAreas.listForCount,
     canRegister && locationId ? { locationId } : "skip",
@@ -2194,6 +2196,11 @@ export function CountSheet() {
                 </span>
               </Badge>
             ) : null}
+            {state &&
+            !state.adHoc &&
+            (isClosed || state.count?.status === "submitted") ? (
+              <AddForgottenProductButton />
+            ) : null}
             {state?.count?.status === "submitted" && canExport ? (
               <Button
                 type="button"
@@ -2254,6 +2261,7 @@ export function CountSheet() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>
   );
 }

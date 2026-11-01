@@ -76,6 +76,7 @@ export const feedbackAreas = [
       "locations.manage",
       "organization.settings",
       "count.settings",
+      "count.manage",
       "goodsReceipts.settings",
       "waste.settings",
       "ownChecks.manage",

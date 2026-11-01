@@ -71,6 +71,7 @@ function formatStockQuantity(
     : `${largest} og ${quantityFormatter.format(remainder)} ${defaultUnitName}`;
 }
 
+
 export function LocationStock() {
   const [view, setView] = useState<"grid" | "detail">("grid");
   const { locations, locationId, state } = useCountState();

@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { getLocationCountWindow } from "./countWindow";
+import { getCurrentCount } from "./countWindow";
 
 const MAX_PRODUCTS = 500;
 const MAX_INGREDIENTS_PER_PRODUCT = 500;
@@ -224,21 +224,12 @@ export async function setLocationProducts(
     throw new ConvexError("Et Produkt blev ikke fundet");
   }
 
-  const countWindow = await getLocationCountWindow(
+  const { count: currentCount } = await getCurrentCount(
     ctx,
     organizationId,
     location,
     Date.now(),
   );
-  const currentCount = await ctx.db
-    .query("counts")
-    .withIndex("by_organizationId_and_locationId_and_periodKey", (q) =>
-      q
-        .eq("organizationId", organizationId)
-        .eq("locationId", location._id)
-        .eq("periodKey", countWindow.periodKey),
-    )
-    .unique();
   if (currentCount?.status === "open") {
     const countItem = await ctx.db
       .query("countItems")
