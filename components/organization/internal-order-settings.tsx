@@ -2,13 +2,18 @@
 
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { PlusIcon, StoreIcon } from "lucide-react";
+import {
+  CheckIcon,
+  PackageOpenIcon,
+  PlusIcon,
+  SearchIcon,
+  StoreIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useAccess, usePermission } from "@/components/app-shell";
-import { ProductCategoryCombobox } from "@/components/catalog/product-category-combobox";
+import { usePermission } from "@/components/app-shell";
+import { ProductCardMedia } from "@/components/catalog/product-card-media";
 import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,9 +25,28 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Empty,
   EmptyDescription,
@@ -39,6 +63,11 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -46,8 +75,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
@@ -56,11 +87,11 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Settings = FunctionReturnType<typeof api.internalOrders.getSettings>;
 type Categories = FunctionReturnType<typeof api.catalog.listCategoryOptions>;
-type ProductOption = {
-  value: string;
-  label: string;
-  categoryIds: readonly string[];
-};
+type Products = NonNullable<
+  ReturnType<
+    typeof useCompleteCatalog<typeof api.catalog.listActiveProductsPage>
+  >
+>;
 
 export function InternalOrderSettings() {
   const { data: session } = authClient.useSession();
@@ -72,7 +103,6 @@ export function InternalOrderSettings() {
 }
 
 function SettingsContent() {
-  const access = useAccess();
   const canManage = usePermission("organization.settings");
   const settings = useQuery(
     api.internalOrders.getSettings,
@@ -83,40 +113,18 @@ function SettingsContent() {
     canManage ? {} : "skip",
   );
   const products = useCompleteCatalog(
-    api.catalog.listActiveProductSearchOptionsPage,
+    api.catalog.listActiveProductsPage,
     canManage ? {} : "skip",
   );
-  const setEnabled = useMutation(api.internalOrders.setEnabled);
-  const [savingEnabled, setSavingEnabled] = useState(false);
   // Locations added here but not saved yet.
   const [added, setAdded] = useState<Id<"locations">[]>([]);
   const [toAdd, setToAdd] = useState<string | null>(null);
-  const productOptions = useMemo(
-    () =>
-      products?.map((product) => ({
-        value: product.id,
-        label: product.name,
-        categoryIds: product.categoryIds,
-      })),
-    [products],
-  );
 
-  if (!access) return <Skeleton className="h-56 max-w-3xl" />;
-  if (!canManage) {
-    return (
-      <Alert variant="destructive" className="max-w-3xl">
-        <AlertTitle>Ingen adgang</AlertTitle>
-        <AlertDescription>
-          Du har ikke adgang til at ændre indstillinger for interne bestillinger.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-  if (!settings || !categories || !productOptions) {
+  if (!canManage) return null;
+  if (!settings || !categories || !products) {
     return <Skeleton className="h-56 max-w-3xl" />;
   }
 
-  const orderingDisabled = access.disabledFeatures.includes("ordering");
   const savedIds = new Set(settings.suppliers.map((item) => item.locationId));
   const supplierIds = [
     ...settings.suppliers.map((item) => item.locationId),
@@ -129,134 +137,96 @@ function SettingsContent() {
     (location) => !supplierIds.includes(location.id),
   );
 
-  async function changeEnabled(enabled: boolean) {
-    setSavingEnabled(true);
-    try {
-      await setEnabled({ enabled });
-      toast.success(
-        `Interne bestillinger er slået ${enabled ? "til" : "fra"}`,
-      );
-    } catch (error) {
-      toast.error(
-        getUserErrorMessage(error, "Indstillingen kunne ikke gemmes. Prøv igen."),
-      );
-    } finally {
-      setSavingEnabled(false);
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-6">
-      <Card className="max-w-3xl">
-        <CardHeader>
-          <CardTitle>Aktivering</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            <SettingsSwitchField
-              id="internal-orders-enabled"
-              label="Interne bestillinger"
-              help={{
-                label: "interne bestillinger",
-                content:
-                  "Lokationer kan bestille hos hinanden under Bestilling. Den leverende lokation opretter en transfer ud fra bestillingen under Transfer → Bestillinger, og modtageren registrerer den under Varemodtagelse.",
-              }}
-              checked={settings.enabled}
-              onCheckedChange={(checked) => void changeEnabled(checked)}
-              disabled={savingEnabled}
-            />
-          </FieldGroup>
-          {orderingDisabled && settings.enabled ? (
-            <Alert className="mt-4">
-              <AlertDescription>
-                Bestilling er slået fra, så interne bestillinger vises ikke.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <section
-        aria-labelledby="internal-suppliers-title"
-        className="flex max-w-3xl flex-col gap-4"
-      >
+    <section
+      aria-labelledby="internal-suppliers-title"
+      className="flex max-w-3xl flex-col gap-4"
+    >
+      <div className="flex items-center gap-1">
         <h2 id="internal-suppliers-title" className="text-xl font-semibold">
-          Leverende lokationer
+          Interne leverandører
         </h2>
-        {supplierIds.length === 0 ? (
-          <Empty appearance="outlined">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <StoreIcon />
-              </EmptyMedia>
-              <EmptyTitle>Ingen leverende lokationer</EmptyTitle>
-              <EmptyDescription>
-                Tilføj en lokation, som andre lokationer kan bestille hos.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          supplierIds.map((locationId) => (
-            <SupplierCard
-              key={locationId}
-              locationId={locationId}
-              name={locationName(locationId)}
-              settings={settings}
-              categories={categories}
-              products={productOptions}
-              onRemoved={() =>
-                setAdded((current) => current.filter((id) => id !== locationId))
-              }
-            />
-          ))
-        )}
-        {addable.length ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <Field className="sm:max-w-72">
-              <FieldLabel htmlFor="internal-supplier-add">
-                Tilføj leverende lokation
-              </FieldLabel>
-              <Select
-                items={addable.map((location) => ({
-                  value: location.id,
-                  label: location.name,
-                }))}
-                value={toAdd}
-                onValueChange={(value) => setToAdd(value)}
-              >
-                <SelectTrigger id="internal-supplier-add" className="h-11 w-full">
-                  <SelectValue placeholder="Vælg lokation" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {addable.map((location) => (
-                      <SelectItem key={location.id} value={location.id}>
-                        {location.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Button
-              size="lg"
-              variant="outline"
-              className="min-h-11"
-              disabled={!toAdd}
-              onClick={() => {
-                const location = addable.find((item) => item.id === toAdd);
-                if (!location) return;
-                setAdded((current) => [...current, location.id]);
-                setToAdd(null);
-              }}
+        <HelpTooltip
+          label="interne leverandører"
+          content="Lokationer kan bestille hos en intern leverandør under Bestilling. Den leverende lokation opretter en transfer ud fra bestillingen under Transfer → Bestillinger, og modtageren registrerer den under Varemodtagelse."
+        />
+      </div>
+      {supplierIds.length === 0 ? (
+        <Empty appearance="outlined">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <StoreIcon />
+            </EmptyMedia>
+            <EmptyTitle>Ingen interne leverandører</EmptyTitle>
+            <EmptyDescription>
+              Tilføj en lokation, som andre lokationer kan bestille hos.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        supplierIds.map((locationId) => (
+          <SupplierCard
+            key={locationId}
+            locationId={locationId}
+            name={locationName(locationId)}
+            settings={settings}
+            categories={categories}
+            products={products}
+            onRemoved={() =>
+              setAdded((current) => current.filter((id) => id !== locationId))
+            }
+          />
+        ))
+      )}
+      {addable.length ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <Field className="sm:max-w-72">
+            <FieldLabel htmlFor="internal-supplier-add">
+              Tilføj intern leverandør
+            </FieldLabel>
+            <Select
+              items={addable.map((location) => ({
+                value: location.id,
+                label: location.name,
+              }))}
+              value={toAdd}
+              onValueChange={(value) => setToAdd(value)}
             >
-              <PlusIcon data-icon="inline-start" />
-              Tilføj
-            </Button>
-          </div>
-        ) : null}
-      </section>
-    </div>
+              <SelectTrigger
+                id="internal-supplier-add"
+                className="h-11! w-full"
+              >
+                <SelectValue placeholder="Vælg lokation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {addable.map((location) => (
+                    <SelectItem key={location.id} value={location.id}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Button
+            size="lg"
+            variant="outline"
+            className="min-h-11"
+            disabled={!toAdd}
+            onClick={() => {
+              const location = addable.find((item) => item.id === toAdd);
+              if (!location) return;
+              setAdded((current) => [...current, location.id]);
+              setToAdd(null);
+            }}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Tilføj
+          </Button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -272,32 +242,52 @@ function SupplierCard({
   name: string;
   settings: Settings;
   categories: Categories;
-  products: ProductOption[];
+  products: Products;
   onRemoved: () => void;
 }) {
-  const saved = settings.suppliers.find((item) => item.locationId === locationId);
+  const saved = settings.suppliers.find(
+    (item) => item.locationId === locationId,
+  );
   const saveSupplier = useMutation(api.internalOrders.saveSupplier);
   const removeSupplier = useMutation(api.internalOrders.removeSupplier);
+  const [activeDraft, setActiveDraft] = useState<boolean | null>(null);
+  const [allDraft, setAllDraft] = useState<boolean | null>(null);
   const [orderingDraft, setOrderingDraft] = useState<Set<string> | null>(null);
   const [productDraft, setProductDraft] = useState<Set<string> | null>(null);
   const [busy, setBusy] = useState(false);
-  const orderingIds = orderingDraft ?? new Set<string>(saved?.orderingLocationIds);
+  const active = activeDraft ?? saved?.active ?? true;
+  const allLocations = allDraft ?? saved?.allLocations ?? true;
+  const orderingIds =
+    orderingDraft ?? new Set<string>(saved?.orderingLocationIds);
   const productIds = productDraft ?? new Set<string>(saved?.productIds);
-  const changed = !saved || orderingDraft !== null || productDraft !== null;
-  const others = settings.locations.filter((location) => location.id !== locationId);
-  const availableProducts = new Set(products.map((product) => product.value));
+  const changed =
+    !saved ||
+    activeDraft !== null ||
+    allDraft !== null ||
+    orderingDraft !== null ||
+    productDraft !== null;
+  const others = settings.locations.filter(
+    (location) => location.id !== locationId,
+  );
+  const availableProducts = new Set<string>(
+    products.map((product) => product.id),
+  );
 
   async function save() {
     setBusy(true);
     try {
       await saveSupplier({
         locationId,
+        active,
+        allLocations,
         orderingLocationIds: [...orderingIds] as Id<"locations">[],
         // Archived Products drop out on save.
         productIds: [...productIds].filter((id) =>
           availableProducts.has(id),
         ) as Id<"products">[],
       });
+      setActiveDraft(null);
+      setAllDraft(null);
       setOrderingDraft(null);
       setProductDraft(null);
       toast.success(`${name} er gemt`);
@@ -324,62 +314,87 @@ function SupplierCard({
     <Card>
       <CardHeader>
         <CardTitle>{name}</CardTitle>
+        <CardAction>
+          <Field orientation="horizontal">
+            <FieldLabel htmlFor={`internal-${locationId}-active`}>
+              Aktiv
+            </FieldLabel>
+            <Switch
+              id={`internal-${locationId}-active`}
+              checked={active}
+              onCheckedChange={setActiveDraft}
+              disabled={busy}
+            />
+          </Field>
+        </CardAction>
       </CardHeader>
       <CardContent>
         <FieldGroup>
-          <FieldSet data-disabled={busy}>
-            <FieldLegend variant="label">Kan bestilles af</FieldLegend>
-            {others.length ? (
-              <div className="grid gap-x-4 sm:grid-cols-2">
-                {others.map((location) => {
-                  const id = `internal-${locationId}-${location.id}`;
-                  return (
-                    <Field key={location.id} orientation="horizontal">
-                      <Checkbox
-                        id={id}
-                        checked={orderingIds.has(location.id)}
-                        disabled={busy}
-                        onCheckedChange={(checked) => {
-                          const next = new Set(orderingIds);
-                          if (checked) next.add(location.id);
-                          else next.delete(location.id);
-                          setOrderingDraft(next);
-                        }}
-                      />
-                      <FieldLabel htmlFor={id} className="min-h-11">
-                        {location.name}
-                      </FieldLabel>
-                    </Field>
-                  );
-                })}
-              </div>
-            ) : (
-              <FieldDescription>
-                Opret flere lokationer for at bestille internt.
-              </FieldDescription>
-            )}
-          </FieldSet>
+          <SettingsSwitchField
+            id={`internal-${locationId}-all`}
+            label="Alle lokationer kan bestille"
+            checked={allLocations}
+            onCheckedChange={setAllDraft}
+            disabled={busy}
+          />
+          {allLocations ? null : (
+            <FieldSet data-disabled={busy}>
+              <FieldLegend variant="label">Kan bestilles af</FieldLegend>
+              {others.length ? (
+                <div className="grid gap-x-4 sm:grid-cols-2">
+                  {others.map((location) => {
+                    const id = `internal-${locationId}-${location.id}`;
+                    return (
+                      <Field key={location.id} orientation="horizontal">
+                        <Checkbox
+                          id={id}
+                          checked={orderingIds.has(location.id)}
+                          disabled={busy}
+                          onCheckedChange={(checked) => {
+                            const next = new Set(orderingIds);
+                            if (checked) next.add(location.id);
+                            else next.delete(location.id);
+                            setOrderingDraft(next);
+                          }}
+                        />
+                        <FieldLabel htmlFor={id} className="min-h-11">
+                          {location.name}
+                        </FieldLabel>
+                      </Field>
+                    );
+                  })}
+                </div>
+              ) : (
+                <FieldDescription>
+                  Opret flere lokationer for at bestille internt.
+                </FieldDescription>
+              )}
+            </FieldSet>
+          )}
           <Field data-disabled={busy}>
             <FieldLabel>Produkter</FieldLabel>
-            <ProductCategoryCombobox
+            <ProductPicker
+              name={name}
               categories={categories}
               products={products}
-              values={[...productIds]}
-              onValuesChange={(values) => setProductDraft(new Set(values))}
+              selected={productIds}
+              onSelectedChange={setProductDraft}
               disabled={busy}
-              ariaLabel={`Produkter, der kan bestilles hos ${name}`}
             />
-            <FieldDescription>
-              {productIds.size} Produkter valgt. Vælg en kategorilinje for at
-              vælge eller fravælge alle Produkter i kategorien.
-            </FieldDescription>
           </Field>
         </FieldGroup>
       </CardContent>
       <CardFooter appearance="compact" className="justify-end">
         <AlertDialog>
           <AlertDialogTrigger
-            render={<Button type="button" variant="outline" size="lg" disabled={busy} />}
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                disabled={busy}
+              />
+            }
           >
             Fjern
           </AlertDialogTrigger>
@@ -402,11 +417,217 @@ function SupplierCard({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <Button size="lg" disabled={!changed || busy} onClick={() => void save()}>
+        <Button
+          size="lg"
+          disabled={!changed || busy}
+          onClick={() => void save()}
+        >
           {busy ? <Spinner data-icon="inline-start" /> : null}
           Gem
         </Button>
       </CardFooter>
     </Card>
+  );
+}
+
+function ProductPicker({
+  name,
+  categories,
+  products,
+  selected,
+  onSelectedChange,
+  disabled,
+}: {
+  name: string;
+  categories: Categories;
+  products: Products;
+  selected: Set<string>;
+  onSelectedChange: (selected: Set<string>) => void;
+  disabled: boolean;
+}) {
+  const [search, setSearch] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const selectedCount = products.filter((product) =>
+    selected.has(product.id),
+  ).length;
+  const categoryIds = useMemo(() => {
+    if (!categoryId) return null;
+    // The chosen category and all of its subcategories.
+    const ids = new Set([categoryId]);
+    for (const category of categories) {
+      if (category.parentCategoryId && ids.has(category.parentCategoryId)) {
+        ids.add(category.id);
+      }
+    }
+    return ids;
+  }, [categories, categoryId]);
+  const query = search.trim().toLocaleLowerCase("da");
+  const visible = products.filter(
+    (product) =>
+      (!query || product.name.toLocaleLowerCase("da").includes(query)) &&
+      (!categoryIds ||
+        product.categories.some((category) => categoryIds.has(category.id))),
+  );
+  const allVisibleSelected =
+    visible.length > 0 && visible.every((product) => selected.has(product.id));
+
+  function toggle(ids: string[], select: boolean) {
+    const next = new Set(selected);
+    for (const id of ids) {
+      if (select) next.add(id);
+      else next.delete(id);
+    }
+    onSelectedChange(next);
+  }
+
+  return (
+    <Dialog>
+      <DialogTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="min-h-11 w-fit"
+            disabled={disabled}
+          />
+        }
+      >
+        <PackageOpenIcon data-icon="inline-start" />
+        Vælg Produkter
+        <Badge variant="secondary">{selectedCount} valgt</Badge>
+      </DialogTrigger>
+      <DialogContent className="grid max-h-(--spacing-viewport-inset) min-h-0 grid-rows-(--grid-rows-panel) overflow-hidden sm:max-w-6xl">
+        <DialogHeader>
+          <DialogTitle>Produkter hos {name}</DialogTitle>
+          <DialogDescription>
+            Tryk på et Produkt for at vælge eller fravælge det.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-col gap-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <InputGroup className="h-11 sm:flex-1">
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+              <InputGroupInput
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Søg efter Produkt"
+                aria-label="Søg efter Produkt"
+              />
+            </InputGroup>
+            <Select
+              items={[
+                { value: null, label: "Alle kategorier" },
+                ...categories.map((category) => ({
+                  value: category.id,
+                  label: category.path,
+                })),
+              ]}
+              value={categoryId}
+              onValueChange={setCategoryId}
+            >
+              <SelectTrigger
+                className="h-11! w-full sm:w-64"
+                aria-label="Kategori"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={null}>Alle kategorier</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.path}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="min-h-11"
+              disabled={!visible.length}
+              onClick={() =>
+                toggle(
+                  visible.map((product) => product.id),
+                  !allVisibleSelected,
+                )
+              }
+            >
+              {allVisibleSelected ? "Fravælg viste" : "Vælg viste"}
+            </Button>
+          </div>
+          <div className="min-h-0 overflow-y-auto p-1">
+            {visible.length ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {visible.map((product) => {
+                  const checked = selected.has(product.id);
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      aria-pressed={checked}
+                      className="group rounded-xl text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                      onClick={() => toggle([product.id], !checked)}
+                    >
+                      <Card
+                        appearance="product"
+                        highlight={checked ? "selection" : undefined}
+                        className="relative h-full"
+                      >
+                        <ProductCardMedia
+                          imageUrl={product.imageUrl}
+                          alt=""
+                          sizes="(max-width: 639px) 50vw, (max-width: 1023px) 33vw, 20vw"
+                        />
+                        {checked ? (
+                          <span className="absolute top-2 right-2 flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                            <CheckIcon className="size-4" aria-hidden="true" />
+                          </span>
+                        ) : null}
+                        <CardHeader appearance="product">
+                          <CardTitle appearance="truncate">
+                            {product.name}
+                          </CardTitle>
+                          <CardDescription appearance="truncate">
+                            {product.categories
+                              .map((category) => category.name)
+                              .join(" · ")}
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <Empty appearance="outlined">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <PackageOpenIcon />
+                  </EmptyMedia>
+                  <EmptyTitle>Ingen Produkter fundet</EmptyTitle>
+                  <EmptyDescription>
+                    Prøv en anden søgning eller kategori.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="items-center sm:justify-between">
+          <span className="text-sm text-muted-foreground" role="status">
+            {selectedCount} Produkter valgt
+          </span>
+          <DialogClose render={<Button type="button" size="lg" />}>
+            Færdig
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

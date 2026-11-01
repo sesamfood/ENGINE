@@ -1307,7 +1307,6 @@ export default defineSchema({
     organizationId: v.string(),
     includeRecipes: v.boolean(),
     chooseSupplierFirst: v.optional(v.boolean()),
-    internalOrdersEnabled: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
@@ -1315,6 +1314,10 @@ export default defineSchema({
   internalSuppliers: defineTable({
     organizationId: v.string(),
     locationId: v.id("locations"),
+    // Missing means true. Inactive suppliers are hidden under Bestilling.
+    active: v.optional(v.boolean()),
+    // Missing means true. orderingLocationIds is kept for switching back.
+    allLocations: v.optional(v.boolean()),
     orderingLocationIds: v.array(v.id("locations")),
     productIds: v.array(v.id("products")),
     updatedAt: v.number(),

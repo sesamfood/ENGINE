@@ -128,14 +128,6 @@ const categories: AdministrationCategory[] = [
         permissions: ["organization.settings"],
       },
       {
-        title: "Interne bestillinger",
-        description: "Vælg, hvem der kan bestille hvilke Produkter hos hvilke lokationer.",
-        href: "/administration/internal-orders",
-        feature: "ordering",
-        icon: StoreIcon,
-        permissions: ["organization.settings"],
-      },
-      {
         title: "Transfer",
         description: "Slå Transfer til eller fra for organisationen.",
         href: "/administration/transfers",

@@ -39,7 +39,7 @@ import {
 import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
-import { getInternalSupplier, internalOrdersEnabled } from "./internalOrders";
+import { canOrderFrom, getInternalSupplier } from "./internalOrders";
 import { createForecastConsumptionResolver } from "./lib/forecastConsumption";
 import {
   forecastConditionValidator,
@@ -103,41 +103,42 @@ export const listProducts = query({
         q.eq("organizationId", organizationId).eq("status", "active"),
       )
       .paginate(catalogPaginationOptions(args.paginationOpts, 25));
-    const products = result.page.filter(
-      (product) => locationHasProduct(access, product._id),
+    const products = result.page.filter((product) =>
+      locationHasProduct(access, product._id),
     );
     return {
       ...result,
       page: await Promise.all(
         products.map(async (product) => {
-          const [unit, category, ingredient, stock, imageUrl] = await Promise.all([
-            ctx.db.get("units", product.defaultUnitId),
-            ctx.db.get("categories", product.categoryId),
-            ctx.db
-              .query("productIngredients")
-              .withIndex("by_organizationId_and_productId", (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("productId", product._id),
-              )
-              .first(),
-            showStock
-              ? ctx.db
-                  .query("locationStock")
-                  .withIndex(
-                    "by_organizationId_and_locationId_and_productId",
-                    (q) =>
-                      q
-                        .eq("organizationId", organizationId)
-                        .eq("locationId", args.locationId)
-                        .eq("productId", product._id),
-                  )
-                  .unique()
-              : null,
-            product.imageStorageId
-              ? ctx.storage.getUrl(product.imageStorageId)
-              : null,
-          ]);
+          const [unit, category, ingredient, stock, imageUrl] =
+            await Promise.all([
+              ctx.db.get("units", product.defaultUnitId),
+              ctx.db.get("categories", product.categoryId),
+              ctx.db
+                .query("productIngredients")
+                .withIndex("by_organizationId_and_productId", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("productId", product._id),
+                )
+                .first(),
+              showStock
+                ? ctx.db
+                    .query("locationStock")
+                    .withIndex(
+                      "by_organizationId_and_locationId_and_productId",
+                      (q) =>
+                        q
+                          .eq("organizationId", organizationId)
+                          .eq("locationId", args.locationId)
+                          .eq("productId", product._id),
+                    )
+                    .unique()
+                : null,
+              product.imageStorageId
+                ? ctx.storage.getUrl(product.imageStorageId)
+                : null,
+            ]);
           if (!unit || unit.organizationId !== organizationId)
             throw new ConvexError("Produktets enhed blev ikke fundet");
           return {
@@ -460,28 +461,32 @@ const orderInputValidator = v.object({
   ),
 });
 
-const orderRowValidator = schema.doc("orderLines").pick(
-  "productId",
-  "productName",
-  "unitId",
-  "unitName",
-  "quantity",
-  "supplierProductNumber",
-);
-const historySummaryValidator = schema.doc("orders").pick(
-  "_id",
-  "locationName",
-  "createdAt",
-  "createdByName",
-  "fromDate",
-  "toDate",
-  "bufferPercent",
-  "itemCount",
-  "supplierName",
-  "email",
-  "fulfillingLocationId",
-  "fulfillmentStatus",
-);
+const orderRowValidator = schema
+  .doc("orderLines")
+  .pick(
+    "productId",
+    "productName",
+    "unitId",
+    "unitName",
+    "quantity",
+    "supplierProductNumber",
+  );
+const historySummaryValidator = schema
+  .doc("orders")
+  .pick(
+    "_id",
+    "locationName",
+    "createdAt",
+    "createdByName",
+    "fromDate",
+    "toDate",
+    "bufferPercent",
+    "itemCount",
+    "supplierName",
+    "email",
+    "fulfillingLocationId",
+    "fulfillmentStatus",
+  );
 const historyDetailValidator = historySummaryValidator.extend({
   locationId: v.id("locations"),
   rows: v.array(orderRowValidator),
@@ -492,14 +497,13 @@ async function requireInternalSupplier(
   auth: Awaited<ReturnType<typeof requirePlanner>>,
   fulfillingLocationId: Id<"locations">,
 ) {
-  const [enabled, supplier, location] = await Promise.all([
-    internalOrdersEnabled(ctx, auth),
+  const [supplier, location] = await Promise.all([
     getInternalSupplier(ctx, auth.organizationId, fulfillingLocationId),
     ctx.db.get("locations", fulfillingLocationId),
   ]);
   if (
-    !enabled ||
-    !supplier?.orderingLocationIds.includes(auth.location._id) ||
+    !supplier ||
+    !canOrderFrom(supplier, auth.location._id) ||
     location?.organizationId !== auth.organizationId
   ) {
     throw new ConvexError(
@@ -520,7 +524,6 @@ export const listInternalSuppliers = query({
   ),
   handler: async (ctx, args) => {
     const auth = await requirePlanner(ctx, args.locationId);
-    if (!(await internalOrdersEnabled(ctx, auth))) return [];
     const suppliers = await ctx.db
       .query("internalSuppliers")
       .withIndex("by_organizationId_and_locationId", (q) =>
@@ -528,7 +531,7 @@ export const listInternalSuppliers = query({
       )
       .take(200);
     const allowed = suppliers.filter((supplier) =>
-      supplier.orderingLocationIds.includes(args.locationId),
+      canOrderFrom(supplier, args.locationId),
     );
     const locations = await Promise.all(
       allowed.map((supplier) => ctx.db.get("locations", supplier.locationId)),
@@ -569,8 +572,7 @@ async function prepareOrder(
   if (
     lineCount === 0 ||
     lineCount > 500 ||
-    new Set(args.lines.map((line) => line.productId)).size !==
-      args.lines.length
+    new Set(args.lines.map((line) => line.productId)).size !== args.lines.length
   ) {
     throw new ConvexError("Vælg mellem 1 og 500 forskellige produkter");
   }
@@ -850,7 +852,13 @@ async function readHistory(ctx: QueryCtx, orderId: Id<"orders">) {
     ...historySummary(order),
     locationId: order.locationId,
     rows: lines.map(
-      ({ productId, productName, unitName, quantity, supplierProductNumber }) => ({
+      ({
+        productId,
+        productName,
+        unitName,
+        quantity,
+        supplierProductNumber,
+      }) => ({
         productId,
         productName,
         unitName,

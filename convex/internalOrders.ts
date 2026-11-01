@@ -20,20 +20,6 @@ const MAX_SUPPLIER_PRODUCTS = 2000;
 const MAX_OPEN_ORDERS = 100;
 const MAX_ORDER_LINES = 200;
 
-export async function internalOrdersEnabled(
-  ctx: QueryCtx,
-  auth: Pick<OrganizationAuth, "organizationId" | "disabledFeatures">,
-) {
-  if (auth.disabledFeatures.has("ordering")) return false;
-  const settings = await ctx.db
-    .query("orderingSettings")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", auth.organizationId),
-    )
-    .unique();
-  return settings?.internalOrdersEnabled === true;
-}
-
 export function getInternalSupplier(
   ctx: QueryCtx,
   organizationId: string,
@@ -45,6 +31,18 @@ export function getInternalSupplier(
       q.eq("organizationId", organizationId).eq("locationId", locationId),
     )
     .unique();
+}
+
+export function canOrderFrom(
+  supplier: Doc<"internalSuppliers">,
+  locationId: Id<"locations">,
+) {
+  return (
+    supplier.active !== false &&
+    supplier.locationId !== locationId &&
+    (supplier.allLocations !== false ||
+      supplier.orderingLocationIds.includes(locationId))
+  );
 }
 
 async function listLocations(ctx: QueryCtx, organizationId: string) {
@@ -59,11 +57,12 @@ async function listLocations(ctx: QueryCtx, organizationId: string) {
 export const getSettings = query({
   args: {},
   returns: v.object({
-    enabled: v.boolean(),
     locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
     suppliers: v.array(
       v.object({
         locationId: v.id("locations"),
+        active: v.boolean(),
+        allLocations: v.boolean(),
         orderingLocationIds: v.array(v.id("locations")),
         productIds: v.array(v.id("products")),
       }),
@@ -71,13 +70,7 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
-    const [settings, locations, suppliers] = await Promise.all([
-      ctx.db
-        .query("orderingSettings")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .unique(),
+    const [locations, suppliers] = await Promise.all([
       listLocations(ctx, organizationId),
       ctx.db
         .query("internalSuppliers")
@@ -88,7 +81,6 @@ export const getSettings = query({
     ]);
     const locationIds = new Set(locations.map((location) => location._id));
     return {
-      enabled: settings?.internalOrdersEnabled === true,
       locations: locations.map((location) => ({
         id: location._id,
         name: location.name,
@@ -99,6 +91,8 @@ export const getSettings = query({
           ? [
               {
                 locationId: supplier.locationId,
+                active: supplier.active !== false,
+                allLocations: supplier.allLocations !== false,
                 orderingLocationIds: supplier.orderingLocationIds.filter((id) =>
                   locationIds.has(id),
                 ),
@@ -111,40 +105,11 @@ export const getSettings = query({
   },
 });
 
-export const setEnabled = mutation({
-  args: { enabled: v.boolean() },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const auth = await requireOrganizationAdmin(ctx);
-    const current = await ctx.db
-      .query("orderingSettings")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", auth.organizationId),
-      )
-      .unique();
-    const next = { internalOrdersEnabled: args.enabled, updatedAt: Date.now() };
-    const id = current
-      ? (await ctx.db.patch("orderingSettings", current._id, next), current._id)
-      : await ctx.db.insert("orderingSettings", {
-          organizationId: auth.organizationId,
-          includeRecipes: false,
-          ...next,
-        });
-    await recordAudit(ctx, auth, {
-      action: "internalOrders.settings",
-      entityTable: "orderingSettings",
-      entityId: id,
-      summary: args.enabled
-        ? "Interne bestillinger er slået til"
-        : "Interne bestillinger er slået fra",
-    });
-    return null;
-  },
-});
-
 export const saveSupplier = mutation({
   args: {
     locationId: v.id("locations"),
+    active: v.boolean(),
+    allLocations: v.boolean(),
     orderingLocationIds: v.array(v.id("locations")),
     productIds: v.array(v.id("products")),
   },
@@ -173,14 +138,28 @@ export const saveSupplier = mutation({
     }
     for (const productId of productIds) {
       const product = await ctx.db.get("products", productId);
-      if (product?.organizationId !== organizationId || product.status !== "active") {
+      if (
+        product?.organizationId !== organizationId ||
+        product.status !== "active"
+      ) {
         throw new ConvexError("Et Produkt blev ikke fundet. Opdatér siden.");
       }
     }
-    const current = await getInternalSupplier(ctx, organizationId, args.locationId);
-    const next = { orderingLocationIds, productIds, updatedAt: Date.now() };
+    const current = await getInternalSupplier(
+      ctx,
+      organizationId,
+      args.locationId,
+    );
+    const next = {
+      active: args.active,
+      allLocations: args.allLocations,
+      orderingLocationIds,
+      productIds,
+      updatedAt: Date.now(),
+    };
     const id = current
-      ? (await ctx.db.patch("internalSuppliers", current._id, next), current._id)
+      ? (await ctx.db.patch("internalSuppliers", current._id, next),
+        current._id)
       : await ctx.db.insert("internalSuppliers", {
           organizationId,
           locationId: args.locationId,
@@ -191,7 +170,7 @@ export const saveSupplier = mutation({
       entityTable: "internalSuppliers",
       entityId: id,
       locationId: args.locationId,
-      summary: `Intern leverandør gemt med ${productIds.length} Produkter og ${orderingLocationIds.length} lokationer`,
+      summary: `Intern leverandør gemt med ${productIds.length} Produkter og ${args.allLocations ? "alle" : orderingLocationIds.length} lokationer`,
     });
     return null;
   },
@@ -227,7 +206,8 @@ async function locationName(ctx: QueryCtx, locationId: Id<"locations">) {
 
 async function openOrderSummary(ctx: QueryCtx, order: Doc<"orders">) {
   const fulfillingLocationId = order.fulfillingLocationId;
-  if (!fulfillingLocationId) throw new ConvexError("Bestillingen er ikke intern");
+  if (!fulfillingLocationId)
+    throw new ConvexError("Bestillingen er ikke intern");
   return {
     id: order._id,
     locationId: order.locationId,
@@ -251,37 +231,56 @@ const openOrderValidator = v.object({
   itemCount: v.number(),
 });
 
-// Null when internal orders are off, so the Transfer page can hide the tab.
+// Null when internal orders are not in use, so the Transfer page can hide the tab.
 export const listOpenOrders = query({
   args: {},
   returns: v.union(v.array(openOrderValidator), v.null()),
   handler: async (ctx) => {
     const auth = await requireTransferManager(ctx, "transfers.new");
-    if (!(await internalOrdersEnabled(ctx, auth))) return null;
+    if (auth.disabledFeatures.has("ordering")) return null;
     const filter = resolveLocationFilter(auth);
     const open = (locationId?: Id<"locations">) =>
       ctx.db
         .query("orders")
-        .withIndex("by_org_fulfillmentStatus_fulfillingLocation_createdAt", (q) => {
-          const byStatus = q
-            .eq("organizationId", auth.organizationId)
-            .eq("fulfillmentStatus", "open");
-          return locationId ? byStatus.eq("fulfillingLocationId", locationId) : byStatus;
-        })
+        .withIndex(
+          "by_org_fulfillmentStatus_fulfillingLocation_createdAt",
+          (q) => {
+            const byStatus = q
+              .eq("organizationId", auth.organizationId)
+              .eq("fulfillmentStatus", "open");
+            return locationId
+              ? byStatus.eq("fulfillingLocationId", locationId)
+              : byStatus;
+          },
+        )
         .take(MAX_OPEN_ORDERS);
     const orders =
       filter === "all"
         ? await open()
         : (
             await Promise.all(
-              ("locationId" in filter ? [filter.locationId] : filter.locationIds).map(
-                (locationId) => open(locationId),
-              ),
+              ("locationId" in filter
+                ? [filter.locationId]
+                : filter.locationIds
+              ).map((locationId) => open(locationId)),
             )
           ).flat();
+    if (
+      !orders.length &&
+      !(await ctx.db
+        .query("internalSuppliers")
+        .withIndex("by_organizationId_and_locationId", (q) =>
+          q.eq("organizationId", auth.organizationId),
+        )
+        .first())
+    ) {
+      return null;
+    }
     orders.sort((left, right) => left.createdAt - right.createdAt);
     return await Promise.all(
-      orders.slice(0, MAX_OPEN_ORDERS).map((order) => openOrderSummary(ctx, order)),
+      orders
+        .slice(0, MAX_OPEN_ORDERS)
+        .map((order) => openOrderSummary(ctx, order)),
     );
   },
 });
@@ -310,7 +309,9 @@ export async function requireOpenOrder(
 ) {
   const order = await getInternalOrder(ctx, auth, orderId);
   if (order.fulfillmentStatus !== "open") {
-    throw new ConvexError("Der er allerede oprettet en transfer for bestillingen");
+    throw new ConvexError(
+      "Der er allerede oprettet en transfer for bestillingen",
+    );
   }
   return order;
 }

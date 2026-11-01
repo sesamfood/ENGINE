@@ -972,7 +972,7 @@ function Planner({
                   {catalogSupplier && !rows.length
                     ? "Ingen Produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
                     : internalSupplier && !rows.length
-                      ? `Ingen Produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Interne bestillinger.`
+                      ? `Ingen Produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Bestilling.`
                       : "Prøv en anden søgning, eller tilpas filtrene."}
                 </EmptyDescription>
               </EmptyHeader>
