@@ -2,16 +2,14 @@
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import { BoxesIcon, Grid2X2Icon, ListIcon, PlusIcon } from "lucide-react";
+import { BoxesIcon, Grid2X2Icon, ListIcon } from "lucide-react";
 import {
   ProductCardMedia,
   productGridClassName,
 } from "@/components/catalog/product-card-media";
-import { AddToLatestCountDialog } from "./add-to-latest-count-dialog";
 import { useCountState } from "./count-state-provider";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -76,7 +74,6 @@ function formatStockQuantity(
 
 export function LocationStock() {
   const [view, setView] = useState<"grid" | "detail">("grid");
-  const [addingProduct, setAddingProduct] = useState(false);
   const { locations, locationId, state } = useCountState();
   const dateFormatter = dateTimeFormatter("da-DK", {
     dateStyle: "short",
@@ -90,7 +87,6 @@ export function LocationStock() {
       kiosk?.kioskModeEnabled &&
       kiosk.settings?.enabledPages.includes("count.stock"),
     );
-  const canManageCount = usePermission("count.manage");
   const stock = useCompleteCatalog(
     api.count.listLocationStockPage,
     canView && locationId ? { locationId } : "skip",
@@ -157,18 +153,7 @@ export function LocationStock() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap justify-end gap-2">
-        {canManageCount ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            onClick={() => setAddingProduct(true)}
-          >
-            <PlusIcon data-icon="inline-start" />
-            Tilføj glemt Produkt
-          </Button>
-        ) : null}
+      <div className="flex justify-end">
         <ToggleGroup
           value={[view]}
           onValueChange={(value) => {
@@ -267,17 +252,6 @@ export function LocationStock() {
           </Table>
         </div>
       )}
-
-      <AddToLatestCountDialog
-        locationId={locationId}
-        open={addingProduct}
-        products={(stock ?? []).map((row) => ({
-          id: row.productId,
-          name: row.productName,
-          units: row.units,
-        }))}
-        onOpenChange={setAddingProduct}
-      />
     </div>
   );
 }

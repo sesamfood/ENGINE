@@ -1,6 +1,10 @@
 "use client";
 
 import { useMutation } from "convex/react";
+import { PlusIcon } from "lucide-react";
+import { usePermission } from "@/components/app-shell";
+import { useCountState } from "@/components/count/count-state-provider";
+import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { useState } from "react";
 import { toast } from "sonner";
 import { QuantityInput } from "@/components/quantity-input";
@@ -33,8 +37,42 @@ type LatestCountProduct = {
   units: Array<{ id: Id<"units">; name: string }>;
 };
 
-// Pass one product to skip the picker; pass several to let the user choose.
-export function AddToLatestCountDialog({
+// Bottom-bar action for adding a Produkt that was forgotten in the latest Count.
+export function AddForgottenProductButton() {
+  const { locationId } = useCountState();
+  const canManage = usePermission("count.manage");
+  const [open, setOpen] = useState(false);
+  const products = useCompleteCatalog(
+    api.count.listCatalogPage,
+    open && locationId ? { locationId } : "skip",
+  );
+  if (!canManage || !locationId) return null;
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="lg"
+        variant="outline"
+        appearance="responsive"
+        className="min-h-11 shrink-0"
+        onClick={() => setOpen(true)}
+      >
+        <PlusIcon data-icon="inline-start" />
+        <span className="sm:hidden">Glemt Produkt</span>
+        <span className="hidden sm:inline">Tilføj glemt Produkt</span>
+      </Button>
+      <AddToLatestCountDialog
+        locationId={locationId}
+        open={open}
+        products={products ?? []}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
+function AddToLatestCountDialog({
   locationId,
   open,
   products,
@@ -49,10 +87,7 @@ export function AddToLatestCountDialog({
   const [pickedId, setPickedId] = useState<Id<"products"> | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
-  const fixed = products.length === 1;
-  const product = fixed
-    ? products[0]
-    : products.find((candidate) => candidate.id === pickedId);
+  const product = products.find((candidate) => candidate.id === pickedId);
 
   function close() {
     setPickedId(null);
@@ -95,7 +130,7 @@ export function AddToLatestCountDialog({
         <form className="flex flex-col gap-4" onSubmit={save}>
           <DialogHeader>
             <DialogTitle>
-              {fixed && product ? product.name : "Tilføj glemt Produkt"}
+              Tilføj glemt Produkt
             </DialogTitle>
             <DialogDescription>
               Tilføj den optalte beholdning til den seneste registrerede
@@ -103,8 +138,7 @@ export function AddToLatestCountDialog({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            {!fixed ? (
-              <Field>
+            <Field>
                 <FieldLabel htmlFor="latest-count-product">Produkt</FieldLabel>
                 <Combobox
                   items={products.map((candidate) => candidate.id)}
@@ -137,8 +171,7 @@ export function AddToLatestCountDialog({
                     </ComboboxList>
                   </ComboboxContent>
                 </Combobox>
-              </Field>
-            ) : null}
+            </Field>
             {product?.units.map((unit) => (
               <Field key={unit.id} orientation="responsive">
                 <FieldLabel className="@md/field-group:min-w-24">

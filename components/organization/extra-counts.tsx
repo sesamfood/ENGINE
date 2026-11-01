@@ -15,6 +15,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -136,26 +145,29 @@ export function ExtraCounts() {
         )}
       </CardContent>
 
-      <AlertDialog
+      <Dialog
         open={opening !== null}
         onOpenChange={(next) => {
           if (!next && !pending) setOpening(null);
         }}
       >
-        <AlertDialogContent className="sm:max-w-lg">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
+        <DialogContent className="sm:max-w-xl" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>
               Åbn ekstra Count for {opening?.name}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
+            </DialogTitle>
+            <DialogDescription>
               Fortsæt med mængderne fra den seneste registrerede Count, eller
               start forfra med tomme mængder.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="sm:flex-wrap">
-            <AlertDialogCancel disabled={pending !== null}>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose
+              render={<Button type="button" variant="outline" />}
+              disabled={pending !== null}
+            >
               Annullér
-            </AlertDialogCancel>
+            </DialogClose>
             <Button
               type="button"
               variant="outline"
@@ -175,9 +187,9 @@ export function ExtraCounts() {
               ) : null}
               Fortsæt fra seneste Count
             </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={cancelling !== null}

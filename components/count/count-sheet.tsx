@@ -15,7 +15,7 @@ import { QuantityInput } from "@/components/quantity-input";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { usePermission } from "@/components/app-shell";
-import { AddToLatestCountDialog } from "@/components/count/add-to-latest-count-dialog";
+import { AddForgottenProductButton } from "@/components/count/add-to-latest-count-dialog";
 import { CountNavigation } from "@/components/count/count-navigation";
 import { useCountState } from "@/components/count/count-state-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1198,7 +1198,6 @@ export function CountSheet() {
   const { locations, locationId, canRegister, state } = useCountState();
   const canManageLocations = usePermission("locations.manage");
   const canExport = usePermission("count.export");
-  const canManageCount = usePermission("count.manage");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string>("all");
   const [editingOrderContext, setEditingOrderContext] = useState<string | null>(
@@ -1222,7 +1221,6 @@ export function CountSheet() {
   const [completingCountAreaId, setCompletingCountAreaId] =
     useState<Id<"countAreas"> | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [addForgottenOpen, setAddForgottenOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const pendingValues = useRef(new Map<string, QuantityPayload>());
   const timers = useRef(new Map<string, number>());
@@ -1237,10 +1235,6 @@ export function CountSheet() {
   const submitCount = useMutation(api.count.submitCount);
   const setProductOrder = useMutation(api.countAreas.setProductOrder);
 
-  const forgottenCatalog = useCompleteCatalog(
-    api.count.listCatalogPage,
-    addForgottenOpen && locationId ? { locationId } : "skip",
-  );
 
   const queriedCountAreas = useQuery(
     api.countAreas.listForCount,
@@ -2202,22 +2196,10 @@ export function CountSheet() {
                 </span>
               </Badge>
             ) : null}
-            {canManageCount &&
-            state &&
+            {state &&
             !state.adHoc &&
             (isClosed || state.count?.status === "submitted") ? (
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                appearance="responsive"
-                className="min-h-11 shrink-0"
-                onClick={() => setAddForgottenOpen(true)}
-              >
-                <PlusIcon data-icon="inline-start" />
-                <span className="sm:hidden">Glemt Produkt</span>
-                <span className="hidden sm:inline">Tilføj glemt Produkt</span>
-              </Button>
+              <AddForgottenProductButton />
             ) : null}
             {state?.count?.status === "submitted" && canExport ? (
               <Button
@@ -2280,14 +2262,6 @@ export function CountSheet() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {locationId ? (
-        <AddToLatestCountDialog
-          locationId={locationId}
-          open={addForgottenOpen}
-          products={forgottenCatalog ?? []}
-          onOpenChange={setAddForgottenOpen}
-        />
-      ) : null}
     </div>
   );
 }
