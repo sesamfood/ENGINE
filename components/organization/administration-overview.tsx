@@ -46,6 +46,7 @@ type AdministrationPermission = Extract<
   | "apiKeys.manage"
     | "catalog.manage"
     | "count.settings"
+    | "count.manage"
     | "dashboard.manage"
     | "dateLabels.print"
     | "expenses.settings"
@@ -168,11 +169,11 @@ const categories: AdministrationCategory[] = [
       },
       {
         title: "Count",
-        description: "Indstil frekvens og regler for Count-vinduet.",
+        description: "Indstil Count-vinduet, og åbn ekstra Counts.",
         href: "/administration/count",
         feature: "count",
         icon: ClipboardListIcon,
-        permissions: ["count.settings", "organization.settings"],
+        permissions: ["count.settings", "count.manage", "organization.settings"],
       },
       {
         title: "Varemodtagelse",
@@ -298,6 +299,7 @@ export function AdministrationOverview() {
   const canApiKeys = usePermission("apiKeys.manage");
   const canOrganizationSettings = usePermission("organization.settings");
   const canCountSettings = usePermission("count.settings");
+  const canCountManage = usePermission("count.manage");
   const canWasteSettings = usePermission("waste.settings");
   const canExpenseSettings = usePermission("expenses.settings");
   const canGoodsReceiptSettings = usePermission("goodsReceipts.settings");
@@ -311,6 +313,7 @@ export function AdministrationOverview() {
     "apiKeys.manage": canApiKeys,
     "catalog.manage": canCatalog,
     "count.settings": canCountSettings,
+    "count.manage": canCountManage,
     "dashboard.manage": canDashboardManage,
     "dateLabels.print": canDateLabels,
     "expenses.settings": canExpenseSettings,

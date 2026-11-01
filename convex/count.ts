@@ -50,6 +50,7 @@ const MAX_PRODUCTS = 500;
 const MAX_PRODUCT_UNITS = 200;
 const MAX_COUNT_ITEMS = 5000;
 const MAX_LOCATION_STOCK_ROWS = 5000;
+const MAX_LOCATIONS = 200;
 
 const settingsValidator = v.object({
   allowOutsideWindow: v.boolean(),
@@ -1031,6 +1032,49 @@ export const submitCount = mutation({
       reason,
     });
     return null;
+  },
+});
+
+export const listAdHocCountLocations = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      id: v.id("locations"),
+      name: v.string(),
+      openedAt: v.union(v.number(), v.null()),
+    }),
+  ),
+  handler: async (ctx) => {
+    const auth = await requirePermission(ctx, "count.manage");
+    const { organizationId } = auth;
+    const locations = await ctx.db
+      .query("locations")
+      .withIndex("by_organizationId_and_normalizedName", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .take(MAX_LOCATIONS + 1);
+    if (locations.length > MAX_LOCATIONS) {
+      throw new ConvexError("Organisationen har for mange lokationer");
+    }
+    const accessible = locations.filter(
+      (location) =>
+        (!auth.isKioskAccount || auth.kioskLocationId === location._id) &&
+        (auth.locationScope.all || auth.locationScope.ids.has(location._id)),
+    );
+    return await Promise.all(
+      accessible.map(async (location) => {
+        const count = await getOpenAdHocCount(
+          ctx,
+          organizationId,
+          location._id,
+        );
+        return {
+          id: location._id,
+          name: location.name,
+          openedAt: count?._creationTime ?? null,
+        };
+      }),
+    );
   },
 });
 
