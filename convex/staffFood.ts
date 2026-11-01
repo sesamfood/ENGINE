@@ -41,6 +41,8 @@ const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 const UNDO_WINDOW_MS = 30_000;
 const UNDO_REASON_GRACE_MS = 30_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_AFTER_SHIFT_MINUTES = 60;
+const MAX_AFTER_SHIFT_MINUTES = 240;
 
 function categoryIncludes(
   categories: ReadonlyMap<
@@ -156,6 +158,21 @@ function requireDuration(durationMinutes: number) {
   }
 }
 
+async function afterShiftMinutes(ctx: StaffFoodContext, organizationId: string) {
+  const settings = await ctx.db
+    .query("staffFoodSettings")
+    .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
+    .unique();
+  return settings?.afterShiftMinutes ?? DEFAULT_AFTER_SHIFT_MINUTES;
+}
+
+// A shift stays selectable for the configured time after it ends.
+async function shiftOpenUntil(ctx: StaffFoodContext, organizationId: string) {
+  const minutes = await afterShiftMinutes(ctx, organizationId);
+  return (shift: Pick<Doc<"scheduledShifts">, "endsAt">) =>
+    shift.endsAt + minutes * 60_000;
+}
+
 async function matchingTier(
   ctx: StaffFoodContext,
   organizationId: string,
@@ -179,19 +196,22 @@ async function activeShiftsForEmployee(
   employeeId: Id<"employees">,
   now: number,
 ) {
-  const shifts = await ctx.db
-    .query("scheduledShifts")
-    .withIndex("by_organizationId_and_employeeId_and_startsAt", (q) =>
-      q
-        .eq("organizationId", organizationId)
-        .eq("employeeId", employeeId)
-        .gte("startsAt", now - SHIFT_LOOKBACK_MS)
-        .lte("startsAt", now),
-    )
-    .order("desc")
-    .take(20);
+  const [shifts, openUntil] = await Promise.all([
+    ctx.db
+      .query("scheduledShifts")
+      .withIndex("by_organizationId_and_employeeId_and_startsAt", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .eq("employeeId", employeeId)
+          .gte("startsAt", now - SHIFT_LOOKBACK_MS)
+          .lte("startsAt", now),
+      )
+      .order("desc")
+      .take(20),
+    shiftOpenUntil(ctx, organizationId),
+  ]);
   return shifts.filter(
-    (shift) => shift.locationId === locationId && shift.endsAt > now,
+    (shift) => shift.locationId === locationId && openUntil(shift) > now,
   );
 }
 
@@ -222,14 +242,17 @@ async function sessionActive(
     return session.workDate === dateInTimeZone(now, timeZone);
   }
   if (!session.scheduledShiftId) return false;
-  const shift = await ctx.db.get("scheduledShifts", session.scheduledShiftId);
+  const [shift, openUntil] = await Promise.all([
+    ctx.db.get("scheduledShifts", session.scheduledShiftId),
+    shiftOpenUntil(ctx, organizationId),
+  ]);
   return Boolean(
     shift &&
     shift.organizationId === organizationId &&
     shift.locationId === session.locationId &&
     shift.employeeId === session.employeeId &&
     shift.startsAt <= now &&
-    shift.endsAt > now,
+    openUntil(shift) > now,
   );
 }
 
@@ -272,7 +295,7 @@ export const getPicker = query({
     requireLocationAccess(auth, args.locationId);
     requireNow(args.now);
     await requireLocation(ctx, organizationId, args.locationId);
-    const [rows, tier] = await Promise.all([
+    const [rows, tier, openUntil] = await Promise.all([
       ctx.db
         .query("scheduledShifts")
         .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
@@ -290,10 +313,11 @@ export const getPicker = query({
           q.eq("organizationId", organizationId),
         )
         .first(),
+      shiftOpenUntil(ctx, organizationId),
     ]);
     const active = rows
       .slice(0, MAX_PICKER_SHIFTS)
-      .filter((shift) => shift.endsAt > args.now);
+      .filter((shift) => openUntil(shift) > args.now);
     const employeeIds = [...new Set(active.map((shift) => shift.employeeId))];
     const employees = await Promise.all(
       employeeIds.map((employeeId) => ctx.db.get("employees", employeeId)),
@@ -424,13 +448,16 @@ export const startSession = mutation({
       args.selection.locationId,
     );
     if (args.selection.kind === "scheduled") {
-      const shift = await ctx.db.get("scheduledShifts", args.selection.shiftId);
+      const [shift, openUntil] = await Promise.all([
+        ctx.db.get("scheduledShifts", args.selection.shiftId),
+        shiftOpenUntil(ctx, organizationId),
+      ]);
       if (
         !shift ||
         shift.organizationId !== organizationId ||
         shift.locationId !== location._id ||
         shift.startsAt > now ||
-        shift.endsAt <= now
+        openUntil(shift) <= now
       ) {
         throw new ConvexError("Vagten er ikke aktiv længere");
       }
@@ -1152,6 +1179,7 @@ export const getSettings = query({
   args: {},
   returns: v.object({
     timeZone: v.string(),
+    afterShiftMinutes: v.number(),
     tiers: v.array(
       v.object({
         id: v.id("staffFoodRuleTiers"),
@@ -1191,7 +1219,7 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireStaffFoodManager(ctx);
-    const [tiers, categories, products, timeZone] = await Promise.all([
+    const [tiers, categories, products, timeZone, afterShift] = await Promise.all([
       ctx.db
         .query("staffFoodRuleTiers")
         .withIndex("by_organizationId_and_minimumShiftMinutes", (q) =>
@@ -1211,6 +1239,7 @@ export const getSettings = query({
         )
         .take(MAX_SETTINGS_PRODUCTS + 1),
       resolveTimeZone(ctx, organizationId),
+      afterShiftMinutes(ctx, organizationId),
     ]);
     if (tiers.length > MAX_TIERS) {
       throw new ConvexError("Der er for mange regler");
@@ -1285,6 +1314,7 @@ export const getSettings = query({
     );
     return {
       timeZone,
+      afterShiftMinutes: afterShift,
       tiers: tierResults,
       categories: categories.map((category) => ({
         id: category._id,
@@ -1300,6 +1330,37 @@ export const getSettings = query({
         })),
       ),
     };
+  },
+});
+
+export const setAfterShiftMinutes = mutation({
+  args: { afterShiftMinutes: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organizationId } = await requireStaffFoodManager(ctx);
+    if (
+      !Number.isInteger(args.afterShiftMinutes) ||
+      args.afterShiftMinutes < 0 ||
+      args.afterShiftMinutes > MAX_AFTER_SHIFT_MINUTES
+    ) {
+      throw new ConvexError("Tiden efter vagten skal være mellem 0 og 4 timer");
+    }
+    const current = await ctx.db
+      .query("staffFoodSettings")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .unique();
+    const next = {
+      afterShiftMinutes: args.afterShiftMinutes,
+      updatedAt: Date.now(),
+    };
+    if (current) {
+      await ctx.db.patch("staffFoodSettings", current._id, next);
+    } else {
+      await ctx.db.insert("staffFoodSettings", { organizationId, ...next });
+    }
+    return null;
   },
 });
 
