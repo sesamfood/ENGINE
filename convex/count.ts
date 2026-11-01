@@ -171,12 +171,12 @@ function requireCountSchedule(
   }
 }
 
-async function hasSubmittedCount(
+async function getLatestSubmittedCount(
   ctx: CountContext,
   organizationId: string,
   locationId: Id<"locations">,
 ) {
-  const count = await ctx.db
+  return await ctx.db
     .query("counts")
     .withIndex("by_organizationId_and_locationId_and_submittedAt", (q) =>
       q
@@ -184,8 +184,18 @@ async function hasSubmittedCount(
         .eq("locationId", locationId)
         .gt("submittedAt", 0),
     )
+    .order("desc")
     .first();
-  return count !== null;
+}
+
+async function hasSubmittedCount(
+  ctx: CountContext,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  return (
+    (await getLatestSubmittedCount(ctx, organizationId, locationId)) !== null
+  );
 }
 
 async function getCountItems(
@@ -1025,7 +1035,10 @@ export const submitCount = mutation({
 });
 
 export const openAdHocCount = mutation({
-  args: { locationId: v.id("locations") },
+  args: {
+    locationId: v.id("locations"),
+    continueFromLatest: v.boolean(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const auth = await requirePermission(ctx, "count.manage");
@@ -1060,6 +1073,56 @@ export const openAdHocCount = mutation({
       adHoc: true,
       createdBy: auth.userIdentifier,
     });
+    if (args.continueFromLatest) {
+      const latest = await getLatestSubmittedCount(
+        ctx,
+        organizationId,
+        location._id,
+      );
+      const items = latest
+        ? await getCountItems(ctx, organizationId, latest._id)
+        : [];
+      const products = new Map<Id<"products">, boolean>();
+      for (const item of items) {
+        if (!products.has(item.productId)) {
+          const product = await ctx.db.get("products", item.productId);
+          products.set(item.productId, product?.status === "active");
+        }
+        if (
+          !products.get(item.productId) ||
+          (await toDefaultUnit(
+            ctx,
+            organizationId,
+            item.productId,
+            item.unitId,
+            item.quantity,
+          )) === null
+        ) {
+          continue;
+        }
+        await ctx.db.insert("countItems", {
+          organizationId,
+          countId,
+          countAreaId: item.countAreaId,
+          productId: item.productId,
+          unitId: item.unitId,
+          quantity: item.quantity,
+        });
+      }
+      // Keep which Produkter were counted per Område, but let areas be completed again.
+      const progress = latest
+        ? await listCountAreaProgress(ctx, organizationId, latest._id)
+        : [];
+      for (const row of progress) {
+        await ctx.db.insert("countAreaProgress", {
+          organizationId,
+          locationId: location._id,
+          countId,
+          countAreaId: row.countAreaId,
+          countedProductIds: row.countedProductIds,
+        });
+      }
+    }
     await recordAudit(ctx, auth, {
       action: "count.adHocOpened",
       entityTable: "counts",
@@ -1170,16 +1233,11 @@ export const addProductToLatestCount = mutation({
       if (converted === null) throw new ConvexError("Enheden blev ikke fundet");
       quantity += converted;
     }
-    const count = await ctx.db
-      .query("counts")
-      .withIndex("by_organizationId_and_locationId_and_submittedAt", (q) =>
-        q
-          .eq("organizationId", organizationId)
-          .eq("locationId", location._id)
-          .gt("submittedAt", 0),
-      )
-      .order("desc")
-      .first();
+    const count = await getLatestSubmittedCount(
+      ctx,
+      organizationId,
+      location._id,
+    );
     if (!count) {
       throw new ConvexError("Lokationen har ingen registreret Count");
     }

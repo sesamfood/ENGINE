@@ -15,6 +15,7 @@ import { QuantityInput } from "@/components/quantity-input";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { usePermission } from "@/components/app-shell";
+import { AddToLatestCountDialog } from "@/components/count/add-to-latest-count-dialog";
 import { CountNavigation } from "@/components/count/count-navigation";
 import { useCountState } from "@/components/count/count-state-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1223,6 +1224,8 @@ export function CountSheet() {
   const [submitting, setSubmitting] = useState(false);
   const [adHocPending, setAdHocPending] = useState(false);
   const [cancelAdHocOpen, setCancelAdHocOpen] = useState(false);
+  const [openAdHocDialog, setOpenAdHocDialog] = useState(false);
+  const [addForgottenOpen, setAddForgottenOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const pendingValues = useRef(new Map<string, QuantityPayload>());
   const timers = useRef(new Map<string, number>());
@@ -1238,6 +1241,11 @@ export function CountSheet() {
   const openAdHocCount = useMutation(api.count.openAdHocCount);
   const cancelAdHocCount = useMutation(api.count.cancelAdHocCount);
   const setProductOrder = useMutation(api.countAreas.setProductOrder);
+
+  const forgottenCatalog = useCompleteCatalog(
+    api.count.listCatalogPage,
+    addForgottenOpen && locationId ? { locationId } : "skip",
+  );
 
   const queriedCountAreas = useQuery(
     api.countAreas.listForCount,
@@ -1774,11 +1782,13 @@ export function CountSheet() {
     }
   }
 
-  async function openExtraCount() {
+  async function openExtraCount(continueFromLatest: boolean) {
     if (!locationId) return;
     setAdHocPending(true);
     try {
-      await openAdHocCount({ locationId });
+      await openAdHocCount({ locationId, continueFromLatest });
+      setOpenAdHocDialog(false);
+      setOverrides({});
       toast.success("Ekstra Count er åbnet");
     } catch (error) {
       toast.error(
@@ -1940,8 +1950,56 @@ export function CountSheet() {
     catalogProducts?.length,
   );
 
+  const showManagerActions =
+    canManageCount &&
+    state &&
+    (state.adHoc || isClosed || state.count?.status === "submitted");
+
   return (
     <div className="flex flex-col gap-4 pb-28">
+      {showManagerActions && locationId ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          {state.adHoc ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              disabled={adHocPending || submitting}
+              onClick={() => setCancelAdHocOpen(true)}
+            >
+              <XIcon data-icon="inline-start" />
+              Annullér ekstra Count
+            </Button>
+          ) : (
+            <>
+              <Button
+                type="button"
+                className="min-h-11"
+                disabled={adHocPending}
+                onClick={() => setOpenAdHocDialog(true)}
+              >
+                <PlusIcon data-icon="inline-start" />
+                Åbn ekstra Count
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={() => setAddForgottenOpen(true)}
+              >
+                <PlusIcon data-icon="inline-start" />
+                Tilføj glemt Produkt
+              </Button>
+            </>
+          )}
+          <AddToLatestCountDialog
+            locationId={locationId}
+            open={addForgottenOpen}
+            products={forgottenCatalog ?? []}
+            onOpenChange={setAddForgottenOpen}
+          />
+        </div>
+      ) : null}
       {activeCountAreaId && state && !lockedReason ? (
         <CountAreaPresence countAreaId={activeCountAreaId} />
       ) : null}
@@ -2235,41 +2293,6 @@ export function CountSheet() {
                 </span>
               </Badge>
             ) : null}
-            {canManageCount &&
-            state &&
-            !state.adHoc &&
-            (isClosed || state.count?.status === "submitted") ? (
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                appearance="responsive"
-                className="min-h-11 shrink-0"
-                disabled={adHocPending}
-                onClick={() => void openExtraCount()}
-              >
-                {adHocPending ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <PlusIcon data-icon="inline-start" />
-                )}
-                Åbn ekstra Count
-              </Button>
-            ) : null}
-            {canManageCount && state?.adHoc ? (
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                appearance="responsive"
-                className="min-h-11 shrink-0"
-                disabled={adHocPending || submitting}
-                onClick={() => setCancelAdHocOpen(true)}
-              >
-                <XIcon data-icon="inline-start" />
-                Annullér ekstra Count
-              </Button>
-            ) : null}
             {state?.count?.status === "submitted" && canExport ? (
               <Button
                 type="button"
@@ -2327,6 +2350,38 @@ export function CountSheet() {
               {submitting ? <Spinner data-icon="inline-start" /> : null}
               Registrér Count
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={openAdHocDialog} onOpenChange={setOpenAdHocDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Åbn ekstra Count</AlertDialogTitle>
+            <AlertDialogDescription>
+              Fortsæt med mængderne fra den seneste registrerede Count, eller
+              start forfra med tomme mængder. Den planlagte Count påvirkes
+              ikke.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={adHocPending}>Annullér</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={adHocPending}
+              onClick={() => void openExtraCount(false)}
+            >
+              Start forfra
+            </Button>
+            <Button
+              type="button"
+              disabled={adHocPending}
+              onClick={() => void openExtraCount(true)}
+            >
+              {adHocPending ? <Spinner data-icon="inline-start" /> : null}
+              Fortsæt fra seneste Count
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
