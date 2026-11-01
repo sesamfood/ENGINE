@@ -2,7 +2,6 @@
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
-import type { FunctionReturnType } from "convex/server";
 import { BoxesIcon, Grid2X2Icon, ListIcon, PlusIcon } from "lucide-react";
 import {
   ProductCardMedia,
@@ -74,13 +73,10 @@ function formatStockQuantity(
     : `${largest} og ${quantityFormatter.format(remainder)} ${defaultUnitName}`;
 }
 
-type StockRow = FunctionReturnType<
-  typeof api.count.listLocationStockPage
->["page"][number];
 
 export function LocationStock() {
   const [view, setView] = useState<"grid" | "detail">("grid");
-  const [addingRow, setAddingRow] = useState<StockRow | null>(null);
+  const [addingProduct, setAddingProduct] = useState(false);
   const { locations, locationId, state } = useCountState();
   const dateFormatter = dateTimeFormatter("da-DK", {
     dateStyle: "short",
@@ -161,7 +157,18 @@ export function LocationStock() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        {canManageCount ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            onClick={() => setAddingProduct(true)}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Tilføj glemt Produkt
+          </Button>
+        ) : null}
         <ToggleGroup
           value={[view]}
           onValueChange={(value) => {
@@ -220,17 +227,6 @@ export function LocationStock() {
                     ? `Senest talt ${dateFormatter.format(row.lastCountedAt)}`
                     : "Ikke talt endnu"}
                 </p>
-                {canManageCount ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-auto h-11 w-full"
-                    onClick={() => setAddingRow(row)}
-                  >
-                    <PlusIcon data-icon="inline-start" />
-                    Tilføj til seneste Count
-                  </Button>
-                ) : null}
               </CardContent>
             </Card>
           ))}
@@ -244,11 +240,6 @@ export function LocationStock() {
                 <TableHead>Kategori</TableHead>
                 <TableHead className="text-right">Beholdning</TableHead>
                 <TableHead>Senest talt</TableHead>
-                {canManageCount ? (
-                  <TableHead>
-                    <span className="sr-only">Handlinger</span>
-                  </TableHead>
-                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -270,19 +261,6 @@ export function LocationStock() {
                       ? dateFormatter.format(row.lastCountedAt)
                       : "Ikke talt endnu"}
                   </TableCell>
-                  {canManageCount ? (
-                    <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="min-h-11"
-                        onClick={() => setAddingRow(row)}
-                      >
-                        <PlusIcon data-icon="inline-start" />
-                        Tilføj til seneste Count
-                      </Button>
-                    </TableCell>
-                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
@@ -292,21 +270,13 @@ export function LocationStock() {
 
       <AddToLatestCountDialog
         locationId={locationId}
-        open={addingRow !== null}
-        products={
-          addingRow
-            ? [
-                {
-                  id: addingRow.productId,
-                  name: addingRow.productName,
-                  units: addingRow.units,
-                },
-              ]
-            : []
-        }
-        onOpenChange={(open) => {
-          if (!open) setAddingRow(null);
-        }}
+        open={addingProduct}
+        products={(stock ?? []).map((row) => ({
+          id: row.productId,
+          name: row.productName,
+          units: row.units,
+        }))}
+        onOpenChange={setAddingProduct}
       />
     </div>
   );
