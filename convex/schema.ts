@@ -1199,6 +1199,8 @@ export default defineSchema({
     totalQuantity: v.optional(v.number()),
     hasTemperatureDeviation: v.optional(v.boolean()),
     dashboardSummaryTimeZone: v.optional(v.string()),
+    // Set when the Transfer fulfils an internal order.
+    orderId: v.optional(v.id("orders")),
   })
     .index("by_organizationId_and_transferredAt", [
       "organizationId",
@@ -1305,14 +1307,38 @@ export default defineSchema({
     organizationId: v.string(),
     includeRecipes: v.boolean(),
     chooseSupplierFirst: v.optional(v.boolean()),
+    // Forecast settings when ordering without a supplier. Missing means the defaults.
+    coverageDays: v.optional(v.number()),
+    bufferPercent: v.optional(v.number()),
+    // Unused. Kept so documents written before internal supplier settings still validate.
+    internalOrdersEnabled: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  // A location other locations can order from. Fulfilled with a Transfer.
+  internalSuppliers: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    // Missing means true. Inactive suppliers are hidden under Bestilling.
+    active: v.optional(v.boolean()),
+    // Missing means true. orderingLocationIds is kept for switching back.
+    allLocations: v.optional(v.boolean()),
+    orderingLocationIds: v.array(v.id("locations")),
+    productIds: v.array(v.id("products")),
+    // Forecast settings under Bestilling. Missing means the defaults.
+    coverageDays: v.optional(v.number()),
+    bufferPercent: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 
   suppliers: defineTable({
     organizationId: v.string(),
     name: v.string(),
     normalizedName: v.string(),
     email: v.optional(v.string()),
+    // Forecast settings under Bestilling. Missing means the defaults.
+    coverageDays: v.optional(v.number()),
+    bufferPercent: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_normalizedName", [
     "organizationId",
@@ -1348,6 +1374,14 @@ export default defineSchema({
       v.union(v.literal("pending"), v.literal("registered")),
     ),
     manualGoodsReceiptId: v.optional(v.id("manualGoodsReceipts")),
+    // Internal orders: received through the fulfilling Transfer, not receiptStatus.
+    fulfillingLocationId: v.optional(v.id("locations")),
+    fulfillmentStatus: v.optional(
+      v.union(v.literal("open"), v.literal("transferred")),
+    ),
+    transferId: v.optional(v.id("transfers")),
+    // Set when an open internal order is edited. A Transfer must match the latest version.
+    editedAt: v.optional(v.number()),
   })
     .index("by_organizationId_and_locationId_and_createdAt", [
       "organizationId",
@@ -1358,6 +1392,12 @@ export default defineSchema({
       "organizationId",
       "locationId",
       "receiptStatus",
+      "createdAt",
+    ])
+    .index("by_org_fulfillmentStatus_fulfillingLocation_createdAt", [
+      "organizationId",
+      "fulfillmentStatus",
+      "fulfillingLocationId",
       "createdAt",
     ]),
 

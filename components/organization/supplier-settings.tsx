@@ -7,6 +7,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { usePermission } from "@/components/app-shell";
 import {
+  ForecastSettingsFields,
+  forecastSettingsDraft,
+  parseForecastSettings,
+  type ForecastSettingsDraft,
+} from "@/components/ordering/forecast-settings-fields";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -58,10 +64,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
+import {
+  DEFAULT_BUFFER_PERCENT,
+  DEFAULT_COVERAGE_DAYS,
+} from "@/lib/ordering-forecast";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Supplier = FunctionReturnType<typeof api.suppliers.list>[number];
-type Draft = { supplier: Supplier | null; name: string; email: string };
+type Draft = {
+  supplier: Supplier | null;
+  name: string;
+  email: string;
+  forecast: ForecastSettingsDraft;
+};
 
 export function SupplierSettings() {
   const canManage = usePermission("organization.settings");
@@ -83,14 +98,25 @@ export function SupplierSettings() {
       supplier,
       name: supplier?.name ?? "",
       email: supplier?.email ?? "",
+      forecast: forecastSettingsDraft(
+        supplier ?? {
+          coverageDays: DEFAULT_COVERAGE_DAYS,
+          bufferPercent: DEFAULT_BUFFER_PERCENT,
+        },
+      ),
     });
   }
 
   async function save() {
-    if (!draft) return;
+    const forecast = draft && parseForecastSettings(draft.forecast);
+    if (!draft || !forecast) return;
     setSaving(true);
     setError("");
-    const values = { name: draft.name, email: draft.email.trim() || null };
+    const values = {
+      name: draft.name,
+      email: draft.email.trim() || null,
+      ...forecast,
+    };
     try {
       if (draft.supplier) {
         await update({ supplierId: draft.supplier.id, ...values });
@@ -269,6 +295,18 @@ export function SupplierSettings() {
                   }
                 />
               </Field>
+              {draft ? (
+                <ForecastSettingsFields
+                  id="supplier-forecast"
+                  value={draft.forecast}
+                  onChange={(forecast) =>
+                    setDraft((current) =>
+                      current ? { ...current, forecast } : current,
+                    )
+                  }
+                  disabled={saving}
+                />
+              ) : null}
               {error ? <FieldError>{error}</FieldError> : null}
             </FieldGroup>
             <DialogFooter>
@@ -284,7 +322,11 @@ export function SupplierSettings() {
               <Button
                 type="submit"
                 size="lg"
-                disabled={saving || !draft?.name.trim()}
+                disabled={
+                  saving ||
+                  !draft?.name.trim() ||
+                  !parseForecastSettings(draft.forecast)
+                }
               >
                 {saving ? <Spinner data-icon="inline-start" /> : null}
                 Gem leverandør

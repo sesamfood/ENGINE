@@ -3,6 +3,7 @@ import {
   getGsSupplyLink,
   getGsSupplySupplierId,
   getProductUnitFactor,
+  getProductUnitFactors,
 } from "./integrations/gssupply/lib/links";
 import {
   paginationOptsValidator,
@@ -20,6 +21,7 @@ import {
   ORDER_HISTORY_DAYS,
   orderDate,
   shiftOrderDate,
+  validForecastSettings,
 } from "../lib/ordering-forecast";
 import {
   mutation,
@@ -39,6 +41,11 @@ import {
 import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
+import { canOrderFrom, getInternalSupplier } from "./internalOrders";
+import {
+  forecastSettings,
+  forecastSettingsFields,
+} from "./lib/orderForecastSettings";
 import { createForecastConsumptionResolver } from "./lib/forecastConsumption";
 import {
   forecastConditionValidator,
@@ -74,6 +81,8 @@ const productValidator = v.object({
   category: v.string(),
   unitId: v.id("units"),
   unitName: v.string(),
+  // All units the Produkt can be ordered in, default first. Used by internal orders.
+  units: v.array(v.object({ id: v.id("units"), name: v.string() })),
   hasIngredients: v.boolean(),
   stock: v.union(v.number(), v.null()),
   lastCountedAt: v.union(v.number(), v.null()),
@@ -102,41 +111,49 @@ export const listProducts = query({
         q.eq("organizationId", organizationId).eq("status", "active"),
       )
       .paginate(catalogPaginationOptions(args.paginationOpts, 25));
-    const products = result.page.filter(
-      (product) => locationHasProduct(access, product._id),
+    const products = result.page.filter((product) =>
+      locationHasProduct(access, product._id),
     );
     return {
       ...result,
       page: await Promise.all(
         products.map(async (product) => {
-          const [unit, category, ingredient, stock, imageUrl] = await Promise.all([
-            ctx.db.get("units", product.defaultUnitId),
-            ctx.db.get("categories", product.categoryId),
-            ctx.db
-              .query("productIngredients")
-              .withIndex("by_organizationId_and_productId", (q) =>
-                q
-                  .eq("organizationId", organizationId)
-                  .eq("productId", product._id),
-              )
-              .first(),
-            showStock
-              ? ctx.db
-                  .query("locationStock")
-                  .withIndex(
-                    "by_organizationId_and_locationId_and_productId",
-                    (q) =>
-                      q
-                        .eq("organizationId", organizationId)
-                        .eq("locationId", args.locationId)
-                        .eq("productId", product._id),
-                  )
-                  .unique()
-              : null,
-            product.imageStorageId
-              ? ctx.storage.getUrl(product.imageStorageId)
-              : null,
-          ]);
+          const [unit, category, ingredient, stock, imageUrl, units] =
+            await Promise.all([
+              ctx.db.get("units", product.defaultUnitId),
+              ctx.db.get("categories", product.categoryId),
+              ctx.db
+                .query("productIngredients")
+                .withIndex("by_organizationId_and_productId", (q) =>
+                  q
+                    .eq("organizationId", organizationId)
+                    .eq("productId", product._id),
+                )
+                .first(),
+              showStock
+                ? ctx.db
+                    .query("locationStock")
+                    .withIndex(
+                      "by_organizationId_and_locationId_and_productId",
+                      (q) =>
+                        q
+                          .eq("organizationId", organizationId)
+                          .eq("locationId", args.locationId)
+                          .eq("productId", product._id),
+                    )
+                    .unique()
+                : null,
+              product.imageStorageId
+                ? ctx.storage.getUrl(product.imageStorageId)
+                : null,
+              getProductUnitFactors(ctx, product).then((factors) =>
+                Promise.all(
+                  [...factors.keys()]
+                    .filter((unitId) => unitId !== product.defaultUnitId)
+                    .map((unitId) => ctx.db.get("units", unitId)),
+                ),
+              ),
+            ]);
           if (!unit || unit.organizationId !== organizationId)
             throw new ConvexError("Produktets enhed blev ikke fundet");
           return {
@@ -149,6 +166,11 @@ export const listProducts = query({
                 : "Uden kategori",
             unitId: unit._id,
             unitName: unit.name,
+            units: [unit, ...units].flatMap((item) =>
+              item?.organizationId === organizationId
+                ? [{ id: item._id, name: item.name }]
+                : [],
+            ),
             hasIngredients: ingredient !== null,
             stock: stock?.quantity ?? null,
             lastCountedAt: stock?.lastCountedAt ?? null,
@@ -438,6 +460,8 @@ export const listOperationalConsumption = query({
 const orderInputValidator = v.object({
   locationId: v.id("locations"),
   supplierId: v.optional(v.id("suppliers")),
+  // Internal orders name the location that fulfils them with a Transfer.
+  fulfillingLocationId: v.optional(v.id("locations")),
   // Catalog items without a linked product, ordered in whole packs.
   catalogLines: v.optional(
     v.array(
@@ -457,29 +481,96 @@ const orderInputValidator = v.object({
   ),
 });
 
-const orderRowValidator = schema.doc("orderLines").pick(
-  "productId",
-  "productName",
-  "unitId",
-  "unitName",
-  "quantity",
-  "supplierProductNumber",
-);
-const historySummaryValidator = schema.doc("orders").pick(
-  "_id",
-  "locationName",
-  "createdAt",
-  "createdByName",
-  "fromDate",
-  "toDate",
-  "bufferPercent",
-  "itemCount",
-  "supplierName",
-  "email",
-);
+const orderRowValidator = schema
+  .doc("orderLines")
+  .pick(
+    "productId",
+    "productName",
+    "unitId",
+    "unitName",
+    "quantity",
+    "supplierProductNumber",
+  );
+const historySummaryValidator = schema
+  .doc("orders")
+  .pick(
+    "_id",
+    "locationName",
+    "createdAt",
+    "createdByName",
+    "fromDate",
+    "toDate",
+    "bufferPercent",
+    "itemCount",
+    "supplierName",
+    "email",
+    "fulfillingLocationId",
+    "fulfillmentStatus",
+  );
 const historyDetailValidator = historySummaryValidator.extend({
   locationId: v.id("locations"),
   rows: v.array(orderRowValidator),
+});
+
+async function requireInternalSupplier(
+  ctx: QueryCtx | MutationCtx,
+  auth: Awaited<ReturnType<typeof requirePlanner>>,
+  fulfillingLocationId: Id<"locations">,
+) {
+  const [supplier, location] = await Promise.all([
+    getInternalSupplier(ctx, auth.organizationId, fulfillingLocationId),
+    ctx.db.get("locations", fulfillingLocationId),
+  ]);
+  if (
+    !supplier ||
+    !canOrderFrom(supplier, auth.location._id) ||
+    location?.organizationId !== auth.organizationId
+  ) {
+    throw new ConvexError(
+      "Lokationen kan ikke længere bestille internt herfra. Opdatér siden.",
+    );
+  }
+  return { location, productIds: new Set(supplier.productIds) };
+}
+
+export const listInternalSuppliers = query({
+  args: { locationId: v.id("locations") },
+  returns: v.array(
+    v.object({
+      locationId: v.id("locations"),
+      name: v.string(),
+      productIds: v.array(v.id("products")),
+      ...forecastSettingsFields,
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const auth = await requirePlanner(ctx, args.locationId);
+    const suppliers = await ctx.db
+      .query("internalSuppliers")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(200);
+    const allowed = suppliers.filter((supplier) =>
+      canOrderFrom(supplier, args.locationId),
+    );
+    const locations = await Promise.all(
+      allowed.map((supplier) => ctx.db.get("locations", supplier.locationId)),
+    );
+    return allowed.flatMap((supplier, index) => {
+      const location = locations[index];
+      return location?.organizationId === auth.organizationId
+        ? [
+            {
+              locationId: supplier.locationId,
+              name: location.name,
+              productIds: supplier.productIds,
+              ...forecastSettings(supplier),
+            },
+          ]
+        : [];
+    });
+  },
 });
 
 async function prepareOrder(
@@ -490,11 +581,24 @@ async function prepareOrder(
   const { organizationId } = auth;
   const catalogLines = args.catalogLines ?? [];
   const lineCount = args.lines.length + catalogLines.length;
+  const internalSupplier = args.fulfillingLocationId
+    ? await requireInternalSupplier(ctx, auth, args.fulfillingLocationId)
+    : null;
+  if (internalSupplier && (args.supplierId || catalogLines.length)) {
+    throw new ConvexError("Vælg enten en leverandør eller en lokation");
+  }
+  // Internal orders become one Transfer, which has a lower line limit.
+  if (internalSupplier && lineCount > 200) {
+    throw new ConvexError(
+      "Vælg højst 200 produktlinjer i en intern bestilling",
+    );
+  }
+  // Internal orders may list a Produkt once per unit.
   if (
     lineCount === 0 ||
     lineCount > 500 ||
-    new Set(args.lines.map((line) => line.productId)).size !==
-      args.lines.length
+    new Set(args.lines.map((line) => `${line.productId}:${line.unitId}`))
+      .size !== args.lines.length
   ) {
     throw new ConvexError("Vælg mellem 1 og 500 forskellige produkter");
   }
@@ -533,11 +637,26 @@ async function prepareOrder(
           "Et produkt er ikke længere tilgængeligt på lokationen. Opdatér planen.",
         );
       }
-      // Catalog suppliers are ordered in the linked unit, others in the default unit.
+      if (internalSupplier && !internalSupplier.productIds.has(product._id)) {
+        throw new ConvexError(
+          `${product.name} kan ikke længere bestilles hos ${internalSupplier.location.name}. Opdatér planen.`,
+        );
+      }
+      if (
+        internalSupplier &&
+        (await getProductUnitFactor(ctx, product, line.unitId)) === null
+      ) {
+        throw new ConvexError(
+          `${product.name} kan ikke bestilles i den valgte enhed. Opdatér planen.`,
+        );
+      }
+      // Catalog suppliers use the linked unit, internal orders any unit, others the default unit.
       const link = catalogSupplier
         ? await getGsSupplyLink(ctx, organizationId, product._id)
         : null;
-      const unitId = link?.unitId ?? product.defaultUnitId;
+      const unitId = internalSupplier
+        ? line.unitId
+        : (link?.unitId ?? product.defaultUnitId);
       if (
         (catalogSupplier && !link) ||
         line.unitId !== unitId ||
@@ -591,7 +710,13 @@ async function prepareOrder(
   if (new Set(numbers).size !== numbers.length) {
     throw new ConvexError("En vare er med flere gange. Opdatér planen.");
   }
-  return { auth, supplier, rows };
+  return {
+    auth,
+    supplier,
+    supplierName: supplier?.name ?? internalSupplier?.location.name,
+    fulfillingLocationId: internalSupplier?.location._id,
+    rows,
+  };
 }
 
 export const prepareExport = query({
@@ -603,10 +728,10 @@ export const prepareExport = query({
   }),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "ordering.export");
-    const { auth, supplier, rows } = await prepareOrder(ctx, args);
+    const { auth, supplierName, rows } = await prepareOrder(ctx, args);
     return {
       locationName: auth.location.name,
-      ...(supplier ? { supplierName: supplier.name } : {}),
+      ...(supplierName ? { supplierName } : {}),
       rows,
     };
   },
@@ -624,6 +749,8 @@ function historySummary(order: Doc<"orders">) {
     itemCount: order.itemCount,
     supplierName: order.supplierName,
     email: order.email,
+    fulfillingLocationId: order.fulfillingLocationId,
+    fulfillmentStatus: order.fulfillmentStatus,
   };
 }
 
@@ -637,18 +764,12 @@ export const placeOrder = mutation({
   returns: v.id("orders"),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "ordering.place");
-    const { auth, supplier, rows } = await prepareOrder(ctx, args);
+    const { auth, supplier, supplierName, fulfillingLocationId, rows } =
+      await prepareOrder(ctx, args);
     if (args.sendEmail && !supplier?.email) {
       throw new ConvexError("Leverandøren har ingen e-mailadresse");
     }
-    if (
-      !Number.isInteger(args.coverageDays) ||
-      args.coverageDays < 1 ||
-      args.coverageDays > 28 ||
-      !Number.isFinite(args.bufferPercent) ||
-      args.bufferPercent < 0 ||
-      args.bufferPercent > 100
-    ) {
+    if (!validForecastSettings(args.coverageDays, args.bufferPercent)) {
       throw new ConvexError("Dækning eller buffer er ugyldig");
     }
     try {
@@ -667,14 +788,17 @@ export const placeOrder = mutation({
       toDate: shiftOrderDate(args.fromDate, args.coverageDays - 1),
       bufferPercent: args.bufferPercent,
       itemCount: rows.length,
-      ...(supplier
-        ? { supplierId: supplier._id, supplierName: supplier.name }
+      ...(supplier ? { supplierId: supplier._id } : {}),
+      ...(supplierName ? { supplierName } : {}),
+      ...(fulfillingLocationId
+        ? { fulfillingLocationId, fulfillmentStatus: "open" as const }
         : {}),
       ...(args.sendEmail && supplier?.email
         ? { email: { to: supplier.email, status: "pending" as const } }
         : {}),
-      // Only product lines can be received into stock.
-      ...(rows.some((row) => row.productId)
+      // Only product lines can be received into stock. Internal orders are
+      // received through their Transfer instead.
+      ...(!fulfillingLocationId && rows.some((row) => row.productId)
         ? { receiptStatus: "pending" as const }
         : {}),
     };
@@ -691,7 +815,7 @@ export const placeOrder = mutation({
       entityTable: "orders",
       entityId: orderId,
       locationId: args.locationId,
-      summary: `Bestilling afgivet med ${rows.length} produkter${supplier ? ` hos ${supplier.name}` : ""}`,
+      summary: `Bestilling afgivet med ${rows.length} produkter${supplierName ? ` hos ${supplierName}` : ""}`,
     });
     if (order.email) {
       await ctx.scheduler.runAfter(0, internal.orderEmails.send, { orderId });
@@ -757,7 +881,13 @@ async function readHistory(ctx: QueryCtx, orderId: Id<"orders">) {
     ...historySummary(order),
     locationId: order.locationId,
     rows: lines.map(
-      ({ productId, productName, unitName, quantity, supplierProductNumber }) => ({
+      ({
+        productId,
+        productName,
+        unitName,
+        quantity,
+        supplierProductNumber,
+      }) => ({
         productId,
         productName,
         unitName,
@@ -772,6 +902,109 @@ export const getHistory = query({
   args: { orderId: v.id("orders") },
   returns: v.union(historyDetailValidator, v.null()),
   handler: async (ctx, args) => await readHistory(ctx, args.orderId),
+});
+
+// An open internal order, loaded into the planner for editing.
+export const getEditableOrder = query({
+  args: { orderId: v.id("orders") },
+  returns: v.union(
+    v.object({
+      id: v.id("orders"),
+      locationId: v.id("locations"),
+      fulfillingLocationId: v.id("locations"),
+      lines: v.array(
+        v.object({
+          productId: v.id("products"),
+          unitId: v.id("units"),
+          quantity: v.number(),
+        }),
+      ),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const auth = await requireOrdering(ctx);
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId ||
+      order.fulfillmentStatus !== "open"
+    ) {
+      return null;
+    }
+    requireLocationAccess(auth, order.locationId);
+    const lines = await ctx.db
+      .query("orderLines")
+      .withIndex("by_organizationId_and_orderId", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("orderId", order._id),
+      )
+      .take(500);
+    return {
+      id: order._id,
+      locationId: order.locationId,
+      fulfillingLocationId: order.fulfillingLocationId,
+      lines: lines.flatMap(({ productId, unitId, quantity }) =>
+        productId && unitId ? [{ productId, unitId, quantity }] : [],
+      ),
+    };
+  },
+});
+
+export const updateInternalOrder = mutation({
+  args: {
+    orderId: v.id("orders"),
+    lines: orderInputValidator.fields.lines,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = await requirePermission(ctx, "ordering.place");
+    const order = await ctx.db.get("orders", args.orderId);
+    if (
+      !order ||
+      order.organizationId !== auth.organizationId ||
+      !order.fulfillingLocationId
+    ) {
+      throw new ConvexError("Bestillingen blev ikke fundet");
+    }
+    if (order.fulfillmentStatus !== "open") {
+      throw new ConvexError(
+        "Der er allerede oprettet en transfer for bestillingen, så den kan ikke ændres",
+      );
+    }
+    // Checks location access and that the supplier still offers each Produkt.
+    const { rows } = await prepareOrder(ctx, {
+      locationId: order.locationId,
+      fulfillingLocationId: order.fulfillingLocationId,
+      lines: args.lines,
+    });
+    const existing = await ctx.db
+      .query("orderLines")
+      .withIndex("by_organizationId_and_orderId", (q) =>
+        q.eq("organizationId", auth.organizationId).eq("orderId", order._id),
+      )
+      .take(500);
+    for (const line of existing) await ctx.db.delete("orderLines", line._id);
+    for (const row of rows) {
+      await ctx.db.insert("orderLines", {
+        organizationId: auth.organizationId,
+        orderId: order._id,
+        ...row,
+      });
+    }
+    await ctx.db.patch("orders", order._id, {
+      itemCount: rows.length,
+      editedAt: Date.now(),
+    });
+    await recordAudit(ctx, auth, {
+      action: "ordering.update",
+      entityTable: "orders",
+      entityId: order._id,
+      locationId: order.locationId,
+      summary: `Intern bestilling ændret til ${rows.length} produkter${order.supplierName ? ` hos ${order.supplierName}` : ""}`,
+    });
+    return null;
+  },
 });
 
 export const exportHistory = query({

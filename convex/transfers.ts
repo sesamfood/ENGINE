@@ -20,6 +20,7 @@ import {
 } from "./lib/dashboardSummaries";
 import { transferAggregates } from "./lib/transferAggregates";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
+import { requireOpenOrder } from "./internalOrders";
 
 const MAX_TRANSFER_ITEMS = 200;
 const MAX_COMMENT_LENGTH = 500;
@@ -91,6 +92,7 @@ const transferHeaderValidator = v.object({
 });
 
 const transferDetailValidator = transferHeaderValidator.extend({
+  orderId: v.union(v.id("orders"), v.null()),
   fromLocationId: v.id("locations"),
   toLocationId: v.id("locations"),
   responsibleUserId: v.string(),
@@ -514,13 +516,28 @@ function validateDateRange(startAt: number, endAt: number) {
 }
 
 export const createTransfer = mutation({
-  args: transferArgsValidator.fields,
+  args: {
+    ...transferArgsValidator.fields,
+    // Fulfils an open internal order between the same locations.
+    orderId: v.optional(v.id("orders")),
+    orderVersion: v.optional(v.number()),
+  },
   returns: v.id("transfers"),
   handler: async (ctx, args) => {
-    const { organizationId, userIdentifier } = await requireTransferManager(
-      ctx,
-      "transfers.new",
-    );
+    const auth = await requireTransferManager(ctx, "transfers.new");
+    const { organizationId, userIdentifier } = auth;
+    const order = args.orderId
+      ? await requireOpenOrder(ctx, auth, args.orderId, args.orderVersion)
+      : null;
+    if (
+      order &&
+      (order.fulfillingLocationId !== args.fromLocationId ||
+        order.locationId !== args.toLocationId)
+    ) {
+      throw new ConvexError(
+        "Transferen skal gå fra den leverende til den bestillende lokation",
+      );
+    }
     await requireLocationsUnlocked(ctx, organizationId, [
       args.fromLocationId,
       args.toLocationId,
@@ -546,7 +563,14 @@ export const createTransfer = mutation({
       receiptStatus: "pending",
       ...aggregates,
       dashboardSummaryTimeZone: summaryTimeZone,
+      ...(order ? { orderId: order._id } : {}),
     });
+    if (order) {
+      await ctx.db.patch("orders", order._id, {
+        fulfillmentStatus: "transferred",
+        transferId,
+      });
+    }
 
     for (const item of resolvedItems) {
       await ctx.db.insert("transferItems", {
@@ -598,6 +622,15 @@ export const updateTransfer = mutation({
     if (transfer.receiptStatus === "registered") {
       throw new ConvexError(
         "Transferen er modtaget og kan ikke redigeres",
+      );
+    }
+    if (
+      transfer.orderId &&
+      (transfer.fromLocationId !== args.fromLocationId ||
+        transfer.toLocationId !== args.toLocationId)
+    ) {
+      throw new ConvexError(
+        "Transferen hører til en intern bestilling, så lokationerne kan ikke ændres",
       );
     }
     await requireLocationsUnlocked(ctx, organizationId, [
@@ -749,6 +782,16 @@ export const deleteTransfer = mutation({
     for (const item of items) {
       await ctx.db.delete("transferItems", item._id);
     }
+    // The internal order goes back to the open list.
+    const order = transfer.orderId
+      ? await ctx.db.get("orders", transfer.orderId)
+      : null;
+    if (order?.transferId === transfer._id) {
+      await ctx.db.patch("orders", order._id, {
+        fulfillmentStatus: "open",
+        transferId: undefined,
+      });
+    }
     await ctx.db.delete("transfers", transfer._id);
     return null;
   },
@@ -841,6 +884,7 @@ export const getTransfer = query({
     const header = await hydrateTransferHeader(ctx, transfer, items);
     return {
       ...header,
+      orderId: transfer.orderId ?? null,
       fromLocationId: transfer.fromLocationId,
       toLocationId: transfer.toLocationId,
       responsibleUserId: transfer.responsibleUserId,

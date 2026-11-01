@@ -6,6 +6,22 @@ export { orderDate, shiftOrderDate } from "./forecast-dates";
 const DAY_MS = 86_400_000;
 export const ORDER_HISTORY_DAYS = 90;
 export const MAX_ORDER_QUANTITY = 1_000_000;
+export const DEFAULT_COVERAGE_DAYS = 7;
+export const DEFAULT_BUFFER_PERCENT = 10;
+
+export function validForecastSettings(
+  coverageDays: number,
+  bufferPercent: number,
+) {
+  return (
+    Number.isInteger(coverageDays) &&
+    coverageDays >= 1 &&
+    coverageDays <= 28 &&
+    Number.isFinite(bufferPercent) &&
+    bufferPercent >= 0 &&
+    bufferPercent <= 100
+  );
+}
 
 export type DemandObservation = {
   date: string;

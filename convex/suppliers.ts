@@ -3,6 +3,11 @@ import { hasPermission } from "../lib/auth-permissions";
 import { mutation, query } from "./_generated/server";
 import { recordAudit } from "./lib/audit";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  forecastSettings,
+  forecastSettingsFields,
+  requireForecastSettings,
+} from "./lib/orderForecastSettings";
 import { normalizeMasterDataName } from "./lib/masterData";
 import {
   getGsSupplyConnection,
@@ -31,6 +36,7 @@ const supplierValidator = v.object({
   catalog: v.union(v.literal("gssupply"), v.null()),
   // Created and controlled by an integration, so it can't be deleted here.
   managed: v.boolean(),
+  ...forecastSettingsFields,
 });
 
 export const list = query({
@@ -62,6 +68,7 @@ export const list = query({
       catalog:
         supplier._id === gsSupplySupplierId ? ("gssupply" as const) : null,
       managed: supplier._id === connection?.supplierId,
+      ...forecastSettings(supplier),
     }));
   },
 });
@@ -69,6 +76,7 @@ export const list = query({
 const supplierInput = {
   name: v.string(),
   email: v.union(v.string(), v.null()),
+  ...forecastSettingsFields,
 };
 
 export const create = mutation({
@@ -98,6 +106,7 @@ export const create = mutation({
       name,
       normalizedName,
       email,
+      ...requireForecastSettings(args),
       updatedAt: Date.now(),
     });
     await recordAudit(ctx, auth, {
@@ -138,6 +147,7 @@ export const update = mutation({
       name,
       normalizedName,
       email: normalizeEmail(args.email),
+      ...requireForecastSettings(args),
       updatedAt: Date.now(),
     });
     await recordAudit(ctx, auth, {

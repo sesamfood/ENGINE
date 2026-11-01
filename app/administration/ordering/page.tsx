@@ -1,4 +1,5 @@
 import { FeatureToggle } from "@/components/organization/feature-toggle";
+import { InternalOrderSettings } from "@/components/organization/internal-order-settings";
 import { OrderingSettings } from "@/components/organization/ordering-settings";
 import { SupplierSettings } from "@/components/organization/supplier-settings";
 
@@ -8,6 +9,7 @@ export default function AdministrationOrderingPage() {
       <FeatureToggle feature="ordering" />
       <OrderingSettings />
       <SupplierSettings />
+      <InternalOrderSettings />
     </div>
   );
 }
