@@ -6,6 +6,12 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAccess, usePermission } from "@/components/app-shell";
+import {
+  ForecastSettingsFields,
+  forecastSettingsDraft,
+  parseForecastSettings,
+  type ForecastSettingsDraft,
+} from "@/components/ordering/forecast-settings-fields";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +21,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FieldGroup } from "@/components/ui/field";
+import {
+  FieldDescription,
+  FieldGroup,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -46,6 +57,8 @@ function Settings() {
   const [chooseSupplierFirstDraft, setChooseSupplierFirstDraft] = useState<
     boolean | null
   >(null);
+  const [forecastDraft, setForecastDraft] =
+    useState<ForecastSettingsDraft | null>(null);
   const [saving, setSaving] = useState(false);
 
   if (!access) return <Skeleton className="h-56 max-w-3xl" />;
@@ -66,16 +79,21 @@ function Settings() {
   const includeRecipes = includeRecipesDraft ?? settings.includeRecipes;
   const chooseSupplierFirst =
     chooseSupplierFirstDraft ?? settings.chooseSupplierFirst;
+  const forecastInput = forecastDraft ?? forecastSettingsDraft(settings);
+  const forecast = parseForecastSettings(forecastInput);
   const changed =
     includeRecipes !== settings.includeRecipes ||
-    chooseSupplierFirst !== settings.chooseSupplierFirst;
+    chooseSupplierFirst !== settings.chooseSupplierFirst ||
+    forecastDraft !== null;
 
   async function save() {
+    if (!forecast) return;
     setSaving(true);
     try {
-      await saveSettings({ includeRecipes, chooseSupplierFirst });
+      await saveSettings({ includeRecipes, chooseSupplierFirst, ...forecast });
       setIncludeRecipesDraft(null);
       setChooseSupplierFirstDraft(null);
+      setForecastDraft(null);
       toast.success("Indstillingerne for bestilling er gemt");
     } catch (error) {
       toast.error(
@@ -115,10 +133,27 @@ function Settings() {
             onCheckedChange={setChooseSupplierFirstDraft}
             disabled={saving}
           />
+          <FieldSet>
+            <FieldLegend variant="label">Uden leverandør</FieldLegend>
+            <FieldDescription>
+              Bruges, når der bestilles med Ingen leverandør. Hver leverandør
+              har sin egen dækning og buffer.
+            </FieldDescription>
+            <ForecastSettingsFields
+              id="ordering-forecast"
+              value={forecastInput}
+              onChange={setForecastDraft}
+              disabled={saving}
+            />
+          </FieldSet>
         </FieldGroup>
       </CardContent>
       <CardFooter className="justify-end">
-        <Button size="lg" disabled={!changed || saving} onClick={() => void save()}>
+        <Button
+          size="lg"
+          disabled={!changed || !forecast || saving}
+          onClick={() => void save()}
+        >
           {saving ? <Spinner data-icon="inline-start" /> : null}
           Gem indstillinger
         </Button>

@@ -8,6 +8,11 @@ import {
 } from "./_generated/server";
 import { recordAudit } from "./lib/audit";
 import {
+  forecastSettings,
+  forecastSettingsFields,
+  requireForecastSettings,
+} from "./lib/orderForecastSettings";
+import {
   requireLocationAccess,
   requireOrganizationAdmin,
   requireTransferManager,
@@ -65,6 +70,7 @@ export const getSettings = query({
         allLocations: v.boolean(),
         orderingLocationIds: v.array(v.id("locations")),
         productIds: v.array(v.id("products")),
+        ...forecastSettingsFields,
       }),
     ),
   }),
@@ -97,6 +103,7 @@ export const getSettings = query({
                   locationIds.has(id),
                 ),
                 productIds: supplier.productIds,
+                ...forecastSettings(supplier),
               },
             ]
           : [],
@@ -112,6 +119,7 @@ export const saveSupplier = mutation({
     allLocations: v.boolean(),
     orderingLocationIds: v.array(v.id("locations")),
     productIds: v.array(v.id("products")),
+    ...forecastSettingsFields,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -155,6 +163,7 @@ export const saveSupplier = mutation({
       allLocations: args.allLocations,
       orderingLocationIds,
       productIds,
+      ...requireForecastSettings(args),
       updatedAt: Date.now(),
     };
     const id = current

@@ -93,6 +93,8 @@ import {
 } from "@/components/ui/select";
 import { setOrderingLocation, useOrderingLocation } from "@/lib/ordering-prefs";
 import {
+  DEFAULT_BUFFER_PERCENT,
+  DEFAULT_COVERAGE_DAYS,
   forecastOrder,
   parseOrderQuantity,
   shiftOrderDate,
@@ -146,8 +148,6 @@ function Planner({
     isLocked,
   });
   const [asOf, setAsOf] = useState(currentMinute);
-  const [coverageInput, setCoverageInput] = useState("7");
-  const [bufferInput, setBufferInput] = useState("10");
   const [search, setSearch] = useState("");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
@@ -174,8 +174,10 @@ function Planner({
     api.ordering.listInternalSuppliers,
     canPlan && locationId ? { locationId } : "skip",
   );
-  const supplier =
-    suppliers?.find((item) => item.id === supplierValue) ?? null;
+  const supplier = useMemo(
+    () => suppliers?.find((item) => item.id === supplierValue) ?? null,
+    [suppliers, supplierValue],
+  );
   // Another location, fulfilled with a Transfer.
   const internalSupplier =
     internalSuppliers?.find((item) => item.locationId === supplierValue) ??
@@ -325,19 +327,17 @@ function Planner({
     };
   }, [consumption, context]);
 
-  const coverageDays = Number(coverageInput);
-  const bufferPercent = Number(bufferInput);
-  const validCoverage =
-    coverageInput.trim() !== "" &&
-    Number.isInteger(coverageDays) &&
-    coverageDays >= 1 &&
-    coverageDays <= 28;
-  const validBuffer =
-    bufferInput.trim() !== "" &&
-    Number.isFinite(bufferPercent) &&
-    bufferPercent >= 0 &&
-    bufferPercent <= 100;
-  const validSettings = validCoverage && validBuffer;
+  // Set per supplier under Administration → Bestilling.
+  const coverageDays =
+    supplier?.coverageDays ??
+    internalSupplier?.coverageDays ??
+    settings?.coverageDays ??
+    DEFAULT_COVERAGE_DAYS;
+  const bufferPercent =
+    supplier?.bufferPercent ??
+    internalSupplier?.bufferPercent ??
+    settings?.bufferPercent ??
+    DEFAULT_BUFFER_PERCENT;
   const loading =
     settings === undefined ||
     suppliers === undefined ||
@@ -353,7 +353,7 @@ function Planner({
       (products ?? []).map((product) => ({
         ...product,
         forecast:
-          context && !context.warning && !loading && validSettings
+          context && !context.warning && !loading
             ? forecastOrder({
                 productId: product.id,
                 unitId: product.unitId,
@@ -384,7 +384,6 @@ function Planner({
       products,
       context,
       loading,
-      validSettings,
       history,
       operationalHistory,
       coverageDays,
@@ -535,7 +534,6 @@ function Planner({
       !locationId ||
       !context ||
       loading ||
-      !validSettings ||
       invalidQuantity ||
       !plannedCount ||
       busy
@@ -577,7 +575,6 @@ function Planner({
       !locationId ||
       !context ||
       loading ||
-      !validSettings ||
       invalidQuantity ||
       !plannedCount ||
       plannedCount > maxLines ||
@@ -771,51 +768,6 @@ function Planner({
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field className="sm:max-w-48" data-invalid={!validCoverage}>
-                  <div className="flex items-center gap-1">
-                    <FieldLabel htmlFor="ordering-days">
-                      Dækning i dage
-                    </FieldLabel>
-                    <HelpTooltip
-                      label="dækning"
-                      content="Antal dage fra i dag, som bestillingen skal dække. Medregn leveringstiden. Vælg 1 til 28 dage."
-                    />
-                  </div>
-                  <Input
-                    id="ordering-days"
-                    type="number"
-                    min={1}
-                    max={28}
-                    step={1}
-                    value={coverageInput}
-                    className="h-11"
-                    disabled={busy}
-                    aria-invalid={!validCoverage}
-                    onChange={(event) => setCoverageInput(event.target.value)}
-                  />
-                </Field>
-                <Field className="sm:max-w-48" data-invalid={!validBuffer}>
-                  <div className="flex items-center gap-1">
-                    <FieldLabel htmlFor="ordering-buffer">
-                      Buffer i %
-                    </FieldLabel>
-                    <HelpTooltip
-                      label="buffer"
-                      content="Ekstra mængde oven i det forventede forbrug, før lageret trækkes fra. Vælg 0 til 100 %."
-                    />
-                  </div>
-                  <Input
-                    id="ordering-buffer"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={bufferInput}
-                    className="h-11"
-                    disabled={busy}
-                    aria-invalid={!validBuffer}
-                    onChange={(event) => setBufferInput(event.target.value)}
-                  />
-                </Field>
                 <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                   <HelpTooltip
                     label="bestillingsforslag"
@@ -915,13 +867,13 @@ function Planner({
               </FieldGroup>
             </CardContent>
           </Card>
-          {!validSettings || invalidQuantity ? (
+          {invalidQuantity ? (
             <Alert variant="destructive">
               <AlertTitle>Kontrollér mængderne</AlertTitle>
               <AlertDescription>
                 {catalogSupplier
-                  ? "Vælg 1 til 28 dage, en buffer fra 0 til 100 % og hele pakker fra 0 til 1.000.000."
-                  : "Vælg 1 til 28 dage, en buffer fra 0 til 100 % og bestillingsmængder fra 0 til 1.000.000 med højst seks decimaler."}
+                  ? "Vælg hele pakker fra 0 til 1.000.000."
+                  : "Vælg bestillingsmængder fra 0 til 1.000.000 med højst seks decimaler."}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -1130,7 +1082,6 @@ function Planner({
                     disabled={
                       !canExport ||
                       loading ||
-                      !validSettings ||
                       invalidQuantity ||
                       plannedCount === 0 ||
                       plannedCount > maxLines ||
@@ -1151,7 +1102,6 @@ function Planner({
                     disabled={
                       !canPlace ||
                       loading ||
-                      !validSettings ||
                       invalidQuantity ||
                       plannedCount === 0 ||
                       plannedCount > maxLines ||

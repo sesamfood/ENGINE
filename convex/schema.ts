@@ -1307,6 +1307,9 @@ export default defineSchema({
     organizationId: v.string(),
     includeRecipes: v.boolean(),
     chooseSupplierFirst: v.optional(v.boolean()),
+    // Forecast settings when ordering without a supplier. Missing means the defaults.
+    coverageDays: v.optional(v.number()),
+    bufferPercent: v.optional(v.number()),
     // Unused. Kept so documents written before internal supplier settings still validate.
     internalOrdersEnabled: v.optional(v.boolean()),
     updatedAt: v.number(),
@@ -1322,6 +1325,9 @@ export default defineSchema({
     allLocations: v.optional(v.boolean()),
     orderingLocationIds: v.array(v.id("locations")),
     productIds: v.array(v.id("products")),
+    // Forecast settings under Bestilling. Missing means the defaults.
+    coverageDays: v.optional(v.number()),
+    bufferPercent: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 
@@ -1330,6 +1336,9 @@ export default defineSchema({
     name: v.string(),
     normalizedName: v.string(),
     email: v.optional(v.string()),
+    // Forecast settings under Bestilling. Missing means the defaults.
+    coverageDays: v.optional(v.number()),
+    bufferPercent: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_organizationId_and_normalizedName", [
     "organizationId",

@@ -2,10 +2,16 @@ import { ConvexError, v } from "convex/values";
 import { hasPermission } from "../lib/auth-permissions";
 import { mutation, query } from "./_generated/server";
 import { requireOrganization, requireOrganizationAdmin } from "./lib/auth";
+import {
+  forecastSettings,
+  forecastSettingsFields,
+  requireForecastSettings,
+} from "./lib/orderForecastSettings";
 
 const settingsValidator = v.object({
   includeRecipes: v.boolean(),
   chooseSupplierFirst: v.boolean(),
+  ...forecastSettingsFields,
 });
 
 export const getSettings = query({
@@ -29,6 +35,7 @@ export const getSettings = query({
     return {
       includeRecipes: settings?.includeRecipes ?? false,
       chooseSupplierFirst: settings?.chooseSupplierFirst ?? true,
+      ...forecastSettings(settings),
     };
   },
 });
@@ -47,6 +54,7 @@ export const setSettings = mutation({
     const next = {
       includeRecipes: args.includeRecipes,
       chooseSupplierFirst: args.chooseSupplierFirst,
+      ...requireForecastSettings(args),
       updatedAt: Date.now(),
     };
     if (current) {

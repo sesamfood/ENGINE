@@ -20,6 +20,7 @@ import {
   ORDER_HISTORY_DAYS,
   orderDate,
   shiftOrderDate,
+  validForecastSettings,
 } from "../lib/ordering-forecast";
 import {
   mutation,
@@ -40,6 +41,10 @@ import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
 import { canOrderFrom, getInternalSupplier } from "./internalOrders";
+import {
+  forecastSettings,
+  forecastSettingsFields,
+} from "./lib/orderForecastSettings";
 import { createForecastConsumptionResolver } from "./lib/forecastConsumption";
 import {
   forecastConditionValidator,
@@ -520,6 +525,7 @@ export const listInternalSuppliers = query({
       locationId: v.id("locations"),
       name: v.string(),
       productIds: v.array(v.id("products")),
+      ...forecastSettingsFields,
     }),
   ),
   handler: async (ctx, args) => {
@@ -544,6 +550,7 @@ export const listInternalSuppliers = query({
               locationId: supplier.locationId,
               name: location.name,
               productIds: supplier.productIds,
+              ...forecastSettings(supplier),
             },
           ]
         : [];
@@ -733,14 +740,7 @@ export const placeOrder = mutation({
     if (args.sendEmail && !supplier?.email) {
       throw new ConvexError("Leverandøren har ingen e-mailadresse");
     }
-    if (
-      !Number.isInteger(args.coverageDays) ||
-      args.coverageDays < 1 ||
-      args.coverageDays > 28 ||
-      !Number.isFinite(args.bufferPercent) ||
-      args.bufferPercent < 0 ||
-      args.bufferPercent > 100
-    ) {
+    if (!validForecastSettings(args.coverageDays, args.bufferPercent)) {
       throw new ConvexError("Dækning eller buffer er ugyldig");
     }
     try {

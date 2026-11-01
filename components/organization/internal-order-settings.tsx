@@ -13,6 +13,12 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { usePermission } from "@/components/app-shell";
 import { ProductCardMedia } from "@/components/catalog/product-card-media";
+import {
+  ForecastSettingsFields,
+  forecastSettingsDraft,
+  parseForecastSettings,
+  type ForecastSettingsDraft,
+} from "@/components/ordering/forecast-settings-fields";
 import { SettingsSwitchField } from "@/components/organization/settings-switch-field";
 import {
   AlertDialog,
@@ -83,6 +89,10 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { authClient } from "@/lib/auth-client";
+import {
+  DEFAULT_BUFFER_PERCENT,
+  DEFAULT_COVERAGE_DAYS,
+} from "@/lib/ordering-forecast";
 import { getUserErrorMessage } from "@/lib/user-errors";
 
 type Settings = FunctionReturnType<typeof api.internalOrders.getSettings>;
@@ -254,18 +264,30 @@ function SupplierCard({
   const [allDraft, setAllDraft] = useState<boolean | null>(null);
   const [orderingDraft, setOrderingDraft] = useState<Set<string> | null>(null);
   const [productDraft, setProductDraft] = useState<Set<string> | null>(null);
+  const [forecastDraft, setForecastDraft] =
+    useState<ForecastSettingsDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const active = activeDraft ?? saved?.active ?? true;
   const allLocations = allDraft ?? saved?.allLocations ?? true;
   const orderingIds =
     orderingDraft ?? new Set<string>(saved?.orderingLocationIds);
   const productIds = productDraft ?? new Set<string>(saved?.productIds);
+  const forecastInput =
+    forecastDraft ??
+    forecastSettingsDraft(
+      saved ?? {
+        coverageDays: DEFAULT_COVERAGE_DAYS,
+        bufferPercent: DEFAULT_BUFFER_PERCENT,
+      },
+    );
+  const forecast = parseForecastSettings(forecastInput);
   const changed =
     !saved ||
     activeDraft !== null ||
     allDraft !== null ||
     orderingDraft !== null ||
-    productDraft !== null;
+    productDraft !== null ||
+    forecastDraft !== null;
   const others = settings.locations.filter(
     (location) => location.id !== locationId,
   );
@@ -274,10 +296,12 @@ function SupplierCard({
   );
 
   async function save() {
+    if (!forecast) return;
     setBusy(true);
     try {
       await saveSupplier({
         locationId,
+        ...forecast,
         active,
         allLocations,
         orderingLocationIds: [...orderingIds] as Id<"locations">[],
@@ -290,6 +314,7 @@ function SupplierCard({
       setAllDraft(null);
       setOrderingDraft(null);
       setProductDraft(null);
+      setForecastDraft(null);
       toast.success(`${name} er gemt`);
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Lokationen kunne ikke gemmes"));
@@ -382,6 +407,12 @@ function SupplierCard({
               disabled={busy}
             />
           </Field>
+          <ForecastSettingsFields
+            id={`internal-${locationId}-forecast`}
+            value={forecastInput}
+            onChange={setForecastDraft}
+            disabled={busy}
+          />
         </FieldGroup>
       </CardContent>
       <CardFooter appearance="compact" className="justify-end">
@@ -419,7 +450,7 @@ function SupplierCard({
         </AlertDialog>
         <Button
           size="lg"
-          disabled={!changed || busy}
+          disabled={!changed || !forecast || busy}
           onClick={() => void save()}
         >
           {busy ? <Spinner data-icon="inline-start" /> : null}
