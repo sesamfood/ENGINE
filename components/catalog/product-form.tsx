@@ -19,6 +19,8 @@ import { ConvexError } from "convex/values";
 import {
   ArrowLeftIcon,
   ImageIcon,
+  MoreHorizontalIcon,
+  PackageIcon,
   PlusIcon,
   SaveIcon,
   Trash2Icon,
@@ -75,6 +77,12 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Empty } from "@/components/ui/empty";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -100,6 +108,8 @@ type UnitRow = {
   key: string;
   unitValue: string | null;
   factor: string;
+  packagingWeight: string;
+  packagingEnabled: boolean;
   isDefault: boolean;
 };
 
@@ -381,7 +391,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [expiryUnit, setExpiryUnit] = useState<Expiry["unit"]>("days");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [unitRows, setUnitRows] = useState<UnitRow[]>([
-    { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
+    {
+      key: "unit-initial",
+      unitValue: null,
+      factor: "1",
+      packagingWeight: "",
+      packagingEnabled: false,
+      isDefault: true,
+    },
   ]);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([]);
   const [packagingRows, setPackagingRows] = useState<IngredientDraft[]>([]);
@@ -443,6 +460,11 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         key: `unit-${unit.id}`,
         unitValue: `existing:${unit.id}`,
         factor: factorInputValue(unit.factorToDefault),
+        packagingWeight:
+          unit.packagingWeight === null
+            ? ""
+            : factorInputValue(unit.packagingWeight),
+        packagingEnabled: unit.packagingWeight !== null,
         isDefault: unit.isDefault,
       })),
     );
@@ -717,7 +739,14 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   function addUnit() {
     setUnitRows((current) => [
       ...current,
-      { key: newKey("unit"), unitValue: null, factor: "", isDefault: false },
+      {
+        key: newKey("unit"),
+        unitValue: null,
+        factor: "",
+        packagingWeight: "",
+        packagingEnabled: false,
+        isDefault: false,
+      },
     ]);
   }
 
@@ -815,6 +844,15 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     ) {
       nextErrors.units = "Alle omregninger skal være større end nul";
     }
+    if (
+      unitRows.some((row) => {
+        if (!row.packagingEnabled || !row.packagingWeight.trim()) return false;
+        const weight = parseFactor(row.packagingWeight);
+        return !Number.isFinite(weight) || weight <= 0;
+      })
+    ) {
+      nextErrors.units = "Emballagevægten skal være større end nul";
+    }
     const unitKeys = unitRows.map((row) =>
       row.unitValue?.toLocaleLowerCase("da"),
     );
@@ -873,6 +911,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     const units = unitRows.map((row) => ({
       unit: parseReference(row.unitValue!),
       factorToDefault: parseFactor(row.factor),
+      packagingWeight:
+        row.packagingEnabled && row.packagingWeight.trim()
+          ? parseFactor(row.packagingWeight)
+          : undefined,
       isDefault: row.isDefault,
     }));
     const ingredients = [
@@ -1403,17 +1445,90 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           {row.isDefault ? "Basisværdi" : defaultUnitName}
                         </FieldDescription>
                       </Field>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-lg"
-                        className="size-11 md:mt-6"
-                        aria-label={`Fjern ${unitName(row)}`}
-                        disabled={unitRows.length === 1}
-                        onClick={() => removeUnit(row.key)}
-                      >
-                        <Trash2Icon />
-                      </Button>
+                      <div className="flex md:mt-6">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-lg"
+                                className="size-11"
+                                aria-label={`Flere handlinger for ${unitName(row)}`}
+                              />
+                            }
+                          >
+                            <MoreHorizontalIcon />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setUnitRows((current) =>
+                                  current.map((item) =>
+                                    item.key === row.key
+                                      ? {
+                                          ...item,
+                                          packagingEnabled:
+                                            !item.packagingEnabled,
+                                          packagingWeight: "",
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              <PackageIcon />
+                              {row.packagingEnabled
+                                ? "Fjern emballagevægt"
+                                : "Tilføj emballagevægt"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-lg"
+                          className="size-11"
+                          aria-label={`Fjern ${unitName(row)}`}
+                          disabled={unitRows.length === 1}
+                          onClick={() => removeUnit(row.key)}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </div>
+                      {row.packagingEnabled ? (
+                        <Field className="md:col-span-2 md:col-start-2">
+                          <div className="flex items-center gap-1">
+                            <FieldLabel htmlFor={`${row.key}-packaging-weight`}>
+                              Emballagevægt
+                            </FieldLabel>
+                            <HelpTooltip
+                              label="Emballagevægt"
+                              content="Trækkes fra, når en Count i denne enhed registreres med emballage."
+                            />
+                          </div>
+                          <Input
+                            id={`${row.key}-packaging-weight`}
+                            type="text"
+                            inputMode="decimal"
+                            value={row.packagingWeight}
+                            onChange={(event) =>
+                              setUnitRows((current) =>
+                                current.map((item) =>
+                                  item.key === row.key
+                                    ? {
+                                        ...item,
+                                        packagingWeight: event.target.value,
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            className="h-11"
+                          />
+                          <FieldDescription>{unitName(row)}</FieldDescription>
+                        </Field>
+                      ) : null}
                     </div>
                   ))}
                 </RadioGroup>

@@ -943,6 +943,8 @@ export default defineSchema({
     productId: v.id("products"),
     unitId: v.id("units"),
     factorToDefault: v.number(),
+    // Packaging weight in this unit, subtracted when a Count includes packaging.
+    packagingWeight: v.optional(v.number()),
   })
     .index("by_organizationId_and_productId", ["organizationId", "productId"])
     .index("by_organizationId_and_productId_and_unitId", [
