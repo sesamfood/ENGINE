@@ -10,6 +10,7 @@ import {
   productGridClassName,
 } from "@/components/catalog/product-card-media";
 
+import { QuantityInput } from "@/components/quantity-input";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
@@ -400,15 +401,15 @@ function ProductCard({
                 </Select>
               </UnavailableTooltip>
               <UnavailableTooltip reason={disabledReason}>
-                <CountQuantityInput
-                  key={selectedUnit.id}
+                <QuantityInput
                   label={`Mængde af ${product.name} i ${selectedUnit.name}`}
-                  unit={selectedUnit}
                   value={quantityFor(selectedUnit)}
                   disabled={disabled}
-                  onQuantityChange={(quantity) =>
-                    onQuantityChange(selectedUnit, quantity)
-                  }
+                  onValueChange={(value) => {
+                    const quantity = Number(value.replace(",", "."));
+                    if (Number.isFinite(quantity))
+                      onQuantityChange(selectedUnit, Math.max(0, quantity));
+                  }}
                 />
               </UnavailableTooltip>
               {!editingOrder ? (

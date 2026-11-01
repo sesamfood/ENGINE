@@ -19,6 +19,8 @@ import { ConvexError } from "convex/values";
 import {
   ArrowLeftIcon,
   ImageIcon,
+  MoreHorizontalIcon,
+  PackageIcon,
   PlusIcon,
   SaveIcon,
   Trash2Icon,
@@ -75,6 +77,12 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Empty } from "@/components/ui/empty";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import {
@@ -101,6 +109,7 @@ type UnitRow = {
   unitValue: string | null;
   factor: string;
   packagingWeight: string;
+  packagingEnabled: boolean;
   isDefault: boolean;
 };
 
@@ -387,6 +396,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
       unitValue: null,
       factor: "1",
       packagingWeight: "",
+      packagingEnabled: false,
       isDefault: true,
     },
   ]);
@@ -454,6 +464,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
           unit.packagingWeight === null
             ? ""
             : factorInputValue(unit.packagingWeight),
+        packagingEnabled: unit.packagingWeight !== null,
         isDefault: unit.isDefault,
       })),
     );
@@ -733,6 +744,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         unitValue: null,
         factor: "",
         packagingWeight: "",
+        packagingEnabled: false,
         isDefault: false,
       },
     ]);
@@ -834,7 +846,7 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     }
     if (
       unitRows.some((row) => {
-        if (!row.packagingWeight.trim()) return false;
+        if (!row.packagingEnabled || !row.packagingWeight.trim()) return false;
         const weight = parseFactor(row.packagingWeight);
         return !Number.isFinite(weight) || weight <= 0;
       })
@@ -899,9 +911,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     const units = unitRows.map((row) => ({
       unit: parseReference(row.unitValue!),
       factorToDefault: parseFactor(row.factor),
-      packagingWeight: row.packagingWeight.trim()
-        ? parseFactor(row.packagingWeight)
-        : undefined,
+      packagingWeight:
+        row.packagingEnabled && row.packagingWeight.trim()
+          ? parseFactor(row.packagingWeight)
+          : undefined,
       isDefault: row.isDefault,
     }));
     const ingredients = [
@@ -1432,49 +1445,90 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                           {row.isDefault ? "Basisværdi" : defaultUnitName}
                         </FieldDescription>
                       </Field>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-lg"
-                        className="size-11 md:mt-6"
-                        aria-label={`Fjern ${unitName(row)}`}
-                        disabled={unitRows.length === 1}
-                        onClick={() => removeUnit(row.key)}
-                      >
-                        <Trash2Icon />
-                      </Button>
-                      <Field className="md:col-span-2 md:col-start-2">
-                        <div className="flex items-center gap-1">
-                          <FieldLabel htmlFor={`${row.key}-packaging-weight`}>
-                            Emballagevægt
-                          </FieldLabel>
-                          <HelpTooltip
-                            label="Emballagevægt"
-                            content="Trækkes fra, når en Count i denne enhed registreres med emballage."
+                      <div className="flex md:mt-6">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-lg"
+                                className="size-11"
+                                aria-label={`Flere handlinger for ${unitName(row)}`}
+                              />
+                            }
+                          >
+                            <MoreHorizontalIcon />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setUnitRows((current) =>
+                                  current.map((item) =>
+                                    item.key === row.key
+                                      ? {
+                                          ...item,
+                                          packagingEnabled:
+                                            !item.packagingEnabled,
+                                          packagingWeight: "",
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              <PackageIcon />
+                              {row.packagingEnabled
+                                ? "Fjern emballagevægt"
+                                : "Tilføj emballagevægt"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-lg"
+                          className="size-11"
+                          aria-label={`Fjern ${unitName(row)}`}
+                          disabled={unitRows.length === 1}
+                          onClick={() => removeUnit(row.key)}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </div>
+                      {row.packagingEnabled ? (
+                        <Field className="md:col-span-2 md:col-start-2">
+                          <div className="flex items-center gap-1">
+                            <FieldLabel htmlFor={`${row.key}-packaging-weight`}>
+                              Emballagevægt
+                            </FieldLabel>
+                            <HelpTooltip
+                              label="Emballagevægt"
+                              content="Trækkes fra, når en Count i denne enhed registreres med emballage."
+                            />
+                          </div>
+                          <Input
+                            id={`${row.key}-packaging-weight`}
+                            type="text"
+                            inputMode="decimal"
+                            value={row.packagingWeight}
+                            onChange={(event) =>
+                              setUnitRows((current) =>
+                                current.map((item) =>
+                                  item.key === row.key
+                                    ? {
+                                        ...item,
+                                        packagingWeight: event.target.value,
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            className="h-11"
                           />
-                        </div>
-                        <Input
-                          id={`${row.key}-packaging-weight`}
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Ingen"
-                          value={row.packagingWeight}
-                          onChange={(event) =>
-                            setUnitRows((current) =>
-                              current.map((item) =>
-                                item.key === row.key
-                                  ? {
-                                      ...item,
-                                      packagingWeight: event.target.value,
-                                    }
-                                  : item,
-                              ),
-                            )
-                          }
-                          className="h-11"
-                        />
-                        <FieldDescription>{unitName(row)}</FieldDescription>
-                      </Field>
+                          <FieldDescription>{unitName(row)}</FieldDescription>
+                        </Field>
+                      ) : null}
                     </div>
                   ))}
                 </RadioGroup>

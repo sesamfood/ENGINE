@@ -25,11 +25,21 @@ export function CountQuantityInput({
   const [withPackaging, setWithPackaging] = useState(true);
   const packagingWeight =
     withPackaging && unit.packagingWeight ? unit.packagingWeight : 0;
+  const written = value > 0 ? round(value + packagingWeight) : value;
+
+  // Keep the written number and recalculate the saved quantity.
+  function changePackaging(checked: boolean) {
+    setWithPackaging(checked);
+    if (written > 0) {
+      const weight = checked ? (unit.packagingWeight ?? 0) : 0;
+      onQuantityChange(Math.max(0, round(written - weight)));
+    }
+  }
 
   const input = (
     <QuantityInput
       label={label}
-      value={value > 0 ? round(value + packagingWeight) : value}
+      value={written}
       disabled={disabled}
       onValueChange={(text) => {
         const quantity = Number(text.replace(",", "."));
@@ -48,7 +58,7 @@ export function CountQuantityInput({
           id={switchId}
           checked={withPackaging}
           disabled={disabled}
-          onCheckedChange={setWithPackaging}
+          onCheckedChange={changePackaging}
         />
         <FieldLabel htmlFor={switchId}>
           Med emballage (−
