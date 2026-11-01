@@ -111,7 +111,7 @@ export function CountHeader() {
       </AppPageHeader>
 
       {pathname === "/count" && state?.adHoc && !submitted ? (
-        <Alert className="md:-mt-5">
+        <Alert>
           <ClipboardListIcon />
           <AlertTitle>Ekstra Count er åben</AlertTitle>
           <AlertDescription>
@@ -122,7 +122,7 @@ export function CountHeader() {
       ) : null}
 
       {pathname === "/count" && submitted ? (
-        <Alert className="md:-mt-5">
+        <Alert>
           <CheckCircle2Icon />
           <AlertTitle>Count er registreret</AlertTitle>
           <AlertDescription>{statusDescription}</AlertDescription>

@@ -142,7 +142,7 @@ export function ExtraCounts() {
           if (!next && !pending) setOpening(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>
               Åbn ekstra Count for {opening?.name}
@@ -152,7 +152,7 @@ export function ExtraCounts() {
               start forfra med tomme mængder.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="sm:flex-wrap">
             <AlertDialogCancel disabled={pending !== null}>
               Annullér
             </AlertDialogCancel>
