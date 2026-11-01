@@ -116,6 +116,7 @@ const productDetailValidator = v.object({
       id: v.id("units"),
       name: v.string(),
       factorToDefault: v.number(),
+      packagingWeight: v.union(v.number(), v.null()),
       isDefault: v.boolean(),
     }),
   ),
@@ -172,6 +173,7 @@ const unitReferenceValidator = v.union(
 const productUnitInputValidator = v.object({
   unit: unitReferenceValidator,
   factorToDefault: v.number(),
+  packagingWeight: v.optional(v.number()),
   isDefault: v.boolean(),
 });
 
@@ -210,6 +212,7 @@ const productExportValidator = v.object({
     v.object({
       name: v.string(),
       factorToDefault: v.number(),
+      packagingWeight: v.optional(v.number()),
       isDefault: v.boolean(),
     }),
   ),
@@ -235,6 +238,7 @@ const productExportValidator = v.object({
 const importedProductUnitValidator = v.object({
   name: v.string(),
   factorToDefault: v.number(),
+  packagingWeight: v.optional(v.number()),
   isDefault: v.boolean(),
 });
 
@@ -266,6 +270,7 @@ type UnitReference =
 type ProductUnitInput = {
   unit: UnitReference;
   factorToDefault: number;
+  packagingWeight?: number;
   isDefault: boolean;
 };
 
@@ -507,11 +512,15 @@ async function resolveUnits(
   const resolved: Array<{
     unitId: Id<"units">;
     factorToDefault: number;
+    packagingWeight?: number;
     isDefault: boolean;
   }> = [];
 
   for (const input of inputs) {
     requirePositiveNumber(input.factorToDefault, "Omregningsfaktoren");
+    if (input.packagingWeight !== undefined) {
+      requirePositiveNumber(input.packagingWeight, "Emballagevægten");
+    }
     if (input.isDefault && input.factorToDefault !== 1) {
       throw new ConvexError("Omregningen for standardenheden skal være 1");
     }
@@ -519,6 +528,7 @@ async function resolveUnits(
     resolved.push({
       unitId: await resolveUnit(ctx, organizationId, input.unit),
       factorToDefault: input.factorToDefault,
+      packagingWeight: input.packagingWeight,
       isDefault: input.isDefault,
     });
   }
@@ -914,6 +924,7 @@ async function replaceProductChildren(
       productId,
       unitId: row.unitId,
       factorToDefault: row.factorToDefault,
+      packagingWeight: row.packagingWeight,
     });
   }
   await replaceProductIngredients(ctx, organizationId, productId, ingredients);
@@ -1410,6 +1421,7 @@ export const exportProducts = query({
               return {
                 name: unit.name,
                 factorToDefault: row.factorToDefault,
+                packagingWeight: row.packagingWeight,
                 isDefault: row.unitId === product.defaultUnitId,
               };
             }),
@@ -1542,6 +1554,7 @@ export const getProduct = query({
               id: row.unitId,
               name: unit.name,
               factorToDefault: row.factorToDefault,
+              packagingWeight: row.packagingWeight ?? null,
               isDefault: row.unitId === product.defaultUnitId,
             }
           : null;
@@ -2206,6 +2219,7 @@ export const importProduct = mutation({
       args.units.map((unit) => ({
         unit: { kind: "new" as const, name: unit.name },
         factorToDefault: unit.factorToDefault,
+        packagingWeight: unit.packagingWeight,
         isDefault: unit.isDefault,
       })),
     );

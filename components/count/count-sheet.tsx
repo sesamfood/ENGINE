@@ -10,13 +10,13 @@ import {
   productGridClassName,
 } from "@/components/catalog/product-card-media";
 
-import { QuantityInput } from "@/components/quantity-input";
 
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 
 import { usePermission } from "@/components/app-shell";
 import { AddForgottenProductButton } from "@/components/count/add-to-latest-count-dialog";
 import { CountNavigation } from "@/components/count/count-navigation";
+import { CountQuantityInput } from "@/components/count/count-quantity-input";
 import { useCountState } from "@/components/count/count-state-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -126,6 +126,7 @@ type CountUnit = {
   id: Id<"units">;
   name: string;
   factorToDefault: number;
+  packagingWeight?: number;
   quantity: number;
 };
 
@@ -399,15 +400,15 @@ function ProductCard({
                 </Select>
               </UnavailableTooltip>
               <UnavailableTooltip reason={disabledReason}>
-                <QuantityInput
+                <CountQuantityInput
+                  key={selectedUnit.id}
                   label={`Mængde af ${product.name} i ${selectedUnit.name}`}
+                  unit={selectedUnit}
                   value={quantityFor(selectedUnit)}
                   disabled={disabled}
-                  onValueChange={(value) => {
-                    const quantity = Number(value.replace(",", "."));
-                    if (Number.isFinite(quantity))
-                      onQuantityChange(selectedUnit, Math.max(0, quantity));
-                  }}
+                  onQuantityChange={(quantity) =>
+                    onQuantityChange(selectedUnit, quantity)
+                  }
                 />
               </UnavailableTooltip>
               {!editingOrder ? (
@@ -443,18 +444,17 @@ function ProductCard({
                   {unit.name}
                 </FieldLabel>
                 <div className="w-full @md/field-group:w-56">
-                  <QuantityInput
+                  <CountQuantityInput
                     label={`Mængde af ${product.name} i ${unit.name}`}
+                    unit={unit}
                     value={draftQuantities[unit.id] ?? quantityFor(unit)}
                     disabled={disabled}
-                    onValueChange={(value) => {
-                      const quantity = Number(value.replace(",", "."));
-                      if (Number.isFinite(quantity))
-                        setDraftQuantities((current) => ({
-                          ...current,
-                          [unit.id]: Math.max(0, quantity),
-                        }));
-                    }}
+                    onQuantityChange={(quantity) =>
+                      setDraftQuantities((current) => ({
+                        ...current,
+                        [unit.id]: quantity,
+                      }))
+                    }
                   />
                 </div>
               </Field>
@@ -578,15 +578,14 @@ function SingleProductCounter({
                     </FieldLabel>
                     <UnavailableTooltip reason={disabledReason}>
                       <div className="w-full @md/field-group:w-64">
-                        <QuantityInput
+                        <CountQuantityInput
                           label={`Mængde af ${product.name} i ${unit.name}`}
+                          unit={unit}
                           value={quantityFor(unit)}
                           disabled={disabled}
-                          onValueChange={(value) => {
-                            const quantity = Number(value.replace(",", "."));
-                            if (Number.isFinite(quantity))
-                              onQuantityChange(unit, Math.max(0, quantity));
-                          }}
+                          onQuantityChange={(quantity) =>
+                            onQuantityChange(unit, quantity)
+                          }
                         />
                       </div>
                     </UnavailableTooltip>

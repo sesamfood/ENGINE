@@ -100,6 +100,7 @@ type UnitRow = {
   key: string;
   unitValue: string | null;
   factor: string;
+  packagingWeight: string;
   isDefault: boolean;
 };
 
@@ -381,7 +382,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   const [expiryUnit, setExpiryUnit] = useState<Expiry["unit"]>("days");
   const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [unitRows, setUnitRows] = useState<UnitRow[]>([
-    { key: "unit-initial", unitValue: null, factor: "1", isDefault: true },
+    {
+      key: "unit-initial",
+      unitValue: null,
+      factor: "1",
+      packagingWeight: "",
+      isDefault: true,
+    },
   ]);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([]);
   const [packagingRows, setPackagingRows] = useState<IngredientDraft[]>([]);
@@ -443,6 +450,10 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
         key: `unit-${unit.id}`,
         unitValue: `existing:${unit.id}`,
         factor: factorInputValue(unit.factorToDefault),
+        packagingWeight:
+          unit.packagingWeight === null
+            ? ""
+            : factorInputValue(unit.packagingWeight),
         isDefault: unit.isDefault,
       })),
     );
@@ -717,7 +728,13 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
   function addUnit() {
     setUnitRows((current) => [
       ...current,
-      { key: newKey("unit"), unitValue: null, factor: "", isDefault: false },
+      {
+        key: newKey("unit"),
+        unitValue: null,
+        factor: "",
+        packagingWeight: "",
+        isDefault: false,
+      },
     ]);
   }
 
@@ -815,6 +832,15 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     ) {
       nextErrors.units = "Alle omregninger skal være større end nul";
     }
+    if (
+      unitRows.some((row) => {
+        if (!row.packagingWeight.trim()) return false;
+        const weight = parseFactor(row.packagingWeight);
+        return !Number.isFinite(weight) || weight <= 0;
+      })
+    ) {
+      nextErrors.units = "Emballagevægten skal være større end nul";
+    }
     const unitKeys = unitRows.map((row) =>
       row.unitValue?.toLocaleLowerCase("da"),
     );
@@ -873,6 +899,9 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
     const units = unitRows.map((row) => ({
       unit: parseReference(row.unitValue!),
       factorToDefault: parseFactor(row.factor),
+      packagingWeight: row.packagingWeight.trim()
+        ? parseFactor(row.packagingWeight)
+        : undefined,
       isDefault: row.isDefault,
     }));
     const ingredients = [
@@ -1414,6 +1443,38 @@ export function ProductForm({ productId }: { productId?: Id<"products"> }) {
                       >
                         <Trash2Icon />
                       </Button>
+                      <Field className="md:col-span-2 md:col-start-2">
+                        <div className="flex items-center gap-1">
+                          <FieldLabel htmlFor={`${row.key}-packaging-weight`}>
+                            Emballagevægt
+                          </FieldLabel>
+                          <HelpTooltip
+                            label="Emballagevægt"
+                            content="Trækkes fra, når en Count i denne enhed registreres med emballage."
+                          />
+                        </div>
+                        <Input
+                          id={`${row.key}-packaging-weight`}
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Ingen"
+                          value={row.packagingWeight}
+                          onChange={(event) =>
+                            setUnitRows((current) =>
+                              current.map((item) =>
+                                item.key === row.key
+                                  ? {
+                                      ...item,
+                                      packagingWeight: event.target.value,
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                          className="h-11"
+                        />
+                        <FieldDescription>{unitName(row)}</FieldDescription>
+                      </Field>
                     </div>
                   ))}
                 </RadioGroup>

@@ -7,7 +7,7 @@ import { useCountState } from "@/components/count/count-state-provider";
 import { useCompleteCatalog } from "@/hooks/use-complete-catalog";
 import { useState } from "react";
 import { toast } from "sonner";
-import { QuantityInput } from "@/components/quantity-input";
+import { CountQuantityInput } from "@/components/count/count-quantity-input";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -34,7 +34,7 @@ import { getUserErrorMessage } from "@/lib/user-errors";
 type LatestCountProduct = {
   id: Id<"products">;
   name: string;
-  units: Array<{ id: Id<"units">; name: string }>;
+  units: Array<{ id: Id<"units">; name: string; packagingWeight?: number }>;
 };
 
 // Bottom-bar action for adding a Produkt that was forgotten in the latest Count.
@@ -178,18 +178,17 @@ function AddToLatestCountDialog({
                   {unit.name}
                 </FieldLabel>
                 <div className="w-full @md/field-group:w-56">
-                  <QuantityInput
+                  <CountQuantityInput
                     label={`Mængde af ${product.name} i ${unit.name}`}
+                    unit={unit}
                     value={quantities[unit.id] ?? 0}
                     disabled={saving}
-                    onValueChange={(value) => {
-                      const quantity = Number(value.replace(",", "."));
-                      if (Number.isFinite(quantity))
-                        setQuantities((current) => ({
-                          ...current,
-                          [unit.id]: Math.max(0, quantity),
-                        }));
-                    }}
+                    onQuantityChange={(quantity) =>
+                      setQuantities((current) => ({
+                        ...current,
+                        [unit.id]: quantity,
+                      }))
+                    }
                   />
                 </div>
               </Field>
