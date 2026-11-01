@@ -1307,6 +1307,8 @@ export default defineSchema({
     organizationId: v.string(),
     includeRecipes: v.boolean(),
     chooseSupplierFirst: v.optional(v.boolean()),
+    // Unused. Kept so documents written before internal supplier settings still validate.
+    internalOrdersEnabled: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
