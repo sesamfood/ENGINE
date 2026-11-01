@@ -39,6 +39,7 @@ import {
 import { catalogPaginationOptions } from "./lib/productCatalog";
 import { resolveTimeZone } from "./lib/timeZone";
 import { getForecastOpeningHours } from "./lib/forecastOpeningHours";
+import { getInternalSupplier, internalOrdersEnabled } from "./internalOrders";
 import { createForecastConsumptionResolver } from "./lib/forecastConsumption";
 import {
   forecastConditionValidator,
@@ -438,6 +439,8 @@ export const listOperationalConsumption = query({
 const orderInputValidator = v.object({
   locationId: v.id("locations"),
   supplierId: v.optional(v.id("suppliers")),
+  // Internal orders name the location that fulfils them with a Transfer.
+  fulfillingLocationId: v.optional(v.id("locations")),
   // Catalog items without a linked product, ordered in whole packs.
   catalogLines: v.optional(
     v.array(
@@ -476,10 +479,73 @@ const historySummaryValidator = schema.doc("orders").pick(
   "itemCount",
   "supplierName",
   "email",
+  "fulfillingLocationId",
+  "fulfillmentStatus",
 );
 const historyDetailValidator = historySummaryValidator.extend({
   locationId: v.id("locations"),
   rows: v.array(orderRowValidator),
+});
+
+async function requireInternalSupplier(
+  ctx: QueryCtx | MutationCtx,
+  auth: Awaited<ReturnType<typeof requirePlanner>>,
+  fulfillingLocationId: Id<"locations">,
+) {
+  const [enabled, supplier, location] = await Promise.all([
+    internalOrdersEnabled(ctx, auth),
+    getInternalSupplier(ctx, auth.organizationId, fulfillingLocationId),
+    ctx.db.get("locations", fulfillingLocationId),
+  ]);
+  if (
+    !enabled ||
+    !supplier?.orderingLocationIds.includes(auth.location._id) ||
+    location?.organizationId !== auth.organizationId
+  ) {
+    throw new ConvexError(
+      "Lokationen kan ikke længere bestille internt herfra. Opdatér siden.",
+    );
+  }
+  return { location, productIds: new Set(supplier.productIds) };
+}
+
+export const listInternalSuppliers = query({
+  args: { locationId: v.id("locations") },
+  returns: v.array(
+    v.object({
+      locationId: v.id("locations"),
+      name: v.string(),
+      productIds: v.array(v.id("products")),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const auth = await requirePlanner(ctx, args.locationId);
+    if (!(await internalOrdersEnabled(ctx, auth))) return [];
+    const suppliers = await ctx.db
+      .query("internalSuppliers")
+      .withIndex("by_organizationId_and_locationId", (q) =>
+        q.eq("organizationId", auth.organizationId),
+      )
+      .take(200);
+    const allowed = suppliers.filter((supplier) =>
+      supplier.orderingLocationIds.includes(args.locationId),
+    );
+    const locations = await Promise.all(
+      allowed.map((supplier) => ctx.db.get("locations", supplier.locationId)),
+    );
+    return allowed.flatMap((supplier, index) => {
+      const location = locations[index];
+      return location?.organizationId === auth.organizationId
+        ? [
+            {
+              locationId: supplier.locationId,
+              name: location.name,
+              productIds: supplier.productIds,
+            },
+          ]
+        : [];
+    });
+  },
 });
 
 async function prepareOrder(
@@ -490,6 +556,16 @@ async function prepareOrder(
   const { organizationId } = auth;
   const catalogLines = args.catalogLines ?? [];
   const lineCount = args.lines.length + catalogLines.length;
+  const internalSupplier = args.fulfillingLocationId
+    ? await requireInternalSupplier(ctx, auth, args.fulfillingLocationId)
+    : null;
+  if (internalSupplier && (args.supplierId || catalogLines.length)) {
+    throw new ConvexError("Vælg enten en leverandør eller en lokation");
+  }
+  // Internal orders become one Transfer, which has a lower line limit.
+  if (internalSupplier && lineCount > 200) {
+    throw new ConvexError("Vælg højst 200 Produkter i en intern bestilling");
+  }
   if (
     lineCount === 0 ||
     lineCount > 500 ||
@@ -531,6 +607,11 @@ async function prepareOrder(
       ) {
         throw new ConvexError(
           "Et produkt er ikke længere tilgængeligt på lokationen. Opdatér planen.",
+        );
+      }
+      if (internalSupplier && !internalSupplier.productIds.has(product._id)) {
+        throw new ConvexError(
+          `${product.name} kan ikke længere bestilles hos ${internalSupplier.location.name}. Opdatér planen.`,
         );
       }
       // Catalog suppliers are ordered in the linked unit, others in the default unit.
@@ -591,7 +672,13 @@ async function prepareOrder(
   if (new Set(numbers).size !== numbers.length) {
     throw new ConvexError("En vare er med flere gange. Opdatér planen.");
   }
-  return { auth, supplier, rows };
+  return {
+    auth,
+    supplier,
+    supplierName: supplier?.name ?? internalSupplier?.location.name,
+    fulfillingLocationId: internalSupplier?.location._id,
+    rows,
+  };
 }
 
 export const prepareExport = query({
@@ -603,10 +690,10 @@ export const prepareExport = query({
   }),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "ordering.export");
-    const { auth, supplier, rows } = await prepareOrder(ctx, args);
+    const { auth, supplierName, rows } = await prepareOrder(ctx, args);
     return {
       locationName: auth.location.name,
-      ...(supplier ? { supplierName: supplier.name } : {}),
+      ...(supplierName ? { supplierName } : {}),
       rows,
     };
   },
@@ -624,6 +711,8 @@ function historySummary(order: Doc<"orders">) {
     itemCount: order.itemCount,
     supplierName: order.supplierName,
     email: order.email,
+    fulfillingLocationId: order.fulfillingLocationId,
+    fulfillmentStatus: order.fulfillmentStatus,
   };
 }
 
@@ -637,7 +726,8 @@ export const placeOrder = mutation({
   returns: v.id("orders"),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "ordering.place");
-    const { auth, supplier, rows } = await prepareOrder(ctx, args);
+    const { auth, supplier, supplierName, fulfillingLocationId, rows } =
+      await prepareOrder(ctx, args);
     if (args.sendEmail && !supplier?.email) {
       throw new ConvexError("Leverandøren har ingen e-mailadresse");
     }
@@ -667,14 +757,17 @@ export const placeOrder = mutation({
       toDate: shiftOrderDate(args.fromDate, args.coverageDays - 1),
       bufferPercent: args.bufferPercent,
       itemCount: rows.length,
-      ...(supplier
-        ? { supplierId: supplier._id, supplierName: supplier.name }
+      ...(supplier ? { supplierId: supplier._id } : {}),
+      ...(supplierName ? { supplierName } : {}),
+      ...(fulfillingLocationId
+        ? { fulfillingLocationId, fulfillmentStatus: "open" as const }
         : {}),
       ...(args.sendEmail && supplier?.email
         ? { email: { to: supplier.email, status: "pending" as const } }
         : {}),
-      // Only product lines can be received into stock.
-      ...(rows.some((row) => row.productId)
+      // Only product lines can be received into stock. Internal orders are
+      // received through their Transfer instead.
+      ...(!fulfillingLocationId && rows.some((row) => row.productId)
         ? { receiptStatus: "pending" as const }
         : {}),
     };
@@ -691,7 +784,7 @@ export const placeOrder = mutation({
       entityTable: "orders",
       entityId: orderId,
       locationId: args.locationId,
-      summary: `Bestilling afgivet med ${rows.length} produkter${supplier ? ` hos ${supplier.name}` : ""}`,
+      summary: `Bestilling afgivet med ${rows.length} produkter${supplierName ? ` hos ${supplierName}` : ""}`,
     });
     if (order.email) {
       await ctx.scheduler.runAfter(0, internal.orderEmails.send, { orderId });

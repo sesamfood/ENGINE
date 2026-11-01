@@ -48,6 +48,7 @@ const sectionTitles = [
   { value: "own-checks", label: "Egenkontrol" },
   { value: "count", label: "Count" },
   { value: "ordering", label: "Bestilling" },
+  { value: "internal-orders", label: "Interne bestillinger" },
   { value: "date-labels", label: "Datomærkning" },
   { value: "goods-receipts", label: "Varemodtagelse" },
   { value: "waste", label: "Waste" },

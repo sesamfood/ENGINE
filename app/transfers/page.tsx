@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
+import { useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppBottomBar } from "@/components/app-bottom-bar";
 import { AppPageHeader } from "@/components/app-page-header";
@@ -10,11 +11,20 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccess, useKiosk, usePermission } from "@/components/app-shell";
+import { Badge } from "@/components/ui/badge";
+import { api } from "@/convex/_generated/api";
 
 const TransferForm = dynamic(
   () =>
     import("@/components/transfers/transfer-form").then(
       (module) => module.TransferForm,
+    ),
+  { loading: () => <Skeleton className="h-96 w-full" /> },
+);
+const InternalOrders = dynamic(
+  () =>
+    import("@/components/transfers/internal-orders").then(
+      (module) => module.InternalOrders,
     ),
   { loading: () => <Skeleton className="h-96 w-full" /> },
 );
@@ -25,6 +35,14 @@ const TransferHistory = dynamic(
     ),
   { loading: () => <Skeleton className="h-96 w-full" /> },
 );
+
+function tabPath(tab: string) {
+  return tab === "history"
+    ? "/transfers/history"
+    : tab === "orders"
+      ? "/transfers/orders"
+      : "/transfers";
+}
 
 function TransfersContent() {
   const pathname = usePathname();
@@ -40,21 +58,35 @@ function TransfersContent() {
   const showHistory = kioskMode
     ? Boolean(kiosk?.settings?.enabledPages.includes("transfers.history"))
     : canView;
-  const activeTab = pathname === "/transfers/history" ? "history" : "new";
+  // Null when internal orders are off.
+  const openOrders = useQuery(
+    api.internalOrders.listOpenOrders,
+    showNew ? {} : "skip",
+  );
+  const showOrders = showNew && Boolean(openOrders);
+  const activeTab =
+    pathname === "/transfers/history"
+      ? "history"
+      : pathname === "/transfers/orders"
+        ? "orders"
+        : "new";
   const selectedTab =
     activeTab === "history" && showHistory
       ? "history"
-      : showNew
-        ? "new"
-        : "history";
-  const showSectionTabs = Number(showNew) + Number(showHistory) > 1;
+      : activeTab === "orders" &&
+          showNew &&
+          (showOrders || openOrders === undefined)
+        ? "orders"
+        : showNew
+          ? "new"
+          : "history";
+  const showSectionTabs =
+    Number(showNew) + Number(showOrders) + Number(showHistory) > 1;
 
   useEffect(() => {
     if (!showNew && !showHistory) return;
     if (activeTab === selectedTab) return;
-    router.replace(
-      selectedTab === "history" ? "/transfers/history" : "/transfers",
-    );
+    router.replace(tabPath(selectedTab));
   }, [activeTab, router, selectedTab, showHistory, showNew]);
 
   if (!access) {
@@ -83,6 +115,14 @@ function TransfersContent() {
           Ny transfer
         </TabsTrigger>
       ) : null}
+      {showOrders ? (
+        <TabsTrigger value="orders" appearance="standard" className="min-w-36">
+          Bestillinger
+          {openOrders?.length ? (
+            <Badge>{openOrders.length}</Badge>
+          ) : null}
+        </TabsTrigger>
+      ) : null}
       {showHistory ? (
         <TabsTrigger value="history" appearance="standard" className="min-w-36">
           Transferhistorik
@@ -95,14 +135,21 @@ function TransfersContent() {
     <Tabs
       value={selectedTab}
       onValueChange={(value) =>
-        router.push(value === "history" ? "/transfers/history" : "/transfers", {
-          scroll: false,
-        })
+        router.push(tabPath(value), { scroll: false })
       }
     >
       {showNew && selectedTab === "new" ? (
         <TabsContent value="new">
           <TransferForm navigation={navigation} />
+        </TabsContent>
+      ) : null}
+      {selectedTab === "orders" ? (
+        <TabsContent value="orders">
+          {openOrders ? (
+            <InternalOrders orders={openOrders} navigation={navigation} />
+          ) : (
+            <Skeleton className="h-96 w-full" />
+          )}
         </TabsContent>
       ) : null}
       {showHistory && selectedTab === "history" ? (

@@ -1315,6 +1315,12 @@ export function TransferHistory() {
                     {transferDetail.comment ?? "—"}
                   </dd>
                 </div>
+                {transferDetail.orderId ? (
+                  <div>
+                    <dt className="text-muted-foreground">Oprindelse</dt>
+                    <dd className="font-medium">Intern bestilling</dd>
+                  </div>
+                ) : null}
                 {transferDetail.receiptStatus ? (
                   <div>
                     <dt className="text-muted-foreground">Varemodtagelse</dt>

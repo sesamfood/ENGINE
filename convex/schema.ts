@@ -1199,6 +1199,8 @@ export default defineSchema({
     totalQuantity: v.optional(v.number()),
     hasTemperatureDeviation: v.optional(v.boolean()),
     dashboardSummaryTimeZone: v.optional(v.string()),
+    // Set when the Transfer fulfils an internal order.
+    orderId: v.optional(v.id("orders")),
   })
     .index("by_organizationId_and_transferredAt", [
       "organizationId",
@@ -1305,8 +1307,18 @@ export default defineSchema({
     organizationId: v.string(),
     includeRecipes: v.boolean(),
     chooseSupplierFirst: v.optional(v.boolean()),
+    internalOrdersEnabled: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
+
+  // A location other locations can order from. Fulfilled with a Transfer.
+  internalSuppliers: defineTable({
+    organizationId: v.string(),
+    locationId: v.id("locations"),
+    orderingLocationIds: v.array(v.id("locations")),
+    productIds: v.array(v.id("products")),
+    updatedAt: v.number(),
+  }).index("by_organizationId_and_locationId", ["organizationId", "locationId"]),
 
   suppliers: defineTable({
     organizationId: v.string(),
@@ -1348,6 +1360,12 @@ export default defineSchema({
       v.union(v.literal("pending"), v.literal("registered")),
     ),
     manualGoodsReceiptId: v.optional(v.id("manualGoodsReceipts")),
+    // Internal orders: received through the fulfilling Transfer, not receiptStatus.
+    fulfillingLocationId: v.optional(v.id("locations")),
+    fulfillmentStatus: v.optional(
+      v.union(v.literal("open"), v.literal("transferred")),
+    ),
+    transferId: v.optional(v.id("transfers")),
   })
     .index("by_organizationId_and_locationId_and_createdAt", [
       "organizationId",
@@ -1358,6 +1376,12 @@ export default defineSchema({
       "organizationId",
       "locationId",
       "receiptStatus",
+      "createdAt",
+    ])
+    .index("by_org_fulfillmentStatus_fulfillingLocation_createdAt", [
+      "organizationId",
+      "fulfillmentStatus",
+      "fulfillingLocationId",
       "createdAt",
     ]),
 

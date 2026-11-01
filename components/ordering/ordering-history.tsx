@@ -187,6 +187,16 @@ function OrderDetails({ orderId }: { orderId: Id<"orders"> }) {
               <dd>{order.supplierName}</dd>
             </div>
           ) : null}
+          {order.fulfillmentStatus ? (
+            <div>
+              <dt className="text-muted-foreground">Intern bestilling</dt>
+              <dd>
+                {order.fulfillmentStatus === "open"
+                  ? "Afventer transfer"
+                  : "Transfer oprettet"}
+              </dd>
+            </div>
+          ) : null}
           {order.email ? (
             <div>
               <dt className="text-muted-foreground">E-mail</dt>
@@ -324,6 +334,7 @@ function HistoryList({
                     </TableCell>
                     <TableCell className="max-w-60 whitespace-normal break-words">
                       {order.supplierName ?? "Ingen"}
+                      {order.fulfillingLocationId ? " (intern)" : ""}
                     </TableCell>
                     <TableCell appearance="numeric" className="text-right">
                       {numberFormatter.format(order.itemCount)}

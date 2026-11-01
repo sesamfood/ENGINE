@@ -86,6 +86,7 @@ import type * as integrations_workfeed_lib_api from "../integrations/workfeed/li
 import type * as integrations_workfeed_lib_syncRequest from "../integrations/workfeed/lib/syncRequest.js";
 import type * as integrations_workfeed_lifecycle from "../integrations/workfeed/lifecycle.js";
 import type * as integrations_workfeed_sync from "../integrations/workfeed/sync.js";
+import type * as internalOrders from "../internalOrders.js";
 import type * as invitations from "../invitations.js";
 import type * as invoices from "../invoices.js";
 import type * as kiosk from "../kiosk.js";
@@ -289,6 +290,7 @@ declare const fullApi: ApiFromModules<{
   "integrations/workfeed/lib/syncRequest": typeof integrations_workfeed_lib_syncRequest;
   "integrations/workfeed/lifecycle": typeof integrations_workfeed_lifecycle;
   "integrations/workfeed/sync": typeof integrations_workfeed_sync;
+  internalOrders: typeof internalOrders;
   invitations: typeof invitations;
   invoices: typeof invoices;
   kiosk: typeof kiosk;

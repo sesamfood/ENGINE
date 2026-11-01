@@ -17,6 +17,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   ShoppingCartIcon,
+  StoreIcon,
   TruckIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -169,13 +170,30 @@ function Planner({
   );
   const includeRecipes = settings?.includeRecipes ?? false;
   const suppliers = useQuery(api.suppliers.list, canPlan ? {} : "skip");
+  const internalSuppliers = useQuery(
+    api.ordering.listInternalSuppliers,
+    canPlan && locationId ? { locationId } : "skip",
+  );
   const supplier =
     suppliers?.find((item) => item.id === supplierValue) ?? null;
+  // Another location, fulfilled with a Transfer.
+  const internalSupplier =
+    internalSuppliers?.find((item) => item.locationId === supplierValue) ??
+    null;
+  const internalProductIds = useMemo(
+    () => new Set(internalSupplier?.productIds),
+    [internalSupplier],
+  );
+  const supplierName = supplier?.name ?? internalSupplier?.name;
+  const maxLines = internalSupplier ? 200 : 500;
+  // An internal supplier may not be offered to the newly chosen location.
   const choosingSupplier =
-    supplierValue === null &&
+    supplierValue !== NO_SUPPLIER &&
+    !supplier &&
+    !internalSupplier &&
     settings !== undefined &&
     settings.chooseSupplierFirst !== false &&
-    (suppliers?.length ?? 0) > 0;
+    (suppliers?.length ?? 0) + (internalSuppliers?.length ?? 0) > 0;
   const catalogSupplier = supplier?.catalog === "gssupply";
   const supplierLinks = useQuery(
     api.integrations.gssupply.api.listOrderingLinks,
@@ -323,6 +341,7 @@ function Planner({
   const loading =
     settings === undefined ||
     suppliers === undefined ||
+    internalSuppliers === undefined ||
     (catalogSupplier && (supplierLinks === undefined || catalog === undefined)) ||
     !context ||
     products === undefined ||
@@ -375,7 +394,13 @@ function Planner({
   const rows = forecasts.flatMap((product) => {
     // Catalog suppliers list their linked products, ordered in whole packs.
     const link = catalogSupplier ? linksByProduct.get(product.id) : undefined;
-    if (catalogSupplier ? !link : !includeRecipes && product.hasIngredients) {
+    if (
+      internalSupplier
+        ? !internalProductIds.has(product.id)
+        : catalogSupplier
+          ? !link
+          : !includeRecipes && product.hasIngredients
+    ) {
       return [];
     }
     const orderUnitId = link?.unitId ?? product.unitId;
@@ -466,6 +491,10 @@ function Planner({
   const supplierItems = [
     { value: NO_SUPPLIER, label: "Ingen leverandør" },
     ...(suppliers ?? []).map((item) => ({ value: item.id, label: item.name })),
+    ...(internalSuppliers ?? []).map((item) => ({
+      value: item.locationId,
+      label: `${item.name} (intern)`,
+    })),
   ];
 
   const header = (
@@ -519,6 +548,7 @@ function Planner({
       const result = await convex.query(api.ordering.prepareExport, {
         locationId,
         supplierId: supplier?.id,
+        fulfillingLocationId: internalSupplier?.locationId,
         lines: orderLines,
         catalogLines,
       });
@@ -550,7 +580,7 @@ function Planner({
       !validSettings ||
       invalidQuantity ||
       !plannedCount ||
-      plannedCount > 500 ||
+      plannedCount > maxLines ||
       submitting.current
     ) return;
     submitting.current = true;
@@ -560,6 +590,7 @@ function Planner({
       await placeOrder({
         locationId,
         supplierId: supplier?.id,
+        fulfillingLocationId: internalSupplier?.locationId,
         sendEmail: emailed,
         fromDate: context.today,
         coverageDays,
@@ -573,7 +604,9 @@ function Planner({
       toast.success(
         emailed
           ? `Bestillingen er gemt og sendes til ${supplier?.email}`
-          : "Bestillingen er gemt i bestillingshistorikken",
+          : internalSupplier
+            ? `Bestillingen er sendt til ${internalSupplier.name}`
+            : "Bestillingen er gemt i bestillingshistorikken",
       );
       router.push("/ordering/history");
     } catch (error) {
@@ -645,7 +678,9 @@ function Planner({
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      ) : settings === undefined || suppliers === undefined ? (
+      ) : settings === undefined ||
+        suppliers === undefined ||
+        internalSuppliers === undefined ? (
         <Skeleton className="h-72 w-full" />
       ) : choosingSupplier ? (
         <section
@@ -664,11 +699,19 @@ function Planner({
                   item.catalog === "gssupply"
                     ? "Koblede Produkter med priser fra GS Supply"
                     : "Alle Produkter, der kan bestilles",
+                Icon: TruckIcon,
+              })),
+              ...(internalSuppliers ?? []).map((item) => ({
+                value: item.locationId as string,
+                label: item.name,
+                description: "Intern bestilling, som leveres med en transfer",
+                Icon: StoreIcon,
               })),
               {
                 value: NO_SUPPLIER,
                 label: "Ingen leverandør",
                 description: "Alle Produkter, der kan bestilles",
+                Icon: TruckIcon,
               },
             ].map((option) => (
               <Card
@@ -688,7 +731,7 @@ function Planner({
                 <CardHeader>
                   <CardTitle>
                     <span className="flex items-center gap-2">
-                      <TruckIcon className="size-5" />
+                      <option.Icon className="size-5" />
                       {option.label}
                     </span>
                   </CardTitle>
@@ -710,7 +753,7 @@ function Planner({
                   <FieldLabel htmlFor="ordering-supplier">Leverandør</FieldLabel>
                   <Select
                     items={supplierItems}
-                    value={supplier ? supplier.id : NO_SUPPLIER}
+                    value={supplier?.id ?? internalSupplier?.locationId ?? NO_SUPPLIER}
                     onValueChange={(value) => setSupplierValue(value ?? NO_SUPPLIER)}
                     disabled={busy || suppliers === undefined}
                   >
@@ -928,7 +971,9 @@ function Planner({
                 <EmptyDescription>
                   {catalogSupplier && !rows.length
                     ? "Ingen Produkter er koblet til GS Supply endnu. Kobl dem under Administration → Integrationer → GS Supply."
-                    : "Prøv en anden søgning, eller tilpas filtrene."}
+                    : internalSupplier && !rows.length
+                      ? `Ingen Produkter kan bestilles hos ${internalSupplier.name}. Vælg dem under Administration → Interne bestillinger.`
+                      : "Prøv en anden søgning, eller tilpas filtrene."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -1058,8 +1103,8 @@ function Planner({
               Du mangler adgang til at afgive bestillinger.
             </p>
           ) : null}
-          {plannedCount > 500 ? (
-            <FieldError>Vælg højst 500 produkter ad gangen.</FieldError>
+          {plannedCount > maxLines ? (
+            <FieldError>Vælg højst {maxLines} produkter ad gangen.</FieldError>
           ) : null}
           <AppBottomBar>
             <div className="mx-auto flex w-full max-w-(--container-page) flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -1088,7 +1133,7 @@ function Planner({
                       !validSettings ||
                       invalidQuantity ||
                       plannedCount === 0 ||
-                      plannedCount > 500 ||
+                      plannedCount > maxLines ||
                       busy
                     }
                     onClick={() => void exportPlan()}
@@ -1109,7 +1154,7 @@ function Planner({
                       !validSettings ||
                       invalidQuantity ||
                       plannedCount === 0 ||
-                      plannedCount > 500 ||
+                      plannedCount > maxLines ||
                       busy
                     }
                     onClick={() => setConfirming(true)}
@@ -1131,11 +1176,13 @@ function Planner({
                 <AlertDialogTitle>Afgiv bestillingen?</AlertDialogTitle>
                 <AlertDialogDescription>
                   Bestillingen med {plannedCount} produkter
-                  {supplier ? ` hos ${supplier.name}` : ""} gemmes i
+                  {supplierName ? ` hos ${supplierName}` : ""} gemmes i
                   bestillingshistorikken for {locations.find((location) => location.id === locationId)?.name}.
-                  {supplier?.email
-                    ? ""
-                    : " Den sendes ikke automatisk til en leverandør."}
+                  {internalSupplier
+                    ? ` ${internalSupplier.name} kan oprette en transfer ud fra den under Transfer.`
+                    : supplier?.email
+                      ? ""
+                      : " Den sendes ikke automatisk til en leverandør."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               {supplier?.email ? (

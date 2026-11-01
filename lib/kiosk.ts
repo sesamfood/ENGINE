@@ -32,7 +32,8 @@ export function kioskDestinationMatches(id: string, pathname: string) {
   const destination = kioskDestinations.find((item) => item.id === id);
   return (
     destination?.route === pathname ||
-    (id === "ownChecks.today" && pathname.startsWith("/own-checks/check/"))
+    (id === "ownChecks.today" && pathname.startsWith("/own-checks/check/")) ||
+    (id === "transfers.new" && pathname === "/transfers/orders")
   );
 }
 

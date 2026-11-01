@@ -84,6 +84,7 @@ type TransferLine = {
 
 export type EditableTransfer = {
   id: Id<"transfers">;
+  orderId?: Id<"orders"> | null;
   receiptStatus: "pending" | "registered" | null;
   fromLocationId: Id<"locations">;
   toLocationId: Id<"locations">;
@@ -101,6 +102,21 @@ export type EditableTransfer = {
     maxTemperatureCelsius: number | null;
     receivedQuantity: number | null;
     receivedUnitName: string | null;
+  }>;
+};
+
+// An open internal order to fulfil with this Transfer.
+export type TransferOrder = {
+  id: Id<"orders">;
+  locationId: Id<"locations">;
+  fulfillingLocationId: Id<"locations">;
+  items: Array<{
+    productId: Id<"products">;
+    productName: string;
+    unitId: Id<"units">;
+    unitName: string;
+    quantity: number;
+    maxTemperatureCelsius: number | null;
   }>;
 };
 
@@ -158,13 +174,19 @@ function inputValueForTemperature(value: number | null) {
   return value === null ? "" : String(value).replace(".", ",");
 }
 
-function initialTemperatureStates(transfer?: EditableTransfer) {
+function initialTemperatureStates(
+  items: Array<{
+    productId: Id<"products">;
+    temperatureCelsius?: number | null;
+    maxTemperatureCelsius: number | null;
+  }>,
+) {
   const states: Record<string, ProductTemperatureState> = {};
-  for (const item of transfer?.items ?? []) {
+  for (const item of items) {
     const key = temperatureStateKey(item.productId);
     if (states[key]) continue;
     states[key] = {
-      value: inputValueForTemperature(item.temperatureCelsius),
+      value: inputValueForTemperature(item.temperatureCelsius ?? null),
       maxTemperatureCelsius: item.maxTemperatureCelsius,
     };
   }
@@ -189,11 +211,13 @@ function newLineKey() {
 
 export function TransferForm({
   transfer,
+  order,
   onSaved,
   onCancel,
   navigation,
 }: {
   transfer?: EditableTransfer;
+  order?: TransferOrder;
   onSaved?: () => void;
   onCancel?: () => void;
   navigation?: ReactNode;
@@ -214,11 +238,13 @@ export function TransferForm({
     originalTemperatureSnapshotMap(transfer),
   );
   const [fromLocationId, setFromLocationId] = useState<string | null>(
-    transfer?.fromLocationId ?? null,
+    transfer?.fromLocationId ?? order?.fulfillingLocationId ?? null,
   );
   const [toLocationId, setToLocationId] = useState<string | null>(
-    transfer?.toLocationId ?? null,
+    transfer?.toLocationId ?? order?.locationId ?? null,
   );
+  // A Transfer for an internal order keeps the order's locations.
+  const locationsLocked = Boolean(order || transfer?.orderId);
   const [responsibleUserId, setResponsibleUserId] = useState<string | null>(
     transfer?.responsibleUserId ?? null,
   );
@@ -227,7 +253,11 @@ export function TransferForm({
     toDateTimeLocal(transfer?.transferredAt ?? Date.now()),
   );
   const [lines, setLines] = useState<TransferLine[]>(() =>
-    (transfer?.items ?? []).map((item) => ({
+    (
+      transfer?.items ??
+      order?.items.map((item) => ({ ...item, id: newLineKey() })) ??
+      []
+    ).map((item) => ({
       key: item.id,
       productId: item.productId,
       productName: item.productName,
@@ -244,7 +274,7 @@ export function TransferForm({
   const [isSaving, setIsSaving] = useState(false);
   const [temperatureStates, setTemperatureStates] = useState<
     Record<string, ProductTemperatureState>
-  >(() => initialTemperatureStates(transfer));
+  >(() => initialTemperatureStates(transfer?.items ?? order?.items ?? []));
   const [temperatureConfirmation, setTemperatureConfirmation] = useState<{
     validated: ValidatedTemperatures;
     deviations: TemperatureDeviationConfirmation[];
@@ -254,13 +284,13 @@ export function TransferForm({
   const inputIdPrefix = transfer ? `transfer-edit-${transfer.id}` : "transfer";
 
   useEffect(() => {
-    if (!transfer && kiosk?.isKioskAccount && kiosk.locationId) {
+    if (!transfer && !order && kiosk?.isKioskAccount && kiosk.locationId) {
       const timeout = window.setTimeout(() =>
         setFromLocationId(kiosk.locationId),
       );
       return () => window.clearTimeout(timeout);
     }
-  }, [kiosk?.isKioskAccount, kiosk?.locationId, transfer]);
+  }, [kiosk?.isKioskAccount, kiosk?.locationId, order, transfer]);
 
   const members = (responsibleUsers ?? []) as MemberOption[];
   const membersLoading = responsibleUsers === undefined;
@@ -619,7 +649,7 @@ export function TransferForm({
         toast.success("Transferen er opdateret");
         onSaved?.();
       } else {
-        await createTransfer(payload);
+        await createTransfer(order ? { ...payload, orderId: order.id } : payload);
         if (
           confirmedTemperatureDeviations &&
           confirmedTemperatureDeviations.length > 0
@@ -636,7 +666,8 @@ export function TransferForm({
           });
         }
         toast.success("Transferen er gemt");
-        resetForm();
+        if (order) onSaved?.();
+        else resetForm();
       }
     } catch (caught) {
       toast.error(
@@ -737,7 +768,7 @@ export function TransferForm({
                   }}
                   placeholder="Søg efter lokation"
                   ariaLabel="Fra lokation"
-                  disabled={locations === undefined}
+                  disabled={locations === undefined || locationsLocked}
                 />
                 <FieldError>{errors.fromLocation}</FieldError>
               </Field>
@@ -758,7 +789,7 @@ export function TransferForm({
                   }}
                   placeholder="Søg efter lokation"
                   ariaLabel="Til lokation"
-                  disabled={locations === undefined}
+                  disabled={locations === undefined || locationsLocked}
                 />
                 <FieldError>{errors.toLocation}</FieldError>
               </Field>
