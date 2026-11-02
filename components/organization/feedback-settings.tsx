@@ -59,9 +59,7 @@ type Team = { id: string; key: string; name: string };
 type NotionProject = { property: string; name: string };
 type NotionDatabase = { id: string; name: string; projects: NotionProject[] };
 
-const NO_PROJECT = "none";
-const projectKey = (project: NotionProject) =>
-  JSON.stringify([project.property, project.name]);
+const NO_COLUMN = "none";
 
 const destinationDescriptions = {
   email: "Feedback sendes som e-mail med skærmbilledet vedhæftet.",
@@ -98,6 +96,7 @@ export function FeedbackSettings() {
   const [notionToken, setNotionToken] = useState("");
   const [databases, setDatabases] = useState<NotionDatabase[] | null>(null);
   const [databaseDraft, setDatabaseDraft] = useState<string | null>(null);
+  const [columnDraft, setColumnDraft] = useState<string | null>(null);
   const [projectDraft, setProjectDraft] = useState<string | null>(null);
   const [loadingDatabases, setLoadingDatabases] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -162,22 +161,22 @@ export function FeedbackSettings() {
   const projects =
     databases?.find((database) => database.id === databaseId)?.projects ??
     (databaseId === settings.notionDatabaseId ? savedProjects : []);
-  const projectValue =
-    projectDraft ??
-    (settings.notionProject ? projectKey(settings.notionProject) : NO_PROJECT);
-  const selectedProject =
-    projects.find((project) => projectKey(project) === projectValue) ?? null;
-  const showProperty =
-    new Set(projects.map((project) => project.property)).size > 1;
-  const projectOptions = [
-    { value: NO_PROJECT, label: "Intet projekt" },
-    ...projects.map((project) => ({
-      value: projectKey(project),
-      label: showProperty
-        ? `${project.property}: ${project.name}`
-        : project.name,
-    })),
+  const columnOptions = [
+    { value: NO_COLUMN, label: "Ingen kolonne" },
+    ...[...new Set(projects.map((project) => project.property))].map(
+      (property) => ({ value: property, label: property }),
+    ),
   ];
+  const column =
+    columnDraft ?? settings.notionProject?.property ?? NO_COLUMN;
+  const valueOptions = projects
+    .filter((project) => project.property === column)
+    .map((project) => ({ value: project.name, label: project.name }));
+  const projectName = projectDraft ?? settings.notionProject?.name ?? "";
+  const selectedProject =
+    projects.find(
+      (project) => project.property === column && project.name === projectName,
+    ) ?? null;
 
   async function loadDatabases() {
     setLoadingDatabases(true);
@@ -235,6 +234,7 @@ export function FeedbackSettings() {
       setApiKey("");
       setNotionToken("");
       setDatabaseDraft(null);
+      setColumnDraft(null);
       setProjectDraft(null);
       setEnabledDraft(null);
       setDestinationDraft(null);
@@ -441,7 +441,7 @@ export function FeedbackSettings() {
                       disabled={!databases}
                       onValueChange={(value) => {
                         setDatabaseDraft(value);
-                        setProjectDraft(NO_PROJECT);
+                        setColumnDraft(NO_COLUMN);
                       }}
                     >
                       <SelectTrigger
@@ -484,27 +484,34 @@ export function FeedbackSettings() {
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="feedback-notion-project">
-                    Projekt
+                  <FieldLabel htmlFor="feedback-notion-column">
+                    Kolonne
                     <HelpTooltip
-                      label="Projekt"
-                      content="Vælg en værdi fra en select-egenskab i databasen. Feedback oprettes med den værdi."
+                      label="Kolonne"
+                      content="Vælg en select-kolonne i databasen og den værdi, feedback skal oprettes med."
                     />
                   </FieldLabel>
                   <Select
-                    items={projectOptions}
-                    value={projectValue}
+                    items={columnOptions}
+                    value={column}
                     disabled={!databases || projects.length === 0}
-                    onValueChange={(value) => setProjectDraft(value ?? NO_PROJECT)}
+                    onValueChange={(value) => {
+                      const next = value ?? NO_COLUMN;
+                      setColumnDraft(next);
+                      setProjectDraft(
+                        projects.find((project) => project.property === next)
+                          ?.name ?? "",
+                      );
+                    }}
                   >
                     <SelectTrigger
-                      id="feedback-notion-project"
+                      id="feedback-notion-column"
                       className="min-h-11 w-full max-w-md"
                     >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {projectOptions.map((option) => (
+                      {columnOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
                         </SelectItem>
@@ -513,10 +520,36 @@ export function FeedbackSettings() {
                   </Select>
                   {databases && databaseId && projects.length === 0 ? (
                     <FieldDescription>
-                      Databasen har ingen select-egenskaber med værdier.
+                      Databasen har ingen select-kolonner med værdier.
                     </FieldDescription>
                   ) : null}
                 </Field>
+
+                {column !== NO_COLUMN ? (
+                  <Field>
+                    <FieldLabel htmlFor="feedback-notion-value">Værdi</FieldLabel>
+                    <Select
+                      items={valueOptions}
+                      value={selectedProject?.name ?? null}
+                      disabled={!databases}
+                      onValueChange={(value) => setProjectDraft(value ?? "")}
+                    >
+                      <SelectTrigger
+                        id="feedback-notion-value"
+                        className="min-h-11 w-full max-w-md"
+                      >
+                        <SelectValue placeholder="Vælg værdi" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {valueOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                ) : null}
               </>
             ) : null}
           </FieldGroup>
