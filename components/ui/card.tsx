@@ -272,7 +272,7 @@ const cardFooterAppearance = cva("", {
   variants: {
     appearance: {
       compact: "gap-2",
-      emphasized: "font-medium",
+      emphasized: "mt-auto font-medium",
       spaced: "gap-3",
       product: "border-t-0 p-3 pt-0",
       flush: "p-0",
