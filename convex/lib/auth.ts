@@ -855,12 +855,10 @@ export async function requireIntegrationManager(ctx: AuthContext) {
 export async function requireDashboardViewer(ctx: AuthContext) {
   const auth = await requireOrganization(ctx);
   requireFeatureEnabled(auth, "dashboard");
-  if (
-    auth.kioskModeEnabled ||
-    !hasPermission(auth.role, auth.permissions, "dashboard.view")
-  ) {
+  if (!hasPermission(auth.role, auth.permissions, "dashboard.view")) {
     throw new ConvexError("Du har ikke adgang til dashboardet");
   }
+  await requireKioskDestination(ctx, auth, "dashboard.view");
   return auth;
 }
 
@@ -878,6 +876,7 @@ export async function requireDashboardManager(ctx: AuthContext) {
 
 export async function requireFinancialReportViewer(ctx: AuthContext) {
   const auth = await requireDashboardViewer(ctx);
+  if (auth.kioskModeEnabled) throw new ConvexError("Du har ikke adgang");
   if (!hasPermission(auth.role, auth.permissions, "dashboard.viewFinancials")) {
     throw new ConvexError("Du har ikke adgang til månedsrapporten");
   }

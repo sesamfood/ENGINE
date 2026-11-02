@@ -126,6 +126,7 @@ export const getContext = query({
       "employees.schedule",
       "employees.directory",
       "waste.report",
+      "dashboard.view",
     ]);
     const { organizationId } = auth;
     const [

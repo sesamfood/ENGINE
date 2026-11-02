@@ -85,7 +85,7 @@ function pushUrl(router: ReturnType<typeof useRouter>, pathname: string, params:
 function DashboardLanding() {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
-  const canManage = usePermission("dashboard.manage");
+  const canManage = usePermission("dashboard.manage") && !access?.kiosk?.kioskModeEnabled;
   const canViewFinancials = usePermission("dashboard.viewFinancials");
   const router = useRouter();
   const dashboards = useQuery(api.dashboard.list, canView ? {} : "skip");
@@ -152,8 +152,10 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
-  const canManage = usePermission("dashboard.manage");
-  const canShare = usePermission("dashboard.share");
+  // Kiosk sessions may view dashboards but not edit or share them.
+  const kioskMode = Boolean(access?.kiosk?.kioskModeEnabled);
+  const canManage = usePermission("dashboard.manage") && !kioskMode;
+  const canShare = usePermission("dashboard.share") && !kioskMode;
   const canManageIntegrations = usePermission("integrations.manage") && Boolean(integrations?.onlinepos || integrations?.workfeed);
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
