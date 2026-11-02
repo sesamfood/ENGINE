@@ -119,6 +119,7 @@ import { cn } from "@/lib/utils";
 import { featureForPath, featureLabels, type FeatureId } from "@/lib/features";
 import { getOrganizationThemeCssVariables } from "@/convex/lib/organizationTheme";
 import { kioskDestinationMatches } from "@/lib/kiosk";
+import { isPreview } from "@/lib/page-title";
 import type { KioskDayTask } from "@/lib/kiosk-day";
 import {
   normalizeSidebarOrder,
@@ -200,6 +201,8 @@ type KioskDayState = {
   startOfDayLeft: boolean;
   // Null when kiosk settings do not allow leaving a due start of day.
   leaveStartOfDay: (() => void) | null;
+  endOfDaySimulated: boolean;
+  setEndOfDaySimulated: (simulated: boolean) => void;
 };
 
 const KioskDayContext = createContext<KioskDayState | null>(null);
@@ -680,6 +683,7 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [queryNow, setQueryNow] = useState(minuteTimestamp);
+  const [endOfDaySimulated, setEndOfDaySimulated] = useState(false);
   const [dismissedKey, setDismissedKey] = useState(() => {
     try {
       return window.sessionStorage.getItem(END_OF_DAY_DISMISSED_KEY);
@@ -689,7 +693,9 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   });
   const state = useQuery(
     api.kioskDay.getState,
-    kiosk?.kioskModeEnabled ? { now: queryNow } : "skip",
+    kiosk?.kioskModeEnabled
+      ? { now: queryNow, ...(endOfDaySimulated ? { simulateEndOfDay: true } : {}) }
+      : "skip",
   );
   const current = useLastDefined(state, kiosk?.locationId ?? "kiosk");
   const nextTransitionAt = current?.nextTransitionAt;
@@ -761,6 +767,8 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
               },
               startOfDayLeft: current.phase === "startOfDay" && leftStartOfDay,
               leaveStartOfDay: canLeaveStartOfDay ? () => setStartOfDayLeft(true) : null,
+              endOfDaySimulated,
+              setEndOfDaySimulated,
             }
           : null
       }
@@ -1348,9 +1356,24 @@ function SidebarAccount({
   const kiosk = useKiosk();
   const access = useAccess();
   const shortcut = useDayTaskShortcut();
+  const day = useKioskDay();
   const kioskModeControl = <KioskModeControl />;
   const accountMenu = (
     <SidebarMenu appearance="spaced">
+      {isPreview && day && !day.phase ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="lg"
+            appearance="icon"
+            tooltip="Simulér lukning"
+            className="group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center"
+            onClick={() => day.setEndOfDaySimulated(true)}
+          >
+            <FlaskConicalIcon aria-hidden="true" />
+            <span className="group-data-[collapsible=icon]:hidden">Simulér lukning</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
       {shortcut ? (
         <SidebarMenuItem>
           <SidebarMenuButton
