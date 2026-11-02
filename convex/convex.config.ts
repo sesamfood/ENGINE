@@ -14,6 +14,8 @@ const app = defineApp({
     NOMINATIM_URL: v.optional(v.string()),
     SITE_URL: v.optional(v.string()),
     FORECAST_DISPATCH_DISABLED: v.optional(v.string()),
+    // Set to "1" on preview deployments to let kiosks simulate closing time.
+    KIOSK_DAY_SIMULATION: v.optional(v.string()),
   },
 });
 

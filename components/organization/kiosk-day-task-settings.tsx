@@ -388,9 +388,6 @@ export function KioskDayTaskSettings() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="max-w-2xl text-sm text-muted-foreground">
-        Opgaverne vises på lokationens kiosk. Når lukningen er udført, er kiosken låst, indtil åbningen er udført.
-      </p>
       {locations.length > 1 ? (
         <Field className="max-w-sm">
           <FieldLabel htmlFor="day-task-location">Lokation</FieldLabel>

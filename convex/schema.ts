@@ -1965,6 +1965,8 @@ export default defineSchema({
     enabledPages: v.array(v.string()),
     homePage: v.string(),
     inactivitySeconds: v.union(v.number(), v.null()),
+    // Lets the kiosk leave a due start of day and use its other pages.
+    allowLeavingStartOfDay: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
