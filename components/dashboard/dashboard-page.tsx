@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { canSyncDashboardData } from "@/lib/auth-permissions";
 import { layoutDashboardWidgets } from "@/lib/dashboard/layout";
 import { metricRegistry } from "@/lib/dashboard/registry";
 import { comparisonPeriods, DEFAULT_COMPARISON_PERIOD, rangePresets, type ComparisonPeriod, type DashboardRange, type DashboardScope, type RangePreset, type WidgetInstance } from "@/lib/dashboard/types";
@@ -152,11 +153,11 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
   const access = useAccess();
   const canView = usePermission("dashboard.view");
   const canViewFinancials = usePermission("dashboard.viewFinancials");
-  // Kiosk sessions may view dashboards but not edit or share them.
+  // Kiosk sessions may view dashboards but not edit, share, or sync them.
   const kioskMode = Boolean(access?.kiosk?.kioskModeEnabled);
   const canManage = usePermission("dashboard.manage") && !kioskMode;
   const canShare = usePermission("dashboard.share") && !kioskMode;
-  const canManageIntegrations = usePermission("integrations.manage") && Boolean(integrations?.onlinepos || integrations?.workfeed);
+  const canSyncData = canSyncDashboardData(access?.permissions) && !kioskMode && Boolean(integrations?.onlinepos || integrations?.workfeed);
   const canViewLegacySales = usePermission("dashboard.viewSales");
   const canViewAggregateSales = usePermission("sales.viewAggregate");
   const canViewDetailedSales = usePermission("sales.viewDetail");
@@ -298,7 +299,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
         return;
       }
       setManualNow(Date.now());
-      if (!canManageIntegrations) return;
+      if (!canSyncData) return;
       const result = await requestDataSync({
         dashboardId: dashboard.id,
         scope: currentScope,
@@ -387,7 +388,7 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
           {canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled ? (
             <Button variant="outline" className="min-h-11" nativeButton={false} render={<Link href="/dashboard/monthly" />}>Månedsrapport</Button>
           ) : null}
-          {canManageIntegrations || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
+          {canSyncData || (canViewFinancials && access.granularity === "detail" && !access.kiosk?.kioskModeEnabled
             && dashboard.widgets.some((widget) => widget.metric.kind === "builtin" && metricRegistry[widget.metric.id].source === "economic")) ? (
             <Button type="button" size="lg" variant="outline" className="min-h-11" disabled={updatingData} onClick={() => void updateDashboardData()}>
               {updatingData ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}

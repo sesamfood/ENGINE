@@ -67,9 +67,9 @@ import {
   requireDashboardManager,
   requireDashboardViewer,
   requireHumanPrincipal,
-  requireIntegrationManager,
 } from "./lib/auth";
 import {
+  canSyncDashboardData,
   hasPermission,
   systemRoleKeys,
 } from "../lib/auth-permissions";
@@ -935,7 +935,9 @@ export const requestDataSync = mutation({
   handler: async (ctx, args) => {
     const auth = await requireDashboardViewer(ctx);
     const integrations = await getIntegrationState(ctx, auth.organizationId);
-    await requireIntegrationManager(ctx);
+    if (auth.kioskModeEnabled || !canSyncDashboardData(auth.permissions)) {
+      throw new ConvexError("Du har ikke adgang til at opdatere dashboarddata");
+    }
     const dashboard = await requireOrganizationDashboard(
       ctx,
       auth.organizationId,
