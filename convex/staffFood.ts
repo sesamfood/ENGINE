@@ -1,5 +1,5 @@
 import { requireOrganizationLocation as requireLocation } from "./lib/locations";
-import { dateKey as dateInTimeZone } from "../lib/date";
+import { addDays, dateKey as dateInTimeZone, zonedStart } from "../lib/date";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -38,6 +38,8 @@ const MAX_BASKET_ITEMS = 50;
 const MAX_SEARCH_RESULTS = 20;
 const MAX_SETTINGS_PRODUCTS = 500;
 const SHIFT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+// Whole-day mode opens shifts that start later in the day.
+const SHIFT_LOOKAHEAD_MS = 30 * 60 * 60 * 1000;
 const UNDO_WINDOW_MS = 30_000;
 const UNDO_REASON_GRACE_MS = 30_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -158,19 +160,40 @@ function requireDuration(durationMinutes: number) {
   }
 }
 
-async function afterShiftMinutes(ctx: StaffFoodContext, organizationId: string) {
+async function staffFoodSettings(ctx: StaffFoodContext, organizationId: string) {
   const settings = await ctx.db
     .query("staffFoodSettings")
     .withIndex("by_organizationId", (q) => q.eq("organizationId", organizationId))
     .unique();
-  return settings?.afterShiftMinutes ?? DEFAULT_AFTER_SHIFT_MINUTES;
+  return {
+    afterShiftMinutes: settings?.afterShiftMinutes ?? DEFAULT_AFTER_SHIFT_MINUTES,
+    wholeDay: settings?.wholeDay ?? false,
+  };
 }
 
-// A shift stays selectable for the configured time after it ends.
-async function shiftOpenUntil(ctx: StaffFoodContext, organizationId: string) {
-  const minutes = await afterShiftMinutes(ctx, organizationId);
-  return (shift: Pick<Doc<"scheduledShifts">, "endsAt">) =>
-    shift.endsAt + minutes * 60_000;
+// A shift is selectable from its start until the configured time after it
+// ends, or for its whole work day ± that time in whole-day mode.
+async function shiftOpen(
+  ctx: StaffFoodContext,
+  organizationId: string,
+  locationId: Id<"locations">,
+) {
+  const settings = await staffFoodSettings(ctx, organizationId);
+  const margin = settings.afterShiftMinutes * 60_000;
+  const timeZone = settings.wholeDay
+    ? await resolveTimeZone(ctx, organizationId, locationId)
+    : null;
+  return (
+    shift: Pick<Doc<"scheduledShifts">, "startsAt" | "endsAt">,
+    now: number,
+  ) => {
+    if (!timeZone) return shift.startsAt <= now && shift.endsAt + margin > now;
+    const day = dateInTimeZone(shift.startsAt, timeZone);
+    return (
+      zonedStart(day, timeZone) - margin <= now &&
+      zonedStart(addDays(day, 1), timeZone) + margin > now
+    );
+  };
 }
 
 async function matchingTier(
@@ -196,7 +219,7 @@ async function activeShiftsForEmployee(
   employeeId: Id<"employees">,
   now: number,
 ) {
-  const [shifts, openUntil] = await Promise.all([
+  const [shifts, isOpen] = await Promise.all([
     ctx.db
       .query("scheduledShifts")
       .withIndex("by_organizationId_and_employeeId_and_startsAt", (q) =>
@@ -204,14 +227,14 @@ async function activeShiftsForEmployee(
           .eq("organizationId", organizationId)
           .eq("employeeId", employeeId)
           .gte("startsAt", now - SHIFT_LOOKBACK_MS)
-          .lte("startsAt", now),
+          .lte("startsAt", now + SHIFT_LOOKAHEAD_MS),
       )
       .order("desc")
       .take(20),
-    shiftOpenUntil(ctx, organizationId),
+    shiftOpen(ctx, organizationId, locationId),
   ]);
   return shifts.filter(
-    (shift) => shift.locationId === locationId && openUntil(shift) > now,
+    (shift) => shift.locationId === locationId && isOpen(shift, now),
   );
 }
 
@@ -242,17 +265,16 @@ async function sessionActive(
     return session.workDate === dateInTimeZone(now, timeZone);
   }
   if (!session.scheduledShiftId) return false;
-  const [shift, openUntil] = await Promise.all([
+  const [shift, isOpen] = await Promise.all([
     ctx.db.get("scheduledShifts", session.scheduledShiftId),
-    shiftOpenUntil(ctx, organizationId),
+    shiftOpen(ctx, organizationId, session.locationId),
   ]);
   return Boolean(
     shift &&
     shift.organizationId === organizationId &&
     shift.locationId === session.locationId &&
     shift.employeeId === session.employeeId &&
-    shift.startsAt <= now &&
-    openUntil(shift) > now,
+    isOpen(shift, now),
   );
 }
 
@@ -295,7 +317,7 @@ export const getPicker = query({
     requireLocationAccess(auth, args.locationId);
     requireNow(args.now);
     await requireLocation(ctx, organizationId, args.locationId);
-    const [rows, tier, openUntil] = await Promise.all([
+    const [rows, tier, isOpen] = await Promise.all([
       ctx.db
         .query("scheduledShifts")
         .withIndex("by_organizationId_and_locationId_and_startsAt", (q) =>
@@ -303,7 +325,7 @@ export const getPicker = query({
             .eq("organizationId", organizationId)
             .eq("locationId", args.locationId)
             .gte("startsAt", args.now - SHIFT_LOOKBACK_MS)
-            .lte("startsAt", args.now),
+            .lte("startsAt", args.now + SHIFT_LOOKAHEAD_MS),
         )
         .order("desc")
         .take(MAX_PICKER_SHIFTS + 1),
@@ -313,11 +335,11 @@ export const getPicker = query({
           q.eq("organizationId", organizationId),
         )
         .first(),
-      shiftOpenUntil(ctx, organizationId),
+      shiftOpen(ctx, organizationId, args.locationId),
     ]);
     const active = rows
       .slice(0, MAX_PICKER_SHIFTS)
-      .filter((shift) => openUntil(shift) > args.now);
+      .filter((shift) => isOpen(shift, args.now));
     const employeeIds = [...new Set(active.map((shift) => shift.employeeId))];
     const employees = await Promise.all(
       employeeIds.map((employeeId) => ctx.db.get("employees", employeeId)),
@@ -448,16 +470,15 @@ export const startSession = mutation({
       args.selection.locationId,
     );
     if (args.selection.kind === "scheduled") {
-      const [shift, openUntil] = await Promise.all([
+      const [shift, isOpen] = await Promise.all([
         ctx.db.get("scheduledShifts", args.selection.shiftId),
-        shiftOpenUntil(ctx, organizationId),
+        shiftOpen(ctx, organizationId, location._id),
       ]);
       if (
         !shift ||
         shift.organizationId !== organizationId ||
         shift.locationId !== location._id ||
-        shift.startsAt > now ||
-        openUntil(shift) <= now
+        !isOpen(shift, now)
       ) {
         throw new ConvexError("Vagten er ikke aktiv længere");
       }
@@ -1180,6 +1201,7 @@ export const getSettings = query({
   returns: v.object({
     timeZone: v.string(),
     afterShiftMinutes: v.number(),
+    wholeDay: v.boolean(),
     tiers: v.array(
       v.object({
         id: v.id("staffFoodRuleTiers"),
@@ -1219,7 +1241,7 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireStaffFoodManager(ctx);
-    const [tiers, categories, products, timeZone, afterShift] = await Promise.all([
+    const [tiers, categories, products, timeZone, staffFood] = await Promise.all([
       ctx.db
         .query("staffFoodRuleTiers")
         .withIndex("by_organizationId_and_minimumShiftMinutes", (q) =>
@@ -1239,7 +1261,7 @@ export const getSettings = query({
         )
         .take(MAX_SETTINGS_PRODUCTS + 1),
       resolveTimeZone(ctx, organizationId),
-      afterShiftMinutes(ctx, organizationId),
+      staffFoodSettings(ctx, organizationId),
     ]);
     if (tiers.length > MAX_TIERS) {
       throw new ConvexError("Der er for mange regler");
@@ -1314,7 +1336,7 @@ export const getSettings = query({
     );
     return {
       timeZone,
-      afterShiftMinutes: afterShift,
+      ...staffFood,
       tiers: tierResults,
       categories: categories.map((category) => ({
         id: category._id,
@@ -1333,8 +1355,8 @@ export const getSettings = query({
   },
 });
 
-export const setAfterShiftMinutes = mutation({
-  args: { afterShiftMinutes: v.number() },
+export const setAvailability = mutation({
+  args: { afterShiftMinutes: v.number(), wholeDay: v.optional(v.boolean()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { organizationId } = await requireStaffFoodManager(ctx);
@@ -1353,6 +1375,7 @@ export const setAfterShiftMinutes = mutation({
       .unique();
     const next = {
       afterShiftMinutes: args.afterShiftMinutes,
+      wholeDay: args.wholeDay ?? current?.wholeDay,
       updatedAt: Date.now(),
     };
     if (current) {
@@ -1363,6 +1386,9 @@ export const setAfterShiftMinutes = mutation({
     return null;
   },
 });
+
+// Old address kept for deployed clients.
+export const setAfterShiftMinutes = setAvailability;
 
 export const saveTier = mutation({
   args: {

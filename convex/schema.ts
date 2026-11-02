@@ -690,6 +690,7 @@ export default defineSchema({
   staffFoodSettings: defineTable({
     organizationId: v.string(),
     afterShiftMinutes: v.number(),
+    wholeDay: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
