@@ -139,6 +139,7 @@ export function StaffFoodSettings() {
     null,
   );
   const [minimumHours, setMinimumHours] = useState("4");
+  const [roleNames, setRoleNames] = useState<string[]>([]);
   const [allowances, setAllowances] = useState<AllowanceDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Tier | null>(null);
@@ -234,6 +235,7 @@ export function StaffFoodSettings() {
   function openEditor(tier?: Tier) {
     setEditingId(tier?.id ?? null);
     setMinimumHours(String((tier?.minimumShiftMinutes ?? 240) / 60));
+    setRoleNames(tier?.roleNames ?? []);
     setAllowances(
       tier?.allowances.map((allowance) => ({
         id: crypto.randomUUID(),
@@ -299,6 +301,7 @@ export function StaffFoodSettings() {
       await saveTier({
         ...(editingId ? { tierId: editingId } : {}),
         minimumShiftMinutes,
+        roleNames,
         allowances: allowances.map((allowance) => ({
           categoryId: allowance.categoryIds[0],
           categoryIds: allowance.categoryIds,
@@ -428,7 +431,7 @@ export function StaffFoodSettings() {
             Regler for Staff food
             <HelpTooltip
               label="Regler for Staff food"
-              content="Hvis flere regler passer til vagten, gælder reglen med den højeste vagtlængde. Reglerne lægges ikke sammen."
+              content="Hvis flere regler passer til vagten, gælder reglen med den højeste vagtlængde. Regler for vagtens rolle går forud for regler for alle roller. Reglerne lægges ikke sammen."
             />
           </CardTitle>
           <CardDescription>
@@ -452,7 +455,10 @@ export function StaffFoodSettings() {
                 <Card key={tier.id} size="sm">
                   <CardHeader>
                     <CardTitle>
-                      Fra {formatDuration(tier.minimumShiftMinutes)} timer
+                      Fra {formatDuration(tier.minimumShiftMinutes)} timer ·{" "}
+                      {tier.roleNames.length
+                        ? tier.roleNames.join(", ")
+                        : "Alle vagtroller"}
                     </CardTitle>
                     <CardDescription>
                       {tier.allowances.length} kategorigruppe
@@ -545,6 +551,51 @@ export function StaffFoodSettings() {
                 <FieldError>
                   Vælg hele eller halve timer mellem 0,5 og 24.
                 </FieldError>
+              ) : null}
+            </Field>
+
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="staff-food-roles">Vagtroller</FieldLabel>
+                <HelpTooltip
+                  label="Vagtroller"
+                  content="Begræns reglen til vagter med de valgte roller fra vagtplanen. Regler for vagtens rolle går forud for regler for alle roller. Manuelle registreringer bruger kun regler for alle roller."
+                />
+              </div>
+              <Select
+                multiple
+                items={settings.roleNames.map((name) => ({
+                  value: name,
+                  label: name,
+                }))}
+                value={roleNames}
+                onValueChange={setRoleNames}
+                disabled={!settings.roleNames.length}
+              >
+                <SelectTrigger
+                  id="staff-food-roles"
+                  className="min-h-11 w-full min-w-0 sm:max-w-md"
+                >
+                  <SelectValue
+                    appearance="truncate"
+                    className="min-w-0"
+                    placeholder="Alle vagtroller"
+                  />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {settings.roleNames.map((name) => (
+                      <SelectItem key={name} value={name} className="min-h-11">
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {!settings.roleNames.length ? (
+                <FieldDescription>
+                  Der er ingen vagtroller i vagtplanen endnu.
+                </FieldDescription>
               ) : null}
             </Field>
 

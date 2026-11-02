@@ -697,6 +697,8 @@ export default defineSchema({
   staffFoodRuleTiers: defineTable({
     organizationId: v.string(),
     minimumShiftMinutes: v.number(),
+    // Shift role names this tier is limited to. Missing or empty means all roles.
+    roleNames: v.optional(v.array(v.string())),
     updatedAt: v.number(),
   }).index("by_organizationId_and_minimumShiftMinutes", [
     "organizationId",
@@ -743,6 +745,7 @@ export default defineSchema({
     employeeId: v.id("employees"),
     source: v.union(v.literal("scheduled"), v.literal("manual")),
     scheduledShiftId: v.optional(v.id("scheduledShifts")),
+    roleName: v.optional(v.string()),
     workDate: v.string(),
     startsAt: v.optional(v.number()),
     endsAt: v.optional(v.number()),
