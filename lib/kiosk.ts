@@ -1,4 +1,5 @@
 export const kioskDestinations = [
+  { id: "dashboard.view", route: "/dashboard", label: "Dashboard", group: "Dashboard" },
   { id: "dateLabels.print", route: "/date-labels", label: "Datomærkning", group: "Datomærkning" },
   { id: "transfers.new", route: "/transfers", label: "Ny transfer", group: "Transfer" },
   { id: "transfers.history", route: "/transfers/history", label: "Transferhistorik", group: "Transfer" },
@@ -33,7 +34,10 @@ export function kioskDestinationMatches(id: string, pathname: string) {
   return (
     destination?.route === pathname ||
     (id === "ownChecks.today" && pathname.startsWith("/own-checks/check/")) ||
-    (id === "transfers.new" && pathname === "/transfers/orders")
+    (id === "transfers.new" && pathname === "/transfers/orders") ||
+    (id === "dashboard.view" &&
+      pathname.startsWith("/dashboard/") &&
+      pathname !== "/dashboard/monthly")
   );
 }
 
