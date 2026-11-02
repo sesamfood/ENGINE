@@ -775,7 +775,8 @@ export function EmployeeScheduling() {
           <AlertTriangleIcon />
           <AlertTitle>Seneste synkronisering mislykkedes</AlertTitle>
           <AlertDescription>
-            {context.lastError} De senest hentede data vises fortsat.
+            {context.lastError.replace(/\.?$/, ".")} De senest hentede data
+            vises fortsat.
           </AlertDescription>
         </Alert>
       ) : !context.workfeedConnected ? (
