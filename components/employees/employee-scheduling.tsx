@@ -480,6 +480,7 @@ function DirectoryTab({
               <TableHeader>
                 <TableRow>
                   <TableHead>Medarbejder</TableHead>
+                  <TableHead>Roller</TableHead>
                   <TableHead>Lokationer</TableHead>
                   <TableHead className="text-right">Status</TableHead>
                   {canManage ? <TableHead className="w-14"><span className="sr-only">Handlinger</span></TableHead> : null}
@@ -506,6 +507,19 @@ function DirectoryTab({
                         </div>
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {employee.roleNames.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {employee.roleNames.map((roleName) => (
+                            <Badge key={roleName} variant="outline">
+                              {roleName}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">Ingen rolle</span>
+                      )}
+                    </TableCell>
                     <TableCell appearance="muted" className="hidden sm:table-cell">
                       {employee.locations
                         .map((location) => location.name)
@@ -520,7 +534,7 @@ function DirectoryTab({
                     </TableCell>
                     {canManage ? (
                       <TableCell>
-                        {employee.managedLocally ? (
+                        {canManage ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -548,6 +562,15 @@ function DirectoryTab({
                   />
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">{employee.displayName}</div>
+                    {employee.roleNames.length ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {employee.roleNames.map((roleName) => (
+                          <Badge key={roleName} variant="outline">
+                            {roleName}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
                     <p className="mt-1 text-sm text-muted-foreground">
                       {employee.locations
                         .map((location) => location.name)
@@ -558,7 +581,7 @@ function DirectoryTab({
                     <Badge variant={employee.active ? "secondary" : "outline"}>
                       {employee.active ? "Aktiv" : "Inaktiv"}
                     </Badge>
-                    {canManage && employee.managedLocally ? (
+                    {canManage ? (
                       <Button
                         variant="outline"
                         className="min-h-11"
@@ -775,7 +798,8 @@ export function EmployeeScheduling() {
           <AlertTriangleIcon />
           <AlertTitle>Seneste synkronisering mislykkedes</AlertTitle>
           <AlertDescription>
-            {context.lastError} De senest hentede data vises fortsat.
+            {context.lastError.replace(/\.?$/, ".")} De senest hentede data
+            vises fortsat.
           </AlertDescription>
         </Alert>
       ) : !context.workfeedConnected ? (

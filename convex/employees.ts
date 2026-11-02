@@ -26,6 +26,7 @@ import {
 import { requestWorkfeedEmployeeSync } from "./integrations/workfeed/lib/syncRequest";
 import { recordAudit } from "./lib/audit";
 import { requireOrganizationLocation } from "./lib/locations";
+import { knownRoleNames, requireRoleNames } from "./lib/roleNames";
 
 const MAX_WEEK_SHIFTS = 2_000;
 const MAX_LOCATION_EMPLOYEES = 500;
@@ -57,6 +58,8 @@ const employeeSummaryValidator = v.object({
   managedLocally: v.boolean(),
   displayName: v.string(),
   imageUrl: v.union(v.string(), v.null()),
+  roleNames: v.array(v.string()),
+  roleNamesManaged: v.boolean(),
   active: v.boolean(),
   locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
 });
@@ -96,6 +99,8 @@ async function hydrateEmployee(
     managedLocally: employee.managedLocally === true,
     displayName: employee.displayName,
     imageUrl: employee.imageUrl,
+    roleNames: employee.roleNames ?? [],
+    roleNamesManaged: employee.roleNamesManaged === true,
     active: employee.active,
     locations: locations.flatMap((location) =>
       location?.organizationId === organizationId
@@ -412,6 +417,7 @@ export const saveManual = mutation({
     firstName: v.string(),
     lastName: v.string(),
     active: v.boolean(),
+    roleNames: v.optional(v.array(v.string())),
   },
   returns: v.id("employees"),
   handler: async (ctx, args) => {
@@ -435,7 +441,7 @@ export const saveManual = mutation({
       for (const assignment of assignments) requireLocationAccess(auth, assignment.locationId);
     }
     const displayName = [firstName, lastName].filter(Boolean).join(" ");
-    const fields = { firstName, lastName, displayName, normalizedName: displayName.toLocaleLowerCase("da"), active: args.active, updatedAt: Date.now() };
+    const fields = { firstName, lastName, displayName, normalizedName: displayName.toLocaleLowerCase("da"), active: args.active, ...(args.roleNames ? { roleNames: requireRoleNames(args.roleNames), roleNamesManaged: true } : {}), updatedAt: Date.now() };
     const employeeId = current?._id ?? await ctx.db.insert("employees", { organizationId: auth.organizationId, managedLocally: true, imageUrl: null, ...fields });
     if (current) await ctx.db.patch(current._id, fields);
     const assignment = await ctx.db.query("employeeLocationAssignments")
@@ -443,6 +449,67 @@ export const saveManual = mutation({
     if (!assignment) await ctx.db.insert("employeeLocationAssignments", { organizationId: auth.organizationId, employeeId, locationId: args.locationId, updatedAt: fields.updatedAt });
     await recordAudit(ctx, auth, { action: current ? "employee.updated" : "employee.created", entityTable: "employees", entityId: employeeId, locationId: args.locationId, summary: `${current ? "Opdaterede" : "Oprettede"} medarbejderen ${displayName}` });
     return employeeId;
+  },
+});
+
+export const listRoleNames = query({
+  args: {},
+  returns: v.array(v.string()),
+  handler: async (ctx) => {
+    const auth = await requireOrganizationAdmin(ctx);
+    requireFeatureEnabled(auth, "employees");
+    return await knownRoleNames(ctx, auth.organizationId);
+  },
+});
+
+// null hands the roles back to the scheduling provider on its next sync.
+export const setRoles = mutation({
+  args: {
+    employeeId: v.id("employees"),
+    roleNames: v.union(v.array(v.string()), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const auth = requireHumanPrincipal(await requireOrganizationAdmin(ctx));
+    requireFeatureEnabled(auth, "employees");
+    const employee = await ctx.db.get("employees", args.employeeId);
+    if (!employee || employee.organizationId !== auth.organizationId) {
+      throw new ConvexError("Medarbejderen blev ikke fundet");
+    }
+    const assignments = await ctx.db
+      .query("employeeLocationAssignments")
+      .withIndex("by_organizationId_and_employeeId", (q) =>
+        q
+          .eq("organizationId", auth.organizationId)
+          .eq("employeeId", employee._id),
+      )
+      .take(MAX_ASSIGNMENTS + 1);
+    if (assignments.length > MAX_ASSIGNMENTS) {
+      throw new ConvexError("Medarbejderen har for mange lokationer");
+    }
+    for (const assignment of assignments) {
+      requireLocationAccess(auth, assignment.locationId);
+    }
+    if (args.roleNames === null) {
+      await ctx.db.patch(employee._id, {
+        roleNamesManaged: undefined,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.patch(employee._id, {
+        roleNames: requireRoleNames(args.roleNames),
+        roleNamesManaged: true,
+        updatedAt: Date.now(),
+      });
+    }
+    await recordAudit(ctx, auth, {
+      action: "employee.updated",
+      entityTable: "employees",
+      entityId: employee._id,
+      locationId: assignments[0]?.locationId,
+      summary: `Opdaterede rollerne for ${employee.displayName}`,
+    });
+    return null;
   },
 });
 

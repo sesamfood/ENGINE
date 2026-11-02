@@ -27,6 +27,7 @@ export type WorkfeedEmployee = {
   imageUrl: string | null;
   active: boolean;
   departmentIds: string[];
+  roleIds: string[];
 };
 
 export type WorkfeedRole = {
@@ -62,7 +63,7 @@ function stringArray(value: unknown): string[] | null {
 }
 
 function invalidRow(
-  kind: "medarbejder" | "rolle" | "vagt",
+  kind: "medarbejder" | "rolle",
   index: number,
 ): never {
   throw new ConvexError(
@@ -170,6 +171,7 @@ export function parseEmployees(payload: unknown): WorkfeedEmployee[] {
       imageUrl: imageUrl.startsWith("https://") ? imageUrl : null,
       active: employee?.isDeleted !== true,
       departmentIds,
+      roleIds: stringArray(employee?.roleIDs) ?? [],
     };
   });
 }
@@ -246,36 +248,33 @@ export function parseShifts(payload: unknown): WorkfeedShift[] {
     throw new ConvexError("Der er for mange Workfeed-vagter i perioden");
   }
 
-  return payload.flatMap((value, index) => {
+  // One unusable shift must not block the rest of the schedule.
+  const skip = (index: number, reason: string, id?: unknown) => {
+    console.warn(
+      `Workfeed-vagt i række ${index + 1} (${String(id ?? "uden id")}) blev sprunget over: ${reason}`,
+    );
+    return [];
+  };
+
+  return payload.flatMap((value, index): WorkfeedShift[] => {
     const shift = object(value);
-    if (!shift) return invalidRow("vagt", index);
+    if (!shift) return skip(index, "ikke et objekt");
+    if (shift.released === false) return [];
     const employeeValue = shift.employeeID;
     const roleValue = shift.roleID;
-    if (shift.released !== true && shift.released !== false) {
-      return invalidRow("vagt", index);
-    }
-    const id = string(shift?.id);
+    const id = string(shift.id);
     const employeeId = string(employeeValue);
-    const departmentId = string(shift?.departmentID);
+    const departmentId = string(shift.departmentID);
     const roleId = string(roleValue);
-    const start = Date.parse(string(shift?.start));
-    const end = Date.parse(string(shift?.end));
-    if (
-      !id ||
-      !departmentId ||
-      (typeof employeeValue !== "string" && employeeValue !== null) ||
-      (typeof roleValue !== "string" && roleValue !== null) ||
-      typeof shift.start !== "string" ||
-      typeof shift.end !== "string" ||
-      !Number.isFinite(start) ||
-      !Number.isFinite(end) ||
-      end <= start
-    ) {
-      return invalidRow("vagt", index);
+    const start = Date.parse(string(shift.start));
+    const end = Date.parse(string(shift.end));
+    if (!id) return skip(index, "mangler id");
+    if (!employeeId) return [];
+    if (!departmentId) return skip(index, "mangler afdeling", id);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+      return skip(index, "ugyldigt start- eller sluttidspunkt", id);
     }
-    if (shift.released === false) return [];
-    if (employeeValue === null) return [];
-    if (!employeeId) return invalidRow("vagt", index);
+    if (end <= start) return skip(index, "slutter før den starter", id);
     return [
       {
         id,
