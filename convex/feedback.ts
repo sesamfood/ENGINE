@@ -47,7 +47,11 @@ const statusValidator = v.union(
   v.literal("failed"),
 );
 
-const projectValidator = v.object({ property: v.string(), name: v.string() });
+const projectValidator = v.object({
+  property: v.string(),
+  name: v.string(),
+  pageId: v.optional(v.string()),
+});
 
 const deliveryValidator = v.union(
   v.object({
@@ -75,10 +79,20 @@ const deliveryValidator = v.union(
 );
 
 function notionProject(
-  settings: { notionProjectProperty?: string; notionProjectName?: string } | null,
+  settings: {
+    notionProjectProperty?: string;
+    notionProjectName?: string;
+    notionProjectPageId?: string;
+  } | null,
 ) {
   return settings?.notionProjectProperty && settings.notionProjectName
-    ? { property: settings.notionProjectProperty, name: settings.notionProjectName }
+    ? {
+        property: settings.notionProjectProperty,
+        name: settings.notionProjectName,
+        ...(settings.notionProjectPageId
+          ? { pageId: settings.notionProjectPageId }
+          : {}),
+      }
     : null;
 }
 
@@ -257,7 +271,8 @@ export const saveSettings = mutation({
       (!project.property.trim() ||
         !project.name.trim() ||
         project.property.length > MAX_TEAM_LENGTH ||
-        project.name.length > MAX_TEAM_LENGTH)
+        project.name.length > MAX_TEAM_LENGTH ||
+        (project.pageId?.length ?? 0) > MAX_TEAM_LENGTH)
     ) {
       throw new ConvexError("Vælg et gyldigt projekt");
     }
@@ -295,6 +310,7 @@ export const saveSettings = mutation({
         ? {
             notionProjectProperty: project?.property,
             notionProjectName: project?.name,
+            notionProjectPageId: project?.pageId,
           }
         : {}),
     };

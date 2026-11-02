@@ -56,10 +56,11 @@ import { usePermission } from "@/components/app-shell";
 
 type Destination = "linear" | "notion" | "email";
 type Team = { id: string; key: string; name: string };
-type NotionProject = { property: string; name: string };
+type NotionProject = { property: string; name: string; pageId?: string };
 type NotionDatabase = { id: string; name: string; projects: NotionProject[] };
 
 const NO_COLUMN = "none";
+const valueKey = (project: NotionProject) => project.pageId ?? project.name;
 
 const destinationDescriptions = {
   email: "Feedback sendes som e-mail med skærmbilledet vedhæftet.",
@@ -171,11 +172,14 @@ export function FeedbackSettings() {
     columnDraft ?? settings.notionProject?.property ?? NO_COLUMN;
   const valueOptions = projects
     .filter((project) => project.property === column)
-    .map((project) => ({ value: project.name, label: project.name }));
-  const projectName = projectDraft ?? settings.notionProject?.name ?? "";
+    .map((project) => ({ value: valueKey(project), label: project.name }));
+  const projectValue =
+    projectDraft ??
+    (settings.notionProject ? valueKey(settings.notionProject) : "");
   const selectedProject =
     projects.find(
-      (project) => project.property === column && project.name === projectName,
+      (project) =>
+        project.property === column && valueKey(project) === projectValue,
     ) ?? null;
 
   async function loadDatabases() {
@@ -488,7 +492,7 @@ export function FeedbackSettings() {
                     Kolonne
                     <HelpTooltip
                       label="Kolonne"
-                      content="Vælg en select-kolonne i databasen og den værdi, feedback skal oprettes med."
+                      content="Vælg en select- eller relationskolonne i databasen og den værdi, feedback skal oprettes med. En relateret database skal også deles med integrationen."
                     />
                   </FieldLabel>
                   <Select
@@ -498,10 +502,10 @@ export function FeedbackSettings() {
                     onValueChange={(value) => {
                       const next = value ?? NO_COLUMN;
                       setColumnDraft(next);
-                      setProjectDraft(
-                        projects.find((project) => project.property === next)
-                          ?.name ?? "",
+                      const first = projects.find(
+                        (project) => project.property === next,
                       );
+                      setProjectDraft(first ? valueKey(first) : "");
                     }}
                   >
                     <SelectTrigger
@@ -520,7 +524,7 @@ export function FeedbackSettings() {
                   </Select>
                   {databases && databaseId && projects.length === 0 ? (
                     <FieldDescription>
-                      Databasen har ingen select-kolonner med værdier.
+                      Databasen har ingen select- eller relationskolonner med værdier.
                     </FieldDescription>
                   ) : null}
                 </Field>
@@ -530,7 +534,7 @@ export function FeedbackSettings() {
                     <FieldLabel htmlFor="feedback-notion-value">Værdi</FieldLabel>
                     <Select
                       items={valueOptions}
-                      value={selectedProject?.name ?? null}
+                      value={selectedProject ? valueKey(selectedProject) : null}
                       disabled={!databases}
                       onValueChange={(value) => setProjectDraft(value ?? "")}
                     >

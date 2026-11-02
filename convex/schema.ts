@@ -562,6 +562,7 @@ export default defineSchema({
     notionDatabaseName: v.optional(v.string()),
     notionProjectProperty: v.optional(v.string()),
     notionProjectName: v.optional(v.string()),
+    notionProjectPageId: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 

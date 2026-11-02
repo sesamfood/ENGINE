@@ -6,8 +6,9 @@ const MAX_DATABASES = 100;
 // Notion rejects rich text objects longer than this.
 const MAX_TEXT_LENGTH = 2_000;
 
-// A project is an option of one of the database's select properties.
-export type NotionProject = { property: string; name: string };
+// A project is an option of a select property, or a page linked through a
+// relation property (then `pageId` is set).
+export type NotionProject = { property: string; name: string; pageId?: string };
 
 export type NotionDatabase = {
   id: string;
@@ -97,6 +98,44 @@ function selectOptions(properties: unknown): NotionProject[] {
   });
 }
 
+function relationTargets(properties: unknown) {
+  return Object.values(object(properties) ?? {}).flatMap((value) => {
+    const property = object(value);
+    const name = string(property?.name);
+    const target = string(object(property?.relation)?.data_source_id);
+    return property?.type === "relation" && name && target
+      ? [{ property: name, target }]
+      : [];
+  });
+}
+
+function pageTitle(properties: unknown) {
+  const title = Object.values(object(properties) ?? {})
+    .map(object)
+    .find((property) => property?.type === "title");
+  return plainText(title?.title);
+}
+
+// Related databases the integration cannot read yield no pages.
+async function fetchPages(token: string, dataSourceId: string) {
+  try {
+    const data = await requestNotion(
+      token,
+      `/data_sources/${encodeURIComponent(dataSourceId)}/query`,
+      { page_size: MAX_DATABASES },
+    );
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.flatMap((value) => {
+      const page = object(value);
+      const id = string(page?.id);
+      const name = pageTitle(page?.properties);
+      return id && name ? [{ id, name }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchNotionDatabases(
   token: string,
 ): Promise<NotionDatabase[]> {
@@ -108,18 +147,34 @@ export async function fetchNotionDatabases(
   if (!Array.isArray(results)) {
     throw new ConvexError("Notion returnerede en ugyldig databaseliste");
   }
-  return results.flatMap((value) => {
+  const sources = results.flatMap((value) => {
     const source = object(value);
     const id = string(source?.id);
     if (!id || source?.object !== "data_source") return [];
-    return [
-      {
-        id,
-        name: plainText(source.title) || "Unavngivet database",
-        projects: selectOptions(source.properties),
-      },
-    ];
+    return [{ id, source, relations: relationTargets(source.properties) }];
   });
+  const targets = [
+    ...new Set(sources.flatMap(({ relations }) => relations.map((r) => r.target))),
+  ];
+  const pages = new Map(
+    await Promise.all(
+      targets.map(async (target) => [target, await fetchPages(token, target)] as const),
+    ),
+  );
+  return sources.map(({ id, source, relations }) => ({
+    id,
+    name: plainText(source.title) || "Unavngivet database",
+    projects: [
+      ...selectOptions(source.properties),
+      ...relations.flatMap(({ property, target }) =>
+        (pages.get(target) ?? []).map((page) => ({
+          property,
+          name: page.name,
+          pageId: page.id,
+        })),
+      ),
+    ],
+  }));
 }
 
 export type NotionText = { text: string; bold?: boolean; url?: string };
@@ -154,7 +209,11 @@ export async function createNotionPage(
     properties: {
       title: { title: richText([{ text: input.title }]) },
       ...(input.project
-        ? { [input.project.property]: { select: { name: input.project.name } } }
+        ? {
+            [input.project.property]: input.project.pageId
+              ? { relation: [{ id: input.project.pageId }] }
+              : { select: { name: input.project.name } },
+          }
         : {}),
     },
     children: [
