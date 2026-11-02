@@ -32,6 +32,7 @@ import {
   ShieldIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
+  SunIcon,
 } from "lucide-react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Image from "next/image";
@@ -155,6 +156,7 @@ type KioskSettings = {
   enabledPages: string[];
   homePage: string | null;
   inactivitySeconds: number | null;
+  allowLeavingStartOfDay: boolean;
   updatedAt: number;
 };
 
@@ -195,6 +197,9 @@ type KioskDayState = {
   timeZone: string | null;
   endOfDayDismissed: boolean;
   dismissEndOfDay: () => void;
+  startOfDayLeft: boolean;
+  // Null when kiosk settings do not allow leaving a due start of day.
+  leaveStartOfDay: (() => void) | null;
 };
 
 const KioskDayContext = createContext<KioskDayState | null>(null);
@@ -461,8 +466,11 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const home = useHomeDestination();
   const { disabled, pending } = useCurrentFeatureState();
-  const dayPhase = useKioskDay()?.phase;
+  const day = useKioskDay();
+  const dayPhase = day?.phase;
   const onDayTasks = pathname === KIOSK_DAY_PATH && Boolean(dayPhase);
+  // A start of day left for other pages takes over as the inactivity destination.
+  const idleTarget = day?.startOfDayLeft ? KIOSK_DAY_PATH : home;
 
   useEffect(() => {
     if (
@@ -491,19 +499,19 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
       ? runtime.settings?.inactivitySeconds
       : null;
     const atHome =
-      pathname === home ||
-      (home === "/dashboard" && kioskDestinationMatches("dashboard.view", pathname));
-    if (!seconds || !home || atHome || onDayTasks || disabled || pending) {
+      pathname === idleTarget ||
+      (idleTarget === "/dashboard" && kioskDestinationMatches("dashboard.view", pathname));
+    if (!seconds || !idleTarget || atHome || onDayTasks || disabled || pending) {
       return;
     }
     let timeout = window.setTimeout(
-      () => window.location.replace(home),
+      () => window.location.replace(idleTarget),
       seconds * 1000,
     );
     const activity = () => {
       window.clearTimeout(timeout);
       timeout = window.setTimeout(
-        () => window.location.replace(home),
+        () => window.location.replace(idleTarget),
         seconds * 1000,
       );
     };
@@ -527,7 +535,7 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     };
   }, [
     disabled,
-    home,
+    idleTarget,
     onDayTasks,
     pathname,
     pending,
@@ -689,8 +697,13 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
     current?.phase &&
       current.tasks.some((task) => task.link && kioskDestinationMatches(task.link, pathname)),
   );
+  const canLeaveStartOfDay = Boolean(kiosk?.settings?.allowLeavingStartOfDay);
+  // In memory only, so the inactivity reload returns to start of day.
+  const [startOfDayLeft, setStartOfDayLeft] = useState(false);
+  if (startOfDayLeft && current && current.phase !== "startOfDay") setStartOfDayLeft(false);
+  const leftStartOfDay = canLeaveStartOfDay && startOfDayLeft;
   const startOfDayDue =
-    current?.phase === "startOfDay" && !countLocked && !onLinkedPage;
+    current?.phase === "startOfDay" && !countLocked && !onLinkedPage && !leftStartOfDay;
 
   useEffect(() => {
     if (nextTransitionAt === null || nextTransitionAt === undefined) return;
@@ -746,6 +759,8 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
                 } catch {}
                 setDismissedKey(key);
               },
+              startOfDayLeft: current.phase === "startOfDay" && leftStartOfDay,
+              leaveStartOfDay: canLeaveStartOfDay ? () => setStartOfDayLeft(true) : null,
             }
           : null
       }
@@ -1319,6 +1334,7 @@ function useDayTaskShortcut() {
   if (day?.phase === "endOfDay" && day.endOfDayDismissed) {
     return { label: "Gå til lukning", Icon: MoonIcon };
   }
+  if (day?.startOfDayLeft) return { label: "Gå til åbning", Icon: SunIcon };
   return null;
 }
 

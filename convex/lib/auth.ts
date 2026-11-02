@@ -553,7 +553,7 @@ export async function requireKioskDestination(
   }
   // Reads stay open so pages can render while the kiosk redirects to start of day.
   // Pages linked from a start-of-day task stay writable so the task can be done.
-  if ("scheduler" in ctx && auth.kioskLocationId) {
+  if ("scheduler" in ctx && auth.kioskLocationId && !settings.allowLeavingStartOfDay) {
     const allowed = await startOfDayAllowedPages(
       ctx,
       auth.organizationId,

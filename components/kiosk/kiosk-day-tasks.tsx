@@ -151,6 +151,7 @@ function Checklist({
   locationName,
   enabledPages,
   preview = false,
+  onLeave,
 }: {
   phase: keyof typeof copy;
   tasks: KioskDayTask[];
@@ -159,6 +160,7 @@ function Checklist({
   locationName: string | null;
   enabledPages: string[];
   preview?: boolean;
+  onLeave?: () => void;
 }) {
   const complete = useMutation(api.kioskDay.complete);
   const [openedAt] = useState(Date.now);
@@ -322,6 +324,11 @@ function Checklist({
                 disabled={preview || people === undefined}
               />
             </Field>
+            {onLeave ? (
+              <Button size="lg" variant="outline" onClick={onLeave}>
+                Senere
+              </Button>
+            ) : null}
             <Button
               size="lg"
               disabled={preview || !allDone || !responsible || pending}
@@ -395,6 +402,14 @@ export function KioskDayTasks() {
         timeZone={day.timeZone}
         locationName={kiosk?.locationName ?? null}
         enabledPages={kiosk?.settings?.enabledPages ?? []}
+        onLeave={
+          day.phase === "startOfDay" && day.leaveStartOfDay && home
+            ? () => {
+                day.leaveStartOfDay?.();
+                router.replace(home);
+              }
+            : undefined
+        }
       />
     </main>
   );

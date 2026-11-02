@@ -262,6 +262,7 @@ export function KioskSettings() {
   const [homePage, setHomePage] = useState<KioskDestinationId | "">("");
   const [inactivityEnabled, setInactivityEnabled] = useState(true);
   const [inactivitySeconds, setInactivitySeconds] = useState(60);
+  const [allowLeavingStartOfDay, setAllowLeavingStartOfDay] = useState(false);
   const [settingsPending, setSettingsPending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string>();
@@ -276,6 +277,7 @@ export function KioskSettings() {
       setHomePage((settings?.homePage as KioskDestinationId | undefined) ?? "");
       setInactivityEnabled(settings?.inactivitySeconds !== null);
       setInactivitySeconds(settings?.inactivitySeconds ?? 60);
+      setAllowLeavingStartOfDay(settings?.allowLeavingStartOfDay ?? false);
     });
     return () => window.clearTimeout(timeout);
   }, [settings]);
@@ -316,7 +318,7 @@ export function KioskSettings() {
     event.preventDefault();
     setSettingsPending(true);
     try {
-      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null });
+      await saveSettings({ enabledPages, homePage, inactivitySeconds: inactivityEnabled ? inactivitySeconds : null, allowLeavingStartOfDay });
       toast.success("Kioskopsætningen er gemt");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Kioskopsætningen kunne ikke opdateres. Prøv igen."));
@@ -420,6 +422,7 @@ export function KioskSettings() {
               <FieldGroup>
                 <SettingsSwitchField label="Nulstil ved inaktivitet" checked={inactivityEnabled} onCheckedChange={setInactivityEnabled} help={{ label: "Nulstil ved inaktivitet", content: "Sender kiosken tilbage til startsiden og rydder igangværende arbejde." }} />
                 <Field data-disabled={!inactivityEnabled}><FieldLabel htmlFor="kiosk-timeout">Sekunder</FieldLabel><Input id="kiosk-timeout" type="number" min={5} max={3600} value={inactivitySeconds} onChange={(event) => setInactivitySeconds(Number(event.target.value))} disabled={!inactivityEnabled} /></Field>
+                <SettingsSwitchField label="Tillad andre sider før åbning" checked={allowLeavingStartOfDay} onCheckedChange={setAllowLeavingStartOfDay} help={{ label: "Tillad andre sider før åbning", content: "Kiosken kan forlade åbningsopgaverne og bruge de andre sider, før opgaverne er udført. Ved inaktivitet vender kiosken tilbage til åbningsopgaverne." }} />
               </FieldGroup>
             </FieldGroup>
             <Button type="submit" size="lg" className="self-start" disabled={settingsPending}>{settingsPending ? <Spinner data-icon="inline-start" /> : null}Gem kioskopsætning</Button>

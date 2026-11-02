@@ -54,6 +54,7 @@ const kioskSettingsValidator = v.object({
   enabledPages: v.array(v.string()),
   homePage: v.string(),
   inactivitySeconds: v.union(v.number(), v.null()),
+  allowLeavingStartOfDay: v.boolean(),
   updatedAt: v.number(),
 });
 
@@ -359,6 +360,7 @@ async function getAccessContext(ctx: QueryCtx) {
               enabledPages: settings.enabledPages,
               homePage: settings.homePage,
               inactivitySeconds: settings.inactivitySeconds,
+              allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
               updatedAt: settings.updatedAt,
             }
           : null,

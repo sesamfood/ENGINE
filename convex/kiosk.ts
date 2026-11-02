@@ -23,6 +23,7 @@ const settingsValidator = v.object({
   enabledPages: v.array(v.string()),
   homePage: v.string(),
   inactivitySeconds: v.union(v.number(), v.null()),
+  allowLeavingStartOfDay: v.boolean(),
   updatedAt: v.number(),
 });
 const accountValidator = v.object({
@@ -139,6 +140,7 @@ export const getAdminSettings = query({
           enabledPages: settings.enabledPages,
           homePage: settings.homePage,
           inactivitySeconds: settings.inactivitySeconds,
+          allowLeavingStartOfDay: settings.allowLeavingStartOfDay ?? false,
           updatedAt: settings.updatedAt,
         }
       : null;
@@ -150,6 +152,7 @@ export const saveSettings = mutation({
     enabledPages: v.array(v.string()),
     homePage: v.string(),
     inactivitySeconds: v.union(v.number(), v.null()),
+    allowLeavingStartOfDay: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
