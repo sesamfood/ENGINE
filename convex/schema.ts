@@ -634,6 +634,8 @@ export default defineSchema({
     displayName: v.string(),
     normalizedName: v.string(),
     imageUrl: v.union(v.string(), v.null()),
+    // Role names from the scheduling provider.
+    roleNames: v.optional(v.array(v.string())),
     active: v.boolean(),
     updatedAt: v.number(),
   })

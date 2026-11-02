@@ -27,6 +27,7 @@ export type WorkfeedEmployee = {
   imageUrl: string | null;
   active: boolean;
   departmentIds: string[];
+  roleIds: string[];
 };
 
 export type WorkfeedRole = {
@@ -170,6 +171,7 @@ export function parseEmployees(payload: unknown): WorkfeedEmployee[] {
       imageUrl: imageUrl.startsWith("https://") ? imageUrl : null,
       active: employee?.isDeleted !== true,
       departmentIds,
+      roleIds: stringArray(employee?.roleIDs) ?? [],
     };
   });
 }

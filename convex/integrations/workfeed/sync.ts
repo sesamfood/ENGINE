@@ -732,6 +732,8 @@ export const upsertEmployeeBatch = internalMutation({
         firstName: v.string(),
         lastName: v.string(),
         imageUrl: v.union(v.string(), v.null()),
+        // Optional for batches queued before role names were synced.
+        roleNames: v.optional(v.array(v.string())),
         active: v.boolean(),
         locationIds: v.array(v.id("locations")),
       }),
@@ -769,6 +771,7 @@ export const upsertEmployeeBatch = internalMutation({
         displayName,
         normalizedName: displayName.toLocaleLowerCase("da"),
         imageUrl: source.imageUrl,
+        ...(source.roleNames ? { roleNames: source.roleNames } : {}),
         active:
           status.lastEmployeeCompanyId &&
           status.lastEmployeeCompanyId !== args.companyId
@@ -993,6 +996,9 @@ export const syncEmployees = internalAction({
         });
       }
       const roles = parseRoles(rolePayload);
+      const roleNameById = new Map(
+        roles.flatMap((role) => (role.active ? [[role.id, role.name]] : [])),
+      );
       const locationByDepartment = new Map(
         context.locations.map((location) => [
           location.departmentId,
@@ -1004,6 +1010,14 @@ export const syncEmployees = internalAction({
         firstName: employee.firstName,
         lastName: employee.lastName,
         imageUrl: employee.imageUrl,
+        roleNames: [
+          ...new Set(
+            employee.roleIds.flatMap((roleId) => {
+              const name = roleNameById.get(roleId);
+              return name ? [name] : [];
+            }),
+          ),
+        ].sort((left, right) => left.localeCompare(right, "da")),
         active: employee.active,
         locationIds: employee.departmentIds.flatMap((departmentId) => {
           const locationId = locationByDepartment.get(departmentId);

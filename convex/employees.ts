@@ -57,6 +57,7 @@ const employeeSummaryValidator = v.object({
   managedLocally: v.boolean(),
   displayName: v.string(),
   imageUrl: v.union(v.string(), v.null()),
+  roleNames: v.array(v.string()),
   active: v.boolean(),
   locations: v.array(v.object({ id: v.id("locations"), name: v.string() })),
 });
@@ -96,6 +97,7 @@ async function hydrateEmployee(
     managedLocally: employee.managedLocally === true,
     displayName: employee.displayName,
     imageUrl: employee.imageUrl,
+    roleNames: employee.roleNames ?? [],
     active: employee.active,
     locations: locations.flatMap((location) =>
       location?.organizationId === organizationId
