@@ -490,7 +490,10 @@ function KioskBehavior({ children }: { children: React.ReactNode }) {
     const seconds = runtime?.kioskModeEnabled
       ? runtime.settings?.inactivitySeconds
       : null;
-    if (!seconds || !home || pathname === home || onDayTasks || disabled || pending) {
+    const atHome =
+      pathname === home ||
+      (home === "/dashboard" && kioskDestinationMatches("dashboard.view", pathname));
+    if (!seconds || !home || atHome || onDayTasks || disabled || pending) {
       return;
     }
     let timeout = window.setTimeout(
