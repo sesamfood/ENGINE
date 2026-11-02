@@ -548,11 +548,18 @@ export default defineSchema({
   feedbackSettings: defineTable({
     organizationId: v.string(),
     enabled: v.boolean(),
-    destination: v.union(v.literal("linear"), v.literal("email")),
+    destination: v.union(
+      v.literal("linear"),
+      v.literal("notion"),
+      v.literal("email"),
+    ),
     email: v.optional(v.string()),
     linearApiKey: v.optional(v.string()),
     linearTeamId: v.optional(v.string()),
     linearTeamName: v.optional(v.string()),
+    notionToken: v.optional(v.string()),
+    notionDatabaseId: v.optional(v.string()),
+    notionDatabaseName: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
@@ -569,7 +576,11 @@ export default defineSchema({
     description: v.optional(v.string()),
     screenshotStorageId: v.optional(v.id("_storage")),
     sessionReplayUrl: v.optional(v.string()),
-    destination: v.union(v.literal("linear"), v.literal("email")),
+    destination: v.union(
+      v.literal("linear"),
+      v.literal("notion"),
+      v.literal("email"),
+    ),
     status: v.union(
       v.literal("pending"),
       v.literal("sent"),

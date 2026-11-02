@@ -54,8 +54,17 @@ import { api } from "@/convex/_generated/api";
 import { feedbackAreaLabel, feedbackTypeLabel } from "@/lib/feedback";
 import { usePermission } from "@/components/app-shell";
 
-type Destination = "linear" | "email";
+type Destination = "linear" | "notion" | "email";
 type Team = { id: string; key: string; name: string };
+type NotionDatabase = { id: string; name: string };
+
+const destinationDescriptions = {
+  email: "Feedback sendes som e-mail med skærmbilledet vedhæftet.",
+  linear: "Feedback oprettes som en sag i Linear med et link til skærmbilledet.",
+  notion: "Feedback oprettes som en side i en Notion-database med skærmbilledet.",
+} as const;
+
+const destinationLabels = { linear: "Linear", notion: "Notion" } as const;
 
 const submittedAtFormatter = new Intl.DateTimeFormat("da-DK", {
   dateStyle: "short",
@@ -70,6 +79,7 @@ export function FeedbackSettings() {
   );
   const save = useMutation(api.feedback.saveSettings);
   const listTeams = useAction(api.feedback.listLinearTeams);
+  const listDatabases = useAction(api.feedback.listNotionDatabases);
 
   const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const [destinationDraft, setDestinationDraft] = useState<Destination | null>(
@@ -80,6 +90,10 @@ export function FeedbackSettings() {
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [teamDraft, setTeamDraft] = useState<string | null>(null);
   const [loadingTeams, setLoadingTeams] = useState(false);
+  const [notionToken, setNotionToken] = useState("");
+  const [databases, setDatabases] = useState<NotionDatabase[] | null>(null);
+  const [databaseDraft, setDatabaseDraft] = useState<string | null>(null);
+  const [loadingDatabases, setLoadingDatabases] = useState(false);
   const [saving, setSaving] = useState(false);
 
   if (!canManage) {
@@ -119,6 +133,46 @@ export function FeedbackSettings() {
         ]
       : [];
 
+  const databaseId = databaseDraft ?? settings.notionDatabaseId ?? "";
+  const databaseName =
+    databases?.find((database) => database.id === databaseId)?.name ??
+    settings.notionDatabaseName ??
+    "";
+  const databaseOptions = databases
+    ? databases.map((database) => ({
+        value: database.id,
+        label: database.name,
+      }))
+    : settings.notionDatabaseId
+      ? [
+          {
+            value: settings.notionDatabaseId,
+            label: settings.notionDatabaseName ?? settings.notionDatabaseId,
+          },
+        ]
+      : [];
+
+  async function loadDatabases() {
+    setLoadingDatabases(true);
+    try {
+      const result = await listDatabases(
+        notionToken.trim() ? { token: notionToken.trim() } : {},
+      );
+      setDatabases(result);
+      if (result.length === 0) {
+        toast.error(
+          "Der blev ikke fundet nogen databaser. Del en database med integrationen i Notion",
+        );
+      } else {
+        toast.success(`${result.length} databaser blev hentet fra Notion`);
+      }
+    } catch (error) {
+      toast.error(getUserErrorMessage(error, "Feedbackindstillingerne kunne ikke opdateres. Prøv igen."));
+    } finally {
+      setLoadingDatabases(false);
+    }
+  }
+
   async function loadTeams() {
     setLoadingTeams(true);
     try {
@@ -146,8 +200,13 @@ export function FeedbackSettings() {
         ...(apiKey.trim() ? { linearApiKey: apiKey.trim() } : {}),
         ...(teamId ? { linearTeamId: teamId } : {}),
         ...(teamName ? { linearTeamName: teamName } : {}),
+        ...(notionToken.trim() ? { notionToken: notionToken.trim() } : {}),
+        ...(databaseId ? { notionDatabaseId: databaseId } : {}),
+        ...(databaseName ? { notionDatabaseName: databaseName } : {}),
       });
       setApiKey("");
+      setNotionToken("");
+      setDatabaseDraft(null);
       setEnabledDraft(null);
       setDestinationDraft(null);
       setEmailDraft(null);
@@ -193,7 +252,7 @@ export function FeedbackSettings() {
                 className="w-full max-w-md"
                 onValueChange={(value) => {
                   const next = value[0];
-                  if (next === "linear" || next === "email") {
+                  if (next === "linear" || next === "notion" || next === "email") {
                     setDestinationDraft(next);
                   }
                 }}
@@ -204,11 +263,12 @@ export function FeedbackSettings() {
                 <ToggleGroupItem value="linear" className="h-11 flex-1">
                   Linear
                 </ToggleGroupItem>
+                <ToggleGroupItem value="notion" className="h-11 flex-1">
+                  Notion
+                </ToggleGroupItem>
               </ToggleGroup>
               <FieldDescription>
-                {destination === "email"
-                  ? "Feedback sendes som e-mail med skærmbilledet vedhæftet."
-                  : "Feedback oprettes som en sag i Linear med et link til skærmbilledet."}
+                {destinationDescriptions[destination]}
               </FieldDescription>
             </Field>
 
@@ -220,7 +280,7 @@ export function FeedbackSettings() {
                   content={
                     destination === "email"
                       ? "Al feedback fra organisationen sendes til denne adresse."
-                      : "Feedback sendes også til denne adresse, når den oprettes i Linear."
+                      : `Feedback sendes også til denne adresse, når den oprettes i ${destinationLabels[destination]}.`
                   }
                 />
               </FieldLabel>
@@ -237,7 +297,7 @@ export function FeedbackSettings() {
               <FieldDescription>
                 {destination === "email"
                   ? "Al feedback fra organisationen sendes til denne adresse."
-                  : "Send også feedbacken til denne adresse, når den oprettes i Linear."}
+                  : `Send også feedbacken til denne adresse, når den oprettes i ${destinationLabels[destination]}.`}
               </FieldDescription>
             </Field>
 
@@ -310,6 +370,83 @@ export function FeedbackSettings() {
                   {!teams ? (
                     <FieldDescription>
                       Hent teams for at skifte team.
+                    </FieldDescription>
+                  ) : null}
+                </Field>
+              </>
+            ) : null}
+
+            {destination === "notion" ? (
+              <>
+                <Field>
+                  <FieldLabel htmlFor="feedback-notion-token">
+                    Notion-nøgle
+                    <HelpTooltip
+                      label="Notion-nøgle"
+                      content="Opret en intern integration under Settings → Connections → Develop or manage integrations i Notion, og kopiér dens Internal Integration Secret. Del derefter databasen med integrationen via ••• → Connections."
+                    />
+                  </FieldLabel>
+                  <Input
+                    id="feedback-notion-token"
+                    type="password"
+                    autoComplete="off"
+                    className="max-w-md"
+                    placeholder={
+                      settings.notionTokenConfigured
+                        ? "Nøglen er gemt. Indtast en ny for at skifte"
+                        : "ntn_…"
+                    }
+                    value={notionToken}
+                    onChange={(event) => setNotionToken(event.target.value)}
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="feedback-notion-database">
+                    Database
+                  </FieldLabel>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                      items={databaseOptions}
+                      value={databaseId}
+                      disabled={!databases}
+                      onValueChange={setDatabaseDraft}
+                    >
+                      <SelectTrigger
+                        id="feedback-notion-database"
+                        className="min-h-11 w-full max-w-md"
+                      >
+                        <SelectValue placeholder="Hent databaser for at vælge" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {databaseOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11"
+                      disabled={
+                        loadingDatabases ||
+                        (!notionToken.trim() && !settings.notionTokenConfigured)
+                      }
+                      onClick={() => void loadDatabases()}
+                    >
+                      {loadingDatabases ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : (
+                        <RefreshCwIcon data-icon="inline-start" />
+                      )}
+                      Hent databaser
+                    </Button>
+                  </div>
+                  {!databases ? (
+                    <FieldDescription>
+                      Hent databaser for at skifte database.
                     </FieldDescription>
                   ) : null}
                 </Field>

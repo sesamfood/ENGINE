@@ -249,7 +249,7 @@ export const administrationFeatures: HelpFeature[] = [
             ],
             steps: [
               "Åbn Administration → Feedback, og slå Tillad feedback til.",
-              "Vælg Modtager: e-mail eller Linear. Ved e-mail angiver du adressen. Ved Linear indtaster du en API-nøgle, henter teams og vælger Team. Du kan også sende en kopi til en e-mailadresse.",
+              "Vælg Modtager: e-mail, Linear eller Notion. Ved e-mail angiver du adressen. Ved Linear indtaster du en API-nøgle, henter teams og vælger Team. Ved Notion indtaster du nøglen fra en intern integration, deler databasen med integrationen, henter databaser og vælger Database. Du kan også sende en kopi til en e-mailadresse.",
               "Gem. Seneste feedback viser indsendt feedback og om den blev sendt.",
             ],
           },

@@ -6,6 +6,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { createLinearIssue } from "./lib/linear";
+import { createNotionPage } from "./lib/notion";
 import { sendResendEmail } from "./lib/resend";
 import {
   feedbackAreaEnglishLabel,
@@ -40,7 +41,10 @@ export const deliver = internalAction({
 
     let reference: string | undefined;
     try {
-      const sendEmailNotification = async (linearUrl?: string) => {
+      const sendEmailNotification = async (issue?: {
+        label: string;
+        url: string;
+      }) => {
         if (!payload.email) throw new Error("Modtageradressen mangler");
         const rows = [
           ["Organization", payload.organizationName],
@@ -59,7 +63,7 @@ export const deliver = internalAction({
             ? `<tr><td style="padding:4px 16px 4px 0;color:#666;">${label}</td><td style="padding:4px 0;"><a href="${escapeHtml(url)}">${text}</a></td></tr>`
             : "";
         const linkRows =
-          linkRow("Linear", "Open in Linear", linearUrl) +
+          (issue ? linkRow(issue.label, `Open in ${issue.label}`, issue.url) : "") +
           linkRow("Replay", "Open session replay", payload.sessionReplayUrl);
         const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;color:#111;">
   <h2 style="margin:0 0 16px;font-size:18px;">${escapeHtml(title)}</h2>
@@ -72,7 +76,7 @@ export const deliver = internalAction({
           `Type: ${typeLabel}`,
           `Reported by: ${reporter}`,
           `Submitted: ${registered}`,
-          ...(linearUrl ? [`Linear: ${linearUrl}`] : []),
+          ...(issue?.url ? [`${issue.label}: ${issue.url}`] : []),
           ...(payload.sessionReplayUrl
             ? [`Replay: ${payload.sessionReplayUrl}`]
             : []),
@@ -132,7 +136,45 @@ export const deliver = internalAction({
           description,
         });
         reference = issue.url || issue.identifier;
-        if (payload.email) await sendEmailNotification(issue.url);
+        if (payload.email) {
+          await sendEmailNotification({ label: "Linear", url: issue.url });
+        }
+      } else if (payload.destination === "notion") {
+        if (!payload.notionToken || !payload.notionDatabaseId) {
+          throw new Error("Notion er ikke sat op");
+        }
+        const field = (label: string, value: string) => [
+          { text: `${label}: `, bold: true },
+          { text: value },
+        ];
+        const page = await createNotionPage(payload.notionToken, {
+          databaseId: payload.notionDatabaseId,
+          title: `${payload.type === "bug" ? "[BUG]" : "[REQUEST]"} ${title}`,
+          paragraphs: [
+            field("Organization", payload.organizationName),
+            field("Area", areaLabel),
+            field("Type", typeLabel),
+            field("Reported by", reporter),
+            field("Submitted", registered),
+            ...(payload.sessionReplayUrl
+              ? [
+                  [
+                    { text: "Replay: ", bold: true },
+                    {
+                      text: "Open session replay",
+                      url: payload.sessionReplayUrl,
+                    },
+                  ],
+                ]
+              : []),
+            ...(payload.description ? [[{ text: payload.description }]] : []),
+          ],
+          imageUrl: payload.screenshotUrl,
+        });
+        reference = page.url || undefined;
+        if (payload.email) {
+          await sendEmailNotification({ label: "Notion", url: page.url });
+        }
       } else {
         reference = await sendEmailNotification();
       }
