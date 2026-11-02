@@ -382,14 +382,14 @@ export function StaffFoodSettings() {
             <Field>
               <div className="flex items-center gap-1">
                 <FieldLabel htmlFor="staff-food-after-shift">
-                  {settings.wholeDay ? "Tid før og efter dagen" : "Tid efter vagtens slut"}
+                  {settings.wholeDay ? "Tid før og efter dagen" : "Tid før og efter vagten"}
                 </FieldLabel>
                 <HelpTooltip
-                  label={settings.wholeDay ? "Tid før og efter dagen" : "Tid efter vagtens slut"}
+                  label={settings.wholeDay ? "Tid før og efter dagen" : "Tid før og efter vagten"}
                   content={
                     settings.wholeDay
-                      ? "Så længe før vagtdagen starter og efter den slutter kan medarbejderen stadig findes og registrere Staff food."
-                      : "Så længe efter vagtens slut kan medarbejderen stadig findes og registrere Staff food."
+                      ? "Så længe før vagtdagen starter og efter den slutter kan medarbejderen findes og registrere Staff food."
+                      : "Så længe før vagten starter og efter den slutter kan medarbejderen findes og registrere Staff food."
                   }
                 />
               </div>

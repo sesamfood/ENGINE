@@ -171,8 +171,8 @@ async function staffFoodSettings(ctx: StaffFoodContext, organizationId: string) 
   };
 }
 
-// A shift is selectable from its start until the configured time after it
-// ends, or for its whole work day ± that time in whole-day mode.
+// A shift is selectable from the configured time before it starts until that
+// time after it ends, or for its whole work day ± that time in whole-day mode.
 async function shiftOpen(
   ctx: StaffFoodContext,
   organizationId: string,
@@ -187,7 +187,9 @@ async function shiftOpen(
     shift: Pick<Doc<"scheduledShifts">, "startsAt" | "endsAt">,
     now: number,
   ) => {
-    if (!timeZone) return shift.startsAt <= now && shift.endsAt + margin > now;
+    if (!timeZone) {
+      return shift.startsAt - margin <= now && shift.endsAt + margin > now;
+    }
     const day = dateInTimeZone(shift.startsAt, timeZone);
     return (
       zonedStart(day, timeZone) - margin <= now &&
@@ -1365,7 +1367,7 @@ export const setAvailability = mutation({
       args.afterShiftMinutes < 0 ||
       args.afterShiftMinutes > MAX_AFTER_SHIFT_MINUTES
     ) {
-      throw new ConvexError("Tiden efter vagten skal være mellem 0 og 4 timer");
+      throw new ConvexError("Tiden før og efter vagten skal være mellem 0 og 4 timer");
     }
     const current = await ctx.db
       .query("staffFoodSettings")
