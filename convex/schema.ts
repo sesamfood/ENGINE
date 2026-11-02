@@ -1417,6 +1417,8 @@ export default defineSchema({
   goodsReceiptSettings: defineTable({
     organizationId: v.string(),
     transferDeliveryNotePhotoEnabled: v.boolean(),
+    // Missing means required. Internal-order transfers always need a receipt.
+    transferReceiptRequired: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 
