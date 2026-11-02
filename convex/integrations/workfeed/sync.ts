@@ -771,7 +771,6 @@ export const upsertEmployeeBatch = internalMutation({
         displayName,
         normalizedName: displayName.toLocaleLowerCase("da"),
         imageUrl: source.imageUrl,
-        ...(source.roleNames ? { roleNames: source.roleNames } : {}),
         active:
           status.lastEmployeeCompanyId &&
           status.lastEmployeeCompanyId !== args.companyId
@@ -783,13 +782,18 @@ export const upsertEmployeeBatch = internalMutation({
       const currentEmployee = mapping
         ? await ctx.db.get("employees", mapping.employeeId)
         : null;
+      const roleNames =
+        source.roleNames && !currentEmployee?.roleNamesManaged
+          ? { roleNames: source.roleNames }
+          : {};
       if (currentEmployee?.organizationId === args.organizationId) {
         employeeId = currentEmployee._id;
-        await ctx.db.patch(employeeId, employeeValue);
+        await ctx.db.patch(employeeId, { ...employeeValue, ...roleNames });
       } else {
         employeeId = await ctx.db.insert("employees", {
           organizationId: args.organizationId,
           ...employeeValue,
+          ...roleNames,
         });
       }
 

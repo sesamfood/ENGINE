@@ -534,7 +534,7 @@ function DirectoryTab({
                     </TableCell>
                     {canManage ? (
                       <TableCell>
-                        {employee.managedLocally ? (
+                        {canManage ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -581,7 +581,7 @@ function DirectoryTab({
                     <Badge variant={employee.active ? "secondary" : "outline"}>
                       {employee.active ? "Aktiv" : "Inaktiv"}
                     </Badge>
-                    {canManage && employee.managedLocally ? (
+                    {canManage ? (
                       <Button
                         variant="outline"
                         className="min-h-11"

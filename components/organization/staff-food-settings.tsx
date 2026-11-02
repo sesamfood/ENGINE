@@ -431,7 +431,7 @@ export function StaffFoodSettings() {
             Regler for Staff food
             <HelpTooltip
               label="Regler for Staff food"
-              content="Hvis flere regler passer til vagten, gælder reglen med den højeste vagtlængde. Regler for vagtens rolle går forud for regler for alle roller. Reglerne lægges ikke sammen."
+              content="Hvis flere regler passer til vagten, gælder reglen med den højeste vagtlængde. Regler for medarbejderens eller vagtens roller går forud for regler for alle roller. Reglerne lægges ikke sammen."
             />
           </CardTitle>
           <CardDescription>
@@ -458,7 +458,7 @@ export function StaffFoodSettings() {
                       Fra {formatDuration(tier.minimumShiftMinutes)} timer ·{" "}
                       {tier.roleNames.length
                         ? tier.roleNames.join(", ")
-                        : "Alle vagtroller"}
+                        : "Alle roller"}
                     </CardTitle>
                     <CardDescription>
                       {tier.allowances.length} kategorigruppe
@@ -556,10 +556,10 @@ export function StaffFoodSettings() {
 
             <Field>
               <div className="flex items-center gap-1">
-                <FieldLabel htmlFor="staff-food-roles">Vagtroller</FieldLabel>
+                <FieldLabel htmlFor="staff-food-roles">Roller</FieldLabel>
                 <HelpTooltip
-                  label="Vagtroller"
-                  content="Begræns reglen til vagter med de valgte roller fra vagtplanen. Regler for vagtens rolle går forud for regler for alle roller. Manuelle registreringer bruger kun regler for alle roller."
+                  label="Roller"
+                  content="Reglen gælder, når vagtens rolle eller en af medarbejderens roller er valgt. Regler for en rolle går forud for regler for alle roller."
                 />
               </div>
               <Select
@@ -579,7 +579,7 @@ export function StaffFoodSettings() {
                   <SelectValue
                     appearance="truncate"
                     className="min-w-0"
-                    placeholder="Alle vagtroller"
+                    placeholder="Alle roller"
                   />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
@@ -594,7 +594,7 @@ export function StaffFoodSettings() {
               </Select>
               {!settings.roleNames.length ? (
                 <FieldDescription>
-                  Der er ingen vagtroller i vagtplanen endnu.
+                  Der er ingen roller endnu. Tildel roller under Medarbejdere.
                 </FieldDescription>
               ) : null}
             </Field>

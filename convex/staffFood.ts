@@ -28,10 +28,9 @@ import {
   staffFoodSummaryContribution,
 } from "./lib/dashboardSummaries";
 import { getProductCategoryIds } from "./lib/productCategories";
+import { knownRoleNames, requireRoleNames, roleKey } from "./lib/roleNames";
 
 const MAX_TIERS = 10;
-const MAX_TIER_ROLES = 20;
-const MAX_ROLE_SHIFTS = 1000;
 const MAX_ALLOWANCES = 20;
 const MAX_PRODUCTS_PER_TIER = 100;
 const MAX_PICKER_SHIFTS = 500;
@@ -200,43 +199,40 @@ async function shiftOpen(
   };
 }
 
-function roleKey(roleName: string) {
-  return roleName.trim().toLocaleLowerCase("da");
-}
-
-function uniqueRoleNames(roleNames: string[]) {
-  const byKey = new Map<string, string>();
-  for (const name of roleNames) {
-    const trimmed = name.trim();
-    if (trimmed && !byKey.has(roleKey(trimmed))) {
-      byKey.set(roleKey(trimmed), trimmed);
-    }
-  }
-  return [...byKey.values()];
-}
-
-// Rules for the shift's role win over rules for all roles.
+// Rules for the shift's or the employee's roles win over rules for all roles.
 async function matchingTier(
   ctx: StaffFoodContext,
   organizationId: string,
-  session: Pick<Doc<"staffFoodSessions">, "durationMinutes" | "roleName">,
+  session: Pick<
+    Doc<"staffFoodSessions">,
+    "durationMinutes" | "roleName" | "employeeId"
+  >,
 ) {
-  const tiers = await ctx.db
-    .query("staffFoodRuleTiers")
-    .withIndex("by_organizationId_and_minimumShiftMinutes", (q) =>
-      q
-        .eq("organizationId", organizationId)
-        .lte("minimumShiftMinutes", session.durationMinutes),
-    )
-    .order("desc")
-    .take(MAX_TIERS);
-  const role = session.roleName ? roleKey(session.roleName) : null;
+  const [tiers, employee] = await Promise.all([
+    ctx.db
+      .query("staffFoodRuleTiers")
+      .withIndex("by_organizationId_and_minimumShiftMinutes", (q) =>
+        q
+          .eq("organizationId", organizationId)
+          .lte("minimumShiftMinutes", session.durationMinutes),
+      )
+      .order("desc")
+      .take(MAX_TIERS),
+    ctx.db.get("employees", session.employeeId),
+  ]);
+  const roles = new Set(
+    [
+      ...(session.roleName ? [session.roleName] : []),
+      ...(employee?.organizationId === organizationId
+        ? (employee.roleNames ?? [])
+        : []),
+    ].map(roleKey),
+  );
   return (
-    (role &&
-      tiers.find((tier) =>
-        tier.roleNames?.some((name) => roleKey(name) === role),
-      )) ||
-    tiers.find((tier) => !tier.roleNames?.length) ||
+    tiers.find((tier) =>
+      tier.roleNames?.some((name) => roles.has(roleKey(name))),
+    ) ??
+    tiers.find((tier) => !tier.roleNames?.length) ??
     null
   );
 }
@@ -1274,20 +1270,14 @@ export const getSettings = query({
   }),
   handler: async (ctx) => {
     const { organizationId } = await requireStaffFoodManager(ctx);
-    const [tiers, shifts, categories, products, timeZone, staffFood] = await Promise.all([
+    const [tiers, roleNames, categories, products, timeZone, staffFood] = await Promise.all([
       ctx.db
         .query("staffFoodRuleTiers")
         .withIndex("by_organizationId_and_minimumShiftMinutes", (q) =>
           q.eq("organizationId", organizationId),
         )
         .take(MAX_TIERS + 1),
-      ctx.db
-        .query("scheduledShifts")
-        .withIndex("by_organizationId_and_startsAt", (q) =>
-          q.eq("organizationId", organizationId),
-        )
-        .order("desc")
-        .take(MAX_ROLE_SHIFTS),
+      knownRoleNames(ctx, organizationId),
       ctx.db
         .query("categories")
         .withIndex("by_organizationId_and_normalizedName", (q) =>
@@ -1379,10 +1369,7 @@ export const getSettings = query({
       timeZone,
       ...staffFood,
       tiers: tierResults,
-      roleNames: uniqueRoleNames([
-        ...shifts.flatMap((shift) => (shift.roleName ? [shift.roleName] : [])),
-        ...tiers.flatMap((tier) => tier.roleNames ?? []),
-      ]).sort((left, right) => left.localeCompare(right, "da")),
+      roleNames,
       categories: categories.map((category) => ({
         id: category._id,
         name: category.name,
@@ -1446,13 +1433,7 @@ export const saveTier = mutation({
   handler: async (ctx, args) => {
     const { organizationId } = await requireStaffFoodManager(ctx);
     requireDuration(args.minimumShiftMinutes);
-    const roleNames = uniqueRoleNames(args.roleNames ?? []);
-    if (
-      roleNames.length > MAX_TIER_ROLES ||
-      roleNames.some((name) => name.length > 100)
-    ) {
-      throw new ConvexError("Vælg højst 20 vagtroller pr. regel");
-    }
+    const roleNames = requireRoleNames(args.roleNames ?? []);
     if (!args.allowances.length || args.allowances.length > MAX_ALLOWANCES) {
       throw new ConvexError("Tilføj mellem 1 og 20 kategori-regler");
     }
