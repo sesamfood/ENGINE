@@ -50,12 +50,14 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
   FieldSet,
+  FieldTitle,
 } from "@/components/ui/field";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
@@ -68,6 +70,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -91,17 +94,19 @@ function formatDuration(minutes: number) {
   );
 }
 
-const afterShiftOptions = [0, 15, 30, 45, 60, 90, 120, 180, 240].map(
-  (minutes) => ({
+function afterShiftOptions(wholeDay: boolean) {
+  return [0, 15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => ({
     value: String(minutes),
     label:
       minutes === 0
-        ? "Kun under vagten"
+        ? wholeDay
+          ? "Kun vagtdagen"
+          : "Kun under vagten"
         : minutes < 60
           ? `${minutes} minutter`
           : `${formatDuration(minutes)} time${minutes === 60 ? "" : "r"}`,
-  }),
-);
+  }));
+}
 
 function categoryTreeIds(
   categories: SettingsCategory[],
@@ -128,7 +133,7 @@ export function StaffFoodSettings() {
   const settings = useQuery(api.staffFood.getSettings, canManage ? {} : "skip");
   const saveTier = useMutation(api.staffFood.saveTier);
   const deleteTier = useMutation(api.staffFood.deleteTier);
-  const setAfterShiftMinutes = useMutation(api.staffFood.setAfterShiftMinutes);
+  const setAvailability = useMutation(api.staffFood.setAvailability);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<Id<"staffFoodRuleTiers"> | null>(
     null,
@@ -310,10 +315,13 @@ export function StaffFoodSettings() {
     }
   }
 
-  async function saveAfterShift(value: string) {
+  async function saveAvailability(
+    next: { afterShiftMinutes: number; wholeDay: boolean },
+    message: string,
+  ) {
     try {
-      await setAfterShiftMinutes({ afterShiftMinutes: Number(value) });
-      toast.success("Tiden efter vagten er gemt");
+      await setAvailability(next);
+      toast.success(message);
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Staff food-indstillingerne kunne ikke gemmes. Prøv igen."));
     }
@@ -346,38 +354,71 @@ export function StaffFoodSettings() {
     <div className="flex max-w-5xl flex-col gap-8">
       <Card>
         <CardHeader>
-          <CardTitle appearance="compact">Registrering efter vagten</CardTitle>
+          <CardTitle appearance="compact">Registreringstid</CardTitle>
         </CardHeader>
         <CardContent>
-          <Field>
-            <div className="flex items-center gap-1">
-              <FieldLabel htmlFor="staff-food-after-shift">
-                Tid efter vagtens slut
-              </FieldLabel>
-              <HelpTooltip
-                label="Tid efter vagtens slut"
-                content="Så længe efter vagtens slut kan medarbejderen stadig findes og registrere Staff food."
-              />
-            </div>
-            <Select
-              items={afterShiftOptions}
-              value={String(settings.afterShiftMinutes)}
-              onValueChange={(value) => value && void saveAfterShift(value)}
-            >
-              <SelectTrigger id="staff-food-after-shift" className="h-11! w-full sm:max-w-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {afterShiftOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
+          <FieldGroup>
+            <FieldLabel htmlFor="staff-food-whole-day">
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>Hele dagen</FieldTitle>
+                  <FieldDescription>
+                    Medarbejdere med en vagt kan registrere Staff food hele
+                    vagtdagen, ikke kun under vagten.
+                  </FieldDescription>
+                </FieldContent>
+                <Switch
+                  id="staff-food-whole-day"
+                  checked={settings.wholeDay}
+                  onCheckedChange={(wholeDay) =>
+                    void saveAvailability(
+                      { afterShiftMinutes: settings.afterShiftMinutes, wholeDay },
+                      wholeDay ? "Hele dagen er slået til" : "Hele dagen er slået fra",
+                    )
+                  }
+                />
+              </Field>
+            </FieldLabel>
+            <Field>
+              <div className="flex items-center gap-1">
+                <FieldLabel htmlFor="staff-food-after-shift">
+                  {settings.wholeDay ? "Tid før og efter dagen" : "Tid før og efter vagten"}
+                </FieldLabel>
+                <HelpTooltip
+                  label={settings.wholeDay ? "Tid før og efter dagen" : "Tid før og efter vagten"}
+                  content={
+                    settings.wholeDay
+                      ? "Så længe før vagtdagen starter og efter den slutter kan medarbejderen findes og registrere Staff food."
+                      : "Så længe før vagten starter og efter den slutter kan medarbejderen findes og registrere Staff food."
+                  }
+                />
+              </div>
+              <Select
+                items={afterShiftOptions(settings.wholeDay)}
+                value={String(settings.afterShiftMinutes)}
+                onValueChange={(value) =>
+                  value &&
+                  void saveAvailability(
+                    { afterShiftMinutes: Number(value), wholeDay: settings.wholeDay },
+                    "Tiden er gemt",
+                  )
+                }
+              >
+                <SelectTrigger id="staff-food-after-shift" className="h-11! w-full sm:max-w-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {afterShiftOptions(settings.wholeDay).map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
         </CardContent>
       </Card>
 
