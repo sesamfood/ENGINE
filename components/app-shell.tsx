@@ -707,6 +707,18 @@ function KioskDayBoundary({ children }: { children: React.ReactNode }) {
   // In memory only, so the inactivity reload returns to start of day.
   const [startOfDayLeft, setStartOfDayLeft] = useState(false);
   if (startOfDayLeft && current && current.phase !== "startOfDay") setStartOfDayLeft(false);
+  // Navigating away from the start-of-day page counts as leaving it.
+  const [previousPathname, setPreviousPathname] = useState(pathname);
+  if (pathname !== previousPathname) {
+    setPreviousPathname(pathname);
+    if (
+      canLeaveStartOfDay &&
+      current?.phase === "startOfDay" &&
+      previousPathname === KIOSK_DAY_PATH
+    ) {
+      setStartOfDayLeft(true);
+    }
+  }
   const leftStartOfDay = canLeaveStartOfDay && startOfDayLeft;
   const startOfDayDue =
     current?.phase === "startOfDay" && !countLocked && !onLinkedPage && !leftStartOfDay;
