@@ -97,7 +97,7 @@ function FeedbackForm({
     setSubmitting(true);
     try {
       // The link opens a minute before submitting to show what led up to it.
-      const sessionReplayUrl = posthog.sessionRecordingStarted()
+      const sessionReplayUrl = posthog.__loaded
         ? posthog.get_session_replay_url({
             withTimestamp: true,
             timestampLookBack: 60,
