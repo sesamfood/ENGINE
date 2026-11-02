@@ -33,6 +33,7 @@ export function GoodsReceiptSettings() {
   );
   const saveSettings = useMutation(api.goodsReceipts.setSettings);
   const [photoDraft, setPhotoDraft] = useState<boolean | null>(null);
+  const [receiptDraft, setReceiptDraft] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
 
   if (!access) return <Skeleton className="h-72 max-w-3xl" />;
@@ -51,15 +52,20 @@ export function GoodsReceiptSettings() {
   }
 
   const photoEnabled = photoDraft ?? settings.transferDeliveryNotePhotoEnabled;
-  const changed = photoEnabled !== settings.transferDeliveryNotePhotoEnabled;
+  const receiptRequired = receiptDraft ?? settings.transferReceiptRequired;
+  const changed =
+    photoEnabled !== settings.transferDeliveryNotePhotoEnabled ||
+    receiptRequired !== settings.transferReceiptRequired;
 
   async function save() {
     setSaving(true);
     try {
       await saveSettings({
         transferDeliveryNotePhotoEnabled: photoEnabled,
+        transferReceiptRequired: receiptRequired,
       });
       setPhotoDraft(null);
+      setReceiptDraft(null);
       toast.success("Indstillingerne for varemodtagelse er gemt");
     } catch (error) {
       toast.error(getUserErrorMessage(error, "Indstillingerne for varemodtagelse kunne ikke gemmes. Prøv igen."));
@@ -71,16 +77,27 @@ export function GoodsReceiptSettings() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>Følgesedler</CardTitle>
+        <CardTitle>Transfers</CardTitle>
         <CardDescription>
-          Vælg, om varemodtagelser fra transfers kan få et billede af
-          følgesedlen. Manuelle varemodtagelser har altid billedfeltet.
+          Vælg, om transfers skal modtages under Varemodtagelse, og om
+          modtagelsen kan få et billede af følgesedlen.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
           <SettingsSwitchField
-            label="Transfer"
+            label="Kræv varemodtagelse"
+            id="goods-receipt-transfer-required"
+            checked={receiptRequired}
+            onCheckedChange={setReceiptDraft}
+            help={{
+              label: "krav om varemodtagelse for transfers",
+              content:
+                "Slået fra flyttes mængderne på lageret, når transferen oprettes. Transfers fra interne bestillinger skal altid modtages.",
+            }}
+          />
+          <SettingsSwitchField
+            label="Billede af følgeseddel"
             id="goods-receipt-transfer-photo"
             aria-label="Tillad billede af følgeseddel for transfers"
             checked={photoEnabled}

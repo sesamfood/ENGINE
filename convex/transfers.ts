@@ -20,6 +20,7 @@ import {
 } from "./lib/dashboardSummaries";
 import { transferAggregates } from "./lib/transferAggregates";
 import { requestDashboardSummaryRebuild } from "./dashboardSummaries";
+import { settingsFor as goodsReceiptSettingsFor } from "./goodsReceipts";
 import { requireOpenOrder } from "./internalOrders";
 
 const MAX_TRANSFER_ITEMS = 200;
@@ -549,6 +550,11 @@ export const createTransfer = mutation({
     );
     const summaryTimeZone = await dashboardSummaryTimeZone(ctx, organizationId);
     const aggregates = transferAggregates(resolvedItems);
+    // Internal-order transfers always wait for a goods receipt.
+    const receiptRequired =
+      order !== null ||
+      (await goodsReceiptSettingsFor(ctx, organizationId))
+        .transferReceiptRequired;
 
     const transferId = await ctx.db.insert("transfers", {
       organizationId,
@@ -559,8 +565,8 @@ export const createTransfer = mutation({
       comment,
       transferredAt: args.transferredAt,
       createdBy: userIdentifier,
-      stockApplied: false,
-      receiptStatus: "pending",
+      stockApplied: !receiptRequired,
+      ...(receiptRequired ? { receiptStatus: "pending" as const } : {}),
       ...aggregates,
       dashboardSummaryTimeZone: summaryTimeZone,
       ...(order ? { orderId: order._id } : {}),
@@ -570,6 +576,17 @@ export const createTransfer = mutation({
         fulfillmentStatus: "transferred",
         transferId,
       });
+    }
+
+    if (!receiptRequired) {
+      await applyTransferStock(
+        ctx,
+        organizationId,
+        args.fromLocationId,
+        args.toLocationId,
+        resolvedItems,
+        1,
+      );
     }
 
     for (const item of resolvedItems) {

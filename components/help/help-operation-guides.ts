@@ -473,7 +473,7 @@ export const operationFeatures: HelpFeature[] = [
             id: "om",
             title: "Sådan fungerer Transfer",
             paragraphs: [
-              "Afsenderen opretter transferen. Modtageren registrerer de faktiske mængder under Varemodtagelse. Først da flyttes mængderne på lageret.",
+              "Afsenderen opretter transferen. Modtageren registrerer de faktiske mængder under Varemodtagelse. Først da flyttes mængderne på lageret. Under Administration → Varemodtagelse kan kravet slås fra, så mængderne flyttes med det samme. Transfers fra interne bestillinger skal altid modtages.",
             ],
           },
           {

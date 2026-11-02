@@ -45,6 +45,7 @@ const IMAGE_TYPES = new Set([
 
 const settingsValidator = v.object({
   transferDeliveryNotePhotoEnabled: v.boolean(),
+  transferReceiptRequired: v.boolean(),
 });
 
 const pendingTransferValidator = v.object({
@@ -138,7 +139,7 @@ type GoodsReceiptCtx = QueryCtx | MutationCtx;
 type CatalogReceiptItemInput = Infer<typeof catalogReceiptItemInputValidator>;
 type TransferReceiptItemInput = Infer<typeof receiptItemInputValidator>;
 
-async function settingsFor(ctx: GoodsReceiptCtx, organizationId: string) {
+export async function settingsFor(ctx: GoodsReceiptCtx, organizationId: string) {
   const settings = await ctx.db
     .query("goodsReceiptSettings")
     .withIndex("by_organizationId", (q) =>
@@ -148,6 +149,7 @@ async function settingsFor(ctx: GoodsReceiptCtx, organizationId: string) {
   return {
     transferDeliveryNotePhotoEnabled:
       settings?.transferDeliveryNotePhotoEnabled ?? false,
+    transferReceiptRequired: settings?.transferReceiptRequired ?? true,
   };
 }
 
@@ -982,6 +984,7 @@ export const setSettings = mutation({
       .unique();
     const next = {
       transferDeliveryNotePhotoEnabled: args.transferDeliveryNotePhotoEnabled,
+      transferReceiptRequired: args.transferReceiptRequired,
       updatedAt: Date.now(),
     };
     if (current) {
