@@ -6,9 +6,13 @@ const MAX_DATABASES = 100;
 // Notion rejects rich text objects longer than this.
 const MAX_TEXT_LENGTH = 2_000;
 
+// A project is an option of one of the database's select properties.
+export type NotionProject = { property: string; name: string };
+
 export type NotionDatabase = {
   id: string;
   name: string;
+  projects: NotionProject[];
 };
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -78,6 +82,21 @@ function plainText(value: unknown) {
     .trim();
 }
 
+function selectOptions(properties: unknown): NotionProject[] {
+  return Object.values(object(properties) ?? {}).flatMap((value) => {
+    const property = object(value);
+    const name = string(property?.name);
+    const options = object(property?.select)?.options;
+    if (property?.type !== "select" || !name || !Array.isArray(options)) {
+      return [];
+    }
+    return options.flatMap((option) => {
+      const optionName = string(object(option)?.name);
+      return optionName ? [{ property: name, name: optionName }] : [];
+    });
+  });
+}
+
 export async function fetchNotionDatabases(
   token: string,
 ): Promise<NotionDatabase[]> {
@@ -93,7 +112,13 @@ export async function fetchNotionDatabases(
     const source = object(value);
     const id = string(source?.id);
     if (!id || source?.object !== "data_source") return [];
-    return [{ id, name: plainText(source.title) || "Unavngivet database" }];
+    return [
+      {
+        id,
+        name: plainText(source.title) || "Unavngivet database",
+        projects: selectOptions(source.properties),
+      },
+    ];
   });
 }
 
@@ -117,6 +142,7 @@ export async function createNotionPage(
   token: string,
   input: {
     databaseId: string;
+    project: NotionProject | null;
     title: string;
     paragraphs: NotionText[][];
     imageUrl: string | null;
@@ -125,7 +151,12 @@ export async function createNotionPage(
   const data = await requestNotion(token, "/pages", {
     parent: { data_source_id: input.databaseId },
     // Every data source has a title property with the fixed id "title".
-    properties: { title: { title: richText([{ text: input.title }]) } },
+    properties: {
+      title: { title: richText([{ text: input.title }]) },
+      ...(input.project
+        ? { [input.project.property]: { select: { name: input.project.name } } }
+        : {}),
+    },
     children: [
       ...input.paragraphs.map((parts) => ({
         object: "block",

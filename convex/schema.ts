@@ -560,6 +560,8 @@ export default defineSchema({
     notionToken: v.optional(v.string()),
     notionDatabaseId: v.optional(v.string()),
     notionDatabaseName: v.optional(v.string()),
+    notionProjectProperty: v.optional(v.string()),
+    notionProjectName: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
 

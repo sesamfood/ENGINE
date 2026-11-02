@@ -47,6 +47,8 @@ const statusValidator = v.union(
   v.literal("failed"),
 );
 
+const projectValidator = v.object({ property: v.string(), name: v.string() });
+
 const deliveryValidator = v.union(
   v.object({
     submissionId: v.id("feedbackSubmissions"),
@@ -67,9 +69,18 @@ const deliveryValidator = v.union(
     linearTeamId: v.union(v.string(), v.null()),
     notionToken: v.union(v.string(), v.null()),
     notionDatabaseId: v.union(v.string(), v.null()),
+    notionProject: v.union(projectValidator, v.null()),
   }),
   v.null(),
 );
+
+function notionProject(
+  settings: { notionProjectProperty?: string; notionProjectName?: string } | null,
+) {
+  return settings?.notionProjectProperty && settings.notionProjectName
+    ? { property: settings.notionProjectProperty, name: settings.notionProjectName }
+    : null;
+}
 
 const destinationLabels = {
   linear: "Linear",
@@ -115,6 +126,7 @@ export const getSettings = query({
     notionDatabaseId: v.union(v.string(), v.null()),
     notionDatabaseName: v.union(v.string(), v.null()),
     notionTokenConfigured: v.boolean(),
+    notionProject: v.union(projectValidator, v.null()),
     recent: v.array(
       v.object({
         id: v.id("feedbackSubmissions"),
@@ -155,6 +167,7 @@ export const getSettings = query({
       notionDatabaseId: settings?.notionDatabaseId ?? null,
       notionDatabaseName: settings?.notionDatabaseName ?? null,
       notionTokenConfigured: Boolean(settings?.notionToken),
+      notionProject: notionProject(settings),
       recent: recent.map((submission) => ({
         id: submission._id,
         userName: submission.userName,
@@ -195,6 +208,7 @@ export const saveSettings = mutation({
     notionToken: v.optional(v.string()),
     notionDatabaseId: v.optional(v.string()),
     notionDatabaseName: v.optional(v.string()),
+    notionProject: v.optional(v.union(projectValidator, v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -237,6 +251,16 @@ export const saveSettings = mutation({
     ) {
       throw new ConvexError("Databasenavnet er for langt");
     }
+    const project = args.notionProject;
+    if (
+      project &&
+      (!project.property.trim() ||
+        !project.name.trim() ||
+        project.property.length > MAX_TEAM_LENGTH ||
+        project.name.length > MAX_TEAM_LENGTH)
+    ) {
+      throw new ConvexError("Vælg et gyldigt projekt");
+    }
 
     if (args.enabled) {
       if (args.destination === "email" && !email) {
@@ -266,6 +290,13 @@ export const saveSettings = mutation({
       ...(notionToken ? { notionToken } : {}),
       ...(notionDatabaseId ? { notionDatabaseId } : {}),
       ...(notionDatabaseName ? { notionDatabaseName } : {}),
+      // Undefined clears the project when the patch removes it.
+      ...(project !== undefined
+        ? {
+            notionProjectProperty: project?.property,
+            notionProjectName: project?.name,
+          }
+        : {}),
     };
     const settingsId = current
       ? current._id
@@ -337,7 +368,13 @@ export const getNotionToken = internalQuery({
 
 export const listNotionDatabases = action({
   args: { token: v.optional(v.string()) },
-  returns: v.array(v.object({ id: v.string(), name: v.string() })),
+  returns: v.array(
+    v.object({
+      id: v.string(),
+      name: v.string(),
+      projects: v.array(projectValidator),
+    }),
+  ),
   handler: async (ctx, args): Promise<NotionDatabase[]> => {
     const { organizationId } = await requireOrganizationAdmin(ctx);
     const token =
@@ -512,6 +549,7 @@ export const getDelivery = internalQuery({
       linearTeamId: settings.linearTeamId ?? null,
       notionToken: settings.notionToken ?? null,
       notionDatabaseId: settings.notionDatabaseId ?? null,
+      notionProject: notionProject(settings),
     };
   },
 });

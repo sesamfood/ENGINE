@@ -56,7 +56,12 @@ import { usePermission } from "@/components/app-shell";
 
 type Destination = "linear" | "notion" | "email";
 type Team = { id: string; key: string; name: string };
-type NotionDatabase = { id: string; name: string };
+type NotionProject = { property: string; name: string };
+type NotionDatabase = { id: string; name: string; projects: NotionProject[] };
+
+const NO_PROJECT = "none";
+const projectKey = (project: NotionProject) =>
+  JSON.stringify([project.property, project.name]);
 
 const destinationDescriptions = {
   email: "Feedback sendes som e-mail med skærmbilledet vedhæftet.",
@@ -93,6 +98,7 @@ export function FeedbackSettings() {
   const [notionToken, setNotionToken] = useState("");
   const [databases, setDatabases] = useState<NotionDatabase[] | null>(null);
   const [databaseDraft, setDatabaseDraft] = useState<string | null>(null);
+  const [projectDraft, setProjectDraft] = useState<string | null>(null);
   const [loadingDatabases, setLoadingDatabases] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -152,6 +158,27 @@ export function FeedbackSettings() {
         ]
       : [];
 
+  const savedProjects = settings.notionProject ? [settings.notionProject] : [];
+  const projects =
+    databases?.find((database) => database.id === databaseId)?.projects ??
+    (databaseId === settings.notionDatabaseId ? savedProjects : []);
+  const projectValue =
+    projectDraft ??
+    (settings.notionProject ? projectKey(settings.notionProject) : NO_PROJECT);
+  const selectedProject =
+    projects.find((project) => projectKey(project) === projectValue) ?? null;
+  const showProperty =
+    new Set(projects.map((project) => project.property)).size > 1;
+  const projectOptions = [
+    { value: NO_PROJECT, label: "Intet projekt" },
+    ...projects.map((project) => ({
+      value: projectKey(project),
+      label: showProperty
+        ? `${project.property}: ${project.name}`
+        : project.name,
+    })),
+  ];
+
   async function loadDatabases() {
     setLoadingDatabases(true);
     try {
@@ -203,10 +230,12 @@ export function FeedbackSettings() {
         ...(notionToken.trim() ? { notionToken: notionToken.trim() } : {}),
         ...(databaseId ? { notionDatabaseId: databaseId } : {}),
         ...(databaseName ? { notionDatabaseName: databaseName } : {}),
+        notionProject: selectedProject,
       });
       setApiKey("");
       setNotionToken("");
       setDatabaseDraft(null);
+      setProjectDraft(null);
       setEnabledDraft(null);
       setDestinationDraft(null);
       setEmailDraft(null);
@@ -410,7 +439,10 @@ export function FeedbackSettings() {
                       items={databaseOptions}
                       value={databaseId}
                       disabled={!databases}
-                      onValueChange={setDatabaseDraft}
+                      onValueChange={(value) => {
+                        setDatabaseDraft(value);
+                        setProjectDraft(NO_PROJECT);
+                      }}
                     >
                       <SelectTrigger
                         id="feedback-notion-database"
@@ -447,6 +479,41 @@ export function FeedbackSettings() {
                   {!databases ? (
                     <FieldDescription>
                       Hent databaser for at skifte database.
+                    </FieldDescription>
+                  ) : null}
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="feedback-notion-project">
+                    Projekt
+                    <HelpTooltip
+                      label="Projekt"
+                      content="Vælg en værdi fra en select-egenskab i databasen. Feedback oprettes med den værdi."
+                    />
+                  </FieldLabel>
+                  <Select
+                    items={projectOptions}
+                    value={projectValue}
+                    disabled={!databases || projects.length === 0}
+                    onValueChange={(value) => setProjectDraft(value ?? NO_PROJECT)}
+                  >
+                    <SelectTrigger
+                      id="feedback-notion-project"
+                      className="min-h-11 w-full max-w-md"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projectOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {databases && databaseId && projects.length === 0 ? (
+                    <FieldDescription>
+                      Databasen har ingen select-egenskaber med værdier.
                     </FieldDescription>
                   ) : null}
                 </Field>

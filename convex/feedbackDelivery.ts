@@ -149,6 +149,7 @@ export const deliver = internalAction({
         ];
         const page = await createNotionPage(payload.notionToken, {
           databaseId: payload.notionDatabaseId,
+          project: payload.notionProject,
           title: `${payload.type === "bug" ? "[BUG]" : "[REQUEST]"} ${title}`,
           paragraphs: [
             field("Organization", payload.organizationName),
